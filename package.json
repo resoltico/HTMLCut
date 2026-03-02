@@ -1,0 +1,38 @@
+{
+  "name": "htmlcut",
+  "version": "1.0.0",
+  "description": "Extract HTML or text fragments from URLs, files, or stdin using start/end patterns (literal or RegExp). Supports streaming for large inputs, global multi‑match extraction, automatic HTML/text output generation, and optional SQLite history tracking.",
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "htmlcut": "./src/cli.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning src/cli.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js",
+    "coverage": "node --experimental-test-coverage --no-warnings=ExperimentalWarning --test test/*.test.js",
+    "lint": "eslint src/ test/",
+    "lint:fix": "eslint src/ test/ --fix",
+    "lint:check": "eslint src/ test/ --max-warnings 0"
+  },
+  "devDependencies": {
+    "eslint": "^10.0.2"
+  },
+  "keywords": [
+    "html",
+    "extract",
+    "cli",
+    "streaming",
+    "scraping",
+    "parsing"
+  ],
+  "author": "Ervins Strauhmanis",
+  "license": "MIT"
+}
