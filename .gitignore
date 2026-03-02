@@ -5,9 +5,8 @@
 # Installed packages (auto-generated, never commit)
 node_modules/
 
-# Dependency lockfile (ignore only if your workflow
-# does NOT rely on reproducible installs)
-package-lock.json
+# Node version file (ignored if you do NOT want to pin Node version in Git)
+.node-version
 
 
 ########################################
