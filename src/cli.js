@@ -13,7 +13,7 @@ import { stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { extractStream } from './extractor.js';
 import { logExtraction, getHistoryGroupedBySuccess } from './storage.js';
-import { getOutputBase, writeOutput, toPlainText } from './formatters.js';
+import { getOutputBase, writeOutput, toPlainText, expandHtmlLinks } from './formatters.js';
 import pkg from '../package.json' with { type: 'json' };
 
 const { version } = pkg;
@@ -24,11 +24,15 @@ const FETCH_TIMEOUT_MS = 15000;
 
 const options = {
     input: { type: 'string', short: 'i' },
+    base: { type: 'string', short: 'b' },
     start: { type: 'string', short: 's' },
     end: { type: 'string', short: 'e' },
     regex: { type: 'boolean', short: 'r', default: false },
     global: { type: 'boolean', short: 'g', default: false },
     output: { type: 'string', short: 'o', default: 'output' },
+    stdout: { type: 'boolean', short: 'O', default: false },
+    json: { type: 'boolean', default: false },
+    quiet: { type: 'boolean', short: 'q', default: false },
     track: { type: 'boolean', short: 't', default: false },
     history: { type: 'boolean', short: 'H', default: false },
     version: { type: 'boolean', short: 'V', default: false },
@@ -39,6 +43,7 @@ const options = {
 // rather than falling back to raw process.argv heuristics, and (b) cancel any
 // in-flight HTTP response body on error paths.
 let inputSource = '';
+let baseUrlOverride = '';
 let startPattern = '';
 let endPattern = '';
 let shouldTrack = false;
@@ -55,11 +60,15 @@ try {
   Options:
     -i, --input    Source HTML file, URL (e.g. https://example.com), or - for stdin
                    (also accepts as the first positional argument, without -i)
+    -b, --base     Base URL for resolving relative links (overrides input source)
     -s, --start    Start pattern
     -e, --end      End pattern
     -r, --regex    Treat patterns as RegExp 'v' expressions
     -g, --global   Extract all matching occurrences globally
     -o, --output   Output base path (default: "output")
+    -O, --stdout   Write output to stdout instead of files
+        --json     Write output as JSON (implies stdout-friendly format)
+    -q, --quiet    Suppress all diagnostic non-payload logging
     -t, --track    Log this extraction to local history
     -H, --history  Show your recent extraction history
     -V, --version  Print version number
@@ -80,6 +89,7 @@ try {
     }
 
     inputSource = values.input || positionals[0] || '';
+    baseUrlOverride = values.base || '';
     startPattern = values.start || '';
     endPattern = values.end || '';
     shouldTrack = values.track;
@@ -160,14 +170,16 @@ try {
     const htmlFragments = [];
     const txtFragments = [];
 
-    for await (const fragment of extractStream(sourceStream, startPattern, endPattern, { isRegex: values.regex, isGlobal: values.global })) {
+    for await (const rawFragment of extractStream(sourceStream, startPattern, endPattern, { isRegex: values.regex, isGlobal: values.global })) {
+        const expandSource = baseUrlOverride || inputSource;
+        const fragment = expandHtmlLinks(rawFragment, expandSource);
         htmlFragments.push(fragment);
         txtFragments.push(toPlainText(fragment));
     }
 
     // Release any unconsumed URL response body. In non-global mode the extractor
     // returns after the first match, leaving the connection open. cancel() closes it.
-    fetchBody?.cancel().catch(() => {});
+    fetchBody?.cancel().catch(Function.prototype);
 
     const finalHtml = htmlFragments.join('\n');
     const finalTxt = txtFragments.join('\n');
@@ -177,12 +189,23 @@ try {
     const txtPath = `${outputBase}.txt`;
 
     try {
-        await Promise.all([
-            writeOutput(finalHtml, htmlPath, inputSource),
-            writeOutput(finalTxt, txtPath),
-        ]);
+        if (values.stdout || values.json) {
+            if (values.json) {
+                const outArr = htmlFragments.map((html, i) => ({ html, text: txtFragments[i] }));
+                process.stdout.write(`${JSON.stringify(outArr, null, 2)}\n`);
+            } else {
+                // Default text payload
+                process.stdout.write(`${finalTxt}\n`);
+            }
+        } else {
+            const extractContextUrl = baseUrlOverride || inputSource;
+            await Promise.all([
+                writeOutput(finalHtml, htmlPath, extractContextUrl),
+                writeOutput(finalTxt, txtPath),
+            ]);
+        }
     } catch (writeError) {
-        throw new Error('One or more output files could not be written', { cause: writeError });
+        throw new Error('Outputs could not be written', { cause: writeError });
     }
 
     const durationMs = Math.round(performance.now() - startTime);
@@ -202,13 +225,17 @@ try {
     }
 
     const count = htmlFragments.length;
-    console.log(`✓ Successfully extracted ${count} ${count === 1 ? 'fragment' : 'fragments'} in ${durationMs}ms`);
-    console.log(`  → ${htmlPath}`);
-    console.log(`  → ${txtPath}`);
+    if (!values.quiet) {
+        console.error(`✓ Successfully extracted ${count} ${count === 1 ? 'fragment' : 'fragments'} in ${durationMs}ms`);
+        if (!values.stdout && !values.json) {
+            console.error(`  → ${htmlPath}`);
+            console.error(`  → ${txtPath}`);
+        }
+    }
 
 } catch (error) {
     // Release any unconsumed URL response body (e.g. pattern not found, timeout).
-    fetchBody?.cancel().catch(() => {});
+    fetchBody?.cancel().catch(Function.prototype);
 
     const causeMsg = error.cause instanceof Error ? `: ${error.cause.message}` : '';
     console.error(`✗ Error: ${error.message}${causeMsg}`);

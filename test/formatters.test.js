@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { getOutputBase, writeOutput, toPlainText } from '../src/formatters.js';
+import { getOutputBase, writeOutput, toPlainText, resolveUrl, expandHtmlLinks } from '../src/formatters.js';
 
 test('Formatters generate predictable timestamped output base paths', () => {
     const base = getOutputBase('testout');
@@ -464,4 +464,212 @@ test('toPlainText renders inline elements inside <a> as link text', () => {
     // <code> inside <a> inside <li>: link text must be part of the list item
     const result = toPlainText('<ul><li><a href="https://example.com"><code>pkg</code></a></li></ul>');
     assert.ok(result.includes('`pkg` [https://example.com]'), `got: ${result}`);
+});
+
+test('toPlainText renders description lists (<dl>, <dt>, <dd>) adding blank lines and indentation', () => {
+    const html = '<dl><dt>Term</dt><dd>Definition</dd></dl>';
+    const result = toPlainText(html);
+    assert.ok(result.includes('Term'), `got: ${result}`);
+    assert.ok(result.includes('    Definition'), `got: ${result}`);
+});
+
+test('toPlainText renders tables (<table>, <tr>, <th>, <td>, <thead>, <tbody>, <tfoot>) with blank lines and gaps', () => {
+    const html = '<table><thead><tr><th>H1</th><th>H2</th></tr></thead><tbody><tr><td>D1</td><td>D2</td></tr></tbody><tfoot><tr><td>F1</td><td>F2</td></tr></tfoot></table>';
+    const result = toPlainText(html);
+    assert.ok(result.includes('H1'), `got: ${result}`);
+    assert.ok(result.includes('H2'), `got: ${result}`);
+    assert.ok(result.includes('D1'), `got: ${result}`);
+    assert.ok(result.includes('D2'), `got: ${result}`);
+});
+
+test('toPlainText processes links nested inside headings', () => {
+    const html = '<h1><a href="https://example.com">Click</a></h1>';
+    const result = toPlainText(html);
+    assert.ok(result.includes('Click [https://example.com]'), `got: ${result}`);
+});
+
+test('toPlainText supports multiline text inside a list item via br tags', () => {
+    const html = '<ul><li>line one<br>line two</li></ul>';
+    const result = toPlainText(html);
+    assert.ok(result.includes('line one\n  line two'), `got: ${result}`);
+});
+
+test('toPlainText handles ignored subtrees with nested open tags, close tags, and text producing tokens', () => {
+    const html = '<script><br><div></div></script>';
+    const result = toPlainText(html);
+    assert.equal(result.includes('<br>'), false);
+});
+
+test('toPlainText drops code ticks inside pre blocks', () => {
+    const html = '<pre><code>code block text</code></pre>';
+    const result = toPlainText(html);
+    assert.ok(result.includes('code block text'));
+    assert.equal(result.includes('`'), false);
+});
+
+
+test('toPlainText handles ensureBlankLine scanning backward over empty parts (block after empty div)', () => {
+    // An empty <div></div> followed by a <p> forces ensureBlankLine to scan backwards
+    // past an empty-string parts slot to find the real last non-empty part.
+    const result = toPlainText('<div></div><p>Text</p>');
+    assert.ok(result.includes('Text'), `got: ${result}`);
+    assert.ok(!result.includes('\n\n\n'), `got: ${JSON.stringify(result)}`);
+});
+
+test('toPlainText parses single-quoted attribute values (getAttr m[2] branch)', () => {
+    // HTML attributes can use single quotes: <a href='...'>.
+    // getAttr's regex has three capture groups: m[1]=double, m[2]=single, m[3]=unquoted.
+    // This test exercises the m[2] (single-quote) code path.
+    const result = toPlainText("<a href='https://example.com'>Single quote link</a>");
+    assert.equal(result, 'Single quote link [https://example.com]');
+});
+
+test('toPlainText parses unquoted attribute values (getAttr m[3] branch)', () => {
+    // Unquoted attribute: <img alt=Logo>
+    const result = toPlainText('<img alt=Logo>');
+    assert.equal(result, '[Logo]');
+});
+
+// ── resolveUrl ──────────────────────────────────────────────────────────────
+
+test('resolveUrl leaves absolute protocol URLs unmodified', () => {
+    assert.equal(resolveUrl('https://example.com/page', 'https://base.com'), 'https://example.com/page');
+    assert.equal(resolveUrl('http://insecure.com', 'https://base.com'), 'http://insecure.com');
+    assert.equal(resolveUrl('tel:+1234567890', 'https://base.com'), 'tel:+1234567890');
+    assert.equal(resolveUrl('mailto:user@domain.com', 'https://base.com'), 'mailto:user@domain.com');
+    assert.equal(resolveUrl('data:text/plain;base64,123', 'https://base.com'), 'data:text/plain;base64,123');
+});
+
+test('resolveUrl leaves anchor and fragment links unmodified', () => {
+    assert.equal(resolveUrl('#section1', 'https://base.com/page.html'), '#section1');
+});
+
+test('resolveUrl leaves empty or invalid inputs unchanged gracefully', () => {
+    assert.equal(resolveUrl('', 'https://base.com'), '');
+    assert.equal(resolveUrl('foo.html', ''), 'foo.html');
+    assert.equal(resolveUrl(null, 'https://base.com'), null);
+});
+
+test('resolveUrl leaves URLs that throw during resolution unchanged', () => {
+    // Malformed base URL that throws in WHATWG URL constructor
+    assert.equal(resolveUrl('page.html', 'https://[::1'), 'page.html');
+});
+
+test('resolveUrl leaves hrefs unmodified when base is stdin (-)', () => {
+    assert.equal(resolveUrl('relative/page.html', '-'), 'relative/page.html');
+});
+
+test('resolveUrl converts relative links to absolute given an HTTP(S) base URL', () => {
+    assert.equal(resolveUrl('about.html', 'https://example.com/docs/intro.html'), 'https://example.com/docs/about.html');
+    assert.equal(resolveUrl('/assets/img.png', 'https://example.com/docs/intro.html'), 'https://example.com/assets/img.png');
+    assert.equal(resolveUrl('../sibling.html', 'https://example.com/docs/intro.html'), 'https://example.com/sibling.html');
+});
+
+test('resolveUrl converts relative links to absolute given a local file path base', () => {
+    // Tests might be executed from anywhere, so we extract the OS-dependent prefix to assert against it.
+    const resolvedPath = new URL(`file://${  resolve(process.cwd(), '/home/user/docs/intro.html')}`).href;
+    const resolvedDir = resolvedPath.replace('intro.html', '');
+
+    assert.equal(resolveUrl('about.html', '/home/user/docs/intro.html'), `${resolvedDir}about.html`);
+    assert.equal(resolveUrl('../sibling.html', '/home/user/docs/intro.html'), new URL('../sibling.html', resolvedPath).href);
+});
+
+test('resolveUrl pre-pends https: for protocol-relative links when base is a local file', () => {
+    assert.equal(resolveUrl('//cdn.example.com/lib.js', '/local/file.html'), 'https://cdn.example.com/lib.js');
+});
+
+test('resolveUrl preserves protocol-relative links and infers against HTTP(S) bases properly provided by the URL constructor', () => {
+    assert.equal(resolveUrl('//cdn.example.com/lib.js', 'http://example.com'), 'http://cdn.example.com/lib.js');
+    assert.equal(resolveUrl('//cdn.example.com/lib.js', 'https://example.com'), 'https://cdn.example.com/lib.js');
+});
+
+// ── expandHtmlLinks ─────────────────────────────────────────────────────────
+
+test('expandHtmlLinks leaves fragments unmodified if source is stdin (-)', () => {
+    const fragment = '<a href="foo.html">link</a>';
+    assert.equal(expandHtmlLinks(fragment, '-'), fragment);
+});
+
+test('expandHtmlLinks leaves fragments unmodified if source is empty', () => {
+    const fragment = '<a href="foo.html">link</a>';
+    assert.equal(expandHtmlLinks(fragment, ''), fragment);
+});
+
+test('expandHtmlLinks leaves already absolute URLs unmodified in attributes', () => {
+    const html = '<a href="https://absolute.com/page">Link</a>';
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+    assert.equal(result, html);
+});
+
+test('expandHtmlLinks expands href and src attributes within tags', () => {
+    const html = '<a href="page.html">Link</a><img src="img.png" alt="Img">';
+    const source = 'https://example.com/dir/index.html';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, '<a href="https://example.com/dir/page.html">Link</a><img src="https://example.com/dir/img.png" alt="Img">');
+});
+
+test('expandHtmlLinks preserves whitespace, self-closing markers, and double quoting', () => {
+    const html = '<link rel="stylesheet" href="style.css" />\n<script src="app.js"></script>';
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, '<link rel="stylesheet" href="https://example.com/style.css" />\n<script src="https://example.com/app.js"></script>');
+});
+
+test('expandHtmlLinks handles single-quoted attributes by normalizing into double-quotes cleanly', () => {
+    const html = "<a href='foo.html' data-test='bar'>Link</a>";
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, "<a href=\"https://example.com/foo.html\" data-test='bar'>Link</a>");
+});
+
+test('expandHtmlLinks normalizes unquoted attributes into double-quotes', () => {
+    const html = '<a href=foo.html>Link</a>';
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    // Note: the original matching leaves adjacent elements untouched, so the replacement
+    // simply replaces `href=foo.html` with `href="https..."`.
+    assert.equal(result, '<a href="https://example.com/foo.html">Link</a>');
+});
+
+test('expandHtmlLinks does not expand attributes matching href or src partially (like data-href)', () => {
+    const html = '<div data-href="nope.html" data-src="unrelated.jpg"><a href="yes.html">Click</a></div>';
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, '<div data-href="nope.html" data-src="unrelated.jpg"><a href="https://example.com/yes.html">Click</a></div>');
+});
+
+test('expandHtmlLinks correctly handles URLs with quotes by escaping them', () => {
+    // Highly unusual, but we must protect against XSS payload breakouts
+    const source = 'https://example.com/';
+    const dirtyUrl = 'path/to/thing"onclick="alert(1).html';
+    const html = `<a href='${dirtyUrl}'>Hacked</a>`;
+    const result = expandHtmlLinks(html, source);
+
+    // Quotes inside the translated URL get replaced with %22
+    assert.equal(result, `<a href="https://example.com/path/to/thing%22onclick=%22alert(1).html">Hacked</a>`);
+
+    const resultLocal = expandHtmlLinks(html, '-');
+    assert.equal(resultLocal, `<a href='path/to/thing"onclick="alert(1).html'>Hacked</a>`);
+});
+
+test('expandHtmlLinks ignores comments containing tags', () => {
+    const html = '<!-- <a href="page.html">Hidden</a> -->';
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, '<!-- <a href="page.html">Hidden</a> -->');
+});
+
+test('expandHtmlLinks handles multiline element definitions and tags properly', () => {
+    const html = `<a \n  class="btn"\n  href="signup.html"\n>Sign Up</a>`;
+    const source = 'https://example.com/';
+    const result = expandHtmlLinks(html, source);
+
+    assert.equal(result, `<a \n  class="btn"\n  href="https://example.com/signup.html"\n>Sign Up</a>`);
 });

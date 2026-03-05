@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readFile, writeFile, rm, mkdir, truncate, readdir } from 'node:fs/promises';
 import { Buffer } from 'node:buffer';
-import { setInterval, clearInterval, setImmediate } from 'node:timers';
+import { setInterval, clearInterval, setImmediate, setTimeout } from 'node:timers';
 
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), 'src/cli.js');
@@ -62,8 +62,8 @@ test('CLI: Parses local file successfully', async () => {
             '-o', outputPath
         ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
 
-        assert.match(stdout, /Successfully extracted 1 fragment\b/);
-        assert.equal(stderr, '');
+        assert.match(stderr, /Successfully extracted 1 fragment\b/);
+        assert.equal(stdout, '');
     } finally {
         await rm(tmpDir, { recursive: true, force: true });
     }
@@ -180,10 +180,10 @@ test('CLI: Proceeds normally when content-length header is within limit', async 
     await mkdir(tmpDir, { recursive: true });
 
     try {
-        const { stdout } = await execFileAsync(CLI_PATH, [
+        const { stderr } = await execFileAsync(CLI_PATH, [
             '-i', url, '-s', '<p>', '-e', '</p>', '-o', join(tmpDir, 'out')
         ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
-        assert.match(stdout, /Successfully extracted 1 fragment\b/);
+        assert.match(stderr, /Successfully extracted 1 fragment\b/);
     } finally {
         server.close();
         await rm(tmpDir, { recursive: true, force: true });
@@ -279,7 +279,7 @@ test('CLI: Throws on output stream write failure (permission)', async () => {
         assert.fail('Should fail on write');
     } catch (err) {
         const errOutput = err.stderr || '';
-        assert.match(errOutput, /One or more output files could not be written/);
+        assert.match(errOutput, /Outputs could not be written/);
         assert.equal(err.code, 1);
     } finally {
         await rm(tmpDir, { recursive: true, force: true });
@@ -337,11 +337,11 @@ test('CLI: Global extraction writes multiple fragments on separate lines', async
         await writeFile(inputPath, '<p>Alpha</p><p>Beta</p><p>Gamma</p>', 'utf8');
         const outputBase = join(tmpDir, 'out');
 
-        const { stdout: globalStdout } = await execFileAsync(CLI_PATH, [
+        const { stderr: globalStderr } = await execFileAsync(CLI_PATH, [
             '-i', inputPath, '-s', '<p>', '-e', '</p>', '-g', '-o', outputBase
         ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
 
-        assert.match(globalStdout, /Successfully extracted 3 fragments\b/);
+        assert.match(globalStderr, /Successfully extracted 3 fragments\b/);
 
         const files = await readdir(tmpDir);
         const txtFile = files.find(f => f.includes('htmlcut') && f.endsWith('.txt'));
@@ -437,8 +437,8 @@ test('CLI: Reads from stdin when -i - is specified', async () => {
         child.on('close', async code => {
             try {
                 assert.equal(code, 0, `Expected exit 0. stderr=${stderr}`);
-                assert.match(stdout, /Successfully extracted 1 fragment\b/);
-                assert.equal(stderr, '');
+                assert.match(stderr, /Successfully extracted 1 fragment\b/);
+                assert.equal(stdout, '');
 
                 const files = await readdir(tmpDir);
                 const htmlFile = files.find(f => f.includes('htmlcut') && f.endsWith('.html'));
@@ -490,8 +490,8 @@ test('CLI: Reads from stdin with --regex pattern matching attributes', async () 
         child.on('close', async code => {
             try {
                 assert.equal(code, 0, `Expected exit 0. stderr=${stderr}`);
-                assert.match(stdout, /Successfully extracted 1 fragment\b/);
-                assert.equal(stderr, '');
+                assert.match(stderr, /Successfully extracted 1 fragment\b/);
+                assert.equal(stdout, '');
 
                 const files = await readdir(tmpDir);
                 const htmlFile = files.find(f => f.includes('htmlcut') && f.endsWith('.html'));
@@ -623,11 +623,205 @@ test('CLI: logExtraction failure in success path does not cause exit 1', async (
         ], {
             env: { ...process.env, NODE_NO_WARNINGS: '1', HTMLCUT_DB_PATH: '/nonexistent/dir/db.sqlite' },
         });
-        assert.match(stdout, /Successfully extracted 1 fragment\b/);
-        assert.equal(stderr, '');
+        assert.match(stderr, /Successfully extracted 1 fragment\b/);
+        assert.equal(stdout, '');
     } finally {
         await rm(tmpDir, { recursive: true, force: true });
     }
 });
 
 // Warning suppression is tested in full unit-isolation in test/suppress.test.js
+
+test('CLI: Reads the entire response body successfully to completion in global mode', async () => {
+    // Tests the closing generator cleanup in cli.js line 121
+    const bodyParts = ['<p>First</p>', '<p>Second</p>'];
+    const server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.write(bodyParts[0]);
+        setTimeout(() => res.end(bodyParts[1]), 10);
+    });
+    await new Promise(resolve => server.listen(0, resolve));
+    const port = server.address().port;
+    const url = `http://localhost:${port}`;
+
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        const { stderr } = await execFileAsync(CLI_PATH, [
+            '-i', url, '-s', '<p>', '-e', '</p>', '-o', join(tmpDir, 'out'), '-g'
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+        assert.match(stderr, /Successfully extracted 2 fragments\b/);
+    } finally {
+        server.close();
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: Failed argument parsing with --track logs 0 duration correctly', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    const isolatedDbPath = join(tmpDir, 'test.db');
+
+    try {
+        await execFileAsync(CLI_PATH, ['-s', '<a>', '-t'], {
+            env: { ...process.env, NODE_NO_WARNINGS: '1', HTMLCUT_DB_PATH: isolatedDbPath }
+        });
+        assert.fail('Should fail on missing args');
+    } catch (err) {
+        assert.match(err.stderr || '', /Missing required arguments/);
+        const { stdout } = await execFileAsync(CLI_PATH, ['--history'], {
+            env: { ...process.env, NODE_NO_WARNINGS: '1', HTMLCUT_DB_PATH: isolatedDbPath }
+        });
+        const history = JSON.parse(stdout);
+        assert.ok(history.failed.length >= 1, 'Expected at least one failed extraction log');
+        assert.equal(typeof history.failed[0].duration_ms, 'number', 'durationMs must be a number');
+        assert.equal(history.failed[0].duration_ms, 0, 'Failed-before-start log must record 0ms duration');
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: Expands relative links in both HTML and TXT outputs based on input source', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        // Use a fake HTTP endpoint to get predictable "http://..." resolution
+        const body = '<article><a href="about.html">About</a> <img src="img.png" alt="Logo"></article>';
+        const server = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(body);
+        });
+        await new Promise(resolve => server.listen(0, resolve));
+        const port = server.address().port;
+        const url = `http://localhost:${port}/docs/index.html`;
+
+        const outputBase = join(tmpDir, 'out');
+
+        await execFileAsync(CLI_PATH, [
+            '-i', url, '-s', '<article>', '-e', '</article>', '-o', outputBase
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+
+        const files = await readdir(tmpDir);
+        const htmlFile = files.find(f => f.includes('htmlcut') && f.endsWith('.html'));
+        const txtFile = files.find(f => f.includes('htmlcut') && f.endsWith('.txt'));
+
+        const htmlContent = await readFile(join(tmpDir, htmlFile), 'utf8');
+        const txtContent = await readFile(join(tmpDir, txtFile), 'utf8');
+
+        server.close();
+
+        const expectedHref = `http://localhost:${port}/docs/about.html`;
+        const expectedSrc = `http://localhost:${port}/docs/img.png`;
+
+        assert.ok(htmlContent.includes(`<a href="${expectedHref}">`), `HTML missing expanded link, got: ${htmlContent}`);
+        assert.ok(htmlContent.includes(`<img src="${expectedSrc}"`), `HTML missing expanded src, got: ${htmlContent}`);
+
+        assert.ok(txtContent.includes(`About [${expectedHref}]`), `TXT missing expanded link, got: ${txtContent}`);
+        assert.ok(txtContent.includes(`[Logo]`), `TXT should have image alt text, got: ${txtContent}`);
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: --base string overrides local file context and resolves links absolutely to arbitrary URL', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        const body = '<p><a href="/articles/new">New</a></p>';
+        const inputPath = join(tmpDir, 'input.html');
+        await writeFile(inputPath, body, 'utf8');
+
+        const outputBase = join(tmpDir, 'out');
+
+        await execFileAsync(CLI_PATH, [
+            '-i', inputPath, '-b', 'https://override.example.com/', '-s', '<p>', '-e', '</p>', '-o', outputBase
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+
+        const files = await readdir(tmpDir);
+        const txtFile = files.find(f => f.includes('htmlcut') && f.endsWith('.txt'));
+        const htmlFile = files.find(f => f.includes('htmlcut') && f.endsWith('.html'));
+
+        const txtContent = await readFile(join(tmpDir, txtFile), 'utf8');
+        const htmlContent = await readFile(join(tmpDir, htmlFile), 'utf8');
+
+        assert.ok(txtContent.includes('New [https://override.example.com/articles/new]'), `TXT output missing resolved link overridden by --base, got: ${txtContent}`);
+        assert.ok(htmlContent.includes('<a href="https://override.example.com/articles/new">'), `HTML output missing resolved link overridden by --base, got: ${htmlContent}`);
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: --stdout streams text directly to stdout and suppresses file creation', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        const body = '<p>Streamed Output</p>';
+        const inputPath = join(tmpDir, 'input.html');
+        await writeFile(inputPath, body, 'utf8');
+
+        const { stdout } = await execFileAsync(CLI_PATH, [
+            '-i', inputPath, '-s', '<p>', '-e', '</p>', '--stdout'
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+
+        assert.ok(stdout.includes('Streamed Output'), `Stdout missing payload, got: ${stdout}`);
+
+        // Assert no output files were written to disk (only input.html should exist)
+        const files = await readdir(tmpDir);
+        const generated = files.filter(f => f !== 'input.html' && (f.endsWith('.txt') || f.endsWith('.html')));
+        assert.equal(generated.length, 0, `Expected 0 disk output files when using --stdout, found: ${generated.join(', ')}`);
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: --json emits a valid JSON array of {html, text} objects to stdout', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        const body = '<article>Item 1</article><article>Item 2</article>';
+        const inputPath = join(tmpDir, 'input.html');
+        await writeFile(inputPath, body, 'utf8');
+
+        const { stdout } = await execFileAsync(CLI_PATH, [
+            '-i', inputPath, '-s', '<article>', '-e', '</article>', '-g', '--json'
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+
+        // Extract the JSON part (the diagnostic log line precedes the JSON when not using --quiet)
+        const jsonMatch = stdout.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        assert.ok(jsonMatch, `Output did not contain a JSON array:\n${stdout}`);
+
+        const data = JSON.parse(jsonMatch[0]);
+        assert.equal(data.length, 2);
+        assert.equal(data[0].text, 'Item 1');
+        assert.equal(data[1].text, 'Item 2');
+        // html field contains the extracted fragment (start tag included by extractor)
+        assert.ok(data[0].html.includes('Item 1'), `First item html should include text, got: ${data[0].html}`);
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('CLI: --quiet suppresses diagnostic log so stdout contains only the payload', async () => {
+    const tmpDir = join(tmpdir(), `htmlcut-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+
+    try {
+        const body = '<p>Pristine</p>';
+        const inputPath = join(tmpDir, 'input.html');
+        await writeFile(inputPath, body, 'utf8');
+
+        const { stdout } = await execFileAsync(CLI_PATH, [
+            '-i', inputPath, '-s', '<p>', '-e', '</p>', '--stdout', '-q'
+        ], { env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+
+        // Only the payload should appear — no "✓ Successfully extracted…" prefix
+        assert.equal(stdout, 'Pristine\n', `Stdout must be strictly the payload when --quiet is active, got:\n${stdout}`);
+    } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+    }
+});

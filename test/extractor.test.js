@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { extractStream } from '../src/extractor.js';
 import { chunksOf, collect, drain } from './helpers.js';
 
@@ -207,4 +208,27 @@ test('Regex: zero-width assertions do not cause infinite loops', async () => {
     const results = await collect(extractStream(chunksOf('a b'), '\\b', '\\b', { isRegex: true, isGlobal: true }));
     assert.ok(Array.isArray(results));
     assert.ok(results.length > 0);
+});
+
+test('Regex: Non-Error throws are coerced to String safely', async () => {
+    const OriginalRegExp = globalThis.RegExp;
+    try {
+        globalThis.RegExp = function () { throw new Error('StringBasedError'); };
+        await assert.rejects(
+            () => drain(extractStream(chunksOf('text'), 'start', 'end', { isRegex: true })),
+            { message: /Invalid RegExp: StringBasedError/ }
+        );
+    } finally {
+        globalThis.RegExp = OriginalRegExp;
+    }
+});
+
+test('Stream Decoder: Flushes buffered incomplete multi-byte sequence cleanly', async () => {
+    // A 3-byte unicode character "☃" (E2 98 83). We cut off the last byte.
+    // The inner decoder.decode(chunk, {stream: true}) buffers it safely across chunks.
+    // The final tail flush outputs the replacement character U+FFFD instead of failing.
+    await assert.rejects(
+        () => drain(extractStream([Buffer.from([0xE2, 0x98])], 'A', 'B')),
+        { message: 'Start pattern not found: A' }
+    );
 });

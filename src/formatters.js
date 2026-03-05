@@ -3,7 +3,8 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
+import { URL, pathToFileURL } from 'node:url';
 
 const MAX_CODE_POINT = 0x10FFFF;
 /** Unicode surrogate range — not valid scalar values; String.fromCodePoint rejects them. */
@@ -409,9 +410,9 @@ const OL_ALPHA = 'abcdefghijklmnopqrstuvwxyz';
  * Covers the full Latin alphabet in roman form; wraps beyond that.
  */
 const OL_ROMAN = [
-    'i','ii','iii','iv','v','vi','vii','viii','ix','x',
-    'xi','xii','xiii','xiv','xv','xvi','xvii','xviii','xix','xx',
-    'xxi','xxii','xxiii','xxiv','xxv','xxvi',
+    'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x',
+    'xi', 'xii', 'xiii', 'xiv', 'xv', 'xvi', 'xvii', 'xviii', 'xix', 'xx',
+    'xxi', 'xxii', 'xxiii', 'xxiv', 'xxv', 'xxvi',
 ];
 
 /**
@@ -443,7 +444,7 @@ function getAttr(attrs, name) {
         ATTR_RE_CACHE.set(name, re);
     }
     const m = re.exec(attrs);
-    return m ? (m[1] ?? m[2] ?? m[3] ?? '') : null;
+    return m ? (m[1] ?? m[2] ?? m[3]) : null;
 }
 
 /**
@@ -503,11 +504,8 @@ export function toPlainText(fragment) {
     }
 
     function ensureBlankLine() {
-        // Scan backwards over any empty strings to find the real last part.
-        let i = parts.length - 1;
-        while (i >= 0 && !parts[i]) { i--; }
-        if (i < 0) { return; }
-        const last = parts[i];
+        if (parts.length === 0) { return; }
+        const last = parts[parts.length - 1];
         if (!last.endsWith('\n\n')) {
             parts.push(last.endsWith('\n') ? '\n' : '\n\n');
         }
@@ -805,9 +803,9 @@ export function toPlainText(fragment) {
 
     let result = parts.join('');
 
-    // Normalise: collapse 3+ newlines → 2; strip only boundary newlines (not
-    // spaces — leading spaces in <pre> blocks must survive).
-    result = result.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').replace(/\n+$/, '');
+    // Normalise: collapse sequences of newlines (plus any tabs/spaces between them) → 2;
+    // strip boundary newlines (but keep spaces, as leading spaces in <pre> blocks must survive).
+    result = result.replace(/(?:\n[ \t]*){2,}\n/g, '\n\n').replace(/^\n+/, '').replace(/\n+$/, '');
 
     // Convert non-breaking spaces to regular spaces in the final output.
     result = result.replace(/\u00A0/g, ' ');
@@ -886,4 +884,76 @@ export async function writeOutput(content, outputPath, source = '') {
     }
 
     await writeFile(outputPath, finalContent, 'utf8');
+}
+
+/**
+ * Resolves a potentially relative URL against a base URL or file path.
+ * If the base is a valid HTTP(S) URL, it resolves relative to that URL.
+ * If the base is a file path, it resolves relative to the file's directory.
+ * @param {string} href The URL to resolve.
+ * @param {string} base The base URL or file path.
+ * @returns {string} The resolved absolute URL.
+ */
+export function resolveUrl(href, base) {
+    if (!href || !base || href.startsWith('#') || href.startsWith('data:') || href.startsWith('mailto:')) {
+        return href;
+    }
+
+    // Ignore if href is already an absolute protocol like http:, https:, tel:
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+        return href;
+    }
+
+    if (base === '-') {return href;}
+
+    try {
+        let baseUrl;
+        if (/^https?:\/\//i.test(base)) {
+            baseUrl = new URL(base);
+        } else {
+            // If base is local, protocol-relative linking is meant to be https.
+            if (href.startsWith('//')) {
+                return `https:${href}`;
+            }
+            baseUrl = pathToFileURL(resolve(process.cwd(), base));
+        }
+
+        return new URL(href, baseUrl).href;
+    } catch {
+        return href;
+    }
+}
+
+/**
+ * Rewrites href and src attributes in an HTML fragment to be absolute URLs based on the source location.
+ * @param {string} fragment The extracted HTML fragment.
+ * @param {string} source The base URL or local path.
+ * @returns {string} The expanded HTML fragment.
+ */
+export function expandHtmlLinks(fragment, source) {
+    if (!source || source === '-') {return fragment;}
+
+    const TOKEN_RE = /<!--[\s\S]*?-->|<(\/?)(\w[\w-]*)(\s(?:"[^"]*"|'[^']*'|[^>])*)?(\/)?>|([^<]+)/g;
+
+    return fragment.replace(TOKEN_RE, (match, isClose, tag, attrs, isSelfClose, text) => {
+        if (match.startsWith('<!--') || isClose || text !== undefined || !attrs) {
+            return match;
+        }
+
+        const ATTR_RE = /(^|\s)(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^"'\s>]+))/gi;
+        const newAttrs = attrs.replace(ATTR_RE, (attrMatch, space, name, dQuot, sQuot, unquot) => {
+            const val = dQuot !== undefined ? dQuot : (sQuot !== undefined ? sQuot : unquot);
+            if (!val) {return attrMatch;}
+
+            const absolute = resolveUrl(val, source);
+            if (absolute === val) {
+                return attrMatch;
+            }
+
+            const escaped = absolute.replace(/"/g, '%22');
+            return `${space}${name}="${escaped}"`;
+        });
+
+        return `<${tag}${newAttrs}${isSelfClose || ''}>`;
+    });
 }
