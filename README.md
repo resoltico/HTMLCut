@@ -7,10 +7,9 @@ You point it at a URL, a local file, or stdin, give it a start pattern and an en
 - raw HTML
 - structured JSON
 
-Version `2.x` is intentionally stdout-first, strict, and automation-friendly:
+HTMLCut is stdout-first, strict, and automation-friendly:
 
-- no timestamped surprise files
-- no hidden history database
+- no surprise files unless you ask for a bundle
 - no success chatter unless you ask for it
 - deterministic bundle output when you do want files
 - strict failure on incomplete matches
@@ -37,7 +36,7 @@ That means:
 
 - run `npm link` from the same active Node version you plan to use for `htmlcut`
 - if you switch Node versions, you may need to run `npm link` again
-- if Node is upgraded and the active global prefix changes, the old link may no longer be visible
+- if the active global prefix changes, you may need to run `npm link` again
 
 If `htmlcut` suddenly becomes `command not found` after a Node switch or upgrade, re-establish the link in the currently active Node environment:
 
@@ -66,7 +65,7 @@ htmlcut --help
 
 If you want `htmlcut` available under more than one installed Node version, repeat those steps once per version.
 
-Note: npm `11` removed `npm bin -g`. Use `npm prefix -g` instead.
+Use `npm prefix -g` to inspect the active global prefix.
 
 ## Quick Start
 
@@ -212,24 +211,13 @@ some-dir/
   report.json
 ```
 
-Design notes:
+Bundle behavior:
 
 - file names are deterministic
 - existing files are overwritten
 - `selection.html` is wrapped in a minimal HTML document unless the match already is a full HTML document
 - `report.json` contains the same JSON report emitted by `--format json`
 - `--format none` is the cleanest bundle mode for scripts and AI agents that only want files
-
-## Behavior Changes in `2.x`
-
-These are deliberate hard breaks:
-
-- stdout is now the primary interface
-- success logging is silent by default
-- incomplete trailing matches are fatal, including in `--all` mode
-- the old SQLite history feature is gone
-- the old timestamped output-pair workflow is gone
-- long options use hyphenated names like `--base-url`, `--max-bytes`, `--fetch-timeout-ms`
 
 ## Exit Codes
 
