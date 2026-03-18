@@ -1,258 +1,180 @@
-#!/usr/bin/env -S node --no-warnings=ExperimentalWarning
-
-// ---------------------------------------------------------------------------
-// Programmatically silence node:sqlite ExperimentalWarning so users who
-// invoke the script via `node src/cli.js` (bypassing the shebang flags)
-// do not see noisy experimental notices. Must be the very first code run.
-// ---------------------------------------------------------------------------
-import { installWarningFilter } from './warnings.js';
-installWarningFilter();
+#!/usr/bin/env node
 
 import { parseArgs } from 'node:util';
-import { stat } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
-import { extractStream } from './extractor.js';
-import { logExtraction, getHistoryGroupedBySuccess } from './storage.js';
-import { getOutputBase, writeOutput, toPlainText, expandHtmlLinks } from './formatters.js';
 import pkg from '../package.json' with { type: 'json' };
+import { ensureHtmlCutError, usageError } from './errors.js';
+import { extractMatches, DEFAULT_REGEX_FLAGS } from './extractor.js';
+import { renderHelp } from './help.js';
+import { renderHtmlAsText, rewriteHtmlUrls } from './html.js';
+import { buildReport, formatPayload, getBundlePaths, writeBundle } from './output.js';
+import { DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES, parseByteSize, readSource } from './source.js';
 
 const { version } = pkg;
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB guard for known-size local files
-const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / 1024 / 1024;
-const FETCH_TIMEOUT_MS = 15000;
-
 const options = {
-    input: { type: 'string', short: 'i' },
-    base: { type: 'string', short: 'b' },
-    start: { type: 'string', short: 's' },
-    end: { type: 'string', short: 'e' },
-    regex: { type: 'boolean', short: 'r', default: false },
-    global: { type: 'boolean', short: 'g', default: false },
-    output: { type: 'string', short: 'o', default: 'output' },
-    stdout: { type: 'boolean', short: 'O', default: false },
-    json: { type: 'boolean', default: false },
-    quiet: { type: 'boolean', short: 'q', default: false },
-    track: { type: 'boolean', short: 't', default: false },
-    history: { type: 'boolean', short: 'H', default: false },
+    from: { type: 'string', short: 'f' },
+    to: { type: 'string', short: 't' },
+    pattern: { type: 'string', short: 'p', default: 'literal' },
+    flags: { type: 'string' },
+    all: { type: 'boolean', short: 'a', default: false },
+    capture: { type: 'string', short: 'c', default: 'inner' },
+    format: { type: 'string', short: 'F', default: 'text' },
+    bundle: { type: 'string', short: 'o' },
+    'base-url': { type: 'string', short: 'b' },
+    'max-bytes': { type: 'string', default: String(DEFAULT_MAX_BYTES) },
+    'fetch-timeout-ms': { type: 'string', default: String(DEFAULT_FETCH_TIMEOUT_MS) },
+    verbose: { type: 'boolean', short: 'v', default: false },
     version: { type: 'boolean', short: 'V', default: false },
     help: { type: 'boolean', short: 'h', default: false },
 };
 
-// Hoisted so the catch block can (a) log failures with correctly parsed metadata
-// rather than falling back to raw process.argv heuristics, and (b) cancel any
-// in-flight HTTP response body on error paths.
-let inputSource = '';
-let baseUrlOverride = '';
-let startPattern = '';
-let endPattern = '';
-let shouldTrack = false;
-let startTime = 0;
-let fetchBody = null;
+function requireChoice(value, allowedValues, label) {
+    if (!allowedValues.includes(value)) {
+        throw usageError(`${label} must be one of: ${allowedValues.join(', ')}`);
+    }
+    return value;
+}
+
+function parsePositiveInteger(value, label) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw usageError(`${label} must be a positive integer`);
+    }
+    return parsed;
+}
+
+function validateBaseUrl(value) {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        const parsed = new URL(value);
+        if (!/^https?:$/i.test(parsed.protocol)) {
+            throw usageError('--base-url must use http or https');
+        }
+        return parsed.href;
+    } catch (error) {
+        if (error instanceof Error && error.name === 'TypeError') {
+            throw usageError(`Invalid --base-url: ${value}`, error);
+        }
+        throw error;
+    }
+}
 
 try {
-    const { values, positionals } = parseArgs({ options, allowPositionals: true });
+    let values;
+    let positionals;
+
+    try {
+        ({ values, positionals } = parseArgs({
+            options,
+            allowPositionals: true,
+            strict: true,
+        }));
+    } catch (error) {
+        throw usageError(error instanceof Error ? error.message : String(error), error);
+    }
 
     if (values.help) {
-        console.log(`HTMLCut v${version}
-  Usage: htmlcut --input <file|url|-> --start <pattern> --end <pattern> [--regex] [--global] [--output <path>]
-
-  Options:
-    -i, --input    Source HTML file, URL (e.g. https://example.com), or - for stdin
-                   (also accepts as the first positional argument, without -i)
-    -b, --base     Base URL for resolving relative links (overrides input source)
-    -s, --start    Start pattern
-    -e, --end      End pattern
-    -r, --regex    Treat patterns as RegExp 'v' expressions
-    -g, --global   Extract all matching occurrences globally
-    -o, --output   Output base path (default: "output")
-    -O, --stdout   Write output to stdout instead of files
-        --json     Write output as JSON (implies stdout-friendly format)
-    -q, --quiet    Suppress all diagnostic non-payload logging
-    -t, --track    Log this extraction to local history
-    -H, --history  Show your recent extraction history
-    -V, --version  Print version number
-    -h, --help     Show this help message
-`);
+        process.stdout.write(renderHelp(version));
         process.exit(0);
     }
 
     if (values.version) {
-        console.log(version);
+        process.stdout.write(`${version}\n`);
         process.exit(0);
     }
 
-    if (values.history) {
-        const history = getHistoryGroupedBySuccess();
-        console.log(JSON.stringify(history, null, 2));
-        process.exit(0);
+    if (positionals.length === 0) {
+        throw usageError('Missing input. Pass a URL, file path, or - for stdin.');
     }
 
-    inputSource = values.input || positionals[0] || '';
-    baseUrlOverride = values.base || '';
-    startPattern = values.start || '';
-    endPattern = values.end || '';
-    shouldTrack = values.track;
-
-    if (!inputSource || !startPattern || !endPattern) {
-        throw new Error('Missing required arguments. Use --help for usage.');
+    if (positionals.length > 1) {
+        throw usageError(`Unexpected extra arguments: ${positionals.slice(1).join(' ')}`);
     }
 
-    startTime = performance.now();
-
-    let sourceStream;
-
-    if (/^https?:\/\//i.test(inputSource)) {
-        const response = await fetch(inputSource, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const contentLength = response.headers.get('content-length');
-        if (contentLength && Number(contentLength) > MAX_FILE_SIZE) {
-            throw new Error(`Payload exceeds ${MAX_FILE_SIZE_MB}MB limit`);
-        }
-
-        if (!response.body) {
-            throw new Error('Empty response body');
-        }
-
-        // Wrap the byte-streaming body in a size guard as an async generator.
-        fetchBody = response.body;
-        sourceStream = (async function* () {
-            let totalRawBytes = 0;
-            for await (const chunk of fetchBody) {
-                totalRawBytes += chunk.length;
-                if (totalRawBytes > MAX_FILE_SIZE) {
-                    throw new Error(`Payload exceeds ${MAX_FILE_SIZE_MB}MB limit`);
-                }
-                yield chunk;
-            }
-        }());
-    } else if (inputSource === '-') {
-        // Eagerly buffer stdin before extraction. A lazy generator wrapping
-        // process.stdin is abandoned mid-iteration when extraction finishes early
-        // (non-global mode), leaving the libuv read handle open and causing the
-        // process to hang. Consuming stdin fully up front eliminates that race.
-        const stdinChunks = [];
-        let stdinBytes = 0;
-        for await (const chunk of process.stdin) {
-            stdinBytes += chunk.length;
-            if (stdinBytes > MAX_FILE_SIZE) {
-                throw new Error(`Input exceeds ${MAX_FILE_SIZE_MB}MB limit`);
-            }
-            stdinChunks.push(chunk);
-        }
-        sourceStream = stdinChunks;
-    } else {
-        // For local files with a known size, gate early so we avoid reading at all.
-        const stats = await stat(inputSource);
-        if (stats.size > MAX_FILE_SIZE) {
-            throw new Error(`File exceeds ${MAX_FILE_SIZE_MB}MB limit`);
-        }
-
-        // Wrap createReadStream in a size guard (catches special files like /dev/zero
-        // where stat() reports 0 bytes but the stream delivers far more).
-        const rs = createReadStream(inputSource);
-        sourceStream = (async function* () {
-            let totalRawBytes = 0;
-            for await (const chunk of rs) {
-                totalRawBytes += chunk.length;
-                if (totalRawBytes > MAX_FILE_SIZE) {
-                    throw new Error(`File exceeds ${MAX_FILE_SIZE_MB}MB limit`);
-                }
-                yield chunk;
-            }
-        }());
+    if (!values.from || !values.to) {
+        throw usageError('Both --from and --to are required.');
     }
 
-    // Stream the source through the extractor; accumulate extracted fragments for output.
-    const htmlFragments = [];
-    const txtFragments = [];
+    const input = positionals[0];
+    const mode = requireChoice(values.pattern, ['literal', 'regex'], '--pattern');
+    const capture = requireChoice(values.capture, ['inner', 'outer'], '--capture');
+    const format = requireChoice(values.format, ['text', 'html', 'json', 'none'], '--format');
+    const baseUrl = validateBaseUrl(values['base-url']);
+    const maxBytes = parseByteSize(values['max-bytes']);
+    const fetchTimeoutMs = parsePositiveInteger(values['fetch-timeout-ms'], '--fetch-timeout-ms');
 
-    for await (const rawFragment of extractStream(sourceStream, startPattern, endPattern, { isRegex: values.regex, isGlobal: values.global })) {
-        const expandSource = baseUrlOverride || inputSource;
-        const fragment = expandHtmlLinks(rawFragment, expandSource);
-        htmlFragments.push(fragment);
-        txtFragments.push(toPlainText(fragment));
+    if (mode !== 'regex' && values.flags) {
+        throw usageError('--flags can only be used with --pattern regex');
     }
 
-    // Release any unconsumed URL response body. In non-global mode the extractor
-    // returns after the first match, leaving the connection open. cancel() closes it.
-    fetchBody?.cancel().catch(Function.prototype);
+    const startedAt = performance.now();
+    const source = await readSource(input, { maxBytes, fetchTimeoutMs });
+    const rewriteBaseUrl = baseUrl || source.baseUrl;
+    const extracted = extractMatches(source.text, {
+        from: values.from,
+        to: values.to,
+        mode,
+        flags: values.flags || DEFAULT_REGEX_FLAGS,
+        all: values.all,
+        capture,
+    });
 
-    const finalHtml = htmlFragments.join('\n');
-    const finalTxt = txtFragments.join('\n');
+    const matches = extracted.map(match => {
+        const html = rewriteHtmlUrls(match.html, rewriteBaseUrl);
+        return {
+            index: match.index,
+            range: match.range,
+            innerRange: match.innerRange,
+            outerRange: match.outerRange,
+            html,
+            text: renderHtmlAsText(html),
+        };
+    });
 
-    const outputBase = getOutputBase(values.output);
-    const htmlPath = `${outputBase}.html`;
-    const txtPath = `${outputBase}.txt`;
+    const bundle = values.bundle ? getBundlePaths(values.bundle) : null;
+    const durationMs = Math.round(performance.now() - startedAt);
+    const report = buildReport({
+        version,
+        source,
+        baseUrl: rewriteBaseUrl,
+        pattern: {
+            from: values.from,
+            to: values.to,
+            mode,
+            flags: values.flags || DEFAULT_REGEX_FLAGS,
+            capture,
+            all: values.all,
+        },
+        durationMs,
+        matches,
+        bundle,
+    });
 
-    try {
-        if (values.stdout || values.json) {
-            if (values.json) {
-                const outArr = htmlFragments.map((html, i) => ({ html, text: txtFragments[i] }));
-                process.stdout.write(`${JSON.stringify(outArr, null, 2)}\n`);
-            } else {
-                // Default text payload
-                process.stdout.write(`${finalTxt}\n`);
-            }
-        } else {
-            const extractContextUrl = baseUrlOverride || inputSource;
-            await Promise.all([
-                writeOutput(finalHtml, htmlPath, extractContextUrl),
-                writeOutput(finalTxt, txtPath),
-            ]);
+    if (report.bundle) {
+        await writeBundle(report);
+    }
+
+    if (format !== 'none') {
+        process.stdout.write(`${formatPayload(report, format)}\n`);
+    }
+
+    if (values.verbose) {
+        const fragmentsLabel = matches.length === 1 ? 'fragment' : 'fragments';
+        process.stderr.write(`htmlcut: matched ${matches.length} ${fragmentsLabel} in ${durationMs}ms\n`);
+        if (report.bundle) {
+            process.stderr.write(`htmlcut: wrote bundle to ${report.bundle.dir}\n`);
         }
-    } catch (writeError) {
-        throw new Error('Outputs could not be written', { cause: writeError });
     }
-
-    const durationMs = Math.round(performance.now() - startTime);
-
-    if (shouldTrack) {
-        try {
-            logExtraction({
-                source: inputSource,
-                startPattern,
-                endPattern,
-                success: true,
-                durationMs,
-            });
-        } catch {
-            // Silently ignore history logging failures — the extraction succeeded
-        }
-    }
-
-    const count = htmlFragments.length;
-    if (!values.quiet) {
-        console.error(`✓ Successfully extracted ${count} ${count === 1 ? 'fragment' : 'fragments'} in ${durationMs}ms`);
-        if (!values.stdout && !values.json) {
-            console.error(`  → ${htmlPath}`);
-            console.error(`  → ${txtPath}`);
-        }
-    }
-
 } catch (error) {
-    // Release any unconsumed URL response body (e.g. pattern not found, timeout).
-    fetchBody?.cancel().catch(Function.prototype);
-
-    const causeMsg = error.cause instanceof Error ? `: ${error.cause.message}` : '';
-    console.error(`✗ Error: ${error.message}${causeMsg}`);
-
-    if (shouldTrack) {
-        try {
-            logExtraction({
-                source: inputSource,
-                startPattern,
-                endPattern,
-                success: false,
-                durationMs: startTime > 0 ? Math.round(performance.now() - startTime) : 0,
-            });
-        } catch {
-            // Silently ignore logging failures during fatal exceptions
-        }
-    }
-
-    process.exit(1);
+    const htmlCutError = ensureHtmlCutError(error);
+    const causeMessage = htmlCutError.exitCode !== 2
+        && htmlCutError.cause instanceof Error
+        && htmlCutError.cause.message !== htmlCutError.message
+        ? `\n${htmlCutError.cause.message}`
+        : '';
+    process.stderr.write(`htmlcut: ${htmlCutError.message}${causeMessage}\n`);
+    process.exit(htmlCutError.exitCode);
 }

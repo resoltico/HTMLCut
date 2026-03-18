@@ -1,157 +1,257 @@
 # HTMLCut
 
-HTMLCut is a command-line tool that extracts specific pieces of text or HTML from a web page or local file. You provide a starting phrase and an ending phrase, and HTMLCut saves everything in between into a new file.
+HTMLCut is a CLI for cutting repeatable fragments out of HTML or plain text sources.
+You point it at a URL, a local file, or stdin, give it a start pattern and an end pattern, and it returns the matching slice as:
 
-This is useful for quickly saving an article, a list of links, or a specific data table without downloading an entire webpage — and it handles large files efficiently via streaming (50 MB limit).
+- plain text
+- raw HTML
+- structured JSON
+
+Version `2.x` is intentionally stdout-first, strict, and automation-friendly:
+
+- no timestamped surprise files
+- no hidden history database
+- no success chatter unless you ask for it
+- deterministic bundle output when you do want files
+- strict failure on incomplete matches
 
 ## Requirements
 
-You must have **Node.js 24 or higher** installed.
+- Node.js `24+`
 
 ## Installation
 
-After cloning the repository, either link it globally or run it directly.
+Basic install:
 
 ```bash
-# Option A: Link it globally so you can type "htmlcut" from any folder
+npm install
 npm link
-
-# Option B: Just make the script executable to run it directly
-chmod +x src/cli.js
+htmlcut --help
 ```
 
-## How to Use
+### Node Version Managers And Upgrades
 
-HTMLCut requires three basic arguments:
-1. `--input` — the file path, website URL, or `-` to read from stdin
-2. `--start` — the text where the cut begins
-3. `--end` — the text where the cut stops
+If you use `fnm`, `nvm`, `asdf`, `volta`, or another setup where the active Node installation can change, `htmlcut` is linked into that specific Node installation's global prefix.
 
-### Example: Basic Extraction
+That means:
+
+- run `npm link` from the same active Node version you plan to use for `htmlcut`
+- if you switch Node versions, you may need to run `npm link` again
+- if Node is upgraded and the active global prefix changes, the old link may no longer be visible
+
+If `htmlcut` suddenly becomes `command not found` after a Node switch or upgrade, re-establish the link in the currently active Node environment:
+
+1. Confirm which Node installation is active:
 
 ```bash
-# Using the globally linked command
-htmlcut --input https://nodejs.org --start "<h1[^>]*>" --end "</h1>" --regex
-
-# Or running the file directly
-./src/cli.js --input ./my-local-file.html --start "<h2>" --end "</h2>"
-
-# Read from stdin (pipe)
-# -L follows HTTP redirects (curl does not follow them by default, unlike htmlcut's built-in fetch)
-curl -sL https://nodejs.org | htmlcut --input - --start "<h1[^>]*>" --end "</h1>" --regex
+node -v
+npm prefix -g
 ```
 
-When the tool finishes, two files are written to the current directory (or beside the `--output` base path if specified), using a timestamped name by default:
-1. An `.html` file containing the exact HTML extracted, wrapped in a full HTML5 document. The `<title>` is derived from the source: the hostname for URLs, the filename stem for local files, or any `<title>` already present in the extracted fragment.
-2. A plain `.txt` file with HTML tags stripped and HTML entities decoded (e.g. `&amp;` → `&`, `&lt;` → `<`).
-
-Diagnostic messages (`✓ Successfully extracted…`, `→ output path`) are written to **stderr**, so stdout is always clean and safe for piping.
-
-Any relative URLs (`href`, `src`) encountered in the extracted HTML fragment are automatically expanded into absolute URLs using the source input as the base domain/path.
-
-- **Automatic Translation:** If you run `htmlcut --input https://example.com/page.html ...`, HTMLCut automatically knows the base URL is `https://example.com/page.html` and expands all relative links against it natively. You do not need any further configuration.
-- **Manual Override (`--base`):** If you are reading from a local file (e.g. `htmlcut -i local.html`) or reading from piped stdin (`curl https://example.com | htmlcut -i -`), the original web context is inherently lost. In these cases, you can use the `--base` (or `-b`) flag to pass in the intended absolute URL so your links resolve explicitly against that domain instead of mapping to useless local file paths.
-
-### Example: Piping Output for Scripts or AI Agents
-
-Use `--stdout` (or `-O`) to stream text directly to the terminal or pipe it into another command, without writing any files:
+2. Recreate the global link from the HTMLCut repository:
 
 ```bash
-# Print plain text to the terminal
-htmlcut -i https://example.com -s "<article>" -e "</article>" --stdout
-
-# Pipe it straight to another tool
-htmlcut -i https://example.com -s "<h2>" -e "</h2>" -g --stdout | grep "Feature"
+cd /path/to/HTMLCut
+npm unlink -g htmlcut || true
+npm link
+hash -r
 ```
 
-Use `--json` to get a structured JSON payload. Because diagnostics always go to stderr, the output is already clean for piping — no extra flags needed:
+3. Verify the command:
 
 ```bash
-# Clean JSON output — pipe directly into jq with no extra flags
-htmlcut -i https://example.com -s "<p>" -e "</p>" -g --json | jq '.[0].text'
+command -v htmlcut
+htmlcut --help
 ```
+
+If you want `htmlcut` available under more than one installed Node version, repeat those steps once per version.
+
+Note: npm `11` removed `npm bin -g`. Use `npm prefix -g` instead.
+
+## Quick Start
+
+Extract the first article from a URL and print readable text:
+
+```bash
+htmlcut https://example.com --from '<article>' --to '</article>'
+```
+
+Extract every heading from stdin and emit machine-readable JSON:
+
+```bash
+curl -sL https://example.com | htmlcut - --from '<h2>' --to '</h2>' --all --format json
+```
+
+Keep the delimiters instead of cutting them away:
+
+```bash
+htmlcut ./page.html --from '<section>' --to '</section>' --capture outer --format html
+```
+
+Write a deterministic bundle to disk:
+
+```bash
+htmlcut ./page.html --from '<main>' --to '</main>' --bundle ./cut --format json --verbose
+```
+
+## CLI Contract
+
+```text
+htmlcut <input> --from <pattern> --to <pattern> [options]
+```
+
+`<input>` can be:
+
+- an `http://` or `https://` URL
+- a local file path
+- `-` for stdin
+
+### Pattern Options
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `--from`, `-f` | Start delimiter | required |
+| `--to`, `-t` | End delimiter | required |
+| `--pattern`, `-p` | `literal` or `regex` | `literal` |
+| `--flags` | JavaScript RegExp flags, without `g` | `u` |
+| `--all`, `-a` | Return every non-overlapping match | `false` |
+| `--capture`, `-c` | `inner` or `outer` | `inner` |
+
+### Output Options
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `--format`, `-F` | `text`, `html`, `json`, or `none` | `text` |
+| `--bundle`, `-o` | Write `selection.html`, `selection.txt`, and `report.json` into a directory | off |
+| `--base-url`, `-b` | Absolute URL used to rewrite relative links | off |
+| `--verbose`, `-v` | Print status lines to stderr | `false` |
+
+### Limits
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `--max-bytes` | Maximum input size, e.g. `512kb`, `10mb` | `50mb` |
+| `--fetch-timeout-ms` | Timeout for URL fetches | `15000` |
+
+## Output Modes
+
+### `--format text`
+
+Prints readable plain text to stdout.
+
+HTML is rendered into text with lightweight structure:
+
+- `h1`/`h2` render as underlined headings for better plain-text scanning
+- `h3` and deeper headings render with `###`-style prefixes
+- links become `text [url]`
+- lists stay indented
+- tables render as `|`-separated rows
+- blockquotes become `> ...`
+
+### `--format html`
+
+Prints the raw matched HTML fragment(s) to stdout.
+
+If `--base-url` is set, or the input itself is a URL, relative link-like attributes such as `href` and `src` are rewritten to absolute URLs first.
+
+### `--format json`
+
+Prints a structured JSON report:
 
 ```json
-[
-  { "html": "<p>First paragraph.</p>", "text": "First paragraph." },
-  { "html": "<p>Second paragraph.</p>", "text": "Second paragraph." }
-]
+{
+  "tool": "htmlcut",
+  "version": "2.0.0",
+  "input": {
+    "kind": "stdin",
+    "value": "-"
+  },
+  "baseUrl": "https://example.com/docs/start.html",
+  "documentTitle": "example.com",
+  "pattern": {
+    "from": "<article>",
+    "to": "</article>",
+    "mode": "literal",
+    "flags": null,
+    "capture": "inner",
+    "all": false
+  },
+  "stats": {
+    "bytesRead": 52,
+    "durationMs": 3,
+    "matchCount": 1
+  },
+  "matches": [
+    {
+      "index": 1,
+      "range": { "start": 9, "end": 47 },
+      "innerRange": { "start": 9, "end": 47 },
+      "outerRange": { "start": 0, "end": 57 },
+      "html": "<a href=\"https://example.com/guide.html\">Guide</a>",
+      "text": "Guide [https://example.com/guide.html]"
+    }
+  ],
+  "bundle": null
+}
 ```
 
-Use `--quiet` (`-q`) if you want to also silence stderr (e.g. in fully automated pipelines where even stderr noise is undesirable):
+### `--format none`
 
-### Example: Extracting Multiple Items
+Suppresses stdout completely.
 
-By default, HTMLCut stops after the first match. Add `--global` (or `-g`) to extract every occurrence:
+Use this when you want deterministic bundle files without also streaming a payload to stdout.
 
-```bash
-htmlcut -i https://example.com -s "<p>" -e "</p>" --global
+## Bundle Output
+
+When `--bundle ./some-dir` is set, HTMLCut writes:
+
+```text
+some-dir/
+  selection.html
+  selection.txt
+  report.json
 ```
 
-### Example: Using Regular Expressions
+Design notes:
 
-Add `--regex` (or `-r`) to treat start and end patterns as RegExp `v`-flag (unicodeSets) expressions:
+- file names are deterministic
+- existing files are overwritten
+- `selection.html` is wrapped in a minimal HTML document unless the match already is a full HTML document
+- `report.json` contains the same JSON report emitted by `--format json`
+- `--format none` is the cleanest bundle mode for scripts and AI agents that only want files
 
-```bash
-htmlcut -i ./local-file.html -s "<div class=\"[a-zA-Z0-9-]+\">" -e "</div>" --regex --global
-```
+## Behavior Changes in `2.x`
 
-### Keeping Track of Your Extractions
+These are deliberate hard breaks:
 
-Add `--track` (or `-t`) to opt-in to logging the extraction to a local SQLite database:
+- stdout is now the primary interface
+- success logging is silent by default
+- incomplete trailing matches are fatal, including in `--all` mode
+- the old SQLite history feature is gone
+- the old timestamped output-pair workflow is gone
+- long options use hyphenated names like `--base-url`, `--max-bytes`, `--fetch-timeout-ms`
 
-```bash
-htmlcut -i https://example.com -s "<h1>" -e "</h1>" --track
-```
+## Exit Codes
 
-View your recent extraction history:
-
-```bash
-htmlcut --history
-```
-
-History is capped at 1000 records and pruned automatically on each insert. The output shows the 50 most recent entries. By default the database is stored at `~/.htmlcut_history.db`. Override this with the `HTMLCUT_DB_PATH` environment variable:
-
-```bash
-HTMLCUT_DB_PATH=/path/to/custom.db htmlcut --history
-```
-
-## Command Options
-
-| Flag | Short | What it does | Required |
-| :--- | :--- | :--- | :---: |
-| `--input` | `-i` | Local file path, website URL, or `-` for stdin. | **Yes** |
-| `--base` | `-b` | Overrides the base URL for resolving relative links. | No |
-| `--start` | `-s` | The exact text or pattern where the cut starts. | **Yes** |
-| `--end` | `-e` | The exact text or pattern where the cut stops. | **Yes** |
-| `--regex` | `-r` | Treats your start and end inputs as RegExp `v` expressions. | No |
-| `--global` | `-g` | Continues searching and extracts all matches found. | No |
-| `--output` | `-o` | Base path for output files (e.g. `--output my_results` → `my_results.html` + `.txt`). Defaults to a timestamped name in the current directory. | No |
-| `--stdout` | `-O` | Stream the extracted text directly to stdout (no files written). | No |
-| `--json` | | Stream a JSON array of `{html, text}` objects to stdout (no files written). | No |
-| `--quiet` | `-q` | Suppress all diagnostic output on stderr (useful in fully automated pipelines). | No |
-| `--track` | `-t` | Saves this extraction to your local history log. | No |
-| `--history` | `-H` | Prints your recent extraction history log. | No |
-| `--version` | `-V` | Prints the version number. | No |
-| `--help` | `-h` | Prints the help menu. | No |
+| Code | Meaning |
+| --- | --- |
+| `0` | success |
+| `1` | unexpected internal error |
+| `2` | invalid usage or invalid patterns |
+| `3` | source could not be read or exceeded limits |
+| `4` | extraction failed or was incomplete |
+| `5` | bundle files could not be written |
 
 ## Development
 
-HTMLCut has no external runtime dependencies. All dev tooling is local.
-
 ```bash
-# Lint
-npm run lint -- --fix
-
-# Run all tests
 npm test
-
-# Run tests with coverage report
+npm run lint:check
 npm run coverage
 ```
 
-Coverage target: **100% line, branch, and function** across all source files.
+Current quality gates:
 
-## License
-
-MIT License. See `LICENSE`.
+- tests pass
+- lint passes with `--max-warnings 0`
+- `npm audit` is clean

@@ -1,37 +1,48 @@
 {
   "name": "htmlcut",
-  "version": "1.1.0",
-  "description": "Extract HTML or text fragments from URLs, files, or stdin using start/end patterns (literal or RegExp). Supports streaming for large inputs, global multi‑match extraction, automatic HTML/text output generation, and optional SQLite history tracking.",
+  "version": "2.0.0",
+  "description": "Cut repeatable HTML snippets from a URL, file, or stdin and emit text, HTML, or structured JSON.",
   "type": "module",
   "files": [
+    "bin",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "changelog.md"
   ],
   "bin": {
-    "htmlcut": "./src/cli.js"
+    "htmlcut": "./bin/htmlcut.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node --no-warnings=ExperimentalWarning src/cli.js",
-    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js",
-    "coverage": "node --experimental-test-coverage --no-warnings=ExperimentalWarning --test test/*.test.js",
+    "start": "node bin/htmlcut.js",
+    "test": "node --test test/*.test.js",
+    "coverage": "node --experimental-test-coverage --test test/*.test.js",
     "lint": "eslint src/ test/",
     "lint:fix": "eslint src/ test/ --fix",
     "lint:check": "eslint src/ test/ --max-warnings 0"
   },
+  "dependencies": {
+    "parse5": "^8.0.0"
+  },
+  "overrides": {
+    "flatted": "^3.4.2"
+  },
   "devDependencies": {
-    "eslint": "^10.0.2"
+    "eslint": "^10.0.3"
   },
   "keywords": [
     "html",
     "extract",
     "cli",
-    "streaming",
+    "automation",
     "scraping",
-    "parsing"
+    "json"
   ],
   "author": "Ervins Strauhmanis",
   "license": "MIT"

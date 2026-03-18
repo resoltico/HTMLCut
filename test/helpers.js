@@ -1,20 +1,70 @@
-/**
- * @fileoverview Shared test helpers for extractor and stream tests.
- */
+import { execFile, spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import http from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 
-/** Builds an async iterable from the given parts. */
-export async function* chunksOf(...parts) {
-    for (const p of parts) { yield p; }
+const execFileAsync = promisify(execFile);
+
+export const CLI_PATH = join(process.cwd(), 'bin', 'htmlcut.js');
+
+export function runCli(args, { env = {} } = {}) {
+    return execFileAsync(process.execPath, [CLI_PATH, ...args], {
+        env: {
+            ...process.env,
+            ...env,
+        },
+    });
 }
 
-/** Fully consumes an async generator, discarding all yielded values. */
-export async function drain(gen) {
-    for await (const _fragment of gen) { }
+export function runCliWithStdin(args, stdin, { env = {} } = {}) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [CLI_PATH, ...args], {
+            env: {
+                ...process.env,
+                ...env,
+            },
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', chunk => {
+            stdout += chunk;
+        });
+
+        child.stderr.on('data', chunk => {
+            stderr += chunk;
+        });
+
+        child.on('error', reject);
+        child.on('close', code => {
+            resolve({ code, stdout, stderr });
+        });
+
+        child.stdin.end(stdin);
+    });
 }
 
-/** Fully consumes an async generator and returns all yielded values. */
-export async function collect(gen) {
-    const results = [];
-    for await (const frag of gen) { results.push(frag); }
-    return results;
+export async function withTempDir(run) {
+    const dir = await mkdtemp(join(tmpdir(), 'htmlcut-test-'));
+    try {
+        return await run(dir);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+}
+
+export async function withServer(handler, run) {
+    const server = http.createServer(handler);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+        return await run({ server, url });
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
 }
