@@ -17,55 +17,135 @@ HTMLCut is stdout-first, strict, and automation-friendly:
 ## Requirements
 
 - Node.js `24+`
+- npm available in the same active Node environment
 
-## Installation
+## Install
 
-Basic install:
+Choose one install mode and use the matching update steps later.
 
-```bash
-npm install
-npm link
-htmlcut --help
-```
+### Install The Published Package
 
-### Node Version Managers And Upgrades
+Use this when you want the released `htmlcut` command on your machine.
 
-If you use `fnm`, `nvm`, `asdf`, `volta`, or another setup where the active Node installation can change, `htmlcut` is linked into that specific Node installation's global prefix.
-
-That means:
-
-- run `npm link` from the same active Node version you plan to use for `htmlcut`
-- if you switch Node versions, you may need to run `npm link` again
-- if the active global prefix changes, you may need to run `npm link` again
-
-If `htmlcut` suddenly becomes `command not found` after a Node switch or upgrade, re-establish the link in the currently active Node environment:
-
-1. Confirm which Node installation is active:
+1. Confirm which Node environment is active:
 
 ```bash
 node -v
 npm prefix -g
 ```
 
-2. Recreate the global link from the HTMLCut repository:
+2. Install `htmlcut` globally in that active environment:
 
 ```bash
-cd /path/to/HTMLCut
-npm unlink -g htmlcut || true
-npm link
-hash -r
+npm install -g htmlcut
 ```
 
-3. Verify the command:
+3. Refresh your shell's command cache and verify the command:
 
 ```bash
+hash -r
 command -v htmlcut
+htmlcut --version
 htmlcut --help
 ```
 
-If you want `htmlcut` available under more than one installed Node version, repeat those steps once per version.
+### Link A Local Source Checkout
 
-Use `npm prefix -g` to inspect the active global prefix.
+Use this when you are developing `htmlcut` from source and want the global `htmlcut` command to point at your working tree.
+
+1. Go to the repository and install dependencies:
+
+```bash
+cd /path/to/htmlcut
+npm install
+```
+
+2. Create the global link in the currently active Node environment:
+
+```bash
+npm link
+```
+
+3. Refresh your shell's command cache and verify the command:
+
+```bash
+hash -r
+command -v htmlcut
+htmlcut --version
+htmlcut --help
+```
+
+## Update
+
+### Update A Published Install
+
+Reinstalling the latest published version is the update path for a normal global install:
+
+```bash
+npm install -g htmlcut@latest
+hash -r
+htmlcut --version
+```
+
+### Update A Linked Source Checkout
+
+If your global `htmlcut` command points at a source checkout, update that checkout and refresh the link:
+
+```bash
+cd /path/to/htmlcut
+git pull
+npm install
+npm link
+hash -r
+htmlcut --version
+```
+
+If you only changed source files in an already linked checkout, you usually do not need to run `npm link` again. Run it again after switching Node environments, after reinstalling Node, or whenever the global link disappears.
+
+## Node Version Changes And Troubleshooting
+
+If you use `fnm`, `nvm`, `asdf`, `volta`, or any setup that switches the active Node installation, both global installs and `npm link` links belong to that active Node environment.
+
+That means:
+
+- switching Node versions can make `htmlcut` disappear even though it is still installed or linked under a different Node version
+- upgrading Node can change the active global prefix
+- your shell can cache an old command path until you run `hash -r`
+
+Use this sequence after a Node switch, Node upgrade, or a sudden `command not found`:
+
+1. Inspect the active environment:
+
+```bash
+node -v
+npm prefix -g
+command -v htmlcut || true
+```
+
+2. If you use the published package, reinstall it in the active environment:
+
+```bash
+npm install -g htmlcut@latest
+```
+
+3. If you use a linked source checkout, recreate the link from that checkout in the active environment:
+
+```bash
+cd /path/to/htmlcut
+npm install
+npm link
+```
+
+4. Refresh the shell cache and verify:
+
+```bash
+hash -r
+command -v htmlcut
+htmlcut --version
+htmlcut --help
+```
+
+If you want `htmlcut` available under more than one installed Node version, repeat the appropriate install or link steps once per version.
 
 ## Quick Start
 
