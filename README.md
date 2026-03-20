@@ -21,11 +21,17 @@ HTMLCut is stdout-first, strict, and automation-friendly:
 
 ## Install
 
-Choose one install mode and use the matching update steps later.
+HTMLCut is distributed through GitHub, not npmjs.com.
+That means there are two practical install modes:
 
-### Install The Published Package
+- install from a GitHub release archive
+- install from a git checkout
 
-Use this when you want the released `htmlcut` command on your machine.
+In both modes, the final step is `npm link`, which makes the global `htmlcut` command point at the directory on disk that you installed from.
+
+### Install From A GitHub Release Archive
+
+Use this when you want a released version without cloning the repository history.
 
 1. Confirm which Node environment is active:
 
@@ -34,13 +40,22 @@ node -v
 npm prefix -g
 ```
 
-2. Install `htmlcut` globally in that active environment:
+2. Download the release `.zip` or `.tar.gz` from the GitHub Releases page and extract it.
+
+3. Enter the extracted directory and install dependencies:
 
 ```bash
-npm install -g htmlcut
+cd /path/to/htmlcut-<version>
+npm install
 ```
 
-3. Refresh your shell's command cache and verify the command:
+4. Create the global link in the currently active Node environment:
+
+```bash
+npm link
+```
+
+5. Refresh your shell's command cache and verify the command:
 
 ```bash
 hash -r
@@ -49,24 +64,34 @@ htmlcut --version
 htmlcut --help
 ```
 
-### Link A Local Source Checkout
+Keep that extracted directory. The global `htmlcut` command points back to it. If you delete or move it, the link breaks.
 
-Use this when you are developing `htmlcut` from source and want the global `htmlcut` command to point at your working tree.
+### Install From A Git Checkout
 
-1. Go to the repository and install dependencies:
+Use this when you want to track the repository directly or develop from source.
+
+1. Confirm which Node environment is active:
 
 ```bash
-cd /path/to/htmlcut
+node -v
+npm prefix -g
+```
+
+2. Clone the repository and install dependencies:
+
+```bash
+git clone <htmlcut-repo-url>
+cd htmlcut
 npm install
 ```
 
-2. Create the global link in the currently active Node environment:
+3. Create the global link in the currently active Node environment:
 
 ```bash
 npm link
 ```
 
-3. Refresh your shell's command cache and verify the command:
+4. Refresh your shell's command cache and verify the command:
 
 ```bash
 hash -r
@@ -77,19 +102,23 @@ htmlcut --help
 
 ## Update
 
-### Update A Published Install
+### Update A GitHub Release Archive Install
 
-Reinstalling the latest published version is the update path for a normal global install:
+To update a release-archive install, download and extract the newer GitHub release, then relink from that new directory:
 
 ```bash
-npm install -g htmlcut@latest
+cd /path/to/htmlcut-<new-version>
+npm install
+npm link
 hash -r
 htmlcut --version
 ```
 
-### Update A Linked Source Checkout
+Once the new link works, the older extracted directory can be removed.
 
-If your global `htmlcut` command points at a source checkout, update that checkout and refresh the link:
+### Update A Git Checkout Install
+
+If your global `htmlcut` command points at a git checkout, update that checkout and refresh the link:
 
 ```bash
 cd /path/to/htmlcut
@@ -104,13 +133,14 @@ If you only changed source files in an already linked checkout, you usually do n
 
 ## Node Version Changes And Troubleshooting
 
-If you use `fnm`, `nvm`, `asdf`, `volta`, or any setup that switches the active Node installation, both global installs and `npm link` links belong to that active Node environment.
+If you use `fnm`, `nvm`, `asdf`, `volta`, or any setup that switches the active Node installation, the `npm link` registration belongs to that active Node environment.
 
 That means:
 
-- switching Node versions can make `htmlcut` disappear even though it is still installed or linked under a different Node version
+- switching Node versions can make `htmlcut` disappear even though the install directory still exists
 - upgrading Node can change the active global prefix
 - your shell can cache an old command path until you run `hash -r`
+- deleting or moving the directory that `npm link` points at breaks the command
 
 Use this sequence after a Node switch, Node upgrade, or a sudden `command not found`:
 
@@ -122,16 +152,15 @@ npm prefix -g
 command -v htmlcut || true
 ```
 
-2. If you use the published package, reinstall it in the active environment:
+2. Go back to the directory you installed from:
 
 ```bash
-npm install -g htmlcut@latest
+cd /path/to/htmlcut-or-htmlcut-<version>
 ```
 
-3. If you use a linked source checkout, recreate the link from that checkout in the active environment:
+3. Recreate the link in the active environment:
 
 ```bash
-cd /path/to/htmlcut
 npm install
 npm link
 ```
@@ -145,7 +174,7 @@ htmlcut --version
 htmlcut --help
 ```
 
-If you want `htmlcut` available under more than one installed Node version, repeat the appropriate install or link steps once per version.
+If you want `htmlcut` available under more than one installed Node version, repeat `npm link` once per version while that version is active.
 
 ## Quick Start
 
