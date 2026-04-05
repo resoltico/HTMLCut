@@ -94,8 +94,11 @@ upload_if_missing() {
 
 create_or_converge_release
 
-while IFS= read -r asset_name; do
+mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
+(( ${#expected_assets[@]} > 0 )) || die "release asset inventory is empty"
+
+for asset_name in "${expected_assets[@]}"; do
     upload_if_missing "${repo_root}/dist/${asset_name}"
-done < <(release_asset_names_for_version "${version}")
+done
 
 printf 'GitHub release publication converged for %s\n' "${tag_name}"

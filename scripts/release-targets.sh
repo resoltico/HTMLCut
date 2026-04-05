@@ -96,11 +96,11 @@ macos_deployment_target_for_target() {
 }
 
 release_asset_names_for_version() {
-    local version="$1"
+    local release_version="$1"
     local listed_target
 
-    printf 'htmlcut-%s.zip\n' "${version}"
-    printf 'htmlcut-%s.tar.gz\n' "${version}"
+    printf 'htmlcut-%s.zip\n' "${release_version}"
+    printf 'htmlcut-%s.tar.gz\n' "${release_version}"
 
     while IFS= read -r listed_target; do
         printf '%s\n' "$(artifact_name_for_target "${listed_target}")"
