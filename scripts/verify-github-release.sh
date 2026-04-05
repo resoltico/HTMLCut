@@ -46,12 +46,15 @@ is_draft="$(gh release view "${tag_name}" --json isDraft --jq '.isDraft')"
 is_prerelease="$(gh release view "${tag_name}" --json isPrerelease --jq '.isPrerelease')"
 [[ "${is_prerelease}" == "false" ]] || die "release ${tag_name} is marked prerelease"
 
-while IFS= read -r asset_name; do
+mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
+(( ${#expected_assets[@]} > 0 )) || die "release asset inventory is empty"
+
+for asset_name in "${expected_assets[@]}"; do
     has_asset="$(gh release view "${tag_name}" --json assets --jq \
         ".assets | map(.name) | index(\"${asset_name}\") != null")"
     [[ "${has_asset}" == "true" ]] || die \
         "release ${tag_name} is missing required asset ${asset_name}"
-done < <(release_asset_names_for_version "${version}")
+done
 
 release_url="$(gh release view "${tag_name}" --json url --jq '.url')"
 printf 'Verified GitHub release handoff: %s\n' "${release_url}"
