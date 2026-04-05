@@ -1,0 +1,34 @@
+[package]
+name = "htmlcut-cli"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+name = "htmlcut_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "htmlcut"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+htmlcut-core = { path = "../htmlcut-core", version = "3.0.0" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
