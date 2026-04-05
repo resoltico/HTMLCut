@@ -170,6 +170,8 @@ gh workflow run release.yml -f release_tag=vX.Y.Z
 ```
 
 Never create a second tag or move an existing release tag just to retry publication.
+The rerun is expected to execute the maintained workflow and release scripts from `main`, while
+the build jobs still check out the existing tag payload identified by `release_tag`.
 
 ## 6. Branch hygiene
 
