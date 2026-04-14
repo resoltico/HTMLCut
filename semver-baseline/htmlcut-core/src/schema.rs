@@ -4,13 +4,13 @@ use serde_json::Value;
 
 use crate::contracts::{
     CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, ExtractionRequest, ExtractionResult,
-    InspectionOptions, RuntimeOptions, SourceInspectionResult, SourceRequest,
+    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, ExtractionDefinition,
+    ExtractionRequest, ExtractionResult, InspectionOptions, RuntimeOptions, SourceInspectionResult,
+    SourceRequest,
 };
-use crate::interop::ffhn_v1::{
-    FFHN_ERROR_SCHEMA_NAME, FFHN_ERROR_SCHEMA_VERSION, FFHN_PLAN_SCHEMA_NAME,
-    FFHN_PLAN_SCHEMA_VERSION, FFHN_RESULT_SCHEMA_NAME, FFHN_RESULT_SCHEMA_VERSION, FfhnError,
-    FfhnPlan, FfhnResult,
+use crate::interop::v1::{
+    ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, InteropError, InteropResult, PLAN_SCHEMA_NAME,
+    PLAN_SCHEMA_VERSION, Plan, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION,
 };
 
 /// Versioned schema-registry profile exported by HTMLCut.
@@ -23,8 +23,12 @@ pub const RUNTIME_OPTIONS_SCHEMA_NAME: &str = "htmlcut.runtime_options";
 pub const INSPECTION_OPTIONS_SCHEMA_NAME: &str = "htmlcut.inspection_options";
 /// Frozen schema name for [`crate::ExtractionRequest`].
 pub const EXTRACTION_REQUEST_SCHEMA_NAME: &str = "htmlcut.extraction_request";
+/// Frozen schema name for [`crate::ExtractionDefinition`].
+pub const EXTRACTION_DEFINITION_SCHEMA_NAME: &str = "htmlcut.extraction_definition";
 /// Schema version for request-side core contracts.
 pub const CORE_REQUEST_SCHEMA_VERSION: u32 = CORE_SPEC_VERSION;
+/// Schema version for reusable extraction definitions.
+pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 1;
 
 /// Stable reference to one versioned schema document.
 #[derive(
@@ -80,18 +84,20 @@ const INSPECTION_OPTIONS_SCHEMA_REF: SchemaRef =
     SchemaRef::new(INSPECTION_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION);
 const EXTRACTION_REQUEST_SCHEMA_REF: SchemaRef =
     SchemaRef::new(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION);
+const EXTRACTION_DEFINITION_SCHEMA_REF: SchemaRef = SchemaRef::new(
+    EXTRACTION_DEFINITION_SCHEMA_NAME,
+    EXTRACTION_DEFINITION_SCHEMA_VERSION,
+);
 const EXTRACTION_RESULT_SCHEMA_REF: SchemaRef =
     SchemaRef::new(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION);
 const SOURCE_INSPECTION_RESULT_SCHEMA_REF: SchemaRef = SchemaRef::new(
     CORE_SOURCE_INSPECTION_SCHEMA_NAME,
     CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
 );
-const FFHN_PLAN_SCHEMA_REF: SchemaRef =
-    SchemaRef::new(FFHN_PLAN_SCHEMA_NAME, FFHN_PLAN_SCHEMA_VERSION);
-const FFHN_RESULT_SCHEMA_REF: SchemaRef =
-    SchemaRef::new(FFHN_RESULT_SCHEMA_NAME, FFHN_RESULT_SCHEMA_VERSION);
-const FFHN_ERROR_SCHEMA_REF: SchemaRef =
-    SchemaRef::new(FFHN_ERROR_SCHEMA_NAME, FFHN_ERROR_SCHEMA_VERSION);
+const INTEROP_PLAN_SCHEMA_REF: SchemaRef = SchemaRef::new(PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION);
+const INTEROP_RESULT_SCHEMA_REF: SchemaRef =
+    SchemaRef::new(RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION);
+const INTEROP_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION);
 
 const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
     SchemaDescriptor {
@@ -123,6 +129,13 @@ const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
         json_schema: extraction_request_schema,
     },
     SchemaDescriptor {
+        schema_ref: EXTRACTION_DEFINITION_SCHEMA_REF,
+        owner_surface: "htmlcut-core",
+        rust_shape: "ExtractionDefinition",
+        stability: SchemaStability::Versioned,
+        json_schema: extraction_definition_schema,
+    },
+    SchemaDescriptor {
         schema_ref: EXTRACTION_RESULT_SCHEMA_REF,
         owner_surface: "htmlcut-core",
         rust_shape: "ExtractionResult",
@@ -137,25 +150,25 @@ const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
         json_schema: source_inspection_result_schema,
     },
     SchemaDescriptor {
-        schema_ref: FFHN_PLAN_SCHEMA_REF,
-        owner_surface: "htmlcut_core::interop::ffhn_v1",
-        rust_shape: "FfhnPlan",
+        schema_ref: INTEROP_PLAN_SCHEMA_REF,
+        owner_surface: "htmlcut_core::interop::v1",
+        rust_shape: "Plan",
         stability: SchemaStability::Frozen,
-        json_schema: ffhn_plan_schema,
+        json_schema: interop_plan_schema,
     },
     SchemaDescriptor {
-        schema_ref: FFHN_RESULT_SCHEMA_REF,
-        owner_surface: "htmlcut_core::interop::ffhn_v1",
-        rust_shape: "FfhnResult",
+        schema_ref: INTEROP_RESULT_SCHEMA_REF,
+        owner_surface: "htmlcut_core::interop::v1",
+        rust_shape: "InteropResult",
         stability: SchemaStability::Frozen,
-        json_schema: ffhn_result_schema,
+        json_schema: interop_result_schema,
     },
     SchemaDescriptor {
-        schema_ref: FFHN_ERROR_SCHEMA_REF,
-        owner_surface: "htmlcut_core::interop::ffhn_v1",
-        rust_shape: "FfhnError",
+        schema_ref: INTEROP_ERROR_SCHEMA_REF,
+        owner_surface: "htmlcut_core::interop::v1",
+        rust_shape: "InteropError",
         stability: SchemaStability::Frozen,
-        json_schema: ffhn_error_schema,
+        json_schema: interop_error_schema,
     },
 ];
 
@@ -195,6 +208,10 @@ fn extraction_request_schema() -> Value {
     schema_json_for::<ExtractionRequest>()
 }
 
+fn extraction_definition_schema() -> Value {
+    schema_json_for::<ExtractionDefinition>()
+}
+
 fn extraction_result_schema() -> Value {
     schema_json_for::<ExtractionResult>()
 }
@@ -203,14 +220,14 @@ fn source_inspection_result_schema() -> Value {
     schema_json_for::<SourceInspectionResult>()
 }
 
-fn ffhn_plan_schema() -> Value {
-    schema_json_for::<FfhnPlan>()
+fn interop_plan_schema() -> Value {
+    schema_json_for::<Plan>()
 }
 
-fn ffhn_result_schema() -> Value {
-    schema_json_for::<FfhnResult>()
+fn interop_result_schema() -> Value {
+    schema_json_for::<InteropResult>()
 }
 
-fn ffhn_error_schema() -> Value {
-    schema_json_for::<FfhnError>()
+fn interop_error_schema() -> Value {
+    schema_json_for::<InteropError>()
 }

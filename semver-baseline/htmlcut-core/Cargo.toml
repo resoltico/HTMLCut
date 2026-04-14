@@ -12,7 +12,7 @@
 [package]
 edition = "2024"
 name = "htmlcut-core"
-version = "3.0.0"
+version = "4.0.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -25,23 +25,34 @@ homepage = "https://github.com/resoltico/HTMLCut"
 readme = false
 license = "MIT"
 repository = "https://github.com/resoltico/HTMLCut"
-resolver = "2"
 
 [lib]
 name = "htmlcut_core"
 path = "src/lib.rs"
+
+[[example]]
+name = "request_and_result_namespaces"
+path = "examples/request_and_result_namespaces.rs"
+
+[[example]]
+name = "reusable_extraction_definition"
+path = "examples/reusable_extraction_definition.rs"
 
 [[test]]
 name = "extract"
 path = "tests/extract.rs"
 
 [[test]]
-name = "ffhn_v1"
-path = "tests/ffhn_v1.rs"
+name = "v1"
+path = "tests/v1.rs"
 
 [[test]]
-name = "ffhn_v1_acceptance"
-path = "tests/ffhn_v1_acceptance.rs"
+name = "v1_acceptance"
+path = "tests/v1_acceptance.rs"
+
+[[test]]
+name = "v1_properties"
+path = "tests/v1_properties.rs"
 
 [dependencies.ego-tree]
 version = "0.11.0"
@@ -85,7 +96,7 @@ version = "2.5.8"
 features = ["serde"]
 
 [dev-dependencies.tempfile]
-version = "3.27.0"
+version = "=3.15.0"
 
 [lints.clippy]
 all = "warn"

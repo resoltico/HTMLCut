@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use htmlcut_core::interop::ffhn_v1::{
-    FFHN_ERROR_SCHEMA_NAME, FFHN_PLAN_SCHEMA_NAME, FFHN_RESULT_SCHEMA_NAME, FfhnDelimiterMode,
-    FfhnError, FfhnErrorCode, FfhnInteropError, FfhnNormalization, FfhnOutput, FfhnOutputKind,
-    FfhnPlan, FfhnPlanStrategy, FfhnRegexFlag, FfhnResult, FfhnResultExecution, FfhnResultSource,
-    FfhnSelectedMatch, FfhnSelectedMatchMetadata, FfhnSelection, FfhnSelectionMode,
-    FfhnSourceInput, execute_ffhn_plan, stable_json_v1, validate_ffhn_plan,
+use htmlcut_core::interop::v1::{
+    ContractError, DelimiterMode, ERROR_SCHEMA_NAME, ErrorCode, HtmlInput, InteropError,
+    InteropResult, Normalization, Output, OutputKind, PLAN_SCHEMA_NAME, Plan, PlanStrategy,
+    RESULT_SCHEMA_NAME, RegexFlag, ResultExecution, ResultSource, SelectedMatch,
+    SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace, execute_plan,
+    stable_json_v1, validate_plan,
 };
 use htmlcut_core::{
-    Diagnostic, DiagnosticLevel, Range, SelectorQuery, SliceBoundary, SourceInput, SourceKind,
+    Diagnostic, DiagnosticLevel, SelectorQuery, SliceBoundary, SourceInput, SourceKind,
+    result::Range,
 };
 use serde_json::json;
 use url::Url;
@@ -22,15 +23,15 @@ fn slice_boundary(boundary: &str) -> SliceBoundary {
     SliceBoundary::new(boundary).expect("slice boundary")
 }
 
-fn selector_match() -> FfhnSelectedMatch {
-    FfhnSelectedMatch {
+fn selector_match() -> SelectedMatch {
+    SelectedMatch {
         candidate_index: NonZeroUsize::new(1).expect("candidate index"),
-        value_kind: FfhnOutputKind::OuterHtml,
+        value_kind: OutputKind::OuterHtml,
         value: "<article>Hello</article>".to_owned(),
         comparison_input_text: "Hello".to_owned(),
         inner_html: Some("Hello".to_owned()),
         outer_html: Some("<article>Hello</article>".to_owned()),
-        metadata: FfhnSelectedMatchMetadata::CssSelector {
+        metadata: SelectedMatchMetadata::CssSelector {
             candidate_count: 1,
             candidate_index: NonZeroUsize::new(1).expect("candidate index"),
             path: "html:nth-of-type(1) > body:nth-of-type(1) > article:nth-of-type(1)".to_owned(),
@@ -65,9 +66,9 @@ fn stable_json_v1_sorts_object_keys_recursively() {
 }
 
 #[test]
-fn ffhn_source_input_builds_memory_source_request() {
+fn html_input_builds_memory_source_request() {
     let base_url = Url::parse("https://example.com/start.html").expect("base url");
-    let source = FfhnSourceInput::new("target-news", "<article>Hello</article>")
+    let source = HtmlInput::new("target-news", "<article>Hello</article>")
         .expect("source input")
         .with_input_base_url(base_url.clone())
         .into_source_request();
@@ -84,60 +85,54 @@ fn ffhn_source_input_builds_memory_source_request() {
 }
 
 #[test]
-fn ffhn_source_input_rejects_blank_labels() {
-    let error = FfhnSourceInput::new("   ", "<article>Hello</article>").expect_err("blank label");
-    assert!(matches!(error, FfhnInteropError::EmptySourceLabel));
+fn html_input_rejects_blank_labels() {
+    let error = HtmlInput::new("   ", "<article>Hello</article>").expect_err("blank label");
+    assert!(matches!(error, ContractError::EmptySourceLabel));
 }
 
 #[test]
-fn ffhn_plan_validates_literal_regex_flag_conflicts() {
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::delimiter_pair(
+fn plan_validates_literal_regex_flag_conflicts() {
+    let plan = Plan::new(
+        PlanStrategy::delimiter_pair(
             slice_boundary("<article>"),
             slice_boundary("</article>"),
-            FfhnDelimiterMode::Literal,
+            DelimiterMode::Literal,
             false,
             false,
-            vec![FfhnRegexFlag::CaseInsensitive],
+            vec![RegexFlag::CaseInsensitive],
         ),
-        FfhnSelection::single(),
-        FfhnOutput::new(FfhnOutputKind::Text),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            false,
-        ),
+        Selection::single(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, false),
     );
 
     let error = plan.validate().expect_err("literal flags should fail");
-    assert!(matches!(error, FfhnInteropError::LiteralDelimiterFlags));
+    assert!(matches!(error, ContractError::LiteralDelimiterFlags));
 }
 
 #[test]
-fn ffhn_plan_uses_frozen_schema_identity() {
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::css_selector(selector_query("article")),
-        FfhnSelection::first(),
-        FfhnOutput::new(FfhnOutputKind::Text),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            true,
-        ),
+fn plan_uses_frozen_schema_identity() {
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article")),
+        Selection::first(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, true),
     );
 
-    assert_eq!(plan.schema_name, FFHN_PLAN_SCHEMA_NAME);
+    assert_eq!(plan.schema_name, PLAN_SCHEMA_NAME);
     assert_eq!(plan.digest_sha256().expect("plan digest").len(), 64);
 }
 
 #[test]
-fn ffhn_result_digest_ignores_existing_digest_field() {
-    let mut result_one = FfhnResult::new(
-        FfhnResultExecution::new(
+fn interop_result_digest_ignores_existing_digest_field() {
+    let mut result_one = InteropResult::new(
+        ResultExecution::new(
             "plan-digest",
-            htmlcut_core::interop::ffhn_v1::FfhnStrategyKind::CssSelector,
-            FfhnSelectionMode::Single,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
             1,
         ),
-        FfhnResultSource {
+        ResultSource {
             input_base_url: Some(Url::parse("https://example.com/start.html").expect("url")),
             effective_base_url: Some(Url::parse("https://example.com/base/").expect("url")),
             document_title: Some("Example".to_owned()),
@@ -159,19 +154,19 @@ fn ffhn_result_digest_ignores_existing_digest_field() {
         result_one.digest_sha256().expect("result digest"),
         result_two.digest_sha256().expect("result digest")
     );
-    assert_eq!(result_one.schema_name, FFHN_RESULT_SCHEMA_NAME);
+    assert_eq!(result_one.schema_name, RESULT_SCHEMA_NAME);
 }
 
 #[test]
-fn ffhn_result_validation_rejects_error_diagnostics() {
-    let result = FfhnResult::new(
-        FfhnResultExecution::new(
+fn interop_result_validation_rejects_error_diagnostics() {
+    let result = InteropResult::new(
+        ResultExecution::new(
             "plan-digest",
-            htmlcut_core::interop::ffhn_v1::FfhnStrategyKind::CssSelector,
-            FfhnSelectionMode::Single,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
             1,
         ),
-        FfhnResultSource {
+        ResultSource {
             input_base_url: None,
             effective_base_url: None,
             document_title: None,
@@ -188,17 +183,17 @@ fn ffhn_result_validation_rejects_error_diagnostics() {
     let error = result
         .validate()
         .expect_err("error diagnostics should fail");
-    assert!(matches!(error, FfhnInteropError::ErrorDiagnosticsInSuccess));
+    assert!(matches!(error, ContractError::ErrorDiagnosticsInSuccess));
 }
 
 #[test]
-fn ffhn_error_digest_ignores_existing_digest_field() {
+fn interop_error_digest_ignores_existing_digest_field() {
     let mut details = BTreeMap::new();
     details.insert("candidate_count".to_owned(), json!(0));
 
-    let mut error_one = FfhnError::new(
+    let mut error_one = InteropError::new(
         "plan-digest",
-        FfhnErrorCode::NoMatch,
+        ErrorCode::NoMatch,
         "No matching candidate.",
         None,
         details.clone(),
@@ -213,31 +208,31 @@ fn ffhn_error_digest_ignores_existing_digest_field() {
         error_one.digest_sha256().expect("error digest"),
         error_two.digest_sha256().expect("error digest")
     );
-    assert_eq!(error_one.schema_name, FFHN_ERROR_SCHEMA_NAME);
+    assert_eq!(error_one.schema_name, ERROR_SCHEMA_NAME);
 }
 
 #[test]
-fn ffhn_result_round_trips_through_stable_json() {
-    let result = FfhnResult::new(
-        FfhnResultExecution::new(
+fn interop_result_round_trips_through_stable_json() {
+    let result = InteropResult::new(
+        ResultExecution::new(
             "plan-digest",
-            htmlcut_core::interop::ffhn_v1::FfhnStrategyKind::DelimiterPair,
-            FfhnSelectionMode::Nth,
+            StrategyKind::DelimiterPair,
+            SelectionMode::Nth,
             3,
         ),
-        FfhnResultSource {
+        ResultSource {
             input_base_url: None,
             effective_base_url: None,
             document_title: Some("Example".to_owned()),
         },
-        FfhnSelectedMatch {
+        SelectedMatch {
             candidate_index: NonZeroUsize::new(2).expect("candidate index"),
-            value_kind: FfhnOutputKind::Text,
+            value_kind: OutputKind::Text,
             value: "Hello".to_owned(),
             comparison_input_text: "Hello".to_owned(),
             inner_html: Some("Hello".to_owned()),
             outer_html: Some("<article>Hello</article>".to_owned()),
-            metadata: FfhnSelectedMatchMetadata::DelimiterPair {
+            metadata: SelectedMatchMetadata::DelimiterPair {
                 candidate_count: 3,
                 candidate_index: NonZeroUsize::new(2).expect("candidate index"),
                 selected_range: Range { start: 10, end: 15 },
@@ -253,68 +248,59 @@ fn ffhn_result_round_trips_through_stable_json() {
     .expect("digest");
 
     let stable = result.stable_json().expect("stable json");
-    let round_trip: FfhnResult = serde_json::from_str(&stable).expect("round trip result");
+    let round_trip: InteropResult = serde_json::from_str(&stable).expect("round trip result");
 
     assert_eq!(round_trip, result);
 }
 
 #[test]
-fn validate_ffhn_plan_returns_typed_plan_invalid_error() {
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::delimiter_pair(
+fn validate_plan_returns_typed_plan_invalid_error() {
+    let plan = Plan::new(
+        PlanStrategy::delimiter_pair(
             slice_boundary("<article>"),
             slice_boundary("</article>"),
-            FfhnDelimiterMode::Literal,
+            DelimiterMode::Literal,
             false,
             false,
-            vec![FfhnRegexFlag::CaseInsensitive],
+            vec![RegexFlag::CaseInsensitive],
         ),
-        FfhnSelection::single(),
-        FfhnOutput::new(FfhnOutputKind::Text),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            false,
-        ),
+        Selection::single(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, false),
     );
 
-    let error = validate_ffhn_plan(&plan).expect_err("invalid plan");
-    assert_eq!(error.error_code, FfhnErrorCode::PlanInvalid);
-    assert_eq!(
-        error.strategy_kind,
-        Some(htmlcut_core::interop::ffhn_v1::FfhnStrategyKind::DelimiterPair)
-    );
+    let error = validate_plan(&plan).expect_err("invalid plan");
+    assert_eq!(error.error_code, ErrorCode::PlanInvalid);
+    assert_eq!(error.strategy_kind, Some(StrategyKind::DelimiterPair));
     assert_eq!(error.plan_digest_sha256.len(), 64);
     assert_eq!(error.error_digest_sha256.len(), 64);
     assert!(
         error
             .details
-            .get("interop_error")
+            .get("contract_error")
             .and_then(serde_json::Value::as_str)
             .is_some_and(|message| message.contains("delimiter_pair flags"))
     );
 }
 
 #[test]
-fn execute_ffhn_plan_executes_css_selector_with_rewritten_outer_html() {
-    let source = FfhnSourceInput::new(
+fn execute_plan_executes_css_selector_with_rewritten_outer_html() {
+    let source = HtmlInput::new(
         "target-story",
         "<html><head><title>Example</title></head><body><article><a href=\"guide.html\">Guide</a></article></body></html>",
     )
     .expect("source")
     .with_input_base_url(Url::parse("https://example.com/docs/start.html").expect("url"));
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::css_selector(selector_query("article a")),
-        FfhnSelection::single(),
-        FfhnOutput::new(FfhnOutputKind::OuterHtml),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            true,
-        ),
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article a")),
+        Selection::single(),
+        Output::new(OutputKind::OuterHtml),
+        Normalization::new(TextWhitespace::Normalize, true),
     );
 
-    let result = execute_ffhn_plan(&source, &plan).expect("ffhn result");
+    let result = execute_plan(&source, &plan).expect("interop result");
 
-    assert_eq!(result.schema_name, FFHN_RESULT_SCHEMA_NAME);
+    assert_eq!(result.schema_name, RESULT_SCHEMA_NAME);
     assert_eq!(result.plan_digest_sha256.len(), 64);
     assert_eq!(result.result_digest_sha256.len(), 64);
     assert_eq!(
@@ -327,7 +313,7 @@ fn execute_ffhn_plan_executes_css_selector_with_rewritten_outer_html() {
     );
     assert_eq!(result.source.document_title.as_deref(), Some("Example"));
     assert_eq!(result.candidate_count, 1);
-    assert_eq!(result.selected_match.value_kind, FfhnOutputKind::OuterHtml);
+    assert_eq!(result.selected_match.value_kind, OutputKind::OuterHtml);
     assert_eq!(
         result.selected_match.value,
         "<a href=\"https://example.com/docs/guide.html\">Guide</a>"
@@ -339,7 +325,7 @@ fn execute_ffhn_plan_executes_css_selector_with_rewritten_outer_html() {
         Some("<a href=\"https://example.com/docs/guide.html\">Guide</a>")
     );
     match result.selected_match.metadata {
-        FfhnSelectedMatchMetadata::CssSelector {
+        SelectedMatchMetadata::CssSelector {
             candidate_count,
             candidate_index,
             ref path,
@@ -355,29 +341,26 @@ fn execute_ffhn_plan_executes_css_selector_with_rewritten_outer_html() {
 }
 
 #[test]
-fn execute_ffhn_plan_executes_regex_delimiter_pair() {
-    let source = FfhnSourceInput::new("target-article", "<ARTICLE data-id=\"7\">Hello</ARTICLE>")
-        .expect("source");
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::delimiter_pair(
+fn execute_plan_executes_regex_delimiter_pair() {
+    let source =
+        HtmlInput::new("target-article", "<ARTICLE data-id=\"7\">Hello</ARTICLE>").expect("source");
+    let plan = Plan::new(
+        PlanStrategy::delimiter_pair(
             slice_boundary(r"<article[^>]*>"),
             slice_boundary(r"</article>"),
-            FfhnDelimiterMode::Regex,
+            DelimiterMode::Regex,
             true,
             true,
-            vec![FfhnRegexFlag::CaseInsensitive],
+            vec![RegexFlag::CaseInsensitive],
         ),
-        FfhnSelection::single(),
-        FfhnOutput::new(FfhnOutputKind::InnerHtml),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            false,
-        ),
+        Selection::single(),
+        Output::new(OutputKind::InnerHtml),
+        Normalization::new(TextWhitespace::Normalize, false),
     );
 
-    let result = execute_ffhn_plan(&source, &plan).expect("ffhn result");
+    let result = execute_plan(&source, &plan).expect("interop result");
 
-    assert_eq!(result.selected_match.value_kind, FfhnOutputKind::InnerHtml);
+    assert_eq!(result.selected_match.value_kind, OutputKind::InnerHtml);
     assert_eq!(
         result.selected_match.value,
         "<ARTICLE data-id=\"7\">Hello</ARTICLE>"
@@ -389,7 +372,7 @@ fn execute_ffhn_plan_executes_regex_delimiter_pair() {
         Some("<ARTICLE data-id=\"7\">Hello</ARTICLE>")
     );
     match result.selected_match.metadata {
-        FfhnSelectedMatchMetadata::DelimiterPair {
+        SelectedMatchMetadata::DelimiterPair {
             candidate_count,
             candidate_index,
             selected_range,
@@ -411,29 +394,23 @@ fn execute_ffhn_plan_executes_regex_delimiter_pair() {
 }
 
 #[test]
-fn execute_ffhn_plan_maps_ambiguous_single_to_ambiguous_match_error() {
-    let source = FfhnSourceInput::new(
+fn execute_plan_maps_ambiguous_single_to_ambiguous_match_error() {
+    let source = HtmlInput::new(
         "target-news",
         "<article>One</article><article>Two</article>",
     )
     .expect("source");
-    let plan = FfhnPlan::new(
-        FfhnPlanStrategy::css_selector(selector_query("article")),
-        FfhnSelection::single(),
-        FfhnOutput::new(FfhnOutputKind::Text),
-        FfhnNormalization::new(
-            htmlcut_core::interop::ffhn_v1::FfhnWhitespaceMode::Normalize,
-            false,
-        ),
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article")),
+        Selection::single(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, false),
     );
 
-    let error = execute_ffhn_plan(&source, &plan).expect_err("ambiguous match");
+    let error = execute_plan(&source, &plan).expect_err("ambiguous match");
 
-    assert_eq!(error.error_code, FfhnErrorCode::AmbiguousMatch);
-    assert_eq!(
-        error.strategy_kind,
-        Some(htmlcut_core::interop::ffhn_v1::FfhnStrategyKind::CssSelector)
-    );
+    assert_eq!(error.error_code, ErrorCode::AmbiguousMatch);
+    assert_eq!(error.strategy_kind, Some(StrategyKind::CssSelector));
     assert_eq!(error.plan_digest_sha256.len(), 64);
     assert_eq!(error.error_digest_sha256.len(), 64);
     assert_eq!(error.diagnostics[0].code, "AMBIGUOUS_MATCH");

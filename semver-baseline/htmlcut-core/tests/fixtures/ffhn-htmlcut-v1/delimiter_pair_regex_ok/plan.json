@@ -1,1 +1,0 @@
-{"interop_profile":"ffhn-htmlcut-v1","normalization":{"rewrite_urls":false,"whitespace":"normalize"},"output":{"kind":"inner_html"},"schema_name":"htmlcut.ffhn_plan","schema_version":1,"selection":{"mode":"single"},"strategy":{"end":"</article>","flags":["case_insensitive"],"include_end":true,"include_start":true,"kind":"delimiter_pair","mode":"regex","start":"<article[^>]*>"}}

@@ -8,7 +8,7 @@ use url::Url;
 use crate::contracts::{InspectionCount, WhitespaceMode};
 
 pub(crate) const ELLIPSIS: &str = "...";
-const URL_ATTRIBUTE_NAMES: [&str; 7] = [
+const DIRECT_URL_ATTRIBUTE_NAMES: [&str; 7] = [
     "action",
     "cite",
     "data",
@@ -17,6 +17,8 @@ const URL_ATTRIBUTE_NAMES: [&str; 7] = [
     "poster",
     "src",
 ];
+const SRCSET_ATTRIBUTE_NAMES: [&str; 2] = ["imagesrcset", "srcset"];
+const SPACE_SEPARATED_URL_ATTRIBUTE_NAMES: [&str; 1] = ["ping"];
 const BLOCK_TAGS: [&str; 21] = [
     "article",
     "aside",
@@ -113,10 +115,15 @@ pub(crate) fn element_attributes(
     rewrite_urls: bool,
 ) -> BTreeMap<String, String> {
     let mut attributes = BTreeMap::new();
+    let tag_name = node.value().name();
+    let is_meta_refresh = node
+        .value()
+        .attrs()
+        .any(|(name, value)| name == "http-equiv" && value.eq_ignore_ascii_case("refresh"));
 
     for (name, value) in node.value().attrs() {
-        let attribute_value = if rewrite_urls && attribute_supports_url_rewrite(name) {
-            resolve_url(value, base_url)
+        let attribute_value = if rewrite_urls {
+            rewrite_attribute_value(tag_name, name, value, base_url, is_meta_refresh)
         } else {
             value.to_owned()
         };
@@ -148,12 +155,13 @@ pub(crate) fn render_html_as_text(fragment: &str, whitespace: WhitespaceMode) ->
         render_node(child, &mut output, false, false);
     }
 
-    let normalized = output
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-        .replace("\n\n\n", "\n\n");
+    let normalized = collapse_blank_lines(
+        &output
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
 
     apply_whitespace_mode(normalized.trim(), whitespace)
 }
@@ -204,6 +212,56 @@ pub(crate) fn render_node(
                     render_node(child, output, false, true);
                 }
                 push_newline(output, 1);
+                return;
+            }
+
+            if tag_name == "code" && !in_pre {
+                let rendered = render_children_to_string(node, true, false);
+                if rendered.trim().is_empty() {
+                    return;
+                }
+                if needs_space(output, "`") {
+                    output.push(' ');
+                }
+                output.push('`');
+                output.push_str(rendered.trim());
+                output.push('`');
+                return;
+            }
+
+            if tag_name == "blockquote" {
+                push_newline(output, 2);
+                let rendered = render_children_to_string(node, false, false);
+                push_prefixed_block(output, rendered.trim(), "> ");
+                push_newline(output, 2);
+                return;
+            }
+
+            if tag_name == "dl" {
+                push_newline(output, 2);
+                for child in node.children() {
+                    render_node(child, output, false, false);
+                }
+                push_newline(output, 2);
+                return;
+            }
+
+            if tag_name == "dt" {
+                push_newline(output, 2);
+                for child in node.children() {
+                    render_node(child, output, false, false);
+                }
+                push_newline(output, 1);
+                return;
+            }
+
+            if tag_name == "dd" {
+                push_newline(output, 1);
+                output.push_str(": ");
+                for child in node.children() {
+                    render_node(child, output, false, true);
+                }
+                push_newline(output, 2);
                 return;
             }
 
@@ -371,20 +429,30 @@ pub(crate) fn rewrite_urls_in_document(document: &mut Html, base_url: &str) {
             .get_mut(node_id)
             .expect("collected node ids must remain valid");
         if let Node::Element(element) = node.value() {
-            for (_, value) in element
-                .attrs
-                .iter_mut()
-                .filter(|(name, _)| URL_ATTRIBUTE_NAMES.contains(&name.local.as_ref()))
-            {
-                *value = StrTendril::from(resolve_url(value, Some(base_url)));
+            let tag_name = element.name().to_owned();
+            let is_meta_refresh = raw_element_is_meta_refresh(element);
+            for (name, value) in &mut element.attrs {
+                let rewritten = rewrite_attribute_value(
+                    &tag_name,
+                    name.local.as_ref(),
+                    value,
+                    Some(base_url),
+                    is_meta_refresh,
+                );
+                if rewritten != value.as_ref() {
+                    *value = StrTendril::from(rewritten);
+                }
             }
         }
     }
 }
 
+#[cfg(test)]
 /// Returns whether an attribute participates in HTMLCut's URL-rewrite normalization.
 pub(crate) fn attribute_supports_url_rewrite(name: &str) -> bool {
-    URL_ATTRIBUTE_NAMES.contains(&name)
+    DIRECT_URL_ATTRIBUTE_NAMES.contains(&name)
+        || SRCSET_ATTRIBUTE_NAMES.contains(&name)
+        || SPACE_SEPARATED_URL_ATTRIBUTE_NAMES.contains(&name)
 }
 
 pub(crate) fn resolve_url(value: &str, base_url: Option<&str>) -> String {
@@ -459,4 +527,180 @@ pub(crate) fn heading_level(tag_name: &str) -> Option<u8> {
         .strip_prefix('h')
         .and_then(|level| level.parse::<u8>().ok())
         .filter(|level| (1..=6).contains(level))
+}
+
+fn render_children_to_string(node: DomNodeRef<'_, Node>, in_pre: bool, list_item: bool) -> String {
+    let mut rendered = String::new();
+    for child in node.children() {
+        render_node(child, &mut rendered, in_pre, list_item);
+    }
+    rendered
+}
+
+fn push_prefixed_block(output: &mut String, block: &str, prefix: &str) {
+    if block.is_empty() {
+        return;
+    }
+
+    let normalized = collapse_blank_lines(block);
+    for (index, line) in normalized.lines().enumerate() {
+        if index > 0 {
+            output.push('\n');
+        }
+        output.push_str(prefix);
+        if !line.is_empty() {
+            output.push_str(line);
+        }
+    }
+}
+
+fn collapse_blank_lines(input: &str) -> String {
+    let mut collapsed = input.to_owned();
+    while collapsed.contains("\n\n\n") {
+        collapsed = collapsed.replace("\n\n\n", "\n\n");
+    }
+    collapsed
+}
+
+#[cfg(test)]
+pub(crate) fn collapse_blank_lines_for_tests(input: &str) -> String {
+    collapse_blank_lines(input)
+}
+
+fn rewrite_attribute_value(
+    tag_name: &str,
+    name: &str,
+    value: &str,
+    base_url: Option<&str>,
+    is_meta_refresh: bool,
+) -> String {
+    if DIRECT_URL_ATTRIBUTE_NAMES.contains(&name) {
+        return resolve_url(value, base_url);
+    }
+
+    if SRCSET_ATTRIBUTE_NAMES.contains(&name) {
+        return rewrite_srcset(value, base_url);
+    }
+
+    if SPACE_SEPARATED_URL_ATTRIBUTE_NAMES.contains(&name) {
+        return rewrite_space_separated_urls(value, base_url);
+    }
+
+    if name == "content" && tag_name == "meta" && is_meta_refresh {
+        return rewrite_meta_refresh_content(value, base_url);
+    }
+
+    value.to_owned()
+}
+
+fn rewrite_srcset(value: &str, base_url: Option<&str>) -> String {
+    let mut candidates = Vec::new();
+    let mut cursor = 0usize;
+    let bytes = value.as_bytes();
+
+    while cursor < bytes.len() {
+        while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b',')
+        {
+            cursor += 1;
+        }
+        if cursor >= bytes.len() {
+            break;
+        }
+
+        let url_start = cursor;
+        let data_url = value[url_start..].starts_with("data:");
+        while cursor < bytes.len() {
+            let byte = bytes[cursor];
+            if byte.is_ascii_whitespace() {
+                break;
+            }
+            if !data_url && byte == b',' {
+                break;
+            }
+            cursor += 1;
+        }
+        let url = &value[url_start..cursor];
+
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+
+        let descriptor_start = cursor;
+        while cursor < bytes.len() && bytes[cursor] != b',' {
+            cursor += 1;
+        }
+        let descriptor = value[descriptor_start..cursor].trim();
+        let rewritten_url = resolve_url(url, base_url);
+        if descriptor.is_empty() {
+            candidates.push(rewritten_url);
+        } else {
+            candidates.push(format!("{rewritten_url} {descriptor}"));
+        }
+    }
+
+    if candidates.is_empty() {
+        value.to_owned()
+    } else {
+        candidates.join(", ")
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn rewrite_srcset_for_tests(value: &str, base_url: Option<&str>) -> String {
+    rewrite_srcset(value, base_url)
+}
+
+fn rewrite_space_separated_urls(value: &str, base_url: Option<&str>) -> String {
+    value
+        .split_whitespace()
+        .map(|token| resolve_url(token, base_url))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn rewrite_meta_refresh_content(value: &str, base_url: Option<&str>) -> String {
+    value
+        .split(';')
+        .map(rewrite_meta_refresh_segment(base_url))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn rewrite_meta_refresh_segment<'a>(base_url: Option<&'a str>) -> impl Fn(&str) -> String + 'a {
+    move |segment| {
+        let trimmed = segment.trim();
+        if !trimmed
+            .get(..4)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("url="))
+        {
+            return trimmed.to_owned();
+        }
+
+        let raw_value = trimmed[4..].trim();
+        if let Some(stripped) = raw_value
+            .strip_prefix('"')
+            .and_then(|quoted| quoted.strip_suffix('"'))
+        {
+            return format!("url=\"{}\"", resolve_url(stripped, base_url));
+        }
+
+        if let Some(stripped) = raw_value
+            .strip_prefix('\'')
+            .and_then(|quoted| quoted.strip_suffix('\''))
+        {
+            return format!("url='{}'", resolve_url(stripped, base_url));
+        }
+
+        format!("url={}", resolve_url(raw_value, base_url))
+    }
+}
+
+fn raw_element_is_meta_refresh(element: &scraper::node::Element) -> bool {
+    if element.name() != "meta" {
+        return false;
+    }
+
+    element.attrs.iter().any(|(name, value)| {
+        name.local.as_ref() == "http-equiv" && value.eq_ignore_ascii_case("refresh")
+    })
 }

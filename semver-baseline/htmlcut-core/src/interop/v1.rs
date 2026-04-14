@@ -1,4 +1,4 @@
-//! FFHN-facing versioned extraction interop contracts.
+//! Versioned extraction interop contracts (v1).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -12,32 +12,32 @@ use thiserror::Error;
 use url::Url;
 
 use crate::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, Diagnostic, ExtractionMatch,
-    ExtractionMatchMetadata, ExtractionRequest, ExtractionSpec, NormalizationOptions,
-    OutputOptions, Range, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-    SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
+    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, Diagnostic, ExtractionRequest, ExtractionSpec,
+    NormalizationOptions, OutputOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
+    SliceBoundary, SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
+    result::{ExtractionMatch, ExtractionMatchMetadata, Range},
 };
 
-/// Frozen interop profile identifier for FFHN v1.
-pub const FFHN_V1_INTEROP_PROFILE: &str = "ffhn-htmlcut-v1";
-/// Frozen schema name for the FFHN extraction plan.
-pub const FFHN_PLAN_SCHEMA_NAME: &str = "htmlcut.ffhn_plan";
-/// Frozen schema name for the FFHN extraction result.
-pub const FFHN_RESULT_SCHEMA_NAME: &str = "htmlcut.ffhn_result";
-/// Frozen schema name for the FFHN extraction error.
-pub const FFHN_ERROR_SCHEMA_NAME: &str = "htmlcut.ffhn_error";
-/// Frozen schema version for the FFHN extraction plan.
-pub const FFHN_PLAN_SCHEMA_VERSION: u32 = 1;
-/// Frozen schema version for the FFHN extraction result.
-pub const FFHN_RESULT_SCHEMA_VERSION: u32 = 1;
-/// Frozen schema version for the FFHN extraction error.
-pub const FFHN_ERROR_SCHEMA_VERSION: u32 = 1;
+/// Frozen interop profile identifier for v1.
+pub const INTEROP_V1_PROFILE: &str = "htmlcut-v1";
+/// Frozen schema name for the extraction plan.
+pub const PLAN_SCHEMA_NAME: &str = "htmlcut.plan";
+/// Frozen schema name for the extraction result.
+pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
+/// Frozen schema name for the extraction error.
+pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
+/// Frozen schema version for the extraction plan.
+pub const PLAN_SCHEMA_VERSION: u32 = 1;
+/// Frozen schema version for the extraction result.
+pub const RESULT_SCHEMA_VERSION: u32 = 1;
+/// Frozen schema version for the extraction error.
+pub const ERROR_SCHEMA_VERSION: u32 = 1;
 
-/// Error returned when FFHN interop values or schema identities are invalid.
+/// Error returned when interop contract values or schema identities are invalid.
 #[derive(Debug, Error)]
-pub enum FfhnInteropError {
+pub enum ContractError {
     /// The input could not be serialized into stable JSON.
-    #[error("could not serialize FFHN interop JSON: {0}")]
+    #[error("could not serialize interop JSON: {0}")]
     Serialize(#[from] serde_json::Error),
     /// One schema identity field was not the required frozen value.
     #[error("{field} must be {expected:?}; received {received:?}")]
@@ -63,7 +63,7 @@ pub enum FfhnInteropError {
     #[error("delimiter_pair flags are only valid when mode is regex")]
     LiteralDelimiterFlags,
     /// A successful result claimed to select zero candidates.
-    #[error("successful FFHN extraction results must report at least one candidate")]
+    #[error("successful extraction results must report at least one candidate")]
     ZeroCandidateCount,
     /// A selected match referenced a candidate outside the candidate count.
     #[error("selected candidate index {selected} is out of range for {candidate_count} candidates")]
@@ -74,7 +74,7 @@ pub enum FfhnInteropError {
         candidate_count: usize,
     },
     /// A successful result carried error-level diagnostics.
-    #[error("successful FFHN extraction results must not contain error-level diagnostics")]
+    #[error("successful extraction results must not contain error-level diagnostics")]
     ErrorDiagnosticsInSuccess,
     /// Result metadata did not describe the same strategy kind as the top-level result.
     #[error(
@@ -82,19 +82,19 @@ pub enum FfhnInteropError {
     )]
     MetadataKindMismatch {
         /// Strategy kind declared by the result.
-        strategy_kind: FfhnStrategyKind,
+        strategy_kind: StrategyKind,
         /// Strategy kind declared by the selected match metadata.
-        metadata_kind: FfhnStrategyKind,
+        metadata_kind: StrategyKind,
     },
-    /// The FFHN source label was blank.
+    /// The source label was blank.
     #[error("source label must not be empty")]
     EmptySourceLabel,
 }
 
-/// Strategy family available to FFHN v1.
+/// Strategy family available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnStrategyKind {
+pub enum StrategyKind {
     /// Select one DOM node candidate set with a CSS selector.
     CssSelector,
     /// Slice raw source text between two explicit boundaries.
@@ -104,19 +104,19 @@ pub enum FfhnStrategyKind {
 /// Delimiter matching mode for delimiter-pair extraction.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnDelimiterMode {
+pub enum DelimiterMode {
     /// Treat `start` and `end` as literal substrings.
     Literal,
     /// Treat `start` and `end` as regular expressions.
     Regex,
 }
 
-/// Supported regex flags for FFHN delimiter-pair extraction.
+/// Supported regex flags for delimiter-pair extraction.
 #[derive(
     Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnRegexFlag {
+pub enum RegexFlag {
     /// Match without ASCII case sensitivity.
     CaseInsensitive,
     /// Let `^` and `$` operate on line boundaries.
@@ -129,10 +129,10 @@ pub enum FfhnRegexFlag {
     IgnoreWhitespace,
 }
 
-/// FFHN v1 strategy union.
+/// v1 strategy union.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum FfhnPlanStrategy {
+pub enum PlanStrategy {
     /// Select candidates with a CSS selector.
     CssSelector {
         /// Non-empty CSS selector text.
@@ -145,31 +145,31 @@ pub enum FfhnPlanStrategy {
         /// Non-empty end boundary.
         end: SliceBoundary,
         /// Literal or regex boundary semantics.
-        mode: FfhnDelimiterMode,
+        mode: DelimiterMode,
         /// Whether the selected payload includes the matched start boundary.
         include_start: bool,
         /// Whether the selected payload includes the matched end boundary.
         include_end: bool,
         /// Regex flags when `mode = "regex"`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        flags: Vec<FfhnRegexFlag>,
+        flags: Vec<RegexFlag>,
     },
 }
 
-impl FfhnPlanStrategy {
-    /// Builds a CSS-selector FFHN plan strategy.
+impl PlanStrategy {
+    /// Builds a CSS-selector plan strategy.
     pub fn css_selector(selector: SelectorQuery) -> Self {
         Self::CssSelector { selector }
     }
 
-    /// Builds a delimiter-pair FFHN plan strategy.
+    /// Builds a delimiter-pair plan strategy.
     pub fn delimiter_pair(
         start: SliceBoundary,
         end: SliceBoundary,
-        mode: FfhnDelimiterMode,
+        mode: DelimiterMode,
         include_start: bool,
         include_end: bool,
-        flags: Vec<FfhnRegexFlag>,
+        flags: Vec<RegexFlag>,
     ) -> Self {
         Self::DelimiterPair {
             start,
@@ -182,32 +182,32 @@ impl FfhnPlanStrategy {
     }
 
     /// Returns the stable strategy kind for this plan strategy.
-    pub const fn kind(&self) -> FfhnStrategyKind {
+    pub const fn kind(&self) -> StrategyKind {
         match self {
-            Self::CssSelector { .. } => FfhnStrategyKind::CssSelector,
-            Self::DelimiterPair { .. } => FfhnStrategyKind::DelimiterPair,
+            Self::CssSelector { .. } => StrategyKind::CssSelector,
+            Self::DelimiterPair { .. } => StrategyKind::DelimiterPair,
         }
     }
 
-    fn validate(&self) -> Result<(), FfhnInteropError> {
+    fn validate(&self) -> Result<(), ContractError> {
         if let Self::DelimiterPair {
-            mode: FfhnDelimiterMode::Literal,
+            mode: DelimiterMode::Literal,
             flags,
             ..
         } = self
             && !flags.is_empty()
         {
-            return Err(FfhnInteropError::LiteralDelimiterFlags);
+            return Err(ContractError::LiteralDelimiterFlags);
         }
 
         Ok(())
     }
 }
 
-/// Candidate selection mode available to FFHN v1.
+/// Candidate selection mode available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnSelectionMode {
+pub enum SelectionMode {
     /// Require exactly one candidate.
     Single,
     /// Select the first candidate.
@@ -216,10 +216,10 @@ pub enum FfhnSelectionMode {
     Nth,
 }
 
-/// FFHN v1 candidate selection contract.
+/// v1 candidate selection contract.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
-pub enum FfhnSelection {
+pub enum Selection {
     /// Require exactly one candidate.
     Single,
     /// Select the first candidate.
@@ -231,7 +231,7 @@ pub enum FfhnSelection {
     },
 }
 
-impl FfhnSelection {
+impl Selection {
     /// Builds the exact-one selection mode.
     pub const fn single() -> Self {
         Self::Single
@@ -248,19 +248,19 @@ impl FfhnSelection {
     }
 
     /// Returns the stable selection mode for this selection contract.
-    pub const fn mode(&self) -> FfhnSelectionMode {
+    pub const fn mode(&self) -> SelectionMode {
         match self {
-            Self::Single => FfhnSelectionMode::Single,
-            Self::First => FfhnSelectionMode::First,
-            Self::Nth { .. } => FfhnSelectionMode::Nth,
+            Self::Single => SelectionMode::Single,
+            Self::First => SelectionMode::First,
+            Self::Nth { .. } => SelectionMode::Nth,
         }
     }
 }
 
-/// Output payload kind available to FFHN v1.
+/// Output payload kind available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnOutputKind {
+pub enum OutputKind {
     /// Extract normalized or preserved text.
     Text,
     /// Extract inner HTML.
@@ -269,42 +269,42 @@ pub enum FfhnOutputKind {
     OuterHtml,
 }
 
-/// FFHN v1 output selection object.
+/// v1 output selection object.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnOutput {
+pub struct Output {
     /// Requested output payload kind.
-    pub kind: FfhnOutputKind,
+    pub kind: OutputKind,
 }
 
-impl FfhnOutput {
-    /// Builds one FFHN output selection.
-    pub const fn new(kind: FfhnOutputKind) -> Self {
+impl Output {
+    /// Builds one output selection.
+    pub const fn new(kind: OutputKind) -> Self {
         Self { kind }
     }
 }
 
-/// Whitespace normalization mode available to FFHN v1.
+/// Whitespace normalization mode available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnWhitespaceMode {
+pub enum TextWhitespace {
     /// Preserve source whitespace.
     Preserve,
     /// Normalize whitespace for human-readable text.
     Normalize,
 }
 
-/// FFHN v1 extraction-time normalization contract.
+/// v1 extraction-time normalization contract.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnNormalization {
-    /// Whitespace handling for text generation inside HTMLCut.
-    pub whitespace: FfhnWhitespaceMode,
+pub struct Normalization {
+    /// Whitespace handling for text generation.
+    pub whitespace: TextWhitespace,
     /// Whether relative URLs should be rewritten against the effective base URL.
     pub rewrite_urls: bool,
 }
 
-impl FfhnNormalization {
-    /// Builds one FFHN normalization contract.
-    pub const fn new(whitespace: FfhnWhitespaceMode, rewrite_urls: bool) -> Self {
+impl Normalization {
+    /// Builds one normalization contract.
+    pub const fn new(whitespace: TextWhitespace, rewrite_urls: bool) -> Self {
         Self {
             whitespace,
             rewrite_urls,
@@ -312,40 +312,40 @@ impl FfhnNormalization {
     }
 }
 
-/// Versioned FFHN extraction plan owned by HTMLCut.
+/// Versioned extraction plan owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnPlan {
+pub struct Plan {
     /// Frozen schema identity.
     pub schema_name: String,
     /// Frozen schema version.
     pub schema_version: u32,
     /// Frozen interoperability profile identifier.
     pub interop_profile: String,
-    /// Strategy requested by FFHN.
-    pub strategy: FfhnPlanStrategy,
-    /// Candidate selection requested by FFHN.
-    pub selection: FfhnSelection,
-    /// Output payload requested by FFHN.
-    pub output: FfhnOutput,
-    /// Extraction-time normalization requested by FFHN.
-    pub normalization: FfhnNormalization,
+    /// Requested extraction strategy.
+    pub strategy: PlanStrategy,
+    /// Requested candidate selection.
+    pub selection: Selection,
+    /// Requested output payload.
+    pub output: Output,
+    /// Extraction-time normalization.
+    pub normalization: Normalization,
     /// Reserved extension object ignored by v1 consumers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<BTreeMap<String, Value>>,
 }
 
-impl FfhnPlan {
-    /// Builds one FFHN extraction plan with the frozen v1 schema identity.
+impl Plan {
+    /// Builds one extraction plan with the frozen v1 schema identity.
     pub fn new(
-        strategy: FfhnPlanStrategy,
-        selection: FfhnSelection,
-        output: FfhnOutput,
-        normalization: FfhnNormalization,
+        strategy: PlanStrategy,
+        selection: Selection,
+        output: Output,
+        normalization: Normalization,
     ) -> Self {
         Self {
-            schema_name: FFHN_PLAN_SCHEMA_NAME.to_owned(),
-            schema_version: FFHN_PLAN_SCHEMA_VERSION,
-            interop_profile: FFHN_V1_INTEROP_PROFILE.to_owned(),
+            schema_name: PLAN_SCHEMA_NAME.to_owned(),
+            schema_version: PLAN_SCHEMA_VERSION,
+            interop_profile: INTEROP_V1_PROFILE.to_owned(),
             strategy,
             selection,
             output,
@@ -355,51 +355,48 @@ impl FfhnPlan {
     }
 
     /// Validates the schema identity and semantic invariants for this plan.
-    pub fn validate(&self) -> Result<(), FfhnInteropError> {
+    pub fn validate(&self) -> Result<(), ContractError> {
         validate_schema_identity(
             &self.schema_name,
-            FFHN_PLAN_SCHEMA_NAME,
+            PLAN_SCHEMA_NAME,
             self.schema_version,
-            FFHN_PLAN_SCHEMA_VERSION,
+            PLAN_SCHEMA_VERSION,
             &self.interop_profile,
-            FFHN_V1_INTEROP_PROFILE,
+            INTEROP_V1_PROFILE,
         )?;
         self.strategy.validate()
     }
 
     /// Serializes this plan with the frozen stable JSON profile.
-    pub fn stable_json(&self) -> Result<String, FfhnInteropError> {
+    pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this exact plan document.
-    pub fn digest_sha256(&self) -> Result<String, FfhnInteropError> {
+    pub fn digest_sha256(&self) -> Result<String, ContractError> {
         self.validate()?;
         digest_stable_json(self)
     }
 }
 
-/// FFHN-owned HTML source input handed into HTMLCut after fetch and decode.
+/// HTML source input handed into HTMLCut after fetch and decode.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FfhnSourceInput {
-    /// Logical label for the fetched HTML source, typically the FFHN target id.
+pub struct HtmlInput {
+    /// Logical label for the fetched HTML source.
     pub label: String,
-    /// Decoded HTML handed into HTMLCut.
+    /// Decoded HTML.
     pub html: String,
     /// Input base URL that HTMLCut should use before any document `<base href>`.
     pub input_base_url: Option<Url>,
 }
 
-impl FfhnSourceInput {
-    /// Builds a new FFHN source input from a logical label and decoded HTML.
-    pub fn new(
-        label: impl Into<String>,
-        html: impl Into<String>,
-    ) -> Result<Self, FfhnInteropError> {
+impl HtmlInput {
+    /// Builds a new HTML input from a logical label and decoded HTML.
+    pub fn new(label: impl Into<String>, html: impl Into<String>) -> Result<Self, ContractError> {
         let label = label.into();
         if label.trim().is_empty() {
-            return Err(FfhnInteropError::EmptySourceLabel);
+            return Err(ContractError::EmptySourceLabel);
         }
 
         Ok(Self {
@@ -415,7 +412,7 @@ impl FfhnSourceInput {
         self
     }
 
-    /// Builds the existing generic HTMLCut source request for this FFHN source input.
+    /// Builds the existing generic HTMLCut source request for this HTML input.
     pub fn to_source_request(&self) -> SourceRequest {
         let mut source = SourceRequest::memory(self.label.clone(), self.html.clone());
         if let Some(base_url) = &self.input_base_url {
@@ -425,7 +422,7 @@ impl FfhnSourceInput {
         source
     }
 
-    /// Consumes this FFHN source input and produces the generic HTMLCut source request.
+    /// Consumes this HTML input and produces the generic HTMLCut source request.
     pub fn into_source_request(self) -> SourceRequest {
         let mut source = SourceRequest::memory(self.label, self.html);
         if let Some(base_url) = self.input_base_url {
@@ -436,10 +433,10 @@ impl FfhnSourceInput {
     }
 }
 
-/// Source summary carried in one successful FFHN extraction result.
+/// Source summary carried in one successful extraction result.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnResultSource {
-    /// Base URL supplied by FFHN before document parsing.
+pub struct ResultSource {
+    /// Base URL supplied before document parsing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_base_url: Option<Url>,
     /// Effective base URL after document `<base href>` resolution.
@@ -450,25 +447,25 @@ pub struct FfhnResultSource {
     pub document_title: Option<String>,
 }
 
-/// Execution summary fields shared by one successful FFHN extraction result.
+/// Execution summary fields shared by one successful extraction result.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnResultExecution {
-    /// Digest of the exact validated FFHN plan document.
+pub struct ResultExecution {
+    /// Digest of the exact validated plan document.
     pub plan_digest_sha256: String,
     /// Executed strategy kind.
-    pub strategy_kind: FfhnStrategyKind,
+    pub strategy_kind: StrategyKind,
     /// Executed selection mode.
-    pub selection_mode: FfhnSelectionMode,
+    pub selection_mode: SelectionMode,
     /// Total candidate count before selection.
     pub candidate_count: usize,
 }
 
-impl FfhnResultExecution {
-    /// Builds one FFHN extraction execution summary.
+impl ResultExecution {
+    /// Builds one extraction execution summary.
     pub fn new(
         plan_digest_sha256: impl Into<String>,
-        strategy_kind: FfhnStrategyKind,
-        selection_mode: FfhnSelectionMode,
+        strategy_kind: StrategyKind,
+        selection_mode: SelectionMode,
         candidate_count: usize,
     ) -> Self {
         Self {
@@ -480,10 +477,10 @@ impl FfhnResultExecution {
     }
 }
 
-/// Typed metadata for one selected FFHN match.
+/// Typed metadata for one selected match.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum FfhnSelectedMatchMetadata {
+pub enum SelectedMatchMetadata {
     /// Selector-backed selected match metadata.
     CssSelector {
         /// Total selector candidate count before selection.
@@ -514,12 +511,12 @@ pub enum FfhnSelectedMatchMetadata {
     },
 }
 
-impl FfhnSelectedMatchMetadata {
+impl SelectedMatchMetadata {
     /// Returns the strategy kind described by this metadata.
-    pub const fn kind(&self) -> FfhnStrategyKind {
+    pub const fn kind(&self) -> StrategyKind {
         match self {
-            Self::CssSelector { .. } => FfhnStrategyKind::CssSelector,
-            Self::DelimiterPair { .. } => FfhnStrategyKind::DelimiterPair,
+            Self::CssSelector { .. } => StrategyKind::CssSelector,
+            Self::DelimiterPair { .. } => StrategyKind::DelimiterPair,
         }
     }
 
@@ -546,16 +543,16 @@ impl FfhnSelectedMatchMetadata {
     }
 }
 
-/// One selected FFHN match returned on successful extraction.
+/// One selected match returned on successful extraction.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct FfhnSelectedMatch {
+pub struct SelectedMatch {
     /// Selected 1-based candidate ordinal within all discovered candidates.
     pub candidate_index: NonZeroUsize,
-    /// Exact output payload kind requested by FFHN.
-    pub value_kind: FfhnOutputKind,
+    /// Exact output payload kind requested.
+    pub value_kind: OutputKind,
     /// Exact output payload returned for the selected candidate.
     pub value: String,
-    /// Text handed from HTMLCut into FFHN compare-time canonicalization.
+    /// Text handed into compare-time canonicalization.
     pub comparison_input_text: String,
     /// Inner HTML for the selected match when available.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -564,32 +561,32 @@ pub struct FfhnSelectedMatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outer_html: Option<String>,
     /// Stable typed metadata for the selected match.
-    pub metadata: FfhnSelectedMatchMetadata,
+    pub metadata: SelectedMatchMetadata,
 }
 
-/// Successful FFHN-facing extraction result owned by HTMLCut.
+/// Successful extraction result owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct FfhnResult {
+pub struct InteropResult {
     /// Frozen schema identity.
     pub schema_name: String,
     /// Frozen schema version.
     pub schema_version: u32,
     /// Frozen interoperability profile identifier.
     pub interop_profile: String,
-    /// Digest of the exact validated FFHN plan document.
+    /// Digest of the exact validated plan document.
     pub plan_digest_sha256: String,
     /// Digest of this exact result document with this field omitted.
     pub result_digest_sha256: String,
     /// Executed strategy kind.
-    pub strategy_kind: FfhnStrategyKind,
+    pub strategy_kind: StrategyKind,
     /// Executed selection mode.
-    pub selection_mode: FfhnSelectionMode,
+    pub selection_mode: SelectionMode,
     /// Total candidate count before selection.
     pub candidate_count: usize,
-    /// Source summary relevant to FFHN.
-    pub source: FfhnResultSource,
+    /// Source summary.
+    pub source: ResultSource,
     /// Exactly one selected match.
-    pub selected_match: FfhnSelectedMatch,
+    pub selected_match: SelectedMatch,
     /// Warning and informational diagnostics emitted during extraction.
     pub diagnostics: Vec<Diagnostic>,
     /// Reserved extension object ignored by v1 consumers.
@@ -597,18 +594,18 @@ pub struct FfhnResult {
     pub extensions: Option<BTreeMap<String, Value>>,
 }
 
-impl FfhnResult {
-    /// Builds one successful FFHN extraction result with the frozen v1 schema identity.
+impl InteropResult {
+    /// Builds one successful extraction result with the frozen v1 schema identity.
     pub fn new(
-        execution: FfhnResultExecution,
-        source: FfhnResultSource,
-        selected_match: FfhnSelectedMatch,
+        execution: ResultExecution,
+        source: ResultSource,
+        selected_match: SelectedMatch,
         diagnostics: Vec<Diagnostic>,
     ) -> Self {
         Self {
-            schema_name: FFHN_RESULT_SCHEMA_NAME.to_owned(),
-            schema_version: FFHN_RESULT_SCHEMA_VERSION,
-            interop_profile: FFHN_V1_INTEROP_PROFILE.to_owned(),
+            schema_name: RESULT_SCHEMA_NAME.to_owned(),
+            schema_version: RESULT_SCHEMA_VERSION,
+            interop_profile: INTEROP_V1_PROFILE.to_owned(),
             plan_digest_sha256: execution.plan_digest_sha256,
             result_digest_sha256: String::new(),
             strategy_kind: execution.strategy_kind,
@@ -622,30 +619,30 @@ impl FfhnResult {
     }
 
     /// Validates the schema identity and semantic invariants for this result.
-    pub fn validate(&self) -> Result<(), FfhnInteropError> {
+    pub fn validate(&self) -> Result<(), ContractError> {
         validate_schema_identity(
             &self.schema_name,
-            FFHN_RESULT_SCHEMA_NAME,
+            RESULT_SCHEMA_NAME,
             self.schema_version,
-            FFHN_RESULT_SCHEMA_VERSION,
+            RESULT_SCHEMA_VERSION,
             &self.interop_profile,
-            FFHN_V1_INTEROP_PROFILE,
+            INTEROP_V1_PROFILE,
         )?;
 
         if self.candidate_count == 0 {
-            return Err(FfhnInteropError::ZeroCandidateCount);
+            return Err(ContractError::ZeroCandidateCount);
         }
 
         let selected = self.selected_match.candidate_index.get();
         if selected > self.candidate_count {
-            return Err(FfhnInteropError::SelectedCandidateOutOfRange {
+            return Err(ContractError::SelectedCandidateOutOfRange {
                 selected,
                 candidate_count: self.candidate_count,
             });
         }
 
         if self.selected_match.metadata.kind() != self.strategy_kind {
-            return Err(FfhnInteropError::MetadataKindMismatch {
+            return Err(ContractError::MetadataKindMismatch {
                 strategy_kind: self.strategy_kind,
                 metadata_kind: self.selected_match.metadata.kind(),
             });
@@ -654,7 +651,7 @@ impl FfhnResult {
         if self.selected_match.metadata.candidate_count() != self.candidate_count
             || self.selected_match.metadata.candidate_index() != self.selected_match.candidate_index
         {
-            return Err(FfhnInteropError::SelectedCandidateOutOfRange {
+            return Err(ContractError::SelectedCandidateOutOfRange {
                 selected,
                 candidate_count: self.candidate_count,
             });
@@ -665,35 +662,35 @@ impl FfhnResult {
             .iter()
             .any(|diagnostic| diagnostic.level == crate::DiagnosticLevel::Error)
         {
-            return Err(FfhnInteropError::ErrorDiagnosticsInSuccess);
+            return Err(ContractError::ErrorDiagnosticsInSuccess);
         }
 
         Ok(())
     }
 
     /// Serializes this result with the frozen stable JSON profile.
-    pub fn stable_json(&self) -> Result<String, FfhnInteropError> {
+    pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this result with `result_digest_sha256` omitted.
-    pub fn digest_sha256(&self) -> Result<String, FfhnInteropError> {
+    pub fn digest_sha256(&self) -> Result<String, ContractError> {
         self.validate()?;
         digest_stable_json_omitting_field(self, "result_digest_sha256")
     }
 
     /// Computes and stores `result_digest_sha256` on this result.
-    pub fn with_computed_digest(mut self) -> Result<Self, FfhnInteropError> {
+    pub fn with_computed_digest(mut self) -> Result<Self, ContractError> {
         self.result_digest_sha256 = self.digest_sha256()?;
         Ok(self)
     }
 }
 
-/// Frozen FFHN-facing extraction error vocabulary owned by HTMLCut.
+/// Frozen extraction error vocabulary owned by HTMLCut.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum FfhnErrorCode {
+pub enum ErrorCode {
     /// The plan was invalid for the frozen interop profile.
     PlanInvalid,
     /// No candidate matched the requested strategy and selection.
@@ -704,26 +701,26 @@ pub enum FfhnErrorCode {
     InternalError,
 }
 
-/// Typed FFHN-facing extraction error document owned by HTMLCut.
+/// Typed extraction error document owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct FfhnError {
+pub struct InteropError {
     /// Frozen schema identity.
     pub schema_name: String,
     /// Frozen schema version.
     pub schema_version: u32,
     /// Frozen interoperability profile identifier.
     pub interop_profile: String,
-    /// Digest of the exact validated FFHN plan document.
+    /// Digest of the exact validated plan document.
     pub plan_digest_sha256: String,
     /// Digest of this exact error document with this field omitted.
     pub error_digest_sha256: String,
-    /// Frozen FFHN-facing error code.
-    pub error_code: FfhnErrorCode,
+    /// Frozen error code.
+    pub error_code: ErrorCode,
     /// Human-readable error summary.
     pub message: String,
     /// Strategy kind when one was known.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub strategy_kind: Option<FfhnStrategyKind>,
+    pub strategy_kind: Option<StrategyKind>,
     /// Machine-readable detail object.
     pub details: BTreeMap<String, Value>,
     /// Underlying HTMLCut diagnostics that produced this error.
@@ -733,20 +730,20 @@ pub struct FfhnError {
     pub extensions: Option<BTreeMap<String, Value>>,
 }
 
-impl FfhnError {
-    /// Builds one FFHN-facing extraction error with the frozen v1 schema identity.
+impl InteropError {
+    /// Builds one extraction error with the frozen v1 schema identity.
     pub fn new(
         plan_digest_sha256: impl Into<String>,
-        error_code: FfhnErrorCode,
+        error_code: ErrorCode,
         message: impl Into<String>,
-        strategy_kind: Option<FfhnStrategyKind>,
+        strategy_kind: Option<StrategyKind>,
         details: BTreeMap<String, Value>,
         diagnostics: Vec<Diagnostic>,
     ) -> Self {
         Self {
-            schema_name: FFHN_ERROR_SCHEMA_NAME.to_owned(),
-            schema_version: FFHN_ERROR_SCHEMA_VERSION,
-            interop_profile: FFHN_V1_INTEROP_PROFILE.to_owned(),
+            schema_name: ERROR_SCHEMA_NAME.to_owned(),
+            schema_version: ERROR_SCHEMA_VERSION,
+            interop_profile: INTEROP_V1_PROFILE.to_owned(),
             plan_digest_sha256: plan_digest_sha256.into(),
             error_digest_sha256: String::new(),
             error_code,
@@ -759,31 +756,31 @@ impl FfhnError {
     }
 
     /// Validates the schema identity for this error document.
-    pub fn validate(&self) -> Result<(), FfhnInteropError> {
+    pub fn validate(&self) -> Result<(), ContractError> {
         validate_schema_identity(
             &self.schema_name,
-            FFHN_ERROR_SCHEMA_NAME,
+            ERROR_SCHEMA_NAME,
             self.schema_version,
-            FFHN_ERROR_SCHEMA_VERSION,
+            ERROR_SCHEMA_VERSION,
             &self.interop_profile,
-            FFHN_V1_INTEROP_PROFILE,
+            INTEROP_V1_PROFILE,
         )
     }
 
     /// Serializes this error with the frozen stable JSON profile.
-    pub fn stable_json(&self) -> Result<String, FfhnInteropError> {
+    pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this error with `error_digest_sha256` omitted.
-    pub fn digest_sha256(&self) -> Result<String, FfhnInteropError> {
+    pub fn digest_sha256(&self) -> Result<String, ContractError> {
         self.validate()?;
         digest_stable_json_omitting_field(self, "error_digest_sha256")
     }
 
     /// Computes and stores `error_digest_sha256` on this error document.
-    pub fn with_computed_digest(mut self) -> Result<Self, FfhnInteropError> {
+    pub fn with_computed_digest(mut self) -> Result<Self, ContractError> {
         self.error_digest_sha256 = self.digest_sha256()?;
         Ok(self)
     }
@@ -796,27 +793,24 @@ struct ProjectedStructuredMatch {
     comparison_input_text: String,
     inner_html: String,
     outer_html: String,
-    metadata: FfhnSelectedMatchMetadata,
+    metadata: SelectedMatchMetadata,
 }
 
-/// Validates one FFHN plan and returns a typed FFHN interop error on failure.
-pub fn validate_ffhn_plan(plan: &FfhnPlan) -> Result<(), Box<FfhnError>> {
+/// Validates one plan and returns a typed interop error on failure.
+pub fn validate_plan(plan: &Plan) -> Result<(), Box<InteropError>> {
     let plan_digest_sha256 = exact_plan_digest_sha256(plan);
     plan.validate()
         .map_err(|error| Box::new(plan_invalid_error(plan, &plan_digest_sha256, error)))
 }
 
-/// Executes one FFHN plan directly against FFHN-owned in-memory HTML input.
-pub fn execute_ffhn_plan(
-    source: &FfhnSourceInput,
-    plan: &FfhnPlan,
-) -> Result<FfhnResult, Box<FfhnError>> {
+/// Executes one plan directly against in-memory HTML input.
+pub fn execute_plan(source: &HtmlInput, plan: &Plan) -> Result<InteropResult, Box<InteropError>> {
     let plan_digest_sha256 = exact_plan_digest_sha256(plan);
     plan.validate()
         .map_err(|error| Box::new(plan_invalid_error(plan, &plan_digest_sha256, error)))?;
 
-    let request = compile_ffhn_request(source, plan);
-    let runtime = ffhn_runtime_options(source);
+    let request = compile_request(source, plan);
+    let runtime = runtime_options(source);
     let extraction = extract(&request, &runtime);
 
     if !extraction.ok {
@@ -856,7 +850,7 @@ pub fn execute_ffhn_plan(
         return Err(Box::new(internal_adapter_error(
             &plan_digest_sha256,
             Some(strategy_kind),
-            "successful FFHN execution must produce exactly one selected match",
+            "successful execution must produce exactly one selected match",
             details,
             extraction.diagnostics,
         )));
@@ -868,7 +862,7 @@ pub fn execute_ffhn_plan(
         &plan_digest_sha256,
         &extraction.diagnostics,
     )?;
-    let source_summary = FfhnResultSource {
+    let source_summary = ResultSource {
         input_base_url: source.input_base_url.clone(),
         effective_base_url: parse_optional_url(
             extraction.source.effective_base_url.as_deref(),
@@ -879,27 +873,27 @@ pub fn execute_ffhn_plan(
         )?,
         document_title: extraction.document_title.clone(),
     };
-    let selected_match = FfhnSelectedMatch {
+    let selected_match = SelectedMatch {
         candidate_index: projected.candidate_index,
         value_kind: plan.output.kind,
         value: match plan.output.kind {
-            FfhnOutputKind::Text => projected.comparison_input_text.clone(),
-            FfhnOutputKind::InnerHtml => projected.selected_html.clone(),
-            FfhnOutputKind::OuterHtml => projected.outer_html.clone(),
+            OutputKind::Text => projected.comparison_input_text.clone(),
+            OutputKind::InnerHtml => projected.selected_html.clone(),
+            OutputKind::OuterHtml => projected.outer_html.clone(),
         },
         comparison_input_text: projected.comparison_input_text,
         inner_html: Some(projected.inner_html),
         outer_html: Some(projected.outer_html),
         metadata: projected.metadata,
     };
-    let execution = FfhnResultExecution::new(
+    let execution = ResultExecution::new(
         plan_digest_sha256,
         strategy_kind,
         plan.selection.mode(),
         extraction.stats.candidate_count,
     );
 
-    Ok(finalize_ffhn_result(FfhnResult::new(
+    Ok(finalize_result(InteropResult::new(
         execution,
         source_summary,
         selected_match,
@@ -908,33 +902,34 @@ pub fn execute_ffhn_plan(
 }
 
 /// Serializes one value with the frozen `stable_json_v1` profile.
-pub fn stable_json_v1<T: Serialize>(value: &T) -> Result<String, FfhnInteropError> {
+pub fn stable_json_v1<T: Serialize>(value: &T) -> Result<String, ContractError> {
     let value = serde_json::to_value(value)?;
     let mut output = String::new();
     write_stable_json_value(&value, &mut output)?;
     Ok(output)
 }
 
-fn digest_stable_json<T: Serialize>(value: &T) -> Result<String, FfhnInteropError> {
+fn digest_stable_json<T: Serialize>(value: &T) -> Result<String, ContractError> {
     let stable_json = stable_json_v1(value)?;
     Ok(sha256_hex(stable_json.as_bytes()))
 }
 
-fn exact_plan_digest_sha256(plan: &FfhnPlan) -> String {
-    digest_stable_json(plan).expect("FFHN plans should always serialize to stable JSON")
+fn exact_plan_digest_sha256(plan: &Plan) -> String {
+    digest_stable_json(plan).expect("plans should always serialize to stable JSON")
 }
 
-fn ffhn_runtime_options(source: &FfhnSourceInput) -> RuntimeOptions {
+fn runtime_options(source: &HtmlInput) -> RuntimeOptions {
     RuntimeOptions {
         max_bytes: source.html.len(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_preflight: crate::FetchPreflightMode::HeadFirst,
     }
 }
 
-fn compile_ffhn_request(source: &FfhnSourceInput, plan: &FfhnPlan) -> ExtractionRequest {
+fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequest {
     let extraction = match &plan.strategy {
-        FfhnPlanStrategy::CssSelector { selector } => ExtractionSpec::selector(selector.clone()),
-        FfhnPlanStrategy::DelimiterPair {
+        PlanStrategy::CssSelector { selector } => ExtractionSpec::selector(selector.clone()),
+        PlanStrategy::DelimiterPair {
             start,
             end,
             mode,
@@ -943,8 +938,8 @@ fn compile_ffhn_request(source: &FfhnSourceInput, plan: &FfhnPlan) -> Extraction
             flags,
         } => ExtractionSpec::slice(SliceSpec {
             pattern: match mode {
-                FfhnDelimiterMode::Literal => SlicePatternSpec::literal(start.clone(), end.clone()),
-                FfhnDelimiterMode::Regex => {
+                DelimiterMode::Literal => SlicePatternSpec::literal(start.clone(), end.clone()),
+                DelimiterMode::Regex => {
                     SlicePatternSpec::regex(start.clone(), end.clone(), compile_regex_flags(flags))
                 }
             },
@@ -958,8 +953,8 @@ fn compile_ffhn_request(source: &FfhnSourceInput, plan: &FfhnPlan) -> Extraction
     let mut request = ExtractionRequest::new(source.to_source_request(), extraction);
     request.normalization = NormalizationOptions {
         whitespace: match plan.normalization.whitespace {
-            FfhnWhitespaceMode::Preserve => WhitespaceMode::Preserve,
-            FfhnWhitespaceMode::Normalize => WhitespaceMode::Normalize,
+            TextWhitespace::Preserve => WhitespaceMode::Preserve,
+            TextWhitespace::Normalize => WhitespaceMode::Normalize,
         },
         rewrite_urls: plan.normalization.rewrite_urls,
     };
@@ -972,23 +967,23 @@ fn compile_ffhn_request(source: &FfhnSourceInput, plan: &FfhnPlan) -> Extraction
     request
 }
 
-fn compile_selection(selection: &FfhnSelection) -> SelectionSpec {
+fn compile_selection(selection: &Selection) -> SelectionSpec {
     match selection {
-        FfhnSelection::Single => SelectionSpec::single(),
-        FfhnSelection::First => SelectionSpec::First,
-        FfhnSelection::Nth { index } => SelectionSpec::nth(*index),
+        Selection::Single => SelectionSpec::single(),
+        Selection::First => SelectionSpec::First,
+        Selection::Nth { index } => SelectionSpec::nth(*index),
     }
 }
 
-fn compile_regex_flags(flags: &[FfhnRegexFlag]) -> String {
+fn compile_regex_flags(flags: &[RegexFlag]) -> String {
     let mut compiled = DEFAULT_REGEX_FLAGS.to_owned();
     for flag in flags {
         compiled.push(match flag {
-            FfhnRegexFlag::CaseInsensitive => 'i',
-            FfhnRegexFlag::MultiLine => 'm',
-            FfhnRegexFlag::DotMatchesNewLine => 's',
-            FfhnRegexFlag::SwapGreed => 'U',
-            FfhnRegexFlag::IgnoreWhitespace => 'x',
+            RegexFlag::CaseInsensitive => 'i',
+            RegexFlag::MultiLine => 'm',
+            RegexFlag::DotMatchesNewLine => 's',
+            RegexFlag::SwapGreed => 'U',
+            RegexFlag::IgnoreWhitespace => 'x',
         });
     }
     compiled
@@ -996,17 +991,17 @@ fn compile_regex_flags(flags: &[FfhnRegexFlag]) -> String {
 
 fn project_structured_match(
     matched: &ExtractionMatch,
-    strategy_kind: FfhnStrategyKind,
+    strategy_kind: StrategyKind,
     plan_digest_sha256: &str,
     diagnostics: &[Diagnostic],
-) -> Result<ProjectedStructuredMatch, Box<FfhnError>> {
+) -> Result<ProjectedStructuredMatch, Box<InteropError>> {
     let structured = matched.value.as_object().ok_or_else(|| {
         let mut details = BTreeMap::new();
         details.insert("value_type".to_owned(), Value::from("structured"));
         Box::new(internal_adapter_error(
             plan_digest_sha256,
             Some(strategy_kind),
-            "FFHN execution expected a structured core match payload",
+            "execution expected a structured core match payload",
             details,
             diagnostics.to_vec(),
         ))
@@ -1050,7 +1045,7 @@ fn project_structured_match(
                     strategy_kind,
                     diagnostics,
                 )?,
-                metadata: FfhnSelectedMatchMetadata::CssSelector {
+                metadata: SelectedMatchMetadata::CssSelector {
                     candidate_count: metadata.candidate_count,
                     candidate_index,
                     path: metadata.path.clone(),
@@ -1095,7 +1090,7 @@ fn project_structured_match(
                     strategy_kind,
                     diagnostics,
                 )?,
-                metadata: FfhnSelectedMatchMetadata::DelimiterPair {
+                metadata: SelectedMatchMetadata::DelimiterPair {
                     candidate_count: metadata.candidate_count,
                     candidate_index,
                     selected_range: metadata.selected_range.clone(),
@@ -1113,9 +1108,9 @@ fn required_string_field(
     structured: &serde_json::Map<String, Value>,
     field: &'static str,
     plan_digest_sha256: &str,
-    strategy_kind: FfhnStrategyKind,
+    strategy_kind: StrategyKind,
     diagnostics: &[Diagnostic],
-) -> Result<String, Box<FfhnError>> {
+) -> Result<String, Box<InteropError>> {
     structured
         .get(field)
         .and_then(Value::as_str)
@@ -1126,7 +1121,7 @@ fn required_string_field(
             Box::new(internal_adapter_error(
                 plan_digest_sha256,
                 Some(strategy_kind),
-                format!("FFHN execution could not project structured field {field:?}"),
+                format!("execution could not project structured field {field:?}"),
                 details,
                 diagnostics.to_vec(),
             ))
@@ -1136,9 +1131,9 @@ fn required_string_field(
 fn non_zero_candidate_index(
     candidate_index: usize,
     plan_digest_sha256: &str,
-    strategy_kind: FfhnStrategyKind,
+    strategy_kind: StrategyKind,
     diagnostics: &[Diagnostic],
-) -> Result<NonZeroUsize, Box<FfhnError>> {
+) -> Result<NonZeroUsize, Box<InteropError>> {
     NonZeroUsize::new(candidate_index).ok_or_else(|| {
         let mut details = BTreeMap::new();
         details.insert(
@@ -1148,7 +1143,7 @@ fn non_zero_candidate_index(
         Box::new(internal_adapter_error(
             plan_digest_sha256,
             Some(strategy_kind),
-            "FFHN execution received an invalid zero candidate index from core metadata",
+            "execution received an invalid zero candidate index from core metadata",
             details,
             diagnostics.to_vec(),
         ))
@@ -1158,10 +1153,10 @@ fn non_zero_candidate_index(
 fn parse_optional_url(
     value: Option<&str>,
     plan_digest_sha256: &str,
-    strategy_kind: FfhnStrategyKind,
+    strategy_kind: StrategyKind,
     field: &'static str,
     diagnostics: &[Diagnostic],
-) -> Result<Option<Url>, Box<FfhnError>> {
+) -> Result<Option<Url>, Box<InteropError>> {
     value
         .map(|value| {
             Url::parse(value).map_err(|_| {
@@ -1171,7 +1166,7 @@ fn parse_optional_url(
                 Box::new(internal_adapter_error(
                     plan_digest_sha256,
                     Some(strategy_kind),
-                    format!("FFHN execution produced an invalid URL in {field}"),
+                    format!("execution produced an invalid URL in {field}"),
                     details,
                     diagnostics.to_vec(),
                 ))
@@ -1180,16 +1175,12 @@ fn parse_optional_url(
         .transpose()
 }
 
-fn plan_invalid_error(
-    plan: &FfhnPlan,
-    plan_digest_sha256: &str,
-    error: FfhnInteropError,
-) -> FfhnError {
+fn plan_invalid_error(plan: &Plan, plan_digest_sha256: &str, error: ContractError) -> InteropError {
     let mut details = BTreeMap::new();
-    details.insert("interop_error".to_owned(), Value::from(error.to_string()));
-    finalize_ffhn_error(FfhnError::new(
+    details.insert("contract_error".to_owned(), Value::from(error.to_string()));
+    finalize_error(InteropError::new(
         plan_digest_sha256.to_owned(),
-        FfhnErrorCode::PlanInvalid,
+        ErrorCode::PlanInvalid,
         error.to_string(),
         Some(plan.strategy.kind()),
         details,
@@ -1198,10 +1189,10 @@ fn plan_invalid_error(
 }
 
 fn core_execution_error(
-    plan: &FfhnPlan,
+    plan: &Plan,
     plan_digest_sha256: &str,
     diagnostics: &[Diagnostic],
-) -> FfhnError {
+) -> InteropError {
     let Some(primary) = diagnostics
         .iter()
         .find(|diagnostic| diagnostic.level == crate::DiagnosticLevel::Error)
@@ -1209,7 +1200,7 @@ fn core_execution_error(
         return internal_adapter_error(
             plan_digest_sha256,
             Some(plan.strategy.kind()),
-            "FFHN execution failed without an error diagnostic",
+            "execution failed without an error diagnostic",
             BTreeMap::new(),
             diagnostics.to_vec(),
         );
@@ -1217,11 +1208,11 @@ fn core_execution_error(
 
     let error_code = match primary.code.as_str() {
         "UNSUPPORTED_SPEC_VERSION" | "INVALID_SELECTOR" | "INVALID_SLICE_PATTERN" => {
-            FfhnErrorCode::PlanInvalid
+            ErrorCode::PlanInvalid
         }
-        "NO_MATCH" | "MATCH_INDEX_OUT_OF_RANGE" => FfhnErrorCode::NoMatch,
-        "AMBIGUOUS_MATCH" => FfhnErrorCode::AmbiguousMatch,
-        _ => FfhnErrorCode::InternalError,
+        "NO_MATCH" | "MATCH_INDEX_OUT_OF_RANGE" => ErrorCode::NoMatch,
+        "AMBIGUOUS_MATCH" => ErrorCode::AmbiguousMatch,
+        _ => ErrorCode::InternalError,
     };
     let mut details = BTreeMap::new();
     details.insert(
@@ -1232,7 +1223,7 @@ fn core_execution_error(
         details.insert("core_details".to_owned(), core_details.clone());
     }
 
-    finalize_ffhn_error(FfhnError::new(
+    finalize_error(InteropError::new(
         plan_digest_sha256.to_owned(),
         error_code,
         primary.message.clone(),
@@ -1244,14 +1235,14 @@ fn core_execution_error(
 
 fn internal_adapter_error(
     plan_digest_sha256: &str,
-    strategy_kind: Option<FfhnStrategyKind>,
+    strategy_kind: Option<StrategyKind>,
     message: impl Into<String>,
     details: BTreeMap<String, Value>,
     diagnostics: Vec<Diagnostic>,
-) -> FfhnError {
-    finalize_ffhn_error(FfhnError::new(
+) -> InteropError {
+    finalize_error(InteropError::new(
         plan_digest_sha256.to_owned(),
-        FfhnErrorCode::InternalError,
+        ErrorCode::InternalError,
         message,
         strategy_kind,
         details,
@@ -1259,22 +1250,22 @@ fn internal_adapter_error(
     ))
 }
 
-fn finalize_ffhn_result(result: FfhnResult) -> FfhnResult {
+fn finalize_result(result: InteropResult) -> InteropResult {
     result
         .with_computed_digest()
-        .expect("FFHN results should always validate and serialize")
+        .expect("results should always validate and serialize")
 }
 
-fn finalize_ffhn_error(error: FfhnError) -> FfhnError {
+fn finalize_error(error: InteropError) -> InteropError {
     error
         .with_computed_digest()
-        .expect("FFHN errors should always validate and serialize")
+        .expect("errors should always validate and serialize")
 }
 
 fn digest_stable_json_omitting_field<T: Serialize>(
     value: &T,
     field: &str,
-) -> Result<String, FfhnInteropError> {
+) -> Result<String, ContractError> {
     let mut value = serde_json::to_value(value)?;
     if let Value::Object(map) = &mut value {
         map.remove(field);
@@ -1285,7 +1276,7 @@ fn digest_stable_json_omitting_field<T: Serialize>(
     Ok(sha256_hex(output.as_bytes()))
 }
 
-fn write_stable_json_value(value: &Value, output: &mut String) -> Result<(), FfhnInteropError> {
+fn write_stable_json_value(value: &Value, output: &mut String) -> Result<(), ContractError> {
     match value {
         Value::Null => output.push_str("null"),
         Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
@@ -1327,9 +1318,9 @@ fn validate_schema_identity(
     expected_schema_version: u32,
     interop_profile: &str,
     expected_interop_profile: &'static str,
-) -> Result<(), FfhnInteropError> {
+) -> Result<(), ContractError> {
     if schema_name != expected_schema_name {
-        return Err(FfhnInteropError::InvalidIdentity {
+        return Err(ContractError::InvalidIdentity {
             field: "schema_name",
             expected: expected_schema_name,
             received: schema_name.to_owned(),
@@ -1337,7 +1328,7 @@ fn validate_schema_identity(
     }
 
     if schema_version != expected_schema_version {
-        return Err(FfhnInteropError::InvalidVersion {
+        return Err(ContractError::InvalidVersion {
             field: "schema_version",
             expected: expected_schema_version,
             received: schema_version,
@@ -1345,7 +1336,7 @@ fn validate_schema_identity(
     }
 
     if interop_profile != expected_interop_profile {
-        return Err(FfhnInteropError::InvalidIdentity {
+        return Err(ContractError::InvalidIdentity {
             field: "interop_profile",
             expected: expected_interop_profile,
             received: interop_profile.to_owned(),

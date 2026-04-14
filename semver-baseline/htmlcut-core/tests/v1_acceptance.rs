@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use htmlcut_core::interop::ffhn_v1::{
-    FfhnError, FfhnPlan, FfhnResult, FfhnSourceInput, execute_ffhn_plan,
+use htmlcut_core::interop::v1::{
+    HtmlInput, INTEROP_V1_PROFILE, InteropError, InteropResult, PLAN_SCHEMA_NAME,
+    PLAN_SCHEMA_VERSION, Plan, execute_plan,
 };
 use url::Url;
 
@@ -61,7 +62,7 @@ fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
-        .join("ffhn-htmlcut-v1")
+        .join("htmlcut-v1")
 }
 
 fn fixture_text(path: &Path) -> String {
@@ -79,9 +80,9 @@ fn fixture_dir(case: &AcceptanceCase) -> PathBuf {
     fixture_root().join(case.name)
 }
 
-fn load_source(case: &AcceptanceCase) -> FfhnSourceInput {
+fn load_source(case: &AcceptanceCase) -> HtmlInput {
     let html = fixture_text(&fixture_dir(case).join("source.html"));
-    let source = FfhnSourceInput::new(case.label, html).expect("fixture source input");
+    let source = HtmlInput::new(case.label, html).expect("fixture source input");
     if let Some(input_base_url) = case.input_base_url {
         source.with_input_base_url(Url::parse(input_base_url).expect("fixture input base url"))
     } else {
@@ -89,10 +90,10 @@ fn load_source(case: &AcceptanceCase) -> FfhnSourceInput {
     }
 }
 
-fn load_plan(case: &AcceptanceCase) -> (FfhnPlan, String) {
+fn load_plan(case: &AcceptanceCase) -> (Plan, String) {
     let path = fixture_dir(case).join("plan.json");
     let stable_json = fixture_text(&path);
-    let plan: FfhnPlan = serde_json::from_str(&stable_json).expect("fixture plan");
+    let plan: Plan = serde_json::from_str(&stable_json).expect("fixture plan");
     assert_eq!(
         plan.stable_json().expect("plan stable json"),
         stable_json,
@@ -102,8 +103,60 @@ fn load_plan(case: &AcceptanceCase) -> (FfhnPlan, String) {
     (plan, stable_json)
 }
 
+/// Regenerates every fixture JSON file from the live stack.
+///
+/// Run once after any schema-identity or digest-chain change:
+///
+/// ```bash
+/// UPDATE_FIXTURES=1 cargo test -p htmlcut-core -- --ignored update_fixtures
+/// ```
+///
+/// Inspect the diff before committing. The acceptance test must pass afterwards.
 #[test]
-fn ffhn_htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
+#[ignore = "run with UPDATE_FIXTURES=1 to regenerate fixture JSON files"]
+fn update_fixtures() {
+    assert_eq!(
+        std::env::var("UPDATE_FIXTURES").as_deref().unwrap_or(""),
+        "1",
+        "set UPDATE_FIXTURES=1 to run this test"
+    );
+
+    for case in ACCEPTANCE_CASES {
+        let source = load_source(case);
+
+        // Read the existing plan as a raw JSON Value so we can patch stale identity
+        // fields without failing the schema-identity check inside stable_json().
+        let plan_path = fixture_dir(case).join("plan.json");
+        let raw = fs::read_to_string(&plan_path).expect("plan json");
+        let mut plan_value: serde_json::Value =
+            serde_json::from_str(raw.trim_end()).expect("plan value");
+        plan_value["schema_name"] = serde_json::Value::String(PLAN_SCHEMA_NAME.to_owned());
+        plan_value["schema_version"] =
+            serde_json::Value::Number(serde_json::Number::from(PLAN_SCHEMA_VERSION));
+        plan_value["interop_profile"] = serde_json::Value::String(INTEROP_V1_PROFILE.to_owned());
+        let plan: Plan = serde_json::from_value(plan_value).expect("plan from patched value");
+        let new_plan_json = plan.stable_json().expect("plan stable json");
+        fs::write(&plan_path, format!("{new_plan_json}\n")).expect("write plan");
+
+        match case.expected_kind {
+            ExpectedDocumentKind::Result => {
+                let result = execute_plan(&source, &plan).expect("execute plan");
+                let result_json = result.stable_json().expect("result stable json");
+                let result_path = fixture_dir(case).join("expected_result.json");
+                fs::write(&result_path, format!("{result_json}\n")).expect("write result");
+            }
+            ExpectedDocumentKind::Error => {
+                let err = execute_plan(&source, &plan).expect_err("execute plan error");
+                let err_json = err.stable_json().expect("error stable json");
+                let err_path = fixture_dir(case).join("expected_error.json");
+                fs::write(&err_path, format!("{err_json}\n")).expect("write error");
+            }
+        }
+    }
+}
+
+#[test]
+fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
     for case in ACCEPTANCE_CASES {
         let (plan, plan_json) = load_plan(case);
         let source = load_source(case);
@@ -112,7 +165,7 @@ fn ffhn_htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
             ExpectedDocumentKind::Result => {
                 let expected_path = fixture_dir(case).join("expected_result.json");
                 let expected_json = fixture_text(&expected_path);
-                let expected: FfhnResult =
+                let expected: InteropResult =
                     serde_json::from_str(&expected_json).expect("fixture result document");
                 assert_eq!(
                     expected.stable_json().expect("result stable json"),
@@ -127,7 +180,7 @@ fn ffhn_htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                     case.name
                 );
 
-                let actual = execute_ffhn_plan(&source, &plan).expect("fixture result");
+                let actual = execute_plan(&source, &plan).expect("fixture result");
                 assert_eq!(actual, expected, "{} result document mismatch", case.name);
                 assert_eq!(
                     actual.stable_json().expect("actual result stable json"),
@@ -151,7 +204,7 @@ fn ffhn_htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
             ExpectedDocumentKind::Error => {
                 let expected_path = fixture_dir(case).join("expected_error.json");
                 let expected_json = fixture_text(&expected_path);
-                let expected: FfhnError =
+                let expected: InteropError =
                     serde_json::from_str(&expected_json).expect("fixture error document");
                 assert_eq!(
                     expected.stable_json().expect("error stable json"),
@@ -166,7 +219,7 @@ fn ffhn_htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                     case.name
                 );
 
-                let actual = execute_ffhn_plan(&source, &plan).expect_err("fixture error");
+                let actual = execute_plan(&source, &plan).expect_err("fixture error");
                 assert_eq!(*actual, expected, "{} error document mismatch", case.name);
                 assert_eq!(
                     actual.stable_json().expect("actual error stable json"),

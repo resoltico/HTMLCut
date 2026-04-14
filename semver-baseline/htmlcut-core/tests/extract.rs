@@ -245,7 +245,7 @@ fn slice_boundary_inclusion_supports_start_only_and_end_only() {
             .clone()
             .with_boundary_inclusion(true, false),
     )
-    .with_value(ValueSpec::Html);
+    .with_value(ValueSpec::InnerHtml);
 
     let start_only = extract(&request, &RuntimeOptions::default());
     assert!(start_only.ok);
@@ -259,7 +259,7 @@ fn slice_boundary_inclusion_supports_start_only_and_end_only() {
             .clone()
             .with_boundary_inclusion(false, true),
     )
-    .with_value(ValueSpec::Html);
+    .with_value(ValueSpec::InnerHtml);
 
     let end_only = extract(&request, &RuntimeOptions::default());
     assert!(end_only.ok);
@@ -319,18 +319,35 @@ fn source_url_loading_works() {
     let url = format!("http://{address}");
 
     let handle = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept connection");
-        let mut request_buffer = [0u8; 512];
-        let _ = stream.read(&mut request_buffer).expect("read request");
-        let body = "<article>Hello</article>";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("write response");
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept connection");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method");
+            let body = "<article>Hello</article>";
+            let response = if method == "HEAD" {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                )
+            } else {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
     });
 
     let mut request = selector_request("", "article");
@@ -358,6 +375,7 @@ fn source_size_limits_are_enforced() {
     let runtime = RuntimeOptions {
         max_bytes: 5,
         fetch_timeout_ms: 1000,
+        ..RuntimeOptions::default()
     };
 
     let result = extract(&request, &runtime);
