@@ -1,3 +1,13 @@
+---
+afad: "3.5"
+version: "4.0.0"
+domain: OPERATIONS
+updated: "2026-04-14"
+route:
+  keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
+  questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
+---
+
 # Operation Matrix
 
 This document is the developer-facing matrix for HTMLCut's canonical operations.
@@ -36,7 +46,7 @@ validator-grade JSON contracts referenced by that matrix.
 
 ## Interop Boundary
 
-The FFHN adapter lives in `htmlcut_core::interop::ffhn_v1`.
+The frozen downstream adapter lives in `htmlcut_core::interop::v1`.
 
 It is intentionally **not** an operation ID because it is a versioned library integration profile,
 not a user-facing product operation exposed across the CLI and the generic core catalog.

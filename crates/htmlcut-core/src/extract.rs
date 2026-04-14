@@ -5,7 +5,6 @@ use scraper::{ElementRef, Selector};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::Range;
 use crate::catalog::OperationId;
 use crate::contracts::{
     CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
@@ -25,6 +24,7 @@ use crate::document::{
     resolve_document_base_url, rewrite_html_urls, serialize_children, serialize_element,
 };
 use crate::inspect::build_document_inspection;
+use crate::result::Range;
 use crate::source::{LoadedSource, empty_source_metadata, load_source, source_metadata};
 
 #[derive(Clone, Debug)]
@@ -46,6 +46,10 @@ pub(crate) struct SelectedCandidate<T> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SelectorStructuredValue {
+    match_index: usize,
+    match_count: usize,
+    candidate_index: usize,
+    candidate_count: usize,
     tag_name: String,
     path: String,
     text: String,
@@ -57,6 +61,10 @@ struct SelectorStructuredValue {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SliceStructuredValue {
+    match_index: usize,
+    match_count: usize,
+    candidate_index: usize,
+    candidate_count: usize,
     text: String,
     html: String,
     inner_html: String,
@@ -344,6 +352,7 @@ pub(crate) fn run_selector_extraction(
         select_candidates(&candidates, request.extraction.selection());
     diagnostics.extend(selection_diagnostics);
     let mut matches = Vec::new();
+    let match_count = selected.len();
 
     for (position, selected_candidate) in selected.iter().enumerate() {
         let built_match = build_selector_match(
@@ -351,6 +360,7 @@ pub(crate) fn run_selector_extraction(
             effective_base_url.as_deref(),
             &selected_candidate.candidate,
             position + 1,
+            match_count,
             selected_candidate.candidate_index,
             candidate_count,
         );
@@ -375,6 +385,7 @@ pub(crate) fn build_selector_match(
     effective_base_url: Option<&str>,
     node: &ElementRef<'_>,
     match_index: usize,
+    match_count: usize,
     candidate_index: usize,
     candidate_count: usize,
 ) -> Result<ExtractionMatch, Diagnostic> {
@@ -390,7 +401,7 @@ pub(crate) fn build_selector_match(
     let text = render_html_as_text(&rewritten_inner_html, request.normalization.whitespace);
     let value = match value_spec {
         ValueSpec::Text => Value::String(text.clone()),
-        ValueSpec::Html => Value::String(rewritten_inner_html.clone()),
+        ValueSpec::InnerHtml => Value::String(rewritten_inner_html.clone()),
         ValueSpec::OuterHtml => Value::String(rewritten_outer_html.clone()),
         ValueSpec::Attribute { name } => {
             let Some(value) = attributes.get(name.as_str()) else {
@@ -410,6 +421,10 @@ pub(crate) fn build_selector_match(
             ))
         }
         ValueSpec::Structured => serde_json::to_value(SelectorStructuredValue {
+            match_index,
+            match_count,
+            candidate_index,
+            candidate_count,
             tag_name: tag_name.clone(),
             path: path.clone(),
             text: text.clone(),
@@ -491,6 +506,7 @@ pub(crate) fn run_slice_extraction(
         select_candidates(&candidates, request.extraction.selection());
     diagnostics.extend(selection_diagnostics);
     let mut matches = Vec::new();
+    let match_count = selected.len();
 
     for (position, selected_candidate) in selected.iter().enumerate() {
         match build_slice_match(
@@ -498,6 +514,7 @@ pub(crate) fn run_slice_extraction(
             effective_base_url.as_deref(),
             &selected_candidate.candidate,
             position + 1,
+            match_count,
             selected_candidate.candidate_index,
             candidate_count,
         ) {
@@ -520,6 +537,7 @@ pub(crate) fn build_slice_match(
     effective_base_url: Option<&str>,
     candidate: &SliceCandidate,
     match_index: usize,
+    match_count: usize,
     candidate_index: usize,
     candidate_count: usize,
 ) -> Result<ExtractionMatch, Diagnostic> {
@@ -534,7 +552,7 @@ pub(crate) fn build_slice_match(
     let text = render_html_as_text(&selected_html, request.normalization.whitespace);
     let value = match value_spec {
         ValueSpec::Text => Value::String(text.clone()),
-        ValueSpec::Html => Value::String(selected_html.clone()),
+        ValueSpec::InnerHtml => Value::String(selected_html.clone()),
         ValueSpec::OuterHtml => Value::String(outer_html.clone()),
         ValueSpec::Attribute { name } => {
             let attributes = first_fragment_attributes(
@@ -569,6 +587,10 @@ pub(crate) fn build_slice_match(
             ))
         }
         ValueSpec::Structured => serde_json::to_value(SliceStructuredValue {
+            match_index,
+            match_count,
+            candidate_index,
+            candidate_count,
             text: text.clone(),
             html: selected_html.clone(),
             inner_html: inner_html.clone(),

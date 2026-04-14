@@ -11,10 +11,15 @@ use std::io;
 use std::io::{Cursor, Error as IoError, Read, Write};
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::thread;
 use ureq::tls::RootCerts;
 use url::Url;
+
+use crate::source::empty_source_metadata;
 
 fn selector_request(html: &str) -> ExtractionRequest {
     ExtractionRequest::new(
@@ -847,6 +852,12 @@ fn select_candidates_and_source_helpers_cover_remaining_branches() {
     let source = memory_source("", "Hello");
     let loaded = load_source(&source, &RuntimeOptions::default()).expect("memory load");
     assert_eq!(loaded.value, "memory");
+    let url_metadata = empty_source_metadata(&url_source("https://example.com/docs/page.html"));
+    assert_eq!(url_metadata.value, "https://example.com/docs/page.html");
+    assert_eq!(
+        url_metadata.input_base_url.as_deref(),
+        Some("https://example.com/docs/page.html")
+    );
     assert_eq!(SourceRequest::stdin().kind(), SourceKind::Stdin);
     assert_eq!(url_source("https://example.com").kind(), SourceKind::Url);
     assert_eq!(file_source("page.html").kind(), SourceKind::File);
@@ -1329,4 +1340,76 @@ fn selector_and_slice_runs_collect_builder_errors() {
     let slice_run = run_slice_extraction(&slice_request, &selector_loaded);
     assert!(slice_run.matches.is_empty());
     assert_eq!(slice_run.diagnostics[0].code, "MISSING_ATTRIBUTE");
+
+    let selector_missing_attribute_request = ExtractionRequest::new(
+        memory_source("inline", "<article data-id=\"7\">Hello</article>"),
+        ExtractionSpec::selector(selector_query("article")).with_value(attribute_value("title")),
+    );
+    let selector_missing_attribute_loaded = load_source(
+        &selector_missing_attribute_request.source,
+        &RuntimeOptions::default(),
+    )
+    .expect("loaded");
+    let selector_missing_attribute_run = run_selector_extraction(
+        &selector_missing_attribute_request,
+        &selector_missing_attribute_loaded,
+    );
+    assert!(selector_missing_attribute_run.matches.is_empty());
+    assert_eq!(
+        selector_missing_attribute_run.diagnostics[0].code,
+        "MISSING_ATTRIBUTE"
+    );
+}
+
+#[test]
+fn source_helpers_cover_remaining_unreachable_and_locator_paths() {
+    let wrong_url_kind = catch_unwind(AssertUnwindSafe(|| {
+        let _ = read_url_source(&file_source("fixture.html"), &RuntimeOptions::default());
+    }));
+    assert!(wrong_url_kind.is_err());
+
+    let wrong_file_kind = catch_unwind(AssertUnwindSafe(|| {
+        let _ = read_file_source(
+            &url_source("https://example.com"),
+            &RuntimeOptions::default(),
+        );
+    }));
+    assert!(wrong_file_kind.is_err());
+
+    let file_metadata = empty_source_metadata(
+        &file_source("fixtures/input.html")
+            .with_base_url(Url::parse("https://example.com/base/").expect("base")),
+    );
+    assert_eq!(file_metadata.value, "fixtures/input.html");
+    assert_eq!(
+        file_metadata.input_base_url.as_deref(),
+        Some("https://example.com/base/")
+    );
+
+    let stdin_metadata = empty_source_metadata(&SourceRequest::stdin());
+    assert_eq!(stdin_metadata.value, "-");
+    assert_eq!(stdin_metadata.kind, SourceKind::Stdin);
+
+    let unnamed_memory_metadata =
+        empty_source_metadata(&SourceRequest::memory("   ", "<article>Hello</article>"));
+    assert_eq!(unnamed_memory_metadata.value, "memory");
+}
+
+#[cfg(unix)]
+#[test]
+fn read_file_source_reports_permission_denied_reads() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let unreadable_path = tempdir.path().join("unreadable.html");
+    std::fs::write(&unreadable_path, "<article>Hello</article>").expect("write html");
+
+    let mut permissions = std::fs::metadata(&unreadable_path)
+        .expect("metadata")
+        .permissions();
+    permissions.set_mode(0o000);
+    std::fs::set_permissions(&unreadable_path, permissions).expect("chmod 000");
+
+    let error = read_file_source(&file_source(&unreadable_path), &RuntimeOptions::default())
+        .expect_err("permission denied");
+    assert_eq!(error.code, "SOURCE_LOAD_FAILED");
+    assert!(error.message.contains("Could not read file"));
 }

@@ -1,3 +1,13 @@
+---
+afad: "3.5"
+version: "4.0.0"
+domain: SCHEMA
+updated: "2026-04-14"
+route:
+  keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
+  questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
+---
+
 # Schema Guide
 
 HTMLCut exports a validator-grade JSON schema registry for its maintained public JSON contracts.
@@ -13,7 +23,8 @@ CLI:
 ```bash
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
-htmlcut schema --name htmlcut.ffhn_result --schema-version 1 --output json
+htmlcut schema --name htmlcut.extraction_definition --output json
+htmlcut schema --name htmlcut.result --schema-version 1 --output json
 ```
 
 Rust:
@@ -24,7 +35,7 @@ use htmlcut_core::{schema_catalog, schema_descriptor};
 let registry = schema_catalog();
 assert!(!registry.is_empty());
 
-let extraction_result = schema_descriptor("htmlcut.extraction_result", 3).unwrap();
+let extraction_result = schema_descriptor("htmlcut.extraction_result", 4).unwrap();
 assert_eq!(extraction_result.owner_surface, "htmlcut-core");
 ```
 
@@ -36,25 +47,26 @@ The exported registry profile is:
 
 Core contracts:
 
-- `htmlcut.source_request@2`
-- `htmlcut.runtime_options@2`
-- `htmlcut.inspection_options@2`
-- `htmlcut.extraction_request@2`
-- `htmlcut.extraction_result@3`
+- `htmlcut.source_request@4`
+- `htmlcut.runtime_options@4`
+- `htmlcut.inspection_options@4`
+- `htmlcut.extraction_request@4`
+- `htmlcut.extraction_definition@1`
+- `htmlcut.extraction_result@4`
 - `htmlcut.source_inspection_result@2`
 
 CLI report contracts:
 
-- `htmlcut.catalog_report@3`
+- `htmlcut.catalog_report@4`
 - `htmlcut.schema_report@1`
-- `htmlcut.extraction_report@3`
+- `htmlcut.extraction_report@4`
 - `htmlcut.source_inspection_report@2`
 
-Frozen FFHN interop contracts:
+Frozen interop v1 contracts:
 
-- `htmlcut.ffhn_plan@1`
-- `htmlcut.ffhn_result@1`
-- `htmlcut.ffhn_error@1`
+- `htmlcut.plan@1`
+- `htmlcut.result@1`
+- `htmlcut.error@1`
 
 ## Catalog Relationship
 
@@ -80,6 +92,36 @@ For slice extraction, the request/result family is now mode-correct:
 - literal slices carry `mode`, `from`, and `to` with no regex `flags`
 - regex slices carry `mode`, `from`, `to`, and `flags`
 
+The request/result value enums now serialize the inner-fragment mode explicitly as
+`inner-html`.
+
+The request-side schema family now also covers:
+
+- `fetch_preflight` in `RuntimeOptions`
+- reusable serialized CLI/core requests through `ExtractionDefinition`
+
+## Structured Match Metadata
+
+Structured extraction emits a typed metadata union for every match.
+
+In JSON Schema, `ExtractionMatchMetadata` is a `oneOf` over two variants:
+
+- `kind = selector` with selector metadata such as `path`, `tag_name`, and rewritten attributes
+- `kind = delimiter-pair` with byte ranges plus `include_start` and `include_end`
+
+That union is part of the maintained public contract, not an implementation detail. Downstream
+validators should use the discriminator instead of treating `metadata` as loose JSON.
+
+The structured `value` payload also carries collection context:
+
+- `matchIndex`
+- `matchCount`
+- `candidateIndex`
+- `candidateCount`
+
+That lets downstream callers reason about `--match all` result sets without reconstructing context
+from outer report fields alone.
+
 ## Top-Level Document Identity
 
 Every maintained public JSON document exported by HTMLCut carries:
@@ -95,25 +137,25 @@ That applies to:
 - CLI source inspection reports
 - CLI catalog reports
 - CLI schema reports
-- FFHN interop plan/result/error documents
+- interop v1 plan/result/error documents
 
-## FFHN Note
+## Interop Note
 
-The frozen FFHN interop schemas are exported through the same registry, but `FfhnSourceInput` is
-not.
+The frozen interop v1 schemas are exported through the same registry, but `HtmlInput` is not.
 
 That is intentional.
 
-`FfhnSourceInput` is a Rust-only in-process input type because FFHN owns fetch and decoded HTML
-delivery in production flows.
+`HtmlInput` is a Rust-only in-process input type because downstream applications own fetch and
+decoded HTML delivery in production flows.
 
 ## Versioning Rule
 
 Generic HTMLCut schemas are versioned and may hard-break by version when architecture quality
 requires it.
 
-FFHN interop schemas are frozen by profile:
+Interop v1 schemas are frozen by profile:
 
-- `ffhn-htmlcut-v1`
+- `htmlcut-v1`
 
-Do not mutate the FFHN v1 schemas in place. Add a new interop profile instead.
+Do not mutate the v1 schemas in place. Add a new interop profile instead.
+The maintained policy details live in [versioning-policy.md](versioning-policy.md).

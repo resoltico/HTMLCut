@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to build, publish, and verify (for example v3.0.0)
+        description: Existing release tag to build, publish, and verify (for example v4.0.0)
         required: true
         type: string
 
@@ -145,6 +145,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustup target add "${{ matrix.target_triple }}"
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          key: ${{ matrix.target_triple }}
 
       - name: Read workspace version
         id: version

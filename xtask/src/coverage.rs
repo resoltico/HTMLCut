@@ -3,8 +3,9 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    BranchCoverageByFile, COVERAGE_TOOLCHAIN, CommandSpec, CoverageCounter, CoverageFailure,
-    CoverageReport, CoverageSummary, DynResult, TRACKED_RELATIVE_PATHS,
+    BranchCoverageByFile, COVERAGE_TOOLCHAIN, COVERAGE_TOOLCHAIN_NAME, CommandSpec,
+    CoverageCounter, CoverageFailure, CoveragePreflightFailure, CoverageReport, CoverageSummary,
+    DynResult, TRACKED_RELATIVE_PATHS,
 };
 use crate::plan::normalize_path;
 
@@ -37,6 +38,59 @@ pub fn coverage_clean_command() -> CommandSpec {
         false,
         false,
     )
+}
+
+/// Returns missing nightly prerequisites for the branch-coverage gate.
+pub fn coverage_preflight_failures(
+    toolchains_output: &str,
+    installed_components_output: &str,
+) -> Vec<CoveragePreflightFailure> {
+    let has_nightly_toolchain = toolchains_output
+        .lines()
+        .map(str::trim)
+        .any(|line| line.starts_with(COVERAGE_TOOLCHAIN_NAME));
+    if !has_nightly_toolchain {
+        return vec![
+            CoveragePreflightFailure::MissingNightlyToolchain,
+            CoveragePreflightFailure::MissingNightlyLlvmTools,
+        ];
+    }
+
+    let has_llvm_tools = installed_components_output
+        .lines()
+        .map(str::trim)
+        .any(|line| line.starts_with("llvm-tools"));
+
+    if has_llvm_tools {
+        Vec::new()
+    } else {
+        vec![CoveragePreflightFailure::MissingNightlyLlvmTools]
+    }
+}
+
+/// Formats the actionable preflight error shown before coverage work starts.
+pub fn coverage_preflight_message(failures: &[CoveragePreflightFailure]) -> String {
+    let missing_nightly = failures.contains(&CoveragePreflightFailure::MissingNightlyToolchain);
+    let missing_llvm_tools = failures.contains(&CoveragePreflightFailure::MissingNightlyLlvmTools);
+
+    let mut message = String::from(
+        "Rust coverage preflight failed. HTMLCut keeps stable as the default toolchain, but the coverage gate still requires `cargo +nightly llvm-cov --branch` for true branch coverage.\n",
+    );
+
+    if missing_nightly {
+        message.push_str(
+            "\nInstall the nightly coverage toolchain first:\n  rustup toolchain install nightly --profile minimal --component llvm-tools-preview\n",
+        );
+        return message;
+    }
+
+    if missing_llvm_tools {
+        message.push_str(
+            "\nNightly is installed, but `llvm-tools-preview` is missing:\n  rustup component add llvm-tools-preview --toolchain nightly\n",
+        );
+    }
+
+    message
 }
 
 /// Returns the JSON file that `cargo llvm-cov` writes for later scoring.

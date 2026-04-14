@@ -83,6 +83,18 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
+            "check",
+            "--manifest-path",
+            fuzz_manifest_path(repo_root).to_string_lossy().as_ref(),
+            "--bins",
+            "--locked",
+        ],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
             "nextest",
             "run",
             "--workspace",
@@ -147,9 +159,14 @@ pub fn workspace_version(repo_root: &Path) -> DynResult<String> {
 
 /// Infers the semver release type that `cargo semver-checks` should enforce.
 pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
-    let version = workspace_version(repo_root)?;
-    let changelog = fs::read_to_string(repo_root.join("changelog.md"))?;
-    Ok(semver_release_type_from_changelog(&version, &changelog))
+    let workspace_version = workspace_version(repo_root)?;
+    let baseline_manifest_path = semver_baseline_path(repo_root).join("Cargo.toml");
+    let baseline_manifest = fs::read_to_string(baseline_manifest_path)?;
+    let baseline_version = workspace_version_from_manifest(&baseline_manifest)?;
+    Ok(semver_release_type_from_versions(
+        &workspace_version,
+        &baseline_version,
+    ))
 }
 
 /// Extracts the workspace version from a root `Cargo.toml` string.
@@ -164,13 +181,12 @@ pub fn workspace_version_from_manifest(manifest: &str) -> DynResult<String> {
         .ok_or_else(|| "workspace version not found in Cargo.toml".into())
 }
 
-/// Maps the changelog state to the semver release type checked in CI.
-pub fn semver_release_type_from_changelog(version: &str, changelog: &str) -> String {
-    let released_heading = format!("## [{version}] - ");
-    if changelog
-        .lines()
-        .any(|line| line.starts_with(&released_heading))
-    {
+/// Maps the workspace and baseline versions to the semver release type checked in CI.
+pub fn semver_release_type_from_versions(
+    workspace_version: &str,
+    baseline_version: &str,
+) -> String {
+    if workspace_version == baseline_version {
         "minor".to_owned()
     } else {
         "major".to_owned()
@@ -213,6 +229,11 @@ pub fn core_manifest_path(repo_root: &Path) -> PathBuf {
 /// Returns the unpacked semver baseline directory for `htmlcut-core`.
 pub fn semver_baseline_path(repo_root: &Path) -> PathBuf {
     repo_root.join("semver-baseline").join("htmlcut-core")
+}
+
+/// Returns the dedicated fuzz-package manifest path.
+pub fn fuzz_manifest_path(repo_root: &Path) -> PathBuf {
+    repo_root.join("fuzz").join("Cargo.toml")
 }
 
 #[cfg(windows)]

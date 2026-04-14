@@ -8,17 +8,19 @@ mod plan;
 mod tests;
 
 pub use coverage::{
-    coverage_clean_command, coverage_command, coverage_output_path, evaluate_coverage_report,
-    read_coverage_report, tracked_files,
+    coverage_clean_command, coverage_command, coverage_output_path, coverage_preflight_failures,
+    coverage_preflight_message, evaluate_coverage_report, read_coverage_report, tracked_files,
 };
 pub use model::{
     CommandSpec, CoverageBranchRecord, CoverageCounter, CoverageDataSet, CoverageFailure,
-    CoverageFile, CoverageFileSummary, CoverageReport, CoverageSummary, DynResult,
+    CoverageFile, CoverageFileSummary, CoveragePreflightFailure, CoverageReport, CoverageSummary,
+    DynResult,
 };
 pub use plan::{
-    binary_name, check_plan, core_manifest_path, normalize_path, release_binary_path,
-    semver_baseline_path, semver_release_type, semver_release_type_from_changelog,
-    shell_script_paths, with_workspace_stub, workspace_version, workspace_version_from_manifest,
+    binary_name, check_plan, core_manifest_path, fuzz_manifest_path, normalize_path,
+    release_binary_path, semver_baseline_path, semver_release_type,
+    semver_release_type_from_versions, shell_script_paths, with_workspace_stub, workspace_version,
+    workspace_version_from_manifest,
 };
 
 #[cfg(test)]

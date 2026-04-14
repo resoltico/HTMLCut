@@ -1,9 +1,9 @@
 /// Current version of the embeddable extraction request contract.
-pub const CORE_SPEC_VERSION: u32 = 2;
+pub const CORE_SPEC_VERSION: u32 = 4;
 /// Frozen schema name for [`crate::ExtractionResult`].
 pub const CORE_RESULT_SCHEMA_NAME: &str = "htmlcut.extraction_result";
 /// Current schema version for [`crate::ExtractionResult`].
-pub const CORE_RESULT_SCHEMA_VERSION: u32 = 3;
+pub const CORE_RESULT_SCHEMA_VERSION: u32 = 4;
 /// Frozen schema name for [`crate::SourceInspectionResult`].
 pub const CORE_SOURCE_INSPECTION_SCHEMA_NAME: &str = "htmlcut.source_inspection_result";
 /// Current schema version for [`crate::SourceInspectionResult`].
@@ -14,6 +14,8 @@ pub const DEFAULT_PREVIEW_CHARS: usize = 160;
 pub const DEFAULT_MAX_BYTES: usize = 50 * 1024 * 1024;
 /// Default timeout for HTTP source loading.
 pub const DEFAULT_FETCH_TIMEOUT_MS: u64 = 15_000;
+/// Default fetch preflight policy for URL source loading.
+pub const DEFAULT_FETCH_PREFLIGHT_MODE: &str = "head-first";
 /// Default regex flags for slice operations.
 pub const DEFAULT_REGEX_FLAGS: &str = "u";
 /// Default limit for sampled inspection headings, links, tags, and classes.

@@ -1,3 +1,13 @@
+---
+afad: "3.5"
+version: "4.0.0"
+domain: PLATFORM
+updated: "2026-04-14"
+route:
+  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
+  questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
+---
+
 # Platform Support
 
 This document defines HTMLCut's maintained build and release target policy.

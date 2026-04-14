@@ -1,8 +1,11 @@
+use std::fs;
 use std::io::Write;
+use std::path::Path;
 
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use htmlcut_core::{extract, inspect_source, preview_extraction};
 
+use crate::EXIT_CODE_OUTPUT;
 use crate::args::{
     CatalogArgs, Cli, CliCatalogOutputMode, CliInspectOutputMode, CliOutputMode,
     CliSchemaOutputMode, Commands, InspectCommands, InspectSelectArgs, InspectSliceArgs,
@@ -26,6 +29,7 @@ use crate::render::{
 
 pub(crate) struct ExecutionOutcome {
     pub(crate) stdout: Option<String>,
+    pub(crate) output_file: Option<std::path::PathBuf>,
     pub(crate) stderr: Vec<String>,
     pub(crate) exit_code: i32,
 }
@@ -62,6 +66,7 @@ where
             let outcome = error_outcome(
                 command_name_from_raw_args(&raw_args),
                 prefers_json_errors,
+                None,
                 usage_error("CLI_PARSE_ERROR", clap_error_message(&error)),
             );
             return write_outcome(outcome, stdout, stderr);
@@ -73,11 +78,12 @@ where
 
 pub(crate) fn execute(cli: Cli) -> ExecutionOutcome {
     let verbose = cli.global.verbose;
+    let quiet = cli.global.quiet;
     match cli.command {
         Commands::Catalog(args) => run_catalog(args),
         Commands::Schema(args) => run_schema(args),
-        Commands::Select(args) => run_select(args, verbose),
-        Commands::Slice(args) => run_slice(args, verbose),
+        Commands::Select(args) => run_select(args, verbose, quiet),
+        Commands::Slice(args) => run_slice(args, verbose, quiet),
         Commands::Inspect(args) => match args.command {
             InspectCommands::Source(args) => run_inspect_source(args),
             InspectCommands::Select(args) => run_inspect_select(args),
@@ -93,6 +99,7 @@ pub(crate) fn run_catalog(args: CatalogArgs) -> ExecutionOutcome {
             return error_outcome(
                 "catalog".to_owned(),
                 args.output == CliCatalogOutputMode::Json,
+                args.output_file,
                 error,
             );
         }
@@ -103,6 +110,7 @@ pub(crate) fn run_catalog(args: CatalogArgs) -> ExecutionOutcome {
             CliCatalogOutputMode::Json => to_pretty_json(&report),
             CliCatalogOutputMode::Text => render_catalog_text(&report),
         }),
+        output_file: args.output_file,
         stderr: Vec::new(),
         exit_code: 0,
     }
@@ -115,6 +123,7 @@ pub(crate) fn run_schema(args: SchemaArgs) -> ExecutionOutcome {
             return error_outcome(
                 "schema".to_owned(),
                 args.output == CliSchemaOutputMode::Json,
+                args.output_file,
                 error,
             );
         }
@@ -125,34 +134,49 @@ pub(crate) fn run_schema(args: SchemaArgs) -> ExecutionOutcome {
             CliSchemaOutputMode::Json => to_pretty_json(&report),
             CliSchemaOutputMode::Text => render_schema_text(&report),
         }),
+        output_file: args.output_file,
         stderr: Vec::new(),
         exit_code: 0,
     }
 }
 
-pub(crate) fn run_select(args: SelectArgs, verbose: u8) -> ExecutionOutcome {
+pub(crate) fn run_select(args: SelectArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
     let prefers_json = extract_prefers_json(&args.output);
-    let prepared = match PreparedExtraction::from_select_with_verbose(args, verbose) {
+    let output_file = args.output.output_file.clone();
+    let prepared = match PreparedExtraction::from_select_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
-        Err(error) => return error_outcome("select".to_owned(), prefers_json, error),
+        Err(error) => {
+            return error_outcome("select".to_owned(), prefers_json, output_file, error);
+        }
     };
     execute_extraction(prepared)
 }
 
-pub(crate) fn run_slice(args: SliceArgs, verbose: u8) -> ExecutionOutcome {
+pub(crate) fn run_slice(args: SliceArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
     let prefers_json = extract_prefers_json(&args.output);
-    let prepared = match PreparedExtraction::from_slice_with_verbose(args, verbose) {
+    let output_file = args.output.output_file.clone();
+    let prepared = match PreparedExtraction::from_slice_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
-        Err(error) => return error_outcome("slice".to_owned(), prefers_json, error),
+        Err(error) => {
+            return error_outcome("slice".to_owned(), prefers_json, output_file, error);
+        }
     };
     execute_extraction(prepared)
 }
 
 pub(crate) fn run_inspect_source(args: InspectSourceArgs) -> ExecutionOutcome {
     let prefers_json = args.output == CliInspectOutputMode::Json;
+    let output_file = args.output_file.clone();
     let prepared = match PreparedSourceInspection::new(args) {
         Ok(prepared) => prepared,
-        Err(error) => return error_outcome("inspect-source".to_owned(), prefers_json, error),
+        Err(error) => {
+            return error_outcome(
+                "inspect-source".to_owned(),
+                prefers_json,
+                output_file,
+                error,
+            );
+        }
     };
     let result = inspect_source(&prepared.source, &prepared.runtime, &prepared.options);
     let report = build_source_inspection_report(prepared.command, result);
@@ -162,12 +186,13 @@ pub(crate) fn run_inspect_source(args: InspectSourceArgs) -> ExecutionOutcome {
         if prepared.output == CliInspectOutputMode::Json {
             return ExecutionOutcome {
                 stdout: Some(to_pretty_json(&report)),
+                output_file: prepared.output_file,
                 stderr: Vec::new(),
                 exit_code: exit_code_for_error(&error),
             };
         }
 
-        return error_outcome(prepared.command.to_owned(), false, error);
+        return error_outcome(prepared.command.to_owned(), false, None, error);
     }
 
     ExecutionOutcome {
@@ -177,6 +202,7 @@ pub(crate) fn run_inspect_source(args: InspectSourceArgs) -> ExecutionOutcome {
                 render_source_inspection_text(&report, prepared.preview_chars)
             }
         }),
+        output_file: prepared.output_file,
         stderr: Vec::new(),
         exit_code: 0,
     }
@@ -184,18 +210,29 @@ pub(crate) fn run_inspect_source(args: InspectSourceArgs) -> ExecutionOutcome {
 
 pub(crate) fn run_inspect_select(args: InspectSelectArgs) -> ExecutionOutcome {
     let prefers_json = args.output.output == CliInspectOutputMode::Json;
+    let output_file = args.output.output_file.clone();
     let prepared = match PreparedPreview::from_select(args) {
         Ok(prepared) => prepared,
-        Err(error) => return error_outcome("inspect-select".to_owned(), prefers_json, error),
+        Err(error) => {
+            return error_outcome(
+                "inspect-select".to_owned(),
+                prefers_json,
+                output_file,
+                error,
+            );
+        }
     };
     execute_preview(prepared)
 }
 
 pub(crate) fn run_inspect_slice(args: InspectSliceArgs) -> ExecutionOutcome {
     let prefers_json = args.output.output == CliInspectOutputMode::Json;
+    let output_file = args.output.output_file.clone();
     let prepared = match PreparedPreview::from_slice(args) {
         Ok(prepared) => prepared,
-        Err(error) => return error_outcome("inspect-slice".to_owned(), prefers_json, error),
+        Err(error) => {
+            return error_outcome("inspect-slice".to_owned(), prefers_json, output_file, error);
+        }
     };
     execute_preview(prepared)
 }
@@ -210,11 +247,12 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
         return if prepared.output == CliOutputMode::Json {
             ExecutionOutcome {
                 stdout: Some(to_pretty_json(&report)),
+                output_file: prepared.output_file,
                 stderr: Vec::new(),
                 exit_code: exit_code_for_error(&error),
             }
         } else {
-            error_outcome(prepared.command.to_owned(), false, error)
+            error_outcome(prepared.command.to_owned(), false, None, error)
         };
     }
 
@@ -224,15 +262,21 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
         return error_outcome(
             prepared.command.to_owned(),
             prepared.output == CliOutputMode::Json,
+            prepared.output_file.clone(),
             error,
         );
     }
 
-    let mut stderr = build_verbose_lines(&report, prepared.verbose);
-    if prepared.output != CliOutputMode::Json {
+    let mut stderr = if prepared.quiet {
+        Vec::new()
+    } else {
+        build_verbose_lines(&report, prepared.verbose)
+    };
+    if !prepared.quiet && prepared.output != CliOutputMode::Json {
         stderr.extend(build_human_diagnostic_stderr_lines(&report.diagnostics));
     }
-    if prepared.verbose > 0
+    if !prepared.quiet
+        && prepared.verbose > 0
         && let Some(bundle) = report.bundle.as_ref()
     {
         stderr.push(format!("htmlcut: wrote bundle to {}", bundle.dir));
@@ -240,6 +284,7 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
 
     ExecutionOutcome {
         stdout: render_extraction_output(&report, prepared.output),
+        output_file: prepared.output_file,
         stderr,
         exit_code: 0,
     }
@@ -254,12 +299,13 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
         if prepared.output == CliInspectOutputMode::Json {
             return ExecutionOutcome {
                 stdout: Some(to_pretty_json(&report)),
+                output_file: prepared.output_file,
                 stderr: Vec::new(),
                 exit_code: exit_code_for_error(&error),
             };
         }
 
-        return error_outcome(prepared.command.to_owned(), false, error);
+        return error_outcome(prepared.command.to_owned(), false, None, error);
     }
 
     ExecutionOutcome {
@@ -267,6 +313,7 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
             CliInspectOutputMode::Json => to_pretty_json(&report),
             CliInspectOutputMode::Text => render_preview_text(&report),
         }),
+        output_file: prepared.output_file,
         stderr: Vec::new(),
         exit_code: 0,
     }
@@ -275,15 +322,20 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
 pub(crate) fn error_outcome(
     command: String,
     prefers_json: bool,
+    output_file: Option<std::path::PathBuf>,
     error: CliError,
 ) -> ExecutionOutcome {
     match prefers_json {
-        true => json_error_outcome(command, error),
+        true => json_error_outcome(command, output_file, error),
         false => human_error_outcome(error),
     }
 }
 
-pub(crate) fn json_error_outcome(command: String, error: CliError) -> ExecutionOutcome {
+pub(crate) fn json_error_outcome(
+    command: String,
+    output_file: Option<std::path::PathBuf>,
+    error: CliError,
+) -> ExecutionOutcome {
     let exit_code = exit_code_for_error(&error);
     let diagnostics = json_error_diagnostics(&error);
 
@@ -302,6 +354,7 @@ pub(crate) fn json_error_outcome(command: String, error: CliError) -> ExecutionO
             },
             diagnostics,
         })),
+        output_file,
         stderr: Vec::new(),
         exit_code,
     }
@@ -310,6 +363,7 @@ pub(crate) fn json_error_outcome(command: String, error: CliError) -> ExecutionO
 pub(crate) fn human_error_outcome(error: CliError) -> ExecutionOutcome {
     ExecutionOutcome {
         stdout: None,
+        output_file: None,
         stderr: vec![format!("htmlcut: {}", error.message)],
         exit_code: exit_code_for_error(&error),
     }
@@ -325,7 +379,18 @@ where
     W2: Write,
 {
     if let Some(stdout_payload) = outcome.stdout.as_ref() {
-        let _ = writeln!(stdout, "{stdout_payload}");
+        if let Some(path) = outcome.output_file.as_deref() {
+            if let Err(error) = write_stdout_payload(path, stdout_payload) {
+                let _ = writeln!(
+                    stderr,
+                    "htmlcut: Could not write {}: {error}",
+                    path.display()
+                );
+                return EXIT_CODE_OUTPUT;
+            }
+        } else {
+            let _ = writeln!(stdout, "{stdout_payload}");
+        }
     }
     for line in &outcome.stderr {
         let _ = writeln!(stderr, "{line}");
@@ -404,4 +469,22 @@ pub(crate) fn clap_error_message(error: &clap::Error) -> String {
         .lines()
         .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
         .unwrap_or_else(|| rendered.trim().to_owned())
+}
+
+fn write_stdout_payload(path: &Path, stdout_payload: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(path, format!("{stdout_payload}\n"))
+}
+
+#[cfg(test)]
+pub(crate) fn write_stdout_payload_for_tests(
+    path: &Path,
+    stdout_payload: &str,
+) -> std::io::Result<()> {
+    write_stdout_payload(path, stdout_payload)
 }

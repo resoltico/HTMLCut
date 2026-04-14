@@ -1,10 +1,20 @@
+---
+afad: "3.5"
+version: "4.0.0"
+domain: ARCHITECTURE
+updated: "2026-04-14"
+route:
+  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
+  questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
+---
+
 # Architecture Guide
 
 HTMLCut has three maintained surfaces:
 
 1. `htmlcut-cli`
 2. `htmlcut-core`
-3. `htmlcut_core::interop::ffhn_v1`
+3. `htmlcut_core::interop::v1`
 
 They are related, but they are not interchangeable.
 
@@ -27,11 +37,11 @@ Use `htmlcut-core` when you need:
 - operation discovery through `operation_catalog()`
 - schema discovery through `schema_catalog()`
 
-Use `htmlcut_core::interop::ffhn_v1` only when you are implementing FFHN against the frozen
-`ffhn-htmlcut-v1` contract.
+Use `htmlcut_core::interop::v1` when you need the frozen `htmlcut-v1` downstream integration
+contract.
 
-It is not a generic replacement for `htmlcut-core`, and it is intentionally not exposed as a CLI
-command.
+It is the generic versioned interop surface currently consumed by FFHN, not a replacement for the
+broader `htmlcut-core` API, and not a CLI command.
 
 ## Ownership Boundary
 
@@ -53,14 +63,15 @@ command.
 - bundles
 - exit codes
 
-`htmlcut_core::interop::ffhn_v1` owns:
+`htmlcut_core::interop::v1` owns:
 
-- FFHN plan validation
-- FFHN plan to core-request compilation
-- typed FFHN result and error documents
+- downstream plan validation for `htmlcut-v1`
+- plan-to-core-request compilation for `htmlcut-v1`
+- typed interop result and error documents
 - stable JSON and digest helpers for the frozen interop profile
 
-FFHN owns fetch and compare. HTMLCut does not fetch on FFHN's behalf in production interop flows.
+Downstream applications own fetch, retries, orchestration, comparison, and persistence. HTMLCut
+does not fetch on a downstream application's behalf in production interop flows.
 
 ## Dependency Direction
 
@@ -68,12 +79,12 @@ The maintained dependency direction is:
 
 1. `htmlcut-cli` -> `htmlcut-core`
 2. `ffhn-core` -> `htmlcut-core`
-3. `ffhn-core` -> `htmlcut_core::interop::ffhn_v1`
+3. `ffhn-core` -> `htmlcut_core::interop::v1`
 
 Forbidden shapes:
 
 - downstreams shelling out to `htmlcut-cli` instead of using `htmlcut-core`
-- FFHN relying on HTMLCut URL loading in production
+- downstream products relying on HTMLCut URL loading in production when they already own fetch
 - the CLI inventing behavior that `htmlcut-core` does not own
 
 ## Discovery Model
@@ -124,8 +135,8 @@ The rule is:
 - generic CLI/core contracts may hard-break when architecture quality requires it
 - product-specific downstream interop must be versioned explicitly
 
-That is why FFHN integrates through `ffhn-htmlcut-v1` instead of through ad hoc CLI behavior or a
-mutable undocumented internal API.
+That is why downstream consumers integrate through `htmlcut-v1` instead of through ad hoc CLI
+behavior or a mutable undocumented internal API.
 
 ## Doc Map
 
@@ -134,7 +145,7 @@ Use these docs together:
 - [CLI Developer Guide](cli.md)
 - [Core Developer Guide](core.md)
 - [Schema Guide](schema.md)
-- [FFHN Interop Guide](ffhn-interop.md)
+- [Interop v1 Guide](interop-v1.md)
 - [Operation Matrix](operations.md)
 - [Platform Support](platform-support.md)
 - [Quality Gates](quality-gates.md)

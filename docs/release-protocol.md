@@ -1,7 +1,20 @@
+---
+afad: "3.5"
+version: "4.0.0"
+domain: RELEASE
+updated: "2026-04-14"
+route:
+  keywords: [release protocol, gh cli, tag push, release workflow, semver baseline, verification]
+  questions: ["how do I release HTMLCut?", "what must be verified before tagging a release?", "when do I refresh the HTMLCut semver baseline?"]
+---
+
 # Release Protocol
 
 The release flow is driven by the GitHub CLI (`gh`). Every step that touches GitHub uses `gh`,
 not the GitHub web UI.
+
+Release choreography lives here. Contract-versioning policy lives in
+[versioning-policy.md](versioning-policy.md).
 
 ## 0. GitHub CLI gate
 
@@ -43,6 +56,9 @@ cargo xtask check
 That gate must succeed before any release commit or tag. The maintained definition of that gate
 lives in [quality-gates.md](quality-gates.md).
 
+The gate now also verifies that the checked-in fuzz targets still compile and that the nightly
+coverage toolchain prerequisites are present before coverage work begins.
+
 Then verify:
 
 - `Cargo.toml` `[workspace.package] version` equals the target release version exactly. This is the single version source of truth for both crates and for `htmlcut --version`.
@@ -50,8 +66,10 @@ Then verify:
 - `docs/operations.md` still reflects the current canonical operation catalog exposed by `htmlcut-core`.
 - `changelog.md` has a `## [X.Y.Z] - YYYY-MM-DD` section with at least one entry.
 - `README.md` still documents the current user-facing install flow, CLI model, and release assets.
+- `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and release expectations.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
-- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/ffhn-interop.md` still match the shipped surfaces.
+- `docs/versioning-policy.md` still matches the shipped contract policy, frozen interop model, and semver-baseline rules.
+- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v1.md` still match the shipped surfaces.
 - `docs/platform-support.md` still matches the shipped release target matrix and deployment floors.
 - `docs/quality-gates.md` still matches the maintained `cargo xtask` gate.
 - `Cargo.toml` still defines the `dist` Cargo profile used for shipped public binaries.
@@ -296,8 +314,11 @@ checks compare against the latest published API:
 ```bash
 git checkout main
 git pull
-cargo xtask refresh-semver-baseline
+cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 git add semver-baseline/htmlcut-core
 git commit -m "chore: refresh htmlcut-core semver baseline"
 git push
 ```
+
+That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
+cannot silently drift to unreleased local worktree state.

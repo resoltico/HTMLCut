@@ -11,6 +11,13 @@ fn write_repo_scaffold(repo_root: &Path) {
     )
     .expect("write Cargo.toml");
     fs::write(repo_root.join("changelog.md"), "## [Unreleased]\n").expect("write changelog.md");
+    let baseline_dir = repo_root.join("semver-baseline").join("htmlcut-core");
+    fs::create_dir_all(&baseline_dir).expect("create semver baseline dir");
+    fs::write(
+        baseline_dir.join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-core\"\nversion = \"2.0.0\"\n",
+    )
+    .expect("write baseline Cargo.toml");
 }
 
 #[test]
@@ -92,6 +99,21 @@ fn check_plan_includes_all_strict_gates() {
             .windows(2)
             .any(|window| window == ["--release-type", "major"])
     }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "check",
+                "--manifest-path",
+                repo_root
+                    .path()
+                    .join("fuzz")
+                    .join("Cargo.toml")
+                    .to_string_lossy()
+                    .as_ref(),
+                "--bins",
+                "--locked",
+            ]
+    }));
     assert_eq!(
         plan.last().expect("release smoke"),
         &CommandSpec::new(
@@ -156,6 +178,48 @@ fn coverage_command_targets_repo_coverage_file() {
             "--workspace".to_owned(),
         ]
     );
+}
+
+#[test]
+fn coverage_preflight_failures_require_nightly_toolchain_first() {
+    let failures = coverage_preflight_failures("stable-x86_64-apple-darwin (default)\n", "");
+
+    assert_eq!(
+        failures,
+        vec![
+            CoveragePreflightFailure::MissingNightlyToolchain,
+            CoveragePreflightFailure::MissingNightlyLlvmTools,
+        ]
+    );
+    assert!(coverage_preflight_message(&failures).contains("rustup toolchain install nightly"));
+}
+
+#[test]
+fn coverage_preflight_failures_require_llvm_tools_when_nightly_exists() {
+    let failures = coverage_preflight_failures("nightly-x86_64-apple-darwin\n", "clippy\n");
+
+    assert_eq!(
+        failures,
+        vec![CoveragePreflightFailure::MissingNightlyLlvmTools]
+    );
+    assert!(
+        coverage_preflight_message(&failures)
+            .contains("rustup component add llvm-tools-preview --toolchain nightly")
+    );
+}
+
+#[test]
+fn coverage_preflight_passes_when_nightly_and_llvm_tools_are_installed() {
+    let failures = coverage_preflight_failures(
+        "stable-x86_64-apple-darwin (default)\nnightly-x86_64-apple-darwin\n",
+        "llvm-tools-x86_64-apple-darwin\nrustfmt\n",
+    );
+
+    assert!(failures.is_empty());
+    let message = coverage_preflight_message(&failures);
+    assert!(message.contains("Rust coverage preflight failed."));
+    assert!(!message.contains("Install the nightly coverage toolchain first"));
+    assert!(!message.contains("llvm-tools-preview` is missing"));
 }
 
 #[test]
@@ -226,13 +290,33 @@ fn workspace_version_reads_from_repo_manifest() {
 }
 
 #[test]
-fn semver_release_type_uses_major_until_the_current_version_is_released() {
+fn semver_release_type_uses_major_until_the_baseline_catches_up() {
+    assert_eq!(semver_release_type_from_versions("3.0.0", "2.0.0"), "major");
+    assert_eq!(semver_release_type_from_versions("3.0.0", "3.0.0"), "minor");
+}
+
+#[test]
+fn semver_release_type_reads_versions_from_the_repo_layout() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+
     assert_eq!(
-        semver_release_type_from_changelog("3.0.0", "## [Unreleased]\n"),
+        semver_release_type(repo_root.path()).expect("major semver release type"),
         "major"
     );
+
+    fs::write(
+        repo_root
+            .path()
+            .join("semver-baseline")
+            .join("htmlcut-core")
+            .join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-core\"\nversion = \"3.0.0\"\n",
+    )
+    .expect("write updated baseline Cargo.toml");
+
     assert_eq!(
-        semver_release_type_from_changelog("3.0.0", "## [3.0.0] - 2026-04-10\n"),
+        semver_release_type(repo_root.path()).expect("minor semver release type"),
         "minor"
     );
 }

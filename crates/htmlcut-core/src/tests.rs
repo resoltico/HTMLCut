@@ -3,7 +3,11 @@ use crate::contracts::{
     default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
     default_preview_chars, default_regex_flags, default_spec_version, default_true,
 };
-use crate::document::{ELLIPSIS, attribute_supports_url_rewrite, element_name};
+use crate::document::{
+    ELLIPSIS, attribute_supports_url_rewrite, collapse_blank_lines_for_tests, element_name,
+    rewrite_srcset_for_tests,
+};
+use crate::source::content_type_is_obviously_non_html_for_tests;
 use scraper::ElementRef;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -15,6 +19,7 @@ use std::num::NonZeroUsize;
 use std::os::unix::fs::PermissionsExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use ureq::tls::RootCerts;
 use url::Url;
@@ -192,7 +197,7 @@ fn operation_catalog_is_unique_and_complete() {
 }
 
 #[test]
-fn schema_catalog_is_unique_and_covers_core_and_ffhn_contracts() {
+fn schema_catalog_is_unique_and_covers_core_and_interop_contracts() {
     let identities = schema_catalog()
         .iter()
         .map(|descriptor| {
@@ -213,16 +218,16 @@ fn schema_catalog_is_unique_and_covers_core_and_ffhn_contracts() {
         CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::ffhn_v1::FFHN_PLAN_SCHEMA_NAME,
-        interop::ffhn_v1::FFHN_PLAN_SCHEMA_VERSION,
+        interop::v1::PLAN_SCHEMA_NAME,
+        interop::v1::PLAN_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::ffhn_v1::FFHN_RESULT_SCHEMA_NAME,
-        interop::ffhn_v1::FFHN_RESULT_SCHEMA_VERSION,
+        interop::v1::RESULT_SCHEMA_NAME,
+        interop::v1::RESULT_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::ffhn_v1::FFHN_ERROR_SCHEMA_NAME,
-        interop::ffhn_v1::FFHN_ERROR_SCHEMA_VERSION,
+        interop::v1::ERROR_SCHEMA_NAME,
+        interop::v1::ERROR_SCHEMA_VERSION,
     )));
 
     let extraction_result_schema =
@@ -231,16 +236,62 @@ fn schema_catalog_is_unique_and_covers_core_and_ffhn_contracts() {
     assert_eq!(extraction_result_schema.owner_surface, "htmlcut-core");
     assert_eq!(extraction_result_schema.rust_shape, "ExtractionResult");
 
-    let ffhn_result_schema = schema_descriptor(
-        interop::ffhn_v1::FFHN_RESULT_SCHEMA_NAME,
-        interop::ffhn_v1::FFHN_RESULT_SCHEMA_VERSION,
+    let interop_result_schema = schema_descriptor(
+        interop::v1::RESULT_SCHEMA_NAME,
+        interop::v1::RESULT_SCHEMA_VERSION,
     )
-    .expect("ffhn result schema");
+    .expect("interop result schema");
     assert_eq!(
-        ffhn_result_schema.owner_surface,
-        "htmlcut_core::interop::ffhn_v1"
+        interop_result_schema.owner_surface,
+        "htmlcut_core::interop::v1"
     );
-    assert_eq!(ffhn_result_schema.stability, SchemaStability::Frozen);
+    assert_eq!(interop_result_schema.stability, SchemaStability::Frozen);
+}
+
+#[test]
+fn schemas_cover_inner_html_and_structured_metadata_variants() {
+    let extraction_request_schema =
+        (schema_descriptor(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION)
+            .expect("extraction request schema")
+            .json_schema)();
+    let value_spec_variants = extraction_request_schema["$defs"]["ValueSpec"]["oneOf"]
+        .as_array()
+        .expect("value spec variants");
+    let serialized_value_modes = value_spec_variants
+        .iter()
+        .filter_map(|variant| variant.pointer("/properties/type/const"))
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(serialized_value_modes.contains("inner-html"));
+    assert!(!serialized_value_modes.contains("html"));
+
+    let extraction_result_schema =
+        (schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION)
+            .expect("extraction result schema")
+            .json_schema)();
+    let metadata_variants = extraction_result_schema["$defs"]["ExtractionMatchMetadata"]["oneOf"]
+        .as_array()
+        .expect("metadata variants");
+    let metadata_kinds = metadata_variants
+        .iter()
+        .filter_map(|variant| variant.pointer("/properties/kind/const"))
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        metadata_kinds,
+        BTreeSet::from(["delimiter-pair", "selector"])
+    );
+
+    let value_type_variants = extraction_result_schema["$defs"]["ValueType"]["oneOf"]
+        .as_array()
+        .expect("value type variants");
+    let serialized_value_types = value_type_variants
+        .iter()
+        .filter_map(|variant| variant.get("const"))
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(serialized_value_types.contains("inner-html"));
+    assert!(!serialized_value_types.contains("html"));
 }
 
 #[test]
@@ -471,14 +522,16 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
     let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
     let effective_base_url = resolve_document_base_url(&document, loaded.input_base_url.as_deref());
 
-    request.extraction = request.extraction.clone().with_value(ValueSpec::Html);
-    let html_match = build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1)
-        .expect("html match");
+    request.extraction = request.extraction.clone().with_value(ValueSpec::InnerHtml);
+    let html_match =
+        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
+            .expect("html match");
     assert_eq!(html_match.value.as_str(), Some("<p>Hello</p>"));
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::OuterHtml);
-    let outer_match = build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1)
-        .expect("outer match");
+    let outer_match =
+        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
+            .expect("outer match");
     assert!(
         outer_match
             .value
@@ -492,7 +545,7 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
         .with_value(attribute_value("data-id"));
     request.normalization.whitespace = WhitespaceMode::Normalize;
     let attribute_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1)
+        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
             .expect("attribute match");
     assert_eq!(attribute_match.value.as_str(), Some("7"));
 
@@ -501,7 +554,7 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
         .clone()
         .with_value(attribute_value("href"));
     let missing_attribute =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1)
+        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
             .expect_err("missing attr");
     assert_eq!(missing_attribute.code, "MISSING_ATTRIBUTE");
 
@@ -509,11 +562,15 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
     request.output.include_html = false;
     request.output.include_text = false;
     let structured_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 2)
+        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 2)
             .expect("structured");
     assert!(structured_match.html.is_none());
     assert!(structured_match.text.is_none());
     assert_eq!(structured_match.value["tagName"], "article");
+    assert_eq!(structured_match.value["matchIndex"], 1);
+    assert_eq!(structured_match.value["matchCount"], 1);
+    assert_eq!(structured_match.value["candidateIndex"], 1);
+    assert_eq!(structured_match.value["candidateCount"], 2);
     assert_eq!(structured_match.metadata.candidate_index(), 1);
     assert_eq!(structured_match.metadata.candidate_count(), 2);
 }
@@ -526,7 +583,7 @@ fn selector_match_builder_emits_optional_payloads_when_requested() {
     let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
     let effective_base_url = resolve_document_base_url(&document, loaded.input_base_url.as_deref());
 
-    let matched = build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1)
+    let matched = build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
         .expect("match");
 
     assert!(
@@ -547,7 +604,7 @@ fn slice_match_builder_covers_value_modes() {
             "https://example.com/base/",
         ),
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::Html),
+            .with_value(ValueSpec::InnerHtml),
     );
     request.normalization = NormalizationOptions {
         whitespace: WhitespaceMode::Normalize,
@@ -565,9 +622,16 @@ fn slice_match_builder_covers_value_modes() {
     .expect("candidate")
     .remove(0);
 
-    let html_match =
-        build_slice_match(&request, effective_base_url.as_deref(), &candidate, 1, 1, 1)
-            .expect("html");
+    let html_match = build_slice_match(
+        &request,
+        effective_base_url.as_deref(),
+        &candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect("html");
     assert!(
         html_match
             .value
@@ -587,6 +651,7 @@ fn slice_match_builder_covers_value_modes() {
         1,
         1,
         1,
+        1,
     )
     .expect("attribute");
     assert_eq!(
@@ -602,6 +667,7 @@ fn slice_match_builder_covers_value_modes() {
         &attribute_request,
         effective_base_url.as_deref(),
         &candidate,
+        1,
         1,
         1,
         1,
@@ -637,6 +703,7 @@ fn slice_match_builder_covers_value_modes() {
         1,
         1,
         1,
+        1,
     )
     .expect_err("inner capture should drop opening-tag attributes");
     assert_eq!(hinted_missing.code, "MISSING_ATTRIBUTE");
@@ -662,8 +729,13 @@ fn slice_match_builder_covers_value_modes() {
         1,
         1,
         1,
+        1,
     )
     .expect("structured");
+    assert_eq!(structured.value["matchIndex"], 1);
+    assert_eq!(structured.value["matchCount"], 1);
+    assert_eq!(structured.value["candidateIndex"], 1);
+    assert_eq!(structured.value["candidateCount"], 1);
     assert_eq!(
         structured.value["outerHtml"],
         "<a href=\"https://example.com/x\">Hello</a>"
@@ -699,15 +771,29 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
     .expect("candidate")
     .remove(0);
 
-    let text_match =
-        build_slice_match(&request, effective_base_url.as_deref(), &candidate, 1, 1, 1)
-            .expect("text");
+    let text_match = build_slice_match(
+        &request,
+        effective_base_url.as_deref(),
+        &candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect("text");
     assert_eq!(text_match.value.as_str(), Some("Hello"));
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::OuterHtml);
-    let outer_html_match =
-        build_slice_match(&request, effective_base_url.as_deref(), &candidate, 1, 1, 1)
-            .expect("outer html");
+    let outer_html_match = build_slice_match(
+        &request,
+        effective_base_url.as_deref(),
+        &candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect("outer html");
     assert!(
         outer_html_match
             .value
@@ -927,6 +1013,7 @@ fn source_reading_helpers_cover_error_paths() {
         &RuntimeOptions {
             max_bytes: 3,
             fetch_timeout_ms: 1000,
+            ..RuntimeOptions::default()
         },
     )
     .expect_err("file too large");
@@ -969,6 +1056,7 @@ fn source_reading_helpers_cover_error_paths() {
         &RuntimeOptions {
             max_bytes: 1024,
             fetch_timeout_ms: 250,
+            ..RuntimeOptions::default()
         },
     )
     .expect_err("fetch error");
@@ -991,6 +1079,7 @@ fn source_reading_helpers_cover_error_paths() {
         &RuntimeOptions {
             max_bytes: 4,
             fetch_timeout_ms: 1000,
+            ..RuntimeOptions::default()
         },
     )
     .expect_err("oversized response");
@@ -1005,6 +1094,7 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
         &RuntimeOptions {
             max_bytes: 3,
             fetch_timeout_ms: 1000,
+            ..RuntimeOptions::default()
         },
     )
     .expect_err("oversized memory source");
@@ -1020,6 +1110,7 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
         &RuntimeOptions {
             max_bytes: 3,
             fetch_timeout_ms: 1000,
+            ..RuntimeOptions::default()
         },
     );
     assert!(!extract_result.ok);
@@ -1045,18 +1136,35 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind success server");
     let address = listener.local_addr().expect("server addr");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
-        let mut request_buffer = [0u8; 512];
-        let _ = stream.read(&mut request_buffer).expect("read request");
-        let body = "<html><body>Hello</body></html>";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("write response");
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method");
+            let body = "<html><body>Hello</body></html>";
+            let response = if method == "HEAD" {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                )
+            } else {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
     });
     let url = format!("http://{address}");
     let loaded_url =
@@ -1073,6 +1181,292 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
         agent.config().tls_config().root_certs(),
         RootCerts::PlatformVerifier
     ));
+}
+
+#[test]
+fn get_only_fetch_preflight_skips_head_requests() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind get-only server");
+    let address = listener.local_addr().expect("get-only server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut request_buffer = [0u8; 512];
+        let read = stream.read(&mut request_buffer).expect("read request");
+        let request = String::from_utf8_lossy(&request_buffer[..read]);
+        let method = request
+            .lines()
+            .next()
+            .expect("request line")
+            .split_whitespace()
+            .next()
+            .expect("request method")
+            .to_owned();
+        methods_for_server
+            .lock()
+            .expect("lock methods")
+            .push(method);
+
+        let body = "<html><body>Hello</body></html>";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+
+    let url = format!("http://{address}");
+    let loaded = read_url_source(
+        &url_source(&url),
+        &RuntimeOptions {
+            fetch_preflight: FetchPreflightMode::GetOnly,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("get-only source");
+
+    server.join().expect("join server");
+    assert_eq!(methods.lock().expect("lock methods").as_slice(), ["GET"]);
+    assert_eq!(loaded.text, "<html><body>Hello</body></html>");
+}
+
+#[test]
+fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind fallback server");
+    let address = listener.local_addr().expect("fallback server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method")
+                .to_owned();
+            methods_for_server
+                .lock()
+                .expect("lock methods")
+                .push(method.clone());
+
+            let response = if method == "HEAD" {
+                "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n".to_owned()
+            } else {
+                let body = "<html><body>Fallback</body></html>";
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
+    });
+
+    let url = format!("http://{address}");
+    let loaded =
+        read_url_source(&url_source(&url), &RuntimeOptions::default()).expect("fallback source");
+
+    server.join().expect("join server");
+    assert_eq!(
+        methods.lock().expect("lock methods").as_slice(),
+        ["HEAD", "GET"]
+    );
+    assert_eq!(loaded.text, "<html><body>Fallback</body></html>");
+}
+
+#[test]
+fn head_preflight_rejects_non_html_responses_before_get() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind non-html server");
+    let address = listener.local_addr().expect("non-html server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut request_buffer = [0u8; 512];
+        let read = stream.read(&mut request_buffer).expect("read request");
+        let request = String::from_utf8_lossy(&request_buffer[..read]);
+        let method = request
+            .lines()
+            .next()
+            .expect("request line")
+            .split_whitespace()
+            .next()
+            .expect("request method")
+            .to_owned();
+        methods_for_server
+            .lock()
+            .expect("lock methods")
+            .push(method);
+
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 0\r\n\r\n";
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+
+    let url = format!("http://{address}");
+    let error = read_url_source(&url_source(&url), &RuntimeOptions::default())
+        .expect_err("non-html preflight error");
+
+    server.join().expect("join server");
+    assert_eq!(methods.lock().expect("lock methods").as_slice(), ["HEAD"]);
+    assert_eq!(error.code, "SOURCE_LOAD_FAILED");
+    assert!(
+        error
+            .message
+            .contains("reported non-HTML content type image/png")
+    );
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("method"))
+            .and_then(Value::as_str),
+        Some("HEAD")
+    );
+}
+
+#[test]
+fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
+    let closed_listener = TcpListener::bind("127.0.0.1:0").expect("bind closed listener");
+    let closed_address = closed_listener.local_addr().expect("closed listener addr");
+    drop(closed_listener);
+
+    let transport_error = read_url_source(
+        &url_source(&format!("http://{closed_address}")),
+        &RuntimeOptions {
+            fetch_preflight: FetchPreflightMode::GetOnly,
+            fetch_timeout_ms: 250,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect_err("get transport failure");
+    assert_eq!(transport_error.code, "SOURCE_LOAD_FAILED");
+    assert!(transport_error.message.contains("Could not fetch"));
+    assert_eq!(
+        transport_error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("method"))
+            .and_then(Value::as_str),
+        Some("GET")
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind status server");
+    let address = listener.local_addr().expect("status server addr");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut request_buffer = [0u8; 512];
+        let _ = stream.read(&mut request_buffer).expect("read request");
+        let response =
+            "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: 0\r\n\r\n";
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+
+    let status_error = read_url_source(
+        &url_source(&format!("http://{address}")),
+        &RuntimeOptions {
+            fetch_preflight: FetchPreflightMode::GetOnly,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect_err("unexpected get status");
+
+    server.join().expect("join server");
+    assert_eq!(status_error.code, "SOURCE_LOAD_FAILED");
+    assert!(
+        status_error
+            .message
+            .contains("returned unexpected status 404")
+    );
+    assert_eq!(
+        status_error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("method"))
+            .and_then(Value::as_str),
+        Some("GET")
+    );
+    assert_eq!(
+        status_error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("status"))
+            .and_then(Value::as_u64),
+        Some(404)
+    );
+}
+
+#[test]
+fn url_loading_accepts_headerless_and_xhtml_success_responses() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind headerless server");
+    let address = listener.local_addr().expect("headerless server addr");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut request_buffer = [0u8; 512];
+        let _ = stream.read(&mut request_buffer).expect("read request");
+        let body = "<html><body>Headerless</body></html>";
+        let response = format!("HTTP/1.1 200 OK\r\n\r\n{body}");
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+
+    let headerless = read_url_source(
+        &url_source(&format!("http://{address}")),
+        &RuntimeOptions {
+            fetch_preflight: FetchPreflightMode::GetOnly,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("headerless response");
+    server.join().expect("join server");
+    assert_eq!(headerless.text, "<html><body>Headerless</body></html>");
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind xhtml server");
+    let address = listener.local_addr().expect("xhtml server addr");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut request_buffer = [0u8; 512];
+        let _ = stream.read(&mut request_buffer).expect("read request");
+        let body = "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>XHTML</body></html>";
+        let response =
+            format!("HTTP/1.1 200 OK\r\nContent-Type: application/xhtml+xml\r\n\r\n{body}");
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+    });
+
+    let xhtml = read_url_source(
+        &url_source(&format!("http://{address}")),
+        &RuntimeOptions {
+            fetch_preflight: FetchPreflightMode::GetOnly,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("xhtml response");
+    server.join().expect("join server");
+    assert!(xhtml.text.contains("XHTML"));
+    assert!(!content_type_is_obviously_non_html_for_tests(""));
+    assert!(!content_type_is_obviously_non_html_for_tests("text/html"));
+    assert!(!content_type_is_obviously_non_html_for_tests(
+        "application/xhtml+xml"
+    ));
+    assert!(content_type_is_obviously_non_html_for_tests("image/png"));
 }
 
 #[test]
@@ -1112,8 +1506,18 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         Some(&"hero".to_owned())
     );
     assert!(attribute_supports_url_rewrite("href"));
+    assert!(attribute_supports_url_rewrite("srcset"));
+    assert!(attribute_supports_url_rewrite("ping"));
     assert!(!attribute_supports_url_rewrite("class"));
     assert!(first_fragment_attributes("plain text", None, false).is_empty());
+    let non_refresh_meta = parse_document_node(
+        "<meta http-equiv=\"content-security-policy\" content=\"0; url=next.html\">",
+    );
+    let meta = select_first(&non_refresh_meta, "meta").expect("meta");
+    assert_eq!(
+        element_attributes(&meta, Some("https://example.com/base/"), true).get("content"),
+        Some(&"0; url=next.html".to_owned())
+    );
 
     let mut detached_document = parse_document_node("<article><p>Hello</p></article>");
     let detached_id = {
@@ -1142,6 +1546,21 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(rendered.contains("- One"));
     assert!(rendered.contains("---"));
     assert!(rendered.contains("  keep"));
+    let richer_rendered = render_html_as_text(
+        "<blockquote><p>Quote</p></blockquote><dl><dt>Term</dt><dd>Definition</dd></dl><p>Use <code>cargo test</code></p>",
+        WhitespaceMode::Preserve,
+    );
+    assert!(richer_rendered.contains("> Quote"));
+    assert!(richer_rendered.contains("Term\n: Definition"));
+    assert!(richer_rendered.contains("`cargo test`"));
+    let collapsed_blockquote = render_html_as_text(
+        "<blockquote><p>First</p><p></p><p></p><p>Second</p></blockquote>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(collapsed_blockquote, "> First\n>\n> Second");
+    let empty_blockquote =
+        render_html_as_text("<blockquote>   </blockquote>", WhitespaceMode::Preserve);
+    assert!(empty_blockquote.is_empty());
 
     assert_eq!(
         collapse_inline_whitespace("  Hello   world "),
@@ -1219,6 +1638,31 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     render_node(*script, &mut empty_output, false, false);
     assert!(empty_output.is_empty());
 
+    let empty_code_document = parse_wrapped_fragment("<p>Use <code>   </code></p>");
+    let empty_code = select_first(&empty_code_document, "code").expect("code");
+    let mut empty_code_output = String::from("Use");
+    render_node(*empty_code, &mut empty_code_output, false, false);
+    assert_eq!(empty_code_output, "Use");
+
+    let inline_code_document = parse_wrapped_fragment("<p>Use <code>cargo test</code></p>");
+    let inline_code = select_first(&inline_code_document, "code").expect("code");
+    let mut inline_code_output = String::from("Use");
+    render_node(*inline_code, &mut inline_code_output, false, false);
+    assert_eq!(inline_code_output, "Use `cargo test`");
+    let mut inline_code_without_extra_space = String::from("Use ");
+    render_node(
+        *inline_code,
+        &mut inline_code_without_extra_space,
+        false,
+        false,
+    );
+    assert_eq!(inline_code_without_extra_space, "Use `cargo test`");
+    let pre_code_document = parse_wrapped_fragment("<pre><code>cargo test</code></pre>");
+    let pre_code = select_first(&pre_code_document, "code").expect("code");
+    let mut pre_code_output = String::new();
+    render_node(*pre_code, &mut pre_code_output, true, false);
+    assert_eq!(pre_code_output, "cargo test");
+
     let br_document = parse_wrapped_fragment("<br>");
     let br = select_first(&br_document, "br").expect("br");
     let mut line_output = String::from("Hello");
@@ -1269,12 +1713,85 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         true,
     );
     assert!(forced_document.contains("https://example.com/docs/asset.png"));
+    let rewritten_url_attributes = rewrite_html_urls(
+        "<img srcset=\"small.png 1x, large.png 2x\"><form action=\"submit\"><button formaction=\"override\"></button></form><video poster=\"poster.png\"></video><a ping=\"/hit-one /hit-two\">Track</a><meta http-equiv=\"refresh\" content=\"0; url=next.html\">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(rewritten_url_attributes.contains(
+        "srcset=\"https://example.com/docs/small.png 1x, https://example.com/docs/large.png 2x\""
+    ));
+    assert!(rewritten_url_attributes.contains("action=\"https://example.com/docs/submit\""));
+    assert!(rewritten_url_attributes.contains("formaction=\"https://example.com/docs/override\""));
+    assert!(rewritten_url_attributes.contains("poster=\"https://example.com/docs/poster.png\""));
+    assert!(
+        rewritten_url_attributes
+            .contains("ping=\"https://example.com/hit-one https://example.com/hit-two\"")
+    );
+    assert!(
+        rewritten_url_attributes.contains("content=\"0; url=https://example.com/docs/next.html\"")
+    );
+    let rewritten_single_srcset = rewrite_html_urls(
+        "<img srcset=\"plain.png\">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(rewritten_single_srcset.contains("srcset=\"https://example.com/docs/plain.png\""));
+    let unchanged_empty_srcset = rewrite_html_urls(
+        "<img srcset=\" , \">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(unchanged_empty_srcset.contains("srcset=\" , \""));
+    assert_eq!(collapse_blank_lines_for_tests("A\n\n\n\nB"), "A\n\nB");
+    assert_eq!(
+        rewrite_srcset_for_tests("plain.png, second.png", Some("https://example.com/docs/")),
+        "https://example.com/docs/plain.png, https://example.com/docs/second.png"
+    );
+    assert_eq!(
+        rewrite_srcset_for_tests(
+            "data:image/svg+xml,<svg></svg> 1x, plain.png 2x",
+            Some("https://example.com/docs/"),
+        ),
+        "data:image/svg+xml,<svg></svg> 1x, https://example.com/docs/plain.png 2x"
+    );
+    let rewritten_double_quoted_refresh = rewrite_html_urls(
+        "<meta http-equiv=\"refresh\" content='0; url=\"next.html\"'>",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(
+        rewritten_double_quoted_refresh
+            .contains("content=\"0; url=&quot;https://example.com/docs/next.html&quot;\"")
+    );
+    let rewritten_single_quoted_refresh = rewrite_html_urls(
+        "<meta http-equiv=\"refresh\" content=\"0; url='other.html'\">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(
+        rewritten_single_quoted_refresh
+            .contains("content=\"0; url='https://example.com/docs/other.html'\"")
+    );
+    let non_meta_content = rewrite_html_urls(
+        "<div content=\"0; url=next.html\"></div>",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(non_meta_content.contains("content=\"0; url=next.html\""));
+    let meta_without_refresh = rewrite_html_urls(
+        "<meta content=\"0; url=next.html\">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(meta_without_refresh.contains("content=\"0; url=next.html\""));
     let mut mutable_document =
         parse_wrapped_fragment("<img src=\"asset.png\"><a href=\"guide.html\">Guide</a>");
     rewrite_urls_in_document(&mut mutable_document, "https://example.com/docs/");
     let rewritten_body = first_body(&mutable_document).expect("body");
     assert!(serialize_children(&rewritten_body).contains("https://example.com/docs/asset.png"));
     assert!(serialize_children(&rewritten_body).contains("https://example.com/docs/guide.html"));
+
     let source_meta = source_metadata(
         &LoadedSource {
             kind: SourceKind::Memory,
@@ -1287,6 +1804,37 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         None,
     );
     assert!(source_meta.text.is_none());
+}
+
+#[test]
+fn document_base_resolution_covers_absolute_relative_and_fallback_paths() {
+    let absolute_document = parse_document_node(
+        "<html><head><base href=\"https://cdn.example.com/shared/\"></head><body></body></html>",
+    );
+    assert_eq!(
+        resolve_document_base_url(
+            &absolute_document,
+            Some("https://example.com/docs/start.html")
+        )
+        .as_deref(),
+        Some("https://cdn.example.com/shared/")
+    );
+
+    let relative_document =
+        parse_document_node("<html><head><base href=\"../shared/\"></head><body></body></html>");
+    assert_eq!(
+        resolve_document_base_url(
+            &relative_document,
+            Some("https://example.com/docs/start.html")
+        )
+        .as_deref(),
+        Some("https://example.com/shared/")
+    );
+
+    assert_eq!(
+        resolve_document_base_url(&relative_document, Some("not a url")).as_deref(),
+        Some("not a url")
+    );
 }
 
 #[test]

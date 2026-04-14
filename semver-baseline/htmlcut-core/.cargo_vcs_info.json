@@ -1,7 +1,0 @@
-{
-  "git": {
-    "sha1": "a72aae4fc261cedc61bb6eea482841e51f960962",
-    "dirty": true
-  },
-  "path_in_vcs": "crates/htmlcut-core"
-}

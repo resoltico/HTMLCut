@@ -4,8 +4,8 @@ use std::path::Path;
 use std::collections::BTreeMap;
 
 use htmlcut_core::{
-    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel, ExtractionMatchMetadata, Range,
-    SchemaStability, ValueType,
+    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel, SchemaStability, ValueType,
+    result::{ExtractionMatch, ExtractionMatchMetadata, InspectionCount, Range},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -91,7 +91,7 @@ pub(crate) fn render_html_payload(report: &ExtractionCommandReport) -> String {
         .join("\n\n")
 }
 
-pub(crate) fn render_match_as_text(matched: &htmlcut_core::ExtractionMatch) -> String {
+pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> String {
     if let Value::String(text) = &matched.value {
         return text.clone();
     }
@@ -100,9 +100,10 @@ pub(crate) fn render_match_as_text(matched: &htmlcut_core::ExtractionMatch) -> S
         .expect("serde_json::Value should always serialize to pretty JSON")
 }
 
-pub(crate) fn render_match_as_html(matched: &htmlcut_core::ExtractionMatch) -> String {
+pub(crate) fn render_match_as_html(matched: &ExtractionMatch) -> String {
     if let Value::String(html) = &matched.value
-        && (matched.value_type == ValueType::Html || matched.value_type == ValueType::OuterHtml)
+        && (matched.value_type == ValueType::InnerHtml
+            || matched.value_type == ValueType::OuterHtml)
     {
         return html.clone();
     }
@@ -472,7 +473,7 @@ pub(crate) fn render_catalog_surface(
 
 pub(crate) fn render_preview_match_lines(
     operation_id: htmlcut_core::OperationId,
-    matched: &htmlcut_core::ExtractionMatch,
+    matched: &ExtractionMatch,
 ) -> Vec<String> {
     let mut lines = vec![format!(
         "{}. {}",
@@ -544,7 +545,7 @@ pub(crate) fn render_preview_match_lines(
 
 pub(crate) fn render_preview_location(
     operation_id: htmlcut_core::OperationId,
-    matched: &htmlcut_core::ExtractionMatch,
+    matched: &ExtractionMatch,
 ) -> String {
     if let Some(path) = matched.path.as_deref() {
         return path.to_owned();
@@ -738,7 +739,7 @@ pub(crate) fn build_human_diagnostic_stderr_lines(diagnostics: &[Diagnostic]) ->
         .collect()
 }
 
-pub(crate) fn render_count_list(entries: &[htmlcut_core::InspectionCount]) -> String {
+pub(crate) fn render_count_list(entries: &[InspectionCount]) -> String {
     entries
         .iter()
         .map(|entry| format!("{} ({})", entry.name, entry.count))
