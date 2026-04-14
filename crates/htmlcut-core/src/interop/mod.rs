@@ -1,4 +1,4 @@
 //! Versioned interoperability surfaces for downstream products.
 
-/// FFHN-facing extraction interop profile and schema helpers.
-pub mod ffhn_v1;
+/// Extraction interop profile and schema helpers — version 1.
+pub mod v1;

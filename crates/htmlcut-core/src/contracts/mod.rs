@@ -6,18 +6,19 @@ mod results;
 
 pub use constants::{
     CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, DEFAULT_FETCH_TIMEOUT_MS,
-    DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS,
+    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, DEFAULT_FETCH_PREFLIGHT_MODE,
+    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
+    DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS,
 };
 pub(crate) use constants::{
     default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
     default_preview_chars, default_regex_flags, default_spec_version, default_true,
 };
 pub use request::{
-    AttributeName, ContractValueError, ExtractionRequest, ExtractionSpec, ExtractionStrategy,
-    InspectionOptions, NormalizationOptions, OutputOptions, PatternMode, RuntimeOptions,
-    SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
-    SourceKind, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
+    AttributeName, ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
+    ExtractionStrategy, FetchPreflightMode, InspectionOptions, NormalizationOptions, OutputOptions,
+    PatternMode, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec,
+    SliceSpec, SourceInput, SourceKind, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
 };
 pub use results::{
     DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel, DocumentInspection, ExtractionMatch,

@@ -4,10 +4,15 @@ use super::*;
 use clap::Parser;
 use htmlcut_core::{
     AttributeName, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
-    DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS, DelimiterPairMatchMetadata, Diagnostic,
-    DiagnosticLevel, DocumentInspection, ExtractionMatch, ExtractionMatchMetadata,
-    ExtractionResult, ExtractionSpec, ExtractionStats, Range, SelectionSpec, SelectorMatchMetadata,
-    SelectorQuery, SourceKind, SourceMetadata, ValueSpec, ValueType, WhitespaceMode,
+    DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS, Diagnostic, DiagnosticLevel, ExtractionDefinition,
+    ExtractionRequest, ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode,
+    SelectionSpec, SelectorQuery, SourceKind, SourceMetadata, SourceRequest, ValueSpec, ValueType,
+    WhitespaceMode,
+    result::{
+        DelimiterPairMatchMetadata, DocumentInspection, ExtractionMatch, ExtractionMatchMetadata,
+        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
+        SelectorMatchMetadata,
+    },
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -31,6 +36,23 @@ fn write_fixture_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = dir.join(name);
     fs::write(&path, contents).expect("write fixture file");
     path
+}
+
+fn write_definition_file(dir: &Path, name: &str, definition: &ExtractionDefinition) -> PathBuf {
+    let path = dir.join(name);
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(definition).expect("serialize definition"),
+    )
+    .expect("write definition file");
+    path
+}
+
+fn expect_cli_error<T>(result: Result<T, CliError>, label: &str) -> CliError {
+    match result {
+        Ok(_) => panic!("expected cli error: {label}"),
+        Err(error) => error,
+    }
 }
 
 fn workspace_package_field(manifest: &str, field: &str) -> Option<String> {
@@ -60,7 +82,7 @@ fn workspace_package_field(manifest: &str, field: &str) -> Option<String> {
 fn fixture_result(value: Value, value_type: ValueType) -> ExtractionResult {
     let value_spec = match value_type {
         ValueType::Text => ValueSpec::Text,
-        ValueType::Html => ValueSpec::Html,
+        ValueType::InnerHtml => ValueSpec::InnerHtml,
         ValueType::OuterHtml => ValueSpec::OuterHtml,
         ValueType::Attribute => ValueSpec::Attribute {
             name: AttributeName::new("href").expect("attribute name"),
@@ -186,20 +208,20 @@ fn fixture_inspection() -> SourceInspectionCommandReport {
             script_count: 0,
             style_count: 0,
             document_base_href: Some("../content/".to_owned()),
-            top_tags: vec![htmlcut_core::InspectionCount {
+            top_tags: vec![InspectionCount {
                 name: "a".to_owned(),
                 count: 2,
             }],
-            top_classes: vec![htmlcut_core::InspectionCount {
+            top_classes: vec![InspectionCount {
                 name: "card".to_owned(),
                 count: 2,
             }],
-            headings: vec![htmlcut_core::HeadingInspection {
+            headings: vec![HeadingInspection {
                 level: 1,
                 text: "Hello".to_owned(),
                 path: "article:nth-of-type(1) > h1:nth-of-type(1)".to_owned(),
             }],
-            links: vec![htmlcut_core::LinkInspection {
+            links: vec![LinkInspection {
                 text: "Guide".to_owned(),
                 href: Some("../guide.html".to_owned()),
                 resolved_href: Some("https://example.com/guide.html".to_owned()),
@@ -297,11 +319,11 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("core: extract(ExtractionRequest{kind=slice}, RuntimeOptions)"));
     assert!(stdout.contains("request: ExtractionRequest + RuntimeOptions"));
     assert!(
-        stdout.contains("request schemas: htmlcut.extraction_request@2, htmlcut.runtime_options@2")
+        stdout.contains("request schemas: htmlcut.extraction_request@4, htmlcut.runtime_options@4")
     );
     assert!(stdout.contains("result: ExtractionResult"));
-    assert!(stdout.contains("result schemas: htmlcut.extraction_result@3"));
-    assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> <INPUT>"));
+    assert!(stdout.contains("result schemas: htmlcut.extraction_result@4"));
+    assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"));
     assert!(stdout.contains("default output: text"));
     assert!(stdout.contains("default output overrides:"));
     assert!(stdout.contains("when --value is structured => json"));
@@ -309,8 +331,19 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("requires --bundle when --output is none"));
     assert!(stdout.contains("restricts --output to json, none when --value is structured"));
     assert!(stdout.contains("parameters:"));
-    assert!(stdout.contains("option --from <FROM> | required"));
+    assert!(stdout.contains("option --request-file <PATH> | optional"));
+    assert!(stdout.contains("option --fetch-preflight <FETCH_PREFLIGHT> | optional"));
+    assert!(
+        stdout
+            .contains("positional <INPUT> | conditional (required unless --request-file is used)")
+    );
+    assert!(
+        stdout.contains(
+            "option --from <FROM> | conditional (required unless --request-file is used)"
+        )
+    );
     assert!(stdout.contains("option --regex-flags <REGEX_FLAGS> | conditional (allowed only when --pattern regex is used)"));
+    assert!(stdout.contains("option --output-file <PATH> | optional"));
     assert!(stdout.contains(
         "For --value outer-html, HTMLCut returns the full outer matched range including both boundaries."
     ));
@@ -330,7 +363,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let select_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SelectPreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 2,
             path: None,
             value_type: ValueType::Structured,
@@ -354,7 +387,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let rich_select_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SelectPreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 4,
             path: Some("article:nth-of-type(1)".to_owned()),
             value_type: ValueType::Structured,
@@ -384,7 +417,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let slice_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SlicePreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 3,
             path: None,
             value_type: ValueType::Structured,
@@ -438,7 +471,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let rich_slice_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SlicePreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 5,
             path: None,
             value_type: ValueType::Structured,
@@ -482,7 +515,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let fragment_signal_slice_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SlicePreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 8,
             path: None,
             value_type: ValueType::Structured,
@@ -506,7 +539,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let sparse_slice_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SlicePreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 6,
             path: None,
             value_type: ValueType::Structured,
@@ -545,7 +578,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert_eq!(
         render_preview_location(
             htmlcut_core::OperationId::SlicePreview,
-            &htmlcut_core::ExtractionMatch {
+            &ExtractionMatch {
                 index: 7,
                 path: None,
                 value_type: ValueType::Structured,
@@ -561,7 +594,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
 
     let fallback_preview_lines = render_preview_match_lines(
         htmlcut_core::OperationId::SelectExtract,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 1,
             path: None,
             value_type: ValueType::Structured,
@@ -640,7 +673,7 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             }],
         },
         command_contract: Some(CatalogCommandContract {
-            invocation: "htmlcut select [OPTIONS] --css <CSS> <INPUT>".to_owned(),
+            invocation: "htmlcut select [OPTIONS] --css <CSS> [INPUT]".to_owned(),
             inputs: vec!["file".to_owned(), "url".to_owned(), "stdin".to_owned()],
             default_match: Some("first".to_owned()),
             selection_modes: vec!["single".to_owned(), "all".to_owned()],
@@ -686,8 +719,8 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
                     section: "Source".to_owned(),
                     name: "<INPUT>".to_owned(),
                     kind: CatalogParameterKind::Positional,
-                    requirement: CatalogParameterRequirement::Required,
-                    requirement_note: None,
+                    requirement: CatalogParameterRequirement::Conditional,
+                    requirement_note: Some("required unless --request-file is used".to_owned()),
                     value_hint: None,
                     default: None,
                     allowed_values: Vec::new(),
@@ -754,7 +787,7 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
                 }],
             },
             command_contract: Some(CatalogCommandContract {
-                invocation: "htmlcut select [OPTIONS] --css <CSS> <INPUT>".to_owned(),
+                invocation: "htmlcut select [OPTIONS] --css <CSS> [INPUT]".to_owned(),
                 inputs: vec!["file".to_owned(), "url".to_owned(), "stdin".to_owned()],
                 default_match: Some("first".to_owned()),
                 selection_modes: vec!["single".to_owned(), "all".to_owned()],
@@ -1060,7 +1093,7 @@ fn preview_helpers_cover_metadata_mismatches_and_empty_reports() {
 
     let select_preview_with_slice_metadata = render_preview_match_lines(
         htmlcut_core::OperationId::SelectPreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 1,
             path: Some("explicit-path".to_owned()),
             value_type: ValueType::Structured,
@@ -1085,7 +1118,7 @@ fn preview_helpers_cover_metadata_mismatches_and_empty_reports() {
 
     let slice_preview_with_selector_metadata = render_preview_match_lines(
         htmlcut_core::OperationId::SlicePreview,
-        &htmlcut_core::ExtractionMatch {
+        &ExtractionMatch {
             index: 2,
             path: Some("slice-path".to_owned()),
             value_type: ValueType::Structured,
@@ -1132,7 +1165,8 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
 
     let text_outcome = run_schema(SchemaArgs {
         output: CliSchemaOutputMode::Text,
-        name: Some("htmlcut.ffhn_result".to_owned()),
+        output_file: None,
+        name: Some("htmlcut.result".to_owned()),
         schema_version: Some(1),
     });
     assert_eq!(text_outcome.exit_code, 0);
@@ -1145,6 +1179,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
 
     let json_error_outcome = run_schema(SchemaArgs {
         output: CliSchemaOutputMode::Json,
+        output_file: None,
         name: Some("synthetic.missing".to_owned()),
         schema_version: Some(99),
     });
@@ -1158,6 +1193,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
 
     let text_error_outcome = run_schema(SchemaArgs {
         output: CliSchemaOutputMode::Text,
+        output_file: None,
         name: None,
         schema_version: Some(1),
     });
@@ -1170,10 +1206,11 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
     );
 
     let source = build_source_request(&SourceArgs {
-        input: "https://example.com/docs/page.html".to_owned(),
+        input: Some("https://example.com/docs/page.html".to_owned()),
         base_url: Some("https://base.example/root/".to_owned()),
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect("url source request");
     assert!(matches!(
@@ -1185,10 +1222,11 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         Some("https://base.example/root/")
     );
     let http_source = build_source_request(&SourceArgs {
-        input: "http://example.com/docs/page.html".to_owned(),
+        input: Some("http://example.com/docs/page.html".to_owned()),
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect("http url source request");
     assert!(matches!(
@@ -1197,10 +1235,11 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
     ));
 
     let invalid_base_url = build_source_request(&SourceArgs {
-        input: "-".to_owned(),
+        input: Some("-".to_owned()),
         base_url: Some("ftp://example.com".to_owned()),
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect_err("invalid base url");
     assert_eq!(invalid_base_url.code, "CLI_BASE_URL_SCHEME_INVALID");
@@ -1212,7 +1251,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .is_empty()
     );
     assert_eq!(
-        build_schema_report(Some("htmlcut.ffhn_result"), Some(1))
+        build_schema_report(Some("htmlcut.result"), Some(1))
             .expect("filtered schema")
             .schemas
             .len(),
@@ -1432,7 +1471,7 @@ fn resolve_extract_output_mode_enforces_value_and_bundle_rules() {
         CliOutputMode::None
     );
     assert_eq!(
-        resolve_extract_output_mode(Some(CliOutputMode::Html), &ValueType::Html, None)
+        resolve_extract_output_mode(Some(CliOutputMode::Html), &ValueType::InnerHtml, None)
             .expect("html for html"),
         CliOutputMode::Html
     );
@@ -1504,6 +1543,7 @@ fn extract_prefers_json_matches_default_structured_behavior() {
         bundle: None,
         preview_chars: DEFAULT_PREVIEW_CHARS,
         include_source_text: false,
+        output_file: None,
     }));
     assert!(!extract_prefers_json(&ExtractOutputArgs {
         value: CliValueMode::Text,
@@ -1514,6 +1554,7 @@ fn extract_prefers_json_matches_default_structured_behavior() {
         bundle: None,
         preview_chars: DEFAULT_PREVIEW_CHARS,
         include_source_text: false,
+        output_file: None,
     }));
 }
 
@@ -1572,7 +1613,10 @@ fn render_output_helpers_cover_text_html_json_and_none() {
 
     let html_report = build_extraction_report(
         "select",
-        fixture_result(Value::String("<p>Hello</p>".to_owned()), ValueType::Html),
+        fixture_result(
+            Value::String("<p>Hello</p>".to_owned()),
+            ValueType::InnerHtml,
+        ),
         None,
     );
     assert!(
@@ -1663,7 +1707,7 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
     );
     assert!(wrap_html_document(&report).starts_with("<!DOCTYPE html>"));
 
-    let json_match = htmlcut_core::ExtractionMatch {
+    let json_match = ExtractionMatch {
         index: 1,
         path: None,
         value_type: ValueType::Structured,
@@ -1676,7 +1720,7 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
     assert!(render_match_as_text(&json_match).contains("\"hello\""));
     assert!(render_match_as_html(&json_match).contains("<pre>"));
 
-    let text_match = htmlcut_core::ExtractionMatch {
+    let text_match = ExtractionMatch {
         index: 1,
         path: None,
         value_type: ValueType::Text,
@@ -1693,7 +1737,10 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
 
     let wrapped = build_extraction_report(
         "select",
-        fixture_result(Value::String("<p>Hello</p>".to_owned()), ValueType::Html),
+        fixture_result(
+            Value::String("<p>Hello</p>".to_owned()),
+            ValueType::InnerHtml,
+        ),
         None,
     );
     assert!(wrap_html_document(&wrapped).contains("<section data-match-index=\"1\">"));
@@ -1737,13 +1784,14 @@ fn error_helpers_and_outcomes_cover_json_and_human_modes() {
     assert_eq!(generated_diagnostics.len(), 1);
     assert_eq!(generated_diagnostics[0].code, "CLI_USAGE");
 
-    let json = error_outcome("select".to_owned(), true, error);
+    let json = error_outcome("select".to_owned(), true, None, error);
     assert_eq!(json.exit_code, EXIT_CODE_USAGE);
     assert!(json.stdout.expect("json stdout").contains("\"ok\": false"));
 
     let human = error_outcome(
         "select".to_owned(),
         false,
+        None,
         output_error("CLI_OUTPUT", "could not write"),
     );
     assert!(human.stderr[0].contains("could not write"));
@@ -1751,6 +1799,7 @@ fn error_helpers_and_outcomes_cover_json_and_human_modes() {
     let json_with_diagnostics = error_outcome(
         "select".to_owned(),
         true,
+        None,
         usage_error_with_diagnostics(
             "CLI_USAGE",
             "bad input",
@@ -1779,8 +1828,11 @@ fn error_helpers_and_outcomes_cover_json_and_human_modes() {
             .expect("json stdout")
             .contains("\"diagnostics\"")
     );
-    let direct_json =
-        json_error_outcome("select".to_owned(), usage_error("CLI_USAGE", "bad input"));
+    let direct_json = json_error_outcome(
+        "select".to_owned(),
+        None,
+        usage_error("CLI_USAGE", "bad input"),
+    );
     assert_eq!(direct_json.exit_code, EXIT_CODE_USAGE);
     assert!(
         direct_json
@@ -1855,10 +1907,7 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
 
     let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--version".to_owned()]);
     assert_eq!(exit_code, 0);
-    assert_eq!(
-        stdout,
-        "htmlcut 3.0.0\nExtract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports.\n"
-    );
+    assert_eq!(stdout, format!("{}\n", version_banner()));
 
     let (exit_code, stdout, _) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -1884,7 +1933,7 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         "--help".to_owned(),
     ]);
     assert_eq!(exit_code, 0);
-    assert!(stdout.contains("Usage: htmlcut select [OPTIONS] --css <CSS> <INPUT>"));
+    assert!(stdout.contains("Usage: htmlcut select [OPTIONS] [INPUT]"));
     assert!(stdout.contains("-V, --version"));
     assert!(stderr.is_empty());
 
@@ -1982,7 +2031,7 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
         .expect("filtered cli operation should expose a contract");
     assert_eq!(
         contract.invocation,
-        "htmlcut inspect select [OPTIONS] --css <CSS> <INPUT>"
+        "htmlcut inspect select [OPTIONS] --css <CSS> [INPUT]"
     );
     assert_eq!(contract.default_match.as_deref(), Some("first"));
     assert_eq!(contract.default_value.as_deref(), Some("structured"));
@@ -1990,7 +2039,14 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
     assert!(contract.parameters.iter().any(|parameter| {
         parameter.name == "--css"
             && parameter.kind == crate::model::CatalogParameterKind::Option
-            && parameter.requirement == crate::model::CatalogParameterRequirement::Required
+            && parameter.requirement == crate::model::CatalogParameterRequirement::Conditional
+            && parameter.requirement_note.as_deref()
+                == Some("required unless --request-file is used")
+    }));
+    assert!(contract.parameters.iter().any(|parameter| {
+        parameter.name == "--request-file"
+            && parameter.kind == crate::model::CatalogParameterKind::Option
+            && parameter.requirement == crate::model::CatalogParameterRequirement::Optional
     }));
     assert!(contract.parameters.iter().any(|parameter| {
         parameter.name == "--index"
@@ -2003,7 +2059,7 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
 }
 
 #[test]
-fn schema_report_surfaces_core_cli_and_ffhn_contracts() {
+fn schema_report_surfaces_core_cli_and_interop_contracts() {
     let report = build_schema_report(None, None).expect("schema report");
     assert_eq!(report.tool, TOOL_NAME);
     assert_eq!(report.version, HTMLCUT_VERSION);
@@ -2019,18 +2075,17 @@ fn schema_report_surfaces_core_cli_and_ffhn_contracts() {
             && schema.owner_surface == "htmlcut-core"
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::interop::ffhn_v1::FFHN_PLAN_SCHEMA_NAME
-            && schema.owner_surface == "htmlcut_core::interop::ffhn_v1"
+        schema.schema_name == htmlcut_core::interop::v1::PLAN_SCHEMA_NAME
+            && schema.owner_surface == "htmlcut_core::interop::v1"
             && schema.stability == htmlcut_core::SchemaStability::Frozen
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner_surface == "htmlcut-cli"
     }));
 
-    let filtered =
-        build_schema_report(Some("htmlcut.ffhn_result"), Some(1)).expect("filtered schema");
+    let filtered = build_schema_report(Some("htmlcut.result"), Some(1)).expect("filtered schema");
     assert_eq!(filtered.schemas.len(), 1);
-    assert_eq!(filtered.schemas[0].schema_name, "htmlcut.ffhn_result");
+    assert_eq!(filtered.schemas[0].schema_name, "htmlcut.result");
 
     let error = build_schema_report(None, Some(1)).expect_err("version without name");
     assert_eq!(error.code, "CLI_SCHEMA_VERSION_REQUIRES_NAME");
@@ -2230,7 +2285,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
 #[test]
 fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     assert_eq!(
-        default_output_for_value(&ValueType::Html),
+        default_output_for_value(&ValueType::InnerHtml),
         CliOutputMode::Html
     );
     assert_eq!(
@@ -2251,10 +2306,10 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
         .is_err()
     );
     assert_eq!(
-        resolve_value_spec(CliValueMode::Html, None)
+        resolve_value_spec(CliValueMode::InnerHtml, None)
             .expect("html value")
             .value_type(),
-        ValueType::Html
+        ValueType::InnerHtml
     );
     assert_eq!(
         resolve_value_spec(CliValueMode::OuterHtml, None)
@@ -2297,13 +2352,13 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let mut link_variants = fixture_inspection();
     link_variants.document.as_mut().expect("document").links = vec![
-        htmlcut_core::LinkInspection {
+        LinkInspection {
             text: "Docs".to_owned(),
             href: Some("https://example.com/docs".to_owned()),
             resolved_href: Some("https://example.com/docs".to_owned()),
             path: "a:nth-of-type(1)".to_owned(),
         },
-        htmlcut_core::LinkInspection {
+        LinkInspection {
             text: "Bare".to_owned(),
             href: None,
             resolved_href: None,
@@ -2330,7 +2385,10 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let mut wrapped = build_extraction_report(
         "select",
-        fixture_result(Value::String("<p>Hello</p>".to_owned()), ValueType::Html),
+        fixture_result(
+            Value::String("<p>Hello</p>".to_owned()),
+            ValueType::InnerHtml,
+        ),
         None,
     );
     wrapped.document_title = None;
@@ -2409,6 +2467,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     let human = error_outcome(
         "select".to_owned(),
         false,
+        None,
         source_error("SRC", "could not load", Vec::new()),
     );
     let mut stdout = Vec::new();
@@ -2553,13 +2612,15 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     let input = input_path.to_string_lossy().into_owned();
 
     let select = PreparedExtraction::from_select(SelectArgs {
+        definition: DefinitionArgs { request_file: None },
         source: SourceArgs {
-            input: input.clone(),
+            input: Some(input.clone()),
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
-        css: "article".to_owned(),
+        css: Some("article".to_owned()),
         selection: SelectionArgs {
             r#match: CliMatchMode::First,
             index: None,
@@ -2573,20 +2634,23 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
             bundle: None,
             preview_chars: DEFAULT_PREVIEW_CHARS,
             include_source_text: false,
+            output_file: None,
         },
     })
     .expect("select builder");
     assert_eq!(select.command, "select");
 
     let slice = PreparedExtraction::from_slice(SliceArgs {
+        definition: DefinitionArgs { request_file: None },
         source: SourceArgs {
-            input: input.clone(),
+            input: Some(input.clone()),
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
-        from: "<article>".to_owned(),
-        to: "</article>".to_owned(),
+        from: Some("<article>".to_owned()),
+        to: Some("</article>".to_owned()),
         pattern: CliPatternMode::Literal,
         regex_flags: None,
         include_start: false,
@@ -2604,19 +2668,22 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
             bundle: None,
             preview_chars: DEFAULT_PREVIEW_CHARS,
             include_source_text: false,
+            output_file: None,
         },
     })
     .expect("slice builder");
     assert_eq!(slice.command, "slice");
 
     let preview = PreparedPreview::from_select(InspectSelectArgs {
+        definition: DefinitionArgs { request_file: None },
         source: SourceArgs {
-            input: input.clone(),
+            input: Some(input.clone()),
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
-        css: "article".to_owned(),
+        css: Some("article".to_owned()),
         selection: SelectionArgs {
             r#match: CliMatchMode::First,
             index: None,
@@ -2627,6 +2694,7 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
             output: CliInspectOutputMode::Text,
             preview_chars: DEFAULT_PREVIEW_CHARS,
             include_source_text: false,
+            output_file: None,
         },
     })
     .expect("preview builder");
@@ -2636,13 +2704,15 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -2656,19 +2726,22 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: Some("ftp://example.com".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -2682,19 +2755,22 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -2708,20 +2784,23 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            from: "<article>".to_owned(),
-            to: "</article>".to_owned(),
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
             include_start: false,
@@ -2739,20 +2818,23 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: Some("ftp://example.com".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            from: "<article>".to_owned(),
-            to: "</article>".to_owned(),
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
             include_start: false,
@@ -2770,20 +2852,23 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            from: "<article>".to_owned(),
-            to: "</article>".to_owned(),
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
             include_start: false,
@@ -2801,6 +2886,7 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
@@ -2808,14 +2894,16 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     assert!(
         PreparedSourceInspection::new(InspectSourceArgs {
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             output: CliInspectOutputMode::Text,
             include_source_text: false,
+            output_file: None,
             preview_chars: 0,
         })
         .is_err()
@@ -2823,27 +2911,31 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     assert!(
         PreparedSourceInspection::new(InspectSourceArgs {
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             output: CliInspectOutputMode::Text,
             include_source_text: false,
+            output_file: None,
             preview_chars: DEFAULT_PREVIEW_CHARS,
         })
         .is_err()
     );
     assert!(
         PreparedPreview::from_select(InspectSelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -2854,20 +2946,23 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 output: CliInspectOutputMode::Text,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
     );
     assert!(
         PreparedPreview::from_slice(InspectSliceArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input,
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            from: "<article>".to_owned(),
-            to: "</article>".to_owned(),
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
             include_start: false,
@@ -2882,6 +2977,7 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
                 output: CliInspectOutputMode::Text,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
@@ -2946,6 +3042,471 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
 }
 
 #[test]
+fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(tempdir.path(), "input.html", "<article>Hello</article>");
+    let input = input_path.to_string_lossy().into_owned();
+
+    let selector_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::file(&input_path),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector"))
+            .with_selection(SelectionSpec::single())
+            .with_value(ValueSpec::Text),
+    ));
+    let selector_definition_path = write_definition_file(
+        tempdir.path(),
+        "selector-request.json",
+        &selector_definition,
+    );
+
+    let slice_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::file(&input_path),
+        ExtractionSpec::slice(
+            htmlcut_core::SliceSpec::new(
+                htmlcut_core::SliceBoundary::new("<article>").expect("slice boundary"),
+                htmlcut_core::SliceBoundary::new("</article>").expect("slice boundary"),
+            )
+            .with_boundary_inclusion(true, true),
+        )
+        .with_selection(SelectionSpec::single())
+        .with_value(ValueSpec::Text),
+    ));
+    let slice_definition_path =
+        write_definition_file(tempdir.path(), "slice-request.json", &slice_definition);
+    let request_file_output_path = tempdir.path().join("request-file-output.json");
+
+    let get_only_runtime = build_runtime(&SourceArgs {
+        input: Some(input.clone()),
+        base_url: None,
+        max_bytes: DEFAULT_MAX_BYTES.to_string(),
+        fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_preflight: CliFetchPreflightMode::GetOnly,
+    })
+    .expect("runtime");
+    assert_eq!(
+        get_only_runtime.fetch_preflight,
+        FetchPreflightMode::GetOnly
+    );
+
+    assert_eq!(
+        build_source_request(&SourceArgs {
+            input: None,
+            base_url: None,
+            max_bytes: DEFAULT_MAX_BYTES.to_string(),
+            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+        })
+        .expect_err("missing input")
+        .code,
+        "CLI_REQUIRED_PARAMETER_MISSING"
+    );
+
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &tempdir.path().join("missing-request.json"),
+                ExtractionStrategy::Selector,
+                "select",
+            ),
+            "missing request file",
+        )
+        .code,
+        "CLI_REQUEST_FILE_READ_FAILED"
+    );
+
+    let invalid_json_path = write_fixture_file(tempdir.path(), "invalid-request.json", "{not json");
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &invalid_json_path,
+                ExtractionStrategy::Selector,
+                "select",
+            ),
+            "invalid request file json",
+        )
+        .code,
+        "CLI_REQUEST_FILE_INVALID"
+    );
+
+    let mut unsupported_schema =
+        serde_json::to_value(&selector_definition).expect("definition json");
+    unsupported_schema["schema_name"] = Value::String("synthetic.request".to_owned());
+    unsupported_schema["schema_version"] = Value::from(99);
+    let unsupported_schema_path = tempdir.path().join("unsupported-schema.json");
+    fs::write(
+        &unsupported_schema_path,
+        serde_json::to_string_pretty(&unsupported_schema).expect("serialize unsupported schema"),
+    )
+    .expect("write unsupported schema");
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &unsupported_schema_path,
+                ExtractionStrategy::Selector,
+                "select",
+            ),
+            "unsupported schema",
+        )
+        .code,
+        "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
+    );
+
+    let mut unsupported_version =
+        serde_json::to_value(&selector_definition).expect("definition json");
+    unsupported_version["schema_version"] = Value::from(99);
+    let unsupported_version_path = tempdir.path().join("unsupported-version.json");
+    fs::write(
+        &unsupported_version_path,
+        serde_json::to_string_pretty(&unsupported_version).expect("serialize unsupported version"),
+    )
+    .expect("write unsupported version");
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &unsupported_version_path,
+                ExtractionStrategy::Selector,
+                "select",
+            ),
+            "unsupported version",
+        )
+        .code,
+        "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
+    );
+
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &selector_definition_path,
+                ExtractionStrategy::Slice,
+                "slice",
+            ),
+            "strategy mismatch",
+        )
+        .code,
+        "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    );
+    assert_eq!(
+        expect_cli_error(
+            load_extraction_definition_for_tests(
+                &slice_definition_path,
+                ExtractionStrategy::Selector,
+                "select",
+            ),
+            "slice strategy mismatch",
+        )
+        .code,
+        "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    );
+
+    let prepared_slice = PreparedExtraction::from_slice_with_logging(
+        SliceArgs {
+            definition: DefinitionArgs {
+                request_file: Some(slice_definition_path.clone()),
+            },
+            source: SourceArgs {
+                input: None,
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            from: None,
+            to: None,
+            pattern: CliPatternMode::Literal,
+            regex_flags: None,
+            include_start: false,
+            include_end: false,
+            selection: SelectionArgs {
+                r#match: CliMatchMode::First,
+                index: None,
+            },
+            output: ExtractOutputArgs {
+                value: CliValueMode::Text,
+                attribute: None,
+                whitespace: CliWhitespaceMode::Preserve,
+                rewrite_urls: false,
+                output: None,
+                bundle: None,
+                output_file: Some(request_file_output_path.clone()),
+                preview_chars: DEFAULT_PREVIEW_CHARS,
+                include_source_text: false,
+            },
+        },
+        0,
+        false,
+    )
+    .expect("slice request file");
+    assert_eq!(
+        prepared_slice.request.extraction.strategy(),
+        ExtractionStrategy::Slice
+    );
+    assert_eq!(
+        prepared_slice.output_file.as_deref(),
+        Some(request_file_output_path.as_path())
+    );
+
+    let preview_select = PreparedPreview::from_select(InspectSelectArgs {
+        definition: DefinitionArgs {
+            request_file: Some(selector_definition_path.clone()),
+        },
+        source: SourceArgs {
+            input: None,
+            base_url: None,
+            max_bytes: DEFAULT_MAX_BYTES.to_string(),
+            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+        },
+        css: None,
+        selection: SelectionArgs {
+            r#match: CliMatchMode::First,
+            index: None,
+        },
+        whitespace: CliWhitespaceMode::Preserve,
+        rewrite_urls: false,
+        output: InspectOutputArgs {
+            output: CliInspectOutputMode::Json,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
+            include_source_text: false,
+            output_file: None,
+        },
+    })
+    .expect("inspect select request file");
+    assert_eq!(
+        preview_select.request.extraction.value(),
+        &ValueSpec::Structured
+    );
+
+    let preview_slice = PreparedPreview::from_slice(InspectSliceArgs {
+        definition: DefinitionArgs {
+            request_file: Some(slice_definition_path.clone()),
+        },
+        source: SourceArgs {
+            input: None,
+            base_url: None,
+            max_bytes: DEFAULT_MAX_BYTES.to_string(),
+            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+        },
+        from: None,
+        to: None,
+        pattern: CliPatternMode::Literal,
+        regex_flags: None,
+        include_start: false,
+        include_end: false,
+        selection: SelectionArgs {
+            r#match: CliMatchMode::First,
+            index: None,
+        },
+        whitespace: CliWhitespaceMode::Preserve,
+        rewrite_urls: false,
+        output: InspectOutputArgs {
+            output: CliInspectOutputMode::Json,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
+            include_source_text: false,
+            output_file: None,
+        },
+    })
+    .expect("inspect slice request file");
+    assert_eq!(
+        preview_slice.request.extraction.value(),
+        &ValueSpec::Structured
+    );
+
+    let slice_conflict = expect_cli_error(
+        PreparedExtraction::from_slice_with_logging(
+            SliceArgs {
+                definition: DefinitionArgs {
+                    request_file: Some(slice_definition_path.clone()),
+                },
+                source: SourceArgs {
+                    input: Some(input.clone()),
+                    base_url: Some("https://example.com/base/".to_owned()),
+                    max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                    fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
+                },
+                from: Some("<article>".to_owned()),
+                to: Some("</article>".to_owned()),
+                pattern: CliPatternMode::Regex,
+                regex_flags: Some("u".to_owned()),
+                include_start: true,
+                include_end: true,
+                selection: SelectionArgs {
+                    r#match: CliMatchMode::Nth,
+                    index: Some(2),
+                },
+                output: ExtractOutputArgs {
+                    value: CliValueMode::Structured,
+                    attribute: None,
+                    whitespace: CliWhitespaceMode::Normalize,
+                    rewrite_urls: true,
+                    output: Some(CliOutputMode::Json),
+                    bundle: Some(tempdir.path().join("bundle")),
+                    output_file: Some(tempdir.path().join("stdout.json")),
+                    preview_chars: DEFAULT_PREVIEW_CHARS + 1,
+                    include_source_text: true,
+                },
+            },
+            0,
+            false,
+        ),
+        "slice request file conflict",
+    );
+    assert_eq!(slice_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
+    assert!(slice_conflict.message.contains("--regex-flags"));
+    assert!(!slice_conflict.message.contains("--output-file"));
+
+    let inspect_select_conflict = expect_cli_error(
+        PreparedPreview::from_select(InspectSelectArgs {
+            definition: DefinitionArgs {
+                request_file: Some(selector_definition_path.clone()),
+            },
+            source: SourceArgs {
+                input: Some(input.clone()),
+                base_url: Some("https://example.com/base/".to_owned()),
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            css: Some("article".to_owned()),
+            selection: SelectionArgs {
+                r#match: CliMatchMode::Nth,
+                index: Some(2),
+            },
+            whitespace: CliWhitespaceMode::Normalize,
+            rewrite_urls: true,
+            output: InspectOutputArgs {
+                output: CliInspectOutputMode::Text,
+                preview_chars: DEFAULT_PREVIEW_CHARS + 1,
+                include_source_text: true,
+                output_file: None,
+            },
+        }),
+        "inspect select request file conflict",
+    );
+    assert_eq!(inspect_select_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
+    assert!(inspect_select_conflict.message.contains("--whitespace"));
+    assert!(inspect_select_conflict.message.contains("--preview-chars"));
+
+    let inspect_slice_conflict = expect_cli_error(
+        PreparedPreview::from_slice(InspectSliceArgs {
+            definition: DefinitionArgs {
+                request_file: Some(slice_definition_path),
+            },
+            source: SourceArgs {
+                input: Some(input),
+                base_url: Some("https://example.com/base/".to_owned()),
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
+            pattern: CliPatternMode::Regex,
+            regex_flags: Some("u".to_owned()),
+            include_start: true,
+            include_end: true,
+            selection: SelectionArgs {
+                r#match: CliMatchMode::Nth,
+                index: Some(2),
+            },
+            whitespace: CliWhitespaceMode::Normalize,
+            rewrite_urls: true,
+            output: InspectOutputArgs {
+                output: CliInspectOutputMode::Text,
+                preview_chars: DEFAULT_PREVIEW_CHARS + 1,
+                include_source_text: true,
+                output_file: None,
+            },
+        }),
+        "inspect slice request file conflict",
+    );
+    assert_eq!(inspect_slice_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
+    assert!(inspect_slice_conflict.message.contains("--include-start"));
+    assert!(
+        inspect_slice_conflict
+            .message
+            .contains("--include-source-text")
+    );
+
+    assert_eq!(
+        resolve_extract_output_mode_with_output_file(
+            Some(CliOutputMode::None),
+            &ValueType::Text,
+            Some(tempdir.path()),
+            Some(&tempdir.path().join("selection.txt")),
+        )
+        .expect_err("output file requires stdout payload")
+        .code,
+        "CLI_OUTPUT_FILE_REQUIRES_STDOUT_PAYLOAD"
+    );
+
+    let nested_output = tempdir.path().join("nested/output/selection.txt");
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit_code = write_outcome(
+        ExecutionOutcome {
+            stdout: Some("Hello".to_owned()),
+            output_file: Some(nested_output.clone()),
+            stderr: Vec::new(),
+            exit_code: 0,
+        },
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(exit_code, 0);
+    assert!(stdout.is_empty());
+    assert!(stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(&nested_output).expect("nested output file"),
+        "Hello\n"
+    );
+
+    let direct_nested_output = tempdir.path().join("direct/output/report.txt");
+    write_stdout_payload_for_tests(&direct_nested_output, "Hello")
+        .expect("write stdout payload with nested parent");
+    assert_eq!(
+        fs::read_to_string(&direct_nested_output).expect("direct nested output file"),
+        "Hello\n"
+    );
+    let relative_output =
+        PathBuf::from(format!(".htmlcut-write-payload-{}.txt", std::process::id()));
+    write_stdout_payload_for_tests(&relative_output, "Hello")
+        .expect("write stdout payload without parent directory");
+    assert_eq!(
+        fs::read_to_string(&relative_output).expect("relative output file"),
+        "Hello\n"
+    );
+    fs::remove_file(&relative_output).expect("remove relative output file");
+    assert!(
+        write_stdout_payload_for_tests(Path::new("/"), "Hello")
+            .expect_err("root write should fail")
+            .kind()
+            != std::io::ErrorKind::NotFound
+    );
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit_code = write_outcome(
+        ExecutionOutcome {
+            stdout: Some("Hello".to_owned()),
+            output_file: Some(tempdir.path().to_path_buf()),
+            stderr: Vec::new(),
+            exit_code: 0,
+        },
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(exit_code, EXIT_CODE_OUTPUT);
+    assert!(stdout.is_empty());
+    assert!(
+        String::from_utf8(stderr)
+            .expect("stderr")
+            .contains("Could not write")
+    );
+}
+
+#[test]
 fn execution_paths_cover_direct_success_and_failure_variants() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture_file(
@@ -2998,13 +3559,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         .into_owned();
     let inspect_text = run_inspect_source(InspectSourceArgs {
         source: SourceArgs {
-            input: missing.clone(),
+            input: Some(missing.clone()),
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
         output: CliInspectOutputMode::Text,
         include_source_text: false,
+        output_file: None,
         sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
         preview_chars: DEFAULT_PREVIEW_CHARS,
     });
@@ -3014,13 +3577,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let inspect_json = run_inspect_source(InspectSourceArgs {
         source: SourceArgs {
-            input: missing,
+            input: Some(missing),
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
         output: CliInspectOutputMode::Json,
         include_source_text: false,
+        output_file: None,
         sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
         preview_chars: DEFAULT_PREVIEW_CHARS,
     });
@@ -3034,13 +3599,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_text = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "[".to_owned(),
+            css: Some("[".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -3051,6 +3618,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 output: CliInspectOutputMode::Text,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .expect("preview builder"),
@@ -3061,13 +3629,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_json = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "[".to_owned(),
+            css: Some("[".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -3078,6 +3648,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 output: CliInspectOutputMode::Json,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .expect("preview builder"),
@@ -3092,13 +3663,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_success_json = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -3109,6 +3682,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 output: CliInspectOutputMode::Json,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .expect("preview builder"),
@@ -3123,13 +3697,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let extract_text = execute_extraction(
         PreparedExtraction::from_select(SelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "[".to_owned(),
+            css: Some("[".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -3143,6 +3719,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .expect("extract builder"),
@@ -3153,15 +3730,17 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let bundle_dir = tempdir.path().join("bundle out");
     let extract_success = execute_extraction(
-        PreparedExtraction::from_select_with_verbose(
+        PreparedExtraction::from_select_with_logging(
             SelectArgs {
+                definition: DefinitionArgs { request_file: None },
                 source: SourceArgs {
-                    input: input.clone(),
+                    input: Some(input.clone()),
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
-                css: "article".to_owned(),
+                css: Some("article".to_owned()),
                 selection: SelectionArgs {
                     r#match: CliMatchMode::First,
                     index: None,
@@ -3175,9 +3754,11 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     bundle: Some(bundle_dir.clone()),
                     preview_chars: DEFAULT_PREVIEW_CHARS,
                     include_source_text: false,
+                    output_file: None,
                 },
             },
             1,
+            false,
         )
         .expect("extract builder"),
     );
@@ -3192,13 +3773,15 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let extract_success_no_bundle = execute_extraction(
         PreparedExtraction::from_select(SelectArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input: input.clone(),
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            css: "article".to_owned(),
+            css: Some("article".to_owned()),
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
@@ -3212,6 +3795,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .expect("extract builder"),
@@ -3220,15 +3804,17 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     assert!(extract_success_no_bundle.stderr.is_empty());
 
     let extract_success_verbose_no_bundle = execute_extraction(
-        PreparedExtraction::from_select_with_verbose(
+        PreparedExtraction::from_select_with_logging(
             SelectArgs {
+                definition: DefinitionArgs { request_file: None },
                 source: SourceArgs {
-                    input: input.clone(),
+                    input: Some(input.clone()),
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
-                css: "article".to_owned(),
+                css: Some("article".to_owned()),
                 selection: SelectionArgs {
                     r#match: CliMatchMode::First,
                     index: None,
@@ -3242,9 +3828,11 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     bundle: None,
                     preview_chars: DEFAULT_PREVIEW_CHARS,
                     include_source_text: false,
+                    output_file: None,
                 },
             },
             1,
+            false,
         )
         .expect("extract builder"),
     );
@@ -3253,14 +3841,16 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
+            definition: DefinitionArgs { request_file: None },
             source: SourceArgs {
-                input,
+                input: Some(input.clone()),
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
-            from: "<article>".to_owned(),
-            to: "</article>".to_owned(),
+            from: Some("<article>".to_owned()),
+            to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
             include_start: false,
@@ -3278,6 +3868,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 bundle: None,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
                 include_source_text: false,
+                output_file: None,
             },
         })
         .is_err()
@@ -3309,7 +3900,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             match_count: 1,
         },
         document_title: None,
-        matches: vec![htmlcut_core::ExtractionMatch {
+        matches: vec![ExtractionMatch {
             index: 1,
             path: None,
             value_type: ValueType::Structured,
@@ -3326,24 +3917,25 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let mut multi_match_report = build_extraction_report(
         "select",
-        fixture_result(Value::String("<p>Hello</p>".to_owned()), ValueType::Html),
+        fixture_result(
+            Value::String("<p>Hello</p>".to_owned()),
+            ValueType::InnerHtml,
+        ),
         None,
     );
-    multi_match_report
-        .matches
-        .push(htmlcut_core::ExtractionMatch {
-            index: 2,
-            path: Some("article:nth-of-type(2)".to_owned()),
-            value_type: ValueType::OuterHtml,
-            value: Value::String("<article>World</article>".to_owned()),
-            html: Some("<article>World</article>".to_owned()),
-            text: Some("World".to_owned()),
-            preview: "World".to_owned(),
-            metadata: selector_metadata(2, 2, "article:nth-of-type(2)", "article", &[]),
-        });
+    multi_match_report.matches.push(ExtractionMatch {
+        index: 2,
+        path: Some("article:nth-of-type(2)".to_owned()),
+        value_type: ValueType::OuterHtml,
+        value: Value::String("<article>World</article>".to_owned()),
+        html: Some("<article>World</article>".to_owned()),
+        text: Some("World".to_owned()),
+        preview: "World".to_owned(),
+        metadata: selector_metadata(2, 2, "article:nth-of-type(2)", "article", &[]),
+    });
     assert!(wrap_html_document(&multi_match_report).contains("data-match-index=\"2\""));
 
-    let outer_html_match = htmlcut_core::ExtractionMatch {
+    let outer_html_match = ExtractionMatch {
         index: 1,
         path: None,
         value_type: ValueType::OuterHtml,

@@ -32,7 +32,7 @@ pub(crate) enum CliMatchMode {
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
 pub(crate) enum CliValueMode {
     Text,
-    Html,
+    InnerHtml,
     OuterHtml,
     Attribute,
     Structured,
@@ -70,6 +70,12 @@ pub(crate) enum CliWhitespaceMode {
     Normalize,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
+pub(crate) enum CliFetchPreflightMode {
+    HeadFirst,
+    GetOnly,
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = TOOL_NAME,
@@ -91,12 +97,24 @@ pub(crate) struct Cli {
 #[derive(Debug, Args)]
 pub(crate) struct GlobalArgs {
     /// Emit progress and warning lines to stderr. Repeat for more detail.
-    #[arg(short, long, global = true, action = ArgAction::Count)]
+    #[arg(short, long, global = true, action = ArgAction::Count, conflicts_with = "quiet")]
     pub(crate) verbose: u8,
 
-    /// Print the canonical HTMLCut version and one-line product description.
+    /// Suppress non-fatal stderr diagnostics and verbose progress output.
+    #[arg(short, long, global = true, action = ArgAction::SetTrue, conflicts_with = "verbose")]
+    pub(crate) quiet: bool,
+
+    /// Print the canonical HTMLCut version, engine identity, schema profile, and support metadata.
     #[arg(short = 'V', long, global = true, action = ArgAction::SetTrue)]
     pub(crate) version: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(next_help_heading = "Definition")]
+pub(crate) struct DefinitionArgs {
+    /// Load a reusable extraction definition from a JSON file instead of spelling the request inline.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) request_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -118,7 +136,7 @@ pub(crate) enum Commands {
 pub(crate) struct SourceArgs {
     /// HTML input source: a local file path, an http(s) URL, or `-` for stdin.
     #[arg(value_name = "INPUT")]
-    pub(crate) input: String,
+    pub(crate) input: Option<String>,
 
     /// Override the input base URL used for relative-link resolution.
     ///
@@ -134,6 +152,10 @@ pub(crate) struct SourceArgs {
     /// HTTP fetch timeout in milliseconds for URL inputs.
     #[arg(long, default_value_t = DEFAULT_FETCH_TIMEOUT_MS, value_name = "MILLISECONDS")]
     pub(crate) fetch_timeout_ms: u64,
+
+    /// Probe remote URLs with HEAD before GET, or skip the HEAD preflight.
+    #[arg(long, default_value = "head-first")]
+    pub(crate) fetch_preflight: CliFetchPreflightMode,
 }
 
 #[derive(Debug, Args)]
@@ -176,6 +198,10 @@ pub(crate) struct ExtractOutputArgs {
     #[arg(long)]
     pub(crate) bundle: Option<PathBuf>,
 
+    /// Write the stdout payload to exactly one file instead of stdout.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
+
     /// Maximum preview length stored in structured reports.
     #[arg(long, default_value_t = DEFAULT_PREVIEW_CHARS)]
     pub(crate) preview_chars: usize,
@@ -199,6 +225,10 @@ pub(crate) struct InspectOutputArgs {
     /// Include the full source text inside structured inspection reports.
     #[arg(long, default_value_t = false)]
     pub(crate) include_source_text: bool,
+
+    /// Write the stdout payload to exactly one file instead of stdout.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -214,6 +244,10 @@ pub(crate) struct CatalogArgs {
     #[arg(long, default_value = "text")]
     pub(crate) output: CliCatalogOutputMode,
 
+    /// Write the stdout payload to exactly one file instead of stdout.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
+
     /// Filter the catalog to one stable operation ID.
     #[arg(long, value_name = "OPERATION_ID")]
     pub(crate) operation: Option<String>,
@@ -224,6 +258,10 @@ pub(crate) struct SchemaArgs {
     /// Render the schema registry as compact text or structured JSON.
     #[arg(long, default_value = "text")]
     pub(crate) output: CliSchemaOutputMode,
+
+    /// Write the stdout payload to exactly one file instead of stdout.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
 
     /// Filter the registry to one stable schema name.
     #[arg(long, value_name = "SCHEMA_NAME")]
@@ -259,11 +297,14 @@ pub(crate) enum InspectCommands {
 #[derive(Debug, Args)]
 pub(crate) struct SelectArgs {
     #[command(flatten)]
+    pub(crate) definition: DefinitionArgs,
+
+    #[command(flatten)]
     pub(crate) source: SourceArgs,
 
     /// CSS selector that chooses the candidate nodes to extract.
-    #[arg(long = "css")]
-    pub(crate) css: String,
+    #[arg(long = "css", required_unless_present = "request_file")]
+    pub(crate) css: Option<String>,
 
     #[command(flatten)]
     pub(crate) selection: SelectionArgs,
@@ -275,15 +316,18 @@ pub(crate) struct SelectArgs {
 #[derive(Debug, Args)]
 pub(crate) struct SliceArgs {
     #[command(flatten)]
+    pub(crate) definition: DefinitionArgs,
+
+    #[command(flatten)]
     pub(crate) source: SourceArgs,
 
     /// Start boundary used to locate each candidate slice.
-    #[arg(long)]
-    pub(crate) from: String,
+    #[arg(long, required_unless_present = "request_file")]
+    pub(crate) from: Option<String>,
 
     /// End boundary used to locate each candidate slice.
-    #[arg(long)]
-    pub(crate) to: String,
+    #[arg(long, required_unless_present = "request_file")]
+    pub(crate) to: Option<String>,
 
     /// Interpret `--from` and `--to` as literal text or regex patterns.
     #[arg(long, default_value = "literal")]
@@ -328,16 +372,23 @@ pub(crate) struct InspectSourceArgs {
     /// Maximum length of the source preview shown in text mode when `--include-source-text` is used.
     #[arg(long, default_value_t = DEFAULT_PREVIEW_CHARS)]
     pub(crate) preview_chars: usize,
+
+    /// Write the stdout payload to exactly one file instead of stdout.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct InspectSelectArgs {
     #[command(flatten)]
+    pub(crate) definition: DefinitionArgs,
+
+    #[command(flatten)]
     pub(crate) source: SourceArgs,
 
     /// CSS selector that chooses the candidate nodes to preview.
-    #[arg(long = "css")]
-    pub(crate) css: String,
+    #[arg(long = "css", required_unless_present = "request_file")]
+    pub(crate) css: Option<String>,
 
     #[command(flatten)]
     pub(crate) selection: SelectionArgs,
@@ -357,15 +408,18 @@ pub(crate) struct InspectSelectArgs {
 #[derive(Debug, Args)]
 pub(crate) struct InspectSliceArgs {
     #[command(flatten)]
+    pub(crate) definition: DefinitionArgs,
+
+    #[command(flatten)]
     pub(crate) source: SourceArgs,
 
     /// Start boundary used to locate each candidate slice preview.
-    #[arg(long)]
-    pub(crate) from: String,
+    #[arg(long, required_unless_present = "request_file")]
+    pub(crate) from: Option<String>,
 
     /// End boundary used to locate each candidate slice preview.
-    #[arg(long)]
-    pub(crate) to: String,
+    #[arg(long, required_unless_present = "request_file")]
+    pub(crate) to: Option<String>,
 
     /// Interpret `--from` and `--to` as literal text or regex patterns.
     #[arg(long, default_value = "literal")]

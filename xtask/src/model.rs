@@ -10,9 +10,11 @@ pub(crate) type BranchSpan = (u64, u64, u64, u64);
 pub(crate) type BranchCounts = (u64, u64);
 pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, BranchCounts>>;
 
-// Coverage is enforced against production modules that carry executable logic.
-// Thin crate roots, entrypoints, and declarative-only modules are intentionally
-// excluded because llvm-cov reports no executable lines for them.
+// Coverage is intentionally enforced as a 100% line-and-branch bar over the
+// executable modules that define HTMLCut's maintained extraction, CLI adapter,
+// and maintainer-gate logic. Thin crate roots, entrypoints, and declarative-only
+// modules are intentionally excluded because llvm-cov reports no executable
+// lines for them.
 pub(crate) const TRACKED_RELATIVE_PATHS: &[&str] = &[
     "crates/htmlcut-core/src/catalog.rs",
     "crates/htmlcut-core/src/contracts/mod.rs",
@@ -32,6 +34,16 @@ pub(crate) const TRACKED_RELATIVE_PATHS: &[&str] = &[
 // HTMLCut stays on stable for normal development. Coverage is the one place we
 // intentionally hop to nightly because `cargo llvm-cov --branch` requires it.
 pub(crate) const COVERAGE_TOOLCHAIN: &str = "+nightly";
+pub(crate) const COVERAGE_TOOLCHAIN_NAME: &str = "nightly";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Missing prerequisite for the branch-coverage gate.
+pub enum CoveragePreflightFailure {
+    /// The nightly toolchain itself is not installed.
+    MissingNightlyToolchain,
+    /// Nightly exists, but it does not include `llvm-tools-preview`.
+    MissingNightlyLlvmTools,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One external command that `cargo xtask` should execute as part of a gate.

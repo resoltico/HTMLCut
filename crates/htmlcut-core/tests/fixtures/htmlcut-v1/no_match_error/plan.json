@@ -1,0 +1,1 @@
+{"interop_profile":"htmlcut-v1","normalization":{"rewrite_urls":false,"whitespace":"normalize"},"output":{"kind":"text"},"schema_name":"htmlcut.plan","schema_version":1,"selection":{"mode":"single"},"strategy":{"kind":"css_selector","selector":"article"}}

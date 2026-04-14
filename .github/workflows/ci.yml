@@ -65,6 +65,9 @@ jobs:
         with:
           tool: cargo-llvm-cov,cargo-nextest,cargo-audit,cargo-deny,cargo-semver-checks,cargo-outdated
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+
       - name: Run Rust workspace gate
         shell: bash
         run: cargo xtask check
@@ -97,6 +100,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustup target add "${{ matrix.target_triple }}"
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          key: ${{ matrix.target_triple }}
 
       - name: Read workspace version
         id: version

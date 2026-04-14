@@ -3,10 +3,12 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use serde_json::json;
+use ureq::http::Response;
 use ureq::tls::{RootCerts, TlsConfig};
 
 use crate::contracts::{
-    Diagnostic, RuntimeOptions, SourceInput, SourceKind, SourceMetadata, SourceRequest,
+    Diagnostic, FetchPreflightMode, RuntimeOptions, SourceInput, SourceKind, SourceMetadata,
+    SourceRequest,
 };
 use crate::diagnostics::error_diagnostic;
 use crate::format_byte_size;
@@ -60,31 +62,35 @@ pub(crate) fn read_url_source(
     };
     let source_value = href.to_string();
     let agent = build_http_agent(runtime);
+    if runtime.fetch_preflight == FetchPreflightMode::HeadFirst {
+        let head_response = agent.head(&source_value).call().map_err(|error| {
+            error_diagnostic(
+                "SOURCE_LOAD_FAILED",
+                format!("Could not preflight {source_value} with HEAD: {error}"),
+                Some(json!({
+                    "source": source_value,
+                    "method": "HEAD",
+                })),
+            )
+        })?;
+
+        if !head_status_allows_get(&head_response) {
+            validate_url_response(&head_response, runtime, &source_value, "HEAD")?;
+        }
+    }
+
     let mut response = agent.get(&source_value).call().map_err(|error| {
         error_diagnostic(
             "SOURCE_LOAD_FAILED",
             format!("Could not fetch {source_value}: {error}"),
-            Some(json!({ "source": source_value })),
+            Some(json!({
+                "source": source_value,
+                "method": "GET",
+            })),
         )
     })?;
 
-    if response
-        .headers()
-        .get("content-length")
-        .and_then(|content_length| content_length.to_str().ok())
-        .and_then(|content_length| content_length.parse::<usize>().ok())
-        .is_some_and(|bytes| bytes > runtime.max_bytes)
-    {
-        return Err(error_diagnostic(
-            "SOURCE_LOAD_FAILED",
-            format!(
-                "Response exceeds {} limit.",
-                format_byte_size(runtime.max_bytes)
-            ),
-            Some(json!({ "source": source_value })),
-        ));
-    }
-
+    validate_url_response(&response, runtime, &source_value, "GET")?;
     let mut reader = response.body_mut().as_reader();
     let text = read_limited_to_string(&mut reader, runtime.max_bytes, "Response")?;
 
@@ -107,6 +113,7 @@ pub(crate) fn build_http_agent(runtime: &RuntimeOptions) -> ureq::Agent {
         .build();
 
     ureq::Agent::config_builder()
+        .http_status_as_error(false)
         .tls_config(tls_config)
         .timeout_global(Some(Duration::from_millis(runtime.fetch_timeout_ms)))
         .build()
@@ -268,6 +275,90 @@ pub(crate) fn empty_source_metadata(source: &SourceRequest) -> SourceMetadata {
         bytes_read: 0,
         text: None,
     }
+}
+
+fn validate_url_response(
+    response: &Response<ureq::Body>,
+    runtime: &RuntimeOptions,
+    source_value: &str,
+    method: &str,
+) -> Result<(), Diagnostic> {
+    let status = response.status();
+    if !status.is_success() {
+        return Err(error_diagnostic(
+            "SOURCE_LOAD_FAILED",
+            format!(
+                "{method} {source_value} returned unexpected status {}.",
+                status.as_u16()
+            ),
+            Some(json!({
+                "source": source_value,
+                "method": method,
+                "status": status.as_u16(),
+            })),
+        ));
+    }
+
+    if let Some(content_length) = response
+        .headers()
+        .get("content-length")
+        .and_then(|header| header.to_str().ok())
+        .and_then(|header| header.parse::<usize>().ok())
+        && content_length > runtime.max_bytes
+    {
+        return Err(error_diagnostic(
+            "SOURCE_LOAD_FAILED",
+            format!(
+                "{method} response exceeds {} limit.",
+                format_byte_size(runtime.max_bytes)
+            ),
+            Some(json!({
+                "source": source_value,
+                "method": method,
+                "contentLength": content_length,
+                "maxBytes": runtime.max_bytes,
+            })),
+        ));
+    }
+
+    if let Some(content_type) = response
+        .headers()
+        .get("content-type")
+        .and_then(|header| header.to_str().ok())
+        && content_type_is_obviously_non_html(content_type)
+    {
+        return Err(error_diagnostic(
+            "SOURCE_LOAD_FAILED",
+            format!("{method} {source_value} reported non-HTML content type {content_type}.",),
+            Some(json!({
+                "source": source_value,
+                "method": method,
+                "contentType": content_type,
+            })),
+        ));
+    }
+
+    Ok(())
+}
+
+fn head_status_allows_get(response: &Response<ureq::Body>) -> bool {
+    matches!(response.status().as_u16(), 405 | 501)
+}
+
+fn content_type_is_obviously_non_html(content_type: &str) -> bool {
+    let normalized = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+
+    !(normalized.is_empty() || normalized == "text/html" || normalized == "application/xhtml+xml")
+}
+
+#[cfg(test)]
+pub(crate) fn content_type_is_obviously_non_html_for_tests(content_type: &str) -> bool {
+    content_type_is_obviously_non_html(content_type)
 }
 
 fn source_locator_value(input: &SourceInput) -> String {

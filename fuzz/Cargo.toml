@@ -1,0 +1,42 @@
+[package]
+name = "htmlcut-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1.4.2", features = ["derive"] }
+htmlcut-core = { path = "../crates/htmlcut-core" }
+libfuzzer-sys = "0.4.12"
+url = "2.5.8"
+
+[[bin]]
+name = "parse_document_bytes"
+path = "fuzz_targets/parse_document_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "selector_parsing"
+path = "fuzz_targets/selector_parsing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "slice_boundaries"
+path = "fuzz_targets/slice_boundaries.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "extraction_request_building"
+path = "fuzz_targets/extraction_request_building.rs"
+test = false
+doc = false
+bench = false

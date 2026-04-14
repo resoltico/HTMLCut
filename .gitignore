@@ -2,6 +2,9 @@
 /target/
 /tmp/
 /semver-baseline/htmlcut-core/target/
+/fuzz/artifacts/
+/fuzz/coverage/
+/fuzz/target/
 
 *.db
 *.sqlite
@@ -17,11 +20,11 @@
 # OS and local scratch files
 .claude/
 AGENTS.md
+!.codex/AGENTS.md
 .DS_Store
 *.swp
 *.swo
 *~
-.DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini

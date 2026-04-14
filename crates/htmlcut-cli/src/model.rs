@@ -1,4 +1,4 @@
-use htmlcut_core::DocumentInspection;
+use htmlcut_core::result::{DocumentInspection, ExtractionMatch, ExtractionStats};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,11 +6,11 @@ use serde_json::Value;
 /// Frozen schema name for the machine-readable `htmlcut catalog` report.
 pub const CATALOG_REPORT_SCHEMA_NAME: &str = "htmlcut.catalog_report";
 /// Schema version for the machine-readable `htmlcut catalog` report.
-pub const CATALOG_SCHEMA_VERSION: u32 = 3;
+pub const CATALOG_SCHEMA_VERSION: u32 = 4;
 /// Frozen schema name for extraction and preview CLI reports.
 pub const EXTRACTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.extraction_report";
 /// Schema version for extraction and preview CLI reports.
-pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 3;
+pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 4;
 /// Frozen schema name for `htmlcut inspect source` reports.
 pub const SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.source_inspection_report";
 /// Schema version for `htmlcut inspect source` reports.
@@ -57,12 +57,12 @@ pub struct ExtractionCommandReport {
     /// The extraction request contract that produced the result.
     pub extraction: htmlcut_core::ExtractionSpec,
     /// Match counts and timing information for the execution.
-    pub stats: htmlcut_core::ExtractionStats,
+    pub stats: ExtractionStats,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// The parsed document title when one was available.
     pub document_title: Option<String>,
     /// Extracted matches in CLI report order.
-    pub matches: Vec<htmlcut_core::ExtractionMatch>,
+    pub matches: Vec<ExtractionMatch>,
     /// Diagnostics emitted by the core engine.
     pub diagnostics: Vec<htmlcut_core::Diagnostic>,
     /// Bundle artifact paths when `--bundle` was requested.

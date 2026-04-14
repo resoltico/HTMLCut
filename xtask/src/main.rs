@@ -4,9 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::{Parser, Subcommand};
+use tempfile::tempdir;
 use xtask::{
-    CommandSpec, DynResult, check_plan, coverage_clean_command, coverage_command,
-    coverage_output_path, evaluate_coverage_report, read_coverage_report, tracked_files,
+    CommandSpec, CoveragePreflightFailure, DynResult, check_plan, coverage_clean_command,
+    coverage_command, coverage_output_path, coverage_preflight_failures,
+    coverage_preflight_message, evaluate_coverage_report, read_coverage_report, tracked_files,
     with_workspace_stub, workspace_version,
 };
 
@@ -21,7 +23,11 @@ struct Cli {
 enum Task {
     Check,
     Coverage,
-    RefreshSemverBaseline,
+    RefreshSemverBaseline {
+        /// Git tag, branch, or commit that represents the published baseline.
+        #[arg(long = "git-ref", value_name = "REF")]
+        git_ref: String,
+    },
 }
 
 fn main() -> DynResult<()> {
@@ -31,7 +37,7 @@ fn main() -> DynResult<()> {
     match cli.command {
         Task::Check => run_check(&repo_root),
         Task::Coverage => run_coverage(&repo_root),
-        Task::RefreshSemverBaseline => refresh_semver_baseline(&repo_root),
+        Task::RefreshSemverBaseline { git_ref } => refresh_semver_baseline(&repo_root, &git_ref),
     }
 }
 
@@ -46,6 +52,7 @@ fn run_check(repo_root: &Path) -> DynResult<()> {
 }
 
 fn run_coverage(repo_root: &Path) -> DynResult<()> {
+    ensure_coverage_prerequisites(repo_root)?;
     let coverage_clean_spec = coverage_clean_command();
     let coverage_spec = coverage_command(repo_root);
     run_spec(repo_root, &coverage_clean_spec)?;
@@ -82,18 +89,54 @@ fn run_coverage(repo_root: &Path) -> DynResult<()> {
     Ok(())
 }
 
-fn refresh_semver_baseline(repo_root: &Path) -> DynResult<()> {
-    let version = workspace_version(repo_root)?;
+fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
+    let snapshot = tempdir()?;
+    let snapshot_root = snapshot.path().join("snapshot");
+    let snapshot_archive = snapshot.path().join("snapshot.tar");
+    fs::create_dir_all(&snapshot_root)?;
+
+    run_spec(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            [
+                "archive",
+                "--format=tar",
+                "--output",
+                snapshot_archive.to_string_lossy().as_ref(),
+                git_ref,
+            ],
+            false,
+            false,
+        ),
+    )?;
+
+    run_spec(
+        repo_root,
+        &CommandSpec::new(
+            "tar",
+            [
+                "-xf",
+                snapshot_archive.to_string_lossy().as_ref(),
+                "-C",
+                snapshot_root.to_string_lossy().as_ref(),
+            ],
+            false,
+            false,
+        ),
+    )?;
+
+    let version = workspace_version(&snapshot_root)?;
     let baseline_parent = repo_root.join("semver-baseline");
     let baseline_dir = baseline_parent.join("htmlcut-core");
     let extracted_dir = baseline_parent.join(format!("htmlcut-core-{version}"));
-    let archive = repo_root
+    let archive = snapshot_root
         .join("target")
         .join("package")
         .join(format!("htmlcut-core-{version}.crate"));
 
     run_spec(
-        repo_root,
+        &snapshot_root,
         &CommandSpec::new(
             "cargo",
             [
@@ -138,6 +181,42 @@ fn refresh_semver_baseline(repo_root: &Path) -> DynResult<()> {
     Ok(())
 }
 
+fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
+    let toolchains = capture_command_output(
+        repo_root,
+        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
+    )
+    .map_err(|error| format!("coverage preflight could not query rustup toolchains: {error}"))?;
+    let toolchains = String::from_utf8(toolchains)
+        .map_err(|error| format!("coverage preflight received invalid rustup output: {error}"))?;
+
+    let toolchain_failures = coverage_preflight_failures(&toolchains, "");
+    if toolchain_failures.contains(&CoveragePreflightFailure::MissingNightlyToolchain) {
+        return Err(coverage_preflight_message(&toolchain_failures).into());
+    }
+
+    let components = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "rustup",
+            ["component", "list", "--toolchain", "nightly", "--installed"],
+            false,
+            false,
+        ),
+    )
+    .map_err(|error| format!("coverage preflight could not query nightly components: {error}"))?;
+    let components = String::from_utf8(components).map_err(|error| {
+        format!("coverage preflight received invalid component output: {error}")
+    })?;
+
+    let failures = coverage_preflight_failures(&toolchains, &components);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(coverage_preflight_message(&failures).into())
+    }
+}
+
 fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     let mut command = Command::new(&spec.program);
     command.current_dir(repo_root);
@@ -159,6 +238,25 @@ fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     }
 
     Err(format!("command failed with status {status}").into())
+}
+
+fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult<Vec<u8>> {
+    let mut command = Command::new(&spec.program);
+    command.current_dir(repo_root);
+    command.args(&spec.args);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::inherit());
+    if spec.force_clang {
+        command.env("CC", "clang");
+    }
+
+    let output = command.output()?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(format!("command failed with status {}", output.status).into())
+    }
 }
 
 fn repo_root() -> PathBuf {

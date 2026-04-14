@@ -68,7 +68,7 @@ JSON contracts instead of descriptive capability text.
 The registry includes:
   - htmlcut-core request/result schemas
   - htmlcut-cli report schemas
-  - the frozen FFHN interop schemas shipped by htmlcut_core::interop::ffhn_v1
+  - the frozen interop schemas shipped by htmlcut_core::interop::v1
 
 Use --name to select one schema family and --schema-version to pin one exact version.";
 pub(crate) const SCHEMA_AFTER_HELP: &str = "\
@@ -76,7 +76,7 @@ Examples:
   htmlcut schema
   htmlcut schema --output json
   htmlcut schema --name htmlcut.extraction_result --output json
-  htmlcut schema --name htmlcut.ffhn_result --schema-version 1 --output json";
+  htmlcut schema --name htmlcut.result --schema-version 1 --output json";
 pub(crate) const SELECT_LONG_ABOUT: &str = "\
 Extract values from CSS selector matches.
 
@@ -85,7 +85,7 @@ to preview matches before emitting the final payload.
 
 The selector is required. Use --value to choose what each selected match produces:
   text        plain text derived from the matched node
-  html        inner HTML of the matched node
+  inner-html  inner HTML of the matched node
   outer-html  outer HTML of the matched node
   attribute   one attribute value from the matched node
   structured  a metadata-rich JSON object for each match
@@ -107,7 +107,7 @@ Literal matching is raw substring matching, not tag-aware: `<a` also matches `<a
 Boundary matches are consumed exactly as matched.
 By default, the selected fragment excludes both matched boundaries.
 Use --include-start and/or --include-end when the boundary text itself must remain inside the fragment.
-For --value html, HTMLCut returns the selected fragment as HTML.
+For --value inner-html, HTMLCut returns the selected fragment as HTML.
 For --value outer-html, HTMLCut returns the full outer matched range including both boundaries.
 When extracting --value attribute from sliced HTML, use --include-start when the opening tag lives in the start boundary.
 Use inspect slice to confirm the exact ranges or choose stricter boundaries when you need tag-like behavior.

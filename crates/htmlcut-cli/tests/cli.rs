@@ -14,14 +14,28 @@ use htmlcut_cli::{
     SourceInspectionCommandReport,
 };
 use htmlcut_core::{
-    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionMatchMetadata, ExtractionRequest,
-    ExtractionSpec, NormalizationOptions, OutputOptions, PatternMode, RuntimeOptions,
-    SelectionSpec, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec,
-    WhitespaceMode, extract, inspect_source, preview_extraction,
+    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
+    NormalizationOptions, OutputOptions, PatternMode, RuntimeOptions, SelectionSpec, SelectorQuery,
+    SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
+    preview_extraction, result::ExtractionMatchMetadata,
 };
 use predicates::prelude::*;
 use tempfile::tempdir;
 use url::Url;
+
+fn expected_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+fn expected_version_banner() -> String {
+    format!(
+        "htmlcut {}\n{}\nengine: htmlcut-core\nschema-profile: {}\nrepository: {}\n",
+        expected_version(),
+        env!("CARGO_PKG_DESCRIPTION"),
+        htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE,
+        env!("CARGO_PKG_REPOSITORY")
+    )
+}
 
 fn write_fixture(tempdir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = tempdir.join(name);
@@ -164,9 +178,7 @@ fn version_prints_workspace_version_and_description() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(
-            "htmlcut 3.0.0\nExtract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports.\n",
-        );
+        .stdout(expected_version_banner());
 }
 
 #[test]
@@ -176,9 +188,115 @@ fn subcommand_version_reuses_the_root_identity_banner() {
         .args(["select", "--version"])
         .assert()
         .success()
-        .stdout(
-            "htmlcut 3.0.0\nExtract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports.\n",
-        );
+        .stdout(expected_version_banner());
+}
+
+#[test]
+fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "request-file.html",
+        "<article>Hello from definition</article>",
+    );
+    let definition_path = tempdir.path().join("select-request.json");
+
+    let mut request = ExtractionRequest::new(
+        source_request(&input_path, None),
+        selector_extraction("article")
+            .with_selection(SelectionSpec::single())
+            .with_value(ValueSpec::Text),
+    );
+    request.normalization = NormalizationOptions {
+        whitespace: WhitespaceMode::Preserve,
+        rewrite_urls: false,
+    };
+    request.output = extraction_output();
+
+    let definition = ExtractionDefinition::new(request);
+    fs::write(
+        &definition_path,
+        serde_json::to_string_pretty(&definition).expect("serialize definition"),
+    )
+    .expect("write definition");
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["select", "--request-file"])
+        .arg(&definition_path)
+        .assert()
+        .success()
+        .stdout("Hello from definition\n")
+        .stderr("");
+
+    let mut conflicting = Command::cargo_bin("htmlcut").expect("binary");
+    conflicting
+        .args(["select", "--request-file"])
+        .arg(&definition_path)
+        .args(["--css", "article"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "--request-file owns the extraction definition",
+        ));
+}
+
+#[test]
+fn output_file_writes_the_stdout_payload_without_emitting_stdout() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "output-file.html",
+        "<article><p>Hello file output</p></article>",
+    );
+    let output_path = tempdir.path().join("selection.txt");
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["select"])
+        .arg(&input_path)
+        .args(["--css", "article", "--output-file"])
+        .arg(&output_path)
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+
+    assert_eq!(
+        fs::read_to_string(&output_path).expect("read output file"),
+        "Hello file output\n"
+    );
+}
+
+#[test]
+fn quiet_suppresses_non_fatal_success_stderr() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "quiet.html",
+        "<article>First</article><article>Second</article>",
+    );
+
+    let mut noisy = Command::cargo_bin("htmlcut").expect("binary");
+    noisy
+        .args(["select"])
+        .arg(&input_path)
+        .args(["--css", "article"])
+        .assert()
+        .success()
+        .stdout("First\n")
+        .stderr(predicate::str::contains("warning MULTIPLE_MATCHES"));
+
+    let mut quiet = Command::cargo_bin("htmlcut").expect("binary");
+    quiet
+        .args(["select", "--quiet"])
+        .arg(&input_path)
+        .args(["--css", "article"])
+        .assert()
+        .success()
+        .stdout("First\n")
+        .stderr("");
 }
 
 #[test]
@@ -192,7 +310,7 @@ fn catalog_json_surfaces_operation_catalog() {
     );
 
     assert_eq!(report.tool, "htmlcut");
-    assert_eq!(report.version, "3.0.0");
+    assert_eq!(report.version, expected_version());
     assert_eq!(report.schema_name, CATALOG_REPORT_SCHEMA_NAME);
     assert_eq!(report.schema_version, CATALOG_SCHEMA_VERSION);
     assert_eq!(
@@ -241,7 +359,7 @@ fn catalog_json_surfaces_operation_catalog() {
         .expect("cli operation should expose a command contract");
     assert_eq!(
         command_contract.invocation,
-        "htmlcut select [OPTIONS] --css <CSS> <INPUT>"
+        "htmlcut select [OPTIONS] --css <CSS> [INPUT]"
     );
     assert_eq!(command_contract.default_match.as_deref(), Some("first"));
     assert_eq!(command_contract.default_value.as_deref(), Some("text"));
@@ -270,7 +388,21 @@ fn catalog_json_surfaces_operation_catalog() {
     );
     assert!(command_contract.parameters.iter().any(|parameter| {
         parameter.name == "--css"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Required
+            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Conditional
+            && parameter.requirement_note.as_deref()
+                == Some("required unless --request-file is used")
+    }));
+    assert!(command_contract.parameters.iter().any(|parameter| {
+        parameter.name == "--request-file"
+            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
+    }));
+    assert!(command_contract.parameters.iter().any(|parameter| {
+        parameter.name == "--fetch-preflight"
+            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
+    }));
+    assert!(command_contract.parameters.iter().any(|parameter| {
+        parameter.name == "--output-file"
+            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
     }));
     assert!(command_contract.parameters.iter().any(|parameter| {
         parameter.name == "--attribute"
@@ -284,7 +416,7 @@ fn catalog_json_surfaces_operation_catalog() {
 }
 
 #[test]
-fn schema_json_surfaces_registry_for_core_cli_and_ffhn() {
+fn schema_json_surfaces_registry_for_core_cli_and_interop() {
     let mut command = Command::cargo_bin("htmlcut").expect("binary");
     let report = parse_schema_report(
         command
@@ -294,7 +426,7 @@ fn schema_json_surfaces_registry_for_core_cli_and_ffhn() {
     );
 
     assert_eq!(report.tool, "htmlcut");
-    assert_eq!(report.version, "3.0.0");
+    assert_eq!(report.version, expected_version());
     assert_eq!(report.schema_name, SCHEMA_COMMAND_REPORT_SCHEMA_NAME);
     assert_eq!(report.schema_version, SCHEMA_COMMAND_REPORT_SCHEMA_VERSION);
     assert_eq!(
@@ -307,8 +439,8 @@ fn schema_json_surfaces_registry_for_core_cli_and_ffhn() {
             && schema.owner_surface == "htmlcut-core"
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::interop::ffhn_v1::FFHN_RESULT_SCHEMA_NAME
-            && schema.owner_surface == "htmlcut_core::interop::ffhn_v1"
+        schema.schema_name == htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
+            && schema.owner_surface == "htmlcut_core::interop::v1"
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner_surface == "htmlcut-cli"
@@ -447,7 +579,7 @@ fn select_json_report_has_core_parity_for_structured_extraction() {
 
     assert_eq!(report.tool, "htmlcut");
     assert_eq!(report.engine, "htmlcut-core");
-    assert_eq!(report.version, "3.0.0");
+    assert_eq!(report.version, expected_version());
     assert_eq!(report.schema_name, EXTRACTION_COMMAND_REPORT_SCHEMA_NAME);
     assert_eq!(report.command, "select");
     assert_eq!(
@@ -671,7 +803,7 @@ fn inspect_source_json_has_core_parity() {
 
     assert_eq!(report.tool, "htmlcut");
     assert_eq!(report.engine, "htmlcut-core");
-    assert_eq!(report.version, "3.0.0");
+    assert_eq!(report.version, expected_version());
     assert_eq!(
         report.schema_name,
         SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME

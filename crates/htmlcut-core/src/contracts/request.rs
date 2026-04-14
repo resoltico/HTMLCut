@@ -46,7 +46,7 @@ pub enum ValueType {
     /// Return normalized or preserved plain text.
     Text,
     /// Return inner HTML.
-    Html,
+    InnerHtml,
     /// Return outer HTML.
     OuterHtml,
     /// Return one named attribute value.
@@ -75,6 +75,17 @@ pub enum PatternMode {
     Literal,
     /// Treat `from` and `to` as regular expressions.
     Regex,
+}
+
+/// URL-fetch preflight policy used before loading a remote source body.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FetchPreflightMode {
+    /// Probe remote sources with `HEAD` before issuing `GET`.
+    #[default]
+    HeadFirst,
+    /// Skip the `HEAD` probe and load the source directly with `GET`.
+    GetOnly,
 }
 
 /// Mode-correct pattern contract for slice extraction.
@@ -268,7 +279,7 @@ pub enum ValueSpec {
     #[default]
     Text,
     /// Return inner HTML.
-    Html,
+    InnerHtml,
     /// Return outer HTML.
     OuterHtml,
     /// Return one named attribute value.
@@ -285,7 +296,7 @@ impl ValueSpec {
     pub const fn value_type(&self) -> ValueType {
         match self {
             Self::Text => ValueType::Text,
-            Self::Html => ValueType::Html,
+            Self::InnerHtml => ValueType::InnerHtml,
             Self::OuterHtml => ValueType::OuterHtml,
             Self::Attribute { .. } => ValueType::Attribute,
             Self::Structured => ValueType::Structured,
@@ -296,7 +307,7 @@ impl ValueSpec {
     pub fn attribute_name(&self) -> Option<&AttributeName> {
         match self {
             Self::Attribute { name } => Some(name),
-            Self::Text | Self::Html | Self::OuterHtml | Self::Structured => None,
+            Self::Text | Self::InnerHtml | Self::OuterHtml | Self::Structured => None,
         }
     }
 }
@@ -672,6 +683,9 @@ pub struct RuntimeOptions {
     #[serde(default = "default_fetch_timeout_ms")]
     /// HTTP fetch timeout in milliseconds.
     pub fetch_timeout_ms: u64,
+    #[serde(default)]
+    /// URL-fetch preflight policy used before reading a remote response body.
+    pub fetch_preflight: FetchPreflightMode,
 }
 
 impl Default for RuntimeOptions {
@@ -679,8 +693,45 @@ impl Default for RuntimeOptions {
         Self {
             max_bytes: DEFAULT_MAX_BYTES,
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_preflight: FetchPreflightMode::default(),
         }
     }
+}
+
+/// Versioned reusable extraction definition for repeatable HTMLCut runs.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExtractionDefinition {
+    #[serde(default = "default_extraction_definition_schema_name")]
+    /// Stable schema name for this reusable definition file.
+    pub schema_name: String,
+    #[serde(default = "default_extraction_definition_schema_version")]
+    /// Schema version for this reusable definition file.
+    pub schema_version: u32,
+    /// Extraction request executed by this definition.
+    pub request: ExtractionRequest,
+    #[serde(default)]
+    /// Runtime loading limits and fetch policy applied to this definition.
+    pub runtime: RuntimeOptions,
+}
+
+impl ExtractionDefinition {
+    /// Creates a reusable extraction definition with the current schema identity.
+    pub fn new(request: ExtractionRequest) -> Self {
+        Self {
+            schema_name: default_extraction_definition_schema_name(),
+            schema_version: default_extraction_definition_schema_version(),
+            request,
+            runtime: RuntimeOptions::default(),
+        }
+    }
+}
+
+fn default_extraction_definition_schema_name() -> String {
+    crate::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned()
+}
+
+const fn default_extraction_definition_schema_version() -> u32 {
+    crate::EXTRACTION_DEFINITION_SCHEMA_VERSION
 }
 
 /// Options controlling document-level inspection output.

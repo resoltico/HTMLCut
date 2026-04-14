@@ -1,12 +1,12 @@
 # HTMLCut
 
-HTMLCut is a CLI for extracting and inspecting HTML from files, URLs, and stdin.
+HTMLCut provides functionality to extract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports.
 
 It supports:
 
 - CSS selector extraction
 - literal and regex slicing
-- text, HTML, outer-HTML, attribute, and structured outputs
+- text, `inner-html`, `outer-html`, attribute, and structured outputs
 - source and extraction inspection before final extraction
 - machine-readable `catalog` and `schema` discovery for automation and agents
 
@@ -32,8 +32,8 @@ htmlcut --help
 ```bash
 htmlcut catalog [--output text|json] [--operation <ID>]
 htmlcut schema [--output text|json] [--name <SCHEMA_NAME>] [--schema-version <SCHEMA_VERSION>]
-htmlcut select <INPUT> --css <SELECTOR> [options]
-htmlcut slice <INPUT> --from <PATTERN> --to <PATTERN> [options]
+htmlcut select [INPUT] --css <SELECTOR> [options]
+htmlcut slice [INPUT] --from <PATTERN> --to <PATTERN> [options]
 htmlcut inspect <source|select|slice> ...
 ```
 
@@ -55,6 +55,12 @@ Require exactly one match:
 
 ```bash
 htmlcut select ./page.html --css article --match single
+```
+
+Extract the matched node as inner HTML:
+
+```bash
+htmlcut select ./page.html --css article --value inner-html
 ```
 
 Extract every card as outer HTML:
@@ -109,14 +115,46 @@ Preview slice matches before final extraction:
 htmlcut inspect slice ./page.html --from '<article>' --to '</article>'
 ```
 
+Run a reusable extraction definition from JSON:
+
+```bash
+htmlcut select --request-file ./article-links.json
+```
+
+Write only the stdout payload to one file:
+
+```bash
+htmlcut select ./page.html \
+  --css article \
+  --output-file ./article.txt
+```
+
 ## Notes
 
 - `select` and `slice` separate extraction value with `--value` from stdout rendering with `--output`.
+- `select`, `slice`, `inspect select`, and `inspect slice` can load a first-class JSON definition through `--request-file`; inline source and strategy flags then become mutually exclusive with that file.
+- `--value inner-html` returns the selected fragment; `--value outer-html` returns the full matched outer range.
 - `inspect` defaults to JSON.
 - `--output none` is valid only with `--bundle`.
+- `--output-file` writes exactly the stdout payload to one file without creating a bundle directory.
+- URL inputs use HEAD-first preflight by default to reject obvious non-HTML or oversize resources earlier; use `--fetch-preflight get-only` for servers that do not tolerate HEAD well.
+- `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
+- `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
 - `slice` works on raw source text, not parsed HTML nodes.
 - `catalog` is the machine-readable capability surface.
 - `schema` exports the validator-grade JSON contracts behind maintained public JSON outputs.
+
+## Embedding And Interop
+
+Embed HTMLCut in Rust through `htmlcut_core::interop::v1`, the frozen `htmlcut-v1` downstream
+interop profile. The maintained contract docs live in [docs/interop-v1.md](docs/interop-v1.md)
+and [docs/schema.md](docs/schema.md).
+
+For embeddable core callers, the stable high-level API stays at the crate root while detailed
+request/result contract types are grouped under `htmlcut_core::request` and
+`htmlcut_core::result`. Reusable request files are modeled by
+`htmlcut_core::ExtractionDefinition`; see
+[`crates/htmlcut-core/examples/reusable_extraction_definition.rs`](crates/htmlcut-core/examples/reusable_extraction_definition.rs).
 
 ## Release Assets
 
@@ -136,3 +174,18 @@ The release workflow publishes source archives plus standalone binaries and chec
 ## Developer And Maintainer Docs
 
 All developer-facing and maintainer-facing documentation lives under [docs/](docs/README.md).
+The checked-in fuzz target inventory lives in [fuzz/README.md](fuzz/README.md).
+Contributor workflow lives in [CONTRIBUTING.md](CONTRIBUTING.md), and maintainer contract policy
+lives in [docs/versioning-policy.md](docs/versioning-policy.md).
+
+---
+
+## Legal
+
+HTMLCut is MIT-licensed. The compiled binary includes Rust crates under MIT,
+Apache-2.0, MPL-2.0 (cssparser, selectors, servo_arc — Servo project), ISC
+(ring and cryptographic dependencies), Unicode-3.0 (ICU data crates), and
+CDLA-Permissive-2.0 (webpki-root-certs CA data). See [NOTICE](NOTICE) for
+attribution details and [PATENTS.md](PATENTS.md) for patent considerations.
+
+[LICENSE](LICENSE) | [NOTICE](NOTICE) | [PATENTS.md](PATENTS.md)
