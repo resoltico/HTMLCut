@@ -137,7 +137,7 @@ htmlcut select ./page.html \
 - `inspect` defaults to JSON.
 - `--output none` is valid only with `--bundle`.
 - `--output-file` writes exactly the stdout payload to one file without creating a bundle directory.
-- URL inputs use HEAD-first preflight by default to reject obvious non-HTML or oversize resources earlier; use `--fetch-preflight get-only` for servers that do not tolerate HEAD well.
+- URL inputs use HEAD-first preflight by default to reject obvious non-HTML or oversize resources earlier; HTMLCut now falls back to GET when a server explicitly rejects HEAD or breaks the HEAD exchange, and `--fetch-preflight get-only` remains available for servers that still mishandle HEAD badly.
 - `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
 - `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
 - `slice` works on raw source text, not parsed HTML nodes.

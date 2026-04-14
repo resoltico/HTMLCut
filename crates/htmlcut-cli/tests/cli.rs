@@ -1,8 +1,12 @@
 //! Black-box integration tests for the `htmlcut` CLI binary.
 
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use assert_cmd::Command;
 use htmlcut_cli::{
@@ -240,6 +244,69 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
         .stderr(predicate::str::contains(
             "--request-file owns the extraction definition",
         ));
+}
+
+#[test]
+fn url_select_recovers_when_head_preflight_transport_breaks() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind broken-head server");
+    let address = listener.local_addr().expect("broken-head server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method")
+                .to_owned();
+            methods_for_server
+                .lock()
+                .expect("lock methods")
+                .push(method.clone());
+
+            if method == "HEAD" {
+                continue;
+            }
+
+            let body = "<html><body><article>Recovered</article></body></html>";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
+    });
+
+    let url = format!("http://{address}");
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args([
+            "select",
+            &url,
+            "--css",
+            "article",
+            "--fetch-timeout-ms",
+            "250",
+        ])
+        .assert()
+        .success()
+        .stdout("Recovered\n");
+
+    server.join().expect("join server");
+    assert_eq!(
+        methods.lock().expect("lock methods").as_slice(),
+        ["HEAD", "GET"]
+    );
 }
 
 #[test]

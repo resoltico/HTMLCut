@@ -7,7 +7,9 @@ use crate::document::{
     ELLIPSIS, attribute_supports_url_rewrite, collapse_blank_lines_for_tests, element_name,
     rewrite_srcset_for_tests,
 };
-use crate::source::content_type_is_obviously_non_html_for_tests;
+use crate::source::{
+    content_type_is_obviously_non_html_for_tests, head_error_allows_get_fallback_for_tests,
+};
 use scraper::ElementRef;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -1284,6 +1286,81 @@ fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
         ["HEAD", "GET"]
     );
     assert_eq!(loaded.text, "<html><body>Fallback</body></html>");
+}
+
+#[test]
+fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind broken-head server");
+    let address = listener.local_addr().expect("broken-head server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method")
+                .to_owned();
+            methods_for_server
+                .lock()
+                .expect("lock methods")
+                .push(method.clone());
+
+            if method == "HEAD" {
+                continue;
+            }
+
+            let body = "<html><body>Recovered</body></html>";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
+    });
+
+    let url = format!("http://{address}");
+    let loaded = read_url_source(
+        &url_source(&url),
+        &RuntimeOptions {
+            fetch_timeout_ms: 250,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("fallback source after broken head transport");
+
+    server.join().expect("join server");
+    assert_eq!(
+        methods.lock().expect("lock methods").as_slice(),
+        ["HEAD", "GET"]
+    );
+    assert_eq!(loaded.text, "<html><body>Recovered</body></html>");
+}
+
+#[test]
+fn head_preflight_fallback_classifier_accepts_only_head_intolerance_errors() {
+    assert!(head_error_allows_get_fallback_for_tests(
+        &ureq::Error::ConnectionFailed
+    ));
+    assert!(head_error_allows_get_fallback_for_tests(&ureq::Error::Io(
+        io::Error::new(io::ErrorKind::UnexpectedEof, "peer disconnected"),
+    )));
+    assert!(!head_error_allows_get_fallback_for_tests(&ureq::Error::Io(
+        io::Error::new(io::ErrorKind::TimedOut, "timed out"),
+    )));
+    assert!(!head_error_allows_get_fallback_for_tests(
+        &ureq::Error::HostNotFound
+    ));
 }
 
 #[test]

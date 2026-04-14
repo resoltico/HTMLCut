@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.0.0"
+version: "4.0.1"
 domain: SCHEMA
 updated: "2026-04-14"
 route:

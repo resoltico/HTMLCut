@@ -63,19 +63,23 @@ pub(crate) fn read_url_source(
     let source_value = href.to_string();
     let agent = build_http_agent(runtime);
     if runtime.fetch_preflight == FetchPreflightMode::HeadFirst {
-        let head_response = agent.head(&source_value).call().map_err(|error| {
-            error_diagnostic(
-                "SOURCE_LOAD_FAILED",
-                format!("Could not preflight {source_value} with HEAD: {error}"),
-                Some(json!({
-                    "source": source_value,
-                    "method": "HEAD",
-                })),
-            )
-        })?;
-
-        if !head_status_allows_get(&head_response) {
-            validate_url_response(&head_response, runtime, &source_value, "HEAD")?;
+        match agent.head(&source_value).call() {
+            Ok(head_response) => {
+                if !head_status_allows_get(&head_response) {
+                    validate_url_response(&head_response, runtime, &source_value, "HEAD")?;
+                }
+            }
+            Err(error) if head_error_allows_get_fallback(&error) => {}
+            Err(error) => {
+                return Err(error_diagnostic(
+                    "SOURCE_LOAD_FAILED",
+                    format!("Could not preflight {source_value} with HEAD: {error}"),
+                    Some(json!({
+                        "source": source_value,
+                        "method": "HEAD",
+                    })),
+                ));
+            }
         }
     }
 
@@ -343,6 +347,25 @@ fn validate_url_response(
 
 fn head_status_allows_get(response: &Response<ureq::Body>) -> bool {
     matches!(response.status().as_u16(), 405 | 501)
+}
+
+fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
+    match error {
+        ureq::Error::Protocol(_) | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Io(io_error) => matches!(
+            io_error.kind(),
+            io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::BrokenPipe
+                | io::ErrorKind::UnexpectedEof
+        ),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn head_error_allows_get_fallback_for_tests(error: &ureq::Error) -> bool {
+    head_error_allows_get_fallback(error)
 }
 
 fn content_type_is_obviously_non_html(content_type: &str) -> bool {
