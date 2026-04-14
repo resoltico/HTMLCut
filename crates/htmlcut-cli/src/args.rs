@@ -153,7 +153,8 @@ pub(crate) struct SourceArgs {
     #[arg(long, default_value_t = DEFAULT_FETCH_TIMEOUT_MS, value_name = "MILLISECONDS")]
     pub(crate) fetch_timeout_ms: u64,
 
-    /// Probe remote URLs with HEAD before GET, or skip the HEAD preflight.
+    /// Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected
+    /// or broken, or skip the HEAD preflight entirely.
     #[arg(long, default_value = "head-first")]
     pub(crate) fetch_preflight: CliFetchPreflightMode,
 }

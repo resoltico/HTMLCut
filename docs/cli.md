@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.0.0"
+version: "4.0.1"
 domain: CLI
 updated: "2026-04-14"
 route:
@@ -35,8 +35,9 @@ produce the effective base URL used by `--rewrite-urls`.
 For URL inputs, HTMLCut now uses HEAD-first fetch preflight by default:
 
 - `head-first` probes status, `Content-Length`, and obvious non-HTML `Content-Type` values before
-  issuing the full GET
-- `get-only` skips the HEAD probe for servers that mishandle HEAD
+  issuing the full GET, and it automatically falls back to GET when a server rejects HEAD or
+  breaks the HEAD exchange
+- `get-only` skips the HEAD probe for servers that still mishandle HEAD badly
 
 The CLI exposes that policy through `--fetch-preflight head-first|get-only`.
 

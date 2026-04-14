@@ -1521,7 +1521,7 @@ fn common_source_parameters() -> Vec<CatalogParameterSpec> {
             value_hint: "FETCH_PREFLIGHT",
             default: Some("head-first"),
             allowed_values: vec!["head-first".to_owned(), "get-only".to_owned()],
-            summary: "Probe remote URLs with HEAD before GET, or skip the HEAD preflight.",
+            summary: "Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected or broken, or skip the HEAD preflight entirely.",
         }),
         param_positional(
             "Source",

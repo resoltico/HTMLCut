@@ -5,12 +5,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-04-14
+
 ### Changed
 - Updated the pinned GitHub Actions SHAs for `Swatinem/rust-cache`, `taiki-e/install-action`, and `actions/upload-artifact`.
 - Bumped `sha2` to `0.11.0` and refreshed both the workspace and fuzz lockfiles together.
 
 ### Fixed
 - Stopped cargo Dependabot from opening incomplete PRs for this dual-lockfile repository; Cargo dependency refreshes are now maintainer-run so `Cargo.lock` and `fuzz/Cargo.lock` stay in sync with the maintained `--locked` fuzz gate.
+- URL inputs using the default `head-first` preflight now fall back to GET when a server rejects HEAD or breaks the HEAD exchange, instead of failing before the real fetch can run.
 
 ## [4.0.0] - 2026-04-14
 

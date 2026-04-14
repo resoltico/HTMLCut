@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.0.0"
+  version: "4.0.1"
   domain: INDEX
   updated: "2026-04-14"
 RETRIEVAL_HINTS:

@@ -8,7 +8,7 @@ exclude = ["semver-baseline/htmlcut-core", "fuzz"]
 resolver = "3"
 
 [workspace.package]
-version = "4.0.0"
+version = "4.0.1"
 edition = "2024"
 description = "Extract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports."
 license = "MIT"
