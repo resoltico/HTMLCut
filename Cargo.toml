@@ -27,7 +27,7 @@ schemars = { version = "1.0.4", features = ["url2"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.10.9"
-tempfile = "=3.15.0"
+tempfile = "=3.27.0"
 thiserror = "2.0.18"
 ureq = { version = "3.3.0", default-features = false, features = ["gzip", "platform-verifier", "rustls"] }
 url = { version = "2.5.8", features = ["serde"] }
