@@ -40,6 +40,13 @@ cargo xtask check
 
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 
+Dependency updates that affect workspace crates must refresh both `Cargo.lock` and
+`fuzz/Cargo.lock`. The fuzz package is checked in and validated with `--locked`, so a
+workspace-only lockfile refresh is incomplete.
+
+Cargo Dependabot PRs are intentionally disabled for this reason. Use maintainer-authored
+dependency refreshes instead of relying on bot PRs that cannot keep the two lockfiles in sync.
+
 ## Contract Rules
 
 - Do not add backwards-compatibility shims, aliases, or migration paths for generic HTMLCut surfaces.
