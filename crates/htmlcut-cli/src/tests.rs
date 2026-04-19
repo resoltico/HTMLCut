@@ -1,13 +1,13 @@
 //! Internal behavior tests for `htmlcut-cli`'s parsing, preparation, rendering, and execution seams.
 
 use super::*;
-use clap::Parser;
+use clap::{CommandFactory, Parser, ValueEnum};
 use htmlcut_core::{
     AttributeName, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS, Diagnostic, DiagnosticLevel, ExtractionDefinition,
     ExtractionRequest, ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode,
-    SelectionSpec, SelectorQuery, SourceKind, SourceMetadata, SourceRequest, ValueSpec, ValueType,
-    WhitespaceMode,
+    PatternMode, SelectionSpec, SelectorQuery, SourceKind, SourceLoadAction, SourceLoadOutcome,
+    SourceLoadStep, SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
     result::{
         DelimiterPairMatchMetadata, DocumentInspection, ExtractionMatch, ExtractionMatchMetadata,
         ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
@@ -36,6 +36,113 @@ fn write_fixture_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = dir.join(name);
     fs::write(&path, contents).expect("write fixture file");
     path
+}
+
+fn value_enum_names<T: ValueEnum>() -> Vec<String> {
+    T::value_variants()
+        .iter()
+        .map(|variant| {
+            variant
+                .to_possible_value()
+                .expect("value enum variant")
+                .get_name()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn shell_words(command: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+
+    for ch in command.chars() {
+        match quote {
+            Some(active_quote) if ch == active_quote => quote = None,
+            Some(_) => current.push(ch),
+            None if matches!(ch, '\'' | '"') => quote = Some(ch),
+            None if ch.is_whitespace() => {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+            }
+            None => current.push(ch),
+        }
+    }
+
+    if !current.is_empty() {
+        words.push(current);
+    }
+
+    words
+}
+
+fn option_value<'a>(tokens: &'a [String], flag: &str) -> Option<&'a str> {
+    tokens.iter().enumerate().find_map(|(index, token)| {
+        token.strip_prefix(&format!("{flag}=")).or_else(|| {
+            if token == flag {
+                tokens.get(index + 1).map(String::as_str)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn known_schema_names() -> std::collections::BTreeSet<String> {
+    htmlcut_core::schema_catalog()
+        .iter()
+        .map(|descriptor| descriptor.schema_ref.schema_name.to_owned())
+        .chain([
+            crate::model::CATALOG_REPORT_SCHEMA_NAME.to_owned(),
+            crate::model::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+            crate::model::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+            crate::model::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+        ])
+        .collect()
+}
+
+fn parameter_allowed_values(
+    contract: &htmlcut_core::OperationCliContract,
+    parameter: htmlcut_core::CliParameterId,
+) -> Vec<String> {
+    contract
+        .parameters
+        .iter()
+        .find(|descriptor| descriptor.id == parameter)
+        .map(|descriptor| {
+            descriptor
+                .allowed_values
+                .iter()
+                .copied()
+                .map(htmlcut_core::render_cli_value)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parameter_default_value(
+    contract: &htmlcut_core::OperationCliContract,
+    parameter: htmlcut_core::CliParameterId,
+) -> Option<String> {
+    contract
+        .parameters
+        .iter()
+        .find(|descriptor| descriptor.id == parameter)
+        .and_then(|descriptor| descriptor.default.map(htmlcut_core::render_cli_value))
+}
+
+fn assert_command_path_registered(command: &clap::Command, command_path: &[&str]) {
+    let Some((head, tail)) = command_path.split_first() else {
+        panic!("expected non-empty command path");
+    };
+    let subcommand = command
+        .get_subcommands()
+        .find(|subcommand| subcommand.get_name() == *head)
+        .unwrap_or_else(|| panic!("missing clap command path segment {head:?}"));
+    if !tail.is_empty() {
+        assert_command_path_registered(subcommand, tail);
+    }
 }
 
 fn write_definition_file(dir: &Path, name: &str, definition: &ExtractionDefinition) -> PathBuf {
@@ -101,6 +208,7 @@ fn fixture_result(value: Value, value_type: ValueType) -> ExtractionResult {
             input_base_url: Some("https://example.com/docs/start.html".to_owned()),
             effective_base_url: Some("https://example.com/docs/start.html".to_owned()),
             bytes_read: 42,
+            load_steps: Vec::new(),
             text: None,
         },
         document_title: Some("Fixture".to_owned()),
@@ -175,6 +283,8 @@ fn delimiter_metadata(
         },
         include_start,
         include_end,
+        matched_start: "<article>".to_owned(),
+        matched_end: "</article>".to_owned(),
     })
 }
 
@@ -194,6 +304,7 @@ fn fixture_inspection() -> SourceInspectionCommandReport {
             input_base_url: Some("https://example.com/docs/start.html".to_owned()),
             effective_base_url: Some("https://example.com/docs/start.html".to_owned()),
             bytes_read: 123,
+            load_steps: Vec::new(),
             text: None,
         },
         document: Some(DocumentInspection {
@@ -291,7 +402,9 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     };
     assert_eq!(
         render_catalog_text(&empty_catalog),
-        format!("{TOOL_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}")
+        format!(
+            "{TOOL_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\nCatalog: 0 operations.\nUse `htmlcut catalog --operation <OPERATION_ID> --output json` for one exact contract."
+        )
     );
     assert_eq!(
         render_catalog_surface(None, &CatalogAvailability::Cli),
@@ -322,7 +435,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
         stdout.contains("request schemas: htmlcut.extraction_request@4, htmlcut.runtime_options@4")
     );
     assert!(stdout.contains("result: ExtractionResult"));
-    assert!(stdout.contains("result schemas: htmlcut.extraction_result@4"));
+    assert!(stdout.contains("result schemas: htmlcut.extraction_result@5"));
     assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"));
     assert!(stdout.contains("default output: text"));
     assert!(stdout.contains("default output overrides:"));
@@ -763,7 +876,7 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
     };
     let rendered_catalog = render_catalog_text(&report);
     assert!(rendered_catalog.contains("Core-only parse"));
-    assert!(!rendered_catalog.contains("inputs: file | url | stdin"));
+    assert!(rendered_catalog.contains("inputs: file | url | stdin"));
 
     let single_operation_catalog = CatalogCommandReport {
         operations: vec![CatalogOperationReport {
@@ -1163,12 +1276,16 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .any(|operation| operation.availability == CatalogAvailability::CoreOnly)
     );
 
-    let text_outcome = run_schema(SchemaArgs {
-        output: CliSchemaOutputMode::Text,
-        output_file: None,
-        name: Some("htmlcut.result".to_owned()),
-        schema_version: Some(1),
-    });
+    let text_outcome = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::Text,
+            output_file: None,
+            name: Some("htmlcut.result".to_owned()),
+            schema_version: Some(1),
+        },
+        0,
+        false,
+    );
     assert_eq!(text_outcome.exit_code, 0);
     assert!(
         text_outcome
@@ -1177,12 +1294,16 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .is_some_and(|stdout| stdout.contains("Schema:"))
     );
 
-    let json_error_outcome = run_schema(SchemaArgs {
-        output: CliSchemaOutputMode::Json,
-        output_file: None,
-        name: Some("synthetic.missing".to_owned()),
-        schema_version: Some(99),
-    });
+    let json_error_outcome = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::Json,
+            output_file: None,
+            name: Some("synthetic.missing".to_owned()),
+            schema_version: Some(99),
+        },
+        0,
+        false,
+    );
     assert_eq!(json_error_outcome.exit_code, EXIT_CODE_USAGE);
     assert!(
         json_error_outcome
@@ -1191,12 +1312,16 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .is_some_and(|stdout| stdout.contains("\"code\": \"CLI_SCHEMA_UNKNOWN\""))
     );
 
-    let text_error_outcome = run_schema(SchemaArgs {
-        output: CliSchemaOutputMode::Text,
-        output_file: None,
-        name: None,
-        schema_version: Some(1),
-    });
+    let text_error_outcome = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::Text,
+            output_file: None,
+            name: None,
+            schema_version: Some(1),
+        },
+        0,
+        false,
+    );
     assert_eq!(text_error_outcome.exit_code, EXIT_CODE_USAGE);
     assert!(
         text_error_outcome
@@ -1364,6 +1489,10 @@ fn raw_arg_helpers_detect_global_help_and_version_anywhere() {
 #[test]
 fn command_name_from_raw_args_recognizes_nested_commands() {
     assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned()]),
+        "htmlcut"
+    );
+    assert_eq!(
         command_name_from_raw_args(&[
             "htmlcut".to_owned(),
             "inspect".to_owned(),
@@ -1388,6 +1517,29 @@ fn command_name_from_raw_args_recognizes_nested_commands() {
         "inspect-slice"
     );
     assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "-vv".to_owned(),
+            "inspect".to_owned(),
+            "slice".to_owned(),
+            "page.html".to_owned(),
+        ]),
+        "inspect-slice"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "--quiet".to_owned(),
+            "select".to_owned(),
+            "-".to_owned(),
+        ]),
+        "select"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "inspect".to_owned()]),
+        "inspect"
+    );
+    assert_eq!(
         command_name_from_raw_args(&["htmlcut".to_owned(), "select".to_owned()]),
         "select"
     );
@@ -1395,6 +1547,510 @@ fn command_name_from_raw_args_recognizes_nested_commands() {
         command_name_from_raw_args(&["htmlcut".to_owned(), "slice".to_owned()]),
         "slice"
     );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "mystery".to_owned()]),
+        "mystery"
+    );
+
+    let multi_value_condition = htmlcut_core::CliCondition {
+        parameter: htmlcut_core::CliParameterId::Output,
+        values: vec![
+            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::Json),
+            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::None),
+        ],
+    };
+    assert_eq!(
+        crate::prepare::render_condition_expression_for_tests(&multi_value_condition),
+        "--output is one of json, none"
+    );
+}
+
+#[test]
+fn contract_lint_clap_value_enums_match_core_contract_domains() {
+    let select_extract =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select extract contract");
+    let select_preview =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
+            .expect("select preview contract");
+
+    assert_eq!(
+        value_enum_names::<CliMatchMode>(),
+        select_extract
+            .selection_modes
+            .iter()
+            .copied()
+            .map(|mode| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(mode))
+            })
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        value_enum_names::<CliValueMode>(),
+        select_extract
+            .value_modes
+            .iter()
+            .copied()
+            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        value_enum_names::<CliOutputMode>(),
+        select_extract
+            .output_modes
+            .iter()
+            .copied()
+            .map(|mode| htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode)))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        value_enum_names::<CliInspectOutputMode>(),
+        select_preview
+            .output_modes
+            .iter()
+            .copied()
+            .map(|mode| htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode)))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        value_enum_names::<CliCatalogOutputMode>(),
+        vec!["text".to_owned(), "json".to_owned()]
+    );
+    assert_eq!(
+        value_enum_names::<CliSchemaOutputMode>(),
+        vec!["text".to_owned(), "json".to_owned()]
+    );
+    assert_eq!(
+        value_enum_names::<CliWhitespaceMode>(),
+        vec![
+            htmlcut_core::render_cli_value(htmlcut_core::CliValue::WhitespaceMode(
+                WhitespaceMode::Preserve,
+            )),
+            htmlcut_core::render_cli_value(htmlcut_core::CliValue::WhitespaceMode(
+                WhitespaceMode::Normalize,
+            )),
+        ]
+    );
+    assert_eq!(
+        value_enum_names::<CliPatternMode>(),
+        vec![
+            htmlcut_core::render_cli_value(htmlcut_core::CliValue::PatternMode(
+                PatternMode::Literal,
+            )),
+            htmlcut_core::render_cli_value(
+                htmlcut_core::CliValue::PatternMode(PatternMode::Regex,)
+            ),
+        ]
+    );
+    assert_eq!(
+        value_enum_names::<CliFetchPreflightMode>(),
+        vec![
+            htmlcut_core::render_cli_value(htmlcut_core::CliValue::FetchPreflightMode(
+                FetchPreflightMode::HeadFirst,
+            )),
+            htmlcut_core::render_cli_value(htmlcut_core::CliValue::FetchPreflightMode(
+                FetchPreflightMode::GetOnly,
+            )),
+        ]
+    );
+}
+
+#[test]
+fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
+    let known_schemas = known_schema_names();
+    let mut examples = vec![
+        crate::help::ROOT_AFTER_HELP,
+        crate::help::catalog_after_help(),
+        crate::help::schema_after_help(),
+        crate::help::select_after_help(),
+        crate::help::slice_after_help(),
+        crate::help::inspect_source_after_help(),
+        crate::help::inspect_select_after_help(),
+        crate::help::inspect_slice_after_help(),
+    ]
+    .into_iter()
+    .flat_map(|help| {
+        help.lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("htmlcut "))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    })
+    .collect::<Vec<_>>();
+    examples.extend(
+        htmlcut_core::cli_operation_catalog()
+            .iter()
+            .flat_map(|contract| {
+                contract
+                    .examples
+                    .iter()
+                    .map(|example| (*example).to_owned())
+            }),
+    );
+
+    for example in examples {
+        let tokens = shell_words(&example);
+        assert_eq!(tokens.first().map(String::as_str), Some("htmlcut"));
+        let top_level = tokens.get(1).map(String::as_str).expect("command");
+
+        match top_level {
+            "catalog" => {
+                if let Some(operation_id) = option_value(&tokens, "--operation") {
+                    operation_id
+                        .parse::<htmlcut_core::OperationId>()
+                        .expect("registered catalog operation id");
+                }
+            }
+            "schema" => {
+                if let Some(schema_name) = option_value(&tokens, "--name") {
+                    assert!(
+                        known_schemas.contains(schema_name),
+                        "unknown schema {schema_name} in {example}"
+                    );
+                }
+            }
+            "inspect" | "select" | "slice" => {
+                let command_path = if top_level == "inspect" {
+                    vec![
+                        "inspect",
+                        tokens
+                            .get(2)
+                            .map(String::as_str)
+                            .expect("inspect subcommand"),
+                    ]
+                } else {
+                    vec![top_level]
+                };
+                let contract = htmlcut_core::find_cli_operation_by_command_path(&command_path)
+                    .expect("registered operation example");
+                assert_eq!(
+                    command_name_from_raw_args(&tokens),
+                    contract.report_command(),
+                    "report command drift for {example}"
+                );
+
+                if let Some(value) = option_value(&tokens, "--match") {
+                    assert!(
+                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Match)
+                            .contains(&value.to_owned()),
+                        "unsupported --match {value} in {example}"
+                    );
+                }
+                if let Some(value) = option_value(&tokens, "--value") {
+                    assert!(
+                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Value)
+                            .contains(&value.to_owned()),
+                        "unsupported --value {value} in {example}"
+                    );
+                }
+                if let Some(value) = option_value(&tokens, "--output") {
+                    assert!(
+                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Output)
+                            .contains(&value.to_owned()),
+                        "unsupported --output {value} in {example}"
+                    );
+                }
+                if let Some(value) = option_value(&tokens, "--pattern") {
+                    assert!(
+                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Pattern)
+                            .contains(&value.to_owned()),
+                        "unsupported --pattern {value} in {example}"
+                    );
+                }
+                if let Some(value) = option_value(&tokens, "--fetch-preflight") {
+                    assert!(
+                        parameter_allowed_values(
+                            contract,
+                            htmlcut_core::CliParameterId::FetchPreflight,
+                        )
+                        .contains(&value.to_owned()),
+                        "unsupported --fetch-preflight {value} in {example}"
+                    );
+                }
+            }
+            other => panic!("unexpected help example command {other}"),
+        }
+    }
+}
+
+#[test]
+fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
+    let command = Cli::command();
+    assert_command_path_registered(&command, &["catalog"]);
+    assert_command_path_registered(&command, &["schema"]);
+
+    let source_inspect =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SourceInspect)
+            .expect("source inspect contract");
+    let select_extract =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select extract contract");
+    let slice_extract =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SliceExtract)
+            .expect("slice extract contract");
+    let select_preview =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
+            .expect("select preview contract");
+    let slice_preview =
+        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SlicePreview)
+            .expect("slice preview contract");
+
+    for contract in [
+        source_inspect,
+        select_extract,
+        slice_extract,
+        select_preview,
+        slice_preview,
+    ] {
+        assert_command_path_registered(&command, contract.command_path);
+    }
+
+    let select_args = match Cli::try_parse_from(["htmlcut", "select", "page.html", "--css", "a"]) {
+        Ok(Cli {
+            command: Commands::Select(args),
+            ..
+        }) => args,
+        other => panic!("unexpected select parse result {other:?}"),
+    };
+    assert_eq!(select_args.source.max_bytes, DEFAULT_MAX_BYTES.to_string());
+    assert_eq!(
+        select_args.source.max_bytes,
+        parameter_default_value(select_extract, htmlcut_core::CliParameterId::MaxBytes)
+            .expect("select max-bytes default"),
+    );
+    assert_eq!(
+        select_args.source.fetch_timeout_ms,
+        DEFAULT_FETCH_TIMEOUT_MS
+    );
+    assert_eq!(
+        select_args.source.fetch_timeout_ms.to_string(),
+        parameter_default_value(select_extract, htmlcut_core::CliParameterId::FetchTimeoutMs)
+            .expect("select fetch-timeout default"),
+    );
+    assert_eq!(
+        select_args.source.fetch_preflight.to_string(),
+        parameter_default_value(select_extract, htmlcut_core::CliParameterId::FetchPreflight)
+            .expect("select fetch-preflight default"),
+    );
+    assert_eq!(
+        select_args.selection.r#match.to_string(),
+        select_extract
+            .default_match
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+            })
+            .expect("select default match"),
+    );
+    assert_eq!(
+        select_args.output.value.to_string(),
+        select_extract
+            .default_value
+            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .expect("select default value"),
+    );
+    assert_eq!(
+        select_args.output.whitespace.to_string(),
+        parameter_default_value(select_extract, htmlcut_core::CliParameterId::Whitespace)
+            .expect("select whitespace default"),
+    );
+    assert_eq!(select_args.output.preview_chars, DEFAULT_PREVIEW_CHARS);
+    assert_eq!(
+        select_args.output.preview_chars.to_string(),
+        parameter_default_value(select_extract, htmlcut_core::CliParameterId::PreviewChars)
+            .expect("select preview-chars default"),
+    );
+
+    let slice_args = match Cli::try_parse_from([
+        "htmlcut",
+        "slice",
+        "page.html",
+        "--from",
+        "<a>",
+        "--to",
+        "</a>",
+    ]) {
+        Ok(Cli {
+            command: Commands::Slice(args),
+            ..
+        }) => args,
+        other => panic!("unexpected slice parse result {other:?}"),
+    };
+    assert_eq!(
+        slice_args.pattern.to_string(),
+        parameter_default_value(slice_extract, htmlcut_core::CliParameterId::Pattern)
+            .expect("slice pattern default"),
+    );
+    assert_eq!(
+        slice_args.selection.r#match.to_string(),
+        slice_extract
+            .default_match
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+            })
+            .expect("slice default match"),
+    );
+    assert_eq!(
+        slice_args.output.value.to_string(),
+        slice_extract
+            .default_value
+            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .expect("slice default value"),
+    );
+    assert_eq!(
+        slice_args.output.whitespace.to_string(),
+        parameter_default_value(slice_extract, htmlcut_core::CliParameterId::Whitespace)
+            .expect("slice whitespace default"),
+    );
+
+    let inspect_source_args =
+        match Cli::try_parse_from(["htmlcut", "inspect", "source", "page.html"]) {
+            Ok(Cli {
+                command:
+                    Commands::Inspect(InspectArgs {
+                        command: InspectCommands::Source(args),
+                    }),
+                ..
+            }) => args,
+            other => panic!("unexpected inspect source parse result {other:?}"),
+        };
+    assert_eq!(
+        inspect_source_args.sample_limit,
+        DEFAULT_INSPECTION_SAMPLE_LIMIT
+    );
+    assert_eq!(
+        inspect_source_args.sample_limit.to_string(),
+        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::SampleLimit)
+            .expect("inspect source sample-limit default"),
+    );
+    assert_eq!(
+        inspect_source_args.output.to_string(),
+        source_inspect
+            .default_output
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+            })
+            .expect("inspect source default output"),
+    );
+    assert_eq!(inspect_source_args.preview_chars, DEFAULT_PREVIEW_CHARS);
+    assert_eq!(
+        inspect_source_args.preview_chars.to_string(),
+        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::PreviewChars)
+            .expect("inspect source preview-chars default"),
+    );
+    assert_eq!(
+        inspect_source_args.source.fetch_preflight.to_string(),
+        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::FetchPreflight)
+            .expect("inspect source fetch-preflight default"),
+    );
+
+    let inspect_select_args =
+        match Cli::try_parse_from(["htmlcut", "inspect", "select", "page.html", "--css", "a"]) {
+            Ok(Cli {
+                command:
+                    Commands::Inspect(InspectArgs {
+                        command: InspectCommands::Select(args),
+                    }),
+                ..
+            }) => args,
+            other => panic!("unexpected inspect select parse result {other:?}"),
+        };
+    assert_eq!(
+        inspect_select_args.selection.r#match.to_string(),
+        select_preview
+            .default_match
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+            })
+            .expect("inspect select default match"),
+    );
+    assert_eq!(
+        inspect_select_args.whitespace.to_string(),
+        parameter_default_value(select_preview, htmlcut_core::CliParameterId::Whitespace)
+            .expect("inspect select whitespace default"),
+    );
+    assert_eq!(
+        inspect_select_args.output.output.to_string(),
+        select_preview
+            .default_output
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+            })
+            .expect("inspect select default output"),
+    );
+    assert_eq!(
+        inspect_select_args.output.preview_chars,
+        DEFAULT_PREVIEW_CHARS
+    );
+
+    let inspect_slice_args = match Cli::try_parse_from([
+        "htmlcut",
+        "inspect",
+        "slice",
+        "page.html",
+        "--from",
+        "<a>",
+        "--to",
+        "</a>",
+    ]) {
+        Ok(Cli {
+            command:
+                Commands::Inspect(InspectArgs {
+                    command: InspectCommands::Slice(args),
+                }),
+            ..
+        }) => args,
+        other => panic!("unexpected inspect slice parse result {other:?}"),
+    };
+    assert_eq!(
+        inspect_slice_args.pattern.to_string(),
+        parameter_default_value(slice_preview, htmlcut_core::CliParameterId::Pattern)
+            .expect("inspect slice pattern default"),
+    );
+    assert_eq!(
+        inspect_slice_args.selection.r#match.to_string(),
+        slice_preview
+            .default_match
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+            })
+            .expect("inspect slice default match"),
+    );
+    assert_eq!(
+        inspect_slice_args.whitespace.to_string(),
+        parameter_default_value(slice_preview, htmlcut_core::CliParameterId::Whitespace)
+            .expect("inspect slice whitespace default"),
+    );
+    assert_eq!(
+        inspect_slice_args.output.output.to_string(),
+        slice_preview
+            .default_output
+            .map(|value| {
+                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+            })
+            .expect("inspect slice default output"),
+    );
+    assert_eq!(
+        inspect_slice_args.output.preview_chars,
+        DEFAULT_PREVIEW_CHARS
+    );
+
+    let catalog_args = match Cli::try_parse_from(["htmlcut", "catalog"]) {
+        Ok(Cli {
+            command: Commands::Catalog(args),
+            ..
+        }) => args,
+        other => panic!("unexpected catalog parse result {other:?}"),
+    };
+    assert_eq!(catalog_args.output.to_string(), "text");
+
+    let schema_args = match Cli::try_parse_from(["htmlcut", "schema"]) {
+        Ok(Cli {
+            command: Commands::Schema(args),
+            ..
+        }) => args,
+        other => panic!("unexpected schema parse result {other:?}"),
+    };
+    assert_eq!(schema_args.output.to_string(), "text");
 }
 
 #[test]
@@ -1667,12 +2323,31 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     assert!(slice_preview_text.contains("fragment: <article>Hello</article>"));
     assert!(slice_preview_text.contains("text: Hello"));
     assert!(slice_preview_text.contains("include start: true"));
+    assert!(slice_preview_text.contains("matched start: <article>"));
+    assert!(slice_preview_text.contains("matched end: </article>"));
 
-    let inspection_text =
-        render_source_inspection_text(&fixture_inspection(), DEFAULT_PREVIEW_CHARS);
+    let mut inspection = fixture_inspection();
+    inspection.source.load_steps = vec![
+        SourceLoadStep {
+            action: SourceLoadAction::HeadPreflight,
+            outcome: SourceLoadOutcome::Fallback,
+            status: Some(405),
+            message: "HEAD returned 405, so HTMLCut fell back to GET.".to_owned(),
+        },
+        SourceLoadStep {
+            action: SourceLoadAction::Get,
+            outcome: SourceLoadOutcome::Succeeded,
+            status: Some(200),
+            message: "Fetched the remote source with GET.".to_owned(),
+        },
+    ];
+    let inspection_text = render_source_inspection_text(&inspection, DEFAULT_PREVIEW_CHARS);
     assert!(inspection_text.contains("Top tags: a (2)"));
     assert!(inspection_text.contains("Link previews:"));
     assert!(inspection_text.contains("Document <base href>: ../content/"));
+    assert!(inspection_text.contains("Load trace:"));
+    assert!(inspection_text.contains("head preflight fallback (405)"));
+    assert!(inspection_text.contains("get succeeded (200)"));
 
     let mut untitled = fixture_inspection();
     untitled.source.input_base_url = None;
@@ -1749,9 +2424,24 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
 
 #[test]
 fn verbose_and_diagnostic_renderers_cover_branching_paths() {
+    let mut result = fixture_result(Value::String("Hello".to_owned()), ValueType::Text);
+    result.source.load_steps = vec![
+        SourceLoadStep {
+            action: SourceLoadAction::HeadPreflight,
+            outcome: SourceLoadOutcome::Fallback,
+            status: Some(405),
+            message: "HEAD returned 405, so HTMLCut fell back to GET.".to_owned(),
+        },
+        SourceLoadStep {
+            action: SourceLoadAction::Get,
+            outcome: SourceLoadOutcome::Succeeded,
+            status: Some(200),
+            message: "Fetched the remote source with GET.".to_owned(),
+        },
+    ];
     let report = build_extraction_report(
         "select",
-        fixture_result(Value::String("Hello".to_owned()), ValueType::Text),
+        result,
         Some(BundlePaths {
             dir: "/tmp/bundle".to_owned(),
             html: "/tmp/bundle/selection.html".to_owned(),
@@ -1762,8 +2452,20 @@ fn verbose_and_diagnostic_renderers_cover_branching_paths() {
     let verbose = build_verbose_lines(&report, 2);
     assert!(verbose[0].contains("selected 1 match"));
     assert!(verbose[1].contains("scanned 2 candidates"));
+    assert!(verbose[2].contains("head preflight fallback (405)"));
+    assert!(verbose[3].contains("get succeeded (200)"));
     assert!(build_verbose_lines(&report, 0).is_empty());
     assert_eq!(build_verbose_lines(&report, 1).len(), 1);
+    let mut inspection = fixture_inspection();
+    inspection.source.load_steps = report.source.load_steps.clone();
+    let inspection_verbose = build_source_inspection_verbose_lines(&inspection, 2);
+    assert!(inspection_verbose[0].contains("inspected 123 bytes"));
+    assert!(inspection_verbose[1].contains("head preflight fallback (405)"));
+    assert!(inspection_verbose[2].contains("get succeeded (200)"));
+    assert_eq!(
+        build_source_inspection_verbose_lines(&inspection, 1).len(),
+        1
+    );
     let warning_stderr = build_human_diagnostic_stderr_lines(&[Diagnostic {
         level: DiagnosticLevel::Warning,
         code: "EFFECTIVE_BASE_URL_UNRESOLVED".to_owned(),
@@ -1774,6 +2476,113 @@ fn verbose_and_diagnostic_renderers_cover_branching_paths() {
     assert!(warning_stderr[0].contains("htmlcut: warning EFFECTIVE_BASE_URL_UNRESOLVED"));
     assert_eq!(render_diagnostic_level(DiagnosticLevel::Warning), "warning");
     assert_eq!(render_source_kind(&SourceKind::Url), "url");
+}
+
+#[test]
+fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
+    let mut preview = build_extraction_report(
+        "inspect-select",
+        fixture_result(
+            serde_json::json!({"tagName":"article"}),
+            ValueType::Structured,
+        ),
+        None,
+    );
+    preview.operation_id = htmlcut_core::OperationId::SelectPreview;
+    preview.source.load_steps = vec![SourceLoadStep {
+        action: SourceLoadAction::HeadPreflight,
+        outcome: SourceLoadOutcome::Skipped,
+        status: None,
+        message: "Skipped the HEAD preflight because GET-only mode was configured.".to_owned(),
+    }];
+    let preview_text = render_preview_text(&preview);
+    assert!(preview_text.contains("Load trace:"));
+    assert!(preview_text.contains("head preflight skipped:"));
+
+    let mut inspection = fixture_inspection();
+    inspection.source.load_steps = preview.source.load_steps.clone();
+    let inspection_verbose = build_source_inspection_verbose_lines(&inspection, 2);
+    assert!(
+        inspection_verbose[1]
+            .contains("htmlcut: source load head preflight skipped: Skipped the HEAD preflight")
+    );
+
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(
+        tempdir.path(),
+        "input.html",
+        "<article><p>Hello</p></article>",
+    );
+    let input = input_path.to_string_lossy().into_owned();
+
+    let inspect_quiet = run_inspect_source(
+        InspectSourceArgs {
+            source: SourceArgs {
+                input: Some(input.clone()),
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            output: CliInspectOutputMode::Text,
+            include_source_text: false,
+            output_file: None,
+            sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
+        },
+        2,
+        true,
+    );
+    assert_eq!(inspect_quiet.exit_code, 0);
+    assert!(inspect_quiet.stderr.is_empty());
+    assert!(
+        inspect_quiet
+            .stdout
+            .as_deref()
+            .is_some_and(|stdout| stdout.contains("Source: file"))
+    );
+
+    let preview_quiet = execute_preview(
+        PreparedPreview::from_select_with_logging(
+            InspectSelectArgs {
+                definition: DefinitionArgs {
+                    request_file: None,
+                    emit_request_file: None,
+                },
+                source: SourceArgs {
+                    input: Some(input),
+                    base_url: None,
+                    max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                    fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
+                },
+                css: Some("article".to_owned()),
+                selection: SelectionArgs {
+                    r#match: CliMatchMode::First,
+                    index: None,
+                },
+                whitespace: CliWhitespaceMode::Preserve,
+                rewrite_urls: false,
+                output: InspectOutputArgs {
+                    output: CliInspectOutputMode::Text,
+                    preview_chars: DEFAULT_PREVIEW_CHARS,
+                    include_source_text: false,
+                    output_file: None,
+                },
+            },
+            2,
+            true,
+        )
+        .expect("preview builder"),
+    );
+    assert_eq!(preview_quiet.exit_code, 0);
+    assert!(preview_quiet.stderr.is_empty());
+    assert!(
+        preview_quiet
+            .stdout
+            .as_deref()
+            .is_some_and(|stdout| stdout.contains("Command: inspect-select"))
+    );
 }
 
 #[test]
@@ -2049,13 +2858,20 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
             && parameter.requirement == crate::model::CatalogParameterRequirement::Optional
     }));
     assert!(contract.parameters.iter().any(|parameter| {
+        parameter.name == "--emit-request-file"
+            && parameter.kind == crate::model::CatalogParameterKind::Option
+            && parameter.requirement == crate::model::CatalogParameterRequirement::Optional
+    }));
+    assert!(contract.parameters.iter().any(|parameter| {
         parameter.name == "--index"
             && parameter.requirement == crate::model::CatalogParameterRequirement::Conditional
             && parameter.requirement_note.as_deref() == Some("required when --match nth is used")
     }));
 
-    let error = build_catalog_report(Some("unknown.operation")).expect_err("unknown op");
+    let error = build_catalog_report(Some("select.extrac")).expect_err("unknown op");
     assert_eq!(error.code, "CLI_OPERATION_ID_UNKNOWN");
+    assert!(error.message.contains("Did you mean"));
+    assert!(error.message.contains("`select.extract`"));
 }
 
 #[test]
@@ -2089,6 +2905,13 @@ fn schema_report_surfaces_core_cli_and_interop_contracts() {
 
     let error = build_schema_report(None, Some(1)).expect_err("version without name");
     assert_eq!(error.code, "CLI_SCHEMA_VERSION_REQUIRES_NAME");
+    let version_error =
+        build_schema_report(Some("htmlcut.result"), Some(99)).expect_err("unknown schema version");
+    assert!(
+        version_error
+            .message
+            .contains("Available versions for `htmlcut.result`: 1.")
+    );
 }
 
 #[test]
@@ -2612,7 +3435,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     let input = input_path.to_string_lossy().into_owned();
 
     let select = PreparedExtraction::from_select(SelectArgs {
-        definition: DefinitionArgs { request_file: None },
+        definition: DefinitionArgs {
+            request_file: None,
+            emit_request_file: None,
+        },
         source: SourceArgs {
             input: Some(input.clone()),
             base_url: None,
@@ -2641,7 +3467,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     assert_eq!(select.command, "select");
 
     let slice = PreparedExtraction::from_slice(SliceArgs {
-        definition: DefinitionArgs { request_file: None },
+        definition: DefinitionArgs {
+            request_file: None,
+            emit_request_file: None,
+        },
         source: SourceArgs {
             input: Some(input.clone()),
             base_url: None,
@@ -2675,7 +3504,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     assert_eq!(slice.command, "slice");
 
     let preview = PreparedPreview::from_select(InspectSelectArgs {
-        definition: DefinitionArgs { request_file: None },
+        definition: DefinitionArgs {
+            request_file: None,
+            emit_request_file: None,
+        },
         source: SourceArgs {
             input: Some(input.clone()),
             base_url: None,
@@ -2704,7 +3536,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -2733,7 +3568,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: Some("ftp://example.com".to_owned()),
@@ -2762,7 +3600,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_select(SelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -2791,7 +3632,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -2825,7 +3669,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: Some("ftp://example.com".to_owned()),
@@ -2859,7 +3706,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -2927,7 +3777,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedPreview::from_select(InspectSelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -2953,7 +3806,10 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
     );
     assert!(
         PreparedPreview::from_slice(InspectSliceArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3001,7 +3857,21 @@ fn prepared_builders_and_helper_edges_cover_remaining_branches() {
         "select".to_owned(),
         "page.html".to_owned(),
         "--output".to_owned(),
+        "html".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
         "none".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "mystery".to_owned(),
     ]));
     assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),
@@ -3115,17 +3985,56 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
     );
 
     let invalid_json_path = write_fixture_file(tempdir.path(), "invalid-request.json", "{not json");
-    assert_eq!(
-        expect_cli_error(
-            load_extraction_definition_for_tests(
-                &invalid_json_path,
-                ExtractionStrategy::Selector,
-                "select",
-            ),
-            "invalid request file json",
-        )
-        .code,
-        "CLI_REQUEST_FILE_INVALID"
+    let invalid_json_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_json_path,
+            ExtractionStrategy::Selector,
+            "select",
+        ),
+        "invalid request file json",
+    );
+    assert_eq!(invalid_json_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        invalid_json_error
+            .message
+            .contains("htmlcut schema --name htmlcut.extraction_definition --output json")
+    );
+    assert!(
+        invalid_json_error
+            .message
+            .contains("htmlcut catalog --operation select.extract --output json")
+    );
+
+    let invalid_shape_path = write_fixture_file(
+        tempdir.path(),
+        "invalid-shape.json",
+        r#"{
+  "schema_name": "htmlcut.extraction_definition",
+  "schema_version": 1,
+  "request": {
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "selector",
+      "selector": { "css": "article" }
+    }
+  }
+}"#,
+    );
+    let invalid_shape_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_shape_path,
+            ExtractionStrategy::Selector,
+            "select",
+        ),
+        "invalid request file shape",
+    );
+    assert_eq!(invalid_shape_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(invalid_shape_error.message.contains("JSON path $"));
+    assert!(invalid_shape_error.message.contains("selector"));
+    assert!(
+        invalid_shape_error
+            .message
+            .contains("request.extraction.selector` as a plain JSON string")
     );
 
     let mut unsupported_schema =
@@ -3202,6 +4111,7 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         SliceArgs {
             definition: DefinitionArgs {
                 request_file: Some(slice_definition_path.clone()),
+                emit_request_file: None,
             },
             source: SourceArgs {
                 input: None,
@@ -3244,10 +4154,12 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         prepared_slice.output_file.as_deref(),
         Some(request_file_output_path.as_path())
     );
+    assert!(prepared_slice.request_definition_output.is_none());
 
     let preview_select = PreparedPreview::from_select(InspectSelectArgs {
         definition: DefinitionArgs {
             request_file: Some(selector_definition_path.clone()),
+            emit_request_file: None,
         },
         source: SourceArgs {
             input: None,
@@ -3275,10 +4187,12 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         preview_select.request.extraction.value(),
         &ValueSpec::Structured
     );
+    assert!(preview_select.request_definition_output.is_none());
 
     let preview_slice = PreparedPreview::from_slice(InspectSliceArgs {
         definition: DefinitionArgs {
             request_file: Some(slice_definition_path.clone()),
+            emit_request_file: None,
         },
         source: SourceArgs {
             input: None,
@@ -3311,12 +4225,14 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         preview_slice.request.extraction.value(),
         &ValueSpec::Structured
     );
+    assert!(preview_slice.request_definition_output.is_none());
 
     let slice_conflict = expect_cli_error(
         PreparedExtraction::from_slice_with_logging(
             SliceArgs {
                 definition: DefinitionArgs {
                     request_file: Some(slice_definition_path.clone()),
+                    emit_request_file: None,
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
@@ -3354,12 +4270,18 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
     );
     assert_eq!(slice_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
     assert!(slice_conflict.message.contains("--regex-flags"));
+    assert!(
+        slice_conflict
+            .message
+            .contains("--emit-request-file <PATH>")
+    );
     assert!(!slice_conflict.message.contains("--output-file"));
 
     let inspect_select_conflict = expect_cli_error(
         PreparedPreview::from_select(InspectSelectArgs {
             definition: DefinitionArgs {
                 request_file: Some(selector_definition_path.clone()),
+                emit_request_file: None,
             },
             source: SourceArgs {
                 input: Some(input.clone()),
@@ -3392,6 +4314,7 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         PreparedPreview::from_slice(InspectSliceArgs {
             definition: DefinitionArgs {
                 request_file: Some(slice_definition_path),
+                emit_request_file: None,
             },
             source: SourceArgs {
                 input: Some(input),
@@ -3448,6 +4371,7 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(nested_output.clone()),
+            post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code: 0,
         },
@@ -3459,6 +4383,34 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
     assert!(stderr.is_empty());
     assert_eq!(
         fs::read_to_string(&nested_output).expect("nested output file"),
+        "Hello\n"
+    );
+    let ordered_output = tempdir.path().join("ordered/output/report.txt");
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit_code = write_outcome(
+        ExecutionOutcome {
+            stdout: Some("Hello".to_owned()),
+            output_file: Some(ordered_output.clone()),
+            post_write_stderr: vec![
+                "htmlcut: wrote output file to ordered/output/report.txt".to_owned(),
+            ],
+            stderr: vec![
+                "htmlcut: request normalized".to_owned(),
+                "htmlcut: preview complete".to_owned(),
+            ],
+            exit_code: 0,
+        },
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(exit_code, 0);
+    assert_eq!(
+        String::from_utf8(stderr).expect("stderr"),
+        "htmlcut: request normalized\nhtmlcut: preview complete\nhtmlcut: wrote output file to ordered/output/report.txt\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&ordered_output).expect("ordered output file"),
         "Hello\n"
     );
 
@@ -3491,6 +4443,7 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(tempdir.path().to_path_buf()),
+            post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code: 0,
         },
@@ -3504,6 +4457,679 @@ fn request_file_builders_and_output_file_edges_cover_remaining_branches() {
             .expect("stderr")
             .contains("Could not write")
     );
+}
+
+#[test]
+fn request_file_recovery_hints_cover_preview_and_slice_variants() {
+    let tempdir = tempdir().expect("tempdir");
+    let invalid_json_path = write_fixture_file(tempdir.path(), "invalid.json", "{not json");
+
+    let inspect_select_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_json_path,
+            ExtractionStrategy::Selector,
+            "inspect select",
+        ),
+        "inspect select invalid request file json",
+    );
+    assert_eq!(inspect_select_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        inspect_select_error
+            .message
+            .contains("htmlcut catalog --operation select.preview --output json")
+    );
+
+    let inspect_slice_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_json_path,
+            ExtractionStrategy::Slice,
+            "inspect slice",
+        ),
+        "inspect slice invalid request file json",
+    );
+    assert_eq!(inspect_slice_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        inspect_slice_error
+            .message
+            .contains("htmlcut catalog --operation slice.preview --output json")
+    );
+    assert!(
+        inspect_slice_error.message.contains(
+            "Slice request files use plain JSON strings for `request.extraction.from` and `request.extraction.to`."
+        )
+    );
+
+    let fallback_selector_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_json_path,
+            ExtractionStrategy::Selector,
+            "custom selector command",
+        ),
+        "fallback selector operation id",
+    );
+    assert!(
+        fallback_selector_error
+            .message
+            .contains("htmlcut catalog --operation select.extract --output json")
+    );
+
+    let fallback_slice_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_json_path,
+            ExtractionStrategy::Slice,
+            "custom slice command",
+        ),
+        "fallback slice operation id",
+    );
+    assert!(
+        fallback_slice_error
+            .message
+            .contains("htmlcut catalog --operation slice.extract --output json")
+    );
+
+    let invalid_slice_shape_path = write_fixture_file(
+        tempdir.path(),
+        "invalid-slice-shape.json",
+        r#"{
+  "schema_name": "htmlcut.extraction_definition",
+  "schema_version": 1,
+  "request": {
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "slice",
+      "from": { "literal": "<article>" },
+      "to": "</article>"
+    }
+  }
+}"#,
+    );
+    let invalid_slice_shape_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_slice_shape_path,
+            ExtractionStrategy::Slice,
+            "inspect slice",
+        ),
+        "invalid slice request file shape",
+    );
+    assert_eq!(invalid_slice_shape_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        invalid_slice_shape_error
+            .message
+            .contains("request.extraction.from` as a plain JSON string, not an object")
+    );
+
+    let invalid_selector_array_path = write_fixture_file(
+        tempdir.path(),
+        "invalid-selector-array.json",
+        r#"{
+  "schema_name": "htmlcut.extraction_definition",
+  "schema_version": 1,
+  "request": {
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "selector",
+      "selector": ["article"]
+    }
+  }
+}"#,
+    );
+    let invalid_selector_array_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_selector_array_path,
+            ExtractionStrategy::Selector,
+            "inspect select",
+        ),
+        "invalid selector array shape",
+    );
+    assert!(
+        invalid_selector_array_error
+            .message
+            .contains("request.extraction.selector` as a plain JSON string, not an object")
+    );
+
+    let invalid_slice_array_path = write_fixture_file(
+        tempdir.path(),
+        "invalid-slice-array.json",
+        r#"{
+  "schema_name": "htmlcut.extraction_definition",
+  "schema_version": 1,
+  "request": {
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "slice",
+      "from": ["<article>"],
+      "to": "</article>"
+    }
+  }
+}"#,
+    );
+    let invalid_slice_array_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &invalid_slice_array_path,
+            ExtractionStrategy::Slice,
+            "inspect slice",
+        ),
+        "invalid slice array shape",
+    );
+    assert!(
+        invalid_slice_array_error
+            .message
+            .contains("request.extraction.from` as a plain JSON string, not an object")
+    );
+}
+
+#[test]
+fn json_error_path_formatter_covers_root_and_dot_prefixed_shapes() {
+    assert_eq!(format_json_error_path_for_tests(""), "$");
+    assert_eq!(
+        format_json_error_path_for_tests(".request.extraction.selector"),
+        "$.request.extraction.selector"
+    );
+    assert_eq!(
+        format_json_error_path_for_tests("request.extraction.selector"),
+        "$.request.extraction.selector"
+    );
+}
+
+#[test]
+fn request_definition_write_paths_cover_execution_failures_and_preview_success() {
+    let tempdir = tempdir().expect("tempdir");
+    let request = ExtractionRequest::new(
+        SourceRequest::memory("inline", "<article>Hello</article>"),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    );
+    let definition = ExtractionDefinition::new(request.clone());
+
+    assert_eq!(
+        request_definition_parent_dir_for_tests(Path::new("request.json")),
+        None
+    );
+    assert_eq!(
+        request_definition_parent_dir_for_tests(Path::new("/")),
+        None
+    );
+    assert_eq!(
+        request_definition_parent_dir_for_tests(Path::new("saved/request.json")),
+        Some(Path::new("saved"))
+    );
+
+    let request_dir = tempdir.path().join("request-dir");
+    fs::create_dir_all(&request_dir).expect("request directory");
+    let extraction_failure = execute_extraction(PreparedExtraction {
+        command: "select".to_owned(),
+        request: request.clone(),
+        runtime: htmlcut_core::RuntimeOptions::default(),
+        request_definition_output: Some(PendingExtractionDefinitionWrite {
+            path: request_dir,
+            definition: definition.clone(),
+        }),
+        output: CliOutputMode::Json,
+        bundle: None,
+        output_file: None,
+        verbose: 0,
+        quiet: false,
+    });
+    assert_eq!(extraction_failure.exit_code, EXIT_CODE_OUTPUT);
+    assert!(
+        extraction_failure
+            .stdout
+            .as_deref()
+            .expect("json error payload")
+            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
+    );
+    assert!(extraction_failure.stderr.is_empty());
+
+    let bad_parent = tempdir.path().join("not a directory");
+    fs::write(&bad_parent, "sentinel").expect("sentinel parent file");
+    let preview_failure = execute_preview(PreparedPreview {
+        command: "inspect-select".to_owned(),
+        request: request.clone(),
+        runtime: htmlcut_core::RuntimeOptions::default(),
+        request_definition_output: Some(PendingExtractionDefinitionWrite {
+            path: bad_parent.join("request.json"),
+            definition: definition.clone(),
+        }),
+        output: CliInspectOutputMode::Json,
+        output_file: None,
+        verbose: 0,
+        quiet: false,
+    });
+    assert_eq!(preview_failure.exit_code, EXIT_CODE_OUTPUT);
+    assert!(
+        preview_failure
+            .stdout
+            .as_deref()
+            .expect("json error payload")
+            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
+    );
+    assert!(preview_failure.stderr.is_empty());
+
+    let root_path_failure = execute_preview(PreparedPreview {
+        command: "inspect-select".to_owned(),
+        request: request.clone(),
+        runtime: htmlcut_core::RuntimeOptions::default(),
+        request_definition_output: Some(PendingExtractionDefinitionWrite {
+            path: PathBuf::from("/"),
+            definition: definition.clone(),
+        }),
+        output: CliInspectOutputMode::Json,
+        output_file: None,
+        verbose: 0,
+        quiet: false,
+    });
+    assert_eq!(root_path_failure.exit_code, EXIT_CODE_OUTPUT);
+    assert!(
+        root_path_failure
+            .stdout
+            .as_deref()
+            .expect("json error payload")
+            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
+    );
+
+    let preview_request_path = tempdir
+        .path()
+        .join("saved preview defs")
+        .join("request [inspect].json");
+    let preview_success = execute_preview(PreparedPreview {
+        command: "inspect-select".to_owned(),
+        request,
+        runtime: htmlcut_core::RuntimeOptions::default(),
+        request_definition_output: Some(PendingExtractionDefinitionWrite {
+            path: preview_request_path.clone(),
+            definition,
+        }),
+        output: CliInspectOutputMode::Text,
+        output_file: None,
+        verbose: 1,
+        quiet: false,
+    });
+    assert_eq!(preview_success.exit_code, 0);
+    assert!(preview_request_path.exists());
+    assert!(
+        preview_success
+            .stderr
+            .iter()
+            .any(|line| line.contains("wrote request file"))
+    );
+
+    let preview_without_request_file = execute_preview(PreparedPreview {
+        command: "inspect-select".to_owned(),
+        request: ExtractionRequest::new(
+            SourceRequest::memory("inline", "<article>Hello</article>"),
+            ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+        ),
+        runtime: htmlcut_core::RuntimeOptions::default(),
+        request_definition_output: None,
+        output: CliInspectOutputMode::Text,
+        output_file: None,
+        verbose: 1,
+        quiet: false,
+    });
+    assert_eq!(preview_without_request_file.exit_code, 0);
+    assert!(
+        preview_without_request_file
+            .stderr
+            .iter()
+            .all(|line| !line.contains("wrote request file"))
+    );
+}
+
+#[test]
+fn emit_request_file_round_trips_and_reports_verbose_success() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(
+        tempdir.path(),
+        "page [draft].html",
+        "<article><a href=\"/guide\">Guide</a></article>",
+    );
+    let emitted_request_path = tempdir
+        .path()
+        .join("saved defs")
+        .join("request [weird].json");
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "--verbose".to_owned(),
+        "select".to_owned(),
+        input_path.to_string_lossy().into_owned(),
+        "--css".to_owned(),
+        "a".to_owned(),
+        "--value".to_owned(),
+        "attribute".to_owned(),
+        "--attribute".to_owned(),
+        "href".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+        "--emit-request-file".to_owned(),
+        emitted_request_path.to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(exit_code, 0);
+    assert!(stdout.contains("\"ok\": true"));
+    assert!(stderr.contains("wrote request file"));
+
+    let emitted_definition: ExtractionDefinition = serde_json::from_str(
+        &fs::read_to_string(&emitted_request_path).expect("emitted request file"),
+    )
+    .expect("parse emitted definition");
+    assert_eq!(
+        emitted_definition.request.extraction.strategy(),
+        ExtractionStrategy::Selector
+    );
+    assert_eq!(
+        emitted_definition.request.extraction.value().value_type(),
+        ValueType::Attribute
+    );
+
+    let (round_trip_exit_code, round_trip_stdout, round_trip_stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "--request-file".to_owned(),
+        emitted_request_path.to_string_lossy().into_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+    ]);
+    assert_eq!(round_trip_exit_code, 0);
+    assert!(round_trip_stdout.contains("\"ok\": true"));
+    assert!(round_trip_stderr.is_empty());
+}
+
+#[test]
+fn catalog_and_schema_output_files_report_verbose_success() {
+    let tempdir = tempdir().expect("tempdir");
+    let catalog_output = tempdir.path().join("catalog report.json");
+    let schema_output = tempdir.path().join("schema report.json");
+
+    let (catalog_exit_code, catalog_stdout, catalog_stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "--verbose".to_owned(),
+        "catalog".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+        "--output-file".to_owned(),
+        catalog_output.to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(catalog_exit_code, 0);
+    assert!(catalog_stdout.is_empty());
+    assert!(catalog_stderr.contains("wrote output file"));
+    assert!(
+        fs::read_to_string(&catalog_output)
+            .expect("catalog output")
+            .contains("\"command\": \"catalog\"")
+    );
+
+    let (schema_exit_code, schema_stdout, schema_stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "--verbose".to_owned(),
+        "schema".to_owned(),
+        "--name".to_owned(),
+        "htmlcut.result".to_owned(),
+        "--schema-version".to_owned(),
+        "1".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+        "--output-file".to_owned(),
+        schema_output.to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(schema_exit_code, 0);
+    assert!(schema_stdout.is_empty());
+    assert!(schema_stderr.contains("wrote output file"));
+    assert!(
+        fs::read_to_string(&schema_output)
+            .expect("schema output")
+            .contains("\"schema_name\": \"htmlcut.schema_report\"")
+    );
+}
+
+#[test]
+fn human_error_outcome_renders_source_load_traces() {
+    let error = with_source_load_steps(
+        source_error("SOURCE_LOAD_FAILED", "Could not fetch source.", Vec::new()),
+        &SourceMetadata {
+            kind: SourceKind::Url,
+            value: "https://example.com".to_owned(),
+            input_base_url: Some("https://example.com".to_owned()),
+            effective_base_url: Some("https://example.com".to_owned()),
+            bytes_read: 0,
+            load_steps: vec![
+                SourceLoadStep {
+                    action: SourceLoadAction::HeadPreflight,
+                    outcome: SourceLoadOutcome::Fallback,
+                    status: Some(405),
+                    message: "HEAD returned 405, so HTMLCut fell back to GET.".to_owned(),
+                },
+                SourceLoadStep {
+                    action: SourceLoadAction::Get,
+                    outcome: SourceLoadOutcome::Failed,
+                    status: Some(500),
+                    message: "GET failed validation with status 500.".to_owned(),
+                },
+            ],
+            text: None,
+        },
+    );
+    let outcome = human_error_outcome(error);
+    assert!(
+        outcome
+            .stderr
+            .iter()
+            .any(|line| line.contains("source load trace"))
+    );
+    assert!(
+        outcome
+            .stderr
+            .iter()
+            .any(|line| line.contains("head preflight fallback"))
+    );
+    assert!(
+        outcome
+            .stderr
+            .iter()
+            .any(|line| line.contains("get failed (500)"))
+    );
+}
+
+#[test]
+fn inspect_slice_text_warns_when_boundaries_split_markup() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(
+        tempdir.path(),
+        "page.html",
+        "<article class=\"card\">Hello <a href=\"/guide\">Guide</a></article>",
+    );
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "slice".to_owned(),
+        input_path.to_string_lossy().into_owned(),
+        "--from".to_owned(),
+        "<a".to_owned(),
+        "--to".to_owned(),
+        "</a>".to_owned(),
+        "--output".to_owned(),
+        "text".to_owned(),
+    ]);
+    assert_eq!(exit_code, 0);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("SLICE_SPLITS_MARKUP"));
+    assert!(stdout.contains("fragment:"));
+}
+
+#[test]
+fn logging_aware_preparation_preserves_request_file_configuration() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(tempdir.path(), "input.html", "<article>Hello</article>");
+
+    let selector_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::file(&input_path),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector"))
+            .with_selection(SelectionSpec::single())
+            .with_value(ValueSpec::Text),
+    ));
+    let selector_definition_path = write_definition_file(
+        tempdir.path(),
+        "selector-request.json",
+        &selector_definition,
+    );
+
+    let slice_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::file(&input_path),
+        ExtractionSpec::slice(
+            htmlcut_core::SliceSpec::new(
+                htmlcut_core::SliceBoundary::new("<article>").expect("slice boundary"),
+                htmlcut_core::SliceBoundary::new("</article>").expect("slice boundary"),
+            )
+            .with_boundary_inclusion(true, true),
+        )
+        .with_selection(SelectionSpec::single())
+        .with_value(ValueSpec::Text),
+    ));
+    let slice_definition_path =
+        write_definition_file(tempdir.path(), "slice-request.json", &slice_definition);
+
+    let prepared_select = PreparedExtraction::from_select_with_logging(
+        SelectArgs {
+            definition: DefinitionArgs {
+                request_file: Some(selector_definition_path.clone()),
+                emit_request_file: None,
+            },
+            source: SourceArgs {
+                input: None,
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            css: None,
+            selection: SelectionArgs {
+                r#match: CliMatchMode::First,
+                index: None,
+            },
+            output: ExtractOutputArgs {
+                value: CliValueMode::Text,
+                attribute: None,
+                whitespace: CliWhitespaceMode::Preserve,
+                rewrite_urls: false,
+                output: Some(CliOutputMode::Text),
+                bundle: None,
+                preview_chars: DEFAULT_PREVIEW_CHARS,
+                include_source_text: false,
+                output_file: Some(tempdir.path().join("select-output.txt")),
+            },
+        },
+        2,
+        true,
+    )
+    .expect("select request file");
+    assert_eq!(
+        prepared_select.request.extraction.strategy(),
+        ExtractionStrategy::Selector
+    );
+    assert_eq!(prepared_select.verbose, 2);
+    assert!(prepared_select.quiet);
+
+    let prepared_source = PreparedSourceInspection::new_with_logging(
+        InspectSourceArgs {
+            source: SourceArgs {
+                input: Some(input_path.to_string_lossy().into_owned()),
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            output: CliInspectOutputMode::Text,
+            include_source_text: false,
+            output_file: Some(tempdir.path().join("inspect-source.txt")),
+            sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
+        },
+        3,
+        true,
+    )
+    .expect("inspect source");
+    assert_eq!(prepared_source.verbose, 3);
+    assert!(prepared_source.quiet);
+
+    let prepared_preview_select = PreparedPreview::from_select_with_logging(
+        InspectSelectArgs {
+            definition: DefinitionArgs {
+                request_file: Some(selector_definition_path),
+                emit_request_file: None,
+            },
+            source: SourceArgs {
+                input: None,
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            css: None,
+            selection: SelectionArgs {
+                r#match: CliMatchMode::First,
+                index: None,
+            },
+            whitespace: CliWhitespaceMode::Preserve,
+            rewrite_urls: false,
+            output: InspectOutputArgs {
+                output: CliInspectOutputMode::Text,
+                preview_chars: DEFAULT_PREVIEW_CHARS,
+                include_source_text: false,
+                output_file: Some(tempdir.path().join("inspect-select.txt")),
+            },
+        },
+        2,
+        true,
+    )
+    .expect("inspect select request file");
+    assert_eq!(
+        prepared_preview_select.request.extraction.strategy(),
+        ExtractionStrategy::Selector
+    );
+    assert_eq!(prepared_preview_select.verbose, 2);
+    assert!(prepared_preview_select.quiet);
+
+    let prepared_preview_slice = PreparedPreview::from_slice_with_logging(
+        InspectSliceArgs {
+            definition: DefinitionArgs {
+                request_file: Some(slice_definition_path),
+                emit_request_file: None,
+            },
+            source: SourceArgs {
+                input: None,
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            from: None,
+            to: None,
+            pattern: CliPatternMode::Literal,
+            regex_flags: None,
+            include_start: false,
+            include_end: false,
+            selection: SelectionArgs {
+                r#match: CliMatchMode::First,
+                index: None,
+            },
+            whitespace: CliWhitespaceMode::Preserve,
+            rewrite_urls: false,
+            output: InspectOutputArgs {
+                output: CliInspectOutputMode::Text,
+                preview_chars: DEFAULT_PREVIEW_CHARS,
+                include_source_text: false,
+                output_file: Some(tempdir.path().join("inspect-slice.txt")),
+            },
+        },
+        1,
+        true,
+    )
+    .expect("inspect slice request file");
+    assert_eq!(
+        prepared_preview_slice.request.extraction.strategy(),
+        ExtractionStrategy::Slice
+    );
+    assert_eq!(prepared_preview_slice.verbose, 1);
+    assert!(prepared_preview_slice.quiet);
 }
 
 #[test]
@@ -3557,38 +5183,46 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         .join("missing.html")
         .to_string_lossy()
         .into_owned();
-    let inspect_text = run_inspect_source(InspectSourceArgs {
-        source: SourceArgs {
-            input: Some(missing.clone()),
-            base_url: None,
-            max_bytes: DEFAULT_MAX_BYTES.to_string(),
-            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+    let inspect_text = run_inspect_source(
+        InspectSourceArgs {
+            source: SourceArgs {
+                input: Some(missing.clone()),
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            output: CliInspectOutputMode::Text,
+            include_source_text: false,
+            output_file: None,
+            sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
         },
-        output: CliInspectOutputMode::Text,
-        include_source_text: false,
-        output_file: None,
-        sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
-        preview_chars: DEFAULT_PREVIEW_CHARS,
-    });
+        0,
+        false,
+    );
     assert_eq!(inspect_text.exit_code, EXIT_CODE_SOURCE);
     assert!(inspect_text.stdout.is_none());
     assert!(inspect_text.stderr[0].contains("Could not access file"));
 
-    let inspect_json = run_inspect_source(InspectSourceArgs {
-        source: SourceArgs {
-            input: Some(missing),
-            base_url: None,
-            max_bytes: DEFAULT_MAX_BYTES.to_string(),
-            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+    let inspect_json = run_inspect_source(
+        InspectSourceArgs {
+            source: SourceArgs {
+                input: Some(missing),
+                base_url: None,
+                max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                fetch_preflight: CliFetchPreflightMode::HeadFirst,
+            },
+            output: CliInspectOutputMode::Json,
+            include_source_text: false,
+            output_file: None,
+            sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
+            preview_chars: DEFAULT_PREVIEW_CHARS,
         },
-        output: CliInspectOutputMode::Json,
-        include_source_text: false,
-        output_file: None,
-        sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
-        preview_chars: DEFAULT_PREVIEW_CHARS,
-    });
+        0,
+        false,
+    );
     assert_eq!(inspect_json.exit_code, EXIT_CODE_SOURCE);
     assert!(
         inspect_json
@@ -3599,7 +5233,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_text = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None,
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3629,7 +5266,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_json = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None,
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3663,7 +5303,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let preview_success_json = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None,
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3697,7 +5340,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let extract_text = execute_extraction(
         PreparedExtraction::from_select(SelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None,
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3732,7 +5378,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     let extract_success = execute_extraction(
         PreparedExtraction::from_select_with_logging(
             SelectArgs {
-                definition: DefinitionArgs { request_file: None },
+                definition: DefinitionArgs {
+                    request_file: None,
+                    emit_request_file: None,
+                },
                 source: SourceArgs {
                     input: Some(input.clone()),
                     base_url: None,
@@ -3773,7 +5422,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     let extract_success_no_bundle = execute_extraction(
         PreparedExtraction::from_select(SelectArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None,
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3806,7 +5458,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     let extract_success_verbose_no_bundle = execute_extraction(
         PreparedExtraction::from_select_with_logging(
             SelectArgs {
-                definition: DefinitionArgs { request_file: None },
+                definition: DefinitionArgs {
+                    request_file: None,
+                    emit_request_file: None,
+                },
                 source: SourceArgs {
                     input: Some(input.clone()),
                     base_url: None,
@@ -3841,7 +5496,10 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
 
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
-            definition: DefinitionArgs { request_file: None },
+            definition: DefinitionArgs {
+                request_file: None,
+                emit_request_file: None
+            },
             source: SourceArgs {
                 input: Some(input.clone()),
                 base_url: None,
@@ -3889,6 +5547,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             input_base_url: None,
             effective_base_url: None,
             bytes_read: 10,
+            load_steps: Vec::new(),
             text: None,
         },
         extraction: ExtractionSpec::selector(SelectorQuery::new("article").expect("selector"))

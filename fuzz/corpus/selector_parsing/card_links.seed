@@ -1,0 +1,2 @@
+<article class="card"><a href="/guide">Guide</a></article>
+.card a[href]

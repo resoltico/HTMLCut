@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: CORE
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -25,6 +25,11 @@ The maintained public surface is:
 - `extract`
 - `operation_catalog`
 - `operation_descriptor`
+- `cli_operation_catalog`
+- `cli_operation_contract`
+- `cli_operation_display_command`
+- `cli_operation_report_command`
+- `find_cli_operation_by_command_path`
 - `schema_catalog`
 - `schema_descriptor`
 
@@ -74,6 +79,7 @@ Core execution returns:
 Diagnostics are first-class and machine-readable through:
 
 - `Diagnostic`
+- `DiagnosticCode`
 - `DiagnosticLevel`
 
 Core result reports carry canonical `OperationId` values so every surface speaks the same operation
@@ -104,10 +110,23 @@ Each operation descriptor includes:
 - result contract with `rust_shape` and `schema_refs`
 - summary
 
-That catalog is the source of truth for `htmlcut catalog`.
+That catalog is the source of truth for the operation matrix.
 
-Use `operation_catalog()` for discovery inside Rust callers instead of maintaining your own shadow
-matrix of supported behaviors.
+For CLI-exposed operations, `htmlcut-core` also owns a companion `OperationCliContract` registry.
+That companion catalog carries:
+
+- concrete command path tokens
+- invocation synopsis
+- typed match/value/output mode inventories
+- typed default values and conditional default overrides
+- parameter inventory with typed requiredness rules
+- cross-parameter constraints
+- catalog notes and example invocations
+
+That CLI contract registry is the source of truth for `htmlcut catalog`, `command_name`
+normalization in CLI reports, and contract-lint coverage over help/examples.
+Use `operation_catalog()` and `cli_operation_catalog()` for discovery inside Rust callers instead
+of maintaining your own shadow matrix of supported behaviors.
 
 ## Schema Registry
 

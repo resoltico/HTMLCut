@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: OPERATIONS
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
@@ -17,6 +17,9 @@ The code-level source of truth lives in `htmlcut-core`:
 - `OperationId`
 - `OperationDescriptor`
 - `OPERATION_CATALOG`
+- `OperationCliContract`
+- `cli_operation_catalog`
+- `cli_operation_contract`
 
 Those identifiers are valid because they refer only to real product operations that callers can invoke across the CLI and embeddable core. They are not decorative labels.
 
@@ -26,6 +29,7 @@ Those identifiers are valid because they refer only to real product operations t
 - Operation IDs exist only for canonical product operations.
 - Flags, helper functions, internal builders, and request fields do not get operation IDs.
 - Failure classes already have their own stable identifier system through diagnostic `code` values.
+- CLI-facing command paths, defaults, mode inventories, parameter rules, and examples are owned by the core-side CLI contract registry, not rebuilt ad hoc in `htmlcut-cli`.
 - The CLI must project the canonical operation IDs from `htmlcut-core`; it must not invent a second taxonomy.
 - `htmlcut catalog` must stay derived from the same canonical operation IDs instead of inventing a separate capability list.
 - `htmlcut schema` must stay aligned with the schema refs emitted by `htmlcut catalog`.
@@ -56,12 +60,13 @@ not a user-facing product operation exposed across the CLI and the generic core 
 Any change to the operation surface must update all of the following together:
 
 1. `htmlcut-core` operation catalog and any affected result contracts.
-2. CLI report projection so the CLI keeps surfacing the same canonical IDs.
-3. `htmlcut catalog` so the CLI's discovery surface stays aligned with the same IDs, summaries, and schema refs.
-4. `htmlcut schema` so the exported JSON schema registry stays aligned with the same contracts.
-5. CLI/core parity tests.
-6. This file.
-7. `changelog.md` under `Unreleased` if the external or maintainer-visible surface changed.
+2. Core-owned CLI contract metadata so invocation strings, mode inventories, parameter rules, examples, and normalized command labels stay canonical.
+3. CLI report projection so the CLI keeps surfacing the same canonical IDs and command contracts.
+4. `htmlcut catalog` so the CLI's discovery surface stays aligned with the same IDs, summaries, and schema refs.
+5. `htmlcut schema` so the exported JSON schema registry stays aligned with the same contracts.
+6. Contract-lint coverage and CLI/core parity tests.
+7. This file.
+8. `changelog.md` under `Unreleased` if the external or maintainer-visible surface changed.
 
 ## Design Boundary
 

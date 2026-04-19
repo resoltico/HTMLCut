@@ -50,9 +50,50 @@ pub struct SourceMetadata {
     pub effective_base_url: Option<String>,
     /// The number of bytes read into memory for this source.
     pub bytes_read: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Structured trace of successful source-loading steps, currently used for URL fetches.
+    pub load_steps: Vec<SourceLoadStep>,
     /// The original source text when the caller explicitly asks to include it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+}
+
+/// One successful source-loading action.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceLoadAction {
+    /// Probe a remote source with `HEAD` before downloading the body.
+    HeadPreflight,
+    /// Load a remote source body with `GET`.
+    Get,
+}
+
+/// Outcome class for one successful source-loading action.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceLoadOutcome {
+    /// The action completed normally.
+    Succeeded,
+    /// The action was intentionally skipped.
+    Skipped,
+    /// The action did not complete, but HTMLCut recovered and continued.
+    Fallback,
+    /// The action failed and the load could not continue.
+    Failed,
+}
+
+/// One structured source-loading step emitted for a source-loading attempt.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct SourceLoadStep {
+    /// Load action that HTMLCut attempted.
+    pub action: SourceLoadAction,
+    /// Outcome of that load action.
+    pub outcome: SourceLoadOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// HTTP status code when the step received a response.
+    pub status: Option<u16>,
+    /// Human-readable explanation of what HTMLCut observed.
+    pub message: String,
 }
 
 /// Basic performance and cardinality summary for one extraction run.
@@ -122,6 +163,10 @@ pub struct DelimiterPairMatchMetadata {
     pub include_start: bool,
     /// Whether the matched end boundary was included in the selected payload.
     pub include_end: bool,
+    /// Exact start-boundary text that matched this candidate.
+    pub matched_start: String,
+    /// Exact end-boundary text that matched this candidate.
+    pub matched_end: String,
 }
 
 /// Stable typed metadata emitted for one extracted match.

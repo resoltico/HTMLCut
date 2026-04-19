@@ -16,7 +16,8 @@ use crate::contracts::{
     ValueSpec,
 };
 use crate::diagnostics::{
-    error_diagnostic, has_errors, unresolved_effective_base_diagnostic, warning_diagnostic,
+    DiagnosticCode, error_diagnostic, has_errors, slice_splits_markup_diagnostic,
+    unresolved_effective_base_diagnostic, warning_diagnostic,
 };
 use crate::document::{
     apply_whitespace_mode, build_node_path, build_preview, document_base_href, element_attributes,
@@ -35,6 +36,8 @@ pub(crate) struct SliceCandidate {
     pub(crate) selected_range: Range,
     pub(crate) inner_range: Range,
     pub(crate) outer_range: Range,
+    pub(crate) matched_start: String,
+    pub(crate) matched_end: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +77,8 @@ struct SliceStructuredValue {
     outer_range: Range,
     include_start: bool,
     include_end: bool,
+    matched_start: String,
+    matched_end: String,
 }
 
 #[derive(Clone, Debug)]
@@ -105,13 +110,16 @@ pub fn parse_document(source: &SourceRequest, runtime: &RuntimeOptions) -> Parse
                 }),
             }
         }
-        Err(diagnostic) => ParseDocumentResult {
-            operation_id: OperationId::DocumentParse,
-            ok: false,
-            source: empty_source_metadata(source),
-            diagnostics: vec![diagnostic],
-            document: None,
-        },
+        Err(failure) => {
+            let (source, diagnostic) = failure.into_parts();
+            ParseDocumentResult {
+                operation_id: OperationId::DocumentParse,
+                ok: false,
+                source,
+                diagnostics: vec![diagnostic],
+                document: None,
+            }
+        }
     }
 }
 
@@ -156,15 +164,18 @@ pub fn inspect_source(
                 diagnostics,
             }
         }
-        Err(diagnostic) => SourceInspectionResult {
-            operation_id: OperationId::SourceInspect,
-            schema_name: CORE_SOURCE_INSPECTION_SCHEMA_NAME.to_owned(),
-            schema_version: CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-            ok: false,
-            source: empty_source_metadata(source),
-            document: None,
-            diagnostics: vec![diagnostic],
-        },
+        Err(failure) => {
+            let (source, diagnostic) = failure.into_parts();
+            SourceInspectionResult {
+                operation_id: OperationId::SourceInspect,
+                schema_name: CORE_SOURCE_INSPECTION_SCHEMA_NAME.to_owned(),
+                schema_version: CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
+                ok: false,
+                source,
+                document: None,
+                diagnostics: vec![diagnostic],
+            }
+        }
     }
 }
 
@@ -215,13 +226,14 @@ pub(crate) fn run_extraction(
 
     let loaded = match load_source(&request.source, runtime) {
         Ok(source) => source,
-        Err(diagnostic) => {
+        Err(failure) => {
+            let (source, diagnostic) = failure.into_parts();
             diagnostics.push(diagnostic);
             return finalize_result(
                 request,
                 FinalizedExtraction {
                     operation_id: extraction_operation_id(request.extraction.strategy(), preview),
-                    source: empty_source_metadata(&request.source),
+                    source,
                     document_title: None,
                     diagnostics,
                     matches: Vec::new(),
@@ -284,7 +296,7 @@ pub(crate) fn validate_request(request: &ExtractionRequest) -> Vec<Diagnostic> {
     (request.spec_version != CORE_SPEC_VERSION)
         .then(|| {
             error_diagnostic(
-                "UNSUPPORTED_SPEC_VERSION",
+                DiagnosticCode::UnsupportedSpecVersion,
                 format!(
                     "Unsupported spec version {}. Expected {}.",
                     request.spec_version, CORE_SPEC_VERSION
@@ -334,7 +346,7 @@ pub(crate) fn run_selector_extraction(
                 candidate_count: 0,
                 diagnostics: {
                     diagnostics.push(error_diagnostic(
-                        "INVALID_SELECTOR",
+                        DiagnosticCode::InvalidSelector,
                         format!("Invalid selector: {selector}"),
                         Some(json!({ "selector": selector.as_str() })),
                     ));
@@ -406,7 +418,7 @@ pub(crate) fn build_selector_match(
         ValueSpec::Attribute { name } => {
             let Some(value) = attributes.get(name.as_str()) else {
                 return Err(error_diagnostic(
-                    "MISSING_ATTRIBUTE",
+                    DiagnosticCode::MissingAttribute,
                     format!("Matched node is missing attribute \"{name}\"."),
                     Some(json!({
                         "attribute": name.as_str(),
@@ -505,6 +517,7 @@ pub(crate) fn run_slice_extraction(
     let (selected, selection_diagnostics) =
         select_candidates(&candidates, request.extraction.selection());
     diagnostics.extend(selection_diagnostics);
+    diagnostics.extend(slice_markup_diagnostics(&source.text, &selected));
     let mut matches = Vec::new();
     let match_count = selected.len();
 
@@ -571,7 +584,7 @@ pub(crate) fn build_slice_match(
                     format!("Extracted fragment is missing attribute \"{name}\".")
                 };
                 return Err(error_diagnostic(
-                    "MISSING_ATTRIBUTE",
+                    DiagnosticCode::MissingAttribute,
                     message,
                     Some(json!({
                     "attribute": name.as_str(),
@@ -600,6 +613,8 @@ pub(crate) fn build_slice_match(
             outer_range: candidate.outer_range.clone(),
             include_start: slice.include_start,
             include_end: slice.include_end,
+            matched_start: candidate.matched_start.clone(),
+            matched_end: candidate.matched_end.clone(),
         })
         .expect("slice structured value should serialize"),
     };
@@ -620,8 +635,74 @@ pub(crate) fn build_slice_match(
             outer_range: candidate.outer_range.clone(),
             include_start: slice.include_start,
             include_end: slice.include_end,
+            matched_start: candidate.matched_start.clone(),
+            matched_end: candidate.matched_end.clone(),
         }),
     })
+}
+
+fn slice_markup_diagnostics(
+    source_text: &str,
+    selected: &[SelectedCandidate<SliceCandidate>],
+) -> Vec<Diagnostic> {
+    let affected_matches = selected
+        .iter()
+        .enumerate()
+        .filter(|(_, selected_candidate)| {
+            slice_splits_markup(source_text, &selected_candidate.candidate.selected_range)
+        })
+        .map(|(index, selected_candidate)| {
+            json!({
+                "matchIndex": index + 1,
+                "candidateIndex": selected_candidate.candidate_index,
+                "selectedRange": selected_candidate.candidate.selected_range,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    if affected_matches.is_empty() {
+        return Vec::new();
+    }
+
+    let first_range_summary = affected_matches
+        .first()
+        .and_then(|value| value.get("selectedRange"))
+        .and_then(|value| {
+            Some(format!(
+                "{}..{}",
+                value.get("start")?.as_u64()?,
+                value.get("end")?.as_u64()?
+            ))
+        })
+        .unwrap_or_else(|| "the selected fragment".to_owned());
+
+    vec![slice_splits_markup_diagnostic(
+        &affected_matches,
+        &first_range_summary,
+    )]
+}
+
+fn slice_splits_markup(source_text: &str, range: &Range) -> bool {
+    position_inside_markup(source_text, range.start)
+        || position_inside_markup(source_text, range.end)
+}
+
+fn position_inside_markup(source_text: &str, position: usize) -> bool {
+    if position == 0 || position > source_text.len() {
+        return false;
+    }
+
+    let prefix = &source_text[..position];
+    match (prefix.rfind('<'), prefix.rfind('>')) {
+        (Some(open), Some(close)) => open > close,
+        (Some(_), None) => true,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn position_inside_markup_for_tests(source_text: &str, position: usize) -> bool {
+    position_inside_markup(source_text, position)
 }
 
 pub(crate) fn extract_slice_candidates(
@@ -640,7 +721,7 @@ pub(crate) fn extract_slice_candidates(
 
         let Some(end) = end_finder(source_text, start.end) else {
             return Err(error_diagnostic(
-                "NO_MATCH",
+                DiagnosticCode::NoMatch,
                 format!(
                     "End pattern was not found after offset {}: {}",
                     start.start,
@@ -681,6 +762,8 @@ pub(crate) fn extract_slice_candidates(
             selected_range,
             inner_range,
             outer_range,
+            matched_start: source_text[start.start..start.end].to_owned(),
+            matched_end: source_text[end.start..end.end].to_owned(),
         };
 
         let next_cursor = if candidate.outer_range.end > candidate.outer_range.start {
@@ -694,7 +777,7 @@ pub(crate) fn extract_slice_candidates(
 
     if candidates.is_empty() {
         return Err(error_diagnostic(
-            "NO_MATCH",
+            DiagnosticCode::NoMatch,
             format!("Start pattern was not found: {}", slice.from()),
             Some(json!({
                 "from": slice.from().as_str(),
@@ -721,7 +804,7 @@ pub(crate) fn build_finder(
 ) -> Result<Finder, Diagnostic> {
     if pattern.is_empty() {
         return Err(error_diagnostic(
-            "INVALID_SLICE_PATTERN",
+            DiagnosticCode::InvalidSlicePattern,
             "Patterns must not be empty.",
             None,
         ));
@@ -772,7 +855,7 @@ pub(crate) fn build_regex(pattern: &str, flags: &str) -> Result<regex::Regex, Di
             }
             unsupported => {
                 return Err(error_diagnostic(
-                    "INVALID_SLICE_PATTERN",
+                    DiagnosticCode::InvalidSlicePattern,
                     format!("Unsupported regex flag: {unsupported}"),
                     Some(json!({ "flags": flags })),
                 ));
@@ -782,7 +865,7 @@ pub(crate) fn build_regex(pattern: &str, flags: &str) -> Result<regex::Regex, Di
 
     builder.build().map_err(|error| {
         error_diagnostic(
-            "INVALID_SLICE_PATTERN",
+            DiagnosticCode::InvalidSlicePattern,
             format!("Invalid regular expression: {error}"),
             Some(json!({ "pattern": pattern, "flags": flags })),
         )
@@ -797,7 +880,7 @@ pub(crate) fn select_candidates<T: Clone>(
         return (
             Vec::new(),
             vec![error_diagnostic(
-                "NO_MATCH",
+                DiagnosticCode::NoMatch,
                 "No matches were found for the extraction request.",
                 None,
             )],
@@ -821,7 +904,7 @@ pub(crate) fn select_candidates<T: Clone>(
                 return (
                     Vec::new(),
                     vec![error_diagnostic(
-                        "AMBIGUOUS_MATCH",
+                        DiagnosticCode::AmbiguousMatch,
                         format!(
                             "Exact-one selection requires exactly one candidate, but {} were found.",
                             candidates.len()
@@ -844,7 +927,7 @@ pub(crate) fn select_candidates<T: Clone>(
         SelectionSpec::First => {
             let diagnostics = if candidates.len() > 1 {
                 vec![warning_diagnostic(
-                    "MULTIPLE_MATCHES",
+                    DiagnosticCode::MultipleMatches,
                     format!(
                         "Matched {} candidates while using match type first.",
                         candidates.len()
@@ -872,7 +955,7 @@ pub(crate) fn select_candidates<T: Clone>(
                 return (
                     Vec::new(),
                     vec![error_diagnostic(
-                        "MATCH_INDEX_OUT_OF_RANGE",
+                        DiagnosticCode::MatchIndexOutOfRange,
                         format!(
                             "Match index {} is out of range for {} candidates.",
                             requested_index,

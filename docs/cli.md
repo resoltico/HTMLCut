@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: CLI
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -71,9 +71,8 @@ Use:
 - `htmlcut catalog --output json` for machine-readable discovery
 - `htmlcut catalog --operation <id>` when you want one operation in detail
 
-In text mode, the filtered single-operation view also prints the mapped core surface plus the
-request/result contracts plus the parameter inventory, typed default overrides, and command
-constraints.
+In text mode, every operation now prints the mapped core surface plus the request/result contracts
+plus the parameter inventory, typed default overrides, and command constraints.
 
 ### `schema`
 
@@ -103,6 +102,15 @@ The registry includes:
 
 `inspect select` and `inspect slice` can also load a reusable extraction-definition file through
 `--request-file <PATH>` instead of spelling the source and strategy inline.
+
+Those same four command surfaces also accept `--emit-request-file <PATH>`, which writes the
+normalized extraction definition used for the current run. That makes it practical to prototype
+inline first, then promote the exact normalized request into a reusable JSON file without manually
+rewriting the contract.
+
+Successful URL-backed inspections now also carry a structured load trace in the report metadata.
+`inspect source --output text` prints that trace directly, and verbose stderr output for
+inspection/extraction commands replays the same successful load steps for operators.
 
 Top-level JSON reports now carry their own schema identity:
 
@@ -175,6 +183,10 @@ Stdout modes:
 That works for text, HTML, JSON, and inspection text/JSON outputs. It is intentionally invalid with
 `--output none` because there is no stdout payload to write.
 
+With `--verbose`, successful `catalog`, `schema`, extraction, and inspection runs now confirm
+`--output-file` writes on stderr. Extraction and preview commands also confirm successful
+`--emit-request-file` writes there.
+
 ## Bundle Workflow
 
 `--bundle <dir>` writes:
@@ -199,6 +211,15 @@ Those files serialize the exact `ExtractionRequest` plus `RuntimeOptions` that t
 otherwise build inline. Once `--request-file` is present, inline source and strategy flags are
 rejected instead of being merged.
 
+When a request file is invalid, the CLI now points recovery back to:
+
+- `htmlcut schema --name htmlcut.extraction_definition --output json`
+- `htmlcut catalog --operation <id> --output json`
+
+Shape-mismatch failures also call out the common footgun directly: selector and slice boundary
+fields are serialized as plain JSON strings, not nested objects. The failure now also includes the
+exact JSON path that failed to deserialize.
+
 For embeddable Rust callers, the matching core type is `htmlcut_core::ExtractionDefinition`.
 
 ## Failure Model
@@ -206,6 +227,10 @@ For embeddable Rust callers, the matching core type is `htmlcut_core::Extraction
 Human output modes print the primary failure to stderr.
 
 JSON modes still exit non-zero on failure, but they emit structured JSON to stdout.
+
+Failed URL-backed operations now preserve the same structured source-load trace that successful
+runs expose. Human stderr output replays that trace, and JSON reports keep it under
+`source.load_steps`.
 
 Exit code categories:
 
@@ -231,8 +256,10 @@ For successful runs:
 `inspect slice --output text` shows:
 
 - selected range data
+- exact matched start and end boundary text
 - selected text
 - fragment context when it adds signal
 
 That fragment line is the main debugging aid when a boundary pattern consumes the payload and leaves
-the selected text empty.
+the selected text empty, while the matched-boundary lines make the literal `<a` versus `<article>`
+footgun obvious.

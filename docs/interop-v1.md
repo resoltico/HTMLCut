@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: INTEROP
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, validate_plan, HtmlInput, Plan, InteropResult, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?"]

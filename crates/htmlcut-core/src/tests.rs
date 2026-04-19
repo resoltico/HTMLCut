@@ -7,8 +7,11 @@ use crate::document::{
     ELLIPSIS, attribute_supports_url_rewrite, collapse_blank_lines_for_tests, element_name,
     rewrite_srcset_for_tests,
 };
+use crate::extract::position_inside_markup_for_tests;
+use crate::result::ExtractionMatchMetadata;
 use crate::source::{
-    content_type_is_obviously_non_html_for_tests, head_error_allows_get_fallback_for_tests,
+    content_type_is_obviously_non_html_for_tests, finish_url_source_from_reader_for_tests,
+    head_error_allows_get_fallback_for_tests, read_stdin_source_from_reader_for_tests,
 };
 use scraper::ElementRef;
 use serde_json::{Value, json};
@@ -21,6 +24,7 @@ use std::num::NonZeroUsize;
 use std::os::unix::fs::PermissionsExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use ureq::tls::RootCerts;
@@ -195,6 +199,38 @@ fn operation_catalog_is_unique_and_complete() {
     assert_eq!(
         operation_descriptor(OperationId::SourceInspect).cli_surface,
         Some("inspect source")
+    );
+
+    let select_contract =
+        crate::cli_operation_contract(OperationId::SelectExtract).expect("select cli contract");
+    assert_eq!(select_contract.display_command(), "select");
+    assert_eq!(select_contract.report_command(), "select");
+    assert_eq!(
+        crate::find_cli_operation_by_command_path(&["inspect", "slice"])
+            .expect("inspect slice contract")
+            .operation_id,
+        OperationId::SlicePreview
+    );
+}
+
+#[test]
+fn diagnostic_codes_reject_unknown_strings_with_a_stable_error() {
+    for code in DiagnosticCode::ALL {
+        assert_eq!(
+            DiagnosticCode::from_str(code.as_str()).expect("round-trip parse"),
+            *code
+        );
+    }
+
+    let error = DiagnosticCode::from_str("NOT_A_REAL_CODE").expect_err("invalid diagnostic code");
+    assert_eq!(error.to_string(), "unknown HTMLCut diagnostic code");
+}
+
+#[test]
+fn contract_lint_cli_operation_catalog_stays_consistent() {
+    assert_eq!(
+        crate::cli_contract::cli_operation_catalog_validation_errors(),
+        Vec::<String>::new()
     );
 }
 
@@ -744,6 +780,15 @@ fn slice_match_builder_covers_value_modes() {
     );
     assert_eq!(structured.value["includeStart"], true);
     assert_eq!(structured.value["includeEnd"], true);
+    assert_eq!(structured.value["matchedStart"], "<a");
+    assert_eq!(structured.value["matchedEnd"], "</a>");
+    match &structured.metadata {
+        ExtractionMatchMetadata::DelimiterPair(metadata) => {
+            assert_eq!(metadata.matched_start, "<a");
+            assert_eq!(metadata.matched_end, "</a>");
+        }
+        other => panic!("expected delimiter metadata, got {other:?}"),
+    }
 }
 
 #[test]
@@ -849,6 +894,9 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
         read_limited_to_string(&mut empty, 10, "Input").expect("empty input"),
         ""
     );
+    assert!(!position_inside_markup_for_tests("plain text only", 0));
+    assert!(!position_inside_markup_for_tests("plain text only", 5));
+    assert!(!position_inside_markup_for_tests("plain text only", 99));
 }
 
 #[test]
@@ -1120,6 +1168,91 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
 }
 
 #[test]
+fn stream_source_helpers_preserve_failure_metadata() {
+    let runtime = RuntimeOptions {
+        max_bytes: 3,
+        fetch_timeout_ms: 1000,
+        ..RuntimeOptions::default()
+    };
+    let source_value = "https://example.com/page";
+    let url_request = url_source(source_value);
+    let mut oversized_response = Cursor::new(b"hello".to_vec());
+    let response_failure = finish_url_source_from_reader_for_tests(
+        &url_request,
+        &runtime,
+        source_value,
+        200,
+        Some(format!("{source_value}/")),
+        vec![
+            SourceLoadStep {
+                action: SourceLoadAction::HeadPreflight,
+                outcome: SourceLoadOutcome::Skipped,
+                status: None,
+                message: "Skipped HEAD preflight because --fetch-preflight get-only was requested."
+                    .to_owned(),
+            },
+            SourceLoadStep {
+                action: SourceLoadAction::Get,
+                outcome: SourceLoadOutcome::Succeeded,
+                status: Some(200),
+                message: "Fetched the remote source with GET.".to_owned(),
+            },
+        ],
+        &mut oversized_response,
+    )
+    .expect_err("oversized response body");
+    assert_eq!(response_failure.code, "SOURCE_LOAD_FAILED");
+    assert_eq!(response_failure.metadata.kind, SourceKind::Url);
+    assert_eq!(
+        response_failure.metadata.input_base_url.as_deref(),
+        Some("https://example.com/page")
+    );
+    assert_eq!(response_failure.metadata.load_steps.len(), 3);
+    assert_eq!(
+        response_failure
+            .metadata
+            .load_steps
+            .last()
+            .expect("failed GET step")
+            .outcome,
+        SourceLoadOutcome::Failed
+    );
+    assert_eq!(
+        response_failure
+            .metadata
+            .load_steps
+            .last()
+            .expect("failed GET step")
+            .status,
+        Some(200)
+    );
+    assert!(
+        response_failure
+            .metadata
+            .load_steps
+            .last()
+            .expect("failed GET step")
+            .message
+            .contains("GET body read failed after status 200")
+    );
+
+    let stdin_request =
+        SourceRequest::stdin().with_base_url(Url::parse("https://example.com/base/").expect("url"));
+    let mut oversized_stdin = Cursor::new(b"hello".to_vec());
+    let stdin_failure =
+        read_stdin_source_from_reader_for_tests(&stdin_request, &runtime, &mut oversized_stdin)
+            .expect_err("oversized stdin");
+    assert_eq!(stdin_failure.code, "SOURCE_LOAD_FAILED");
+    assert_eq!(stdin_failure.metadata.kind, SourceKind::Stdin);
+    assert_eq!(stdin_failure.metadata.value, "-");
+    assert_eq!(
+        stdin_failure.metadata.input_base_url.as_deref(),
+        Some("https://example.com/base/")
+    );
+    assert!(stdin_failure.metadata.load_steps.is_empty());
+}
+
+#[test]
 fn file_and_url_loading_cover_successful_non_error_branches() {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let file_path = tempdir.path().join("input.html");
@@ -1233,6 +1366,11 @@ fn get_only_fetch_preflight_skips_head_requests() {
     server.join().expect("join server");
     assert_eq!(methods.lock().expect("lock methods").as_slice(), ["GET"]);
     assert_eq!(loaded.text, "<html><body>Hello</body></html>");
+    assert_eq!(loaded.load_steps.len(), 2);
+    assert_eq!(loaded.load_steps[0].action, SourceLoadAction::HeadPreflight);
+    assert_eq!(loaded.load_steps[0].outcome, SourceLoadOutcome::Skipped);
+    assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
+    assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
 }
 
 #[test]
@@ -1286,6 +1424,12 @@ fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
         ["HEAD", "GET"]
     );
     assert_eq!(loaded.text, "<html><body>Fallback</body></html>");
+    assert_eq!(loaded.load_steps.len(), 2);
+    assert_eq!(loaded.load_steps[0].action, SourceLoadAction::HeadPreflight);
+    assert_eq!(loaded.load_steps[0].outcome, SourceLoadOutcome::Fallback);
+    assert_eq!(loaded.load_steps[0].status, Some(405));
+    assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
+    assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
 }
 
 #[test]
@@ -1345,6 +1489,12 @@ fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
         ["HEAD", "GET"]
     );
     assert_eq!(loaded.text, "<html><body>Recovered</body></html>");
+    assert_eq!(loaded.load_steps.len(), 2);
+    assert_eq!(loaded.load_steps[0].action, SourceLoadAction::HeadPreflight);
+    assert_eq!(loaded.load_steps[0].outcome, SourceLoadOutcome::Fallback);
+    assert!(loaded.load_steps[0].message.contains("fell back to GET"));
+    assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
+    assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
 }
 
 #[test]
@@ -1686,10 +1836,18 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(first_body(&parse_wrapped_fragment("<p>Hello</p>")).is_some());
     assert!(first_body_child_element(&parse_wrapped_fragment("plain")).is_none());
     assert!(build_preview(&json!({"k": "v"}), 5).ends_with(ELLIPSIS));
-    assert!(!has_errors(&[warning_diagnostic("WARN", "x", None)]));
-    assert!(has_errors(&[error_diagnostic("ERR", "x", None)]));
+    assert!(!has_errors(&[warning_diagnostic(
+        DiagnosticCode::MultipleMatches,
+        "x",
+        None
+    )]));
+    assert!(has_errors(&[error_diagnostic(
+        DiagnosticCode::SourceLoadFailed,
+        "x",
+        None
+    )]));
     assert_eq!(
-        warning_diagnostic("WARN", "x", None).level,
+        warning_diagnostic(DiagnosticCode::MultipleMatches, "x", None).level,
         DiagnosticLevel::Warning
     );
 
@@ -1876,6 +2034,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
             bytes_read: 5,
             text: "Hello".to_owned(),
             input_base_url: None,
+            load_steps: Vec::new(),
         },
         false,
         None,

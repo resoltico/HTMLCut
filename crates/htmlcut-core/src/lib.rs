@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 
 mod catalog;
+mod cli_contract;
 mod contracts;
 mod diagnostics;
 mod document;
@@ -30,13 +31,21 @@ pub mod result {
         DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel, DocumentInspection,
         ExtractionMatch, ExtractionMatchMetadata, ExtractionResult, ExtractionStats,
         HeadingInspection, InspectionCount, LinkInspection, ParseDocumentResult, ParsedDocument,
-        Range, SelectorMatchMetadata, SourceInspectionResult, SourceMetadata,
+        Range, SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction, SourceLoadOutcome,
+        SourceLoadStep, SourceMetadata,
     };
 }
 
 pub use catalog::{
     OPERATION_CATALOG, OperationContract, OperationDescriptor, OperationId, OperationIdParseError,
     operation_catalog, operation_descriptor,
+};
+pub use cli_contract::{
+    CliCondition, CliConditionalDefault, CliConstraint, CliInputForm, CliOutputMode,
+    CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
+    CliParameterSection, CliSelectionMode, CliValue, OperationCliContract, cli_operation_catalog,
+    cli_operation_contract, cli_operation_display_command, cli_operation_report_command,
+    find_cli_operation_by_command_path, render_cli_value,
 };
 pub use contracts::{
     AttributeName, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
@@ -47,9 +56,10 @@ pub use contracts::{
     ExtractionSpec, ExtractionStrategy, FetchPreflightMode, InspectionOptions,
     NormalizationOptions, OutputOptions, ParseDocumentResult, PatternMode, RuntimeOptions,
     SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
-    SourceInspectionResult, SourceKind, SourceMetadata, SourceRequest, ValueSpec, ValueType,
-    WhitespaceMode, format_byte_size,
+    SourceInspectionResult, SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep,
+    SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode, format_byte_size,
 };
+pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};
 pub use extract::{extract, inspect_source, parse_document, preview_extraction};
 pub use schema::{
     CORE_REQUEST_SCHEMA_VERSION, EXTRACTION_DEFINITION_SCHEMA_NAME,

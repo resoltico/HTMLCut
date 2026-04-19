@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: RELEASE
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [release protocol, gh cli, tag push, release workflow, semver baseline, verification]
   questions: ["how do I release HTMLCut?", "what must be verified before tagging a release?", "when do I refresh the HTMLCut semver baseline?"]
@@ -29,25 +29,21 @@ If either command fails, stop immediately.
 
 ## 1. Pre-flight
 
-Install the local maintainer toolchain if it is not already available:
-
-```bash
-rustup toolchain install stable --profile minimal
-rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-cargo install cargo-nextest cargo-audit cargo-deny cargo-semver-checks cargo-outdated cargo-llvm-cov --locked
-```
+Install the local maintainer toolchain if it is not already available by following
+[developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
+`rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
 Stable remains the default HTMLCut toolchain. Nightly is installed alongside it only for the
 coverage gate, because `cargo +nightly llvm-cov --branch` is currently required for true branch
 coverage.
 
-Install `shellcheck` from your system package manager, for example:
+Run the single local quality gate first:
 
 ```bash
-brew install shellcheck
+./check.sh
 ```
 
-Run the single local quality gate first:
+or equivalently:
 
 ```bash
 cargo xtask check
@@ -56,8 +52,9 @@ cargo xtask check
 That gate must succeed before any release commit or tag. The maintained definition of that gate
 lives in [quality-gates.md](quality-gates.md).
 
-The gate now also verifies that the checked-in fuzz targets still compile and that the nightly
-coverage toolchain prerequisites are present before coverage work begins.
+The gate now also verifies that the checked-in fuzz targets still compile, that the core/CLI
+contract-lint tests pass, and that the nightly coverage toolchain prerequisites are present before
+coverage work begins.
 
 Then verify:
 
@@ -95,6 +92,19 @@ Then verify:
 
 The intended release architecture is a single-owner, CI-gated repository. Required review on
 `main` adds a non-existent human dependency and is therefore release-hostile technical debt.
+
+Before cutting the release branch, enumerate open PRs so dependency-automation work is never
+surprise-discovered after publication:
+
+```bash
+gh pr list --state open \
+  --json number,title,url,headRefName,mergeStateStatus,isDraft,author,statusCheckRollup
+```
+
+If any open PR is authored by `dependabot[bot]`, decide up front whether it changes release
+machinery, release assets, or release-critical dependencies. If it does, land or reject it before
+cutting the release branch. If it does not, carry that decision forward and complete Step 10
+before ending the release session.
 
 ## 2. Release branch
 
@@ -217,6 +227,10 @@ git push origin --delete release/A.B.C
 git branch -d release/A.B.C
 ```
 
+Open maintenance branches such as Dependabot are handled separately in Step 10. Do not treat a
+non-`release/` branch as automatically acceptable just because Step 6 only hard-fails
+`release/*` leftovers.
+
 ## 7. Monitor workflow runs
 
 ```bash
@@ -306,7 +320,76 @@ The release workflow itself already performs runtime smoke on each target's nati
 local post-release command above is an additional asset-integrity check plus a host-native runtime
 verification step.
 
-## 10. Refresh the semver baseline
+## 10. Triage Dependabot PRs and clear dependency-automation leftovers
+
+After the public release is verified, do not end the release session while open Dependabot PRs are
+still sitting untriaged. Release hygiene includes dependency-automation hygiene.
+
+Re-enumerate all open PRs and identify Dependabot-owned entries directly from GitHub metadata:
+
+```bash
+gh pr list --state open \
+  --json number,title,url,headRefName,mergeStateStatus,isDraft,author,statusCheckRollup
+```
+
+Treat any PR whose `author.login` is `dependabot[bot]` as in scope for this step, even if it was
+already reviewed during Step 1. Step 1 creates the release-time decision; Step 10 closes the loop
+before the release session is allowed to end.
+
+For each open Dependabot PR, inspect the exact payload and its current gate status:
+
+```bash
+gh pr diff <N> --name-only
+gh pr view <N> --json number,title,state,mergeStateStatus,statusCheckRollup,url
+```
+
+Rules:
+
+- If the PR is wanted, mergeable, and already green on the required `CI` checks, merge it
+  immediately and delete its branch:
+
+```bash
+gh pr merge <N> --merge --delete-branch --subject "<title> (#<N>)"
+```
+
+- If the PR is stale, superseded by `main`, intentionally rejected, or replaced by a different
+  change path, close it explicitly and delete its branch:
+
+```bash
+gh pr close <N> --comment "Superseded or intentionally rejected during release hygiene." --delete-branch
+```
+
+- If the PR needs follow-up work before it is acceptable, do that work as a normal post-release
+  change on `main` and then land or replace the Dependabot PR. Do not leave a green but
+  unattended Dependabot PR parked indefinitely just because the release itself already shipped.
+
+- Never retag, amend, or move the just-published release tag to absorb a Dependabot change. The
+  published release remains immutable. Dependabot resolution is post-release `main` hygiene.
+
+- There is no "ignore it and leave the branch there" option. Every open Dependabot PR must end
+  this step in exactly one of these states:
+  - merged and branch deleted
+  - closed and branch deleted
+  - consciously kept open with an explicit still-valid reason
+
+After each merge or close, resync and re-check GitHub branch state:
+
+```bash
+git checkout main
+git pull
+git remote prune origin
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$REPO/branches" --paginate --jq '.[].name'
+```
+
+Requirements before declaring the release session complete:
+
+- No stale Dependabot PR may remain open without an explicit keep-open decision.
+- No merged or closed Dependabot branch may remain on GitHub.
+- Any remaining non-`main` branch on GitHub must correspond to an intentional still-open PR that
+  was reviewed during this step and deliberately kept alive.
+
+## 11. Refresh the semver baseline
 
 After the release is complete, refresh the checked-in semver baseline so future minor-version
 checks compare against the latest published API:

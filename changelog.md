@@ -5,6 +5,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-04-19
+
+### Added
+- Added a core-owned `OperationCliContract` registry so operation command paths, mode inventories, defaults, parameter rules, notes, and examples now have one canonical owner in `htmlcut-core`.
+- Added a typed `DiagnosticCode` registry in `htmlcut-core` and switched CLI error classification plus interop error mapping onto that canonical code owner.
+- Added explicit contract-lint coverage for operation catalogs, CLI parser enums, command examples, and help/schema discovery examples, plus a checked-in `./check.sh` maintainer entrypoint that runs the full xtask gate.
+- Added contract-lint coverage that parses the real clap surfaces and fails if command names or applied default values drift away from the canonical core-owned CLI contract.
+- Added checked-in fuzz seed corpora for all maintained cargo-fuzz targets so local fuzz smoke runs start from known balanced cases instead of an empty corpus.
+- Added structured `SourceMetadata.load_steps` traces for successful source loads, including visible HEAD-to-GET fallback reporting for URL inputs.
+- Added exact `matched_start` and `matched_end` metadata to delimiter-pair matches so slice previews and structured outputs can show what was actually consumed.
+- Added `--emit-request-file <PATH>` across `select`, `slice`, `inspect select`, and `inspect slice`, so inline request discovery can be promoted into a reusable normalized `ExtractionDefinition` without hand-authoring JSON.
+- Added nearest-match and available-version suggestions for unknown catalog operation IDs and schema lookups.
+- Added a dedicated `SLICE_SPLITS_MARKUP` warning when selected slice ranges appear to start or end inside HTML markup.
+
+### Changed
+- The release protocol now treats open Dependabot PRs as first-class release hygiene. Release-time
+  pre-flight now requires explicitly identifying open Dependabot work, and after the public
+  release is verified each Dependabot PR must be merged, closed, or consciously kept open with a
+  stated reason; stale automation branches are no longer acceptable release leftovers.
+- `htmlcut catalog`, CLI command-name normalization, and schema/help discovery examples now render from the same canonical core registries instead of duplicating operation IDs, schema names, mode strings, and default values in `htmlcut-cli`.
+- `htmlcut catalog --output text` now renders every operation in detail instead of reserving the rich contract view for filtered single-operation output.
+- `htmlcut catalog --output text` and `htmlcut schema --output text` now start with a short registry summary plus the exact follow-up JSON command to inspect one entry precisely.
+- invalid `--request-file` definitions now produce self-recovery guidance that points directly at the extraction-definition schema and the matching catalog entry.
+- request-file deserialization failures now report the failing JSON path instead of only surfacing a pathless serde error.
+- successful `inspect` and extraction runs now surface source-load traces through verbose stderr, and `inspect source --output text` prints the same load trace inline.
+- successful `catalog`, `schema`, extraction, and inspection runs now acknowledge `--output-file` writes in verbose stderr, and extraction/preview commands do the same for `--emit-request-file`.
+- CLI execution now emits normal stderr diagnostics before the final successful file-write acknowledgement, so verbose output preserves real execution order.
+- Refreshed the workspace lockfile to `rustls-webpki 0.103.12`, clearing the current RustSec advisories in the default URL-fetch stack.
+
+### Fixed
+- Failed URL inspections and extractions no longer drop the attempted HEAD/GET trace; the structured report and human stderr path now preserve the load steps that led to the failure.
+- Human error output now replays preserved source-load traces instead of reducing URL load failures to a single line.
+
 ## [4.0.1] - 2026-04-14
 
 ### Changed

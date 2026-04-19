@@ -3,11 +3,11 @@ pub const CORE_SPEC_VERSION: u32 = 4;
 /// Frozen schema name for [`crate::ExtractionResult`].
 pub const CORE_RESULT_SCHEMA_NAME: &str = "htmlcut.extraction_result";
 /// Current schema version for [`crate::ExtractionResult`].
-pub const CORE_RESULT_SCHEMA_VERSION: u32 = 4;
+pub const CORE_RESULT_SCHEMA_VERSION: u32 = 5;
 /// Frozen schema name for [`crate::SourceInspectionResult`].
 pub const CORE_SOURCE_INSPECTION_SCHEMA_NAME: &str = "htmlcut.source_inspection_result";
 /// Current schema version for [`crate::SourceInspectionResult`].
-pub const CORE_SOURCE_INSPECTION_SCHEMA_VERSION: u32 = 2;
+pub const CORE_SOURCE_INSPECTION_SCHEMA_VERSION: u32 = 3;
 /// Default preview length captured in structured reports.
 pub const DEFAULT_PREVIEW_CHARS: usize = 160;
 /// Default maximum source size accepted by loaders.
