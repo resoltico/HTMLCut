@@ -8,33 +8,68 @@ use crate::{
     SOURCE_REQUEST_SCHEMA_NAME, SchemaRef,
 };
 
-/// Stable identifiers for HTMLCut's canonical user-facing operations.
-///
-/// These IDs are intentionally narrow: they exist only for operations that callers can invoke as
-/// product behavior across the CLI and embeddable core. Helper functions, flags, and internal
-/// implementation details do not get operation IDs.
-#[derive(
-    Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
-pub enum OperationId {
+macro_rules! operation_ids {
+    (
+        $(
+            $(#[$meta:meta])*
+            $variant:ident => $id:literal,
+        )+
+    ) => {
+        /// Stable identifiers for HTMLCut's canonical user-facing operations.
+        ///
+        /// These IDs are intentionally narrow: they exist only for operations that callers can
+        /// invoke as product behavior across the CLI and embeddable core. Helper functions, flags,
+        /// and internal implementation details do not get operation IDs.
+        #[derive(
+            Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
+        )]
+        pub enum OperationId {
+            $(
+                $(#[$meta])*
+                #[serde(rename = $id)]
+                $variant,
+            )+
+        }
+
+        impl OperationId {
+            /// Returns the stable string form of this operation ID.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant => $id,
+                    )+
+                }
+            }
+        }
+
+        impl std::str::FromStr for OperationId {
+            type Err = OperationIdParseError;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                match value {
+                    $(
+                        $id => Ok(Self::$variant),
+                    )+
+                    _ => Err(OperationIdParseError),
+                }
+            }
+        }
+    };
+}
+
+operation_ids! {
     /// Load and parse HTML into a document tree for in-process callers.
-    #[serde(rename = "document.parse")]
-    DocumentParse,
+    DocumentParse => "document.parse",
     /// Inspect a source and summarize document shape and base-URL behavior.
-    #[serde(rename = "source.inspect")]
-    SourceInspect,
+    SourceInspect => "source.inspect",
     /// Preview selector matches before final extraction.
-    #[serde(rename = "select.preview")]
-    SelectPreview,
+    SelectPreview => "select.preview",
     /// Preview literal or regex slices before final extraction.
-    #[serde(rename = "slice.preview")]
-    SlicePreview,
+    SlicePreview => "slice.preview",
     /// Run a final selector-based extraction.
-    #[serde(rename = "select.extract")]
-    SelectExtract,
+    SelectExtract => "select.extract",
     /// Run a final literal or regex slice extraction.
-    #[serde(rename = "slice.extract")]
-    SliceExtract,
+    SliceExtract => "slice.extract",
 }
 
 /// Error returned when parsing an unknown operation ID string.
@@ -178,20 +213,6 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     },
 ];
 
-impl OperationId {
-    /// Returns the stable string form of this operation ID.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            OperationId::DocumentParse => "document.parse",
-            OperationId::SourceInspect => "source.inspect",
-            OperationId::SelectPreview => "select.preview",
-            OperationId::SlicePreview => "slice.preview",
-            OperationId::SelectExtract => "select.extract",
-            OperationId::SliceExtract => "slice.extract",
-        }
-    }
-}
-
 impl std::fmt::Display for OperationId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
@@ -205,22 +226,6 @@ impl std::fmt::Display for OperationIdParseError {
 }
 
 impl std::error::Error for OperationIdParseError {}
-
-impl std::str::FromStr for OperationId {
-    type Err = OperationIdParseError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "document.parse" => Ok(OperationId::DocumentParse),
-            "source.inspect" => Ok(OperationId::SourceInspect),
-            "select.preview" => Ok(OperationId::SelectPreview),
-            "slice.preview" => Ok(OperationId::SlicePreview),
-            "select.extract" => Ok(OperationId::SelectExtract),
-            "slice.extract" => Ok(OperationId::SliceExtract),
-            _ => Err(OperationIdParseError),
-        }
-    }
-}
 
 /// Returns the canonical catalog of HTMLCut operations.
 pub const fn operation_catalog() -> &'static [OperationDescriptor] {

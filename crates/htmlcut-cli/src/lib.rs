@@ -16,6 +16,7 @@ mod args;
 mod error;
 mod execute;
 mod help;
+mod lookup;
 mod metadata;
 mod model;
 mod prepare;

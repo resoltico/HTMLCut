@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: MAINTAINER
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [versioning policy, frozen interop, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus frozen interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -81,7 +81,7 @@ Generic schema families use stable document names plus explicit integer schema v
 Examples:
 
 - `htmlcut.extraction_request@4`
-- `htmlcut.extraction_result@4`
+- `htmlcut.extraction_result@5`
 - `htmlcut.catalog_report@4`
 
 Rules:

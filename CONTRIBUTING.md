@@ -1,13 +1,13 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.0.1"
+  version: "5.0.0"
   domain: MAINTAINER
-  updated: "2026-04-14"
+  updated: "2026-04-19"
 RETRIEVAL_HINTS:
-  keywords: [contributing, maintainer workflow, quality gate, update fixtures, docs sync, release expectations]
+  keywords: [contributing, maintainer workflow, developer setup, quality gate, update fixtures, docs sync, release expectations]
   answers: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?]
-  related: [docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
+  related: [docs/developer-setup.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
 -->
 
 # Contributing
@@ -17,14 +17,9 @@ surfaces may change when the architecture needs to improve; frozen interop profi
 
 ## Setup
 
-Install the maintained local toolchain:
-
-```bash
-rustup toolchain install stable --profile minimal
-rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-cargo install cargo-nextest cargo-audit cargo-deny cargo-semver-checks cargo-outdated cargo-llvm-cov --locked
-brew install shellcheck
-```
+Follow [docs/developer-setup.md](docs/developer-setup.md) for the canonical machine bootstrap.
+That guide owns the exact `rustup`, cargo QA tool, `shellcheck`, and macOS compiler-override
+commands plus the reasoning behind them.
 
 Stable remains the default development toolchain. Nightly exists only for the coverage gate.
 
@@ -33,6 +28,12 @@ Stable remains the default development toolchain. Nightly exists only for the co
 1. Read the affected crate, module, tests, and docs before editing.
 2. Change code, tests, docs, and changelog together when the public surface changes.
 3. Run the full maintainer gate before handing work off:
+
+```bash
+./check.sh
+```
+
+or directly:
 
 ```bash
 cargo xtask check

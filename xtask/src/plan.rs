@@ -29,6 +29,32 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
+            "test",
+            "-p",
+            "htmlcut-core",
+            "--lib",
+            "--locked",
+            "contract_lint",
+        ],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
+            "test",
+            "-p",
+            "htmlcut-cli",
+            "--lib",
+            "--locked",
+            "contract_lint",
+        ],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
             "clippy",
             "--workspace",
             "--all-targets",
@@ -138,16 +164,23 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
 
 /// Lists shell scripts that should be syntax-checked and linted by the maintainer gate.
 pub fn shell_script_paths(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
+    let root_check = repo_root.join("check.sh");
     let scripts_dir = repo_root.join("scripts");
-    if !scripts_dir.is_dir() {
-        return Ok(Vec::new());
+    let mut scripts = Vec::new();
+
+    if root_check.is_file() {
+        scripts.push(root_check);
     }
 
-    let mut scripts = fs::read_dir(&scripts_dir)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension() == Some(OsStr::new("sh")))
-        .collect::<Vec<_>>();
+    if scripts_dir.is_dir() {
+        scripts.extend(
+            fs::read_dir(&scripts_dir)?
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.extension() == Some(OsStr::new("sh"))),
+        );
+    }
+
     scripts.sort();
     Ok(scripts)
 }
@@ -229,6 +262,17 @@ pub fn core_manifest_path(repo_root: &Path) -> PathBuf {
 /// Returns the unpacked semver baseline directory for `htmlcut-core`.
 pub fn semver_baseline_path(repo_root: &Path) -> PathBuf {
     repo_root.join("semver-baseline").join("htmlcut-core")
+}
+
+/// Returns the semver-checks scratch directory under the Cargo target tree.
+pub fn semver_scratch_dir(repo_root: &Path) -> PathBuf {
+    repo_root.join("target").join("semver-checks")
+}
+
+/// Returns whether a command spec is the semver-checks gate step.
+pub fn is_semver_check_spec(spec: &CommandSpec) -> bool {
+    spec.program == Path::new("cargo")
+        && matches!(spec.args.first().map(String::as_str), Some("semver-checks"))
 }
 
 /// Returns the dedicated fuzz-package manifest path.

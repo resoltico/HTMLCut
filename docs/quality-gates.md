@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: QUALITY
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?"]
@@ -17,27 +17,23 @@ lives in [versioning-policy.md](versioning-policy.md).
 
 ## Toolchain
 
-Install the local maintainer toolchain:
-
-```bash
-rustup toolchain install stable --profile minimal
-rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-cargo install cargo-nextest cargo-audit cargo-deny cargo-semver-checks cargo-outdated cargo-llvm-cov --locked
-```
+Use [developer-setup.md](developer-setup.md) as the canonical machine bootstrap guide. It owns the
+exact install commands for `rustup`, the cargo QA tools, `shellcheck`, and the macOS
+compiler-override safeguard for native crate builds.
 
 Stable remains the default HTMLCut toolchain. Nightly is installed alongside it only for the
 coverage gate because `cargo +nightly llvm-cov --branch` is currently required for true branch
 coverage.
 
-Install `shellcheck` from your system package manager, for example:
-
-```bash
-brew install shellcheck
-```
-
 ## Commands
 
-Run the full maintainer gate:
+Run the full maintainer gate through the stable repo wrapper:
+
+```bash
+./check.sh
+```
+
+The wrapper delegates to `cargo xtask check`. Running xtask directly remains valid too:
 
 ```bash
 cargo xtask check
@@ -61,6 +57,8 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 
 - shell script syntax and `shellcheck`
 - `cargo fmt --check`
+- targeted contract-lint tests that fail when help text, operation examples, parser enums, or catalog contracts drift away from the canonical core-owned registries
+- clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical core-owned CLI contract
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - direct workspace dependency freshness
 - RustSec advisory auditing with warnings denied
@@ -81,6 +79,14 @@ enforces the 100% line and branch bar across the curated executable module set. 
 intentional: HTMLCut treats those tracked files as contract-critical logic, not aspirational best
 effort.
 
+The gate also treats the heaviest scratch directories as disposable:
+
+- coverage work under `target/llvm-cov-target` is cleaned again after scoring completes
+- semver scratch under `target/semver-checks` is pruned before and after the semver step
+
+Persistent `target/` growth should therefore come mostly from normal developer build caches rather
+than stale gate-specific scratch trees.
+
 The maintained public artifact path does not ship from plain Cargo `release`. HTMLCut uses a
 dedicated `dist` profile that inherits `release` and then hardens it for shipped binaries with:
 
@@ -91,6 +97,9 @@ dedicated `dist` profile that inherits `release` and then hardens it for shipped
 
 Local maintainer smoke stays host-native. The full public standalone artifact matrix is built by
 the release workflow as defined in [platform-support.md](platform-support.md).
+
+`./check.sh` is intentionally checked in and shell-linted alongside the `scripts/` directory so the
+documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
 
 GitHub CI also runs a release-target smoke matrix across the public standalone targets before the
 aggregate required check reports success.

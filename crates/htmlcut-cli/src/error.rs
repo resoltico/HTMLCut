@@ -1,4 +1,4 @@
-use htmlcut_core::{Diagnostic, DiagnosticLevel};
+use htmlcut_core::{Diagnostic, DiagnosticCode, DiagnosticLevel};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -20,6 +20,7 @@ pub(crate) struct CliError {
     pub(crate) code: String,
     pub(crate) message: String,
     pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) source_load_steps: Vec<htmlcut_core::SourceLoadStep>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -52,25 +53,29 @@ pub(crate) fn primary_extraction_error(diagnostics: &[Diagnostic]) -> CliError {
         );
     };
 
-    match diagnostic.code.as_str() {
-        "SOURCE_LOAD_FAILED" => source_error(
+    match diagnostic.code.parse::<DiagnosticCode>() {
+        Ok(DiagnosticCode::SourceLoadFailed) => source_error(
             diagnostic.code.clone(),
             diagnostic.message.clone(),
             diagnostics.to_vec(),
         ),
-        "INVALID_REQUEST"
-        | "INVALID_SELECTOR"
-        | "INVALID_SLICE_PATTERN"
-        | "UNSUPPORTED_SPEC_VERSION" => usage_error_with_diagnostics(
+        Ok(
+            DiagnosticCode::InvalidRequest
+            | DiagnosticCode::InvalidSelector
+            | DiagnosticCode::InvalidSlicePattern
+            | DiagnosticCode::UnsupportedSpecVersion,
+        ) => usage_error_with_diagnostics(
             diagnostic.code.clone(),
             diagnostic.message.clone(),
             diagnostics.to_vec(),
         ),
-        "NO_MATCH"
-        | "AMBIGUOUS_MATCH"
-        | "MATCH_INDEX_OUT_OF_RANGE"
-        | "MISSING_ATTRIBUTE"
-        | "PARSE_FAILED" => extraction_error(
+        Ok(
+            DiagnosticCode::NoMatch
+            | DiagnosticCode::AmbiguousMatch
+            | DiagnosticCode::MatchIndexOutOfRange
+            | DiagnosticCode::MissingAttribute
+            | DiagnosticCode::ParseFailed,
+        ) => extraction_error(
             diagnostic.code.clone(),
             diagnostic.message.clone(),
             diagnostics.to_vec(),
@@ -87,8 +92,8 @@ pub(crate) fn primary_source_inspection_error(diagnostics: &[Diagnostic]) -> Cli
         .iter()
         .find(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
     {
-        Some(diagnostic) => match diagnostic.code.as_str() {
-            "SOURCE_LOAD_FAILED" => source_error(
+        Some(diagnostic) => match diagnostic.code.parse::<DiagnosticCode>() {
+            Ok(DiagnosticCode::SourceLoadFailed) => source_error(
                 diagnostic.code.clone(),
                 diagnostic.message.clone(),
                 diagnostics.to_vec(),
@@ -112,6 +117,7 @@ pub(crate) fn usage_error(code: impl Into<String>, message: impl Into<String>) -
         code: code.into(),
         message: message.into(),
         diagnostics: Vec::new(),
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -125,6 +131,7 @@ pub(crate) fn usage_error_with_diagnostics(
         code: code.into(),
         message: message.into(),
         diagnostics,
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -138,6 +145,7 @@ pub(crate) fn source_error(
         code: code.into(),
         message: message.into(),
         diagnostics,
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -151,6 +159,7 @@ pub(crate) fn extraction_error(
         code: code.into(),
         message: message.into(),
         diagnostics,
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -160,6 +169,7 @@ pub(crate) fn output_error(code: impl Into<String>, message: impl Into<String>) 
         code: code.into(),
         message: message.into(),
         diagnostics: Vec::new(),
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -169,6 +179,7 @@ pub(crate) fn internal_error(code: impl Into<String>, message: impl Into<String>
         code: code.into(),
         message: message.into(),
         diagnostics: Vec::new(),
+        source_load_steps: Vec::new(),
     }
 }
 
@@ -182,7 +193,16 @@ pub(crate) fn internal_error_with_diagnostics(
         code: code.into(),
         message: message.into(),
         diagnostics,
+        source_load_steps: Vec::new(),
     }
+}
+
+pub(crate) fn with_source_load_steps(
+    mut error: CliError,
+    source: &htmlcut_core::SourceMetadata,
+) -> CliError {
+    error.source_load_steps = source.load_steps.clone();
+    error
 }
 
 pub(crate) fn json_error_diagnostics(error: &CliError) -> Vec<Diagnostic> {

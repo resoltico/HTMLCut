@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
@@ -7,11 +8,11 @@ use htmlcut_core::{
 };
 
 use crate::help::{
-    CATALOG_AFTER_HELP, CATALOG_LONG_ABOUT, INSPECT_LONG_ABOUT, INSPECT_SELECT_AFTER_HELP,
-    INSPECT_SELECT_LONG_ABOUT, INSPECT_SLICE_AFTER_HELP, INSPECT_SLICE_LONG_ABOUT,
-    INSPECT_SOURCE_AFTER_HELP, INSPECT_SOURCE_LONG_ABOUT, ROOT_AFTER_HELP, ROOT_LONG_ABOUT,
-    SCHEMA_AFTER_HELP, SCHEMA_LONG_ABOUT, SELECT_AFTER_HELP, SELECT_LONG_ABOUT, SLICE_AFTER_HELP,
-    SLICE_LONG_ABOUT,
+    CATALOG_LONG_ABOUT, INSPECT_LONG_ABOUT, INSPECT_SELECT_LONG_ABOUT, INSPECT_SLICE_LONG_ABOUT,
+    INSPECT_SOURCE_LONG_ABOUT, ROOT_AFTER_HELP, ROOT_LONG_ABOUT, SCHEMA_LONG_ABOUT,
+    SELECT_LONG_ABOUT, SLICE_LONG_ABOUT, catalog_after_help, inspect_select_after_help,
+    inspect_slice_after_help, inspect_source_after_help, schema_after_help, select_after_help,
+    slice_after_help,
 };
 use crate::metadata::{HTMLCUT_DESCRIPTION, TOOL_NAME};
 
@@ -76,6 +77,33 @@ pub(crate) enum CliFetchPreflightMode {
     GetOnly,
 }
 
+macro_rules! impl_value_enum_display {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl fmt::Display for $ty {
+                fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    let possible_value = self
+                        .to_possible_value()
+                        .expect("CLI value-enum variant should always render");
+                    formatter.write_str(possible_value.get_name())
+                }
+            }
+        )+
+    };
+}
+
+impl_value_enum_display!(
+    CliPatternMode,
+    CliMatchMode,
+    CliValueMode,
+    CliOutputMode,
+    CliInspectOutputMode,
+    CliCatalogOutputMode,
+    CliSchemaOutputMode,
+    CliWhitespaceMode,
+    CliFetchPreflightMode,
+);
+
 #[derive(Debug, Parser)]
 #[command(
     name = TOOL_NAME,
@@ -112,20 +140,24 @@ pub(crate) struct GlobalArgs {
 #[derive(Debug, Args)]
 #[command(next_help_heading = "Definition")]
 pub(crate) struct DefinitionArgs {
-    /// Load a reusable extraction definition from a JSON file instead of spelling the request inline.
+    /// Load a reusable extraction definition from a JSON file that matches HTMLCut's extraction-definition schema.
     #[arg(long, value_name = "PATH")]
     pub(crate) request_file: Option<PathBuf>,
+
+    /// Write the normalized extraction definition used for this run to a JSON file.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) emit_request_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Commands {
-    #[command(long_about = CATALOG_LONG_ABOUT, after_help = CATALOG_AFTER_HELP)]
+    #[command(long_about = CATALOG_LONG_ABOUT, after_help = catalog_after_help())]
     Catalog(CatalogArgs),
-    #[command(long_about = SCHEMA_LONG_ABOUT, after_help = SCHEMA_AFTER_HELP)]
+    #[command(long_about = SCHEMA_LONG_ABOUT, after_help = schema_after_help())]
     Schema(SchemaArgs),
-    #[command(long_about = SELECT_LONG_ABOUT, after_help = SELECT_AFTER_HELP)]
+    #[command(long_about = SELECT_LONG_ABOUT, after_help = select_after_help())]
     Select(SelectArgs),
-    #[command(long_about = SLICE_LONG_ABOUT, after_help = SLICE_AFTER_HELP)]
+    #[command(long_about = SLICE_LONG_ABOUT, after_help = slice_after_help())]
     Slice(SliceArgs),
     #[command(long_about = INSPECT_LONG_ABOUT, visible_alias = "analyze")]
     Inspect(InspectArgs),
@@ -155,7 +187,7 @@ pub(crate) struct SourceArgs {
 
     /// Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected
     /// or broken, or skip the HEAD preflight entirely.
-    #[arg(long, default_value = "head-first")]
+    #[arg(long, default_value_t = CliFetchPreflightMode::HeadFirst)]
     pub(crate) fetch_preflight: CliFetchPreflightMode,
 }
 
@@ -164,7 +196,7 @@ pub(crate) struct SourceArgs {
 pub(crate) struct SelectionArgs {
     /// Require exactly one match, keep the first match, keep one 1-based match, or keep every
     /// match.
-    #[arg(long, default_value = "first")]
+    #[arg(long, default_value_t = CliMatchMode::First)]
     pub(crate) r#match: CliMatchMode,
 
     /// The 1-based match index when `--match nth` is used.
@@ -176,7 +208,7 @@ pub(crate) struct SelectionArgs {
 #[command(next_help_heading = "Extraction")]
 pub(crate) struct ExtractOutputArgs {
     /// What each selected match should produce before stdout formatting is applied.
-    #[arg(long, default_value = "text")]
+    #[arg(long, default_value_t = CliValueMode::Text)]
     pub(crate) value: CliValueMode,
 
     /// Attribute name to extract when `--value attribute` is used.
@@ -184,7 +216,7 @@ pub(crate) struct ExtractOutputArgs {
     pub(crate) attribute: Option<String>,
 
     /// Preserve source whitespace or normalize it for text-like values.
-    #[arg(long, default_value = "preserve")]
+    #[arg(long, default_value_t = CliWhitespaceMode::Preserve)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in extracted HTML and attributes with the effective base URL.
@@ -216,7 +248,7 @@ pub(crate) struct ExtractOutputArgs {
 #[command(next_help_heading = "Inspection Output")]
 pub(crate) struct InspectOutputArgs {
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, default_value = "json")]
+    #[arg(long, default_value_t = CliInspectOutputMode::Json)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Maximum preview length stored in structured preview reports.
@@ -241,8 +273,8 @@ pub(crate) struct InspectArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct CatalogArgs {
-    /// Render the catalog as compact text or structured JSON.
-    #[arg(long, default_value = "text")]
+    /// Render the catalog as detailed text or structured JSON.
+    #[arg(long, default_value_t = CliCatalogOutputMode::Text)]
     pub(crate) output: CliCatalogOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.
@@ -257,7 +289,7 @@ pub(crate) struct CatalogArgs {
 #[derive(Debug, Args)]
 pub(crate) struct SchemaArgs {
     /// Render the schema registry as compact text or structured JSON.
-    #[arg(long, default_value = "text")]
+    #[arg(long, default_value_t = CliSchemaOutputMode::Text)]
     pub(crate) output: CliSchemaOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.
@@ -278,19 +310,19 @@ pub(crate) enum InspectCommands {
     #[command(
         name = "source",
         long_about = INSPECT_SOURCE_LONG_ABOUT,
-        after_help = INSPECT_SOURCE_AFTER_HELP
+        after_help = inspect_source_after_help()
     )]
     Source(InspectSourceArgs),
     #[command(
         name = "select",
         long_about = INSPECT_SELECT_LONG_ABOUT,
-        after_help = INSPECT_SELECT_AFTER_HELP
+        after_help = inspect_select_after_help()
     )]
     Select(InspectSelectArgs),
     #[command(
         name = "slice",
         long_about = INSPECT_SLICE_LONG_ABOUT,
-        after_help = INSPECT_SLICE_AFTER_HELP
+        after_help = inspect_slice_after_help()
     )]
     Slice(InspectSliceArgs),
 }
@@ -331,7 +363,7 @@ pub(crate) struct SliceArgs {
     pub(crate) to: Option<String>,
 
     /// Interpret `--from` and `--to` as literal text or regex patterns.
-    #[arg(long, default_value = "literal")]
+    #[arg(long, default_value_t = CliPatternMode::Literal)]
     pub(crate) pattern: CliPatternMode,
 
     /// Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `u`, and `x`.
@@ -363,7 +395,7 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) sample_limit: usize,
 
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, default_value = "json")]
+    #[arg(long, default_value_t = CliInspectOutputMode::Json)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Include the full source text in JSON output and a bounded preview in text output.
@@ -395,7 +427,7 @@ pub(crate) struct InspectSelectArgs {
     pub(crate) selection: SelectionArgs,
 
     /// Preserve source whitespace or normalize preview text.
-    #[arg(long, default_value = "preserve")]
+    #[arg(long, default_value_t = CliWhitespaceMode::Preserve)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in preview HTML and attribute data with the effective base URL.
@@ -423,7 +455,7 @@ pub(crate) struct InspectSliceArgs {
     pub(crate) to: Option<String>,
 
     /// Interpret `--from` and `--to` as literal text or regex patterns.
-    #[arg(long, default_value = "literal")]
+    #[arg(long, default_value_t = CliPatternMode::Literal)]
     pub(crate) pattern: CliPatternMode,
 
     /// Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `u`, and `x`.
@@ -442,7 +474,7 @@ pub(crate) struct InspectSliceArgs {
     pub(crate) selection: SelectionArgs,
 
     /// Preserve source whitespace or normalize preview text.
-    #[arg(long, default_value = "preserve")]
+    #[arg(long, default_value_t = CliWhitespaceMode::Preserve)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in preview HTML and attribute data with the effective base URL.

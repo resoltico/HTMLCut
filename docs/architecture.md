@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: ARCHITECTURE
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -108,8 +108,13 @@ let schemas = schema_catalog();
 assert!(!schemas.is_empty());
 ```
 
-The catalog is owned by `htmlcut-core`. The CLI projects that same catalog; it does not maintain a
-separate capability map.
+The catalog is owned by `htmlcut-core`. The CLI projects that same catalog and the same
+core-owned CLI command-contract registry; it does not maintain a separate capability map or a
+shadow command-contract builder.
+
+That ownership line is enforced, not merely described. The maintainer gate parses the real clap
+command tree and defaulted arguments and fails if they drift away from the core-owned CLI
+contract registry.
 
 For CLI-exposed operations, the catalog also carries a machine-readable command contract:
 

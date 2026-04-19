@@ -120,44 +120,59 @@ pub(crate) fn render_catalog_text(report: &CatalogCommandReport) -> String {
         report.description.clone(),
     ];
 
+    let operation_count = report.operations.len();
+    lines.push(format!(
+        "Catalog: {operation_count} operation{}.",
+        if operation_count == 1 { "" } else { "s" }
+    ));
+    lines.push(
+        "Use `htmlcut catalog --operation <OPERATION_ID> --output json` for one exact contract."
+            .to_owned(),
+    );
+
     if report.operations.is_empty() {
         return lines.join("\n");
     }
 
-    let single_operation = report.operations.len() == 1;
-    lines.push(if single_operation {
+    lines.push(if report.operations.len() == 1 {
         "Operation:".to_owned()
     } else {
         "Operations:".to_owned()
     });
-    for operation in &report.operations {
-        lines.push(format!(
-            "- {} | {}",
-            operation.operation_id,
-            render_catalog_surface(operation.command.as_deref(), &operation.availability)
-        ));
-        lines.push(format!("  {}", operation.summary));
-        if single_operation {
-            lines.push(format!("  core: {}", operation.core_surface));
-            lines.extend(render_catalog_contract_surface_lines(
-                "request",
-                &operation.request_contract,
-            ));
-            lines.extend(render_catalog_contract_surface_lines(
-                "result",
-                &operation.result_contract,
-            ));
-            lines.extend(
-                operation
-                    .command_contract
-                    .as_ref()
-                    .map(render_catalog_contract_lines)
-                    .unwrap_or_default(),
-            );
+
+    for (index, operation) in report.operations.iter().enumerate() {
+        if index > 0 {
+            lines.push(String::new());
         }
+        lines.extend(render_catalog_operation_lines(operation));
     }
 
     lines.join("\n")
+}
+
+fn render_catalog_operation_lines(operation: &crate::model::CatalogOperationReport) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "- {} | {}",
+            operation.operation_id,
+            render_catalog_surface(operation.command.as_deref(), &operation.availability)
+        ),
+        format!("  {}", operation.summary),
+        format!("  core: {}", operation.core_surface),
+    ];
+    lines.extend(render_catalog_contract_surface_lines(
+        "request",
+        &operation.request_contract,
+    ));
+    lines.extend(render_catalog_contract_surface_lines(
+        "result",
+        &operation.result_contract,
+    ));
+    if let Some(command_contract) = operation.command_contract.as_ref() {
+        lines.extend(render_catalog_contract_lines(command_contract));
+    }
+
+    lines
 }
 
 fn render_catalog_contract_lines(contract: &CatalogCommandContract) -> Vec<String> {
@@ -325,6 +340,15 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
         format!("Schema profile: {}", report.schema_profile),
     ];
 
+    let schema_count = report.schemas.len();
+    lines.push(format!(
+        "Registry: {schema_count} schema{}.",
+        if schema_count == 1 { "" } else { "s" }
+    ));
+    lines.push(
+        "Use `htmlcut schema --name <SCHEMA_NAME> --output json` for one schema family.".to_owned(),
+    );
+
     if report.schemas.is_empty() {
         return lines.join("\n");
     }
@@ -437,11 +461,15 @@ pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
             render_source_kind(&report.source.kind),
             report.source.value
         ),
-        format!(
-            "Candidates: {} | Selected: {} | Duration: {}ms",
-            report.stats.candidate_count, report.stats.match_count, report.stats.duration_ms
-        ),
     ];
+    if !report.source.load_steps.is_empty() {
+        lines.push("Load trace:".to_owned());
+        lines.extend(render_source_load_trace_lines(&report.source));
+    }
+    lines.push(format!(
+        "Candidates: {} | Selected: {} | Duration: {}ms",
+        report.stats.candidate_count, report.stats.match_count, report.stats.duration_ms
+    ));
 
     if !report.diagnostics.is_empty() {
         lines.push("Diagnostics:".to_owned());
@@ -518,6 +546,14 @@ pub(crate) fn render_preview_match_lines(
                 ));
                 lines.push(format!("   include start: {}", metadata.include_start));
                 lines.push(format!("   include end: {}", metadata.include_end));
+                lines.push(format!(
+                    "   matched start: {}",
+                    compact_inline_preview(&metadata.matched_start, DEFAULT_PREVIEW_CHARS)
+                ));
+                lines.push(format!(
+                    "   matched end: {}",
+                    compact_inline_preview(&metadata.matched_end, DEFAULT_PREVIEW_CHARS)
+                ));
             }
             let text_preview = matched
                 .text
@@ -630,6 +666,10 @@ pub(crate) fn render_source_inspection_text(
         }
         (None, None) => {}
     }
+    if !report.source.load_steps.is_empty() {
+        lines.push("Load trace:".to_owned());
+        lines.extend(render_source_load_trace_lines(&report.source));
+    }
 
     if !report.diagnostics.is_empty() {
         lines.push("Diagnostics:".to_owned());
@@ -719,6 +759,26 @@ pub(crate) fn build_verbose_lines(report: &ExtractionCommandReport, verbose: u8)
             "htmlcut: scanned {} candidates from {} bytes",
             report.stats.candidate_count, report.source.bytes_read
         ));
+        lines.extend(build_source_load_verbose_lines(&report.source));
+    }
+    lines
+}
+
+pub(crate) fn build_source_inspection_verbose_lines(
+    report: &SourceInspectionCommandReport,
+    verbose: u8,
+) -> Vec<String> {
+    if verbose == 0 {
+        return Vec::new();
+    }
+
+    let mut lines = vec![format!(
+        "htmlcut: inspected {} bytes from {} source",
+        report.source.bytes_read,
+        render_source_kind(&report.source.kind)
+    )];
+    if verbose > 1 {
+        lines.extend(build_source_load_verbose_lines(&report.source));
     }
     lines
 }
@@ -737,6 +797,22 @@ pub(crate) fn build_human_diagnostic_stderr_lines(diagnostics: &[Diagnostic]) ->
             )
         })
         .collect()
+}
+
+pub(crate) fn build_source_load_error_lines(
+    source_load_steps: &[htmlcut_core::SourceLoadStep],
+) -> Vec<String> {
+    if source_load_steps.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines = vec!["htmlcut: source load trace:".to_owned()];
+    lines.extend(
+        source_load_steps
+            .iter()
+            .map(|step| format!("htmlcut:   {}", render_source_load_step(step))),
+    );
+    lines
 }
 
 pub(crate) fn render_count_list(entries: &[InspectionCount]) -> String {
@@ -771,6 +847,41 @@ pub(crate) fn render_source_kind(kind: &htmlcut_core::SourceKind) -> &'static st
         htmlcut_core::SourceKind::Stdin => "stdin",
         htmlcut_core::SourceKind::Memory => "memory",
     }
+}
+
+fn render_source_load_trace_lines(source: &htmlcut_core::SourceMetadata) -> Vec<String> {
+    source
+        .load_steps
+        .iter()
+        .map(|step| format!("- {}", render_source_load_step(step)))
+        .collect()
+}
+
+fn build_source_load_verbose_lines(source: &htmlcut_core::SourceMetadata) -> Vec<String> {
+    source
+        .load_steps
+        .iter()
+        .map(|step| format!("htmlcut: source load {}", render_source_load_step(step)))
+        .collect()
+}
+
+fn render_source_load_step(step: &htmlcut_core::SourceLoadStep) -> String {
+    let action = match step.action {
+        htmlcut_core::SourceLoadAction::HeadPreflight => "head preflight",
+        htmlcut_core::SourceLoadAction::Get => "get",
+    };
+    let outcome = match step.outcome {
+        htmlcut_core::SourceLoadOutcome::Succeeded => "succeeded",
+        htmlcut_core::SourceLoadOutcome::Skipped => "skipped",
+        htmlcut_core::SourceLoadOutcome::Fallback => "fallback",
+        htmlcut_core::SourceLoadOutcome::Failed => "failed",
+    };
+    let status = step
+        .status
+        .map(|status| format!(" ({status})"))
+        .unwrap_or_default();
+
+    format!("{action} {outcome}{status}: {}", step.message)
 }
 
 pub(crate) fn wrap_html_document(report: &ExtractionCommandReport) -> String {

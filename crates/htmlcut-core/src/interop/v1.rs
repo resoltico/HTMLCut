@@ -12,9 +12,10 @@ use thiserror::Error;
 use url::Url;
 
 use crate::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, Diagnostic, ExtractionRequest, ExtractionSpec,
-    NormalizationOptions, OutputOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
-    SliceBoundary, SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
+    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, Diagnostic, DiagnosticCode, ExtractionRequest,
+    ExtractionSpec, NormalizationOptions, OutputOptions, RuntimeOptions, SelectionSpec,
+    SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec,
+    WhitespaceMode, extract,
     result::{ExtractionMatch, ExtractionMatchMetadata, Range},
 };
 
@@ -1206,12 +1207,15 @@ fn core_execution_error(
         );
     };
 
-    let error_code = match primary.code.as_str() {
-        "UNSUPPORTED_SPEC_VERSION" | "INVALID_SELECTOR" | "INVALID_SLICE_PATTERN" => {
-            ErrorCode::PlanInvalid
-        }
-        "NO_MATCH" | "MATCH_INDEX_OUT_OF_RANGE" => ErrorCode::NoMatch,
-        "AMBIGUOUS_MATCH" => ErrorCode::AmbiguousMatch,
+    let error_code = match primary.code.parse::<DiagnosticCode>() {
+        Ok(
+            DiagnosticCode::UnsupportedSpecVersion
+            | DiagnosticCode::InvalidSelector
+            | DiagnosticCode::InvalidSlicePattern
+            | DiagnosticCode::InvalidRequest,
+        ) => ErrorCode::PlanInvalid,
+        Ok(DiagnosticCode::NoMatch | DiagnosticCode::MatchIndexOutOfRange) => ErrorCode::NoMatch,
+        Ok(DiagnosticCode::AmbiguousMatch) => ErrorCode::AmbiguousMatch,
         _ => ErrorCode::InternalError,
     };
     let mut details = BTreeMap::new();
@@ -1295,7 +1299,7 @@ fn write_stable_json_value(value: &Value, output: &mut String) -> Result<(), Con
         Value::Object(map) => {
             output.push('{');
             let mut entries = map.iter().collect::<Vec<_>>();
-            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            entries.sort_unstable_by_key(|(key, _)| *key);
             for (index, (key, value)) in entries.iter().enumerate() {
                 if index > 0 {
                     output.push(',');

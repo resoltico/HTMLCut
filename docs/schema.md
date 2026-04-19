@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.0.1"
+version: "4.1.0"
 domain: SCHEMA
-updated: "2026-04-14"
+updated: "2026-04-19"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -35,7 +35,7 @@ use htmlcut_core::{schema_catalog, schema_descriptor};
 let registry = schema_catalog();
 assert!(!registry.is_empty());
 
-let extraction_result = schema_descriptor("htmlcut.extraction_result", 4).unwrap();
+let extraction_result = schema_descriptor("htmlcut.extraction_result", 5).unwrap();
 assert_eq!(extraction_result.owner_surface, "htmlcut-core");
 ```
 
@@ -52,15 +52,15 @@ Core contracts:
 - `htmlcut.inspection_options@4`
 - `htmlcut.extraction_request@4`
 - `htmlcut.extraction_definition@1`
-- `htmlcut.extraction_result@4`
-- `htmlcut.source_inspection_result@2`
+- `htmlcut.extraction_result@5`
+- `htmlcut.source_inspection_result@3`
 
 CLI report contracts:
 
 - `htmlcut.catalog_report@4`
 - `htmlcut.schema_report@1`
-- `htmlcut.extraction_report@4`
-- `htmlcut.source_inspection_report@2`
+- `htmlcut.extraction_report@5`
+- `htmlcut.source_inspection_report@3`
 
 Frozen interop v1 contracts:
 
@@ -107,7 +107,8 @@ Structured extraction emits a typed metadata union for every match.
 In JSON Schema, `ExtractionMatchMetadata` is a `oneOf` over two variants:
 
 - `kind = selector` with selector metadata such as `path`, `tag_name`, and rewritten attributes
-- `kind = delimiter-pair` with byte ranges plus `include_start` and `include_end`
+- `kind = delimiter-pair` with byte ranges plus `include_start`, `include_end`, `matched_start`,
+  and `matched_end`
 
 That union is part of the maintained public contract, not an implementation detail. Downstream
 validators should use the discriminator instead of treating `metadata` as loose JSON.
@@ -121,6 +122,10 @@ The structured `value` payload also carries collection context:
 
 That lets downstream callers reason about `--match all` result sets without reconstructing context
 from outer report fields alone.
+
+Successful source loads now also expose `SourceMetadata.load_steps`, a structured trace of the load
+actions HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded,
+was skipped, fell back, or failed before the final `GET`.
 
 ## Top-Level Document Identity
 

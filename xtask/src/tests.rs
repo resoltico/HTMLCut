@@ -25,6 +25,7 @@ fn shell_script_paths_returns_sorted_shell_scripts_only() {
     let repo_root = tempdir().expect("tempdir");
     let scripts_dir = repo_root.path().join("scripts");
     fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+    fs::write(repo_root.path().join("check.sh"), "#!/usr/bin/env bash\n").expect("write check.sh");
     fs::write(scripts_dir.join("b.sh"), "#!/usr/bin/env bash\n").expect("write b.sh");
     fs::write(scripts_dir.join("a.sh"), "#!/usr/bin/env bash\n").expect("write a.sh");
     fs::write(scripts_dir.join("note.txt"), "ignore").expect("write note.txt");
@@ -33,7 +34,11 @@ fn shell_script_paths_returns_sorted_shell_scripts_only() {
 
     assert_eq!(
         scripts,
-        vec![scripts_dir.join("a.sh"), scripts_dir.join("b.sh")]
+        vec![
+            repo_root.path().join("check.sh"),
+            scripts_dir.join("a.sh"),
+            scripts_dir.join("b.sh"),
+        ]
     );
 }
 
@@ -50,6 +55,7 @@ fn shell_script_paths_returns_empty_when_scripts_dir_is_missing() {
 fn check_plan_includes_all_strict_gates() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());
+    fs::write(repo_root.path().join("check.sh"), "#!/usr/bin/env bash\n").expect("write check.sh");
     let scripts_dir = repo_root.path().join("scripts");
     fs::create_dir_all(&scripts_dir).expect("create scripts dir");
     fs::write(scripts_dir.join("z.sh"), "#!/usr/bin/env bash\n").expect("write z.sh");
@@ -63,6 +69,11 @@ fn check_plan_includes_all_strict_gates() {
             "bash",
             [
                 "-n".to_owned(),
+                repo_root
+                    .path()
+                    .join("check.sh")
+                    .to_string_lossy()
+                    .into_owned(),
                 scripts_dir.join("a.sh").to_string_lossy().into_owned(),
                 scripts_dir.join("z.sh").to_string_lossy().into_owned(),
             ],
@@ -75,6 +86,11 @@ fn check_plan_includes_all_strict_gates() {
         CommandSpec::new(
             "shellcheck",
             [
+                repo_root
+                    .path()
+                    .join("check.sh")
+                    .to_string_lossy()
+                    .into_owned(),
                 scripts_dir.join("a.sh").to_string_lossy().into_owned(),
                 scripts_dir.join("z.sh").to_string_lossy().into_owned(),
             ],
@@ -82,6 +98,28 @@ fn check_plan_includes_all_strict_gates() {
             false,
         )
     );
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "test",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--locked",
+                "contract_lint",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "test",
+                "-p",
+                "htmlcut-cli",
+                "--lib",
+                "--locked",
+                "contract_lint",
+            ]
+    }));
     assert!(plan.iter().any(|spec| spec.args
         == [
             "outdated",
@@ -178,6 +216,38 @@ fn coverage_command_targets_repo_coverage_file() {
             "--workspace".to_owned(),
         ]
     );
+}
+
+#[test]
+fn semver_scratch_dir_uses_target_tree() {
+    let repo_root = tempdir().expect("tempdir");
+
+    assert_eq!(
+        semver_scratch_dir(repo_root.path()),
+        repo_root.path().join("target").join("semver-checks")
+    );
+}
+
+#[test]
+fn is_semver_check_spec_matches_only_the_semver_gate() {
+    assert!(is_semver_check_spec(&CommandSpec::new(
+        "cargo",
+        ["semver-checks", "--all-features"],
+        false,
+        true
+    )));
+    assert!(!is_semver_check_spec(&CommandSpec::new(
+        "cargo",
+        ["nextest", "run"],
+        false,
+        true
+    )));
+    assert!(!is_semver_check_spec(&CommandSpec::new(
+        "bash",
+        ["scripts/qa-gate.sh"],
+        false,
+        false
+    )));
 }
 
 #[test]

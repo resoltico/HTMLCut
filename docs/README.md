@@ -1,13 +1,13 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.0.1"
+  version: "4.1.0"
   domain: INDEX
-  updated: "2026-04-14"
+  updated: "2026-04-19"
 RETRIEVAL_HINTS:
-  keywords: [docs index, architecture guide, interop v1 guide, release protocol, quality gates, versioning policy, contributing, fuzz inventory]
-  answers: [where are the HTMLCut maintainer docs?, which doc explains htmlcut interop v1?, where is the release protocol?, where is the HTMLCut versioning policy?]
-  related: [docs/architecture.md, docs/cli.md, docs/core.md, docs/schema.md, docs/interop-v1.md, docs/versioning-policy.md, ../CONTRIBUTING.md, ../crates/htmlcut-core/examples/request_and_result_namespaces.rs, ../crates/htmlcut-core/examples/reusable_extraction_definition.rs, ../fuzz/README.md]
+  keywords: [docs index, developer setup, architecture guide, interop v1 guide, release protocol, quality gates, versioning policy, contributing, fuzz inventory]
+  answers: [where are the HTMLCut maintainer docs?, where is the HTMLCut developer setup guide?, which doc explains htmlcut interop v1?, where is the release protocol?, where is the HTMLCut versioning policy?]
+  related: [docs/developer-setup.md, docs/architecture.md, docs/cli.md, docs/core.md, docs/schema.md, docs/interop-v1.md, docs/versioning-policy.md, ../CONTRIBUTING.md, ../crates/htmlcut-core/examples/request_and_result_namespaces.rs, ../crates/htmlcut-core/examples/reusable_extraction_definition.rs, ../fuzz/README.md]
 -->
 
 # Docs
@@ -16,6 +16,7 @@ HTMLCut keeps its maintained developer-facing and maintainer-facing documentatio
 
 Use these documents as a system, not as isolated reference pages:
 
+- [Developer Setup](developer-setup.md)
 - [Architecture Guide](architecture.md)
 - [CLI Developer Guide](cli.md)
 - [Core Developer Guide](core.md)

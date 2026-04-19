@@ -16,10 +16,11 @@ use url::Url;
 
 use crate::args::{
     CliFetchPreflightMode, CliMatchMode, CliOutputMode, CliPatternMode, CliValueMode,
-    CliWhitespaceMode, ExtractOutputArgs, InspectSelectArgs, InspectSliceArgs, InspectSourceArgs,
-    SelectArgs, SelectionArgs, SliceArgs, SourceArgs,
+    CliWhitespaceMode, DefinitionArgs, ExtractOutputArgs, InspectSelectArgs, InspectSliceArgs,
+    InspectSourceArgs, SelectArgs, SelectionArgs, SliceArgs, SourceArgs,
 };
 use crate::error::{CliError, usage_error};
+use crate::lookup::{unknown_operation_id_error, unknown_schema_error};
 use crate::metadata::{ENGINE_NAME, HTMLCUT_DESCRIPTION, HTMLCUT_VERSION, TOOL_NAME};
 use crate::model::{
     BundlePaths, CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogAvailability,
@@ -37,9 +38,10 @@ const MEBIBYTE: usize = KIBIBYTE * KIBIBYTE;
 const GIBIBYTE: usize = MEBIBYTE * KIBIBYTE;
 
 pub(crate) struct PreparedExtraction {
-    pub(crate) command: &'static str,
+    pub(crate) command: String,
     pub(crate) request: ExtractionRequest,
     pub(crate) runtime: RuntimeOptions,
+    pub(crate) request_definition_output: Option<PendingExtractionDefinitionWrite>,
     pub(crate) output: CliOutputMode,
     pub(crate) bundle: Option<PathBuf>,
     pub(crate) output_file: Option<PathBuf>,
@@ -48,21 +50,26 @@ pub(crate) struct PreparedExtraction {
 }
 
 pub(crate) struct PreparedSourceInspection {
-    pub(crate) command: &'static str,
+    pub(crate) command: String,
     pub(crate) source: SourceRequest,
     pub(crate) runtime: RuntimeOptions,
     pub(crate) options: InspectionOptions,
     pub(crate) output: crate::args::CliInspectOutputMode,
     pub(crate) preview_chars: usize,
     pub(crate) output_file: Option<PathBuf>,
+    pub(crate) verbose: u8,
+    pub(crate) quiet: bool,
 }
 
 pub(crate) struct PreparedPreview {
-    pub(crate) command: &'static str,
+    pub(crate) command: String,
     pub(crate) request: ExtractionRequest,
     pub(crate) runtime: RuntimeOptions,
+    pub(crate) request_definition_output: Option<PendingExtractionDefinitionWrite>,
     pub(crate) output: crate::args::CliInspectOutputMode,
     pub(crate) output_file: Option<PathBuf>,
+    pub(crate) verbose: u8,
+    pub(crate) quiet: bool,
 }
 
 pub(crate) struct RequestBuildOptions {
@@ -71,6 +78,18 @@ pub(crate) struct RequestBuildOptions {
     pub(crate) rewrite_urls: bool,
     pub(crate) preview_chars: NonZeroUsize,
     pub(crate) include_source_text: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PendingExtractionDefinitionWrite {
+    pub(crate) path: PathBuf,
+    pub(crate) definition: ExtractionDefinition,
+}
+
+struct MaterializedDefinition {
+    request: ExtractionRequest,
+    runtime: RuntimeOptions,
+    request_definition_output: Option<PendingExtractionDefinitionWrite>,
 }
 
 impl PreparedExtraction {
@@ -84,29 +103,43 @@ impl PreparedExtraction {
         verbose: u8,
         quiet: bool,
     ) -> Result<Self, CliError> {
-        let (request, runtime) = if let Some(path) = args.definition.request_file.as_deref() {
+        let display_command =
+            htmlcut_core::cli_operation_display_command(htmlcut_core::OperationId::SelectExtract)
+                .expect("select extract should stay CLI-visible");
+        if args.definition.request_file.is_some() {
             ensure_inline_select_request_is_default(&args)?;
-            let definition =
-                load_extraction_definition(path, ExtractionStrategy::Selector, "select")?;
-            (definition.request, definition.runtime)
-        } else {
-            let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
-            let preview_chars = validate_preview_chars(args.output.preview_chars)?;
-            let strategy_args = StrategyArgs::Select {
-                css: required_cli_value(args.css, "--css")?,
-            };
-            let options = RequestBuildOptions {
-                value,
-                whitespace: args.output.whitespace,
-                rewrite_urls: args.output.rewrite_urls,
-                preview_chars,
-                include_source_text: args.output.include_source_text,
-            };
-            (
-                build_extraction_request(strategy_args, &args.source, &args.selection, options)?,
-                build_runtime(&args.source)?,
-            )
-        };
+        }
+        let materialized = materialize_extraction_definition(
+            &args.definition,
+            ExtractionStrategy::Selector,
+            &display_command,
+            htmlcut_core::OperationId::SelectExtract,
+            || {
+                let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
+                let preview_chars = validate_preview_chars(args.output.preview_chars)?;
+                let strategy_args = StrategyArgs::Select {
+                    css: required_cli_value(args.css, "--css")?,
+                };
+                let options = RequestBuildOptions {
+                    value,
+                    whitespace: args.output.whitespace,
+                    rewrite_urls: args.output.rewrite_urls,
+                    preview_chars,
+                    include_source_text: args.output.include_source_text,
+                };
+                Ok((
+                    build_extraction_request(
+                        strategy_args,
+                        &args.source,
+                        &args.selection,
+                        options,
+                    )?,
+                    build_runtime(&args.source)?,
+                ))
+            },
+        )?;
+        let request = materialized.request;
+        let runtime = materialized.runtime;
         let value_type = request.extraction.value().value_type();
         let output = resolve_extract_output_mode_with_output_file(
             args.output.output,
@@ -116,9 +149,13 @@ impl PreparedExtraction {
         )?;
 
         Ok(Self {
-            command: "select",
+            command: htmlcut_core::cli_operation_report_command(
+                htmlcut_core::OperationId::SelectExtract,
+            )
+            .expect("select extract should stay CLI-visible"),
             runtime,
             request,
+            request_definition_output: materialized.request_definition_output,
             output,
             bundle: args.output.bundle,
             output_file: args.output.output_file,
@@ -137,33 +174,48 @@ impl PreparedExtraction {
         verbose: u8,
         quiet: bool,
     ) -> Result<Self, CliError> {
-        let (request, runtime) = if let Some(path) = args.definition.request_file.as_deref() {
+        let display_command =
+            htmlcut_core::cli_operation_display_command(htmlcut_core::OperationId::SliceExtract)
+                .expect("slice extract should stay CLI-visible");
+        if args.definition.request_file.is_some() {
             ensure_inline_slice_request_is_default(&args)?;
-            let definition = load_extraction_definition(path, ExtractionStrategy::Slice, "slice")?;
-            (definition.request, definition.runtime)
-        } else {
-            let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
-            let preview_chars = validate_preview_chars(args.output.preview_chars)?;
-            let strategy_args = StrategyArgs::Slice {
-                from: required_cli_value(args.from, "--from")?,
-                to: required_cli_value(args.to, "--to")?,
-                pattern: args.pattern,
-                regex_flags: args.regex_flags,
-                include_start: args.include_start,
-                include_end: args.include_end,
-            };
-            let options = RequestBuildOptions {
-                value,
-                whitespace: args.output.whitespace,
-                rewrite_urls: args.output.rewrite_urls,
-                preview_chars,
-                include_source_text: args.output.include_source_text,
-            };
-            (
-                build_extraction_request(strategy_args, &args.source, &args.selection, options)?,
-                build_runtime(&args.source)?,
-            )
-        };
+        }
+        let materialized = materialize_extraction_definition(
+            &args.definition,
+            ExtractionStrategy::Slice,
+            &display_command,
+            htmlcut_core::OperationId::SliceExtract,
+            || {
+                let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
+                let preview_chars = validate_preview_chars(args.output.preview_chars)?;
+                let strategy_args = StrategyArgs::Slice {
+                    from: required_cli_value(args.from, "--from")?,
+                    to: required_cli_value(args.to, "--to")?,
+                    pattern: args.pattern,
+                    regex_flags: args.regex_flags,
+                    include_start: args.include_start,
+                    include_end: args.include_end,
+                };
+                let options = RequestBuildOptions {
+                    value,
+                    whitespace: args.output.whitespace,
+                    rewrite_urls: args.output.rewrite_urls,
+                    preview_chars,
+                    include_source_text: args.output.include_source_text,
+                };
+                Ok((
+                    build_extraction_request(
+                        strategy_args,
+                        &args.source,
+                        &args.selection,
+                        options,
+                    )?,
+                    build_runtime(&args.source)?,
+                ))
+            },
+        )?;
+        let request = materialized.request;
+        let runtime = materialized.runtime;
         let value_type = request.extraction.value().value_type();
         let output = resolve_extract_output_mode_with_output_file(
             args.output.output,
@@ -173,9 +225,13 @@ impl PreparedExtraction {
         )?;
 
         Ok(Self {
-            command: "slice",
+            command: htmlcut_core::cli_operation_report_command(
+                htmlcut_core::OperationId::SliceExtract,
+            )
+            .expect("slice extract should stay CLI-visible"),
             runtime,
             request,
+            request_definition_output: materialized.request_definition_output,
             output,
             bundle: args.output.bundle,
             output_file: args.output.output_file,
@@ -186,17 +242,31 @@ impl PreparedExtraction {
 }
 
 impl PreparedSourceInspection {
+    #[cfg(test)]
     pub(crate) fn new(args: InspectSourceArgs) -> Result<Self, CliError> {
+        Self::new_with_logging(args, 0, false)
+    }
+
+    pub(crate) fn new_with_logging(
+        args: InspectSourceArgs,
+        verbose: u8,
+        quiet: bool,
+    ) -> Result<Self, CliError> {
         let preview_chars = validate_preview_chars(args.preview_chars)?;
         let runtime = build_runtime(&args.source)?;
         let source = build_source_request(&args.source)?;
         Ok(Self {
-            command: "inspect-source",
+            command: htmlcut_core::cli_operation_report_command(
+                htmlcut_core::OperationId::SourceInspect,
+            )
+            .expect("source inspect should stay CLI-visible"),
             source,
             runtime,
             output: args.output,
             preview_chars: preview_chars.get(),
             output_file: args.output_file,
+            verbose,
+            quiet,
             options: InspectionOptions {
                 include_source_text: args.include_source_text,
                 sample_limit: args.sample_limit,
@@ -206,82 +276,127 @@ impl PreparedSourceInspection {
 }
 
 impl PreparedPreview {
+    #[cfg(test)]
     pub(crate) fn from_select(args: InspectSelectArgs) -> Result<Self, CliError> {
-        let (request, runtime) = if let Some(path) = args.definition.request_file.as_deref() {
+        Self::from_select_with_logging(args, 0, false)
+    }
+
+    pub(crate) fn from_select_with_logging(
+        args: InspectSelectArgs,
+        verbose: u8,
+        quiet: bool,
+    ) -> Result<Self, CliError> {
+        let display_command =
+            htmlcut_core::cli_operation_display_command(htmlcut_core::OperationId::SelectPreview)
+                .expect("select preview should stay CLI-visible");
+        if args.definition.request_file.is_some() {
             ensure_inline_inspect_select_request_is_default(&args)?;
-            let definition =
-                load_extraction_definition(path, ExtractionStrategy::Selector, "inspect select")?;
-            (definition.request, definition.runtime)
-        } else {
-            let preview_chars = validate_preview_chars(args.output.preview_chars)?;
-            (
-                build_extraction_request(
-                    StrategyArgs::Select {
-                        css: required_cli_value(args.css, "--css")?,
-                    },
-                    &args.source,
-                    &args.selection,
-                    RequestBuildOptions {
-                        value: ValueSpec::Structured,
-                        whitespace: args.whitespace,
-                        rewrite_urls: args.rewrite_urls,
-                        preview_chars,
-                        include_source_text: args.output.include_source_text,
-                    },
-                )?,
-                build_runtime(&args.source)?,
-            )
-        };
-        let mut request = request;
+        }
+        let materialized = materialize_extraction_definition(
+            &args.definition,
+            ExtractionStrategy::Selector,
+            &display_command,
+            htmlcut_core::OperationId::SelectPreview,
+            || {
+                let preview_chars = validate_preview_chars(args.output.preview_chars)?;
+                Ok((
+                    build_extraction_request(
+                        StrategyArgs::Select {
+                            css: required_cli_value(args.css, "--css")?,
+                        },
+                        &args.source,
+                        &args.selection,
+                        RequestBuildOptions {
+                            value: ValueSpec::Structured,
+                            whitespace: args.whitespace,
+                            rewrite_urls: args.rewrite_urls,
+                            preview_chars,
+                            include_source_text: args.output.include_source_text,
+                        },
+                    )?,
+                    build_runtime(&args.source)?,
+                ))
+            },
+        )?;
+        let mut request = materialized.request;
+        let runtime = materialized.runtime;
         request.extraction = request.extraction.clone().with_value(ValueSpec::Structured);
         Ok(Self {
-            command: "inspect-select",
+            command: htmlcut_core::cli_operation_report_command(
+                htmlcut_core::OperationId::SelectPreview,
+            )
+            .expect("select preview should stay CLI-visible"),
             runtime,
             request,
+            request_definition_output: materialized.request_definition_output,
             output: args.output.output,
             output_file: args.output.output_file,
+            verbose,
+            quiet,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn from_slice(args: InspectSliceArgs) -> Result<Self, CliError> {
-        let (request, runtime) = if let Some(path) = args.definition.request_file.as_deref() {
+        Self::from_slice_with_logging(args, 0, false)
+    }
+
+    pub(crate) fn from_slice_with_logging(
+        args: InspectSliceArgs,
+        verbose: u8,
+        quiet: bool,
+    ) -> Result<Self, CliError> {
+        let display_command =
+            htmlcut_core::cli_operation_display_command(htmlcut_core::OperationId::SlicePreview)
+                .expect("slice preview should stay CLI-visible");
+        if args.definition.request_file.is_some() {
             ensure_inline_inspect_slice_request_is_default(&args)?;
-            let definition =
-                load_extraction_definition(path, ExtractionStrategy::Slice, "inspect slice")?;
-            (definition.request, definition.runtime)
-        } else {
-            let preview_chars = validate_preview_chars(args.output.preview_chars)?;
-            (
-                build_extraction_request(
-                    StrategyArgs::Slice {
-                        from: required_cli_value(args.from, "--from")?,
-                        to: required_cli_value(args.to, "--to")?,
-                        pattern: args.pattern,
-                        regex_flags: args.regex_flags,
-                        include_start: args.include_start,
-                        include_end: args.include_end,
-                    },
-                    &args.source,
-                    &args.selection,
-                    RequestBuildOptions {
-                        value: ValueSpec::Structured,
-                        whitespace: args.whitespace,
-                        rewrite_urls: args.rewrite_urls,
-                        preview_chars,
-                        include_source_text: args.output.include_source_text,
-                    },
-                )?,
-                build_runtime(&args.source)?,
-            )
-        };
-        let mut request = request;
+        }
+        let materialized = materialize_extraction_definition(
+            &args.definition,
+            ExtractionStrategy::Slice,
+            &display_command,
+            htmlcut_core::OperationId::SlicePreview,
+            || {
+                let preview_chars = validate_preview_chars(args.output.preview_chars)?;
+                Ok((
+                    build_extraction_request(
+                        StrategyArgs::Slice {
+                            from: required_cli_value(args.from, "--from")?,
+                            to: required_cli_value(args.to, "--to")?,
+                            pattern: args.pattern,
+                            regex_flags: args.regex_flags,
+                            include_start: args.include_start,
+                            include_end: args.include_end,
+                        },
+                        &args.source,
+                        &args.selection,
+                        RequestBuildOptions {
+                            value: ValueSpec::Structured,
+                            whitespace: args.whitespace,
+                            rewrite_urls: args.rewrite_urls,
+                            preview_chars,
+                            include_source_text: args.output.include_source_text,
+                        },
+                    )?,
+                    build_runtime(&args.source)?,
+                ))
+            },
+        )?;
+        let mut request = materialized.request;
         request.extraction = request.extraction.clone().with_value(ValueSpec::Structured);
         Ok(Self {
-            command: "inspect-slice",
-            runtime,
+            command: htmlcut_core::cli_operation_report_command(
+                htmlcut_core::OperationId::SlicePreview,
+            )
+            .expect("slice preview should stay CLI-visible"),
+            runtime: materialized.runtime,
             request,
+            request_definition_output: materialized.request_definition_output,
             output: args.output.output,
             output_file: args.output.output_file,
+            verbose,
+            quiet,
         })
     }
 }
@@ -309,10 +424,46 @@ fn required_cli_value(value: Option<String>, parameter: &'static str) -> Result<
     })
 }
 
+fn materialize_extraction_definition<Build>(
+    definition_args: &DefinitionArgs,
+    expected_strategy: ExtractionStrategy,
+    command: &str,
+    operation_id: htmlcut_core::OperationId,
+    build_inline: Build,
+) -> Result<MaterializedDefinition, CliError>
+where
+    Build: FnOnce() -> Result<(ExtractionRequest, RuntimeOptions), CliError>,
+{
+    let (request, runtime) = if let Some(path) = definition_args.request_file.as_deref() {
+        let definition =
+            load_extraction_definition(path, expected_strategy, command, operation_id)?;
+        (definition.request, definition.runtime)
+    } else {
+        build_inline()?
+    };
+
+    Ok(MaterializedDefinition {
+        request_definition_output: definition_args.emit_request_file.clone().map(|path| {
+            PendingExtractionDefinitionWrite {
+                path,
+                definition: ExtractionDefinition {
+                    schema_name: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned(),
+                    schema_version: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
+                    request: request.clone(),
+                    runtime: runtime.clone(),
+                },
+            }
+        }),
+        request,
+        runtime,
+    })
+}
+
 fn load_extraction_definition(
     path: &Path,
     expected_strategy: ExtractionStrategy,
     command: &str,
+    operation_id: htmlcut_core::OperationId,
 ) -> Result<ExtractionDefinition, CliError> {
     let raw = fs::read_to_string(path).map_err(|error| {
         usage_error(
@@ -323,15 +474,37 @@ fn load_extraction_definition(
             ),
         )
     })?;
-    let definition: ExtractionDefinition = serde_json::from_str(&raw).map_err(|error| {
+    let value: Value = serde_json::from_str(&raw).map_err(|error| {
         usage_error(
             "CLI_REQUEST_FILE_INVALID",
             format!(
-                "Could not parse extraction definition {} as JSON: {error}",
-                path.display()
+                "Could not parse extraction definition {} as JSON: {error}. {}",
+                path.display(),
+                request_file_recovery_hint(operation_id, expected_strategy, None)
             ),
         )
     })?;
+    let mut deserializer = serde_json::Deserializer::from_str(&raw);
+    let definition: ExtractionDefinition = serde_path_to_error::deserialize(&mut deserializer)
+        .map_err(|error| {
+            let json_path = render_json_error_path(&error);
+            usage_error(
+                "CLI_REQUEST_FILE_INVALID",
+                format!(
+                    "Could not parse extraction definition {} as {}@{} at JSON path {}: {}. {}",
+                    path.display(),
+                    htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,
+                    htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
+                    json_path,
+                    error.inner(),
+                    request_file_recovery_hint(
+                        operation_id,
+                        expected_strategy,
+                        request_file_shape_hint(&value, expected_strategy).as_deref()
+                    )
+                ),
+            )
+        })?;
 
     if definition.schema_name != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME
         || definition.schema_version != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION
@@ -355,10 +528,7 @@ fn load_extraction_definition(
             format!(
                 "{} cannot execute a {} extraction definition from {}.",
                 command,
-                match definition.request.extraction.strategy() {
-                    ExtractionStrategy::Selector => "selector",
-                    ExtractionStrategy::Slice => "slice",
-                },
+                strategy_label(definition.request.extraction.strategy()),
                 path.display(),
             ),
         ));
@@ -373,7 +543,121 @@ pub(crate) fn load_extraction_definition_for_tests(
     expected_strategy: ExtractionStrategy,
     command: &str,
 ) -> Result<ExtractionDefinition, CliError> {
-    load_extraction_definition(path, expected_strategy, command)
+    let operation_id = match (command, expected_strategy) {
+        (command, ExtractionStrategy::Selector)
+            if command
+                == htmlcut_core::cli_operation_display_command(
+                    htmlcut_core::OperationId::SelectExtract,
+                )
+                .expect("select extract should stay CLI-visible") =>
+        {
+            htmlcut_core::OperationId::SelectExtract
+        }
+        (command, ExtractionStrategy::Slice)
+            if command
+                == htmlcut_core::cli_operation_display_command(
+                    htmlcut_core::OperationId::SliceExtract,
+                )
+                .expect("slice extract should stay CLI-visible") =>
+        {
+            htmlcut_core::OperationId::SliceExtract
+        }
+        (command, ExtractionStrategy::Selector)
+            if command
+                == htmlcut_core::cli_operation_display_command(
+                    htmlcut_core::OperationId::SelectPreview,
+                )
+                .expect("select preview should stay CLI-visible") =>
+        {
+            htmlcut_core::OperationId::SelectPreview
+        }
+        (command, ExtractionStrategy::Slice)
+            if command
+                == htmlcut_core::cli_operation_display_command(
+                    htmlcut_core::OperationId::SlicePreview,
+                )
+                .expect("slice preview should stay CLI-visible") =>
+        {
+            htmlcut_core::OperationId::SlicePreview
+        }
+        (_, ExtractionStrategy::Selector) => htmlcut_core::OperationId::SelectExtract,
+        (_, ExtractionStrategy::Slice) => htmlcut_core::OperationId::SliceExtract,
+    };
+    load_extraction_definition(path, expected_strategy, command, operation_id)
+}
+
+fn render_json_error_path(error: &serde_path_to_error::Error<serde_json::Error>) -> String {
+    format_json_error_path(&error.path().to_string())
+}
+
+fn format_json_error_path(path: &str) -> String {
+    if path.is_empty() {
+        "$".to_owned()
+    } else if path.starts_with('.') {
+        format!("${path}")
+    } else {
+        format!("$.{path}")
+    }
+}
+
+fn request_file_recovery_hint(
+    operation_id: htmlcut_core::OperationId,
+    expected_strategy: ExtractionStrategy,
+    shape_hint: Option<&str>,
+) -> String {
+    let mut hint = format!(
+        "Use `htmlcut schema --name {} --output json` for the exact request-file shape and `htmlcut catalog --operation {} --output json` for the command contract.",
+        htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,
+        operation_id
+    );
+    if let Some(shape_hint) = shape_hint {
+        hint.push(' ');
+        hint.push_str(shape_hint);
+    } else {
+        let generic = match expected_strategy {
+            ExtractionStrategy::Selector => {
+                "Selector request files use `request.extraction.selector` as a plain JSON string."
+            }
+            ExtractionStrategy::Slice => {
+                "Slice request files use plain JSON strings for `request.extraction.from` and `request.extraction.to`."
+            }
+        };
+        hint.push(' ');
+        hint.push_str(generic);
+    }
+
+    hint
+}
+
+fn request_file_shape_hint(value: &Value, expected_strategy: ExtractionStrategy) -> Option<String> {
+    let extraction = value.get("request")?.get("extraction")?;
+
+    match expected_strategy {
+        ExtractionStrategy::Selector => extraction
+            .get("selector")
+            .filter(|selector| matches!(selector, Value::Object(_) | Value::Array(_)))
+            .map(|_| {
+                "Selector request files use `request.extraction.selector` as a plain JSON string, not an object."
+                    .to_owned()
+            }),
+        ExtractionStrategy::Slice => ["from", "to"].iter().find_map(|field| {
+            extraction
+                .get(field)
+                .filter(|boundary| matches!(boundary, Value::Object(_) | Value::Array(_)))
+                .map(|_| {
+                    format!(
+                        "Slice request files use `request.extraction.{field}` as a plain JSON string, not an object."
+                    )
+                })
+        }),
+    }
+}
+
+fn strategy_label(strategy: ExtractionStrategy) -> &'static str {
+    match strategy {
+        ExtractionStrategy::Selector => "selector",
+        ExtractionStrategy::Slice => "slice",
+    }
 }
 
 fn ensure_inline_select_request_is_default(args: &SelectArgs) -> Result<(), CliError> {
@@ -528,7 +812,7 @@ fn reject_request_file_conflicts(conflicts: Vec<&'static str>) -> Result<(), Cli
     Err(usage_error(
         "CLI_REQUEST_FILE_CONFLICT",
         format!(
-            "--request-file owns the extraction definition; remove the inline request flags: {}.",
+            "--request-file owns the extraction definition; remove the inline request flags: {}. If you want to keep the inline form, drop `--request-file` and use `--emit-request-file <PATH>` to save the canonical definition.",
             conflicts.join(", ")
         ),
     ))
@@ -902,7 +1186,7 @@ pub(crate) fn parse_byte_size(value: &str) -> Result<usize, CliError> {
 }
 
 pub(crate) fn build_extraction_report(
-    command: &'static str,
+    command: impl Into<String>,
     result: ExtractionResult,
     bundle: Option<BundlePaths>,
 ) -> ExtractionCommandReport {
@@ -912,7 +1196,7 @@ pub(crate) fn build_extraction_report(
         version: HTMLCUT_VERSION.to_owned(),
         schema_name: EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
         schema_version: EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
-        command: command.to_owned(),
+        command: command.into(),
         operation_id: result.operation_id,
         ok: result.ok,
         source: result.source,
@@ -926,7 +1210,7 @@ pub(crate) fn build_extraction_report(
 }
 
 pub(crate) fn build_source_inspection_report(
-    command: &'static str,
+    command: impl Into<String>,
     result: SourceInspectionResult,
 ) -> SourceInspectionCommandReport {
     SourceInspectionCommandReport {
@@ -935,7 +1219,7 @@ pub(crate) fn build_source_inspection_report(
         version: HTMLCUT_VERSION.to_owned(),
         schema_name: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
         schema_version: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-        command: command.to_owned(),
+        command: command.into(),
         operation_id: result.operation_id,
         ok: result.ok,
         source: result.source,
@@ -949,14 +1233,9 @@ pub(crate) fn build_catalog_report(
 ) -> Result<CatalogCommandReport, CliError> {
     let requested_operation = operation_filter
         .map(|operation_id| {
-            operation_id.parse::<htmlcut_core::OperationId>().map_err(|_| {
-                usage_error(
-                    "CLI_OPERATION_ID_UNKNOWN",
-                    format!(
-                        "Unknown operation ID: {operation_id}. Use `htmlcut catalog` to list the valid operation IDs."
-                    ),
-                )
-            })
+            operation_id
+                .parse::<htmlcut_core::OperationId>()
+                .map_err(|_| unknown_operation_id_error(operation_id))
         })
         .transpose()?;
 
@@ -965,18 +1244,21 @@ pub(crate) fn build_catalog_report(
         .filter(|descriptor| {
             requested_operation.is_none_or(|operation_id| descriptor.id == operation_id)
         })
-        .map(|descriptor| CatalogOperationReport {
-            operation_id: descriptor.id,
-            command: descriptor.cli_surface.map(str::to_owned),
-            availability: match descriptor.cli_surface {
-                Some(_) => CatalogAvailability::Cli,
-                None => CatalogAvailability::CoreOnly,
-            },
-            summary: descriptor.description.to_owned(),
-            core_surface: descriptor.core_surface.to_owned(),
-            request_contract: build_contract_surface(&descriptor.request_contract),
-            result_contract: build_contract_surface(&descriptor.result_contract),
-            command_contract: build_catalog_command_contract(descriptor.id),
+        .map(|descriptor| {
+            let cli_contract = htmlcut_core::cli_operation_contract(descriptor.id);
+            CatalogOperationReport {
+                operation_id: descriptor.id,
+                command: cli_contract.map(|contract| contract.display_command()),
+                availability: match cli_contract {
+                    Some(_) => CatalogAvailability::Cli,
+                    None => CatalogAvailability::CoreOnly,
+                },
+                summary: descriptor.description.to_owned(),
+                core_surface: descriptor.core_surface.to_owned(),
+                request_contract: build_contract_surface(&descriptor.request_contract),
+                result_contract: build_contract_surface(&descriptor.result_contract),
+                command_contract: cli_contract.map(build_catalog_command_contract),
+            }
         })
         .collect::<Vec<_>>();
 
@@ -1005,11 +1287,11 @@ pub(crate) fn build_schema_report(
 
     let mut schemas = htmlcut_core::schema_catalog()
         .iter()
-        .map(build_core_schema_document_report)
+        .map(build_schema_document_report)
         .chain(
             cli_schema_catalog()
                 .iter()
-                .map(build_cli_schema_document_report),
+                .map(build_schema_document_report),
         )
         .collect::<Vec<_>>();
 
@@ -1020,20 +1302,15 @@ pub(crate) fn build_schema_report(
     });
 
     let filtered = schemas
-        .into_iter()
+        .iter()
         .filter(|schema| name_filter.is_none_or(|name| schema.schema_name == name))
         .filter(|schema| version_filter.is_none_or(|version| schema.schema_version == version))
+        .cloned()
         .collect::<Vec<_>>();
 
     if filtered.is_empty() {
         let name = name_filter.expect("version-only filters return earlier");
-        let requested = version_filter
-            .map(|version| format!("{name}@{version}"))
-            .unwrap_or_else(|| name.to_owned());
-        return Err(usage_error(
-            "CLI_SCHEMA_UNKNOWN",
-            format!("Unknown schema: {requested}. Use `htmlcut schema` to list the valid schemas."),
-        ));
+        return Err(unknown_schema_error(name, version_filter, &schemas));
     }
 
     Ok(SchemaCommandReport {
@@ -1070,44 +1347,42 @@ fn build_schema_ref_report(schema_ref: &htmlcut_core::SchemaRef) -> SchemaRefRep
     }
 }
 
-#[derive(Clone, Copy)]
-struct CliSchemaDescriptor {
-    schema_name: &'static str,
-    schema_version: u32,
-    owner_surface: &'static str,
-    rust_shape: &'static str,
-    stability: SchemaStability,
-    json_schema: fn() -> Value,
-}
-
-const CLI_SCHEMA_CATALOG: &[CliSchemaDescriptor] = &[
-    CliSchemaDescriptor {
-        schema_name: EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
-        schema_version: EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
+const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
+    htmlcut_core::SchemaDescriptor {
+        schema_ref: htmlcut_core::SchemaRef::new(
+            EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
+            EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
+        ),
         owner_surface: "htmlcut-cli",
         rust_shape: "ExtractionCommandReport",
         stability: SchemaStability::Versioned,
         json_schema: extraction_command_report_schema,
     },
-    CliSchemaDescriptor {
-        schema_name: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
-        schema_version: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
+    htmlcut_core::SchemaDescriptor {
+        schema_ref: htmlcut_core::SchemaRef::new(
+            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
+            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
+        ),
         owner_surface: "htmlcut-cli",
         rust_shape: "SourceInspectionCommandReport",
         stability: SchemaStability::Versioned,
         json_schema: source_inspection_command_report_schema,
     },
-    CliSchemaDescriptor {
-        schema_name: CATALOG_REPORT_SCHEMA_NAME,
-        schema_version: CATALOG_SCHEMA_VERSION,
+    htmlcut_core::SchemaDescriptor {
+        schema_ref: htmlcut_core::SchemaRef::new(
+            CATALOG_REPORT_SCHEMA_NAME,
+            CATALOG_SCHEMA_VERSION,
+        ),
         owner_surface: "htmlcut-cli",
         rust_shape: "CatalogCommandReport",
         stability: SchemaStability::Versioned,
         json_schema: catalog_command_report_schema,
     },
-    CliSchemaDescriptor {
-        schema_name: SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
-        schema_version: SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
+    htmlcut_core::SchemaDescriptor {
+        schema_ref: htmlcut_core::SchemaRef::new(
+            SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
+            SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
+        ),
         owner_surface: "htmlcut-cli",
         rust_shape: "SchemaCommandReport",
         stability: SchemaStability::Versioned,
@@ -1115,27 +1390,16 @@ const CLI_SCHEMA_CATALOG: &[CliSchemaDescriptor] = &[
     },
 ];
 
-fn cli_schema_catalog() -> &'static [CliSchemaDescriptor] {
+fn cli_schema_catalog() -> &'static [htmlcut_core::SchemaDescriptor] {
     CLI_SCHEMA_CATALOG
 }
 
-fn build_core_schema_document_report(
+fn build_schema_document_report(
     descriptor: &htmlcut_core::SchemaDescriptor,
 ) -> SchemaDocumentReport {
     SchemaDocumentReport {
         schema_name: descriptor.schema_ref.schema_name.to_owned(),
         schema_version: descriptor.schema_ref.schema_version,
-        owner_surface: descriptor.owner_surface.to_owned(),
-        rust_shape: descriptor.rust_shape.to_owned(),
-        stability: descriptor.stability,
-        json_schema: (descriptor.json_schema)(),
-    }
-}
-
-fn build_cli_schema_document_report(descriptor: &CliSchemaDescriptor) -> SchemaDocumentReport {
-    SchemaDocumentReport {
-        schema_name: descriptor.schema_name.to_owned(),
-        schema_version: descriptor.schema_version,
         owner_surface: descriptor.owner_surface.to_owned(),
         rust_shape: descriptor.rust_shape.to_owned(),
         stability: descriptor.stability,
@@ -1164,740 +1428,205 @@ fn schema_command_report_schema() -> Value {
 }
 
 fn build_catalog_command_contract(
-    operation_id: htmlcut_core::OperationId,
-) -> Option<CatalogCommandContract> {
-    let input_forms = common_input_forms();
-    match operation_id {
-        htmlcut_core::OperationId::DocumentParse => None,
-        htmlcut_core::OperationId::SourceInspect => Some(CatalogCommandContract {
-            invocation: "htmlcut inspect source [OPTIONS] [INPUT]".to_owned(),
-            inputs: input_forms,
-            default_match: None,
-            selection_modes: Vec::new(),
-            default_value: None,
-            value_modes: Vec::new(),
-            default_output: Some("json".to_owned()),
-            default_output_overrides: Vec::new(),
-            output_modes: vec!["text".to_owned(), "json".to_owned()],
-            constraints: Vec::new(),
-            notes: vec![
-                "Use this command to inspect document shape, headings, links, classes, and effective base-URL behavior before choosing selectors or slice boundaries.".to_owned(),
-                "--include-source-text stores the full source in JSON output and prints a bounded source preview in text mode.".to_owned(),
-                "--sample-limit bounds the sampled headings, links, tags, and classes in the summary.".to_owned(),
-            ],
-            examples: vec![
-                "htmlcut inspect source ./page.html".to_owned(),
-                "htmlcut inspect source ./page.html --output text --include-source-text --preview-chars 200".to_owned(),
-            ],
-            parameters: inspect_source_parameters(),
-        }),
-        htmlcut_core::OperationId::SelectPreview => Some(CatalogCommandContract {
-            invocation: "htmlcut inspect select [OPTIONS] --css <CSS> [INPUT]".to_owned(),
-            inputs: input_forms,
-            default_match: Some("first".to_owned()),
-            selection_modes: common_selection_modes(),
-            default_value: Some("structured".to_owned()),
-            value_modes: vec!["structured".to_owned()],
-            default_output: Some("json".to_owned()),
-            default_output_overrides: Vec::new(),
-            output_modes: vec!["text".to_owned(), "json".to_owned()],
-            constraints: common_selection_constraints(),
-            notes: vec![
-                "inspect select always previews matches in structured form; it is a preview workflow, not a final extraction surface.".to_owned(),
-                "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.".to_owned(),
-            ],
-            examples: vec![
-                "htmlcut inspect select ./page.html --css article --match single".to_owned(),
-                "htmlcut inspect select ./page.html --css '.card' --match all --output text".to_owned(),
-                "htmlcut inspect select --request-file ./article-preview.json".to_owned(),
-            ],
-            parameters: inspect_select_parameters(),
-        }),
-        htmlcut_core::OperationId::SlicePreview => Some(CatalogCommandContract {
-            invocation: "htmlcut inspect slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"
-                .to_owned(),
-            inputs: input_forms,
-            default_match: Some("first".to_owned()),
-            selection_modes: common_selection_modes(),
-            default_value: Some("structured".to_owned()),
-            value_modes: vec!["structured".to_owned()],
-            default_output: Some("json".to_owned()),
-            default_output_overrides: Vec::new(),
-            output_modes: vec!["text".to_owned(), "json".to_owned()],
-            constraints: {
-                let mut constraints = common_selection_constraints();
-                constraints.extend(slice_pattern_constraints());
-                constraints
-            },
-            notes: vec![
-                "Literal boundaries are raw substring matching, not tag-aware; `<a` also matches `<article>`.".to_owned(),
-                "Previews exclude both matched boundaries by default unless --include-start and/or --include-end are supplied.".to_owned(),
-                "Text output shows fragment context when it adds signal so boundary-consumption mistakes are easier to spot.".to_owned(),
-            ],
-            examples: vec![
-                "htmlcut inspect slice ./page.html --from '<article>' --to '</article>'".to_owned(),
-                "htmlcut inspect slice ./page.html --from 'START::' --to '::END' --pattern regex --output text".to_owned(),
-                "htmlcut inspect slice --request-file ./article-slice-preview.json".to_owned(),
-            ],
-            parameters: inspect_slice_parameters(),
-        }),
-        htmlcut_core::OperationId::SelectExtract => Some(CatalogCommandContract {
-            invocation: "htmlcut select [OPTIONS] --css <CSS> [INPUT]".to_owned(),
-            inputs: input_forms,
-            default_match: Some("first".to_owned()),
-            selection_modes: common_selection_modes(),
-            default_value: Some("text".to_owned()),
-            value_modes: vec![
-                "text".to_owned(),
-                "inner-html".to_owned(),
-                "outer-html".to_owned(),
-                "attribute".to_owned(),
-                "structured".to_owned(),
-            ],
-            default_output: Some("text".to_owned()),
-            default_output_overrides: vec![conditional_default(
-                "json",
-                condition("--value", &["structured"]),
-            )],
-            output_modes: common_output_modes(),
-            constraints: {
-                let mut constraints = common_selection_constraints();
-                constraints.extend(common_extract_constraints());
-                constraints
-            },
-            notes: vec![
-                "Structured extraction only supports --output json or --output none.".to_owned(),
-                "--output html is only valid with --value inner-html or --value outer-html."
-                    .to_owned(),
-                "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.".to_owned(),
-            ],
-            examples: vec![
-                "htmlcut select ./page.html --css article --match single".to_owned(),
-                "htmlcut select ./page.html --css '.card' --match all --value outer-html".to_owned(),
-                "htmlcut select ./page.html --css 'article a.more' --value attribute --attribute href --rewrite-urls".to_owned(),
-                "htmlcut select --request-file ./article-links.json --output-file ./links.json".to_owned(),
-            ],
-            parameters: select_extract_parameters(),
-        }),
-        htmlcut_core::OperationId::SliceExtract => Some(CatalogCommandContract {
-            invocation: "htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]".to_owned(),
-            inputs: input_forms,
-            default_match: Some("first".to_owned()),
-            selection_modes: common_selection_modes(),
-            default_value: Some("text".to_owned()),
-            value_modes: vec![
-                "text".to_owned(),
-                "inner-html".to_owned(),
-                "outer-html".to_owned(),
-                "attribute".to_owned(),
-                "structured".to_owned(),
-            ],
-            default_output: Some("text".to_owned()),
-            default_output_overrides: vec![conditional_default(
-                "json",
-                condition("--value", &["structured"]),
-            )],
-            output_modes: common_output_modes(),
-            constraints: {
-                let mut constraints = common_selection_constraints();
-                constraints.extend(slice_pattern_constraints());
-                constraints.extend(common_extract_constraints());
-                constraints
-            },
-            notes: vec![
-                "Literal boundaries are raw substring matching, not tag-aware; `<a` also matches `<article>`.".to_owned(),
-                "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely.".to_owned(),
-                "For --value inner-html, HTMLCut returns the selected fragment as HTML. For --value outer-html, HTMLCut returns the full outer matched range including both boundaries.".to_owned(),
-                "When extracting --value attribute from sliced HTML, use --include-start when the opening tag lives in the start boundary.".to_owned(),
-                "Structured extraction only supports --output json or --output none.".to_owned(),
-            ],
-            examples: vec![
-                "htmlcut slice ./page.html --from '<article>' --to '</article>'".to_owned(),
-                "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --match all --output json".to_owned(),
-                "htmlcut slice ./page.html --from '<a ' --to '</a>' --include-start --include-end --value attribute --attribute href".to_owned(),
-                "htmlcut slice --request-file ./article-slice.json --output-file ./fragment.html".to_owned(),
-            ],
-            parameters: slice_extract_parameters(),
-        }),
-    }
-}
-
-fn common_input_forms() -> Vec<String> {
-    vec![
-        "local file path".to_owned(),
-        "http:// or https:// URL".to_owned(),
-        "- for stdin".to_owned(),
-    ]
-}
-
-fn common_selection_modes() -> Vec<String> {
-    vec![
-        "single".to_owned(),
-        "first".to_owned(),
-        "nth".to_owned(),
-        "all".to_owned(),
-    ]
-}
-
-fn common_output_modes() -> Vec<String> {
-    vec![
-        "text".to_owned(),
-        "html".to_owned(),
-        "json".to_owned(),
-        "none".to_owned(),
-    ]
-}
-
-fn condition(parameter: &str, values: &[&str]) -> CatalogCondition {
-    CatalogCondition {
-        parameter: parameter.to_owned(),
-        values: values.iter().map(|value| (*value).to_owned()).collect(),
-    }
-}
-
-fn conditional_default(value: &str, when: CatalogCondition) -> CatalogConditionalDefault {
-    CatalogConditionalDefault {
-        value: value.to_owned(),
-        when,
-    }
-}
-
-fn requires_parameter(parameter: &str, when: CatalogCondition) -> CatalogConstraint {
-    CatalogConstraint::RequiresParameter {
-        parameter: parameter.to_owned(),
-        when,
-    }
-}
-
-fn allowed_only_when(parameter: &str, when: CatalogCondition) -> CatalogConstraint {
-    CatalogConstraint::AllowedOnlyWhen {
-        parameter: parameter.to_owned(),
-        when,
-    }
-}
-
-fn restricts_parameter_values(
-    parameter: &str,
-    allowed_values: &[&str],
-    when: CatalogCondition,
-) -> CatalogConstraint {
-    CatalogConstraint::RestrictsParameterValues {
-        parameter: parameter.to_owned(),
-        allowed_values: allowed_values
+    descriptor: &htmlcut_core::OperationCliContract,
+) -> CatalogCommandContract {
+    CatalogCommandContract {
+        invocation: descriptor.invocation.to_owned(),
+        inputs: descriptor
+            .inputs
             .iter()
-            .map(|value| (*value).to_owned())
+            .copied()
+            .map(|input| input.description().to_owned())
             .collect(),
-        when,
+        default_match: descriptor.default_match.map(render_selection_mode),
+        selection_modes: descriptor
+            .selection_modes
+            .iter()
+            .copied()
+            .map(render_selection_mode)
+            .collect(),
+        default_value: descriptor.default_value.map(render_value_type),
+        value_modes: descriptor
+            .value_modes
+            .iter()
+            .copied()
+            .map(render_value_type)
+            .collect(),
+        default_output: descriptor.default_output.map(render_output_mode),
+        default_output_overrides: descriptor
+            .default_output_overrides
+            .iter()
+            .map(build_conditional_default)
+            .collect(),
+        output_modes: descriptor
+            .output_modes
+            .iter()
+            .copied()
+            .map(render_output_mode)
+            .collect(),
+        constraints: descriptor
+            .constraints
+            .iter()
+            .map(build_constraint)
+            .collect(),
+        notes: descriptor
+            .notes
+            .iter()
+            .map(|note| (*note).to_owned())
+            .collect(),
+        examples: descriptor
+            .examples
+            .iter()
+            .map(|example| (*example).to_owned())
+            .collect(),
+        parameters: descriptor
+            .parameters
+            .iter()
+            .map(build_parameter_spec)
+            .collect(),
     }
 }
 
-fn common_selection_constraints() -> Vec<CatalogConstraint> {
-    vec![requires_parameter(
-        "--index",
-        condition("--match", &["nth"]),
-    )]
+fn build_conditional_default(
+    descriptor: &htmlcut_core::CliConditionalDefault,
+) -> CatalogConditionalDefault {
+    CatalogConditionalDefault {
+        value: htmlcut_core::render_cli_value(descriptor.value),
+        when: build_condition(&descriptor.when),
+    }
 }
 
-fn common_extract_constraints() -> Vec<CatalogConstraint> {
-    vec![
-        requires_parameter("--attribute", condition("--value", &["attribute"])),
-        requires_parameter("--bundle", condition("--output", &["none"])),
-        restricts_parameter_values(
-            "--output",
-            &["json", "none"],
-            condition("--value", &["structured"]),
-        ),
-        restricts_parameter_values(
-            "--value",
-            &["inner-html", "outer-html"],
-            condition("--output", &["html"]),
-        ),
-    ]
+fn build_constraint(descriptor: &htmlcut_core::CliConstraint) -> CatalogConstraint {
+    match descriptor {
+        htmlcut_core::CliConstraint::RequiresParameter { parameter, when } => {
+            CatalogConstraint::RequiresParameter {
+                parameter: parameter.to_string(),
+                when: build_condition(when),
+            }
+        }
+        htmlcut_core::CliConstraint::AllowedOnlyWhen { parameter, when } => {
+            CatalogConstraint::AllowedOnlyWhen {
+                parameter: parameter.to_string(),
+                when: build_condition(when),
+            }
+        }
+        htmlcut_core::CliConstraint::RestrictsParameterValues {
+            parameter,
+            allowed_values,
+            when,
+        } => CatalogConstraint::RestrictsParameterValues {
+            parameter: parameter.to_string(),
+            allowed_values: allowed_values
+                .iter()
+                .copied()
+                .map(htmlcut_core::render_cli_value)
+                .collect(),
+            when: build_condition(when),
+        },
+    }
 }
 
-fn slice_pattern_constraints() -> Vec<CatalogConstraint> {
-    vec![allowed_only_when(
-        "--regex-flags",
-        condition("--pattern", &["regex"]),
-    )]
+fn build_condition(condition: &htmlcut_core::CliCondition) -> CatalogCondition {
+    CatalogCondition {
+        parameter: condition.parameter.to_string(),
+        values: condition
+            .values
+            .iter()
+            .copied()
+            .map(htmlcut_core::render_cli_value)
+            .collect(),
+    }
 }
 
-fn param_positional(
-    section: &str,
-    name: &str,
-    requirement: CatalogParameterRequirement,
-    requirement_note: Option<&str>,
-    summary: &str,
-) -> CatalogParameterSpec {
+fn build_parameter_spec(parameter: &htmlcut_core::CliParameterDescriptor) -> CatalogParameterSpec {
+    let (requirement, requirement_note) = render_parameter_requirement(&parameter.requirement);
     CatalogParameterSpec {
-        section: section.to_owned(),
-        name: name.to_owned(),
-        kind: CatalogParameterKind::Positional,
+        section: parameter.section.to_string(),
+        name: parameter.id.to_string(),
+        kind: match parameter.kind {
+            htmlcut_core::CliParameterKind::Positional => CatalogParameterKind::Positional,
+            htmlcut_core::CliParameterKind::Option => CatalogParameterKind::Option,
+            htmlcut_core::CliParameterKind::Flag => CatalogParameterKind::Flag,
+        },
         requirement,
-        requirement_note: requirement_note.map(str::to_owned),
-        value_hint: None,
-        default: None,
-        allowed_values: Vec::new(),
-        summary: summary.to_owned(),
+        requirement_note,
+        value_hint: parameter.value_hint.map(str::to_owned),
+        default: parameter.default.map(htmlcut_core::render_cli_value),
+        allowed_values: parameter
+            .allowed_values
+            .iter()
+            .copied()
+            .map(htmlcut_core::render_cli_value)
+            .collect(),
+        summary: parameter.summary.to_owned(),
     }
 }
 
-struct OptionParameterSpec<'a> {
-    section: &'a str,
-    name: &'a str,
-    requirement: CatalogParameterRequirement,
-    requirement_note: Option<&'a str>,
-    value_hint: &'a str,
-    default: Option<&'a str>,
-    allowed_values: Vec<String>,
-    summary: &'a str,
-}
-
-fn param_option(spec: OptionParameterSpec<'_>) -> CatalogParameterSpec {
-    CatalogParameterSpec {
-        section: spec.section.to_owned(),
-        name: spec.name.to_owned(),
-        kind: CatalogParameterKind::Option,
-        requirement: spec.requirement,
-        requirement_note: spec.requirement_note.map(str::to_owned),
-        value_hint: Some(spec.value_hint.to_owned()),
-        default: spec.default.map(str::to_owned),
-        allowed_values: spec.allowed_values,
-        summary: spec.summary.to_owned(),
+fn render_parameter_requirement(
+    requirement: &htmlcut_core::CliParameterRequirement,
+) -> (CatalogParameterRequirement, Option<String>) {
+    match requirement {
+        htmlcut_core::CliParameterRequirement::Required => {
+            (CatalogParameterRequirement::Required, None)
+        }
+        htmlcut_core::CliParameterRequirement::Optional => {
+            (CatalogParameterRequirement::Optional, None)
+        }
+        htmlcut_core::CliParameterRequirement::RequiredUnless(parameter) => (
+            CatalogParameterRequirement::Conditional,
+            Some(format!("required unless {parameter} is used")),
+        ),
+        htmlcut_core::CliParameterRequirement::RequiredWhen(condition) => (
+            CatalogParameterRequirement::Conditional,
+            Some(format!(
+                "required when {}",
+                render_condition_expression(condition)
+            )),
+        ),
+        htmlcut_core::CliParameterRequirement::AllowedOnlyWhen(condition) => (
+            CatalogParameterRequirement::Conditional,
+            Some(format!(
+                "allowed only when {}",
+                render_condition_expression(condition)
+            )),
+        ),
     }
 }
 
-fn param_flag(section: &str, name: &str, summary: &str) -> CatalogParameterSpec {
-    CatalogParameterSpec {
-        section: section.to_owned(),
-        name: name.to_owned(),
-        kind: CatalogParameterKind::Flag,
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: None,
-        default: Some("false".to_owned()),
-        allowed_values: Vec::new(),
-        summary: summary.to_owned(),
+fn render_condition_expression(condition: &htmlcut_core::CliCondition) -> String {
+    let values = condition
+        .values
+        .iter()
+        .copied()
+        .map(htmlcut_core::render_cli_value)
+        .collect::<Vec<_>>();
+
+    match values.as_slice() {
+        [single] => format!("{} {single} is used", condition.parameter),
+        _ => format!("{} is one of {}", condition.parameter, values.join(", ")),
     }
 }
 
-fn common_source_parameters() -> Vec<CatalogParameterSpec> {
-    vec![
-        param_option(OptionParameterSpec {
-            section: "Source",
-            name: "--base-url",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "URL",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Override the input base URL used for relative-link resolution.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Source",
-            name: "--max-bytes",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "SIZE",
-            default: Some("52428800"),
-            allowed_values: Vec::new(),
-            summary: "Refuse sources larger than this limit. Accepts raw bytes or KB, MB, and GB.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Source",
-            name: "--fetch-timeout-ms",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "MILLISECONDS",
-            default: Some("15000"),
-            allowed_values: Vec::new(),
-            summary: "HTTP fetch timeout in milliseconds for URL inputs.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Source",
-            name: "--fetch-preflight",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "FETCH_PREFLIGHT",
-            default: Some("head-first"),
-            allowed_values: vec!["head-first".to_owned(), "get-only".to_owned()],
-            summary: "Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected or broken, or skip the HEAD preflight entirely.",
-        }),
-        param_positional(
-            "Source",
-            "<INPUT>",
-            CatalogParameterRequirement::Required,
-            None,
-            "HTML input source: a local file path, an http(s) URL, or - for stdin.",
-        ),
-    ]
+#[cfg(test)]
+pub(crate) fn render_condition_expression_for_tests(
+    condition: &htmlcut_core::CliCondition,
+) -> String {
+    render_condition_expression(condition)
 }
 
-fn common_definition_parameters() -> Vec<CatalogParameterSpec> {
-    vec![param_option(OptionParameterSpec {
-        section: "Definition",
-        name: "--request-file",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "PATH",
-        default: None,
-        allowed_values: Vec::new(),
-        summary: "Load a reusable extraction definition from a JSON file instead of spelling the request inline.",
-    })]
+#[cfg(test)]
+pub(crate) fn format_json_error_path_for_tests(path: &str) -> String {
+    format_json_error_path(path)
 }
 
-fn request_file_aware_source_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_source_parameters();
-    let input = parameters
-        .iter_mut()
-        .find(|parameter| parameter.name == "<INPUT>")
-        .expect("source parameters should include <INPUT>");
-    input.requirement = CatalogParameterRequirement::Conditional;
-    input.requirement_note = Some("required unless --request-file is used".to_owned());
-    parameters
+fn render_selection_mode(mode: htmlcut_core::CliSelectionMode) -> String {
+    htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(mode))
 }
 
-fn common_selection_parameters() -> Vec<CatalogParameterSpec> {
-    vec![
-        param_option(OptionParameterSpec {
-            section: "Selection",
-            name: "--match",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "MATCH",
-            default: Some("first"),
-            allowed_values: common_selection_modes(),
-            summary: "Require exactly one match, keep the first match, keep one 1-based match, or keep every match.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Selection",
-            name: "--index",
-            requirement: CatalogParameterRequirement::Conditional,
-            requirement_note: Some("required when --match nth is used"),
-            value_hint: "INDEX",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "The 1-based match index when --match nth is used.",
-        }),
-    ]
+fn render_value_type(value_type: htmlcut_core::ValueType) -> String {
+    htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value_type))
 }
 
-fn common_extract_parameters() -> Vec<CatalogParameterSpec> {
-    vec![
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--value",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "VALUE",
-            default: Some("text"),
-            allowed_values: vec![
-                "text".to_owned(),
-                "inner-html".to_owned(),
-                "outer-html".to_owned(),
-                "attribute".to_owned(),
-                "structured".to_owned(),
-            ],
-            summary: "What each selected match should produce before stdout formatting is applied.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--attribute",
-            requirement: CatalogParameterRequirement::Conditional,
-            requirement_note: Some("required when --value attribute is used"),
-            value_hint: "ATTRIBUTE",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Attribute name to extract when --value attribute is used.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--whitespace",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "WHITESPACE",
-            default: Some("preserve"),
-            allowed_values: vec!["preserve".to_owned(), "normalize".to_owned()],
-            summary: "Preserve source whitespace or normalize it for text-like values.",
-        }),
-        param_flag(
-            "Extraction",
-            "--rewrite-urls",
-            "Rewrite relative URLs in extracted HTML and attributes with the effective base URL.",
-        ),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--output",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "OUTPUT",
-            default: None,
-            allowed_values: common_output_modes(),
-            summary: "How stdout should be rendered after extraction.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--bundle",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "BUNDLE",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Write report.json, selection.html, and selection.txt to this directory.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--output-file",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "PATH",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Write the stdout payload to exactly one file instead of stdout.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Extraction",
-            name: "--preview-chars",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "PREVIEW_CHARS",
-            default: Some("160"),
-            allowed_values: Vec::new(),
-            summary: "Maximum preview length stored in structured reports.",
-        }),
-        param_flag(
-            "Extraction",
-            "--include-source-text",
-            "Include the full source text inside structured reports and bundles.",
-        ),
-    ]
-}
-
-fn common_inspect_output_parameters() -> Vec<CatalogParameterSpec> {
-    vec![
-        param_option(OptionParameterSpec {
-            section: "Inspection Output",
-            name: "--output",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "OUTPUT",
-            default: Some("json"),
-            allowed_values: vec!["text".to_owned(), "json".to_owned()],
-            summary: "Render the inspection as compact text or structured JSON.",
-        }),
-        param_option(OptionParameterSpec {
-            section: "Inspection Output",
-            name: "--preview-chars",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "PREVIEW_CHARS",
-            default: Some("160"),
-            allowed_values: Vec::new(),
-            summary: "Maximum preview length stored in structured preview reports.",
-        }),
-        param_flag(
-            "Inspection Output",
-            "--include-source-text",
-            "Include the full source text inside structured inspection reports.",
-        ),
-        param_option(OptionParameterSpec {
-            section: "Inspection Output",
-            name: "--output-file",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "PATH",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Write the stdout payload to exactly one file instead of stdout.",
-        }),
-    ]
-}
-
-fn inspect_source_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_source_parameters();
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--sample-limit",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "SAMPLE_LIMIT",
-        default: Some("8"),
-        allowed_values: Vec::new(),
-        summary: "Maximum number of headings, links, tags, and classes to sample in the summary.",
-    }));
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--output",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "OUTPUT",
-        default: Some("json"),
-        allowed_values: vec!["text".to_owned(), "json".to_owned()],
-        summary: "Render the inspection as compact text or structured JSON.",
-    }));
-    parameters.push(param_flag(
-        "Source",
-        "--include-source-text",
-        "Include the full source text in JSON output and a bounded preview in text output.",
-    ));
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--preview-chars",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "PREVIEW_CHARS",
-        default: Some("160"),
-        allowed_values: Vec::new(),
-        summary: "Maximum length of the source preview shown in text mode when --include-source-text is used.",
-    }));
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--output-file",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "PATH",
-        default: None,
-        allowed_values: Vec::new(),
-        summary: "Write the stdout payload to exactly one file instead of stdout.",
-    }));
-    parameters
-}
-
-fn inspect_select_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_definition_parameters();
-    parameters.extend(request_file_aware_source_parameters());
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--css",
-        requirement: CatalogParameterRequirement::Conditional,
-        requirement_note: Some("required unless --request-file is used"),
-        value_hint: "CSS",
-        default: None,
-        allowed_values: Vec::new(),
-        summary: "CSS selector that chooses the candidate nodes to preview.",
-    }));
-    parameters.extend(common_selection_parameters());
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Selection",
-        name: "--whitespace",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "WHITESPACE",
-        default: Some("preserve"),
-        allowed_values: vec!["preserve".to_owned(), "normalize".to_owned()],
-        summary: "Preserve source whitespace or normalize preview text.",
-    }));
-    parameters.push(param_flag(
-        "Selection",
-        "--rewrite-urls",
-        "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
-    ));
-    parameters.extend(common_inspect_output_parameters());
-    parameters
-}
-
-fn inspect_slice_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_definition_parameters();
-    parameters.extend(request_file_aware_source_parameters());
-    parameters.extend(slice_strategy_parameters("Source"));
-    parameters.extend(common_selection_parameters());
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Selection",
-        name: "--whitespace",
-        requirement: CatalogParameterRequirement::Optional,
-        requirement_note: None,
-        value_hint: "WHITESPACE",
-        default: Some("preserve"),
-        allowed_values: vec!["preserve".to_owned(), "normalize".to_owned()],
-        summary: "Preserve source whitespace or normalize preview text.",
-    }));
-    parameters.push(param_flag(
-        "Selection",
-        "--rewrite-urls",
-        "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
-    ));
-    parameters.extend(common_inspect_output_parameters());
-    parameters
-}
-
-fn select_extract_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_definition_parameters();
-    parameters.extend(request_file_aware_source_parameters());
-    parameters.push(param_option(OptionParameterSpec {
-        section: "Source",
-        name: "--css",
-        requirement: CatalogParameterRequirement::Conditional,
-        requirement_note: Some("required unless --request-file is used"),
-        value_hint: "CSS",
-        default: None,
-        allowed_values: Vec::new(),
-        summary: "CSS selector that chooses the candidate nodes to extract.",
-    }));
-    parameters.extend(common_selection_parameters());
-    parameters.extend(common_extract_parameters());
-    parameters
-}
-
-fn slice_extract_parameters() -> Vec<CatalogParameterSpec> {
-    let mut parameters = common_definition_parameters();
-    parameters.extend(request_file_aware_source_parameters());
-    parameters.extend(slice_strategy_parameters("Source"));
-    parameters.extend(common_selection_parameters());
-    parameters.extend(common_extract_parameters());
-    parameters
-}
-
-fn slice_strategy_parameters(section: &str) -> Vec<CatalogParameterSpec> {
-    vec![
-        param_option(OptionParameterSpec {
-            section,
-            name: "--from",
-            requirement: CatalogParameterRequirement::Conditional,
-            requirement_note: Some("required unless --request-file is used"),
-            value_hint: "FROM",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Start boundary used to locate each candidate slice.",
-        }),
-        param_option(OptionParameterSpec {
-            section,
-            name: "--to",
-            requirement: CatalogParameterRequirement::Conditional,
-            requirement_note: Some("required unless --request-file is used"),
-            value_hint: "TO",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "End boundary used to locate each candidate slice.",
-        }),
-        param_option(OptionParameterSpec {
-            section,
-            name: "--pattern",
-            requirement: CatalogParameterRequirement::Optional,
-            requirement_note: None,
-            value_hint: "PATTERN",
-            default: Some("literal"),
-            allowed_values: vec!["literal".to_owned(), "regex".to_owned()],
-            summary: "Interpret --from and --to as literal text or regex patterns.",
-        }),
-        param_option(OptionParameterSpec {
-            section,
-            name: "--regex-flags",
-            requirement: CatalogParameterRequirement::Conditional,
-            requirement_note: Some("allowed only when --pattern regex is used"),
-            value_hint: "REGEX_FLAGS",
-            default: None,
-            allowed_values: Vec::new(),
-            summary: "Regex flags for --pattern regex. Accepts i, m, s, u, and x.",
-        }),
-        param_flag(
-            section,
-            "--include-start",
-            "Include the matched --from boundary in the selected fragment.",
-        ),
-        param_flag(
-            section,
-            "--include-end",
-            "Include the matched --to boundary in the selected fragment.",
-        ),
-    ]
+fn render_output_mode(mode: htmlcut_core::CliOutputMode) -> String {
+    htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode))
 }
