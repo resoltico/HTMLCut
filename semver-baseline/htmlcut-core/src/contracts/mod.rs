@@ -24,7 +24,7 @@ pub use results::{
     DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel, DocumentInspection, ExtractionMatch,
     ExtractionMatchMetadata, ExtractionResult, ExtractionStats, HeadingInspection, InspectionCount,
     LinkInspection, ParseDocumentResult, ParsedDocument, Range, SelectorMatchMetadata,
-    SourceInspectionResult, SourceMetadata,
+    SourceInspectionResult, SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata,
 };
 
 /// Formats a byte size using friendly binary units when possible.

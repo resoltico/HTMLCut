@@ -359,8 +359,7 @@ fn canonical_json_string(value: &Value) -> String {
         }
         Value::Object(entries) => {
             let mut sorted_entries = entries.iter().collect::<Vec<_>>();
-            sorted_entries
-                .sort_unstable_by(|(left_key, _), (right_key, _)| left_key.cmp(right_key));
+            sorted_entries.sort_unstable_by_key(|(key, _)| *key);
 
             let mut output = String::from("{");
             for (index, (key, entry_value)) in sorted_entries.into_iter().enumerate() {
