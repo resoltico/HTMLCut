@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-htmlcut-core = { path = "../htmlcut-core", version = "4.1.0" }
+htmlcut-core.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -29,6 +29,8 @@ url.workspace = true
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
+regex.workspace = true
+shell-words.workspace = true
 tempfile.workspace = true
 
 [lints]

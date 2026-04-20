@@ -13,6 +13,14 @@ Applies to: libraries, services, CLIs, daemons, backends, systems tools, Rust-ba
 
 Local repository rules take precedence. Otherwise, follow this strictly.
 
+# Systems Over Goals: The Non-Negotiable Coding Rule
+
+Live inside the unbreakable loops of Red → Green → Refactor and Boy Scout + Mikado. When writing new code, start with the smallest failing proof of behavior—test, assertion, or reproducible check—write the minimal implementation that makes it pass, then refactor immediately until the result is obvious, simple, expressive, and easy to change. When touching existing code, even for a one-line fix, leave the surrounding system strictly better than you found it: rename for clarity, extract coherent units, delete dead paths, collapse unnecessary complexity, remove compatibility shims that no longer serve a real contract, and pay down technical debt through the smallest safe sequence of validated steps. If a local refactor naturally unlocks a broader system-wide improvement, continue it while each step remains safe and well-proven. Do not treat architecture as something to preserve, defer, or design in advance; let it emerge from never leaving touched code worse than you opened it. The requested task defines only the entry point. The loops define the standard. Stop only when the touched code is clearly better and the next improvement is a separate slice.
+
+# Shared Contract Facts Have One Canonical Owner
+
+All contract-defining facts must have exactly one canonical owner and must be declared there in a form other parts of the system can derive from rather than redefine. Identifiers, limits, labels, rules, capabilities, and other externally meaningful contract facts must not be hard-coded in parallel across interfaces, tools, docs, summaries, or error surfaces. Any surface that exposes contract facts must derive them from the canonical source or from generated artifacts rooted in it. Build-time validation must fail on drift, missing registrations, contradictory definitions, or references to contract facts outside the canonical registry.
+
 ---
 
 ## 0. Prime Directive

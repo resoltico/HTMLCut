@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: SCHEMA
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -30,12 +30,15 @@ htmlcut schema --name htmlcut.result --schema-version 1 --output json
 Rust:
 
 ```rust
-use htmlcut_core::{schema_catalog, schema_descriptor};
+use htmlcut_core::{
+    CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, schema_catalog, schema_descriptor,
+};
 
 let registry = schema_catalog();
 assert!(!registry.is_empty());
 
-let extraction_result = schema_descriptor("htmlcut.extraction_result", 5).unwrap();
+let extraction_result =
+    schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION).unwrap();
 assert_eq!(extraction_result.owner_surface, "htmlcut-core");
 ```
 
@@ -45,28 +48,39 @@ The exported registry profile is:
 
 ## Current Schema Inventory
 
-Core contracts:
+Current stable schema families are grouped by owner:
 
-- `htmlcut.source_request@4`
-- `htmlcut.runtime_options@4`
-- `htmlcut.inspection_options@4`
-- `htmlcut.extraction_request@4`
-- `htmlcut.extraction_definition@1`
-- `htmlcut.extraction_result@5`
-- `htmlcut.source_inspection_result@3`
+This inventory is completeness-linted against the live schema registry. If the registry gains or
+loses a schema family, this guide is expected to change in the same diff.
+
+Core request contracts:
+
+- `htmlcut.source_request`
+- `htmlcut.runtime_options`
+- `htmlcut.inspection_options`
+- `htmlcut.extraction_request`
+- `htmlcut.extraction_definition`
+
+Core result contracts:
+
+- `htmlcut.extraction_result`
+- `htmlcut.source_inspection_result`
 
 CLI report contracts:
 
-- `htmlcut.catalog_report@4`
-- `htmlcut.schema_report@1`
-- `htmlcut.extraction_report@5`
-- `htmlcut.source_inspection_report@3`
+- `htmlcut.catalog_report`
+- `htmlcut.schema_report`
+- `htmlcut.extraction_report`
+- `htmlcut.source_inspection_report`
 
 Frozen interop v1 contracts:
 
-- `htmlcut.plan@1`
-- `htmlcut.result@1`
-- `htmlcut.error@1`
+- `htmlcut.plan`
+- `htmlcut.result`
+- `htmlcut.error`
+
+Use `htmlcut schema --output json` when you need the current integer schema versions for those
+families. The registry output is the authoritative version inventory.
 
 ## Catalog Relationship
 

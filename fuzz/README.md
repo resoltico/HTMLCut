@@ -1,8 +1,20 @@
+<!--
+AFAD:
+  afad: "3.5"
+  version: "4.2.0"
+  domain: QUALITY
+  updated: "2026-04-20"
+RETRIEVAL_HINTS:
+  keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
+  questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
+  related: [../docs/quality-gates.md, ../docs/developer-setup.md, ../README.md]
+-->
+
 # HTMLCut Fuzz Inventory
 
-The checked-in fuzz package lives in [`fuzz/Cargo.toml`](/Users/erst/Tools/HTMLCut/fuzz/Cargo.toml).
-It is intentionally separate from the main workspace so the normal maintainer flow stays stable-first,
-while fuzzing can use the tooling that best suits libFuzzer.
+The checked-in fuzz package lives in [`Cargo.toml`](Cargo.toml). It is intentionally separate from
+the main workspace so the normal maintainer flow stays stable-first, while fuzzing can use the
+tooling that best suits libFuzzer.
 
 ## Targets
 
@@ -25,6 +37,9 @@ The intent is:
 These seeds are not treated as a replacement for longer fuzzing campaigns. They are there to make
 short reproducible smoke runs and crash repro loops start from known meaningful inputs.
 
+By default, `cargo fuzz` keeps its own build cache under `fuzz/target/`, separate from the
+workspace root `target/` tree.
+
 ## Run
 
 Install the fuzz driver once:
@@ -44,6 +59,8 @@ Build every target without starting a fuzzing campaign:
 ```bash
 cargo check --manifest-path fuzz/Cargo.toml --bins --locked
 ```
+
+This compile-smoke is part of the normal maintainer gate. Full fuzzing campaigns are not.
 
 Run a short local smoke campaign from the checked-in seeds:
 

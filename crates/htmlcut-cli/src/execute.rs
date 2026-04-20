@@ -1,12 +1,20 @@
-use std::fs;
 use std::io::Write;
-use std::path::Path;
 
-use clap::ValueEnum;
+mod cli_io;
+mod raw_args;
+
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use htmlcut_core::{extract, inspect_source, preview_extraction};
 
-use crate::EXIT_CODE_OUTPUT;
+pub(crate) use self::cli_io::{output_file_notice, write_outcome, write_request_definition};
+#[cfg(test)]
+pub(crate) use self::cli_io::{
+    request_definition_parent_dir_for_tests, write_stdout_payload_for_tests,
+};
+pub(crate) use self::raw_args::{
+    clap_error_message, command_name_from_raw_args, raw_args_prefers_json, raw_args_requests_help,
+    raw_args_requests_version, report_command_for_operation,
+};
 use crate::args::{
     CatalogArgs, Cli, CliCatalogOutputMode, CliInspectOutputMode, CliOutputMode,
     CliSchemaOutputMode, Commands, InspectCommands, InspectSelectArgs, InspectSliceArgs,
@@ -114,6 +122,9 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
         stdout: Some(match args.output {
             CliCatalogOutputMode::Json => to_pretty_json(&report),
             CliCatalogOutputMode::Text => render_catalog_text(&report),
+            CliCatalogOutputMode::Html | CliCatalogOutputMode::None => {
+                unreachable!("catalog output parser only allows text/json")
+            }
         }),
         output_file: args.output_file,
         post_write_stderr,
@@ -140,6 +151,9 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
         stdout: Some(match args.output {
             CliSchemaOutputMode::Json => to_pretty_json(&report),
             CliSchemaOutputMode::Text => render_schema_text(&report),
+            CliSchemaOutputMode::Html | CliSchemaOutputMode::None => {
+                unreachable!("schema output parser only allows text/json")
+            }
         }),
         output_file: args.output_file,
         post_write_stderr,
@@ -231,6 +245,9 @@ pub(crate) fn run_inspect_source(
             CliInspectOutputMode::Json => to_pretty_json(&report),
             CliInspectOutputMode::Text => {
                 render_source_inspection_text(&report, prepared.preview_chars)
+            }
+            CliInspectOutputMode::Html | CliInspectOutputMode::None => {
+                unreachable!("inspect output parser only allows text/json")
             }
         }),
         output_file: prepared.output_file,
@@ -411,6 +428,9 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
         stdout: Some(match prepared.output {
             CliInspectOutputMode::Json => to_pretty_json(&report),
             CliInspectOutputMode::Text => render_preview_text(&report),
+            CliInspectOutputMode::Html | CliInspectOutputMode::None => {
+                unreachable!("inspect output parser only allows text/json")
+            }
         }),
         output_file: prepared.output_file,
         post_write_stderr,
@@ -486,222 +506,4 @@ pub(crate) fn human_error_outcome(error: CliError) -> ExecutionOutcome {
         stderr,
         exit_code: exit_code_for_error(&error),
     }
-}
-
-pub(crate) fn write_outcome<W1, W2>(
-    outcome: ExecutionOutcome,
-    stdout: &mut W1,
-    stderr: &mut W2,
-) -> i32
-where
-    W1: Write,
-    W2: Write,
-{
-    if let Some(stdout_payload) = outcome.stdout.as_ref() {
-        if let Some(path) = outcome.output_file.as_deref() {
-            if let Err(error) = write_stdout_payload(path, stdout_payload) {
-                let _ = writeln!(
-                    stderr,
-                    "htmlcut: Could not write {}: {error}",
-                    path.display()
-                );
-                return EXIT_CODE_OUTPUT;
-            }
-        } else {
-            let _ = writeln!(stdout, "{stdout_payload}");
-        }
-    }
-    for line in &outcome.stderr {
-        let _ = writeln!(stderr, "{line}");
-    }
-    for line in &outcome.post_write_stderr {
-        let _ = writeln!(stderr, "{line}");
-    }
-    outcome.exit_code
-}
-
-pub(crate) fn raw_args_prefers_json(raw_args: &[String]) -> bool {
-    let mut explicit_output = None;
-    let mut inspect_mode = false;
-    let mut structured_value = false;
-    let structured_value_mode = value_enum_name(crate::args::CliValueMode::Structured);
-    let json_output_mode = value_enum_name(crate::args::CliOutputMode::Json);
-    let text_output_mode = value_enum_name(crate::args::CliOutputMode::Text);
-    let html_output_mode = value_enum_name(crate::args::CliOutputMode::Html);
-    let none_output_mode = value_enum_name(crate::args::CliOutputMode::None);
-
-    for (index, arg) in raw_args.iter().enumerate().skip(1) {
-        if arg == "inspect" {
-            inspect_mode = true;
-        }
-        if arg == "--value"
-            && raw_args
-                .get(index + 1)
-                .is_some_and(|value| value == structured_value_mode.as_str())
-        {
-            structured_value = true;
-        }
-        if let Some(value) = arg.strip_prefix("--output=") {
-            explicit_output = Some(value.to_owned());
-        }
-        if arg == "--output"
-            && let Some(value) = raw_args.get(index + 1)
-        {
-            explicit_output = Some(value.clone());
-        }
-    }
-
-    match explicit_output.as_deref() {
-        Some(value) if value == json_output_mode.as_str() => true,
-        Some(value)
-            if value == text_output_mode.as_str()
-                || value == html_output_mode.as_str()
-                || value == none_output_mode.as_str() =>
-        {
-            false
-        }
-        _ => inspect_mode || structured_value,
-    }
-}
-
-pub(crate) fn raw_args_requests_version(raw_args: &[String]) -> bool {
-    raw_option_tokens(raw_args).any(|arg| matches!(arg, "--version" | "-V"))
-}
-
-pub(crate) fn raw_args_requests_help(raw_args: &[String]) -> bool {
-    raw_option_tokens(raw_args).any(|arg| matches!(arg, "--help" | "-h"))
-}
-
-fn raw_option_tokens(raw_args: &[String]) -> impl Iterator<Item = &str> {
-    raw_args
-        .iter()
-        .skip(1)
-        .take_while(|arg| arg.as_str() != "--")
-        .map(String::as_str)
-}
-
-pub(crate) fn command_name_from_raw_args(raw_args: &[String]) -> String {
-    let command_tokens = raw_command_tokens(raw_args);
-    let Some(first_token) = command_tokens.first().copied() else {
-        return TOOL_NAME.to_owned();
-    };
-
-    if let Some(contract) = htmlcut_core::cli_operation_catalog()
-        .iter()
-        .filter(|contract| command_tokens.len() >= contract.command_path.len())
-        .find(|contract| command_tokens.starts_with(contract.command_path))
-    {
-        return contract.report_command();
-    }
-
-    match first_token {
-        "catalog" => "catalog".to_owned(),
-        "schema" => "schema".to_owned(),
-        "inspect" => "inspect".to_owned(),
-        command => command.to_owned(),
-    }
-}
-
-pub(crate) fn clap_error_message(error: &clap::Error) -> String {
-    let rendered = error.to_string();
-    rendered
-        .lines()
-        .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
-        .unwrap_or_else(|| rendered.trim().to_owned())
-}
-
-fn write_stdout_payload(path: &Path, stdout_payload: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::write(path, format!("{stdout_payload}\n"))
-}
-
-fn output_file_notice(path: Option<&Path>, verbose: u8, quiet: bool) -> Vec<String> {
-    if quiet || verbose == 0 {
-        return Vec::new();
-    }
-
-    path.map(|path| format!("htmlcut: wrote output file to {}", path.display()))
-        .into_iter()
-        .collect()
-}
-
-fn value_enum_name<T: ValueEnum>(value: T) -> String {
-    value
-        .to_possible_value()
-        .expect("CLI value-enum variant should always render")
-        .get_name()
-        .to_owned()
-}
-
-fn raw_command_tokens(raw_args: &[String]) -> Vec<&str> {
-    raw_args
-        .iter()
-        .skip(1)
-        .take_while(|arg| arg.as_str() != "--")
-        .map(String::as_str)
-        .skip_while(|arg| arg.starts_with('-'))
-        .take_while(|arg| !arg.starts_with('-'))
-        .collect()
-}
-
-fn report_command_for_operation(operation_id: htmlcut_core::OperationId) -> String {
-    htmlcut_core::cli_operation_report_command(operation_id)
-        .expect("CLI-visible operation should expose a report command")
-}
-
-fn write_request_definition(
-    request_definition_output: &crate::prepare::PendingExtractionDefinitionWrite,
-) -> Result<(), CliError> {
-    if let Some(parent) = request_definition_parent_dir(&request_definition_output.path) {
-        fs::create_dir_all(parent).map_err(|error| {
-            crate::error::output_error(
-                "CLI_REQUEST_FILE_WRITE_FAILED",
-                format!(
-                    "Could not create request file directory {}: {error}",
-                    parent.display()
-                ),
-            )
-        })?;
-    }
-
-    fs::write(
-        &request_definition_output.path,
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(&request_definition_output.definition)
-                .expect("request definitions should always serialize"),
-        ),
-    )
-    .map_err(|error| {
-        crate::error::output_error(
-            "CLI_REQUEST_FILE_WRITE_FAILED",
-            format!(
-                "Could not write request file {}: {error}",
-                request_definition_output.path.display()
-            ),
-        )
-    })
-}
-
-fn request_definition_parent_dir(path: &Path) -> Option<&Path> {
-    let parent = path.parent()?;
-    (!parent.as_os_str().is_empty()).then_some(parent)
-}
-
-#[cfg(test)]
-pub(crate) fn write_stdout_payload_for_tests(
-    path: &Path,
-    stdout_payload: &str,
-) -> std::io::Result<()> {
-    write_stdout_payload(path, stdout_payload)
-}
-
-#[cfg(test)]
-pub(crate) fn request_definition_parent_dir_for_tests(path: &Path) -> Option<&Path> {
-    request_definition_parent_dir(path)
 }

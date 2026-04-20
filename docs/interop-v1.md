@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: INTEROP
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, validate_plan, HtmlInput, Plan, InteropResult, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?"]
@@ -60,6 +60,13 @@ Validator discovery:
 - `htmlcut schema --name htmlcut.error --schema-version 1 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
+
+Deterministic JSON and digest helpers:
+
+- `Plan::stable_json()` / `Plan::digest_sha256()`
+- `InteropResult::stable_json()` / `InteropResult::digest_sha256()` / `InteropResult::with_computed_digest()`
+- `InteropError::stable_json()` / `InteropError::digest_sha256()` / `InteropError::with_computed_digest()`
+- `stable_json_v1(...)` for the frozen canonical serializer itself
 
 ## Minimal Embedding Example
 

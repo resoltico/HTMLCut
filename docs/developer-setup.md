@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: SETUP
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [developer setup, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?"]
@@ -68,6 +68,9 @@ Why this shape:
 - `cargo-fuzz` is not part of the default maintainer gate, but HTMLCut keeps checked-in fuzz
   targets and seed corpora, so contributors should have the runner available for local smoke
   campaigns and incident reproduction.
+
+If you are not on macOS, keep the same tool list but omit the `CC=clang CXX=clang++` override and
+use the platform's normal C toolchain instead.
 
 ## Install ShellCheck
 
@@ -142,7 +145,8 @@ next missing prerequisite and fix that root cause before rerunning.
 
 The Git repository itself is small. The multi-gigabyte footprint comes from build artifacts under
 `target/`, especially coverage workspaces such as `target/llvm-cov-target`, native dependency
-builds, semver-check scratch data, and compiled test binaries.
+builds, semver-check scratch data, and compiled test binaries. Local fuzzing also uses a separate
+`fuzz/target/` tree unless you override Cargo's target directory for fuzz runs.
 
 `cargo xtask check` now treats the two worst offenders as ephemeral scratch:
 
@@ -159,3 +163,5 @@ source "$HOME/.cargo/env"
 cargo llvm-cov clean --workspace
 cargo clean
 ```
+
+If you have been running libFuzzer locally, you may also want to remove `fuzz/target/`.

@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: QUALITY
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?"]
@@ -57,17 +57,18 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 
 - shell script syntax and `shellcheck`
 - `cargo fmt --check`
-- targeted contract-lint tests that fail when help text, operation examples, parser enums, or catalog contracts drift away from the canonical core-owned registries
+- recursive Markdown docs-contract lint for the maintained public docs tree, including required AFAD metadata fields, version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, and non-parsing concrete `htmlcut ...` examples inside fenced code blocks
+- targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical core-owned registries
 - clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical core-owned CLI contract
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
-- direct workspace dependency freshness
+- direct dependency freshness across the workspace manifests
 - RustSec advisory auditing with warnings denied
-- dependency policy checks for advisories, bans, licenses, registries, yanked crates, and unmaintained crates
+- dependency policy checks through `cargo deny` with the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check --manifest-path fuzz/Cargo.toml --bins --locked`
 - workspace tests through `cargo nextest`
 - workspace doc tests
-- compiler-enforced rustdoc coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` surfaces
+- compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
 - distribution-profile CLI build-and-launch smoke
 - 100% executable-line coverage and 100% branch coverage across the maintained Rust sources, including the `xtask` library, from a clean `cargo llvm-cov` workspace with duplicate branch spans deduplicated before scoring
 - CLI/core parity checks through a matrix-driven integration suite that compares CLI JSON reports with direct `htmlcut-core` results
@@ -77,7 +78,8 @@ The coverage command now fails before any coverage build starts if the nightly t
 `cargo llvm-cov` workspace, deduplicates duplicate branch spans emitted by Rust lowering, and then
 enforces the 100% line and branch bar across the curated executable module set. That bar is
 intentional: HTMLCut treats those tracked files as contract-critical logic, not aspirational best
-effort.
+effort. The curated set is kept in sync with the live module layout, including the split core
+request/source/document/extract seams and the frozen `htmlcut_core::interop::v1` adapter modules.
 
 The gate also treats the heaviest scratch directories as disposable:
 
@@ -98,7 +100,7 @@ dedicated `dist` profile that inherits `release` and then hardens it for shipped
 Local maintainer smoke stays host-native. The full public standalone artifact matrix is built by
 the release workflow as defined in [platform-support.md](platform-support.md).
 
-`./check.sh` is intentionally checked in and shell-linted alongside the `scripts/` directory so the
+The repo-root `./check.sh` wrapper is shell-linted alongside the `scripts/` directory so the
 documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
 
 GitHub CI also runs a release-target smoke matrix across the public standalone targets before the

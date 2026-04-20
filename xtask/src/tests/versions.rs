@@ -1,0 +1,146 @@
+use super::*;
+
+#[test]
+fn workspace_version_from_manifest_extracts_workspace_package_version() {
+    let version = workspace_version_from_manifest(
+        "[workspace.package]\nversion = \"3.1.4\"\nedition = \"2024\"\n",
+    )
+    .expect("workspace version");
+
+    assert_eq!(version, "3.1.4");
+}
+
+#[test]
+fn workspace_version_from_manifest_ignores_versions_outside_workspace_package() {
+    let version = workspace_version_from_manifest(
+        "[package]\nversion = \"0.1.0\"\n\n[workspace.package]\nversion = \"3.1.4\"\n\n[dependencies]\nserde = { version = \"1.0.228\" }\n",
+    )
+    .expect("workspace version");
+
+    assert_eq!(version, "3.1.4");
+}
+
+#[test]
+fn workspace_version_from_manifest_skips_blank_and_comment_lines_inside_section() {
+    let version = workspace_version_from_manifest(
+        "[workspace.package]\n\n# maintained here\nversion = \"3.1.4\"\n",
+    )
+    .expect("workspace version");
+
+    assert_eq!(version, "3.1.4");
+}
+
+#[test]
+fn workspace_version_from_manifest_requires_a_version_line() {
+    let error = workspace_version_from_manifest("[workspace.package]\nedition = \"2024\"\n")
+        .expect_err("missing version should fail");
+
+    assert_eq!(
+        error.to_string(),
+        "workspace version not found in Cargo.toml"
+    );
+}
+
+#[test]
+fn package_version_from_manifest_extracts_package_version() {
+    let version = package_version_from_manifest(
+        "[package]\nname = \"htmlcut-core\"\nversion = \"2.7.0\"\n\n[workspace]\n",
+    )
+    .expect("package version");
+
+    assert_eq!(version, "2.7.0");
+}
+
+#[test]
+fn package_version_from_manifest_requires_a_version_line() {
+    let error = package_version_from_manifest("[package]\nname = \"htmlcut-core\"\n")
+        .expect_err("missing version should fail");
+
+    assert_eq!(error.to_string(), "package version not found in Cargo.toml");
+}
+
+#[test]
+fn manifest_version_parsers_skip_malformed_headers_and_assignments() {
+    let workspace_version = workspace_version_from_manifest(
+        "[workspace.package\nversion = \"0.1.0\"\n[workspace.package]\nversion = 3.1.4\nversion = \"3.1.4\nversion = \"3.1.4\"\n",
+    )
+    .expect("workspace version");
+    let package_version = package_version_from_manifest(
+        "[package\nversion = \"0.1.0\"\n[package]\nversion = 2.7.0\nversion = \"2.7.0\nversion = \"2.7.0\"\n",
+    )
+    .expect("package version");
+
+    assert_eq!(workspace_version, "3.1.4");
+    assert_eq!(package_version, "2.7.0");
+}
+
+#[test]
+fn package_version_from_manifest_ignores_workspace_package_versions() {
+    let version = package_version_from_manifest(
+        "[workspace.package]\nversion = \"9.9.9\"\n\n[package]\nname = \"htmlcut-core\"\nversion = \"2.7.0\"\n",
+    )
+    .expect("package version");
+
+    assert_eq!(version, "2.7.0");
+}
+
+#[test]
+fn workspace_version_reads_from_repo_manifest() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"9.9.9\"\n",
+    )
+    .expect("write Cargo.toml");
+
+    let version = workspace_version(repo_root.path()).expect("workspace version");
+
+    assert_eq!(version, "9.9.9");
+}
+
+#[test]
+fn semver_release_type_uses_major_until_the_baseline_catches_up() {
+    assert_eq!(semver_release_type_from_versions("3.0.0", "2.0.0"), "major");
+    assert_eq!(semver_release_type_from_versions("3.0.0", "3.0.0"), "minor");
+}
+
+#[test]
+fn semver_release_type_reads_versions_from_the_repo_layout() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+
+    assert_eq!(
+        semver_release_type(repo_root.path()).expect("major semver release type"),
+        "major"
+    );
+
+    fs::write(
+        repo_root
+            .path()
+            .join("semver-baseline")
+            .join("htmlcut-core")
+            .join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-core\"\nversion = \"3.0.0\"\n",
+    )
+    .expect("write updated baseline Cargo.toml");
+
+    assert_eq!(
+        semver_release_type(repo_root.path()).expect("minor semver release type"),
+        "minor"
+    );
+}
+
+#[test]
+fn with_workspace_stub_appends_once() {
+    let updated = with_workspace_stub("[package]\nname = \"htmlcut-core\"\n");
+    let unchanged = with_workspace_stub("[package]\nname = \"htmlcut-core\"\n\n[workspace]\n");
+
+    assert_eq!(
+        updated,
+        "[package]\nname = \"htmlcut-core\"\n\n[workspace]\n"
+    );
+    assert_eq!(
+        unchanged,
+        "[package]\nname = \"htmlcut-core\"\n\n[workspace]\n"
+    );
+}

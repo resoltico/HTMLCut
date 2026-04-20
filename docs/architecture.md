@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: ARCHITECTURE
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -40,7 +40,7 @@ Use `htmlcut-core` when you need:
 Use `htmlcut_core::interop::v1` when you need the frozen `htmlcut-v1` downstream integration
 contract.
 
-It is the generic versioned interop surface currently consumed by FFHN, not a replacement for the
+It is the generic versioned interop surface for downstream integrations, not a replacement for the
 broader `htmlcut-core` API, and not a CLI command.
 
 ## Ownership Boundary
@@ -54,11 +54,15 @@ broader `htmlcut-core` API, and not a CLI command.
 - inspection and preview
 - diagnostics
 - canonical operation IDs and operation catalog entries
+- canonical CLI choice domains and spellings for match, value, output, pattern, whitespace, and
+  fetch-preflight modes
+- canonical CLI help metadata for the maintained command surfaces, including display summaries,
+  discovery narratives, and operation-analysis guidance that the CLI renders without rewriting
 
 `htmlcut-cli` owns:
 
 - argument parsing
-- help text
+- clap tree assembly from the core-owned command/help contracts
 - human vs JSON rendering
 - bundles
 - exit codes
@@ -70,6 +74,11 @@ broader `htmlcut-core` API, and not a CLI command.
 - typed interop result and error documents
 - stable JSON and digest helpers for the frozen interop profile
 
+Those owners are maintained as focused domain modules, not giant mixed-role files. In practice that
+means HTMLCut keeps request contracts, source loading, document handling, extraction execution, and
+frozen interop execution/stable-JSON logic in separate seams so the canonical owner for one concern
+does not disappear into a monolith.
+
 Downstream applications own fetch, retries, orchestration, comparison, and persistence. HTMLCut
 does not fetch on a downstream application's behalf in production interop flows.
 
@@ -78,8 +87,8 @@ does not fetch on a downstream application's behalf in production interop flows.
 The maintained dependency direction is:
 
 1. `htmlcut-cli` -> `htmlcut-core`
-2. `ffhn-core` -> `htmlcut-core`
-3. `ffhn-core` -> `htmlcut_core::interop::v1`
+2. downstream embedders -> `htmlcut-core`
+3. downstream embedders that adopt frozen interop -> `htmlcut_core::interop::v1`
 
 Forbidden shapes:
 
@@ -114,7 +123,10 @@ shadow command-contract builder.
 
 That ownership line is enforced, not merely described. The maintainer gate parses the real clap
 command tree and defaulted arguments and fails if they drift away from the core-owned CLI
-contract registry.
+contract registry. The CLI help surface is expected to render the same core-owned summaries,
+analysis text, mode facts, default overrides, notes, and examples instead of hand-authoring a
+second behavioral description. The CLI also parses the core-owned choice types directly instead of
+defining its own parallel enums for those user-facing values.
 
 For CLI-exposed operations, the catalog also carries a machine-readable command contract:
 
@@ -127,6 +139,10 @@ For CLI-exposed operations, the catalog also carries a machine-readable command 
 - examples
 
 That is the stable capability-discovery surface agents should prefer over parsing help text ad hoc.
+
+The same gate also renders the real clap help text, catalog/schema text summaries, and
+representative recovery errors and fails if those surfaces mention operation IDs or schema names
+that are not registered in `htmlcut-core`.
 
 For validator-grade contract discovery, use `htmlcut schema` or `schema_catalog()`. Do not treat
 catalog prose as a schema substitute.

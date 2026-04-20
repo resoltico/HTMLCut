@@ -24,6 +24,8 @@ mod render;
 #[cfg(test)]
 mod tests;
 
+use clap::Command;
+
 pub use execute::run;
 pub use model::{
     BundlePaths, CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogAvailability,
@@ -35,6 +37,13 @@ pub use model::{
     SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
     SchemaCommandReport, SchemaDocumentReport, SchemaRefReport, SourceInspectionCommandReport,
 };
+
+/// Builds the canonical HTMLCut clap command tree for tooling and docs-contract validation.
+pub fn command() -> Command {
+    use clap::CommandFactory;
+
+    args::Cli::command()
+}
 
 #[cfg(test)]
 pub(crate) use args::*;

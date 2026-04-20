@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: CORE
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -15,9 +15,9 @@ route:
 The CLI does not implement separate extraction logic. It builds core requests, executes them, and
 renders the result.
 
-## Public Entry Points
+## Primary Root-Level Entry Points
 
-The maintained public surface is:
+The crate root concentrates the primary stable execution and discovery entry points:
 
 - `parse_document`
 - `inspect_source`
@@ -25,16 +25,28 @@ The maintained public surface is:
 - `extract`
 - `operation_catalog`
 - `operation_descriptor`
+- `cli_aux_command_catalog`
+- `cli_aux_command_descriptor`
+- `cli_aux_command_help_document`
 - `cli_operation_catalog`
 - `cli_operation_contract`
 - `cli_operation_display_command`
+- `cli_operation_help_document`
 - `cli_operation_report_command`
+- `cli_root_help_document`
 - `find_cli_operation_by_command_path`
 - `schema_catalog`
 - `schema_descriptor`
 
-The crate root intentionally keeps only the stable high-level API and top-level request/result
-types.
+Additional stable exports also include:
+
+- the `htmlcut_core::request` and `htmlcut_core::result` namespaces
+- schema/profile/version constants
+- `DiagnosticCode`
+- the versioned `htmlcut_core::interop` module
+
+The implementation modules stay private. Consumers should build on the crate root and the
+explicit namespaces above instead of reaching for internal module paths.
 
 Detailed contract types now live behind explicit namespaces:
 
@@ -63,7 +75,7 @@ Important invariants:
 - selector exact-one behavior uses `SelectionSpec::single()`
 - slice capture is modeled with `include_start` and `include_end`, not coarse inner/outer capture
 - slice requests are mode-correct: literal slices do not carry regex flags, regex slices do
-- reusable request files serialize `ExtractionDefinition`, which owns the full `ExtractionRequest`
+- reusable extraction-definition files serialize `ExtractionDefinition`, which owns the full `ExtractionRequest`
   plus `RuntimeOptions`
 - URL loading defaults to `FetchPreflightMode::HeadFirst` with an explicit `GetOnly` escape hatch
 - structured extraction metadata is typed, not loose JSON
@@ -123,8 +135,19 @@ That companion catalog carries:
 - cross-parameter constraints
 - catalog notes and example invocations
 
-That CLI contract registry is the source of truth for `htmlcut catalog`, `command_name`
-normalization in CLI reports, and contract-lint coverage over help/examples.
+`htmlcut-core` also owns the non-operation CLI command descriptors plus the structured root,
+aux-command, and per-operation help documents that the CLI renders.
+
+Those help-side contracts carry:
+
+- non-operation command summaries for `catalog`, `schema`, and `inspect`
+- root discovery-flow sections and example inventory
+- per-operation analysis overviews
+- canonical example invocations for every CLI-visible operation
+
+Together, those registries are the source of truth for `htmlcut catalog`, `command_name`
+normalization in CLI reports, rendered CLI help, and contract-lint coverage over help/examples,
+catalog text, and recovery-error guidance.
 Use `operation_catalog()` and `cli_operation_catalog()` for discovery inside Rust callers instead
 of maintaining your own shadow matrix of supported behaviors.
 
@@ -144,6 +167,8 @@ That registry covers:
 - frozen interop v1 documents
 
 It does not cover CLI-only report documents. Those are added by `htmlcut-cli` on the CLI side.
+Use the exported schema constants instead of hard-coded version integers when you want one exact
+generic schema from Rust.
 
 ## Minimal Embedding Example
 
@@ -199,6 +224,8 @@ Use `SourceRequest::memory(...)` when HTML is already loaded by the embedding ap
 
 For a complete reusable-definition round trip, see
 `crates/htmlcut-core/examples/reusable_extraction_definition.rs`.
+
+For frozen deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md).
 
 ## Design Boundary
 

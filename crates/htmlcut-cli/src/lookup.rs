@@ -9,10 +9,12 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
         .iter()
         .map(|descriptor| descriptor.id.as_str())
         .collect::<Vec<_>>();
+    let catalog_command =
+        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Catalog);
     usage_error(
         "CLI_OPERATION_ID_UNKNOWN",
         format!(
-            "Unknown operation ID: {requested}.{} Use `htmlcut catalog` to list the valid operation IDs.",
+            "Unknown operation ID: {requested}.{} Use `htmlcut {catalog_command}` to list the valid operation IDs.",
             suggestion_suffix(requested, candidates),
         ),
     )
@@ -46,11 +48,13 @@ pub(crate) fn unknown_schema_error(
     } else {
         suggestion_suffix(requested_name, name_candidates)
     };
+    let schema_command =
+        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Schema);
 
     usage_error(
         "CLI_SCHEMA_UNKNOWN",
         format!(
-            "Unknown schema: {requested}.{recovery} Use `htmlcut schema` to list the valid schemas.",
+            "Unknown schema: {requested}.{recovery} Use `htmlcut {schema_command}` to list the valid schemas.",
         ),
     )
 }

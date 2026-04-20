@@ -5,6 +5,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-04-20
+
+### Added
+- Added docs-contract lint to the maintainer gate so Markdown metadata/version drift and broken local links are caught automatically.
+- Added docs-contract validation for concrete fenced `htmlcut ...` examples, so stale non-parsing command examples now fail the maintainer gate instead of surviving in Markdown.
+
+### Changed
+- The maintainer docs-contract now walks the maintained public Markdown tree recursively, skips hidden/internal/generated directories, requires retrieval `keywords` and `questions` in both frontmatter and HTML-comment metadata, and parses fenced concrete `htmlcut ...` examples with shell-compatible tokenization instead of a homegrown splitter.
+- Broke up the remaining docs-contract and CLI-contract god-files into focused modules, and split the oversized CLI library test seams into thematic modules so contract behavior no longer hides inside multi-hundred-line monoliths.
+- Broke up the remaining core request, source-loading, document-rendering, extraction-runtime, and frozen `htmlcut_core::interop::v1` god-files into focused modules so canonical contracts, adapter execution, and stable-JSON logic no longer share giant mixed-owner files.
+- Tightened the canonical contract-lint and curated coverage proof so optional output defaults, output-less command contracts, and empty-target value restrictions are all asserted directly, and the frozen selector interop adapter now reuses one canonical `html` field read instead of re-reading the same structured payload slot twice.
+- Removed the undocumented `htmlcut analyze` alias so the CLI keeps one canonical command surface: `catalog`, `schema`, `inspect`, `select`, and `slice`.
+- Removed the stale `scripts/qa-gate.sh` duplicate entrypoint; `./check.sh` and `cargo xtask check` remain the maintained gate surfaces.
+- Request-definition failures now keep recovery guidance across missing files, unsupported schema revisions, and strategy mismatches, always pointing back to the maintained extraction-definition schema plus the matching catalog contract.
+- Subcommand help now renders conditional output-default overrides from the same canonical core-owned CLI contract registry that already owns modes, notes, and examples.
+- Root `htmlcut --help` examples and command-count wording now derive from maintained command/example data instead of a separate hardcoded help-only copy.
+- `htmlcut-core` now also owns the canonical help documents for root discovery, non-operation commands, and CLI-visible operations, so `htmlcut-cli` renders help summaries and analysis prose from the same contract owner that already owns modes, notes, examples, and command paths.
+- `htmlcut-cli` now parses the core-owned choice domains for match, value, output, pattern, whitespace, and fetch-preflight modes directly instead of keeping duplicate local enums that had to be mapped back into `htmlcut-core`.
+- Broke up the remaining CLI preparation and execution god-files into focused submodules so request building, raw-arg heuristics, and output/request-file I/O no longer hide inside single multi-domain files.
+- The curated 100% coverage gate now follows the live executable module layout after the seam splits, including the frozen interop adapter and the refactored core engine modules, instead of silently tracking deleted monolith paths.
+- Contract-lint now renders the real clap help, catalog/schema text summaries, and representative recovery errors and fails if any of those user-facing surfaces mention operation IDs or schema names that are not registered in `htmlcut-core`.
+
+### Fixed
+- `cargo xtask check` now honors `CARGO_TARGET_DIR` consistently for the dist-binary smoke step and semver-check scratch cleanup, so clean `/tmp` gate runs no longer fail after a successful optimized build.
+
 ## [4.1.0] - 2026-04-19
 
 ### Added
