@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 
 mod catalog;
+mod cli_choice;
 mod cli_contract;
 mod contracts;
 mod diagnostics;
@@ -40,11 +41,15 @@ pub use catalog::{
     OPERATION_CATALOG, OperationContract, OperationDescriptor, OperationId, OperationIdParseError,
     operation_catalog, operation_descriptor,
 };
+pub use cli_choice::CliChoice;
 pub use cli_contract::{
-    CliCondition, CliConditionalDefault, CliConstraint, CliInputForm, CliOutputMode,
+    CliAuxCommandDescriptor, CliAuxCommandId, CliCondition, CliConditionalDefault, CliConstraint,
+    CliHelpDocument, CliHelpSection, CliHelpSectionStyle, CliInputForm, CliOutputMode,
     CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
-    CliParameterSection, CliSelectionMode, CliValue, OperationCliContract, cli_operation_catalog,
-    cli_operation_contract, cli_operation_display_command, cli_operation_report_command,
+    CliParameterSection, CliSelectionMode, CliValue, OperationCliContract, cli_aux_command_catalog,
+    cli_aux_command_descriptor, cli_aux_command_display_command, cli_aux_command_help_document,
+    cli_operation_catalog, cli_operation_contract, cli_operation_display_command,
+    cli_operation_help_document, cli_operation_report_command, cli_root_help_document,
     find_cli_operation_by_command_path, render_cli_value,
 };
 pub use contracts::{

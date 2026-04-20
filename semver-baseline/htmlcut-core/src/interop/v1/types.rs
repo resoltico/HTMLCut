@@ -1,22 +1,17 @@
-//! Versioned extraction interop contracts (v1).
-
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::num::NonZeroUsize;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use url::Url;
 
-use crate::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, Diagnostic, DiagnosticCode, ExtractionRequest,
-    ExtractionSpec, NormalizationOptions, OutputOptions, RuntimeOptions, SelectionSpec,
-    SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec,
-    WhitespaceMode, extract,
-    result::{ExtractionMatch, ExtractionMatchMetadata, Range},
+use crate::{Diagnostic, SelectorQuery, SliceBoundary, SourceRequest, result::Range};
+
+use super::{
+    stable_json::{digest_stable_json, digest_stable_json_omitting_field},
+    validate_schema_identity,
 };
 
 /// Frozen interop profile identifier for v1.
@@ -190,7 +185,7 @@ impl PlanStrategy {
         }
     }
 
-    fn validate(&self) -> Result<(), ContractError> {
+    pub(super) fn validate(&self) -> Result<(), ContractError> {
         if let Self::DelimiterPair {
             mode: DelimiterMode::Literal,
             flags,
@@ -371,7 +366,7 @@ impl Plan {
     /// Serializes this plan with the frozen stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
-        stable_json_v1(self)
+        super::stable_json::stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this exact plan document.
@@ -521,7 +516,7 @@ impl SelectedMatchMetadata {
         }
     }
 
-    fn candidate_count(&self) -> usize {
+    pub(super) fn candidate_count(&self) -> usize {
         match self {
             Self::CssSelector {
                 candidate_count, ..
@@ -532,7 +527,7 @@ impl SelectedMatchMetadata {
         }
     }
 
-    fn candidate_index(&self) -> NonZeroUsize {
+    pub(super) fn candidate_index(&self) -> NonZeroUsize {
         match self {
             Self::CssSelector {
                 candidate_index, ..
@@ -672,7 +667,7 @@ impl InteropResult {
     /// Serializes this result with the frozen stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
-        stable_json_v1(self)
+        super::stable_json::stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this result with `result_digest_sha256` omitted.
@@ -771,7 +766,7 @@ impl InteropError {
     /// Serializes this error with the frozen stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
-        stable_json_v1(self)
+        super::stable_json::stable_json_v1(self)
     }
 
     /// Computes the SHA-256 digest of this error with `error_digest_sha256` omitted.
@@ -785,576 +780,4 @@ impl InteropError {
         self.error_digest_sha256 = self.digest_sha256()?;
         Ok(self)
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ProjectedStructuredMatch {
-    candidate_index: NonZeroUsize,
-    selected_html: String,
-    comparison_input_text: String,
-    inner_html: String,
-    outer_html: String,
-    metadata: SelectedMatchMetadata,
-}
-
-/// Validates one plan and returns a typed interop error on failure.
-pub fn validate_plan(plan: &Plan) -> Result<(), Box<InteropError>> {
-    let plan_digest_sha256 = exact_plan_digest_sha256(plan);
-    plan.validate()
-        .map_err(|error| Box::new(plan_invalid_error(plan, &plan_digest_sha256, error)))
-}
-
-/// Executes one plan directly against in-memory HTML input.
-pub fn execute_plan(source: &HtmlInput, plan: &Plan) -> Result<InteropResult, Box<InteropError>> {
-    let plan_digest_sha256 = exact_plan_digest_sha256(plan);
-    plan.validate()
-        .map_err(|error| Box::new(plan_invalid_error(plan, &plan_digest_sha256, error)))?;
-
-    let request = compile_request(source, plan);
-    let runtime = runtime_options(source);
-    let extraction = extract(&request, &runtime);
-
-    if !extraction.ok {
-        return Err(Box::new(core_execution_error(
-            plan,
-            &plan_digest_sha256,
-            &extraction.diagnostics,
-        )));
-    }
-
-    let strategy_kind = plan.strategy.kind();
-    let Some(selected) = extraction.matches.first() else {
-        let mut details = BTreeMap::new();
-        details.insert(
-            "match_count".to_owned(),
-            Value::from(extraction.matches.len() as u64),
-        );
-        return Err(Box::new(internal_adapter_error(
-            &plan_digest_sha256,
-            Some(strategy_kind),
-            "successful extraction did not produce a selected match",
-            details,
-            extraction.diagnostics,
-        )));
-    };
-
-    if extraction.matches.len() != 1 {
-        let mut details = BTreeMap::new();
-        details.insert(
-            "match_count".to_owned(),
-            Value::from(extraction.matches.len() as u64),
-        );
-        details.insert(
-            "candidate_count".to_owned(),
-            Value::from(extraction.stats.candidate_count as u64),
-        );
-        return Err(Box::new(internal_adapter_error(
-            &plan_digest_sha256,
-            Some(strategy_kind),
-            "successful execution must produce exactly one selected match",
-            details,
-            extraction.diagnostics,
-        )));
-    }
-
-    let projected = project_structured_match(
-        selected,
-        strategy_kind,
-        &plan_digest_sha256,
-        &extraction.diagnostics,
-    )?;
-    let source_summary = ResultSource {
-        input_base_url: source.input_base_url.clone(),
-        effective_base_url: parse_optional_url(
-            extraction.source.effective_base_url.as_deref(),
-            &plan_digest_sha256,
-            strategy_kind,
-            "effective_base_url",
-            &extraction.diagnostics,
-        )?,
-        document_title: extraction.document_title.clone(),
-    };
-    let selected_match = SelectedMatch {
-        candidate_index: projected.candidate_index,
-        value_kind: plan.output.kind,
-        value: match plan.output.kind {
-            OutputKind::Text => projected.comparison_input_text.clone(),
-            OutputKind::InnerHtml => projected.selected_html.clone(),
-            OutputKind::OuterHtml => projected.outer_html.clone(),
-        },
-        comparison_input_text: projected.comparison_input_text,
-        inner_html: Some(projected.inner_html),
-        outer_html: Some(projected.outer_html),
-        metadata: projected.metadata,
-    };
-    let execution = ResultExecution::new(
-        plan_digest_sha256,
-        strategy_kind,
-        plan.selection.mode(),
-        extraction.stats.candidate_count,
-    );
-
-    Ok(finalize_result(InteropResult::new(
-        execution,
-        source_summary,
-        selected_match,
-        extraction.diagnostics,
-    )))
-}
-
-/// Serializes one value with the frozen `stable_json_v1` profile.
-pub fn stable_json_v1<T: Serialize>(value: &T) -> Result<String, ContractError> {
-    let value = serde_json::to_value(value)?;
-    let mut output = String::new();
-    write_stable_json_value(&value, &mut output)?;
-    Ok(output)
-}
-
-fn digest_stable_json<T: Serialize>(value: &T) -> Result<String, ContractError> {
-    let stable_json = stable_json_v1(value)?;
-    Ok(sha256_hex(stable_json.as_bytes()))
-}
-
-fn exact_plan_digest_sha256(plan: &Plan) -> String {
-    digest_stable_json(plan).expect("plans should always serialize to stable JSON")
-}
-
-fn runtime_options(source: &HtmlInput) -> RuntimeOptions {
-    RuntimeOptions {
-        max_bytes: source.html.len(),
-        fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-        fetch_preflight: crate::FetchPreflightMode::HeadFirst,
-    }
-}
-
-fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequest {
-    let extraction = match &plan.strategy {
-        PlanStrategy::CssSelector { selector } => ExtractionSpec::selector(selector.clone()),
-        PlanStrategy::DelimiterPair {
-            start,
-            end,
-            mode,
-            include_start,
-            include_end,
-            flags,
-        } => ExtractionSpec::slice(SliceSpec {
-            pattern: match mode {
-                DelimiterMode::Literal => SlicePatternSpec::literal(start.clone(), end.clone()),
-                DelimiterMode::Regex => {
-                    SlicePatternSpec::regex(start.clone(), end.clone(), compile_regex_flags(flags))
-                }
-            },
-            include_start: *include_start,
-            include_end: *include_end,
-        }),
-    }
-    .with_selection(compile_selection(&plan.selection))
-    .with_value(ValueSpec::Structured);
-
-    let mut request = ExtractionRequest::new(source.to_source_request(), extraction);
-    request.normalization = NormalizationOptions {
-        whitespace: match plan.normalization.whitespace {
-            TextWhitespace::Preserve => WhitespaceMode::Preserve,
-            TextWhitespace::Normalize => WhitespaceMode::Normalize,
-        },
-        rewrite_urls: plan.normalization.rewrite_urls,
-    };
-    request.output = OutputOptions {
-        include_source_text: false,
-        include_html: false,
-        include_text: false,
-        ..OutputOptions::default()
-    };
-    request
-}
-
-fn compile_selection(selection: &Selection) -> SelectionSpec {
-    match selection {
-        Selection::Single => SelectionSpec::single(),
-        Selection::First => SelectionSpec::First,
-        Selection::Nth { index } => SelectionSpec::nth(*index),
-    }
-}
-
-fn compile_regex_flags(flags: &[RegexFlag]) -> String {
-    let mut compiled = DEFAULT_REGEX_FLAGS.to_owned();
-    for flag in flags {
-        compiled.push(match flag {
-            RegexFlag::CaseInsensitive => 'i',
-            RegexFlag::MultiLine => 'm',
-            RegexFlag::DotMatchesNewLine => 's',
-            RegexFlag::SwapGreed => 'U',
-            RegexFlag::IgnoreWhitespace => 'x',
-        });
-    }
-    compiled
-}
-
-fn project_structured_match(
-    matched: &ExtractionMatch,
-    strategy_kind: StrategyKind,
-    plan_digest_sha256: &str,
-    diagnostics: &[Diagnostic],
-) -> Result<ProjectedStructuredMatch, Box<InteropError>> {
-    let structured = matched.value.as_object().ok_or_else(|| {
-        let mut details = BTreeMap::new();
-        details.insert("value_type".to_owned(), Value::from("structured"));
-        Box::new(internal_adapter_error(
-            plan_digest_sha256,
-            Some(strategy_kind),
-            "execution expected a structured core match payload",
-            details,
-            diagnostics.to_vec(),
-        ))
-    })?;
-
-    match &matched.metadata {
-        ExtractionMatchMetadata::Selector(metadata) => {
-            let candidate_index = non_zero_candidate_index(
-                metadata.candidate_index,
-                plan_digest_sha256,
-                strategy_kind,
-                diagnostics,
-            )?;
-            Ok(ProjectedStructuredMatch {
-                candidate_index,
-                selected_html: required_string_field(
-                    structured,
-                    "html",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                comparison_input_text: required_string_field(
-                    structured,
-                    "text",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                inner_html: required_string_field(
-                    structured,
-                    "html",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                outer_html: required_string_field(
-                    structured,
-                    "outerHtml",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                metadata: SelectedMatchMetadata::CssSelector {
-                    candidate_count: metadata.candidate_count,
-                    candidate_index,
-                    path: metadata.path.clone(),
-                    tag_name: metadata.tag_name.clone(),
-                },
-            })
-        }
-        ExtractionMatchMetadata::DelimiterPair(metadata) => {
-            let candidate_index = non_zero_candidate_index(
-                metadata.candidate_index,
-                plan_digest_sha256,
-                strategy_kind,
-                diagnostics,
-            )?;
-            Ok(ProjectedStructuredMatch {
-                candidate_index,
-                selected_html: required_string_field(
-                    structured,
-                    "html",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                comparison_input_text: required_string_field(
-                    structured,
-                    "text",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                inner_html: required_string_field(
-                    structured,
-                    "innerHtml",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                outer_html: required_string_field(
-                    structured,
-                    "outerHtml",
-                    plan_digest_sha256,
-                    strategy_kind,
-                    diagnostics,
-                )?,
-                metadata: SelectedMatchMetadata::DelimiterPair {
-                    candidate_count: metadata.candidate_count,
-                    candidate_index,
-                    selected_range: metadata.selected_range.clone(),
-                    inner_range: metadata.inner_range.clone(),
-                    outer_range: metadata.outer_range.clone(),
-                    include_start: metadata.include_start,
-                    include_end: metadata.include_end,
-                },
-            })
-        }
-    }
-}
-
-fn required_string_field(
-    structured: &serde_json::Map<String, Value>,
-    field: &'static str,
-    plan_digest_sha256: &str,
-    strategy_kind: StrategyKind,
-    diagnostics: &[Diagnostic],
-) -> Result<String, Box<InteropError>> {
-    structured
-        .get(field)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| {
-            let mut details = BTreeMap::new();
-            details.insert("field".to_owned(), Value::from(field));
-            Box::new(internal_adapter_error(
-                plan_digest_sha256,
-                Some(strategy_kind),
-                format!("execution could not project structured field {field:?}"),
-                details,
-                diagnostics.to_vec(),
-            ))
-        })
-}
-
-fn non_zero_candidate_index(
-    candidate_index: usize,
-    plan_digest_sha256: &str,
-    strategy_kind: StrategyKind,
-    diagnostics: &[Diagnostic],
-) -> Result<NonZeroUsize, Box<InteropError>> {
-    NonZeroUsize::new(candidate_index).ok_or_else(|| {
-        let mut details = BTreeMap::new();
-        details.insert(
-            "candidate_index".to_owned(),
-            Value::from(candidate_index as u64),
-        );
-        Box::new(internal_adapter_error(
-            plan_digest_sha256,
-            Some(strategy_kind),
-            "execution received an invalid zero candidate index from core metadata",
-            details,
-            diagnostics.to_vec(),
-        ))
-    })
-}
-
-fn parse_optional_url(
-    value: Option<&str>,
-    plan_digest_sha256: &str,
-    strategy_kind: StrategyKind,
-    field: &'static str,
-    diagnostics: &[Diagnostic],
-) -> Result<Option<Url>, Box<InteropError>> {
-    value
-        .map(|value| {
-            Url::parse(value).map_err(|_| {
-                let mut details = BTreeMap::new();
-                details.insert("field".to_owned(), Value::from(field));
-                details.insert("value".to_owned(), Value::from(value));
-                Box::new(internal_adapter_error(
-                    plan_digest_sha256,
-                    Some(strategy_kind),
-                    format!("execution produced an invalid URL in {field}"),
-                    details,
-                    diagnostics.to_vec(),
-                ))
-            })
-        })
-        .transpose()
-}
-
-fn plan_invalid_error(plan: &Plan, plan_digest_sha256: &str, error: ContractError) -> InteropError {
-    let mut details = BTreeMap::new();
-    details.insert("contract_error".to_owned(), Value::from(error.to_string()));
-    finalize_error(InteropError::new(
-        plan_digest_sha256.to_owned(),
-        ErrorCode::PlanInvalid,
-        error.to_string(),
-        Some(plan.strategy.kind()),
-        details,
-        Vec::new(),
-    ))
-}
-
-fn core_execution_error(
-    plan: &Plan,
-    plan_digest_sha256: &str,
-    diagnostics: &[Diagnostic],
-) -> InteropError {
-    let Some(primary) = diagnostics
-        .iter()
-        .find(|diagnostic| diagnostic.level == crate::DiagnosticLevel::Error)
-    else {
-        return internal_adapter_error(
-            plan_digest_sha256,
-            Some(plan.strategy.kind()),
-            "execution failed without an error diagnostic",
-            BTreeMap::new(),
-            diagnostics.to_vec(),
-        );
-    };
-
-    let error_code = match primary.code.parse::<DiagnosticCode>() {
-        Ok(
-            DiagnosticCode::UnsupportedSpecVersion
-            | DiagnosticCode::InvalidSelector
-            | DiagnosticCode::InvalidSlicePattern
-            | DiagnosticCode::InvalidRequest,
-        ) => ErrorCode::PlanInvalid,
-        Ok(DiagnosticCode::NoMatch | DiagnosticCode::MatchIndexOutOfRange) => ErrorCode::NoMatch,
-        Ok(DiagnosticCode::AmbiguousMatch) => ErrorCode::AmbiguousMatch,
-        _ => ErrorCode::InternalError,
-    };
-    let mut details = BTreeMap::new();
-    details.insert(
-        "core_diagnostic_code".to_owned(),
-        Value::from(primary.code.clone()),
-    );
-    if let Some(core_details) = &primary.details {
-        details.insert("core_details".to_owned(), core_details.clone());
-    }
-
-    finalize_error(InteropError::new(
-        plan_digest_sha256.to_owned(),
-        error_code,
-        primary.message.clone(),
-        Some(plan.strategy.kind()),
-        details,
-        diagnostics.to_vec(),
-    ))
-}
-
-fn internal_adapter_error(
-    plan_digest_sha256: &str,
-    strategy_kind: Option<StrategyKind>,
-    message: impl Into<String>,
-    details: BTreeMap<String, Value>,
-    diagnostics: Vec<Diagnostic>,
-) -> InteropError {
-    finalize_error(InteropError::new(
-        plan_digest_sha256.to_owned(),
-        ErrorCode::InternalError,
-        message,
-        strategy_kind,
-        details,
-        diagnostics,
-    ))
-}
-
-fn finalize_result(result: InteropResult) -> InteropResult {
-    result
-        .with_computed_digest()
-        .expect("results should always validate and serialize")
-}
-
-fn finalize_error(error: InteropError) -> InteropError {
-    error
-        .with_computed_digest()
-        .expect("errors should always validate and serialize")
-}
-
-fn digest_stable_json_omitting_field<T: Serialize>(
-    value: &T,
-    field: &str,
-) -> Result<String, ContractError> {
-    let mut value = serde_json::to_value(value)?;
-    if let Value::Object(map) = &mut value {
-        map.remove(field);
-    }
-
-    let mut output = String::new();
-    write_stable_json_value(&value, &mut output)?;
-    Ok(sha256_hex(output.as_bytes()))
-}
-
-fn write_stable_json_value(value: &Value, output: &mut String) -> Result<(), ContractError> {
-    match value {
-        Value::Null => output.push_str("null"),
-        Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
-        Value::Number(value) => output.push_str(&value.to_string()),
-        Value::String(value) => output.push_str(&serde_json::to_string(value)?),
-        Value::Array(values) => {
-            output.push('[');
-            for (index, value) in values.iter().enumerate() {
-                if index > 0 {
-                    output.push(',');
-                }
-                write_stable_json_value(value, output)?;
-            }
-            output.push(']');
-        }
-        Value::Object(map) => {
-            output.push('{');
-            let mut entries = map.iter().collect::<Vec<_>>();
-            entries.sort_unstable_by_key(|(key, _)| *key);
-            for (index, (key, value)) in entries.iter().enumerate() {
-                if index > 0 {
-                    output.push(',');
-                }
-                output.push_str(&serde_json::to_string(key)?);
-                output.push(':');
-                write_stable_json_value(value, output)?;
-            }
-            output.push('}');
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_schema_identity(
-    schema_name: &str,
-    expected_schema_name: &'static str,
-    schema_version: u32,
-    expected_schema_version: u32,
-    interop_profile: &str,
-    expected_interop_profile: &'static str,
-) -> Result<(), ContractError> {
-    if schema_name != expected_schema_name {
-        return Err(ContractError::InvalidIdentity {
-            field: "schema_name",
-            expected: expected_schema_name,
-            received: schema_name.to_owned(),
-        });
-    }
-
-    if schema_version != expected_schema_version {
-        return Err(ContractError::InvalidVersion {
-            field: "schema_version",
-            expected: expected_schema_version,
-            received: schema_version,
-        });
-    }
-
-    if interop_profile != expected_interop_profile {
-        return Err(ContractError::InvalidIdentity {
-            field: "interop_profile",
-            expected: expected_interop_profile,
-            received: interop_profile.to_owned(),
-        });
-    }
-
-    Ok(())
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        let _ = write!(output, "{byte:02x}");
-    }
-    output
 }

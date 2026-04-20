@@ -60,15 +60,15 @@ macro_rules! operation_ids {
 operation_ids! {
     /// Load and parse HTML into a document tree for in-process callers.
     DocumentParse => "document.parse",
-    /// Inspect a source and summarize document shape and base-URL behavior.
+    /// Inspect the parsed document and summarize structure, samples, and base-URL behavior.
     SourceInspect => "source.inspect",
-    /// Preview selector matches before final extraction.
+    /// Preview selector matches without committing to a final extraction payload.
     SelectPreview => "select.preview",
-    /// Preview literal or regex slices before final extraction.
+    /// Preview literal or regex slices without committing to a final extraction payload.
     SlicePreview => "slice.preview",
-    /// Run a final selector-based extraction.
+    /// Extract final values from CSS selector matches.
     SelectExtract => "select.extract",
-    /// Run a final literal or regex slice extraction.
+    /// Extract final values between literal or regex boundaries in raw source text.
     SliceExtract => "slice.extract",
 }
 
@@ -153,7 +153,7 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             rust_shape: "SourceInspectionResult",
             schema_refs: SOURCE_INSPECTION_RESULT_SCHEMA_REFS,
         },
-        description: "Inspect a source and summarize document structure, samples, and base-URL behavior.",
+        description: "Inspect the parsed document and summarize structure, samples, and base-URL behavior.",
     },
     OperationDescriptor {
         id: OperationId::SelectPreview,
@@ -167,7 +167,7 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             rust_shape: "ExtractionResult",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
-        description: "Preview selector matches in structured form before final extraction.",
+        description: "Preview selector matches without committing to a final extraction payload.",
     },
     OperationDescriptor {
         id: OperationId::SlicePreview,
@@ -181,7 +181,7 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             rust_shape: "ExtractionResult",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
-        description: "Preview literal or regex slices in structured form before final extraction.",
+        description: "Preview literal or regex slices without committing to a final extraction payload.",
     },
     OperationDescriptor {
         id: OperationId::SelectExtract,
@@ -195,7 +195,7 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             rust_shape: "ExtractionResult",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
-        description: "Run a final selector-based extraction.",
+        description: "Extract final values from CSS selector matches.",
     },
     OperationDescriptor {
         id: OperationId::SliceExtract,
@@ -209,7 +209,7 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             rust_shape: "ExtractionResult",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
-        description: "Run a final literal or regex slice extraction.",
+        description: "Extract final values between literal or regex boundaries in raw source text.",
     },
 ];
 
