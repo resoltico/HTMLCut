@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: OPERATIONS
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
@@ -31,6 +31,7 @@ Those identifiers are valid because they refer only to real product operations t
 - Failure classes already have their own stable identifier system through diagnostic `code` values.
 - CLI-facing command paths, defaults, mode inventories, parameter rules, and examples are owned by the core-side CLI contract registry, not rebuilt ad hoc in `htmlcut-cli`.
 - The CLI must project the canonical operation IDs from `htmlcut-core`; it must not invent a second taxonomy.
+- CLI-visible operations map to one canonical command path each. Hidden aliases do not get their own parallel contract surface.
 - `htmlcut catalog` must stay derived from the same canonical operation IDs instead of inventing a separate capability list.
 - `htmlcut schema` must stay aligned with the schema refs emitted by `htmlcut catalog`.
 
@@ -38,6 +39,9 @@ Those identifiers are valid because they refer only to real product operations t
 
 Use `htmlcut catalog` for the machine-readable operation matrix and `htmlcut schema` for the
 validator-grade JSON contracts referenced by that matrix.
+
+This matrix is completeness-linted against `htmlcut-core`'s operation catalog. The table is a
+maintained human guide, but it is not allowed to silently drift away from the canonical registry.
 
 | Operation ID | CLI surface | Core surface | Request shape | Result shape | Notes |
 | --- | --- | --- | --- | --- | --- |

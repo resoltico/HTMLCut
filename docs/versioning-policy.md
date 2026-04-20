@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: MAINTAINER
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [versioning policy, frozen interop, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus frozen interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -61,7 +61,7 @@ Current frozen profile:
 
 - module: `htmlcut_core::interop::v1`
 - profile string: `htmlcut-v1`
-- schemas: `htmlcut.plan@1`, `htmlcut.result@1`, `htmlcut.error@1`
+- schemas: `htmlcut.plan`, `htmlcut.result`, `htmlcut.error` under the frozen v1 profile
 
 Once a frozen profile is released, do not mutate it in place.
 
@@ -80,9 +80,11 @@ Generic schema families use stable document names plus explicit integer schema v
 
 Examples:
 
-- `htmlcut.extraction_request@4`
-- `htmlcut.extraction_result@5`
-- `htmlcut.catalog_report@4`
+- `htmlcut.extraction_request`
+- `htmlcut.extraction_result`
+- `htmlcut.catalog_report`
+
+Use the schema registry when you need the current integer versions attached to those stable names.
 
 Rules:
 

@@ -1,3 +1,4 @@
+use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,19 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     }
 
     plan.push(CommandSpec::new("cargo", ["fmt", "--check"], false, false));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
+            "test",
+            "-p",
+            "xtask",
+            "--lib",
+            "--locked",
+            "docs_contract_lint",
+        ],
+        false,
+        false,
+    ));
     plan.push(CommandSpec::new(
         "cargo",
         [
@@ -190,12 +204,20 @@ pub fn workspace_version(repo_root: &Path) -> DynResult<String> {
     workspace_version_from_manifest(&fs::read_to_string(repo_root.join("Cargo.toml"))?)
 }
 
+/// Resolves the Cargo target directory, honoring `CARGO_TARGET_DIR` when present.
+pub fn cargo_target_dir(repo_root: &Path) -> PathBuf {
+    cargo_target_dir_from(
+        repo_root,
+        env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+    )
+}
+
 /// Infers the semver release type that `cargo semver-checks` should enforce.
 pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
     let workspace_version = workspace_version(repo_root)?;
     let baseline_manifest_path = semver_baseline_path(repo_root).join("Cargo.toml");
     let baseline_manifest = fs::read_to_string(baseline_manifest_path)?;
-    let baseline_version = workspace_version_from_manifest(&baseline_manifest)?;
+    let baseline_version = package_version_from_manifest(&baseline_manifest)?;
     Ok(semver_release_type_from_versions(
         &workspace_version,
         &baseline_version,
@@ -204,14 +226,14 @@ pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
 
 /// Extracts the workspace version from a root `Cargo.toml` string.
 pub fn workspace_version_from_manifest(manifest: &str) -> DynResult<String> {
-    manifest
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix("version = \"")
-                .and_then(|line| line.strip_suffix('"'))
-                .map(ToOwned::to_owned)
-        })
+    manifest_version_from_section(manifest, "[workspace.package]")
         .ok_or_else(|| "workspace version not found in Cargo.toml".into())
+}
+
+/// Extracts the crate package version from a package `Cargo.toml` string.
+pub fn package_version_from_manifest(manifest: &str) -> DynResult<String> {
+    manifest_version_from_section(manifest, "[package]")
+        .ok_or_else(|| "package version not found in Cargo.toml".into())
 }
 
 /// Maps the workspace and baseline versions to the semver release type checked in CI.
@@ -248,7 +270,7 @@ pub fn normalize_path(repo_root: &Path, path: &Path) -> DynResult<PathBuf> {
 
 /// Returns the distribution-profile binary path used by smoke checks.
 pub fn release_binary_path(repo_root: &Path) -> PathBuf {
-    repo_root.join("target").join("dist").join(binary_name())
+    cargo_target_dir(repo_root).join("dist").join(binary_name())
 }
 
 /// Returns the manifest path for the public `htmlcut-core` crate.
@@ -266,7 +288,7 @@ pub fn semver_baseline_path(repo_root: &Path) -> PathBuf {
 
 /// Returns the semver-checks scratch directory under the Cargo target tree.
 pub fn semver_scratch_dir(repo_root: &Path) -> PathBuf {
-    repo_root.join("target").join("semver-checks")
+    cargo_target_dir(repo_root).join("semver-checks")
 }
 
 /// Returns whether a command spec is the semver-checks gate step.
@@ -292,6 +314,68 @@ pub fn binary_name() -> &'static str {
     "htmlcut"
 }
 
+fn manifest_version_from_section(manifest: &str, section_name: &str) -> Option<String> {
+    let mut in_section = false;
+
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_section = trimmed == section_name;
+            continue;
+        }
+
+        if !in_section {
+            continue;
+        }
+
+        if let Some(version) = version_assignment(trimmed) {
+            return Some(version);
+        }
+    }
+
+    None
+}
+
+fn version_assignment(line: &str) -> Option<String> {
+    let remainder = line.strip_prefix("version")?.trim_start();
+    let remainder = remainder.strip_prefix('=')?.trim_start();
+    let remainder = remainder.strip_prefix('"')?;
+    let closing_quote = remainder.find('"')?;
+    Some(remainder[..closing_quote].to_owned())
+}
+
 fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
     paths.iter().map(|path| path.to_string_lossy().into_owned())
+}
+
+fn cargo_target_dir_from(repo_root: &Path, target_dir: Option<PathBuf>) -> PathBuf {
+    match target_dir {
+        Some(target_dir) if target_dir.is_absolute() => target_dir,
+        Some(target_dir) => repo_root.join(target_dir),
+        None => repo_root.join("target"),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn cargo_target_dir_for_tests(repo_root: &Path, target_dir: Option<&Path>) -> PathBuf {
+    cargo_target_dir_from(repo_root, target_dir.map(Path::to_path_buf))
+}
+
+#[cfg(test)]
+pub(crate) fn semver_scratch_dir_for_tests(repo_root: &Path, target_dir: Option<&Path>) -> PathBuf {
+    cargo_target_dir_for_tests(repo_root, target_dir).join("semver-checks")
+}
+
+#[cfg(test)]
+pub(crate) fn release_binary_path_for_tests(
+    repo_root: &Path,
+    target_dir: Option<&Path>,
+) -> PathBuf {
+    cargo_target_dir_for_tests(repo_root, target_dir)
+        .join("dist")
+        .join(binary_name())
 }

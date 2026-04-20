@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: RELEASE
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [release protocol, gh cli, tag push, release workflow, semver baseline, verification]
   questions: ["how do I release HTMLCut?", "what must be verified before tagging a release?", "when do I refresh the HTMLCut semver baseline?"]
@@ -52,9 +52,9 @@ cargo xtask check
 That gate must succeed before any release commit or tag. The maintained definition of that gate
 lives in [quality-gates.md](quality-gates.md).
 
-The gate now also verifies that the checked-in fuzz targets still compile, that the core/CLI
-contract-lint tests pass, and that the nightly coverage toolchain prerequisites are present before
-coverage work begins.
+The gate now also verifies that the maintained Markdown docs pass docs-contract lint, that the
+checked-in fuzz targets still compile, that the core/CLI contract-lint tests pass, and that the
+nightly coverage toolchain prerequisites are present before coverage work begins.
 
 Then verify:
 

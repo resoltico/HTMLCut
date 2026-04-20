@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: PLATFORM
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
@@ -80,6 +80,7 @@ check reports success.
 The target policy is implemented in:
 
 - `scripts/release-targets.sh`
+- `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 - `scripts/build-release-artifact.sh`
 - `scripts/publish-github-release.sh`

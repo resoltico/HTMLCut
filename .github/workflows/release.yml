@@ -59,7 +59,7 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          VERSION="$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)"
+          VERSION="$(./scripts/workspace-version.sh)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Workspace version: $VERSION"
 
@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)"
+          VERSION="$(./scripts/workspace-version.sh)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Workspace version: $VERSION"
 

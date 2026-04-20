@@ -1,6 +1,19 @@
+<!--
+AFAD:
+  afad: "3.5"
+  version: "4.2.0"
+  domain: PRODUCT
+  updated: "2026-04-20"
+RETRIEVAL_HINTS:
+  keywords: [htmlcut, html extraction, css selector, slice extraction, extraction-definition json, catalog, schema, inspect]
+  questions: [what is HTMLCut?, how do I install HTMLCut?, what commands does htmlcut expose?, how do I save a reusable extraction-definition file?]
+  related: [docs/cli.md, docs/core.md, docs/schema.md, docs/interop-v1.md, docs/quality-gates.md, CONTRIBUTING.md, fuzz/README.md, PATENTS.md]
+-->
+
 # HTMLCut
 
-HTMLCut provides functionality to extract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports.
+HTMLCut extracts and inspects HTML from files, URLs, and stdin with CSS selectors, literal or
+regex slicing, and structured JSON reports.
 
 It supports:
 
@@ -16,13 +29,15 @@ Build from source:
 
 ```bash
 rustup toolchain install stable --profile minimal
-cargo build -p htmlcut-cli --bin htmlcut
+source "$HOME/.cargo/env"
+cargo build --locked -p htmlcut-cli --bin htmlcut
 ./target/debug/htmlcut --help
 ```
 
 Install into Cargo's bin directory:
 
 ```bash
+source "$HOME/.cargo/env"
 cargo install --path crates/htmlcut-cli --locked
 htmlcut --help
 ```
@@ -42,6 +57,14 @@ htmlcut inspect <source|select|slice> ...
 - a local file path
 - an `http://` or `https://` URL
 - `-` for stdin
+
+HTMLCut has one canonical command surface:
+
+- `catalog`
+- `schema`
+- `inspect`
+- `select`
+- `slice`
 
 ## Quick Start
 
@@ -115,13 +138,13 @@ Preview slice matches before final extraction:
 htmlcut inspect slice ./page.html --from '<article>' --to '</article>'
 ```
 
-Run a reusable extraction definition from JSON:
+Run a reusable extraction-definition JSON file:
 
 ```bash
 htmlcut select --request-file ./article-links.json
 ```
 
-Save the normalized extraction definition while you prototype inline flags:
+Save the normalized extraction-definition JSON while you prototype inline flags:
 
 ```bash
 htmlcut select ./page.html \
@@ -142,12 +165,15 @@ htmlcut select ./page.html \
 ## Notes
 
 - `select` and `slice` separate extraction value with `--value` from stdout rendering with `--output`.
-- `select`, `slice`, `inspect select`, and `inspect slice` can load a first-class JSON definition through `--request-file`; inline source and strategy flags then become mutually exclusive with that file.
-- `--emit-request-file` writes the normalized extraction definition for `select`, `slice`, `inspect select`, and `inspect slice`, so inline discovery can be promoted into a reusable request file without hand-authoring JSON.
+- `select` and `slice` default stdout to `text`, except `--value structured`, which defaults stdout to `json`.
+- `select`, `slice`, `inspect select`, and `inspect slice` can load a first-class extraction-definition JSON file through `--request-file`; inline source and strategy flags then become mutually exclusive with that file.
+- `--emit-request-file` writes the normalized extraction-definition JSON for `select`, `slice`, `inspect select`, and `inspect slice`, so inline discovery can be promoted into a reusable file without hand-authoring JSON.
 - `--value inner-html` returns the selected fragment; `--value outer-html` returns the full matched outer range.
+- `--output html` is valid only with `--value inner-html` or `--value outer-html`.
 - `inspect` defaults to JSON.
 - `catalog --output text` now renders every operation in detail; `--output json` remains the machine-readable discovery surface.
 - `catalog --output text` and `schema --output text` now start with a short registry summary plus the exact follow-up command to inspect one entry in JSON.
+- `catalog` and `schema` also accept `--output-file`, and verbose runs confirm that write on stderr.
 - `--output none` is valid only with `--bundle`.
 - `--output-file` writes exactly the stdout payload to one file without creating a bundle directory.
 - verbose `catalog`, `schema`, extraction, and inspection runs now confirm successful `--output-file` and `--emit-request-file` writes on stderr.
@@ -156,24 +182,31 @@ htmlcut select ./page.html \
 - failed URL inspections and extractions now keep that source-load trace too, so human error output and structured reports show the attempted HEAD/GET path that failed.
 - `inspect slice --output text` now shows the exact matched start and end boundary text alongside the selected ranges and fragment preview.
 - slice previews and extractions now warn with `SLICE_SPLITS_MARKUP` when the selected range appears to start or end inside HTML markup, which makes the classic literal `<a` versus `<article>` footgun much more obvious.
-- invalid `--request-file` definitions now point directly back to `htmlcut schema --name htmlcut.extraction_definition --output json` and the matching `htmlcut catalog --operation <id> --output json` entry for recovery.
-- request-file shape failures now include the failing JSON path, and unknown operation/schema lookups now suggest the closest registered names or available schema versions.
+- invalid extraction-definition files now point directly back to `htmlcut schema --name htmlcut.extraction_definition --output json` and the matching `htmlcut catalog --operation <id> --output json` entry for recovery.
+- extraction-definition shape failures now include the failing JSON path, and unknown operation/schema lookups now suggest the closest registered names or available schema versions.
+- HTMLCut creates parent directories automatically for `--bundle`, `--output-file`, and `--emit-request-file`.
 - `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
 - `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
 - `slice` works on raw source text, not parsed HTML nodes.
 - `catalog` is the capability discovery surface.
 - `schema` exports the validator-grade JSON contracts behind maintained public JSON outputs.
-- `catalog`, `schema`, and the CLI help examples are linted against the same core-owned operation, command-contract, diagnostic-code, and schema registries. They are intended to stay in lockstep, not merely tell a similar story.
+- `catalog`, `schema`, the rendered CLI help/catalog/error-recovery surfaces, and the concrete fenced `htmlcut ...` examples in the maintained docs are linted against the same core-owned operation, command-contract, help-document, diagnostic-code, and schema registries. They are intended to stay in lockstep, not merely tell a similar story.
 
 ## Embedding And Interop
 
-Embed HTMLCut in Rust through `htmlcut_core::interop::v1`, the frozen `htmlcut-v1` downstream
-interop profile. The maintained contract docs live in [docs/interop-v1.md](docs/interop-v1.md)
-and [docs/schema.md](docs/schema.md).
+Embed HTMLCut in Rust through `htmlcut-core`.
+
+- Use the crate-root execution functions plus the `htmlcut_core::request` and
+  `htmlcut_core::result` namespaces for generic in-process extraction and inspection.
+- Use `htmlcut_core::interop::v1` only when you need the frozen `htmlcut-v1` downstream
+  integration profile.
+
+The maintained contract docs live in [docs/core.md](docs/core.md),
+[docs/interop-v1.md](docs/interop-v1.md), and [docs/schema.md](docs/schema.md).
 
 For embeddable core callers, the stable high-level API stays at the crate root while detailed
 request/result contract types are grouped under `htmlcut_core::request` and
-`htmlcut_core::result`. Reusable request files are modeled by
+`htmlcut_core::result`. Reusable extraction-definition files are modeled by
 `htmlcut_core::ExtractionDefinition`; see
 [`crates/htmlcut-core/examples/reusable_extraction_definition.rs`](crates/htmlcut-core/examples/reusable_extraction_definition.rs).
 
@@ -205,10 +238,10 @@ Run the full local maintainer gate with `./check.sh` or `cargo xtask check`.
 
 ## Legal
 
-HTMLCut is MIT-licensed. The compiled binary includes Rust crates under MIT,
-Apache-2.0, MPL-2.0 (cssparser, selectors, servo_arc — Servo project), ISC
-(ring and cryptographic dependencies), Unicode-3.0 (ICU data crates), and
-CDLA-Permissive-2.0 (webpki-root-certs CA data). See [NOTICE](NOTICE) for
-attribution details and [PATENTS.md](PATENTS.md) for patent considerations.
+HTMLCut itself is MIT-licensed.
+
+Third-party dependency attribution lives in [NOTICE](NOTICE). Allowed dependency-license families
+are enforced by `deny.toml`, and the patent-posture summary for those license families lives in
+[PATENTS.md](PATENTS.md).
 
 [LICENSE](LICENSE) | [NOTICE](NOTICE) | [PATENTS.md](PATENTS.md)

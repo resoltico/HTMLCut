@@ -1,12 +1,12 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "5.0.0"
+  version: "4.2.0"
   domain: MAINTAINER
-  updated: "2026-04-19"
+  updated: "2026-04-20"
 RETRIEVAL_HINTS:
-  keywords: [contributing, maintainer workflow, developer setup, quality gate, update fixtures, docs sync, release expectations]
-  answers: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?]
+  keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
+  questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]
   related: [docs/developer-setup.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
 -->
 
@@ -41,6 +41,13 @@ cargo xtask check
 
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 
+That gate now includes recursive Markdown docs-contract linting across the maintained public docs
+set. It fails on missing AFAD metadata fields, metadata/version drift, ISO-date formatting,
+missing retrieval `keywords` or `questions`, broken local links, stale schema-name or
+operation-ID references, completeness drift in the maintained schema/operation inventory docs,
+and non-parsing concrete `htmlcut ...` examples. Keep repository docs relative-link clean, avoid
+machine-specific absolute paths, and use the canonical names exported by the product code.
+
 Dependency updates that affect workspace crates must refresh both `Cargo.lock` and
 `fuzz/Cargo.lock`. The fuzz package is checked in and validated with `--locked`, so a
 workspace-only lockfile refresh is incomplete.
@@ -53,6 +60,7 @@ dependency refreshes instead of relying on bot PRs that cannot keep the two lock
 - Do not add backwards-compatibility shims, aliases, or migration paths for generic HTMLCut surfaces.
 - If a generic JSON contract changes, update the corresponding schema version and docs in the same change.
 - Keep schema names product-owned and generic; do not introduce consumer-specific naming.
+- Keep one canonical CLI command surface. Do not add undocumented aliases or shadow entrypoints.
 - Treat [docs/versioning-policy.md](docs/versioning-policy.md) as the authority for versioning, schema naming, frozen interop policy, and semver-baseline usage.
 
 ## Frozen Interop Work
@@ -94,7 +102,11 @@ Keep docs current-state only. Historical provenance belongs in `changelog.md`, n
 docs.
 
 For docs under `docs/`, keep AFAD metadata current. For special top-level files such as
-`README.md` and `CONTRIBUTING.md`, use HTML-comment metadata rather than YAML frontmatter.
+`README.md`, `CONTRIBUTING.md`, `PATENTS.md`, and `fuzz/README.md`, use HTML-comment metadata
+rather than YAML frontmatter.
+
+When docs mention a schema family or operation ID, use the canonical names from `htmlcut schema`
+and `htmlcut catalog`. The Markdown docs contract now validates those identifiers directly.
 
 ## Release Expectations
 

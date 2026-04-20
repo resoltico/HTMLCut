@@ -21,7 +21,7 @@ die() {
 }
 
 workspace_version() {
-    awk -F'"' '/^version = "/ {print $2; exit}' "${repo_root}/Cargo.toml"
+    "${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml"
 }
 
 checksum_file() {

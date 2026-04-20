@@ -28,7 +28,7 @@ readonly repo_root
 . "${script_dir}/release-targets.sh"
 tag_name="${1:-${RELEASE_TAG:-${GITHUB_REF_NAME:-}}}"
 readonly tag_name
-version="$(awk -F'"' '/^version = "/ {print $2; exit}' "${repo_root}/Cargo.toml")"
+version="$("${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml")"
 readonly version
 readonly expected_tag="v${version}"
 

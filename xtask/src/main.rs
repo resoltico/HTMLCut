@@ -8,9 +8,9 @@ use tempfile::tempdir;
 use xtask::{
     CommandSpec, CoveragePreflightFailure, DynResult, check_plan, coverage_clean_command,
     coverage_command, coverage_output_path, coverage_preflight_failures,
-    coverage_preflight_message, evaluate_coverage_report, is_semver_check_spec,
-    read_coverage_report, semver_scratch_dir, tracked_files, with_workspace_stub,
-    workspace_version,
+    coverage_preflight_message, ensure_coverage_output_dir, evaluate_coverage_report,
+    is_semver_check_spec, read_coverage_report, semver_scratch_dir, tracked_files,
+    with_workspace_stub, workspace_version,
 };
 
 #[derive(Parser)]
@@ -66,6 +66,7 @@ fn run_coverage(repo_root: &Path) -> DynResult<()> {
     let coverage_clean_spec = coverage_clean_command();
     let coverage_spec = coverage_command(repo_root);
     run_spec(repo_root, &coverage_clean_spec)?;
+    ensure_coverage_output_dir(repo_root)?;
 
     let result = (|| -> DynResult<()> {
         run_spec(repo_root, &coverage_spec)?;

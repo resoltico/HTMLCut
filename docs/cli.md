@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.1.0"
+version: "4.2.0"
 domain: CLI
-updated: "2026-04-19"
+updated: "2026-04-20"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -12,6 +12,9 @@ route:
 
 `htmlcut-cli` is the operator-facing adapter over `htmlcut-core`.
 
+The clap/help surface is rendered from core-owned command contracts and core-owned help documents.
+The CLI does not maintain a second operation/help taxonomy alongside `htmlcut-core`.
+
 It exposes five commands:
 
 - `catalog`
@@ -19,6 +22,9 @@ It exposes five commands:
 - `inspect`
 - `select`
 - `slice`
+
+The maintained surface uses those canonical command names directly. There are no extra documented
+aliases layered on top of them.
 
 ## Source Inputs
 
@@ -70,9 +76,12 @@ Use:
 
 - `htmlcut catalog --output json` for machine-readable discovery
 - `htmlcut catalog --operation <id>` when you want one operation in detail
+- `htmlcut catalog --output-file <PATH>` when you want that text or JSON payload written to disk
 
 In text mode, every operation now prints the mapped core surface plus the request/result contracts
 plus the parameter inventory, typed default overrides, and command constraints.
+
+That text surface is contract-linted against the same core registries that back `--output json`.
 
 ### `schema`
 
@@ -83,6 +92,7 @@ Use:
 - `htmlcut schema --output json` for the full registry
 - `htmlcut schema --name <schema_name>` for one schema family
 - `htmlcut schema --name <schema_name> --schema-version <n>` for one exact schema version
+- `htmlcut schema --output-file <PATH>` when you want that text or JSON payload written to disk
 
 The registry includes:
 
@@ -100,6 +110,13 @@ The registry includes:
 
 `inspect` defaults to JSON. Text mode is for compact human review.
 
+`inspect source` also carries source-analysis-specific controls:
+
+- `--sample-limit` bounds the sampled headings, links, tags, and classes
+- `--include-source-text` includes the full source in JSON output and enables a bounded source
+  preview in text output
+- `--preview-chars` bounds that source preview in text mode
+
 `inspect select` and `inspect slice` can also load a reusable extraction-definition file through
 `--request-file <PATH>` instead of spelling the source and strategy inline.
 
@@ -108,9 +125,25 @@ normalized extraction definition used for the current run. That makes it practic
 inline first, then promote the exact normalized request into a reusable JSON file without manually
 rewriting the contract.
 
+When a request-definition file is missing, malformed, on an unsupported schema revision, or uses
+the wrong extraction strategy for the command, the CLI now points back to the maintained
+`htmlcut schema --name htmlcut.extraction_definition --output json` contract and the matching
+`htmlcut catalog --operation <id> --output json` entry instead of failing with pathless or
+contract-free guidance.
+
 Successful URL-backed inspections now also carry a structured load trace in the report metadata.
 `inspect source --output text` prints that trace directly, and verbose stderr output for
 inspection/extraction commands replays the same successful load steps for operators.
+
+CLI JSON reports also carry a normalized `command` label. The maintained labels are:
+
+- `catalog`
+- `schema`
+- `select`
+- `slice`
+- `inspect-source`
+- `inspect-select`
+- `inspect-slice`
 
 Top-level JSON reports now carry their own schema identity:
 
@@ -168,7 +201,7 @@ than you intended.
 
 - extraction value: `--value`
 - stdout rendering: `--output`
-- reusable request definition: `--request-file`
+- reusable extraction-definition file: `--request-file`
 
 Stdout modes:
 
@@ -177,11 +210,22 @@ Stdout modes:
 - `json`
 - `none`
 
+Default stdout behavior:
+
+- `select` and `slice` default to `text`
+- `--value structured` switches the default stdout mode to `json`
+- `inspect` defaults to `json`
+
 `--output none` is valid only with `--bundle`.
 
 `--output-file <PATH>` writes exactly the stdout payload to one file without creating a bundle.
 That works for text, HTML, JSON, and inspection text/JSON outputs. It is intentionally invalid with
 `--output none` because there is no stdout payload to write.
+
+`--output html` is only valid with `--value inner-html` or `--value outer-html`.
+
+When `--bundle`, `--output-file`, or `--emit-request-file` points into a directory tree that does
+not exist yet, the CLI creates the parent directories automatically.
 
 With `--verbose`, successful `catalog`, `schema`, extraction, and inspection runs now confirm
 `--output-file` writes on stderr. Extraction and preview commands also confirm successful
@@ -198,7 +242,7 @@ With `--verbose`, successful `catalog`, `schema`, extraction, and inspection run
 `selection.html` is a wrapped review artifact, not a byte-for-byte replay of the source document.
 `report.json` is the structured execution report.
 
-## Reusable Definition Files
+## Reusable Extraction-Definition Files
 
 The CLI now accepts first-class extraction-definition JSON files for:
 
@@ -211,7 +255,7 @@ Those files serialize the exact `ExtractionRequest` plus `RuntimeOptions` that t
 otherwise build inline. Once `--request-file` is present, inline source and strategy flags are
 rejected instead of being merged.
 
-When a request file is invalid, the CLI now points recovery back to:
+When an extraction-definition file is invalid, the CLI now points recovery back to:
 
 - `htmlcut schema --name htmlcut.extraction_definition --output json`
 - `htmlcut catalog --operation <id> --output json`
@@ -227,6 +271,9 @@ For embeddable Rust callers, the matching core type is `htmlcut_core::Extraction
 Human output modes print the primary failure to stderr.
 
 JSON modes still exit non-zero on failure, but they emit structured JSON to stdout.
+
+Unknown operation IDs and schema lookups now suggest the nearest registered names or available
+schema versions instead of failing with an unqualified miss.
 
 Failed URL-backed operations now preserve the same structured source-load trace that successful
 runs expose. Human stderr output replays that trace, and JSON reports keep it under

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -7,7 +8,7 @@ use crate::model::{
     CoverageCounter, CoverageFailure, CoveragePreflightFailure, CoverageReport, CoverageSummary,
     DynResult, TRACKED_RELATIVE_PATHS,
 };
-use crate::plan::normalize_path;
+use crate::plan::{cargo_target_dir, normalize_path};
 
 /// Builds the `cargo llvm-cov` command used by the one-ring coverage gate.
 pub fn coverage_command(repo_root: &Path) -> CommandSpec {
@@ -95,7 +96,17 @@ pub fn coverage_preflight_message(failures: &[CoveragePreflightFailure]) -> Stri
 
 /// Returns the JSON file that `cargo llvm-cov` writes for later scoring.
 pub fn coverage_output_path(repo_root: &Path) -> PathBuf {
-    repo_root.join("target").join("coverage.json")
+    coverage_target_dir(repo_root).join("coverage.json")
+}
+
+/// Ensures the target directory that will receive `coverage.json` already exists.
+pub fn ensure_coverage_output_dir(repo_root: &Path) -> DynResult<()> {
+    let output_path = coverage_output_path(repo_root);
+    let parent = output_path
+        .parent()
+        .expect("coverage output path should have a parent directory");
+    fs::create_dir_all(parent)?;
+    Ok(())
 }
 
 /// Loads the curated set of production files that the coverage gate tracks.
@@ -236,4 +247,24 @@ pub fn evaluate_coverage_report(
 /// Reads and deserializes the `llvm-cov` JSON report from disk.
 pub fn read_coverage_report(path: &Path) -> DynResult<CoverageReport> {
     Ok(serde_json::from_reader(File::open(path)?)?)
+}
+
+fn coverage_target_dir(repo_root: &Path) -> PathBuf {
+    cargo_target_dir(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_output_path_for_tests(
+    repo_root: &Path,
+    target_dir: Option<&Path>,
+) -> PathBuf {
+    crate::plan::cargo_target_dir_for_tests(repo_root, target_dir).join("coverage.json")
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_target_dir_for_tests(
+    repo_root: &Path,
+    target_dir: Option<&Path>,
+) -> PathBuf {
+    crate::plan::cargo_target_dir_for_tests(repo_root, target_dir)
 }
