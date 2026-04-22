@@ -104,7 +104,7 @@ if [[ "${target_triple}" != x86_64-pc-windows-msvc ]]; then
     [[ -x "${binary_path}" ]] || die "packaged binary is not executable: ${binary_path}"
 fi
 
-"${binary_path}" --version | grep "^htmlcut ${version}$"
-"${binary_path}" --help | grep "inspect"
+"${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
+"${binary_path}" --help | tr -d '\r' | grep "inspect"
 
 printf 'Smoke-tested %s\n' "${package_name}"
