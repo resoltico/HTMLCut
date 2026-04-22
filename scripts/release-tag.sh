@@ -10,12 +10,12 @@ htmlcut_resolve_release_tag() {
 }
 
 htmlcut_assert_release_tag_matches_workspace_version() {
-    local tag_name="$1"
-    local version="$2"
-    local expected_tag="v${version}"
+    local helper_tag_name="$1"
+    local helper_version="$2"
+    local expected_tag="v${helper_version}"
 
-    [[ "${tag_name}" == "${expected_tag}" ]] || htmlcut_die \
-        "expected tag ${expected_tag}, got ${tag_name}"
+    [[ "${helper_tag_name}" == "${expected_tag}" ]] || htmlcut_die \
+        "expected tag ${expected_tag}, got ${helper_tag_name}"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

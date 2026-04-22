@@ -21,14 +21,14 @@ htmlcut_resolve_script_dir() {
 }
 
 htmlcut_repo_root_from_script_dir() {
-    local script_dir="$1"
+    local helper_script_dir="$1"
 
-    cd -P -- "${script_dir}/.." && pwd
+    cd -P -- "${helper_script_dir}/.." && pwd
 }
 
 htmlcut_workspace_version() {
-    local script_dir="$1"
-    local repo_root="$2"
+    local helper_script_dir="$1"
+    local helper_repo_root="$2"
 
-    "${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml"
+    "${helper_script_dir}/workspace-version.sh" "${helper_repo_root}/Cargo.toml"
 }

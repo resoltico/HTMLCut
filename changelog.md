@@ -5,6 +5,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the repo root, workspace version, or release tag; the `xtask` release test suite now includes a regression smoke that exercises those helpers under the same readonly naming pattern that broke the `v4.3.0` publication job.
+
 ## [4.3.0] - 2026-04-22
 
 ### Changed

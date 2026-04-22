@@ -1,4 +1,6 @@
 use super::*;
+use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn release_helpers_read_the_canonical_shell_registry() {
@@ -71,5 +73,56 @@ macos_deployment_target_for_target() {
         macos_deployment_target(repo_root.path(), "x86_64-pc-windows-msvc")
             .expect("windows deployment target"),
         None
+    );
+}
+
+#[test]
+fn release_shell_helpers_survive_readonly_caller_names() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let scripts_dir = repo_root.join("scripts");
+    let version = workspace_version(repo_root).expect("workspace version");
+    let script = format!(
+        r#"set -euo pipefail
+script_dir="{scripts_dir}"
+. "$script_dir/common.sh"
+. "$script_dir/release-tag.sh"
+
+script_dir="$(htmlcut_resolve_script_dir "$script_dir/release-tag.sh")"
+readonly script_dir
+repo_root="{repo_root}"
+readonly repo_root
+tag_name="v{version}"
+readonly tag_name
+
+resolved_root="$(htmlcut_repo_root_from_script_dir "$script_dir")"
+[[ "$resolved_root" == "$repo_root" ]]
+
+resolved_version="$(htmlcut_workspace_version "$script_dir" "$repo_root")"
+[[ "$resolved_version" == "{version}" ]]
+
+resolved_tag="$(htmlcut_resolve_release_tag "$tag_name")"
+[[ "$resolved_tag" == "$tag_name" ]]
+
+htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_version"
+"#,
+        scripts_dir = scripts_dir.display(),
+        repo_root = repo_root.display(),
+        version = version,
+    );
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(repo_root)
+        .output()
+        .expect("run helper smoke");
+
+    assert!(
+        output.status.success(),
+        "release shell helper smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }
