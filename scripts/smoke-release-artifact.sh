@@ -24,6 +24,10 @@ workspace_version() {
     "${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml"
 }
 
+is_windows_environment() {
+    [[ "${OS:-}" == "Windows_NT" ]] || command -v cygpath >/dev/null 2>&1
+}
+
 extract_release_archive() {
     local release_archive_path="$1"
     local release_archive_extension="$2"
@@ -34,6 +38,12 @@ extract_release_archive() {
             tar -xzf "${release_archive_path}" -C "${release_extract_dir}"
             ;;
         zip)
+            if is_windows_environment && command -v powershell.exe >/dev/null 2>&1; then
+                powershell.exe -NoLogo -NoProfile -Command \
+                    "Expand-Archive -Path '$(cygpath -w "${release_archive_path}")' -DestinationPath '$(cygpath -w "${release_extract_dir}")' -Force"
+                return
+            fi
+
             if command -v unzip >/dev/null 2>&1; then
                 unzip -q "${release_archive_path}" -d "${release_extract_dir}"
                 return

@@ -24,6 +24,10 @@ workspace_version() {
     "${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml"
 }
 
+is_windows_environment() {
+    [[ "${OS:-}" == "Windows_NT" ]] || command -v cygpath >/dev/null 2>&1
+}
+
 native_path() {
     local path="$1"
 
@@ -33,6 +37,30 @@ native_path() {
     fi
 
     printf '%s\n' "${path}"
+}
+
+create_zip_with_dotnet() {
+    local source_parent_path="$1"
+    local archive_output_path="$2"
+
+    # shellcheck disable=SC2016
+    env \
+        SOURCE_PARENT_PATH="$(native_path "${source_parent_path}")" \
+        ARCHIVE_OUTPUT_PATH="$(native_path "${archive_output_path}")" \
+        powershell.exe -NoLogo -NoProfile -Command \
+        'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:SOURCE_PARENT_PATH, $env:ARCHIVE_OUTPUT_PATH)'
+}
+
+create_zip_with_7zip() {
+    local archiver="$1"
+    local source_parent_path="$2"
+    local package_root_name="$3"
+    local archive_output_path="$4"
+
+    (
+        cd "${source_parent_path}"
+        "${archiver}" a -tzip -bd -mx=9 "$(native_path "${archive_output_path}")" "${package_root_name}" >/dev/null
+    )
 }
 
 create_release_archive() {
@@ -56,13 +84,25 @@ create_release_archive() {
                 return
             fi
 
-            if command -v powershell.exe >/dev/null 2>&1; then
-                powershell.exe -NoLogo -NoProfile -Command \
-                    "Compress-Archive -Path '$(native_path "${source_parent_path}")\\${package_root_name}' -DestinationPath '$(native_path "${archive_output_path}")'"
+            if is_windows_environment && command -v powershell.exe >/dev/null 2>&1; then
+                create_zip_with_dotnet "${source_parent_path}" "${archive_output_path}"
                 return
             fi
 
-            die "no ZIP archiver found (expected zip or powershell.exe)"
+            local seven_zip_archiver
+            for seven_zip_archiver in 7z 7zz 7za; do
+                if command -v "${seven_zip_archiver}" >/dev/null 2>&1; then
+                    create_zip_with_7zip "${seven_zip_archiver}" "${source_parent_path}" "${package_root_name}" "${archive_output_path}"
+                    return
+                fi
+            done
+
+            if command -v powershell.exe >/dev/null 2>&1; then
+                create_zip_with_dotnet "${source_parent_path}" "${archive_output_path}"
+                return
+            fi
+
+            die "no ZIP archiver found (expected zip, powershell.exe, or 7z)"
             ;;
         *)
             die "unsupported release archive extension: ${archive_output_extension}"
