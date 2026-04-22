@@ -48,6 +48,10 @@ jobs:
     name: Build release archives
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -96,11 +100,19 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
-          BASENAME="htmlcut-${VERSION}"
+          source ./scripts/release-targets.sh
+          BASENAME="$(release_source_archive_basename_for_version "$VERSION")"
 
           mkdir -p dist
           git archive --format=zip --prefix="${BASENAME}/" -o "dist/${BASENAME}.zip" HEAD
           git archive --format=tar.gz --prefix="${BASENAME}/" -o "dist/${BASENAME}.tar.gz" HEAD
+
+      - name: Generate source archive attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/htmlcut-source-${{ steps.version.outputs.version }}.zip
+            dist/htmlcut-source-${{ steps.version.outputs.version }}.tar.gz
 
       - name: Upload archive artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -111,7 +123,7 @@ jobs:
           retention-days: 7
 
   build-standalone:
-    name: Build standalone ${{ matrix.id }} executable
+    name: Build standalone ${{ matrix.id }} package
     needs:
       - release-target-matrix
     runs-on: ${{ matrix.runs_on }}
@@ -197,33 +209,28 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-targets.sh
-          echo "binary=$(artifact_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
-          echo "checksum=$(checksum_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "package=$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
+          echo "compiled_binary=$(binary_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
 
       - name: Build standalone executable
         shell: bash
         run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
 
-      - name: Smoke test standalone executable
+      - name: Smoke test standalone package
         shell: bash
-        run: |
-          set -euo pipefail
-          "./dist/${{ steps.artifact.outputs.binary }}" --version | grep "^htmlcut ${{ steps.version.outputs.version }}$"
+        run: ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: |
-            dist/${{ steps.artifact.outputs.binary }}
-            dist/${{ steps.artifact.outputs.checksum }}
+          subject-path: dist/${{ steps.artifact.outputs.package }}
 
       - name: Upload standalone artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact_bundle_name }}
-          path: |
-            dist/${{ steps.artifact.outputs.binary }}
-            dist/${{ steps.artifact.outputs.checksum }}
+          path: dist/${{ steps.artifact.outputs.package }}
           if-no-files-found: error
           retention-days: 7
 
@@ -236,6 +243,8 @@ jobs:
       - build-standalone
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -244,6 +253,14 @@ jobs:
           # Publication logic must come from the maintained default branch so a rerun can
           # repair release tooling without mutating an existing tag.
           ref: ${{ github.event.repository.default_branch }}
+
+      - name: Read workspace version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(./scripts/workspace-version.sh)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Workspace version: $VERSION"
 
       - name: Determine target release tag
         id: target-tag
@@ -274,6 +291,14 @@ jobs:
           pattern: standalone-*
           path: dist/
           merge-multiple: true
+
+      - name: Build checksum manifest
+        run: ./scripts/build-release-checksums.sh
+
+      - name: Generate checksum manifest attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: dist/htmlcut-${{ steps.version.outputs.version }}-checksums.txt
 
       - name: Publish GitHub release idempotently
         env:

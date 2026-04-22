@@ -46,7 +46,11 @@ release_has_asset() {
         ".assets | map(.name) | index(\"${asset_name}\") != null"
 }
 
-converge_release_metadata() {
+release_is_draft() {
+    gh release view "${tag_name}" --json isDraft --jq '.isDraft'
+}
+
+publish_release() {
     gh release edit "${tag_name}" \
         --title "${tag_name}" \
         --draft=false \
@@ -55,22 +59,35 @@ converge_release_metadata() {
         --verify-tag >/dev/null
 }
 
-create_or_converge_release() {
+ensure_release_draft_exists() {
     if release_exists; then
-        converge_release_metadata
         return
     fi
 
     if gh release create "${tag_name}" \
         --title "${tag_name}" \
         --generate-notes \
-        --latest \
+        --draft \
         --verify-tag >/dev/null 2>&1; then
         return
     fi
 
-    release_exists || die "failed to create release ${tag_name}"
-    converge_release_metadata
+    release_exists || die "failed to create draft release ${tag_name}"
+}
+
+ensure_release_is_uploadable() {
+    local asset_name="$1"
+
+    if [[ "$(release_is_draft)" == "true" ]]; then
+        return
+    fi
+
+    if [[ "$(release_has_asset "${asset_name}")" == "true" ]]; then
+        return
+    fi
+
+    die \
+        "release ${tag_name} is already published and missing ${asset_name}; refusing to mutate a published release"
 }
 
 upload_if_missing() {
@@ -84,6 +101,8 @@ upload_if_missing() {
         return
     fi
 
+    ensure_release_is_uploadable "${asset_name}"
+
     if gh release upload "${tag_name}" "${asset_path}" >/dev/null 2>&1; then
         return
     fi
@@ -92,7 +111,7 @@ upload_if_missing() {
         "failed to upload ${asset_name} to release ${tag_name}"
 }
 
-create_or_converge_release
+ensure_release_draft_exists
 
 mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
 (( ${#expected_assets[@]} > 0 )) || die "release asset inventory is empty"
@@ -100,5 +119,7 @@ mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
 for asset_name in "${expected_assets[@]}"; do
     upload_if_missing "${repo_root}/dist/${asset_name}"
 done
+
+publish_release
 
 printf 'GitHub release publication converged for %s\n' "${tag_name}"
