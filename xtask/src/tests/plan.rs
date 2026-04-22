@@ -81,14 +81,21 @@ fn check_plan_includes_all_strict_gates() {
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "test",
-                "-p",
-                "xtask",
-                "--lib",
-                "--locked",
-                "docs_contract_lint",
+                "fmt",
+                "--check",
+                "--manifest-path",
+                repo_root
+                    .path()
+                    .join("fuzz")
+                    .join("Cargo.toml")
+                    .to_string_lossy()
+                    .as_ref(),
             ]
     }));
+    assert!(
+        plan.iter()
+            .any(|spec| { spec.args == ["test", "-p", "xtask", "--lib", "--locked"] })
+    );
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
@@ -111,6 +118,24 @@ fn check_plan_includes_all_strict_gates() {
                 "contract_lint",
             ]
     }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "clippy",
+                "--manifest-path",
+                repo_root
+                    .path()
+                    .join("fuzz")
+                    .join("Cargo.toml")
+                    .to_string_lossy()
+                    .as_ref(),
+                "--bins",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ]
+    }));
     assert!(plan.iter().any(|spec| spec.args
         == [
             "outdated",
@@ -119,10 +144,41 @@ fn check_plan_includes_all_strict_gates() {
             "--exit-code",
             "1"
         ]));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "outdated",
+                "--manifest-path",
+                repo_root
+                    .path()
+                    .join("fuzz")
+                    .join("Cargo.toml")
+                    .to_string_lossy()
+                    .as_ref(),
+                "--root-deps-only",
+                "--exit-code",
+                "1",
+            ]
+    }));
     assert!(
         plan.iter()
             .any(|spec| spec.args == ["audit", "-D", "warnings"])
     );
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "audit",
+                "-D",
+                "warnings",
+                "--file",
+                repo_root
+                    .path()
+                    .join("fuzz")
+                    .join("Cargo.lock")
+                    .to_string_lossy()
+                    .as_ref(),
+            ]
+    }));
     assert!(plan.iter().any(|spec| {
         spec.args
             .windows(2)

@@ -22,7 +22,7 @@ fn source_reading_helpers_cover_error_paths() {
         read_limited_to_string(&mut invalid_utf8, 10, "Input").expect_err("utf8 error");
     assert_eq!(utf8_error.code, "SOURCE_LOAD_FAILED");
 
-    let tempdir = tempfile::tempdir().expect("tempdir");
+    let tempdir = htmlcut_tempdir::tempdir().expect("tempdir");
     let large_path = tempdir.path().join("large.txt");
     std::fs::write(&large_path, "1234567890").expect("write");
     let file_error = read_file_source(
@@ -221,7 +221,7 @@ fn stream_source_helpers_preserve_failure_metadata() {
 
 #[test]
 fn file_and_url_loading_cover_successful_non_error_branches() {
-    let tempdir = tempfile::tempdir().expect("tempdir");
+    let tempdir = htmlcut_tempdir::tempdir().expect("tempdir");
     let file_path = tempdir.path().join("input.html");
     std::fs::write(&file_path, "<article>Hello</article>").expect("write html");
     let loaded = read_file_source(

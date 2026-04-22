@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: MAINTAINER
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [versioning policy, frozen interop, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus frozen interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -27,6 +27,15 @@ That version feeds:
 - release asset names
 
 Do not create parallel version sources in crate manifests, docs, scripts, or workflows.
+
+HTMLCut also keeps one canonical Rust compiler contract:
+
+- `rust-toolchain.toml` `[toolchain] channel`
+- `Cargo.toml` `[workspace.package] rust-version`
+
+Workspace crates inherit that compiler requirement with `rust-version.workspace = true` so the
+published crates, the pinned repository toolchain, and the maintainer docs do not silently diverge
+on compiler support.
 
 ## 2. Two Contract Classes
 

@@ -20,6 +20,28 @@ pub(super) fn build_cli_operation_catalog() -> Vec<OperationCliContract> {
     ]
 }
 
+fn extract_default_output_overrides() -> Vec<super::CliConditionalDefault> {
+    vec![
+        conditional_default(
+            CliValue::OutputMode(CliOutputMode::Html),
+            condition(
+                CliParameterId::Value,
+                vec![
+                    CliValue::ValueType(ValueType::InnerHtml),
+                    CliValue::ValueType(ValueType::OuterHtml),
+                ],
+            ),
+        ),
+        conditional_default(
+            CliValue::OutputMode(CliOutputMode::Json),
+            condition(
+                CliParameterId::Value,
+                vec![CliValue::ValueType(ValueType::Structured)],
+            ),
+        ),
+    ]
+}
+
 fn build_source_inspect_contract() -> OperationCliContract {
     let parameters = inspect_source_parameters();
     let output_modes = inspect_output_modes();
@@ -129,13 +151,7 @@ fn build_select_extract_contract() -> OperationCliContract {
         default_value: Some(ValueType::Text),
         value_modes: value_modes.clone(),
         default_output: Some(CliOutputMode::Text),
-        default_output_overrides: vec![conditional_default(
-            CliValue::OutputMode(CliOutputMode::Json),
-            condition(
-                CliParameterId::Value,
-                vec![CliValue::ValueType(ValueType::Structured)],
-            ),
-        )],
+        default_output_overrides: extract_default_output_overrides(),
         output_modes: output_modes.clone(),
         constraints: constraints_with_parameter_rules(
             &parameters,
@@ -203,13 +219,7 @@ fn build_slice_extract_contract() -> OperationCliContract {
         default_value: Some(ValueType::Text),
         value_modes: value_modes.clone(),
         default_output: Some(CliOutputMode::Text),
-        default_output_overrides: vec![conditional_default(
-            CliValue::OutputMode(CliOutputMode::Json),
-            condition(
-                CliParameterId::Value,
-                vec![CliValue::ValueType(ValueType::Structured)],
-            ),
-        )],
+        default_output_overrides: extract_default_output_overrides(),
         output_modes: output_modes.clone(),
         constraints: constraints_with_parameter_rules(
             &parameters,

@@ -1,11 +1,11 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: INDEX
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [docs index, developer setup, architecture guide, cli guide, core guide, interop guide, release protocol, quality gates]
-  questions: ["where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "where is the HTMLCut release protocol?", "where is the interop v1 guide?"]
+  questions: ["where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?"]
 ---
 
 # Docs
@@ -32,7 +32,10 @@ generated/internal directories such as `.codex/`, `.gemini/`, `tmp/`, `target/`,
 ## Maintainer Workflow
 
 - [Quality Gates](quality-gates.md)
-- [Release Protocol](release-protocol.md)
+- [Release Protocol Overview](release-protocol.md)
+- [Release Preflight](release-preflight.md)
+- [Release Publishing](release-publishing.md)
+- [Release Closeout](release-closeout.md)
 - [Versioning Policy](versioning-policy.md)
 - [Contributing Guide](../CONTRIBUTING.md)
 

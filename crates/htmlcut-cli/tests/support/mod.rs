@@ -27,8 +27,8 @@ pub(crate) use htmlcut_core::{
     SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
     preview_extraction, result::ExtractionMatchMetadata,
 };
+pub(crate) use htmlcut_tempdir::tempdir;
 pub(crate) use predicates::prelude::*;
-pub(crate) use tempfile::tempdir;
 pub(crate) use url::Url;
 
 pub(crate) fn expected_version() -> &'static str {

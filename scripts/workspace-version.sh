@@ -3,7 +3,11 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd -- "${script_dir}/.." && pwd)"
+# shellcheck source=scripts/common.sh
+. "${script_dir}/common.sh"
+
+script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
+repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
 manifest_path="${1:-${repo_root}/Cargo.toml}"
 
 awk '

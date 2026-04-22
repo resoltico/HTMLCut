@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.2.1"
+  version: "4.3.0"
   domain: PRODUCT
   updated: "2026-04-22"
 RETRIEVAL_HINTS:
@@ -25,14 +25,17 @@ It supports:
 
 ## Install
 
-Build from source:
+Build from source with the repo-pinned Rust `1.95.0` toolchain:
 
 ```bash
-rustup toolchain install stable --profile minimal
+rustup toolchain install 1.95.0 --profile minimal
 source "$HOME/.cargo/env"
 cargo build --locked -p htmlcut-cli --bin htmlcut
 ./target/debug/htmlcut --help
 ```
+
+`rust-toolchain.toml` is the canonical exact repo toolchain pin, and `Cargo.toml`
+`[workspace.package] rust-version` mirrors the published compiler requirement.
 
 Install into Cargo's bin directory:
 
@@ -42,23 +45,34 @@ cargo install --path crates/htmlcut-cli --locked
 htmlcut --help
 ```
 
-Install a prebuilt release package on macOS or Linux:
+Install a prebuilt standalone release package on macOS or Linux:
 
 ```bash
-VERSION=X.Y.Z
+VERSION=4.3.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
-curl -LO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
-curl -LO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
-grep "  htmlcut-${VERSION}-${TARGET}.tar.gz$" "htmlcut-${VERSION}-checksums.txt" | shasum -a 256 -c
+curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
+curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
+EXPECTED="$(grep "  htmlcut-${VERSION}-${TARGET}.tar.gz$" "htmlcut-${VERSION}-checksums.txt" | awk '{print $1}')"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "htmlcut-${VERSION}-${TARGET}.tar.gz" | awk '{print $1}')"
+else
+  ACTUAL="$(shasum -a 256 "htmlcut-${VERSION}-${TARGET}.tar.gz" | awk '{print $1}')"
+fi
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  printf 'checksum mismatch for %s\n' "htmlcut-${VERSION}-${TARGET}.tar.gz" >&2
+  exit 1
+fi
 tar -xzf "htmlcut-${VERSION}-${TARGET}.tar.gz"
+mkdir -p "$HOME/.local/bin"
 install "htmlcut-${VERSION}-${TARGET}/htmlcut" "$HOME/.local/bin/htmlcut"
+export PATH="$HOME/.local/bin:$PATH"
 htmlcut --help
 ```
 
-Install a prebuilt release package on Windows PowerShell:
+Install a prebuilt standalone release package on Windows PowerShell:
 
 ```powershell
-$Version = "X.Y.Z"
+$Version = "4.3.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -77,7 +91,7 @@ and `PATENTS.md`.
 
 ## Command Surface
 
-```bash
+```text
 htmlcut catalog [--output text|json] [--operation <ID>]
 htmlcut schema [--output text|json] [--name <SCHEMA_NAME>] [--schema-version <SCHEMA_VERSION>]
 htmlcut select [INPUT] --css <SELECTOR> [options]
@@ -171,12 +185,6 @@ Preview slice matches before final extraction:
 htmlcut inspect slice ./page.html --from '<article>' --to '</article>'
 ```
 
-Run a reusable extraction-definition JSON file:
-
-```bash
-htmlcut select --request-file ./article-links.json
-```
-
 Save the normalized extraction-definition JSON while you prototype inline flags:
 
 ```bash
@@ -187,6 +195,12 @@ htmlcut select ./page.html \
   --emit-request-file ./article-links.json
 ```
 
+Run the saved reusable extraction-definition JSON file:
+
+```bash
+htmlcut select --request-file ./article-links.json
+```
+
 Write only the stdout payload to one file:
 
 ```bash
@@ -195,35 +209,41 @@ htmlcut select ./page.html \
   --output-file ./article.txt
 ```
 
-## Notes
+## Behavior Notes
 
-- `select` and `slice` separate extraction value with `--value` from stdout rendering with `--output`.
-- `select` and `slice` default stdout to `text`, except `--value structured`, which defaults stdout to `json`.
-- `select`, `slice`, `inspect select`, and `inspect slice` can load a first-class extraction-definition JSON file through `--request-file`; inline source and strategy flags then become mutually exclusive with that file.
-- `--emit-request-file` writes the normalized extraction-definition JSON for `select`, `slice`, `inspect select`, and `inspect slice`, so inline discovery can be promoted into a reusable file without hand-authoring JSON.
+Output and artifacts:
+
+- `select` and `slice` separate extraction value (`--value`) from stdout rendering (`--output`).
+- `text` and `attribute` values default to text output, `inner-html` and `outer-html` default to HTML output, and `structured` defaults to JSON output.
 - `--value inner-html` returns the selected fragment; `--value outer-html` returns the full matched outer range.
 - `--output html` is valid only with `--value inner-html` or `--value outer-html`.
-- `inspect` defaults to JSON.
-- `catalog --output text` now renders every operation in detail; `--output json` remains the machine-readable discovery surface.
-- `catalog --output text` and `schema --output text` now start with a short registry summary plus the exact follow-up command to inspect one entry in JSON.
-- `catalog` and `schema` also accept `--output-file`, and verbose runs confirm that write on stderr.
 - `--output none` is valid only with `--bundle`.
 - `--output-file` writes exactly the stdout payload to one file without creating a bundle directory.
-- verbose `catalog`, `schema`, extraction, and inspection runs now confirm successful `--output-file` and `--emit-request-file` writes on stderr.
-- URL inputs use HEAD-first preflight by default to reject obvious non-HTML or oversize resources earlier; HTMLCut now falls back to GET when a server explicitly rejects HEAD or breaks the HEAD exchange, and `--fetch-preflight get-only` remains available for servers that still mishandle HEAD badly.
-- successful URL inspections and extractions now expose the source-load trace in verbose output, including when a HEAD preflight fell back to GET.
-- failed URL inspections and extractions now keep that source-load trace too, so human error output and structured reports show the attempted HEAD/GET path that failed.
-- `inspect slice --output text` now shows the exact matched start and end boundary text alongside the selected ranges and fragment preview.
-- slice previews and extractions now warn with `SLICE_SPLITS_MARKUP` when the selected range appears to start or end inside HTML markup, which makes the classic literal `<a` versus `<article>` footgun much more obvious.
-- invalid extraction-definition files now point directly back to `htmlcut schema --name htmlcut.extraction_definition --output json` and the matching `htmlcut catalog --operation <id> --output json` entry for recovery.
-- extraction-definition shape failures now include the failing JSON path, and unknown operation/schema lookups now suggest the closest registered names or available schema versions.
+- `--bundle` writes `selection.html`, `selection.txt`, and `report.json`.
 - HTMLCut creates parent directories automatically for `--bundle`, `--output-file`, and `--emit-request-file`.
+
+Discovery and reusable definitions:
+
+- `catalog` is the capability-discovery surface, and `schema` exports the validator-grade JSON contracts behind maintained public JSON outputs.
+- `catalog --output text` and `schema --output text` begin with a short registry summary and an exact follow-up JSON command for deeper inspection.
+- `catalog` and `schema` accept `--output-file`, and verbose runs confirm successful file writes on stderr.
+- `select`, `slice`, `inspect select`, and `inspect slice` accept extraction-definition JSON files through `--request-file`; inline source and strategy flags then become mutually exclusive with that file.
+- `--emit-request-file` writes the normalized extraction-definition JSON for `select`, `slice`, `inspect select`, and `inspect slice`, so inline discovery can be promoted into a reusable JSON file without hand-authoring the contract.
+- Invalid extraction-definition files point back to `htmlcut schema --name htmlcut.extraction_definition --output json` and the matching `htmlcut catalog --operation <id> --output json` entry for recovery.
+- Extraction-definition shape failures include the failing JSON path, and unknown operation/schema lookups suggest the closest registered names or available schema versions.
+
+Runtime behavior and diagnostics:
+
+- `inspect` defaults to JSON.
+- `--max-bytes` accepts raw bytes or KB/MB/GB values only when they resolve to a whole positive byte count after unit scaling.
+- URL inputs use HEAD-first preflight by default to reject obvious non-HTML or oversize resources earlier, with automatic fallback to GET when a server rejects or breaks HEAD. `--fetch-preflight get-only` skips the HEAD probe.
+- Successful and failed URL-backed inspections and extractions preserve the source-load trace, including HEAD-to-GET fallback details, in verbose output and structured reports.
+- `inspect slice --output text` shows the exact matched start and end boundary text alongside the selected ranges and fragment preview.
+- Slice previews and extractions warn with `SLICE_SPLITS_MARKUP` when the selected range appears to start or end inside HTML markup.
+- `slice` works on raw source text, not parsed HTML nodes.
 - `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
 - `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
-- `slice` works on raw source text, not parsed HTML nodes.
-- `catalog` is the capability discovery surface.
-- `schema` exports the validator-grade JSON contracts behind maintained public JSON outputs.
-- `catalog`, `schema`, the rendered CLI help/catalog/error-recovery surfaces, and the concrete fenced `htmlcut ...` examples in the maintained docs are linted against the same core-owned operation, command-contract, help-document, diagnostic-code, and schema registries. They are intended to stay in lockstep, not merely tell a similar story.
+- `catalog`, `schema`, rendered help, recovery guidance, and the maintained concrete `htmlcut ...` examples are linted against the same core-owned operation, command-contract, help-document, diagnostic-code, and schema registries.
 
 ## Embedding And Interop
 
@@ -271,6 +291,9 @@ Contributor workflow lives in [CONTRIBUTING.md](CONTRIBUTING.md), and maintainer
 lives in [docs/versioning-policy.md](docs/versioning-policy.md).
 
 Run the full local maintainer gate with `./check.sh` or `cargo xtask check`.
+Run a short non-mutating libFuzzer smoke with `cargo xtask fuzz-smoke`.
+The command preflights nightly plus `cargo-fuzz` before it launches and stages each checked-in
+seed corpus into temporary scratch so local smoke runs do not mutate repository-owned corpora.
 
 ---
 

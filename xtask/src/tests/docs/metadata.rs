@@ -42,6 +42,7 @@ fn metadata_version_returns_none_for_missing_or_versionless_frontmatter() {
 #[test]
 fn markdown_contract_errors_report_missing_and_mismatched_versions() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",
@@ -105,6 +106,7 @@ fn markdown_contract_errors_report_missing_and_mismatched_versions() {
 #[test]
 fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",
@@ -169,6 +171,7 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
 #[test]
 fn markdown_contract_errors_report_malformed_metadata_blocks_and_empty_values() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",

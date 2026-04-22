@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: ARCHITECTURE
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -40,7 +40,7 @@ Use `htmlcut-core` when you need:
 Use `htmlcut_core::interop::v1` when you need the frozen `htmlcut-v1` downstream integration
 contract.
 
-It is the generic versioned interop surface for downstream integrations, not a replacement for the
+It is the frozen versioned interop surface for downstream integrations, not a replacement for the
 broader `htmlcut-core` API, and not a CLI command.
 
 ## Ownership Boundary

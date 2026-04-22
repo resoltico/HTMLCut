@@ -1,0 +1,75 @@
+use super::*;
+
+#[test]
+fn release_helpers_read_the_canonical_shell_registry() {
+    let repo_root = tempdir().expect("tempdir");
+    let scripts_dir = repo_root.path().join("scripts");
+    fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+    fs::write(
+        scripts_dir.join("release-targets.sh"),
+        r#"#!/usr/bin/env bash
+release_target_triples() {
+    cat <<'EOF'
+aarch64-apple-darwin
+x86_64-pc-windows-msvc
+EOF
+}
+
+release_matrix_json() {
+    cat <<'EOF'
+{"include":[{"id":"macos-arm64","runs_on":"macos-15","target_triple":"aarch64-apple-darwin","artifact_bundle_name":"standalone-macos-arm64","needs_musl_tools":false}]}
+EOF
+}
+
+release_asset_names_for_version() {
+    local release_version="$1"
+    printf 'htmlcut-source-%s.tar.gz\n' "${release_version}"
+    printf 'htmlcut-%s-checksums.txt\n' "${release_version}"
+}
+
+macos_deployment_target_for_target() {
+    local requested_target="$1"
+    case "${requested_target}" in
+        aarch64-apple-darwin) printf '12.0\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+"#,
+    )
+    .expect("write release-targets.sh");
+
+    assert_eq!(
+        release_target_triples(repo_root.path()).expect("target triples"),
+        vec![
+            "aarch64-apple-darwin".to_owned(),
+            "x86_64-pc-windows-msvc".to_owned(),
+        ]
+    );
+    assert_eq!(
+        release_asset_names(repo_root.path(), "9.9.9").expect("asset names"),
+        vec![
+            "htmlcut-source-9.9.9.tar.gz".to_owned(),
+            "htmlcut-9.9.9-checksums.txt".to_owned(),
+        ]
+    );
+    assert_eq!(
+        release_matrix(repo_root.path()).expect("release matrix"),
+        vec![ReleaseMatrixEntry {
+            id: "macos-arm64".to_owned(),
+            runs_on: "macos-15".to_owned(),
+            target_triple: "aarch64-apple-darwin".to_owned(),
+            artifact_bundle_name: "standalone-macos-arm64".to_owned(),
+            needs_musl_tools: false,
+        }]
+    );
+    assert_eq!(
+        macos_deployment_target(repo_root.path(), "aarch64-apple-darwin")
+            .expect("macos deployment target"),
+        Some("12.0".to_owned())
+    );
+    assert_eq!(
+        macos_deployment_target(repo_root.path(), "x86_64-pc-windows-msvc")
+            .expect("windows deployment target"),
+        None
+    );
+}

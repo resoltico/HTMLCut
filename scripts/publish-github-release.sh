@@ -2,39 +2,25 @@
 
 set -euo pipefail
 
-die() {
-    printf 'error: %s\n' "$1" >&2
-    exit 1
-}
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "${script_dir}/common.sh"
+# shellcheck source=scripts/release-tag.sh
+. "${script_dir}/release-tag.sh"
 
-resolve_script_dir() {
-    local source_path="${BASH_SOURCE[0]}"
-    while [[ -h "${source_path}" ]]; do
-        local source_dir
-        source_dir="$(cd -P -- "$(dirname -- "${source_path}")" && pwd)"
-        source_path="$(readlink "${source_path}")"
-        if [[ "${source_path}" != /* ]]; then
-            source_path="${source_dir}/${source_path}"
-        fi
-    done
-    cd -P -- "$(dirname -- "${source_path}")" && pwd
-}
-
-script_dir="$(resolve_script_dir)"
+script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
 readonly script_dir
-repo_root="$(cd -P -- "${script_dir}/.." && pwd)"
+repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
 readonly repo_root
 # shellcheck disable=SC1091
 . "${script_dir}/release-targets.sh"
-tag_name="${1:-${RELEASE_TAG:-${GITHUB_REF_NAME:-}}}"
+tag_name="$(htmlcut_resolve_release_tag "${1:-${RELEASE_TAG:-${GITHUB_REF_NAME:-}}}")"
 readonly tag_name
-version="$("${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml")"
+version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
 readonly version
-readonly expected_tag="v${version}"
 
-[[ -n "${GH_TOKEN:-}" ]] || die "GH_TOKEN is required"
-[[ -n "${tag_name}" ]] || die "tag name is required"
-[[ "${tag_name}" == "${expected_tag}" ]] || die "expected tag ${expected_tag}, got ${tag_name}"
+[[ -n "${GH_TOKEN:-}" ]] || htmlcut_die "GH_TOKEN is required"
+htmlcut_assert_release_tag_matches_workspace_version "${tag_name}" "${version}"
 
 release_exists() {
     gh release view "${tag_name}" >/dev/null 2>&1
@@ -72,7 +58,7 @@ ensure_release_draft_exists() {
         return
     fi
 
-    release_exists || die "failed to create draft release ${tag_name}"
+    release_exists || htmlcut_die "failed to create draft release ${tag_name}"
 }
 
 ensure_release_is_uploadable() {
@@ -86,7 +72,7 @@ ensure_release_is_uploadable() {
         return
     fi
 
-    die \
+    htmlcut_die \
         "release ${tag_name} is already published and missing ${asset_name}; refusing to mutate a published release"
 }
 
@@ -95,7 +81,7 @@ upload_if_missing() {
     local asset_name
     asset_name="$(basename -- "${asset_path}")"
 
-    [[ -f "${asset_path}" ]] || die "missing asset ${asset_path}"
+    [[ -f "${asset_path}" ]] || htmlcut_die "missing asset ${asset_path}"
 
     if [[ "$(release_has_asset "${asset_name}")" == "true" ]]; then
         return
@@ -107,14 +93,14 @@ upload_if_missing() {
         return
     fi
 
-    [[ "$(release_has_asset "${asset_name}")" == "true" ]] || die \
+    [[ "$(release_has_asset "${asset_name}")" == "true" ]] || htmlcut_die \
         "failed to upload ${asset_name} to release ${tag_name}"
 }
 
 ensure_release_draft_exists
 
 mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
-(( ${#expected_assets[@]} > 0 )) || die "release asset inventory is empty"
+(( ${#expected_assets[@]} > 0 )) || htmlcut_die "release asset inventory is empty"
 
 for asset_name in "${expected_assets[@]}"; do
     upload_if_missing "${repo_root}/dist/${asset_name}"

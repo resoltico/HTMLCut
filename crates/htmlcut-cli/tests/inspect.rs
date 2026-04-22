@@ -42,6 +42,48 @@ fn slice_json_report_has_core_parity() {
 }
 
 #[test]
+fn slice_html_value_modes_default_to_html_stdout() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "slice-html.html",
+        "<article><p>Hello <strong>world</strong></p></article>",
+    );
+
+    let mut inner = Command::cargo_bin("htmlcut").expect("binary");
+    inner
+        .args(["slice"])
+        .arg(&input_path)
+        .args([
+            "--from",
+            "<article>",
+            "--to",
+            "</article>",
+            "--value",
+            "inner-html",
+        ])
+        .assert()
+        .success()
+        .stdout("<p>Hello <strong>world</strong></p>\n");
+
+    let mut outer = Command::cargo_bin("htmlcut").expect("binary");
+    outer
+        .args(["slice"])
+        .arg(&input_path)
+        .args([
+            "--from",
+            "<article>",
+            "--to",
+            "</article>",
+            "--value",
+            "outer-html",
+        ])
+        .assert()
+        .success()
+        .stdout("<article><p>Hello <strong>world</strong></p></article>\n");
+}
+
+#[test]
 fn inspect_source_json_has_core_parity() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(

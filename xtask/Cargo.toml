@@ -2,6 +2,7 @@
 name = "xtask"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -13,11 +14,11 @@ description = "Rust-native repository maintenance tasks for HTMLCut."
 clap.workspace = true
 htmlcut-cli.workspace = true
 htmlcut-core.workspace = true
+htmlcut-tempdir.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 shell-words.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

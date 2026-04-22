@@ -1,8 +1,8 @@
 use super::*;
+use htmlcut_tempdir::tempdir;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::tempdir;
 
 fn write_repo_scaffold(repo_root: &Path) {
     fs::write(
@@ -20,14 +20,51 @@ fn write_repo_scaffold(repo_root: &Path) {
     .expect("write baseline Cargo.toml");
 }
 
+fn write_empty_release_targets_script(repo_root: &Path) {
+    let scripts_dir = repo_root.join("scripts");
+    fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+    fs::write(
+        scripts_dir.join("release-targets.sh"),
+        r#"#!/usr/bin/env bash
+release_target_triples() {
+    :
+}
+
+release_matrix_json() {
+    printf '{"include":[]}\n'
+}
+
+release_asset_names_for_version() {
+    :
+}
+
+macos_deployment_target_for_target() {
+    :
+}
+"#,
+    )
+    .expect("write empty release-targets.sh");
+}
+
 mod coverage;
 mod docs;
+mod fuzz;
 mod plan;
+mod release;
 mod toolchain;
 mod versions;
 
 fn seed_tracked_files(repo_root: &Path) -> BTreeMap<PathBuf, String> {
-    for relative_path in TRACKED_RELATIVE_PATHS {
+    for relative_path in [
+        "crates/htmlcut-core/src/catalog.rs",
+        "crates/htmlcut-core/src/contracts/mod.rs",
+        "crates/htmlcut-cli/src/execute.rs",
+        "crates/htmlcut-cli/src/execute/commands.rs",
+        "xtask/src/plan.rs",
+    ]
+    .into_iter()
+    .chain(COVERAGE_EXCLUDED_RELATIVE_PATHS.iter().copied())
+    {
         let file_path = repo_root.join(relative_path);
         fs::create_dir_all(file_path.parent().expect("parent")).expect("create dir");
         fs::write(&file_path, "// tracked\n").expect("write tracked file");

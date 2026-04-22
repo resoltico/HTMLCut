@@ -9,8 +9,8 @@ use htmlcut_core::{
     OperationId, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, cli_operation_contract,
     render_cli_value,
 };
+use htmlcut_tempdir::tempdir;
 use predicates::prelude::*;
-use tempfile::tempdir;
 
 fn write_json_file(tempdir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = tempdir.join(name);

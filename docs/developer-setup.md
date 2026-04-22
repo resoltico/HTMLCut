@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: SETUP
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [developer setup, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?"]
@@ -15,9 +15,12 @@ route:
 
 ## Overview
 
-HTMLCut keeps stable Rust as the default development toolchain and installs nightly only for the
-branch-coverage gate. The maintainer workflow also depends on Rust-native QA commands plus
-`shellcheck` for shell-script checks.
+HTMLCut pins Rust `1.95.0` as the default repository toolchain and installs nightly for the
+branch-coverage gate plus live `cargo-fuzz` campaigns. The maintainer workflow also depends on
+Rust-native QA commands plus `shellcheck` for shell-script checks.
+
+The workspace manifest mirrors that compiler contract through `[workspace.package] rust-version`,
+so the published crates and the pinned repository toolchain do not silently drift apart.
 
 Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit control over
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
@@ -34,17 +37,19 @@ xcode-select --install
 Then install Rust and the HTMLCut toolchains:
 
 ```bash
-curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 source "$HOME/.cargo/env"
+rustup toolchain install 1.95.0 --profile minimal
 rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-rustup component add clippy rustfmt llvm-tools-preview --toolchain stable
+rustup component add clippy rustfmt --toolchain 1.95.0
 ```
 
 Why this shape:
 
-- `stable` is the day-to-day toolchain used by the workspace and by `rust-toolchain.toml`.
-- `nightly` exists only because `cargo +nightly llvm-cov --branch` is still required for the
-  maintained coverage gate.
+- `1.95.0` is the exact toolchain pinned by `rust-toolchain.toml` for day-to-day repository work.
+- the workspace manifest mirrors that compiler contract through `[workspace.package] rust-version`.
+- `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
+  coverage gate, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
   actually uses.
 
@@ -120,7 +125,7 @@ unset CXXFLAGS
 
 ## Verify The Setup
 
-Verify the toolchain and then run the maintained gate:
+Verify the toolchain first:
 
 ```bash
 source "$HOME/.cargo/env"
@@ -134,12 +139,24 @@ cargo outdated --version
 cargo llvm-cov --version
 cargo fuzz --version
 shellcheck --version
-./check.sh
-cargo xtask check
 ```
 
-Stable should remain the default toolchain. If the gate fails, treat the first real failure as the
-next missing prerequisite and fix that root cause before rerunning.
+Then run one maintained gate entrypoint:
+
+```bash
+./check.sh
+```
+
+`cargo xtask check` is the equivalent direct invocation if you want to bypass the shell wrapper.
+For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
+`cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`
+before it launches, so missing fuzz prerequisites fail fast with one actionable message.
+The main `cargo xtask check` gate likewise preflights the exact pinned `1.95.0` toolchain and its
+required `clippy`/`rustfmt` components before the Rust gate starts, including direct probes that
+verify the tool binaries are actually runnable.
+
+Rust `1.95.0` should remain the pinned repository toolchain. If the gate fails, treat the first
+real failure as the next missing prerequisite and fix that root cause before rerunning.
 
 ## Disk Usage
 
@@ -148,7 +165,7 @@ The Git repository itself is small. The multi-gigabyte footprint comes from buil
 builds, semver-check scratch data, and compiled test binaries. Local fuzzing also uses a separate
 `fuzz/target/` tree unless you override Cargo's target directory for fuzz runs.
 
-`cargo xtask check` now treats the two worst offenders as ephemeral scratch:
+`cargo xtask check` treats the two worst offenders as ephemeral scratch:
 
 - `target/llvm-cov-target` is cleaned again after the coverage step finishes.
 - `target/semver-checks` is pruned before and after the semver gate runs.

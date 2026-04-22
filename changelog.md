@@ -5,6 +5,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-04-22
+
+### Changed
+- Pinned the repository toolchain and published compiler contract to Rust `1.95.0`, updated the workspace and fuzz manifests to match, and aligned maintainer docs plus CI/release automation around that exact compiler version instead of an open-ended `stable` channel.
+- Removed the stale exact `tempfile = "=3.15.0"` workspace pin and then replaced `tempfile` entirely with a tiny internal `htmlcut-tempdir` helper, which keeps the workspace on current direct dependency floors without violating the duplicate-crate ban in `cargo deny`; the maintained lockfiles were refreshed accordingly.
+- `cargo xtask check` now reads the exact pinned toolchain contract from `rust-toolchain.toml` and fails fast with one actionable preflight message when the pinned compiler is missing, when `clippy`/`rustfmt` components are absent, or when those tool binaries are still broken despite rustup claiming they are installed.
+- Removed the fake stable-toolchain `llvm-tools-preview` requirement from the checked-in bootstrap surface, and routed release-tag validation through one canonical shell helper instead of re-implementing the same tag/version checks across workflows and release scripts.
+- Tightened the standalone `fuzz/` package from compile-smoke only into a first-class maintained surface by giving it an explicit Rust floor and lint policy, splitting the shared fuzz drivers into focused modules, and extending `cargo xtask check` to run fuzz-specific `fmt`, `clippy`, `outdated`, and `audit` checks.
+- Refreshed both maintained lockfiles to `rustls-webpki 0.103.13`, clearing the current RustSec advisory in the default URL-fetch stack instead of leaving the newly failing audit gate behind.
+- `cargo xtask check` now runs the full `xtask` library test suite, so manifest policy, release-target registry helpers, and other maintainer invariants are enforced by the gate instead of compiling unused beside it.
+- The maintainer docs-contract now validates release target triples, workflow runner mappings, macOS deployment floor, and release asset names in the maintained docs against the canonical `scripts/release-targets.sh` registry.
+- Corrected the fuzzing docs to the real working `cargo +nightly fuzz run --fuzz-dir fuzz ...` form after live verification showed the previously documented `--manifest-path` usage did not work with `cargo-fuzz 0.13.1`.
+- Broke up the frozen `htmlcut_core::interop::v1` type-definition god-file into focused shared, plan, and result/error modules so the frozen interop contract stays easier to audit without mixing unrelated concerns into one monolith.
+- Reorganized the maintainer release documentation into an overview plus focused preflight, publishing, and closeout guides so the release process is easier to audit and keep in sync with the scripts and workflows.
+- The release protocol now explicitly covers dirty primary checkouts that already contain real unpublished release-candidate work: move that state onto a named prep branch first, then create the clean `release/X.Y.Z` worktree from that captured commit instead of guessing from a dirty `main`.
+- Rewrote the maintained docs in current-state language, removing release-note phrasing like "now" from stable behavior descriptions and standardizing on the canonical `extraction-definition` terminology.
+- Re-verified the concrete README command examples against the live CLI surface and refreshed the behavior notes to match the verified output, diagnostics, and release-asset workflows.
+- The core-owned CLI contract catalog now records the real default stdout override for `--value inner-html` and `--value outer-html`, so generated help, `htmlcut catalog`, and the maintained CLI docs match live extraction behavior instead of silently implying text output.
+- Corrected the documented slice regex-flag surface so generated help, catalog text, and the maintained CLI guide now include `U`, and explain that `g` is accepted for compatibility but ignored.
+- Refreshed the root README install and quick-start examples so the maintained release-install commands use the current release version, create the target install directory explicitly, verify checksums portably on macOS/Linux, and present the reusable request-file flow in runnable order.
+- Tightened the maintainer docs so developer setup no longer tells contributors to run the full gate twice, the release protocol now verifies the host-native standalone package instead of hardcoding Apple Silicon in the local post-release smoke step, and the architecture/core guides use more precise terminology around the frozen interop surface and non-exhaustive root exports.
+- The coverage gate now derives its tracked module inventory from the live `htmlcut-core`, `htmlcut-cli`, and `xtask` source trees with an explicit declarative-only exclusion list, so future seam splits cannot silently fall outside the enforced 100% line-and-branch bar.
+- Added `cargo xtask fuzz-smoke`, which stages each checked-in fuzz corpus into temporary scratch before running libFuzzer so short maintainer smoke campaigns no longer mutate the repository-owned seed corpora.
+- `cargo xtask fuzz-smoke` now preflights nightly plus `cargo-fuzz` before it launches and forces the documented `CC=clang CXX=clang++` toolchain environment for fuzz-driver invocations on the maintained macOS path.
+- Broke up the remaining `htmlcut-cli` parser and report god-files into focused `args`, `model`, and `prepare::reports` modules while preserving the public CLI contract and existing test matrix.
+- Broke up the remaining `htmlcut-cli` request-building and inspection-rendering god-files into focused `prepare::build::{extraction,output,selection,source}`, `prepare::definition::{conflicts,loading}`, and `render::inspection::{preview,shared,source}` seams.
+- Added focused regression tests for CLI suggestion recovery, core help-contract validation, result metadata accessors, schema-reference constructors, and xtask coverage inventory edge cases so the newly surfaced logic branches are asserted directly instead of being hidden behind broad integration coverage.
+- `--max-bytes` parsing now uses exact decimal unit scaling and rejects values that do not resolve to a whole positive byte count instead of silently truncating fractional bytes.
+
 ## [4.2.1] - 2026-04-22
 
 ### Changed

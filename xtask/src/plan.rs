@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::{CommandSpec, DynResult};
+use crate::{package_version_from_manifest, workspace_version};
 
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
@@ -30,13 +31,17 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
-            "test",
-            "-p",
-            "xtask",
-            "--lib",
-            "--locked",
-            "docs_contract_lint",
+            "fmt",
+            "--check",
+            "--manifest-path",
+            fuzz_manifest_path(repo_root).to_string_lossy().as_ref(),
         ],
+        false,
+        false,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        ["test", "-p", "xtask", "--lib", "--locked"],
         false,
         false,
     ));
@@ -84,6 +89,21 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
+            "clippy",
+            "--manifest-path",
+            fuzz_manifest_path(repo_root).to_string_lossy().as_ref(),
+            "--bins",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
             "outdated",
             "--workspace",
             "--root-deps-only",
@@ -96,6 +116,31 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         ["audit", "-D", "warnings"],
+        false,
+        false,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
+            "outdated",
+            "--manifest-path",
+            fuzz_manifest_path(repo_root).to_string_lossy().as_ref(),
+            "--root-deps-only",
+            "--exit-code",
+            "1",
+        ],
+        false,
+        false,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
+            "audit",
+            "-D",
+            "warnings",
+            "--file",
+            fuzz_lockfile_path(repo_root).to_string_lossy().as_ref(),
+        ],
         false,
         false,
     ));
@@ -199,11 +244,6 @@ pub fn shell_script_paths(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
     Ok(scripts)
 }
 
-/// Reads the workspace version from the root manifest.
-pub fn workspace_version(repo_root: &Path) -> DynResult<String> {
-    workspace_version_from_manifest(&fs::read_to_string(repo_root.join("Cargo.toml"))?)
-}
-
 /// Resolves the Cargo target directory, honoring `CARGO_TARGET_DIR` when present.
 pub fn cargo_target_dir(repo_root: &Path) -> PathBuf {
     cargo_target_dir_from(
@@ -222,18 +262,6 @@ pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
         &workspace_version,
         &baseline_version,
     ))
-}
-
-/// Extracts the workspace version from a root `Cargo.toml` string.
-pub fn workspace_version_from_manifest(manifest: &str) -> DynResult<String> {
-    manifest_version_from_section(manifest, "[workspace.package]")
-        .ok_or_else(|| "workspace version not found in Cargo.toml".into())
-}
-
-/// Extracts the crate package version from a package `Cargo.toml` string.
-pub fn package_version_from_manifest(manifest: &str) -> DynResult<String> {
-    manifest_version_from_section(manifest, "[package]")
-        .ok_or_else(|| "package version not found in Cargo.toml".into())
 }
 
 /// Maps the workspace and baseline versions to the semver release type checked in CI.
@@ -302,6 +330,11 @@ pub fn fuzz_manifest_path(repo_root: &Path) -> PathBuf {
     repo_root.join("fuzz").join("Cargo.toml")
 }
 
+/// Returns the dedicated fuzz-package lockfile path.
+pub fn fuzz_lockfile_path(repo_root: &Path) -> PathBuf {
+    repo_root.join("fuzz").join("Cargo.lock")
+}
+
 #[cfg(windows)]
 /// Returns the platform-specific HTMLCut binary name.
 pub fn binary_name() -> &'static str {
@@ -312,40 +345,6 @@ pub fn binary_name() -> &'static str {
 /// Returns the platform-specific HTMLCut binary name.
 pub fn binary_name() -> &'static str {
     "htmlcut"
-}
-
-fn manifest_version_from_section(manifest: &str, section_name: &str) -> Option<String> {
-    let mut in_section = false;
-
-    for line in manifest.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_section = trimmed == section_name;
-            continue;
-        }
-
-        if !in_section {
-            continue;
-        }
-
-        if let Some(version) = version_assignment(trimmed) {
-            return Some(version);
-        }
-    }
-
-    None
-}
-
-fn version_assignment(line: &str) -> Option<String> {
-    let remainder = line.strip_prefix("version")?.trim_start();
-    let remainder = remainder.strip_prefix('=')?.trim_start();
-    let remainder = remainder.strip_prefix('"')?;
-    let closing_quote = remainder.find('"')?;
-    Some(remainder[..closing_quote].to_owned())
 }
 
 fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {

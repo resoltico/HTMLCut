@@ -2,27 +2,9 @@
 
 set -euo pipefail
 
-resolve_script_dir() {
-    local source_path="${BASH_SOURCE[0]}"
-    while [[ -h "${source_path}" ]]; do
-        local source_dir
-        source_dir="$(cd -P -- "$(dirname -- "${source_path}")" && pwd)"
-        source_path="$(readlink "${source_path}")"
-        if [[ "${source_path}" != /* ]]; then
-            source_path="${source_dir}/${source_path}"
-        fi
-    done
-    cd -P -- "$(dirname -- "${source_path}")" && pwd
-}
-
-die() {
-    printf 'error: %s\n' "$1" >&2
-    exit 1
-}
-
-workspace_version() {
-    "${script_dir}/workspace-version.sh" "${repo_root}/Cargo.toml"
-}
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "${script_dir}/common.sh"
 
 is_windows_environment() {
     [[ "${OS:-}" == "Windows_NT" ]] || command -v cygpath >/dev/null 2>&1
@@ -102,27 +84,27 @@ create_release_archive() {
                 return
             fi
 
-            die "no ZIP archiver found (expected zip, powershell.exe, or 7z)"
+            htmlcut_die "no ZIP archiver found (expected zip, powershell.exe, or 7z)"
             ;;
         *)
-            die "unsupported release archive extension: ${archive_output_extension}"
+            htmlcut_die "unsupported release archive extension: ${archive_output_extension}"
             ;;
     esac
 }
 
-script_dir="$(resolve_script_dir)"
+script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
 readonly script_dir
-repo_root="$(cd -P -- "${script_dir}/.." && pwd)"
+repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
 readonly repo_root
 # shellcheck disable=SC1091
 . "${script_dir}/release-targets.sh"
 target_triple="${1:-}"
 readonly target_triple
 
-[[ -n "${target_triple}" ]] || die "target triple is required"
-is_supported_release_target "${target_triple}" || die "unsupported release target triple: ${target_triple}"
+[[ -n "${target_triple}" ]] || htmlcut_die "target triple is required"
+is_supported_release_target "${target_triple}" || htmlcut_die "unsupported release target triple: ${target_triple}"
 
-version="$(workspace_version)"
+version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
 readonly version
 artifact_name="$(release_package_name_for_target "${version}" "${target_triple}")"
 readonly artifact_name

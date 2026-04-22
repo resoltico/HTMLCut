@@ -486,7 +486,7 @@ fn source_helpers_cover_remaining_unreachable_and_locator_paths() {
 #[cfg(unix)]
 #[test]
 fn read_file_source_reports_permission_denied_reads() {
-    let tempdir = tempfile::tempdir().expect("tempdir");
+    let tempdir = htmlcut_tempdir::tempdir().expect("tempdir");
     let unreadable_path = tempdir.path().join("unreadable.html");
     std::fs::write(&unreadable_path, "<article>Hello</article>").expect("write html");
 

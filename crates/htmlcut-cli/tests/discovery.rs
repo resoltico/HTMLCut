@@ -66,14 +66,23 @@ fn catalog_json_surfaces_operation_catalog() {
     assert_eq!(command_contract.default_match.as_deref(), Some("first"));
     assert_eq!(command_contract.default_value.as_deref(), Some("text"));
     assert_eq!(command_contract.default_output.as_deref(), Some("text"));
-    assert_eq!(command_contract.default_output_overrides.len(), 1);
-    assert_eq!(command_contract.default_output_overrides[0].value, "json");
+    assert_eq!(command_contract.default_output_overrides.len(), 2);
+    assert_eq!(command_contract.default_output_overrides[0].value, "html");
     assert_eq!(
         command_contract.default_output_overrides[0].when.parameter,
         "--value"
     );
     assert_eq!(
         command_contract.default_output_overrides[0].when.values,
+        vec!["inner-html".to_owned(), "outer-html".to_owned()]
+    );
+    assert_eq!(command_contract.default_output_overrides[1].value, "json");
+    assert_eq!(
+        command_contract.default_output_overrides[1].when.parameter,
+        "--value"
+    );
+    assert_eq!(
+        command_contract.default_output_overrides[1].when.values,
         vec!["structured".to_owned()]
     );
     assert!(

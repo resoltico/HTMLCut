@@ -38,6 +38,9 @@ fn select_help_stays_select_specific() {
             "Supported match modes: single, first, nth, all.",
         ))
         .stdout(predicate::str::contains(
+            "Output default override: html when --value is one of inner-html, outer-html.",
+        ))
+        .stdout(predicate::str::contains(
             "Output default override: json when --value is structured.",
         ))
         .stdout(predicate::str::contains(
@@ -54,6 +57,12 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Boundary matches are consumed exactly as matched."))
+        .stdout(predicate::str::contains(
+            "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, `u`, and `x`",
+        ))
+        .stdout(predicate::str::contains(
+            "`g` is accepted for compatibility and ignored",
+        ))
         .stdout(predicate::str::contains(
             "The selected fragment excludes both matched boundaries by default;",
         ))

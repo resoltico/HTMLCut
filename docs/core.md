@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: CORE
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -17,7 +17,7 @@ renders the result.
 
 ## Primary Root-Level Entry Points
 
-The crate root concentrates the primary stable execution and discovery entry points:
+The crate root exposes several especially important stable execution and discovery entry points:
 
 - `parse_document`
 - `inspect_source`
@@ -38,17 +38,20 @@ The crate root concentrates the primary stable execution and discovery entry poi
 - `schema_catalog`
 - `schema_descriptor`
 
+That list calls out the main execution and discovery helpers. It is not the full export inventory.
+
 Additional stable exports also include:
 
 - the `htmlcut_core::request` and `htmlcut_core::result` namespaces
 - schema/profile/version constants
 - `DiagnosticCode`
+- CLI-contract helpers such as `cli_aux_command_display_command()` and `render_cli_value()`
 - the versioned `htmlcut_core::interop` module
 
 The implementation modules stay private. Consumers should build on the crate root and the
 explicit namespaces above instead of reaching for internal module paths.
 
-Detailed contract types now live behind explicit namespaces:
+Detailed contract types live behind explicit namespaces:
 
 - `htmlcut_core::request` for typed request-side contracts
 - `htmlcut_core::result` for typed result-side contracts such as `ExtractionMatch`,
@@ -148,8 +151,10 @@ Those help-side contracts carry:
 Together, those registries are the source of truth for `htmlcut catalog`, `command_name`
 normalization in CLI reports, rendered CLI help, and contract-lint coverage over help/examples,
 catalog text, and recovery-error guidance.
-Use `operation_catalog()` and `cli_operation_catalog()` for discovery inside Rust callers instead
-of maintaining your own shadow matrix of supported behaviors.
+Use `operation_catalog()` and `cli_operation_catalog()` for operation discovery inside Rust callers.
+If you also need the non-operation command descriptors for `catalog`, `schema`, or the `inspect`
+command family, use `cli_aux_command_catalog()` as well instead of maintaining your own shadow
+matrix of supported behaviors.
 
 ## Schema Registry
 

@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.2.1"
+  version: "4.3.0"
   domain: MAINTAINER
-  updated: "2026-04-20"
+  updated: "2026-04-22"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]
@@ -21,7 +21,9 @@ Follow [docs/developer-setup.md](docs/developer-setup.md) for the canonical mach
 That guide owns the exact `rustup`, cargo QA tool, `shellcheck`, and macOS compiler-override
 commands plus the reasoning behind them.
 
-Stable remains the default development toolchain. Nightly exists only for the coverage gate.
+Rust `1.95.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
+manifest mirrors that compiler contract through `[workspace.package] rust-version`, and nightly
+exists separately for the coverage gate plus live `cargo-fuzz` campaigns.
 
 ## Normal Workflow
 
@@ -40,17 +42,23 @@ cargo xtask check
 ```
 
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
+For a short live libFuzzer pass that stages the checked-in corpora into disposable scratch, use
+`cargo xtask fuzz-smoke`.
 
-That gate now includes recursive Markdown docs-contract linting across the maintained public docs
+That gate includes recursive Markdown docs-contract linting across the maintained public docs
 set. It fails on missing AFAD metadata fields, metadata/version drift, ISO-date formatting,
 missing retrieval `keywords` or `questions`, broken local links, stale schema-name or
 operation-ID references, completeness drift in the maintained schema/operation inventory docs,
-and non-parsing concrete `htmlcut ...` examples. Keep repository docs relative-link clean, avoid
-machine-specific absolute paths, and use the canonical names exported by the product code.
+release-target and release-asset drift against `scripts/release-targets.sh`, and non-parsing
+concrete `htmlcut ...` examples. The same `xtask` test suite also enforces the workspace
+`rust-version` floor and member-manifest inheritance. Keep repository docs relative-link clean,
+avoid machine-specific absolute paths, and use the canonical names exported by the product code.
 
 Dependency updates that affect workspace crates must refresh both `Cargo.lock` and
 `fuzz/Cargo.lock`. The fuzz package is checked in and validated with `--locked`, so a
-workspace-only lockfile refresh is incomplete.
+workspace-only lockfile refresh is incomplete. The maintainer gate also formats, lints, audits,
+and dependency-checks the standalone fuzz package directly instead of treating it as compile-smoke
+only.
 
 Cargo Dependabot PRs are intentionally disabled for this reason. Use maintainer-authored
 dependency refreshes instead of relying on bot PRs that cannot keep the two lockfiles in sync.
@@ -106,7 +114,7 @@ For docs under `docs/`, keep AFAD metadata current. For special top-level files 
 rather than YAML frontmatter.
 
 When docs mention a schema family or operation ID, use the canonical names from `htmlcut schema`
-and `htmlcut catalog`. The Markdown docs contract now validates those identifiers directly.
+and `htmlcut catalog`. The Markdown docs contract validates those identifiers directly.
 
 ## Release Expectations
 
