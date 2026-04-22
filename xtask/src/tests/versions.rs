@@ -42,6 +42,27 @@ fn workspace_version_from_manifest_requires_a_version_line() {
 }
 
 #[test]
+fn workspace_rust_version_from_manifest_extracts_workspace_package_floor() {
+    let version = workspace_rust_version_from_manifest(
+        "[workspace.package]\nversion = \"3.1.4\"\nrust-version = \"1.95.0\"\nedition = \"2024\"\n",
+    )
+    .expect("workspace rust-version");
+
+    assert_eq!(version, "1.95.0");
+}
+
+#[test]
+fn workspace_rust_version_from_manifest_requires_a_rust_version_line() {
+    let error = workspace_rust_version_from_manifest("[workspace.package]\nversion = \"3.1.4\"\n")
+        .expect_err("missing rust-version should fail");
+
+    assert_eq!(
+        error.to_string(),
+        "workspace rust-version not found in Cargo.toml"
+    );
+}
+
+#[test]
 fn package_version_from_manifest_extracts_package_version() {
     let version = package_version_from_manifest(
         "[package]\nname = \"htmlcut-core\"\nversion = \"2.7.0\"\n\n[workspace]\n",
@@ -89,13 +110,60 @@ fn workspace_version_reads_from_repo_manifest() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join("Cargo.toml"),
-        "[workspace.package]\nversion = \"9.9.9\"\n",
+        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.95.0\"\n",
     )
     .expect("write Cargo.toml");
 
     let version = workspace_version(repo_root.path()).expect("workspace version");
 
     assert_eq!(version, "9.9.9");
+}
+
+#[test]
+fn workspace_rust_version_reads_from_repo_manifest() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.95.0\"\n",
+    )
+    .expect("write Cargo.toml");
+
+    let version = workspace_rust_version(repo_root.path()).expect("workspace rust-version");
+
+    assert_eq!(version, "1.95.0");
+}
+
+#[test]
+fn repo_manifests_publish_the_verified_rust_version_floor() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root");
+    let workspace_manifest =
+        fs::read_to_string(repo_root.join("Cargo.toml")).expect("workspace manifest");
+    let core_manifest = fs::read_to_string(repo_root.join("crates/htmlcut-core/Cargo.toml"))
+        .expect("core manifest");
+    let cli_manifest =
+        fs::read_to_string(repo_root.join("crates/htmlcut-cli/Cargo.toml")).expect("cli manifest");
+    let xtask_manifest =
+        fs::read_to_string(repo_root.join("xtask/Cargo.toml")).expect("xtask manifest");
+    let fuzz_manifest =
+        fs::read_to_string(repo_root.join("fuzz/Cargo.toml")).expect("fuzz manifest");
+    let toolchain_manifest =
+        fs::read_to_string(repo_root.join("rust-toolchain.toml")).expect("rust-toolchain manifest");
+    let repo_toolchain = repo_toolchain_from_manifest(&toolchain_manifest).expect("repo toolchain");
+
+    assert_eq!(
+        workspace_rust_version_from_manifest(&workspace_manifest).expect("workspace rust-version"),
+        "1.95.0"
+    );
+    assert_eq!(repo_toolchain.channel, "1.95.0");
+    assert_eq!(repo_toolchain.components, vec!["clippy", "rustfmt"]);
+    assert!(core_manifest.contains("rust-version.workspace = true"));
+    assert!(cli_manifest.contains("rust-version.workspace = true"));
+    assert!(xtask_manifest.contains("rust-version.workspace = true"));
+    assert!(fuzz_manifest.contains("rust-version = \"1.95.0\""));
+    assert!(fuzz_manifest.contains("unsafe_code = \"warn\""));
+    assert!(fuzz_manifest.contains("all = \"warn\""));
 }
 
 #[test]

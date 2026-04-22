@@ -13,7 +13,7 @@ use htmlcut_core::{
     SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
     preview_extraction,
 };
-use tempfile::tempdir;
+use htmlcut_tempdir::tempdir;
 use url::Url;
 
 fn write_fixture(tempdir: &Path, name: &str, contents: &str) -> PathBuf {

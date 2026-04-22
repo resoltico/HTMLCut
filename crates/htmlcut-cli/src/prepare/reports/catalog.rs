@@ -1,65 +1,12 @@
-use htmlcut_core::{
-    ExtractionResult, HTMLCUT_JSON_SCHEMA_PROFILE, SchemaStability, SourceInspectionResult,
-};
-use schemars::schema_for;
-use serde_json::Value;
-
 use crate::error::CliError;
-use crate::lookup::{unknown_operation_id_error, unknown_schema_error};
-use crate::metadata::{ENGINE_NAME, HTMLCUT_DESCRIPTION, HTMLCUT_VERSION, TOOL_NAME};
+use crate::lookup::unknown_operation_id_error;
+use crate::metadata::{HTMLCUT_DESCRIPTION, HTMLCUT_VERSION, TOOL_NAME};
 use crate::model::{
-    BundlePaths, CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogAvailability,
+    CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogAvailability,
     CatalogCommandContract, CatalogCommandReport, CatalogCondition, CatalogConditionalDefault,
     CatalogConstraint, CatalogContractSurface, CatalogOperationReport, CatalogParameterKind,
-    CatalogParameterRequirement, CatalogParameterSpec, EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
-    EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION, ExtractionCommandReport,
-    SCHEMA_COMMAND_REPORT_SCHEMA_NAME, SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
-    SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-    SchemaCommandReport, SchemaDocumentReport, SchemaRefReport, SourceInspectionCommandReport,
+    CatalogParameterRequirement, CatalogParameterSpec, SchemaRefReport,
 };
-
-pub(crate) fn build_extraction_report(
-    command: impl Into<String>,
-    result: ExtractionResult,
-    bundle: Option<BundlePaths>,
-) -> ExtractionCommandReport {
-    ExtractionCommandReport {
-        tool: TOOL_NAME.to_owned(),
-        engine: ENGINE_NAME.to_owned(),
-        version: HTMLCUT_VERSION.to_owned(),
-        schema_name: EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-        schema_version: EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
-        command: command.into(),
-        operation_id: result.operation_id,
-        ok: result.ok,
-        source: result.source,
-        extraction: result.extraction,
-        stats: result.stats,
-        document_title: result.document_title,
-        matches: result.matches,
-        diagnostics: result.diagnostics,
-        bundle,
-    }
-}
-
-pub(crate) fn build_source_inspection_report(
-    command: impl Into<String>,
-    result: SourceInspectionResult,
-) -> SourceInspectionCommandReport {
-    SourceInspectionCommandReport {
-        tool: TOOL_NAME.to_owned(),
-        engine: ENGINE_NAME.to_owned(),
-        version: HTMLCUT_VERSION.to_owned(),
-        schema_name: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-        schema_version: SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-        command: command.into(),
-        operation_id: result.operation_id,
-        ok: result.ok,
-        source: result.source,
-        document: result.document,
-        diagnostics: result.diagnostics,
-    }
-}
 
 pub(crate) fn build_catalog_report(
     operation_filter: Option<&str>,
@@ -100,61 +47,10 @@ pub(crate) fn build_catalog_report(
         version: HTMLCUT_VERSION.to_owned(),
         schema_name: CATALOG_REPORT_SCHEMA_NAME.to_owned(),
         schema_version: CATALOG_SCHEMA_VERSION,
-        schema_profile: HTMLCUT_JSON_SCHEMA_PROFILE.to_owned(),
+        schema_profile: htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE.to_owned(),
         description: HTMLCUT_DESCRIPTION.to_owned(),
         command: "catalog".to_owned(),
         operations,
-    })
-}
-
-pub(crate) fn build_schema_report(
-    name_filter: Option<&str>,
-    version_filter: Option<u32>,
-) -> Result<SchemaCommandReport, CliError> {
-    if let (Some(_), None) = (version_filter, name_filter) {
-        return Err(crate::error::usage_error(
-            "CLI_SCHEMA_VERSION_REQUIRES_NAME",
-            "`--schema-version` requires `--name`.",
-        ));
-    }
-
-    let mut schemas = htmlcut_core::schema_catalog()
-        .iter()
-        .map(build_schema_document_report)
-        .chain(
-            cli_schema_catalog()
-                .iter()
-                .map(build_schema_document_report),
-        )
-        .collect::<Vec<_>>();
-
-    schemas.sort_by(|left, right| {
-        left.schema_name
-            .cmp(&right.schema_name)
-            .then(left.schema_version.cmp(&right.schema_version))
-    });
-
-    let filtered = schemas
-        .iter()
-        .filter(|schema| name_filter.is_none_or(|name| schema.schema_name == name))
-        .filter(|schema| version_filter.is_none_or(|version| schema.schema_version == version))
-        .cloned()
-        .collect::<Vec<_>>();
-
-    if filtered.is_empty() {
-        let name = name_filter.expect("version-only filters return earlier");
-        return Err(unknown_schema_error(name, version_filter, &schemas));
-    }
-
-    Ok(SchemaCommandReport {
-        tool: TOOL_NAME.to_owned(),
-        version: HTMLCUT_VERSION.to_owned(),
-        schema_name: SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-        schema_version: SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
-        schema_profile: HTMLCUT_JSON_SCHEMA_PROFILE.to_owned(),
-        description: HTMLCUT_DESCRIPTION.to_owned(),
-        command: "schema".to_owned(),
-        schemas: filtered,
     })
 }
 
@@ -174,86 +70,6 @@ fn build_schema_ref_report(schema_ref: &htmlcut_core::SchemaRef) -> SchemaRefRep
         schema_name: schema_ref.schema_name.to_owned(),
         schema_version: schema_ref.schema_version,
     }
-}
-
-const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
-    htmlcut_core::SchemaDescriptor {
-        schema_ref: htmlcut_core::SchemaRef::new(
-            EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
-            EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
-        ),
-        owner_surface: "htmlcut-cli",
-        rust_shape: "ExtractionCommandReport",
-        stability: SchemaStability::Versioned,
-        json_schema: extraction_command_report_schema,
-    },
-    htmlcut_core::SchemaDescriptor {
-        schema_ref: htmlcut_core::SchemaRef::new(
-            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
-            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-        ),
-        owner_surface: "htmlcut-cli",
-        rust_shape: "SourceInspectionCommandReport",
-        stability: SchemaStability::Versioned,
-        json_schema: source_inspection_command_report_schema,
-    },
-    htmlcut_core::SchemaDescriptor {
-        schema_ref: htmlcut_core::SchemaRef::new(
-            CATALOG_REPORT_SCHEMA_NAME,
-            CATALOG_SCHEMA_VERSION,
-        ),
-        owner_surface: "htmlcut-cli",
-        rust_shape: "CatalogCommandReport",
-        stability: SchemaStability::Versioned,
-        json_schema: catalog_command_report_schema,
-    },
-    htmlcut_core::SchemaDescriptor {
-        schema_ref: htmlcut_core::SchemaRef::new(
-            SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
-            SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
-        ),
-        owner_surface: "htmlcut-cli",
-        rust_shape: "SchemaCommandReport",
-        stability: SchemaStability::Versioned,
-        json_schema: schema_command_report_schema,
-    },
-];
-
-fn cli_schema_catalog() -> &'static [htmlcut_core::SchemaDescriptor] {
-    CLI_SCHEMA_CATALOG
-}
-
-fn build_schema_document_report(
-    descriptor: &htmlcut_core::SchemaDescriptor,
-) -> SchemaDocumentReport {
-    SchemaDocumentReport {
-        schema_name: descriptor.schema_ref.schema_name.to_owned(),
-        schema_version: descriptor.schema_ref.schema_version,
-        owner_surface: descriptor.owner_surface.to_owned(),
-        rust_shape: descriptor.rust_shape.to_owned(),
-        stability: descriptor.stability,
-        json_schema: (descriptor.json_schema)(),
-    }
-}
-
-fn schema_json_for<T: schemars::JsonSchema>() -> Value {
-    serde_json::to_value(schema_for!(T)).expect("JSON Schema documents should always serialize")
-}
-
-fn extraction_command_report_schema() -> Value {
-    schema_json_for::<ExtractionCommandReport>()
-}
-
-fn source_inspection_command_report_schema() -> Value {
-    schema_json_for::<SourceInspectionCommandReport>()
-}
-
-fn catalog_command_report_schema() -> Value {
-    schema_json_for::<CatalogCommandReport>()
-}
-
-fn schema_command_report_schema() -> Value {
-    schema_json_for::<SchemaCommandReport>()
 }
 
 fn build_catalog_command_contract(

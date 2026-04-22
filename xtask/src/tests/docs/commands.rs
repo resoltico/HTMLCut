@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn markdown_contract_errors_report_unknown_schema_names_and_operation_ids() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",
@@ -53,6 +54,7 @@ fn markdown_contract_errors_report_unknown_schema_names_and_operation_ids() {
 #[test]
 fn markdown_contract_errors_report_non_parsing_htmlcut_examples_but_ignore_synopsis() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",
@@ -106,6 +108,7 @@ fn markdown_contract_errors_report_non_parsing_htmlcut_examples_but_ignore_synop
 #[test]
 fn markdown_contract_errors_report_invalid_catalog_schema_and_command_examples() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",

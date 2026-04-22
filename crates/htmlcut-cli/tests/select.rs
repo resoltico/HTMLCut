@@ -21,6 +21,34 @@ fn select_text_output_extracts_text_for_humans() {
 }
 
 #[test]
+fn select_html_value_modes_default_to_html_stdout() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "select-html.html",
+        "<article><p>Hello <strong>world</strong></p></article>",
+    );
+
+    let mut inner = Command::cargo_bin("htmlcut").expect("binary");
+    inner
+        .args(["select"])
+        .arg(&input_path)
+        .args(["--css", "article", "--value", "inner-html"])
+        .assert()
+        .success()
+        .stdout("<p>Hello <strong>world</strong></p>\n");
+
+    let mut outer = Command::cargo_bin("htmlcut").expect("binary");
+    outer
+        .args(["select"])
+        .arg(&input_path)
+        .args(["--css", "article", "--value", "outer-html"])
+        .assert()
+        .success()
+        .stdout("<article><p>Hello <strong>world</strong></p></article>\n");
+}
+
+#[test]
 fn select_nth_human_output_does_not_warn_about_multiple_candidates() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(

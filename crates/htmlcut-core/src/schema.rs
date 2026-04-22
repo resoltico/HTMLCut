@@ -51,6 +51,19 @@ impl SchemaRef {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_ref_constructor_keeps_name_and_version() {
+        let schema_ref = SchemaRef::new("htmlcut.fixture", 7);
+
+        assert_eq!(schema_ref.schema_name, "htmlcut.fixture");
+        assert_eq!(schema_ref.schema_version, 7);
+    }
+}
+
 /// Stability class for one exported schema.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]

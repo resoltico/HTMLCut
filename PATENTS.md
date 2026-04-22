@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.2.1"
+  version: "4.3.0"
   domain: LEGAL
-  updated: "2026-04-20"
+  updated: "2026-04-22"
 RETRIEVAL_HINTS:
   keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, dependency licenses]
   questions: [what is HTMLCut's patent posture?, which dependency license families include explicit patent grants?, where should I look for legal attribution?]

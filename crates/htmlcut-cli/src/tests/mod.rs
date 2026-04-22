@@ -15,12 +15,12 @@ use htmlcut_core::{
         SelectorMatchMetadata,
     },
 };
+use htmlcut_tempdir::tempdir;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use tempfile::tempdir;
 
 fn run_vec(args: Vec<String>) -> (i32, String, String) {
     let mut stdout = Vec::new();

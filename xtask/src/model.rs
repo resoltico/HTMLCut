@@ -12,61 +12,35 @@ pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, Br
 
 // Coverage is intentionally enforced as a 100% line-and-branch bar over the
 // executable modules that define HTMLCut's maintained extraction, CLI adapter,
-// and maintainer-gate logic. Thin crate roots, entrypoints, and declarative-only
-// modules are intentionally excluded because llvm-cov reports no executable
-// lines for them.
-pub(crate) const TRACKED_RELATIVE_PATHS: &[&str] = &[
-    "crates/htmlcut-core/src/catalog.rs",
-    "crates/htmlcut-core/src/cli_choice.rs",
-    "crates/htmlcut-core/src/cli_contract/mod.rs",
-    "crates/htmlcut-core/src/cli_contract/operations.rs",
-    "crates/htmlcut-core/src/cli_contract/parameters/mod.rs",
-    "crates/htmlcut-core/src/cli_contract/parameters/common.rs",
-    "crates/htmlcut-core/src/cli_contract/parameters/commands.rs",
-    "crates/htmlcut-core/src/cli_contract/parameters/descriptors.rs",
-    "crates/htmlcut-core/src/contracts/mod.rs",
-    "crates/htmlcut-core/src/contracts/request/extraction.rs",
-    "crates/htmlcut-core/src/contracts/request/options.rs",
-    "crates/htmlcut-core/src/contracts/request/primitives.rs",
-    "crates/htmlcut-core/src/contracts/request/requests.rs",
-    "crates/htmlcut-core/src/diagnostics.rs",
-    "crates/htmlcut-core/src/document/parse.rs",
-    "crates/htmlcut-core/src/document/render.rs",
-    "crates/htmlcut-core/src/document/summary.rs",
-    "crates/htmlcut-core/src/document/urls.rs",
-    "crates/htmlcut-core/src/extract/engine.rs",
-    "crates/htmlcut-core/src/extract/selector.rs",
-    "crates/htmlcut-core/src/extract/slice.rs",
-    "crates/htmlcut-core/src/inspect.rs",
-    "crates/htmlcut-core/src/interop/v1/execution.rs",
-    "crates/htmlcut-core/src/interop/v1/mod.rs",
-    "crates/htmlcut-core/src/interop/v1/stable_json.rs",
-    "crates/htmlcut-core/src/interop/v1/types.rs",
-    "crates/htmlcut-core/src/source/http.rs",
-    "crates/htmlcut-core/src/source/io.rs",
-    "crates/htmlcut-core/src/source/metadata.rs",
-    "crates/htmlcut-core/src/source/mod.rs",
-    "crates/htmlcut-core/src/source/types.rs",
-    "crates/htmlcut-cli/src/args.rs",
-    "crates/htmlcut-cli/src/error.rs",
-    "crates/htmlcut-cli/src/execute.rs",
-    "crates/htmlcut-cli/src/execute/cli_io.rs",
-    "crates/htmlcut-cli/src/execute/raw_args.rs",
-    "crates/htmlcut-cli/src/help.rs",
-    "crates/htmlcut-cli/src/prepare.rs",
-    "crates/htmlcut-cli/src/prepare/build.rs",
-    "crates/htmlcut-cli/src/prepare/definition.rs",
-    "crates/htmlcut-cli/src/prepare/reports.rs",
-    "crates/htmlcut-cli/src/render.rs",
-    "xtask/src/model.rs",
-    "xtask/src/plan.rs",
-    "xtask/src/coverage.rs",
-    "xtask/src/docs/mod.rs",
-    "xtask/src/docs/commands.rs",
-    "xtask/src/docs/identifiers.rs",
-    "xtask/src/docs/links.rs",
-    "xtask/src/docs/metadata.rs",
-    "xtask/src/docs/paths.rs",
+// and maintainer-gate logic. The tracked set is derived from the live source
+// tree so future seam splits are scored automatically; only declarative-only
+// modules with no maintained executable logic stay on the explicit exclusion
+// list.
+pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
+    "crates/htmlcut-core/src",
+    "crates/htmlcut-cli/src",
+    "xtask/src",
+];
+
+pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
+    "crates/htmlcut-cli/src/args/discovery.rs",
+    "crates/htmlcut-cli/src/args/extract.rs",
+    "crates/htmlcut-cli/src/args/inspect.rs",
+    "crates/htmlcut-cli/src/args/shared.rs",
+    "crates/htmlcut-cli/src/model/catalog.rs",
+    "crates/htmlcut-cli/src/model/mod.rs",
+    "crates/htmlcut-cli/src/model/reports.rs",
+    "crates/htmlcut-cli/src/model/schema.rs",
+    "crates/htmlcut-cli/src/prepare/build/mod.rs",
+    "crates/htmlcut-cli/src/prepare/definition/mod.rs",
+    "crates/htmlcut-cli/src/render/inspection/mod.rs",
+    "crates/htmlcut-cli/src/prepare/reports/mod.rs",
+    "crates/htmlcut-core/src/contracts/request/mod.rs",
+    "crates/htmlcut-core/src/document/mod.rs",
+    "crates/htmlcut-core/src/extract/mod.rs",
+    "crates/htmlcut-core/src/interop/mod.rs",
+    "crates/htmlcut-core/src/lib.rs",
+    "xtask/src/lib.rs",
 ];
 // HTMLCut stays on stable for normal development. Coverage is the one place we
 // intentionally hop to nightly because `cargo llvm-cov --branch` requires it.
@@ -91,7 +65,7 @@ pub struct CommandSpec {
     pub args: Vec<String>,
     /// Whether stdout should be suppressed unless the command fails.
     pub quiet_stdout: bool,
-    /// Whether the command should force the clang toolchain for coverage helpers.
+    /// Whether the command should force the documented clang `CC`/`CXX` toolchain environment.
     pub force_clang: bool,
 }
 

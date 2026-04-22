@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: SCHEMA
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -48,7 +48,7 @@ The exported registry profile is:
 
 ## Current Schema Inventory
 
-Current stable schema families are grouped by owner:
+Stable schema families are grouped by owner:
 
 This inventory is completeness-linted against the live schema registry. If the registry gains or
 loses a schema family, this guide is expected to change in the same diff.
@@ -89,7 +89,7 @@ families. The registry output is the authoritative version inventory.
 - `catalog` answers: what operations exist and how are they invoked?
 - `schema` answers: what are the exact JSON contracts behind those operations and reports?
 
-Each catalog operation now carries:
+Each catalog operation carries:
 
 - request `rust_shape`
 - request `schema_refs`
@@ -101,15 +101,15 @@ Each catalog operation now carries:
 
 Use those refs with the schema registry instead of treating catalog prose as the validator surface.
 
-For slice extraction, the request/result family is now mode-correct:
+For slice extraction, the request/result family is mode-correct:
 
 - literal slices carry `mode`, `from`, and `to` with no regex `flags`
 - regex slices carry `mode`, `from`, `to`, and `flags`
 
-The request/result value enums now serialize the inner-fragment mode explicitly as
+The request/result value enums serialize the inner-fragment mode explicitly as
 `inner-html`.
 
-The request-side schema family now also covers:
+The request-side schema family also covers:
 
 - `fetch_preflight` in `RuntimeOptions`
 - reusable serialized CLI/core requests through `ExtractionDefinition`
@@ -137,9 +137,9 @@ The structured `value` payload also carries collection context:
 That lets downstream callers reason about `--match all` result sets without reconstructing context
 from outer report fields alone.
 
-Successful source loads now also expose `SourceMetadata.load_steps`, a structured trace of the load
-actions HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded,
-was skipped, fell back, or failed before the final `GET`.
+Successful source loads expose `SourceMetadata.load_steps`, a structured trace of the load actions
+HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded, was
+skipped, fell back, or failed before the final `GET`.
 
 ## Top-Level Document Identity
 

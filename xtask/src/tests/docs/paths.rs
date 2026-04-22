@@ -93,6 +93,7 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
 #[test]
 fn markdown_contract_errors_report_absolute_and_missing_links() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",
@@ -143,6 +144,7 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
 #[test]
 fn markdown_contract_errors_ignore_external_anchor_and_mail_links() {
     let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.1.0\"\n",

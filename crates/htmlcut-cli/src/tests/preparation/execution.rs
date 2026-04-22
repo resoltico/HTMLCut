@@ -26,6 +26,9 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     );
     assert_eq!(parse_byte_size("512").expect("plain bytes"), 512);
     assert!(parse_byte_size(&"9".repeat(400)).is_err());
+    let fractional_byte = parse_byte_size("0.5b").expect_err("fractional bytes should fail");
+    assert_eq!(fractional_byte.code, "CLI_BYTE_SIZE_INVALID");
+    assert!(fractional_byte.message.contains("Invalid byte size"));
     let too_large = parse_byte_size("18446744073709551615kb").expect_err("too large byte size");
     assert_eq!(too_large.code, "CLI_BYTE_SIZE_INVALID");
     assert!(too_large.message.contains("Byte size is too large"));

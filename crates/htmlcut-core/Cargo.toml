@@ -2,6 +2,7 @@
 name = "htmlcut-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -21,7 +22,7 @@ ureq.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+htmlcut-tempdir.workspace = true
 
 [lints]
 workspace = true

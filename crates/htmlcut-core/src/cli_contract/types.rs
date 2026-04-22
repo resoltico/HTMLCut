@@ -259,6 +259,20 @@ pub struct CliConditionalDefault {
     pub when: CliCondition,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_value_display_matches_rendered_cli_value() {
+        let selection = CliValue::SelectionMode(CliSelectionMode::All);
+        let boolean = CliValue::Boolean(true);
+
+        assert_eq!(selection.to_string(), render_cli_value(selection));
+        assert_eq!(boolean.to_string(), render_cli_value(boolean));
+    }
+}
+
 /// One cross-parameter CLI contract rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CliConstraint {

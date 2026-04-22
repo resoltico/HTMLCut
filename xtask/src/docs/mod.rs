@@ -4,13 +4,14 @@ use std::path::Path;
 use regex::Regex;
 
 use crate::model::DynResult;
-use crate::plan::workspace_version;
+use crate::workspace_version;
 
 mod commands;
 mod identifiers;
 mod links;
 mod metadata;
 mod paths;
+mod release;
 
 pub use paths::markdown_doc_paths;
 
@@ -86,6 +87,7 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &schema_names,
             &operation_ids,
         ));
+        errors.extend(release::release_doc_errors(repo_root, &display_path, &text));
     }
 
     Ok(errors)

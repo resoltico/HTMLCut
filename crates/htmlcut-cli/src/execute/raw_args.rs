@@ -82,11 +82,6 @@ pub(crate) fn clap_error_message(error: &clap::Error) -> String {
         .unwrap_or_else(|| rendered.trim().to_owned())
 }
 
-pub(crate) fn report_command_for_operation(operation_id: htmlcut_core::OperationId) -> String {
-    htmlcut_core::cli_operation_report_command(operation_id)
-        .expect("CLI-visible operation should expose a report command")
-}
-
 fn raw_option_tokens(raw_args: &[String]) -> impl Iterator<Item = &str> {
     raw_args
         .iter()

@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.2.1"
+  version: "4.3.0"
   domain: QUALITY
-  updated: "2026-04-20"
+  updated: "2026-04-22"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
@@ -48,10 +48,13 @@ Install the fuzz driver once:
 cargo install cargo-fuzz --locked
 ```
 
-Run one target:
+On macOS, keep the maintained `CC=clang CXX=clang++` override from
+[`docs/developer-setup.md`](../docs/developer-setup.md) when installing `cargo-fuzz`.
+
+Run one maintained target without mutating the checked-in seed corpus:
 
 ```bash
-cargo fuzz run --manifest-path fuzz/Cargo.toml selector_parsing fuzz/corpus/selector_parsing
+cargo xtask fuzz-smoke --target selector_parsing
 ```
 
 Build every target without starting a fuzzing campaign:
@@ -62,11 +65,18 @@ cargo check --manifest-path fuzz/Cargo.toml --bins --locked
 
 This compile-smoke is part of the normal maintainer gate. Full fuzzing campaigns are not.
 
-Run a short local smoke campaign from the checked-in seeds:
+Run the full short local smoke inventory:
 
 ```bash
-cargo fuzz run --manifest-path fuzz/Cargo.toml parse_document_bytes fuzz/corpus/parse_document_bytes -- -runs=200
-cargo fuzz run --manifest-path fuzz/Cargo.toml selector_parsing fuzz/corpus/selector_parsing -- -runs=200
-cargo fuzz run --manifest-path fuzz/Cargo.toml slice_boundaries fuzz/corpus/slice_boundaries -- -runs=200
-cargo fuzz run --manifest-path fuzz/Cargo.toml extraction_request_building fuzz/corpus/extraction_request_building -- -runs=200
+cargo xtask fuzz-smoke
 ```
+
+Tune the libFuzzer iteration budget when you want a longer or shorter smoke pass:
+
+```bash
+cargo xtask fuzz-smoke --runs 500
+```
+
+`cargo xtask fuzz-smoke` preflights nightly plus `cargo-fuzz`, then stages each checked-in corpus
+into a temporary directory before calling `cargo +nightly fuzz run ...`, so the checked-in seed
+inventory stays clean after local smoke runs.

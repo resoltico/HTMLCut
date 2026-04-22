@@ -158,3 +158,67 @@ fn levenshtein_distance(left: &str, right: &str) -> usize {
 
     previous[right_chars.len()]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_schema(name: &str, version: u32) -> crate::model::SchemaDocumentReport {
+        crate::model::SchemaDocumentReport {
+            schema_name: name.to_owned(),
+            schema_version: version,
+            owner_surface: "htmlcut-cli".to_owned(),
+            rust_shape: "Fixture".to_owned(),
+            stability: htmlcut_core::SchemaStability::Versioned,
+            json_schema: serde_json::json!({"type": "object"}),
+        }
+    }
+
+    #[test]
+    fn suggest_nearest_covers_empty_strings_and_ranking_rules() {
+        assert_eq!(suggest_nearest("", ["schema"]), vec!["schema"]);
+        assert_eq!(suggest_nearest("schema", [""]), vec![""]);
+        assert_eq!(
+            suggest_nearest("tract", ["extract", "schema"]),
+            vec!["extract"]
+        );
+        assert_eq!(
+            suggest_nearest(
+                "selct.extract",
+                ["select.extract", "slice.extract", "schema"]
+            ),
+            vec!["select.extract", "slice.extract"]
+        );
+        assert!(suggest_nearest("totally-unrelated", ["schema", "catalog"]).is_empty());
+    }
+
+    #[test]
+    fn unknown_schema_error_prefers_matching_versions_over_name_suggestions() {
+        let schemas = vec![
+            fixture_schema("htmlcut.result", 1),
+            fixture_schema("htmlcut.result", 3),
+            fixture_schema("htmlcut.catalog_report", 4),
+        ];
+
+        let version_error = unknown_schema_error("htmlcut.result", Some(2), &schemas);
+        assert!(
+            version_error
+                .message
+                .contains("Available versions for `htmlcut.result`: 1, 3.")
+        );
+
+        let typo_error = unknown_schema_error("htmlcut.reslt", None, &schemas);
+        assert!(
+            typo_error
+                .message
+                .contains("Did you mean `htmlcut.result`?")
+        );
+    }
+
+    #[test]
+    fn unknown_operation_id_error_omits_suggestions_when_nothing_is_close() {
+        let error = unknown_operation_id_error("zzzzzzzzzz");
+
+        assert!(!error.message.contains("Did you mean"));
+    }
+}

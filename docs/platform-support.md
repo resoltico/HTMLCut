@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.2.1"
+version: "4.3.0"
 domain: PLATFORM
 updated: "2026-04-22"
 route:
@@ -81,7 +81,7 @@ Linux standalone artifacts target:
 
 ## Workflow Boundary
 
-GitHub release builds currently run on:
+GitHub release builds run on:
 
 - `macos-15` for `aarch64-apple-darwin`
 - `macos-15-intel` for `x86_64-apple-darwin`

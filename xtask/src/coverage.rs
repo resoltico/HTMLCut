@@ -1,12 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    BranchCoverageByFile, COVERAGE_TOOLCHAIN, COVERAGE_TOOLCHAIN_NAME, CommandSpec,
-    CoverageCounter, CoverageFailure, CoveragePreflightFailure, CoverageReport, CoverageSummary,
-    DynResult, TRACKED_RELATIVE_PATHS,
+    BranchCoverageByFile, COVERAGE_EXCLUDED_RELATIVE_PATHS, COVERAGE_SOURCE_ROOTS,
+    COVERAGE_TOOLCHAIN, COVERAGE_TOOLCHAIN_NAME, CommandSpec, CoverageCounter, CoverageFailure,
+    CoveragePreflightFailure, CoverageReport, CoverageSummary, DynResult,
 };
 use crate::plan::{cargo_target_dir, normalize_path};
 
@@ -112,10 +113,15 @@ pub fn ensure_coverage_output_dir(repo_root: &Path) -> DynResult<()> {
 /// Loads the curated set of production files that the coverage gate tracks.
 pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, String>> {
     let mut tracked_files = BTreeMap::new();
+    let excluded_paths = coverage_excluded_paths();
 
-    for relative_path in TRACKED_RELATIVE_PATHS {
-        let absolute_path = normalize_path(repo_root, &repo_root.join(relative_path))?;
-        tracked_files.insert(absolute_path, (*relative_path).to_owned());
+    for relative_root in COVERAGE_SOURCE_ROOTS {
+        collect_tracked_files(
+            repo_root,
+            &repo_root.join(relative_root),
+            &excluded_paths,
+            &mut tracked_files,
+        )?;
     }
 
     Ok(tracked_files)
@@ -253,6 +259,66 @@ fn coverage_target_dir(repo_root: &Path) -> PathBuf {
     cargo_target_dir(repo_root)
 }
 
+fn coverage_excluded_paths() -> BTreeSet<&'static str> {
+    COVERAGE_EXCLUDED_RELATIVE_PATHS.iter().copied().collect()
+}
+
+fn collect_tracked_files(
+    repo_root: &Path,
+    current_path: &Path,
+    excluded_paths: &BTreeSet<&str>,
+    tracked_files: &mut BTreeMap<PathBuf, String>,
+) -> DynResult<()> {
+    if !current_path.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(current_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            collect_tracked_files(repo_root, &path, excluded_paths, tracked_files)?;
+            continue;
+        }
+
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+
+        let absolute_path = normalize_path(repo_root, &path)?;
+        let relative_path = repo_relative_source_path(repo_root, &absolute_path)?;
+        if should_skip_coverage_path(&relative_path, excluded_paths) {
+            continue;
+        }
+
+        tracked_files.insert(absolute_path, relative_path);
+    }
+
+    Ok(())
+}
+
+fn repo_relative_source_path(repo_root: &Path, absolute_path: &Path) -> DynResult<String> {
+    let normalized_repo_root = normalize_path(repo_root, repo_root)?;
+    let relative = absolute_path
+        .strip_prefix(&normalized_repo_root)
+        .map_err(|error| {
+            format!(
+                "coverage source {} does not live under repo root {}: {error}",
+                absolute_path.display(),
+                normalized_repo_root.display()
+            )
+        })?;
+    Ok(relative.to_string_lossy().replace('\\', "/"))
+}
+
+fn should_skip_coverage_path(relative_path: &str, excluded_paths: &BTreeSet<&str>) -> bool {
+    relative_path.ends_with("/main.rs")
+        || relative_path.contains("/tests/")
+        || excluded_paths.contains(relative_path)
+}
+
 #[cfg(test)]
 pub(crate) fn coverage_output_path_for_tests(
     repo_root: &Path,
@@ -267,4 +333,73 @@ pub(crate) fn coverage_target_dir_for_tests(
     target_dir: Option<&Path>,
 ) -> PathBuf {
     crate::plan::cargo_target_dir_for_tests(repo_root, target_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use htmlcut_tempdir::tempdir;
+
+    #[cfg(unix)]
+    fn symlink_file(source: &Path, link: &Path) {
+        std::os::unix::fs::symlink(source, link).expect("create symlink");
+    }
+
+    #[test]
+    fn tracked_files_skip_missing_roots_non_rust_entries_and_explicit_exclusions() {
+        let repo_root = tempdir().expect("tempdir");
+        let cli_src = repo_root.path().join("crates/htmlcut-cli/src");
+        fs::create_dir_all(cli_src.join("nested")).expect("create nested cli src");
+        fs::create_dir_all(cli_src.join("tests")).expect("create cli test dir");
+        fs::create_dir_all(cli_src.join("model")).expect("create cli model dir");
+
+        fs::write(cli_src.join("lookup.rs"), "// tracked\n").expect("write lookup");
+        fs::write(cli_src.join("nested/report.rs"), "// tracked\n").expect("write nested report");
+        fs::write(cli_src.join("main.rs"), "// skipped main\n").expect("write main");
+        fs::write(cli_src.join("notes.txt"), "ignore").expect("write note");
+        fs::write(cli_src.join("tests/helper.rs"), "// skipped test module")
+            .expect("write test helper");
+        fs::write(cli_src.join("model/catalog.rs"), "// skipped declarative")
+            .expect("write excluded catalog model");
+
+        let tracked = tracked_files(repo_root.path()).expect("tracked files");
+        let tracked_paths = tracked.values().cloned().collect::<Vec<_>>();
+
+        assert!(tracked_paths.contains(&"crates/htmlcut-cli/src/lookup.rs".to_owned()));
+        assert!(tracked_paths.contains(&"crates/htmlcut-cli/src/nested/report.rs".to_owned()));
+        assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/main.rs".to_owned()));
+        assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/tests/helper.rs".to_owned()));
+        assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/model/catalog.rs".to_owned()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tracked_files_reject_entries_that_resolve_outside_the_repo_root() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let outside_root = tempdir().expect("outside tempdir");
+        let cli_src = repo_root.path().join("crates/htmlcut-cli/src");
+        fs::create_dir_all(&cli_src).expect("create cli src");
+        let outside_file = outside_root.path().join("escaped.rs");
+        fs::write(&outside_file, "// outside\n").expect("write outside file");
+        symlink_file(&outside_file, &cli_src.join("escaped.rs"));
+
+        let error = tracked_files(repo_root.path()).expect_err("symlink should escape the repo");
+
+        assert!(error.to_string().contains("does not live under repo root"));
+    }
+
+    #[test]
+    fn repo_relative_source_path_rejects_paths_outside_the_repo_root() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let outside_root = tempdir().expect("outside tempdir");
+        let outside_file = outside_root.path().join("lookup.rs");
+        fs::write(&outside_file, "// outside\n").expect("write outside file");
+        let absolute_outside_file =
+            normalize_path(repo_root.path(), &outside_file).expect("normalize outside file");
+
+        let error = repo_relative_source_path(repo_root.path(), &absolute_outside_file)
+            .expect_err("outside paths should fail");
+
+        assert!(error.to_string().contains("does not live under repo root"));
+    }
 }
