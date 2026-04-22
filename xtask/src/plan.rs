@@ -285,6 +285,32 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
     format!("{cargo_toml}\n[workspace]\n")
 }
 
+/// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.
+pub fn strip_dev_dependency_tables(cargo_toml: &str) -> String {
+    let mut sanitized = Vec::new();
+    let mut skipping = false;
+
+    for line in cargo_toml.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            skipping = trimmed.contains("dev-dependencies");
+            if skipping {
+                continue;
+            }
+        }
+
+        if !skipping {
+            sanitized.push(line);
+        }
+    }
+
+    let mut result = sanitized.join("\n");
+    if cargo_toml.ends_with('\n') {
+        result.push('\n');
+    }
+    result
+}
+
 /// Canonicalizes a repo-relative or absolute path against the repository root.
 pub fn normalize_path(repo_root: &Path, path: &Path) -> DynResult<PathBuf> {
     let candidate = if path.is_absolute() {

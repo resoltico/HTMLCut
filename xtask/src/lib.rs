@@ -36,7 +36,7 @@ pub use plan::{
     binary_name, check_plan, core_manifest_path, fuzz_lockfile_path, fuzz_manifest_path,
     is_semver_check_spec, normalize_path, release_binary_path, semver_baseline_path,
     semver_release_type, semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
-    with_workspace_stub,
+    strip_dev_dependency_tables, with_workspace_stub,
 };
 pub use release::{
     ReleaseMatrixEntry, macos_deployment_target, release_asset_names, release_matrix,

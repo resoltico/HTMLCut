@@ -212,3 +212,51 @@ fn with_workspace_stub_appends_once() {
         "[package]\nname = \"htmlcut-core\"\n\n[workspace]\n"
     );
 }
+
+#[test]
+fn strip_dev_dependency_tables_drops_root_and_target_specific_dev_dependencies() {
+    let manifest = "\
+[package]
+name = \"htmlcut-core\"
+
+[dependencies]
+serde = \"1\"
+
+[dev-dependencies]
+htmlcut-tempdir = { path = \"../htmlcut-tempdir\" }
+
+[target.'cfg(unix)'.dev-dependencies]
+tempfile = \"3\"
+
+[features]
+default = []
+";
+
+    assert_eq!(
+        strip_dev_dependency_tables(manifest),
+        "\
+[package]
+name = \"htmlcut-core\"
+
+[dependencies]
+serde = \"1\"
+
+[features]
+default = []
+"
+    );
+}
+
+#[test]
+fn strip_dev_dependency_tables_preserves_manifests_without_dev_dependencies() {
+    let manifest = "[package]\nname = \"htmlcut-core\"";
+
+    assert_eq!(strip_dev_dependency_tables(manifest), manifest);
+}
+
+#[test]
+fn strip_dev_dependency_tables_ignores_malformed_headers() {
+    let manifest = "[package\nname = \"htmlcut-core\"\n[dev-dependencies\nhtmlcut-tempdir = \"1\"";
+
+    assert_eq!(strip_dev_dependency_tables(manifest), manifest);
+}

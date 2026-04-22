@@ -14,8 +14,8 @@ use xtask::{
     fuzz_smoke_preflight_failures, fuzz_smoke_preflight_message, fuzz_smoke_targets,
     is_semver_check_spec, read_coverage_report, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
-    repo_toolchain_preflight_message, semver_scratch_dir, stage_fuzz_corpus, tracked_files,
-    with_workspace_stub, workspace_version,
+    repo_toolchain_preflight_message, semver_scratch_dir, stage_fuzz_corpus,
+    strip_dev_dependency_tables, tracked_files, with_workspace_stub, workspace_version,
 };
 
 #[derive(Parser)]
@@ -255,10 +255,20 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let baseline_parent = repo_root.join("semver-baseline");
     let baseline_dir = baseline_parent.join("htmlcut-core");
     let extracted_dir = baseline_parent.join(format!("htmlcut-core-{version}"));
+    let snapshot_manifest = snapshot_root
+        .join("crates")
+        .join("htmlcut-core")
+        .join("Cargo.toml");
     let archive = snapshot_root
         .join("target")
         .join("package")
         .join(format!("htmlcut-core-{version}.crate"));
+
+    let snapshot_cargo_toml = fs::read_to_string(&snapshot_manifest)?;
+    fs::write(
+        &snapshot_manifest,
+        strip_dev_dependency_tables(&snapshot_cargo_toml),
+    )?;
 
     run_spec(
         &snapshot_root,

@@ -99,7 +99,9 @@ git push
 ```
 
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
-cannot silently drift to unreleased local worktree state.
+cannot silently drift to unreleased local worktree state. The refresh flow strips test-only
+`dev-dependencies` tables from the released snapshot before packaging, so workspace-local
+maintainer helpers do not block the public-API baseline refresh.
 
 ## 12. Reconcile The Primary Checkout
 

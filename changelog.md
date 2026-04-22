@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the repo root, workspace version, or release tag; the `xtask` release test suite now includes a regression smoke that exercises those helpers under the same readonly naming pattern that broke the `v4.3.0` publication job.
+- `cargo xtask refresh-semver-baseline --git-ref ...` now strips test-only `dev-dependencies` tables from the released snapshot before it repackages `htmlcut-core`, so workspace-local maintainer helpers like `htmlcut-tempdir` do not break post-release semver baseline refresh.
 
 ## [4.3.0] - 2026-04-22
 
