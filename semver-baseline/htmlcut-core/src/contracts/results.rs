@@ -197,6 +197,47 @@ impl ExtractionMatchMetadata {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn selector_metadata() -> SelectorMatchMetadata {
+        SelectorMatchMetadata {
+            candidate_count: 4,
+            candidate_index: 2,
+            path: "article:nth-of-type(2)".to_owned(),
+            tag_name: "article".to_owned(),
+            attributes: BTreeMap::new(),
+        }
+    }
+
+    fn delimiter_pair_metadata() -> DelimiterPairMatchMetadata {
+        DelimiterPairMatchMetadata {
+            candidate_count: 5,
+            candidate_index: 3,
+            selected_range: Range { start: 10, end: 20 },
+            inner_range: Range { start: 11, end: 19 },
+            outer_range: Range { start: 9, end: 21 },
+            include_start: true,
+            include_end: false,
+            matched_start: "<article>".to_owned(),
+            matched_end: "</article>".to_owned(),
+        }
+    }
+
+    #[test]
+    fn extraction_match_metadata_accessors_cover_all_variants() {
+        let selector = ExtractionMatchMetadata::Selector(selector_metadata());
+        let delimiter_pair = ExtractionMatchMetadata::DelimiterPair(delimiter_pair_metadata());
+
+        assert_eq!(selector.candidate_count(), 4);
+        assert_eq!(selector.candidate_index(), 2);
+        assert_eq!(delimiter_pair.candidate_count(), 5);
+        assert_eq!(delimiter_pair.candidate_index(), 3);
+    }
+}
+
 /// Structured result produced by `extract` and `preview_extraction`.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ExtractionResult {

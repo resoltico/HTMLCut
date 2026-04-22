@@ -4,11 +4,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::constants::{
-    CORE_SPEC_VERSION, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
+    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
 };
 use super::super::{
     default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
-    default_preview_chars_non_zero, default_spec_version, default_true,
+    default_preview_chars_non_zero, default_true,
 };
 use super::{FetchPreflightMode, WhitespaceMode};
 
@@ -103,9 +103,3 @@ impl Default for InspectionOptions {
         }
     }
 }
-
-#[allow(dead_code)]
-const _: u32 = CORE_SPEC_VERSION;
-
-#[allow(dead_code)]
-const _: fn() -> u32 = default_spec_version;

@@ -300,7 +300,7 @@ fn slice_reports_invalid_regex_flags() {
 
 #[test]
 fn source_file_loading_returns_absolute_path() {
-    let tempdir = tempfile::tempdir().expect("tempdir");
+    let tempdir = htmlcut_tempdir::tempdir().expect("tempdir");
     let input_path = tempdir.path().join("input.html");
     std::fs::write(&input_path, "<p>Hello</p>").expect("write fixture");
 

@@ -178,7 +178,7 @@ fn slice_strategy_parameters(section: CliParameterSection) -> Vec<CliParameterDe
             "REGEX_FLAGS",
             None,
             Vec::new(),
-            "Regex flags for --pattern regex. Accepts i, m, s, u, and x.",
+            "Regex flags for --pattern regex. Accepts i, m, s, U, u, and x; g is accepted for compatibility and ignored.",
         ),
         param_flag(
             section,

@@ -70,7 +70,7 @@ pub(super) fn common_source_parameters(
             "SIZE",
             Some(CliValue::Usize(DEFAULT_MAX_BYTES)),
             Vec::new(),
-            "Refuse sources larger than this limit. Accepts raw bytes or KB, MB, and GB.",
+            "Refuse sources larger than this limit. Accepts raw bytes or KB, MB, and GB when the final byte count is a whole positive number.",
         ),
         param_option(
             CliParameterSection::Source,
