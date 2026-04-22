@@ -5,6 +5,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-04-22
+
+### Changed
+- Reworked release assets into explicit, versioned source archives and platform packages: source snapshots are now published as `htmlcut-source-X.Y.Z.{zip,tar.gz}`, macOS/Linux packages are published as versioned `.tar.gz` archives, Windows is published as a versioned `.zip`, and the release now carries one `htmlcut-X.Y.Z-checksums.txt` manifest instead of per-asset checksum sidecars.
+- Standalone release packages now include the platform binary together with `README.md`, `LICENSE`, `NOTICE`, and `PATENTS.md`, and the macOS/Linux package format preserves executable metadata through extraction instead of relying on a post-download `chmod`.
+- The release workflow now follows a draft-first publication flow, generates provenance attestations for source archives, standalone packages, and the checksum manifest, and refuses to backfill missing assets into an already-published release.
+- CI and release automation now smoke-test the extracted release packages themselves, so the required gate validates the actual shipped archives rather than only the compiled binary inside the build tree.
+- Windows release ZIP creation and smoke verification now use standards-compliant native ZIP handling, avoiding non-portable backslash entry paths and validating the same unpack flow Windows users rely on.
+- Refreshed the README, platform-support doc, and maintainer release protocol to document binary-package install, clarify the maintained asset inventory, and explicitly distinguish HTMLCut-owned source archives from GitHub's auto-generated `Source code` links.
+
 ## [4.2.0] - 2026-04-20
 
 ### Added

@@ -8,7 +8,7 @@ exclude = ["semver-baseline/htmlcut-core", "fuzz"]
 resolver = "3"
 
 [workspace.package]
-version = "4.2.0"
+version = "4.2.1"
 edition = "2024"
 description = "Extract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports."
 license = "MIT"
@@ -20,8 +20,8 @@ homepage = "https://github.com/resoltico/HTMLCut"
 assert_cmd = "2.2.0"
 clap = { version = "4.6.0", features = ["derive"] }
 ego-tree = "0.11.0"
-htmlcut-cli = { path = "crates/htmlcut-cli", version = "4.2.0" }
-htmlcut-core = { path = "crates/htmlcut-core", version = "4.2.0" }
+htmlcut-cli = { path = "crates/htmlcut-cli", version = "4.2.1" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "4.2.1" }
 predicates = "3.1.4"
 regex = "1.12.3"
 scraper = { version = "0.26.0", default-features = false, features = ["errors"] }

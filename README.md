@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.2.0"
+  version: "4.2.1"
   domain: PRODUCT
-  updated: "2026-04-20"
+  updated: "2026-04-22"
 RETRIEVAL_HINTS:
   keywords: [htmlcut, html extraction, css selector, slice extraction, extraction-definition json, catalog, schema, inspect]
   questions: [what is HTMLCut?, how do I install HTMLCut?, what commands does htmlcut expose?, how do I save a reusable extraction-definition file?]
@@ -41,6 +41,39 @@ source "$HOME/.cargo/env"
 cargo install --path crates/htmlcut-cli --locked
 htmlcut --help
 ```
+
+Install a prebuilt release package on macOS or Linux:
+
+```bash
+VERSION=X.Y.Z
+TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
+curl -LO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
+curl -LO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
+grep "  htmlcut-${VERSION}-${TARGET}.tar.gz$" "htmlcut-${VERSION}-checksums.txt" | shasum -a 256 -c
+tar -xzf "htmlcut-${VERSION}-${TARGET}.tar.gz"
+install "htmlcut-${VERSION}-${TARGET}/htmlcut" "$HOME/.local/bin/htmlcut"
+htmlcut --help
+```
+
+Install a prebuilt release package on Windows PowerShell:
+
+```powershell
+$Version = "X.Y.Z"
+$Target = "x86_64-pc-windows-msvc"
+Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
+Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
+$Expected = ((Select-String -Path "htmlcut-$Version-checksums.txt" -Pattern "  htmlcut-$Version-$Target\.zip$").Line -replace ' .*', '').ToLowerInvariant()
+$Actual = (Get-FileHash "htmlcut-$Version-$Target.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($Actual -ne $Expected) { throw "checksum mismatch" }
+Expand-Archive "htmlcut-$Version-$Target.zip" -DestinationPath .
+New-Item -ItemType Directory -Force "$HOME\bin" | Out-Null
+Copy-Item "htmlcut-$Version-$Target\htmlcut*" "$HOME\bin"
+$env:Path = "$HOME\bin;$env:Path"
+htmlcut --help
+```
+
+Each prebuilt release package contains the platform binary plus `README.md`, `LICENSE`, `NOTICE`,
+and `PATENTS.md`.
 
 ## Command Surface
 
@@ -212,18 +245,23 @@ request/result contract types are grouped under `htmlcut_core::request` and
 
 ## Release Assets
 
-The release workflow publishes source archives plus standalone binaries and checksum files for:
+The maintained release workflow publishes versioned source archives, versioned standalone packages,
+and one checksum manifest:
 
-- `htmlcut-X.Y.Z.zip`
-- `htmlcut-X.Y.Z.tar.gz`
-- `htmlcut-aarch64-apple-darwin`
-- `htmlcut-aarch64-apple-darwin.sha256`
-- `htmlcut-x86_64-apple-darwin`
-- `htmlcut-x86_64-apple-darwin.sha256`
-- `htmlcut-x86_64-unknown-linux-musl`
-- `htmlcut-x86_64-unknown-linux-musl.sha256`
-- `htmlcut-x86_64-pc-windows-msvc.exe`
-- `htmlcut-x86_64-pc-windows-msvc.exe.sha256`
+- `htmlcut-source-X.Y.Z.zip`
+- `htmlcut-source-X.Y.Z.tar.gz`
+- `htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-apple-darwin.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-unknown-linux-musl.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-pc-windows-msvc.zip`
+- `htmlcut-X.Y.Z-checksums.txt`
+
+The `htmlcut-source-...` assets are release-owned source snapshots. They are intentionally named as
+source archives to distinguish them from runnable binary packages.
+
+GitHub will also render `Source code (zip)` and `Source code (tar.gz)` links on the release page.
+Those links are GitHub-generated convenience downloads, not part of HTMLCut's maintained release
+asset inventory.
 
 ## Developer And Maintainer Docs
 

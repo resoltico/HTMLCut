@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.0"
+version: "4.2.1"
 domain: PLATFORM
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
@@ -25,17 +25,33 @@ artifact production belongs to GitHub release automation.
 
 ## Public Standalone Release Targets
 
-HTMLCut publishes standalone binaries and SHA-256 checksum files for:
+HTMLCut publishes versioned standalone release packages for:
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
 - `x86_64-unknown-linux-musl`
 - `x86_64-pc-windows-msvc`
 
-Release source archives are also published as:
+The maintained asset names are:
 
-- `htmlcut-X.Y.Z.zip`
-- `htmlcut-X.Y.Z.tar.gz`
+- `htmlcut-source-X.Y.Z.zip`
+- `htmlcut-source-X.Y.Z.tar.gz`
+- `htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-apple-darwin.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-unknown-linux-musl.tar.gz`
+- `htmlcut-X.Y.Z-x86_64-pc-windows-msvc.zip`
+- `htmlcut-X.Y.Z-checksums.txt`
+
+macOS and Linux targets ship as `.tar.gz` packages so the executable bit survives extraction.
+Windows ships as a `.zip` package.
+
+Each standalone package contains:
+
+- the platform binary
+- `README.md`
+- `LICENSE`
+- `NOTICE`
+- `PATENTS.md`
 
 ## Deployment Floors
 
@@ -75,6 +91,10 @@ GitHub release builds currently run on:
 GitHub CI also runs release-target smoke on that same target matrix before the aggregate required
 check reports success.
 
+GitHub also renders auto-generated `Source code (zip)` and `Source code (tar.gz)` links on release
+pages. Those links are GitHub-provided convenience downloads and are not part of HTMLCut's
+maintained asset inventory.
+
 ## Source Of Truth
 
 The target policy is implemented in:
@@ -83,6 +103,7 @@ The target policy is implemented in:
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 - `scripts/build-release-artifact.sh`
+- `scripts/smoke-release-artifact.sh`
 - `scripts/publish-github-release.sh`
 - `scripts/verify-github-release.sh`
 

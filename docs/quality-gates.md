@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.2.0"
+version: "4.2.1"
 domain: QUALITY
 updated: "2026-04-20"
 route:
@@ -103,5 +103,6 @@ the release workflow as defined in [platform-support.md](platform-support.md).
 The repo-root `./check.sh` wrapper is shell-linted alongside the `scripts/` directory so the
 documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
 
-GitHub CI also runs a release-target smoke matrix across the public standalone targets before the
-aggregate required check reports success.
+GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
+the built release packages and executing the packaged binaries before the aggregate required check
+reports success.

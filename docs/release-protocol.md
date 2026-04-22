@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.2.0"
+version: "4.2.1"
 domain: RELEASE
-updated: "2026-04-20"
+updated: "2026-04-22"
 route:
   keywords: [release protocol, gh cli, tag push, release workflow, semver baseline, verification]
   questions: ["how do I release HTMLCut?", "what must be verified before tagging a release?", "when do I refresh the HTMLCut semver baseline?"]
@@ -28,6 +28,44 @@ gh auth status
 If either command fails, stop immediately.
 
 ## 1. Pre-flight
+
+Before any quality gate or version edit, identify the checkout the user will keep using after the
+release. Call it the primary checkout.
+
+Run:
+
+```bash
+git rev-parse --show-toplevel
+git branch --show-current
+git status --short
+git fetch origin --prune --tags
+git rev-list --left-right --count HEAD...origin/main
+```
+
+Requirements:
+
+- the primary checkout path is known explicitly
+- the primary checkout must not be left behind `origin/main` at release closeout
+- if the primary checkout is already clean and current, release from it directly
+- if the primary checkout has local work, is intentionally dirty, or lives on a problematic or slow
+  filesystem, create a clean release worktree from the same repository and do the release there:
+
+```bash
+PRIMARY_CHECKOUT=$(git rev-parse --show-toplevel)
+git fetch origin --prune --tags
+RELEASE_WORKTREE="$(mktemp -d -t htmlcut-release-XXXXXX)"
+git worktree add "$RELEASE_WORKTREE" origin/main
+cd "$RELEASE_WORKTREE"
+```
+
+Use a Git worktree, not a disconnected clone, whenever possible. A worktree shares refs with the
+primary checkout and makes post-release reconciliation mechanically obvious. A separate clone is a
+last resort and, if used, must still be reconciled back into the primary checkout before the
+release session ends.
+
+If the primary checkout has unpublished local work, decide before the release whether that work is
+real or stale. Real work must move onto a named branch or exported patch before closeout. Stale
+work must be dropped. Never leave the primary checkout on stale `main` plus unpublished overlays.
 
 Install the local maintainer toolchain if it is not already available by following
 [developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
@@ -71,16 +109,13 @@ Then verify:
 - `docs/quality-gates.md` still matches the maintained `cargo xtask` gate.
 - `Cargo.toml` still defines the `dist` Cargo profile used for shipped public binaries.
 - `README.md` still documents the release asset names:
-  - `htmlcut-X.Y.Z.zip`
-  - `htmlcut-X.Y.Z.tar.gz`
-  - `htmlcut-aarch64-apple-darwin`
-  - `htmlcut-aarch64-apple-darwin.sha256`
-  - `htmlcut-x86_64-apple-darwin`
-  - `htmlcut-x86_64-apple-darwin.sha256`
-  - `htmlcut-x86_64-unknown-linux-musl`
-  - `htmlcut-x86_64-unknown-linux-musl.sha256`
-  - `htmlcut-x86_64-pc-windows-msvc.exe`
-  - `htmlcut-x86_64-pc-windows-msvc.exe.sha256`
+  - `htmlcut-source-X.Y.Z.zip`
+  - `htmlcut-source-X.Y.Z.tar.gz`
+  - `htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-apple-darwin.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-unknown-linux-musl.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-pc-windows-msvc.zip`
+  - `htmlcut-X.Y.Z-checksums.txt`
 - repository settings are still aligned with this protocol:
   - default branch is `main`
   - `delete_branch_on_merge` is enabled
@@ -201,6 +236,11 @@ Never create a second tag or move an existing release tag just to retry publicat
 The rerun is expected to execute the maintained workflow and release scripts from `main`, while
 the build jobs still check out the existing tag payload identified by `release_tag`.
 
+The release workflow now follows a draft-first publication model: it creates or reuses a draft
+release, uploads the full maintained asset inventory, writes the checksum manifest, and only then
+publishes the release. A rerun may repair an in-progress draft release. It must not backfill
+missing assets into an already-published release.
+
 ## 6. Branch hygiene
 
 After the merge and tag push, clean up stale remote-tracking refs and verify that no historical
@@ -264,52 +304,49 @@ Requirements:
 - `isDraft` is `false`
 - `isPrerelease` is `false` unless intentionally prerelease
 - assets include:
-  - `htmlcut-X.Y.Z.zip`
-  - `htmlcut-X.Y.Z.tar.gz`
-  - `htmlcut-aarch64-apple-darwin`
-  - `htmlcut-aarch64-apple-darwin.sha256`
-  - `htmlcut-x86_64-apple-darwin`
-  - `htmlcut-x86_64-apple-darwin.sha256`
-  - `htmlcut-x86_64-unknown-linux-musl`
-  - `htmlcut-x86_64-unknown-linux-musl.sha256`
-  - `htmlcut-x86_64-pc-windows-msvc.exe`
-  - `htmlcut-x86_64-pc-windows-msvc.exe.sha256`
+  - `htmlcut-source-X.Y.Z.zip`
+  - `htmlcut-source-X.Y.Z.tar.gz`
+  - `htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-apple-darwin.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-unknown-linux-musl.tar.gz`
+  - `htmlcut-X.Y.Z-x86_64-pc-windows-msvc.zip`
+  - `htmlcut-X.Y.Z-checksums.txt`
 
 Workflow success is not authoritative. The release object and its assets are authoritative.
 
+GitHub will also render `Source code (zip)` and `Source code (tar.gz)` links on the release page.
+Those links are GitHub-generated convenience downloads and are not part of HTMLCut's maintained
+asset inventory.
+
 ## 9. Verify the public binary
 
-Download the published standalone artifacts, verify every checksum, and execute the host-native
-binary directly:
+Download the maintained release assets, verify the checksum manifest, and execute the host-native
+binary from its extracted package:
 
 ```bash
 TMP_DIR="$(mktemp -d)"
 gh release download vX.Y.Z \
-  -p 'htmlcut-aarch64-apple-darwin' \
-  -p 'htmlcut-aarch64-apple-darwin.sha256' \
-  -p 'htmlcut-x86_64-apple-darwin' \
-  -p 'htmlcut-x86_64-apple-darwin.sha256' \
-  -p 'htmlcut-x86_64-unknown-linux-musl' \
-  -p 'htmlcut-x86_64-unknown-linux-musl.sha256' \
-  -p 'htmlcut-x86_64-pc-windows-msvc.exe' \
-  -p 'htmlcut-x86_64-pc-windows-msvc.exe.sha256' \
+  -p 'htmlcut-source-X.Y.Z.zip' \
+  -p 'htmlcut-source-X.Y.Z.tar.gz' \
+  -p 'htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz' \
+  -p 'htmlcut-X.Y.Z-x86_64-apple-darwin.tar.gz' \
+  -p 'htmlcut-X.Y.Z-x86_64-unknown-linux-musl.tar.gz' \
+  -p 'htmlcut-X.Y.Z-x86_64-pc-windows-msvc.zip' \
+  -p 'htmlcut-X.Y.Z-checksums.txt' \
   -D "$TMP_DIR"
 
 (
   cd "$TMP_DIR"
-  shasum -a 256 -c htmlcut-x86_64-apple-darwin.sha256
-  shasum -a 256 -c htmlcut-x86_64-unknown-linux-musl.sha256
-  shasum -a 256 -c htmlcut-x86_64-pc-windows-msvc.exe.sha256
-  shasum -a 256 -c htmlcut-aarch64-apple-darwin.sha256
-  chmod +x ./htmlcut-aarch64-apple-darwin
-  ./htmlcut-aarch64-apple-darwin --version | grep "^htmlcut X.Y.Z$"
-  ./htmlcut-aarch64-apple-darwin --help | grep "inspect"
+  shasum -a 256 -c htmlcut-X.Y.Z-checksums.txt
+  tar -xzf ./htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz
+  ./htmlcut-X.Y.Z-aarch64-apple-darwin/htmlcut --version | grep "^htmlcut X.Y.Z$"
+  ./htmlcut-X.Y.Z-aarch64-apple-darwin/htmlcut --help | grep "inspect"
 )
 
 rm -rf "$TMP_DIR"
 ```
 
-Do not declare the release complete until every checksum file validates and the downloaded
+Do not declare the release complete until the checksum manifest validates and the downloaded
 host-native binary reports the target version.
 
 The `grep "^htmlcut X.Y.Z$"` check intentionally validates only the first line because
@@ -405,3 +442,41 @@ git push
 
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
 cannot silently drift to unreleased local worktree state.
+
+## 12. Reconcile the Primary Checkout
+
+If the release used a dedicated release worktree or any checkout other than the primary checkout,
+the session is not complete until the primary checkout is truthful again. This is a blocking
+release closeout gate, not an advisory cleanup reminder.
+
+If unpublished local work from the primary checkout is still needed, move it onto a named branch
+based on current `main` first, then return the primary checkout itself to `main`.
+
+Run:
+
+```bash
+git -C "$PRIMARY_CHECKOUT" fetch origin --prune --tags
+git -C "$PRIMARY_CHECKOUT" checkout main
+git -C "$PRIMARY_CHECKOUT" rev-list --left-right --count HEAD...origin/main
+git -C "$PRIMARY_CHECKOUT" merge --ff-only origin/main
+git -C "$PRIMARY_CHECKOUT" rev-parse HEAD
+git -C "$PRIMARY_CHECKOUT" status --short
+```
+
+Requirements before declaring the release session complete:
+
+- the primary checkout `HEAD` equals `origin/main`
+- the primary checkout `Cargo.toml` and `changelog.md` reflect the released version
+- no stale release-only checkout may be left behind with the appearance of being authoritative
+- if unpublished local work from the primary checkout is still needed, replay it deliberately onto a
+  named branch based on current `main`; do not leave it only in a stash or mixed back into `main`
+- if that unpublished local work is stale, superseded, or regresses the shipped release state,
+  delete it instead of preserving misleading debris
+
+Do not declare the release complete until every condition above is true at the same time.
+
+If a disposable release worktree was created and is no longer needed:
+
+```bash
+git worktree remove "$RELEASE_WORKTREE"
+```
