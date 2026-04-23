@@ -34,7 +34,8 @@ Release choreography lives in this document set. Contract-versioning policy live
 - The GitHub release object and its asset inventory are the authoritative publication record.
 - The checked-in semver baseline is refreshed only after the corresponding release is published.
 - If a separate worktree is used, the primary checkout must still end the session truthful and
-  synchronized with `origin/main`.
+  synchronized with `origin/main`, and no disposable worktree may keep owning `main` once the
+  primary checkout needs to reclaim it during closeout.
 
 ## Shared Inputs
 

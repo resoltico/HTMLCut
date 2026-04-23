@@ -5,17 +5,29 @@ use crate::{macos_deployment_target, release_asset_names, release_matrix, releas
 pub(super) fn release_doc_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<String> {
     let mut errors = Vec::new();
 
-    match display_path {
-        "README.md" | "docs/release-preflight.md" | "docs/release-publishing.md" => {
-            errors.extend(asset_name_errors(repo_root, display_path, text));
-        }
-        "docs/platform-support.md" => {
-            errors.extend(asset_name_errors(repo_root, display_path, text));
-            errors.extend(target_triple_errors(repo_root, display_path, text));
-            errors.extend(matrix_pair_errors(repo_root, display_path, text));
-            errors.extend(macos_floor_errors(repo_root, display_path, text));
-        }
-        _ => {}
+    if matches!(
+        display_path,
+        "README.md" | "docs/release-preflight.md" | "docs/release-publishing.md"
+    ) {
+        errors.extend(asset_name_errors(repo_root, display_path, text));
+    }
+
+    if display_path == "docs/platform-support.md" {
+        errors.extend(asset_name_errors(repo_root, display_path, text));
+        errors.extend(target_triple_errors(repo_root, display_path, text));
+        errors.extend(matrix_pair_errors(repo_root, display_path, text));
+        errors.extend(macos_floor_errors(repo_root, display_path, text));
+    }
+
+    if matches!(
+        display_path,
+        "docs/release-preflight.md" | "docs/release-closeout.md"
+    ) {
+        errors.extend(explicit_main_sync_errors(display_path, text));
+    }
+
+    if display_path == "docs/release-closeout.md" {
+        errors.extend(worktree_handoff_errors(display_path, text));
     }
 
     errors
@@ -83,6 +95,41 @@ fn macos_floor_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<S
             "{display_path} could not load canonical macOS deployment floor: {error}"
         )],
     }
+}
+
+fn explicit_main_sync_errors(display_path: &str, text: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if text.contains("git pull") {
+        errors.push(format!(
+            "{display_path} must not use implicit `git pull` in the maintained release protocol"
+        ));
+    }
+
+    if !text.contains("git fetch origin --prune --tags") {
+        errors.push(format!(
+            "{display_path} is missing the explicit `git fetch origin --prune --tags` sync step"
+        ));
+    }
+
+    if !text.contains("git merge --ff-only origin/main") {
+        errors.push(format!(
+            "{display_path} is missing the explicit `git merge --ff-only origin/main` sync step"
+        ));
+    }
+
+    errors
+}
+
+fn worktree_handoff_errors(display_path: &str, text: &str) -> Vec<String> {
+    (!text.contains("checkout --detach"))
+        .then(|| {
+            format!(
+                "{display_path} must document detaching a disposable release worktree before the primary checkout reclaims `main`"
+            )
+        })
+        .into_iter()
+        .collect()
 }
 
 fn missing_literals(
@@ -171,5 +218,32 @@ macos_deployment_target_for_target() {
         assert!(errors.iter().any(|error| error.contains(
             "docs/platform-support.md could not determine the canonical macOS deployment floor"
         )));
+    }
+
+    #[test]
+    fn explicit_main_sync_errors_reject_implicit_git_pull() {
+        let errors =
+            explicit_main_sync_errors("docs/release-preflight.md", "git checkout main\ngit pull\n");
+
+        assert!(errors.iter().any(|error| {
+            error.contains("docs/release-preflight.md must not use implicit `git pull`")
+        }));
+        assert!(errors.iter().any(|error| {
+            error.contains("docs/release-preflight.md is missing the explicit `git fetch origin --prune --tags` sync step")
+        }));
+        assert!(errors.iter().any(|error| {
+            error.contains("docs/release-preflight.md is missing the explicit `git merge --ff-only origin/main` sync step")
+        }));
+    }
+
+    #[test]
+    fn worktree_handoff_errors_require_detach_guidance() {
+        let errors = worktree_handoff_errors("docs/release-closeout.md", "# Release Closeout");
+
+        assert!(errors.iter().any(|error| {
+            error.contains(
+                "docs/release-closeout.md must document detaching a disposable release worktree",
+            )
+        }));
     }
 }

@@ -5,6 +5,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Tightened the maintainer release protocol so post-merge and closeout sync steps use explicit
+  `git fetch ...` plus `git merge --ff-only origin/main` instead of implicit `git pull`, documented
+  the required `main` branch-ownership handoff when a disposable release worktree is used, and
+  added explicit cleanup for stale `release-prep/X.Y.Z` branches after the shipped history absorbs
+  them.
+
 ## [4.4.0] - 2026-04-23
 
 ### Changed

@@ -237,7 +237,8 @@ the release-target smoke matrix.
 ```bash
 gh pr merge <N> --merge --delete-branch --subject "release: bump version to X.Y.Z (#N)"
 git checkout main
-git pull
+git fetch origin --prune --tags
+git merge --ff-only origin/main
 gh pr view <N> --json number,state,mergedAt,headRefName,baseRefName,url
 ```
 

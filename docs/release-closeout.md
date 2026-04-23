@@ -79,8 +79,8 @@ After each merge or close, resync and re-check GitHub branch state:
 
 ```bash
 git checkout main
-git pull
-git remote prune origin
+git fetch origin --prune --tags
+git merge --ff-only origin/main
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh api "repos/$REPO/branches" --paginate --jq '.[].name'
 ```
@@ -99,7 +99,8 @@ checks compare against the latest published API:
 
 ```bash
 git checkout main
-git pull
+git fetch origin --prune --tags
+git merge --ff-only origin/main
 cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 git add semver-baseline/htmlcut-core
 git commit -m "chore: refresh htmlcut-core semver baseline"
@@ -111,6 +112,11 @@ cannot silently drift to unreleased local worktree state. The refresh flow strip
 `dev-dependencies` tables from the released snapshot before packaging, so workspace-local
 maintainer helpers do not block the public-API baseline refresh.
 
+With the documented branch protection, that `git push` is an intentional maintainer-owned direct
+`main` closeout update and GitHub may report it as an admin bypass of the pull-request-only rule.
+If the push is rejected because admins are now enforced or a new review rule was added, repository
+settings have drifted away from this protocol and must be corrected before the closeout continues.
+
 ## 12. Reconcile The Primary Checkout
 
 If the release used a dedicated release worktree or any checkout other than the primary checkout,
@@ -119,6 +125,13 @@ release closeout gate, not an advisory cleanup reminder.
 
 If unpublished local work from the primary checkout is still needed, move it onto a named branch
 based on current `main` first, then return the primary checkout itself to `main`.
+
+If the disposable release worktree still has `main` checked out, Git will refuse
+`git -C "$PRIMARY_CHECKOUT" checkout main`. Detach that disposable worktree first:
+
+```bash
+git -C "$RELEASE_WORKTREE" checkout --detach
+```
 
 Run:
 
@@ -131,11 +144,20 @@ git -C "$PRIMARY_CHECKOUT" rev-parse HEAD
 git -C "$PRIMARY_CHECKOUT" status --short
 ```
 
+If a temporary `release-prep/X.Y.Z` branch was created only to capture dirty release-candidate
+state and the shipped `main` history has absorbed it, delete that stale prep branch explicitly:
+
+```bash
+git -C "$PRIMARY_CHECKOUT" branch -d release-prep/X.Y.Z
+```
+
 Requirements before declaring the release session complete:
 
 - the primary checkout `HEAD` equals `origin/main`
 - the primary checkout `Cargo.toml` and `changelog.md` reflect the released version
 - no stale release-only checkout may be left behind with the appearance of being authoritative
+- no stale local `release-prep/` branch may remain once the shipped `main` history fully absorbs
+  it
 - if unpublished local work from the primary checkout is still needed, replay it deliberately onto
   a named branch based on current `main`; do not leave it only in a stash or mixed back into `main`
 - if that unpublished local work is stale, superseded, or regresses the shipped release state,
