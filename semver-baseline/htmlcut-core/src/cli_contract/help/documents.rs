@@ -1,107 +1,10 @@
-#[cfg(test)]
-use crate::catalog::{OperationDescriptor, operation_catalog};
 use crate::catalog::{OperationId, operation_descriptor};
 use crate::{CORE_RESULT_SCHEMA_NAME, cli_operation_contract, interop::v1::RESULT_SCHEMA_NAME};
 
-/// Canonical non-operation CLI commands whose help surface is owned by `htmlcut-core`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CliAuxCommandId {
-    /// `htmlcut catalog`
-    Catalog,
-    /// `htmlcut schema`
-    Schema,
-    /// `htmlcut inspect`
-    Inspect,
-}
-
-impl CliAuxCommandId {
-    /// Returns the stable display-form command path for this command.
-    pub const fn command_path(self) -> &'static [&'static str] {
-        match self {
-            Self::Catalog => &["catalog"],
-            Self::Schema => &["schema"],
-            Self::Inspect => &["inspect"],
-        }
-    }
-}
-
-/// Stable summary for one non-operation CLI command.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CliAuxCommandDescriptor {
-    /// Stable command identifier.
-    pub id: CliAuxCommandId,
-    /// Command path tokens exactly as the user types them.
-    pub command_path: &'static [&'static str],
-    /// Concise user-facing command summary.
-    pub about: &'static str,
-}
-
-/// Structured formatting style for one help section.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CliHelpSectionStyle {
-    /// Render lines exactly as-is.
-    Plain,
-    /// Render each line as a bulleted item.
-    Bullets,
-    /// Render each line as a numbered step.
-    Numbered,
-}
-
-/// One structured help section owned by the canonical CLI contract.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CliHelpSection {
-    /// Section title.
-    pub title: String,
-    /// Rendering style for the section lines.
-    pub style: CliHelpSectionStyle,
-    /// Section body lines.
-    pub lines: Vec<String>,
-}
-
-/// Structured help document owned by the canonical CLI contract.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CliHelpDocument {
-    /// Ordered help sections.
-    pub sections: Vec<CliHelpSection>,
-    /// Example invocations that belong to the surface.
-    pub examples: Vec<String>,
-}
-
-const CLI_AUX_COMMAND_CATALOG: &[CliAuxCommandDescriptor] = &[
-    CliAuxCommandDescriptor {
-        id: CliAuxCommandId::Catalog,
-        command_path: &["catalog"],
-        about: "Print the capability catalog with stable operation IDs.",
-    },
-    CliAuxCommandDescriptor {
-        id: CliAuxCommandId::Schema,
-        command_path: &["schema"],
-        about: "Export validator-grade JSON schemas for HTMLCut's public JSON contracts.",
-    },
-    CliAuxCommandDescriptor {
-        id: CliAuxCommandId::Inspect,
-        command_path: &["inspect"],
-        about: "Explore a source or preview a request before committing to a final extraction.",
-    },
-];
-
-/// Returns the canonical catalog of non-operation CLI commands.
-pub const fn cli_aux_command_catalog() -> &'static [CliAuxCommandDescriptor] {
-    CLI_AUX_COMMAND_CATALOG
-}
-
-/// Returns the canonical non-operation CLI descriptor for one command.
-pub fn cli_aux_command_descriptor(id: CliAuxCommandId) -> &'static CliAuxCommandDescriptor {
-    cli_aux_command_catalog()
-        .iter()
-        .find(|descriptor| descriptor.id == id)
-        .expect("every CliAuxCommandId should appear in CLI_AUX_COMMAND_CATALOG")
-}
-
-/// Returns the display-form command label for one canonical non-operation CLI command.
-pub fn cli_aux_command_display_command(id: CliAuxCommandId) -> String {
-    cli_aux_command_descriptor(id).command_path.join(" ")
-}
+use super::model::{
+    CliAuxCommandId, CliHelpDocument, CliHelpSection, CliHelpSectionStyle, cli_aux_command_catalog,
+    cli_aux_command_display_command,
+};
 
 /// Builds the canonical root help document for the HTMLCut CLI.
 pub fn cli_root_help_document() -> CliHelpDocument {
@@ -216,21 +119,25 @@ pub fn cli_root_help_document() -> CliHelpDocument {
                 ],
             },
         ],
-        examples: vec![
-            format!(
+        examples: [
+            Some(format!(
                 "htmlcut {} --output json",
                 cli_aux_command_display_command(CliAuxCommandId::Catalog)
-            ),
-            format!(
+            )),
+            Some(format!(
                 "htmlcut {} --output json",
                 cli_aux_command_display_command(CliAuxCommandId::Schema)
-            ),
-            first_operation_example(OperationId::SelectExtract).to_owned(),
-            operation_example_containing(OperationId::SelectExtract, "--rewrite-urls").to_owned(),
-            first_operation_example(OperationId::SliceExtract).to_owned(),
-            first_operation_example(OperationId::SourceInspect).to_owned(),
-            first_operation_example(OperationId::SelectPreview).to_owned(),
-        ],
+            )),
+            first_operation_example(OperationId::SelectExtract).map(ToOwned::to_owned),
+            operation_example_containing(OperationId::SelectExtract, "--rewrite-urls")
+                .map(ToOwned::to_owned),
+            first_operation_example(OperationId::SliceExtract).map(ToOwned::to_owned),
+            first_operation_example(OperationId::SourceInspect).map(ToOwned::to_owned),
+            first_operation_example(OperationId::SelectPreview).map(ToOwned::to_owned),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
     }
 }
 
@@ -412,164 +319,27 @@ fn cli_operation_help_document_with_overview(
     })
 }
 
-#[cfg(test)]
-pub(crate) fn cli_help_catalog_validation_errors() -> Vec<String> {
-    cli_help_catalog_validation_errors_with(
-        cli_aux_command_catalog(),
-        operation_catalog(),
-        |operation_id| cli_operation_help_document(operation_id).is_some(),
-        cli_root_help_document().examples.is_empty(),
-    )
-}
-
-#[cfg(test)]
-fn cli_help_catalog_validation_errors_with(
-    aux_descriptors: &[CliAuxCommandDescriptor],
-    operation_descriptors: &[OperationDescriptor],
-    has_help: impl Fn(OperationId) -> bool,
-    root_examples_empty: bool,
-) -> Vec<String> {
-    let mut errors = Vec::new();
-
-    if aux_descriptors.is_empty() {
-        errors.push("cli_aux_command_catalog() is empty".to_owned());
-    }
-
-    for descriptor in aux_descriptors {
-        if descriptor.command_path.is_empty() {
-            errors.push(format!("{:?} has an empty command path", descriptor.id));
-        }
-        if descriptor.about.trim().is_empty() {
-            errors.push(format!("{:?} has an empty about string", descriptor.id));
-        }
-    }
-
-    for descriptor in operation_descriptors {
-        match (descriptor.cli_surface.is_some(), has_help(descriptor.id)) {
-            (true, false) => errors.push(format!(
-                "{} is CLI-visible in OPERATION_CATALOG but missing CLI help documentation",
-                descriptor.id
-            )),
-            (false, true) => errors.push(format!(
-                "{} is core-only in OPERATION_CATALOG but has CLI help documentation",
-                descriptor.id
-            )),
-            (true, true) | (false, false) => {}
-        }
-    }
-
-    if root_examples_empty {
-        errors.push("root help examples are empty".to_owned());
-    }
-
-    errors
-}
-
-fn first_operation_example(operation_id: OperationId) -> &'static str {
+fn first_operation_example(operation_id: OperationId) -> Option<&'static str> {
     cli_operation_contract(operation_id)
-        .expect("CLI-visible operation")
-        .examples
-        .first()
+        .and_then(|contract| contract.examples.first())
         .copied()
-        .expect("CLI-visible operation should keep examples")
 }
 
-fn operation_example_containing(operation_id: OperationId, needle: &str) -> &'static str {
+fn operation_example_containing(operation_id: OperationId, needle: &str) -> Option<&'static str> {
     cli_operation_contract(operation_id)
-        .expect("CLI-visible operation")
-        .examples
-        .iter()
-        .copied()
-        .find(|example| example.contains(needle))
-        .unwrap_or_else(|| first_operation_example(operation_id))
+        .and_then(|contract| {
+            contract
+                .examples
+                .iter()
+                .copied()
+                .find(|example| example.contains(needle))
+        })
+        .or_else(|| first_operation_example(operation_id))
 }
 
 fn cli_operation_display_command(operation_id: OperationId) -> String {
-    cli_operation_contract(operation_id)
-        .expect("CLI-visible operation")
-        .display_command()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn aux_command_ids_keep_stable_command_paths() {
-        assert_eq!(CliAuxCommandId::Catalog.command_path(), &["catalog"]);
-        assert_eq!(CliAuxCommandId::Schema.command_path(), &["schema"]);
-        assert_eq!(CliAuxCommandId::Inspect.command_path(), &["inspect"]);
-    }
-
-    #[test]
-    fn document_parse_remains_core_only_in_operation_help() {
-        assert!(cli_operation_help_document(OperationId::DocumentParse).is_none());
-    }
-
-    #[test]
-    fn validation_helper_reports_missing_help_and_empty_catalog_fields() {
-        let malformed_aux = [CliAuxCommandDescriptor {
-            id: CliAuxCommandId::Catalog,
-            command_path: &[],
-            about: "   ",
-        }];
-        let select_extract = *operation_descriptor(OperationId::SelectExtract);
-
-        let errors = cli_help_catalog_validation_errors_with(
-            &malformed_aux,
-            &[select_extract],
-            |_| false,
-            true,
-        );
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("empty command path"))
-        );
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("empty about string"))
-        );
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("missing CLI help documentation"))
-        );
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("root help examples are empty"))
-        );
-    }
-
-    #[test]
-    fn validation_helper_reports_empty_auxiliary_catalogs() {
-        let errors = cli_help_catalog_validation_errors_with(&[], &[], |_| false, false);
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("cli_aux_command_catalog() is empty"))
-        );
-    }
-
-    #[test]
-    fn validation_helper_reports_help_for_core_only_operations() {
-        let document_parse = *operation_descriptor(OperationId::DocumentParse);
-
-        let errors = cli_help_catalog_validation_errors_with(
-            cli_aux_command_catalog(),
-            &[document_parse],
-            |_| true,
-            false,
-        );
-
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.contains("core-only in OPERATION_CATALOG"))
-        );
-    }
+    operation_descriptor(operation_id)
+        .cli_surface
+        .unwrap_or(operation_id.as_str())
+        .to_owned()
 }
