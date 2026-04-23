@@ -2,43 +2,13 @@ use crate::catalog::{OperationId, operation_descriptor};
 use crate::{CORE_RESULT_SCHEMA_NAME, cli_operation_contract, interop::v1::RESULT_SCHEMA_NAME};
 
 use super::model::{
-    CliAuxCommandId, CliHelpDocument, CliHelpSection, CliHelpSectionStyle, cli_aux_command_catalog,
+    CliAuxCommandId, CliHelpDocument, CliHelpSection, CliHelpSectionStyle,
     cli_aux_command_display_command,
 };
 
 /// Builds the canonical root help document for the HTMLCut CLI.
 pub fn cli_root_help_document() -> CliHelpDocument {
-    let mut command_summaries = cli_aux_command_catalog()
-        .iter()
-        .map(|descriptor| {
-            (
-                descriptor.command_path.join(" "),
-                descriptor.about.to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    command_summaries.extend(
-        [OperationId::SelectExtract, OperationId::SliceExtract]
-            .into_iter()
-            .filter_map(|operation_id| {
-                cli_operation_contract(operation_id).map(|contract| {
-                    (
-                        contract.display_command(),
-                        operation_descriptor(operation_id).description.to_owned(),
-                    )
-                })
-            }),
-    );
-
-    let discovery_lines = vec![
-        format!(
-            "{} lists stable operation IDs plus the CLI/core surfaces, request/result contract refs, typed defaults, command constraints, modes, parameters, notes, and examples for each operation.",
-            cli_aux_command_display_command(CliAuxCommandId::Catalog)
-        ),
-        format!(
-            "{} exports the validator-grade JSON Schema documents behind those contract refs.",
-            cli_aux_command_display_command(CliAuxCommandId::Schema)
-        ),
+    let start_here_lines = vec![
         format!(
             "{} learns document shape, headings, links, classes, and effective base URL.",
             cli_operation_display_command(OperationId::SourceInspect)
@@ -53,32 +23,37 @@ pub fn cli_root_help_document() -> CliHelpDocument {
             cli_operation_display_command(OperationId::SelectExtract),
             cli_operation_display_command(OperationId::SliceExtract)
         ),
-        "--emit-request-file saves the normalized extraction definition you can reuse with --request-file.".to_owned(),
+        format!(
+            "{} and {} expose the stable contracts behind those workflows.",
+            cli_aux_command_display_command(CliAuxCommandId::Catalog),
+            cli_aux_command_display_command(CliAuxCommandId::Schema)
+        ),
     ];
 
     CliHelpDocument {
         sections: vec![
             CliHelpSection {
-                title: format!(
-                    "HTMLCut has {} operator-facing entry points",
-                    command_summaries.len()
-                ),
-                style: CliHelpSectionStyle::Plain,
-                lines: command_summaries
-                    .into_iter()
-                    .map(|(command, about)| format!("  {command:<8} {about}"))
-                    .collect(),
+                title: "Start here".to_owned(),
+                style: CliHelpSectionStyle::Numbered,
+                lines: start_here_lines,
             },
             CliHelpSection {
-                title: "Discovery flow".to_owned(),
-                style: CliHelpSectionStyle::Numbered,
-                lines: discovery_lines,
+                title: "Reusable requests".to_owned(),
+                style: CliHelpSectionStyle::Bullets,
+                lines: vec![
+                    "--emit-request-file writes the normalized extraction definition for the current run."
+                        .to_owned(),
+                    "--request-file reruns a saved definition instead of spelling the source and strategy inline."
+                        .to_owned(),
+                ],
             },
             CliHelpSection {
                 title: "Inputs".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "<INPUT> may be a local file path, an http:// or https:// URL, or - for stdin."
+                        .to_owned(),
+                    "select, slice, inspect select, and inspect slice can load a saved definition with --request-file."
                         .to_owned(),
                     "Bundle directories are created automatically when you use --bundle."
                         .to_owned(),
@@ -88,11 +63,10 @@ pub fn cli_root_help_document() -> CliHelpDocument {
                 title: "Output model".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
-                    "select and slice separate the value you extract from how stdout is rendered."
+                    "--value chooses what each extracted match should produce before stdout formatting."
                         .to_owned(),
-                    "--value chooses what each match produces before stdout formatting.".to_owned(),
                     "--output chooses how stdout is emitted.".to_owned(),
-                    "inspect defaults to JSON so agents can reason about the source and preview report."
+                    "inspect defaults to JSON so agents and scripts can reason about the source or preview report."
                         .to_owned(),
                     "Use --output text for a compact human summary.".to_owned(),
                 ],
@@ -120,6 +94,13 @@ pub fn cli_root_help_document() -> CliHelpDocument {
             },
         ],
         examples: [
+            first_operation_example(OperationId::SourceInspect).map(ToOwned::to_owned),
+            first_operation_example(OperationId::SelectPreview).map(ToOwned::to_owned),
+            operation_example_containing(OperationId::SelectExtract, "--emit-request-file")
+                .map(ToOwned::to_owned),
+            operation_example_containing(OperationId::SelectExtract, "--request-file")
+                .map(ToOwned::to_owned),
+            first_operation_example(OperationId::SliceExtract).map(ToOwned::to_owned),
             Some(format!(
                 "htmlcut {} --output json",
                 cli_aux_command_display_command(CliAuxCommandId::Catalog)
@@ -128,12 +109,6 @@ pub fn cli_root_help_document() -> CliHelpDocument {
                 "htmlcut {} --output json",
                 cli_aux_command_display_command(CliAuxCommandId::Schema)
             )),
-            first_operation_example(OperationId::SelectExtract).map(ToOwned::to_owned),
-            operation_example_containing(OperationId::SelectExtract, "--rewrite-urls")
-                .map(ToOwned::to_owned),
-            first_operation_example(OperationId::SliceExtract).map(ToOwned::to_owned),
-            first_operation_example(OperationId::SourceInspect).map(ToOwned::to_owned),
-            first_operation_example(OperationId::SelectPreview).map(ToOwned::to_owned),
         ]
         .into_iter()
         .flatten()
