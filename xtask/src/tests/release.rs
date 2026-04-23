@@ -240,3 +240,15 @@ extract_release_archive "/tmp/archive.zip" "zip" "/tmp/extract-root"
         "unzip\n"
     );
 }
+
+#[test]
+fn release_smoke_script_checks_the_canonical_htmlcut_version_banner() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let script = fs::read_to_string(repo_root.join("scripts").join("smoke-release-artifact.sh"))
+        .expect("read smoke-release-artifact.sh");
+
+    assert!(script.contains("grep \"^HTMLCut ${version}$\""));
+    assert!(!script.contains("grep \"^htmlcut ${version}$\""));
+}

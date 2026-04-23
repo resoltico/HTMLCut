@@ -23,9 +23,10 @@ either license. The Apache License, Version 2.0 is available at:
 
 Representative crates (not exhaustive — see Cargo.lock for the full list):
 
-  aho-corasick, anyhow, bitflags, bytes, clap, flate2, html5ever, http,
-  httparse, idna, markup5ever, memchr, once_cell, percent-encoding, regex,
-  serde, serde_json, sha2, syn, thiserror, url, ureq, walkdir, and others.
+  anyhow, bitflags, bytes, clap, flate2, hashbrown, html5ever, http,
+  httparse, idna, markup5ever, once_cell, percent-encoding, predicates,
+  regex, serde, serde_json, sha2, syn, tempfile, thiserror, url, ureq,
+  and others.
 
 ================================================================================
 MIT (standalone)
@@ -33,7 +34,18 @@ MIT (standalone)
 
 Representative crates licensed under MIT only:
 
-  ego-tree, hashbrown, phf, predicates, scraper, tempfile, and others.
+  ego-tree, phf, scraper, and others.
+
+================================================================================
+MIT / Unlicense (dual-licensed)
+================================================================================
+
+The following crates are dual-licensed MIT OR Unlicense. The Unlicense is a
+public-domain-equivalent dedication available at: https://unlicense.org/
+
+Representative crates (not exhaustive — see Cargo.lock for the full list):
+
+  aho-corasick, memchr, walkdir, and others.
 
 ================================================================================
 MPL-2.0 — Mozilla Public License 2.0
@@ -104,6 +116,41 @@ The webpki-root-certs crate contains CA certificate data sourced from the
 Common CA Database (CCADB), licensed under the Community Data License
 Agreement — Permissive, Version 2.0:
   https://cdla.dev/permissive-2-0/
+
+================================================================================
+BSD-3-Clause — 3-Clause BSD License
+================================================================================
+
+One or more transitive dependencies use the BSD-3-Clause license. BSD-3-Clause
+requires preserving copyright notices and the license text, and prohibits using
+contributor names for endorsement without permission. See Cargo.lock and the
+individual crate pages on crates.io for the specific copyright holders and full
+license text.
+
+================================================================================
+NCSA — University of Illinois/NCSA Open Source License
+================================================================================
+
+One or more transitive dependencies use the NCSA Open Source License, a
+BSD/MIT-style license from the University of Illinois. See Cargo.lock and the
+individual crate pages on crates.io for the specific copyright holders and full
+license text.
+
+================================================================================
+0BSD — Zero-Clause BSD License
+================================================================================
+
+One or more transitive dependencies use the Zero-Clause BSD License, a
+permissive license with no attribution requirements. See Cargo.lock for the
+full list.
+
+================================================================================
+Unlicense — The Unlicense
+================================================================================
+
+One or more transitive dependencies are released as public domain under The
+Unlicense. No attribution is required. MIT/Unlicense dual-licensed crates are
+listed in the MIT / Unlicense section above. See Cargo.lock for the full list.
 
 ================================================================================
 Trademark Notice

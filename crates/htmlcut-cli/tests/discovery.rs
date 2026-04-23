@@ -19,10 +19,7 @@ fn catalog_json_surfaces_operation_catalog() {
         report.schema_profile,
         htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE
     );
-    assert_eq!(
-        report.description,
-        "Extract and inspect HTML from files, URLs, and stdin with CSS selectors, literal or regex slicing, and structured reports."
-    );
+    assert_eq!(report.description, env!("CARGO_PKG_DESCRIPTION"));
     assert_eq!(report.command, "catalog");
     assert_eq!(
         report.operations.len(),

@@ -4,11 +4,14 @@ use htmlcut_core::{CliAuxCommandId, OperationId};
 
 use crate::error::CliError;
 
+use crate::metadata::identity_banner;
+
 use super::render::{
     build_operation_long_about, operation_examples_after_help, render_help_examples,
     render_help_sections,
 };
 
+static ROOT_BEFORE_HELP: LazyLock<String> = LazyLock::new(identity_banner);
 static ROOT_LONG_ABOUT: LazyLock<String> =
     LazyLock::new(|| render_help_sections(&htmlcut_core::cli_root_help_document().sections));
 static ROOT_AFTER_HELP: LazyLock<String> =
@@ -108,6 +111,10 @@ pub(super) fn inspect_slice_about() -> &'static str {
 
 pub(super) fn root_long_about() -> &'static str {
     ROOT_LONG_ABOUT.as_str()
+}
+
+pub(super) fn root_before_help() -> &'static str {
+    ROOT_BEFORE_HELP.as_str()
 }
 
 pub(super) fn root_after_help() -> &'static str {

@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.4.0"
+version: "4.4.1"
 domain: ARCHITECTURE
 updated: "2026-04-23"
 route:
@@ -21,6 +21,10 @@ They are related, but they are not interchangeable.
 Maintainer-only surfaces such as `xtask`, the release shell scripts, and the checked-in fuzz
 targets are real maintained repository surfaces too, but they sit outside this runtime split and
 are documented through the maintainer guides instead of this architecture map.
+
+This runtime split also does not enumerate every workspace member. For the full package/crate map,
+including `htmlcut-tempdir`, `xtask`, `fuzz`, and the package-name versus Rust-path naming rule,
+use [workspace-layout.md](workspace-layout.md).
 
 ## Use The Right Surface
 
@@ -167,7 +171,9 @@ behavior or a mutable undocumented internal API.
 
 Use these docs together:
 
+- [Workspace Layout](workspace-layout.md)
 - [CLI Developer Guide](cli.md)
+- [CLI Library Guide](cli-library.md)
 - [Core Developer Guide](core.md)
 - [Schema Guide](schema.md)
 - [Interop v1 Guide](interop-v1.md)

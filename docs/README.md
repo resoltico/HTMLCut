@@ -1,11 +1,11 @@
 ---
 afad: "3.5"
-version: "4.4.0"
+version: "4.4.1"
 domain: INDEX
 updated: "2026-04-23"
 route:
-  keywords: [docs index, developer setup, architecture guide, cli guide, core guide, interop guide, release protocol, quality gates]
-  questions: ["where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?"]
+  keywords: [docs index, getting started, developer setup, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, tempdir helper]
+  questions: ["where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the htmlcut_tempdir helper documented?"]
 ---
 
 # Docs
@@ -25,9 +25,12 @@ when they drift.
 
 ## Product Surfaces
 
+- [Getting Started](getting-started.md)
 - [Developer Setup](developer-setup.md)
 - [Architecture Guide](architecture.md)
+- [Workspace Layout](workspace-layout.md)
 - [CLI Developer Guide](cli.md)
+- [CLI Library Guide](cli-library.md)
 - [Core Developer Guide](core.md)
 - [Schema Guide](schema.md)
 - [Interop v1 Guide](interop-v1.md)
@@ -44,13 +47,17 @@ when they drift.
 - [Versioning Policy](versioning-policy.md)
 - [Contributing Guide](../CONTRIBUTING.md)
 
+## Internal Helpers
+
+- [Tempdir Helper Guide](tempdir.md)
+
 ## Adjacent Docs
 
 - [Fuzz Target Inventory](../fuzz/README.md)
 - [Patent Notes](../PATENTS.md)
 
 The core crate also ships a runnable namespace example at
-`crates/htmlcut-core/examples/request_and_result_namespaces.rs`.
+[crates/htmlcut-core/examples/request_and_result_namespaces.rs](../crates/htmlcut-core/examples/request_and_result_namespaces.rs).
 
 Reusable extraction-definition workflows are illustrated in
-`crates/htmlcut-core/examples/reusable_extraction_definition.rs`.
+[crates/htmlcut-core/examples/reusable_extraction_definition.rs](../crates/htmlcut-core/examples/reusable_extraction_definition.rs).

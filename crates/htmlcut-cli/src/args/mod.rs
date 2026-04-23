@@ -6,12 +6,12 @@ use clap::{Arg, Command, Parser, Subcommand, error::ErrorKind};
 use htmlcut_core::CliChoice;
 
 use crate::help::{
-    catalog_about, catalog_after_help, catalog_long_about, inspect_about, inspect_long_about,
-    root_after_help, root_long_about, schema_about, schema_after_help, schema_long_about,
-    select_about, select_after_help, select_long_about, slice_about, slice_after_help,
-    slice_long_about,
+    ROOT_HELP_TEMPLATE, catalog_about, catalog_after_help, catalog_long_about, inspect_about,
+    inspect_long_about, root_after_help, root_before_help, root_long_about, schema_about,
+    schema_after_help, schema_long_about, select_about, select_after_help, select_long_about,
+    slice_about, slice_after_help, slice_long_about,
 };
-use crate::metadata::{HTMLCUT_DESCRIPTION, TOOL_NAME};
+use crate::metadata::TOOL_NAME;
 
 mod discovery;
 mod extract;
@@ -116,10 +116,10 @@ where
 #[derive(Debug, Parser)]
 #[command(
     name = TOOL_NAME,
-    about = HTMLCUT_DESCRIPTION,
+    before_help = root_before_help(),
+    help_template = ROOT_HELP_TEMPLATE,
     long_about = root_long_about(),
     after_help = root_after_help(),
-    disable_help_subcommand = true,
     disable_version_flag = true,
     subcommand_required = true
 )]

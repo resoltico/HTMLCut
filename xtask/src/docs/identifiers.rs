@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use regex::Regex;
 
@@ -22,6 +23,7 @@ pub(super) fn identifier_errors(
 }
 
 pub(super) fn inventory_errors(
+    repo_root: &Path,
     display_path: &str,
     text: &str,
     schema_names: &BTreeSet<&'static str>,
@@ -59,6 +61,39 @@ pub(super) fn inventory_errors(
         }
     }
 
+    if display_path == "docs/workspace-layout.md" {
+        match crate::manifest::workspace_members(repo_root) {
+            Ok(workspace_members) => {
+                let documented = documented_workspace_members(text);
+                let expected = workspace_members.into_iter().collect::<BTreeSet<_>>();
+                let missing = expected
+                    .difference(&documented)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !missing.is_empty() {
+                    errors.push(format!(
+                        "docs/workspace-layout.md is missing workspace members from Cargo.toml: {}",
+                        missing.join(", ")
+                    ));
+                }
+
+                let extra = documented
+                    .difference(&expected)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !extra.is_empty() {
+                    errors.push(format!(
+                        "docs/workspace-layout.md documents workspace members not present in Cargo.toml: {}",
+                        extra.join(", ")
+                    ));
+                }
+            }
+            Err(error) => errors.push(format!(
+                "docs/workspace-layout.md could not load workspace members from Cargo.toml: {error}"
+            )),
+        }
+    }
+
     errors
 }
 
@@ -77,6 +112,15 @@ fn documented_operation_ids(text: &str) -> BTreeSet<String> {
     pattern
         .find_iter(text)
         .map(|matched| matched.as_str().to_owned())
+        .collect()
+}
+
+fn documented_workspace_members(text: &str) -> BTreeSet<String> {
+    let pattern =
+        Regex::new(r"`((?:crates/[a-z0-9-]+)|fuzz|xtask)`").expect("valid workspace member regex");
+    pattern
+        .captures_iter(text)
+        .filter_map(|captures| captures.get(1).map(|matched| matched.as_str().to_owned()))
         .collect()
 }
 

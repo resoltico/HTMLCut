@@ -2,6 +2,7 @@ use serde_json::Value;
 
 use htmlcut_core::SchemaStability;
 
+use crate::metadata::DISPLAY_NAME;
 use crate::model::SchemaCommandReport;
 
 use super::shared::render_schema_ref;
@@ -10,7 +11,7 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
     let schema_command =
         htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Schema);
     let mut lines = vec![
-        format!("{} {}", report.tool, report.version),
+        format!("{DISPLAY_NAME} {}", report.version),
         report.description.clone(),
         format!("Schema profile: {}", report.schema_profile),
     ];

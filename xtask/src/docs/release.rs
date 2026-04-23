@@ -1,15 +1,30 @@
 use std::path::Path;
 
-use crate::{macos_deployment_target, release_asset_names, release_matrix, release_target_triples};
+use crate::{
+    macos_deployment_target, release_asset_names, release_matrix, release_target_triples,
+    workspace_version,
+};
 
 pub(super) fn release_doc_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<String> {
     let mut errors = Vec::new();
 
     if matches!(
         display_path,
-        "README.md" | "docs/release-preflight.md" | "docs/release-publishing.md"
+        "docs/release-preflight.md" | "docs/release-publishing.md"
     ) {
         errors.extend(asset_name_errors(repo_root, display_path, text));
+    }
+
+    if display_path == "docs/release-publishing.md" {
+        errors.extend(version_banner_check_errors(display_path, text));
+    }
+
+    if display_path == "docs/getting-started.md" {
+        errors.extend(install_version_literal_errors(
+            repo_root,
+            display_path,
+            text,
+        ));
     }
 
     if display_path == "docs/platform-support.md" {
@@ -39,6 +54,26 @@ fn asset_name_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<St
         .unwrap_or_else(|error| {
             vec![format!(
                 "{display_path} could not load canonical release assets: {error}"
+            )]
+        })
+}
+
+fn install_version_literal_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<String> {
+    workspace_version(repo_root)
+        .map(|version| {
+            missing_literals(
+                display_path,
+                text,
+                &[
+                    format!("VERSION={version}"),
+                    format!("$Version = \"{version}\""),
+                ],
+                "install version literal",
+            )
+        })
+        .unwrap_or_else(|error| {
+            vec![format!(
+                "{display_path} could not load canonical workspace version: {error}"
             )]
         })
 }
@@ -132,6 +167,24 @@ fn worktree_handoff_errors(display_path: &str, text: &str) -> Vec<String> {
         .collect()
 }
 
+fn version_banner_check_errors(display_path: &str, text: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if !text.contains("grep \"^HTMLCut X.Y.Z$\"") {
+        errors.push(format!(
+            "{display_path} must validate the canonical `HTMLCut X.Y.Z` first version line during host-native release verification"
+        ));
+    }
+
+    if text.contains("grep \"^htmlcut X.Y.Z$\"") {
+        errors.push(format!(
+            "{display_path} still documents the stale lowercase `htmlcut X.Y.Z` version-line check"
+        ));
+    }
+
+    errors
+}
+
 fn missing_literals(
     display_path: &str,
     text: &str,
@@ -156,12 +209,23 @@ mod tests {
     fn release_doc_errors_report_registry_load_failures() {
         let repo_root = tempdir().expect("tempdir");
 
-        let readme_errors = release_doc_errors(repo_root.path(), "README.md", "# README");
-        assert!(
-            readme_errors
-                .iter()
-                .any(|error| error.contains("README.md could not load canonical release assets"))
+        let getting_started_errors = release_doc_errors(
+            repo_root.path(),
+            "docs/getting-started.md",
+            "# Getting Started",
         );
+        assert!(getting_started_errors.iter().any(|error| {
+            error.contains("docs/getting-started.md could not load canonical workspace version")
+        }));
+
+        let publishing_errors = release_doc_errors(
+            repo_root.path(),
+            "docs/release-publishing.md",
+            "# Release Publishing",
+        );
+        assert!(publishing_errors.iter().any(|error| {
+            error.contains("docs/release-publishing.md could not load canonical release assets")
+        }));
 
         let platform_errors = release_doc_errors(
             repo_root.path(),
@@ -244,6 +308,25 @@ macos_deployment_target_for_target() {
             error.contains(
                 "docs/release-closeout.md must document detaching a disposable release worktree",
             )
+        }));
+    }
+
+    #[test]
+    fn release_doc_errors_report_version_banner_check_drift() {
+        let errors = release_doc_errors(
+            Path::new("."),
+            "docs/release-publishing.md",
+            r#"# Release Publishing
+
+./htmlcut-X.Y.Z-host/htmlcut --version | grep "^htmlcut X.Y.Z$"
+"#,
+        );
+
+        assert!(errors.iter().any(|error| {
+            error.contains("must validate the canonical `HTMLCut X.Y.Z` first version line")
+        }));
+        assert!(errors.iter().any(|error| {
+            error.contains("still documents the stale lowercase `htmlcut X.Y.Z` version-line check")
         }));
     }
 }

@@ -5,11 +5,14 @@ pub(crate) fn raw_args_prefers_json(raw_args: &[String]) -> bool {
 }
 
 pub(crate) fn raw_args_requests_version(raw_args: &[String]) -> bool {
-    raw_option_tokens(raw_args).any(|arg| matches!(arg, "--version" | "-V"))
+    let invocation = RawInvocation::parse(raw_args);
+    invocation.command_tokens.is_empty()
+        && root_option_tokens_are_known(raw_args)
+        && raw_option_tokens(raw_args).any(token_requests_version)
 }
 
 pub(crate) fn raw_args_requests_help(raw_args: &[String]) -> bool {
-    raw_option_tokens(raw_args).any(|arg| matches!(arg, "--help" | "-h"))
+    raw_option_tokens(raw_args).any(token_requests_help)
 }
 
 pub(crate) fn command_name_from_raw_args(raw_args: &[String]) -> String {
@@ -133,4 +136,44 @@ fn raw_command_tokens(raw_args: &[String]) -> Vec<&str> {
         .skip_while(|arg| arg.starts_with('-'))
         .take_while(|arg| !arg.starts_with('-'))
         .collect()
+}
+
+fn root_option_tokens_are_known(raw_args: &[String]) -> bool {
+    raw_args
+        .iter()
+        .skip(1)
+        .take_while(|arg| arg.as_str() != "--")
+        .take_while(|arg| arg.starts_with('-'))
+        .all(|arg| {
+            matches!(arg.as_str(), "--help" | "--quiet" | "--version")
+                || short_flag_cluster_is_known(arg)
+        })
+}
+
+fn short_flag_cluster_is_known(arg: &str) -> bool {
+    let flags = &arg[1..];
+    if flags.is_empty() || arg.starts_with("--") {
+        return false;
+    }
+
+    flags
+        .chars()
+        .all(|flag| matches!(flag, 'v' | 'q' | 'V' | 'h'))
+}
+
+fn token_requests_help(arg: &str) -> bool {
+    arg == "--help" || short_flag_cluster_contains(arg, 'h')
+}
+
+fn token_requests_version(arg: &str) -> bool {
+    arg == "--version" || short_flag_cluster_contains(arg, 'V')
+}
+
+fn short_flag_cluster_contains(arg: &str, needle: char) -> bool {
+    let flags = &arg[1..];
+    if flags.is_empty() || arg.starts_with("--") {
+        return false;
+    }
+
+    flags.chars().any(|flag| flag == needle)
 }

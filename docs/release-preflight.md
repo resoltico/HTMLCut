@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "4.4.0"
+version: "4.4.1"
 domain: RELEASE
 updated: "2026-04-23"
 route:
@@ -120,7 +120,7 @@ Then verify:
     `Cargo.toml`
   - the maintained Markdown metadata `version` fields in `README.md`, `CONTRIBUTING.md`,
     `PATENTS.md`, `fuzz/README.md`, and the maintained `docs/*.md` set
-  - the concrete release-version literals in `README.md` install snippets
+  - the concrete release-version literals in `docs/getting-started.md` install snippets
   - the local path-package entries in `Cargo.lock`, so the subsequent locked gate reflects the
     release version truthfully
 - `Cargo.toml` `[workspace.package] rust-version` still matches the pinned repository compiler
@@ -131,7 +131,10 @@ Then verify:
 - `docs/operations.md` still reflects the current canonical operation catalog exposed by
   `htmlcut-core`.
 - `changelog.md` has a `## [X.Y.Z] - YYYY-MM-DD` section with at least one entry.
-- `README.md` still documents the current user-facing install flow, CLI model, and release assets.
+- `README.md` still works as the short product-facing front window and still points at the quick
+  start and full docs.
+- `docs/getting-started.md` still documents the current user-facing install flow and runnable
+  first-use examples.
 - `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and
   release expectations.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
@@ -139,10 +142,13 @@ Then verify:
   semver-baseline rules.
 - `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v1.md` still match the shipped
   surfaces.
+- `docs/release-publishing.md` still matches the shipped publication flow, release assets, and
+  provenance notes.
 - `docs/platform-support.md` still matches the shipped release target matrix and deployment floors.
 - `docs/quality-gates.md` still matches the maintained `cargo xtask` gate.
 - `Cargo.toml` still defines the `dist` Cargo profile used for shipped public binaries.
-- `README.md` still documents the release asset names:
+- `docs/release-publishing.md` and `docs/platform-support.md` still document the release asset
+  names:
   - `htmlcut-source-X.Y.Z.zip`
   - `htmlcut-source-X.Y.Z.tar.gz`
   - `htmlcut-X.Y.Z-aarch64-apple-darwin.tar.gz`

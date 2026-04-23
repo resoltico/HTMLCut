@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.4.0"
+  version: "4.4.1"
   domain: QUALITY
   updated: "2026-04-23"
 RETRIEVAL_HINTS:

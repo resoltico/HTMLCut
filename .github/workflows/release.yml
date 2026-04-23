@@ -61,6 +61,7 @@ jobs:
 
       - name: Resolve target release tag and version
         id: release
+        shell: bash
         run: |
           set -euo pipefail
           TAG_INPUT="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
@@ -69,6 +70,7 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create release archives
+        shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ steps.release.outputs.version }}"
@@ -197,6 +199,7 @@ jobs:
 
       - name: Resolve target release tag and version
         id: release
+        shell: bash
         run: |
           set -euo pipefail
           TAG_INPUT="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
@@ -218,6 +221,7 @@ jobs:
           merge-multiple: true
 
       - name: Build checksum manifest
+        shell: bash
         run: ./scripts/build-release-checksums.sh
 
       - name: Generate checksum manifest attestation
@@ -226,12 +230,14 @@ jobs:
           subject-path: dist/htmlcut-${{ steps.release.outputs.version }}-checksums.txt
 
       - name: Publish GitHub release idempotently
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: ./scripts/publish-github-release.sh
 
       - name: Verify GitHub release handoff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}

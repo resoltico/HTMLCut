@@ -37,7 +37,7 @@ pub(crate) fn expected_version() -> &'static str {
 
 pub(crate) fn expected_version_banner() -> String {
     format!(
-        "htmlcut {}\n{}\nengine: htmlcut-core\nschema-profile: {}\nrepository: {}\n",
+        "HTMLCut {}\n{}\nengine: htmlcut-core\nschema-profile: {}\nrepository: {}\n",
         expected_version(),
         env!("CARGO_PKG_DESCRIPTION"),
         htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE,

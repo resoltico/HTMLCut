@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.4.0"
+  version: "4.4.1"
   domain: MAINTAINER
   updated: "2026-04-23"
 RETRIEVAL_HINTS:
@@ -20,6 +20,8 @@ surfaces may change when the architecture needs to improve; frozen interop profi
 Follow [docs/developer-setup.md](docs/developer-setup.md) for the canonical machine bootstrap.
 That guide owns the exact `rustup`, cargo QA tool, `shellcheck`, and macOS compiler-override
 commands plus the reasoning behind them.
+Use [docs/workspace-layout.md](docs/workspace-layout.md) when you need the current workspace-member
+map or the package-name versus Rust-path naming rule.
 
 Rust `1.95.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
 manifest mirrors that compiler contract through `[workspace.package] rust-version`, and nightly
