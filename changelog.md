@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.1] - 2026-04-23
+
 ### Changed
 - Tightened the maintainer release protocol so post-merge and closeout sync steps use explicit
   `git fetch ...` plus `git merge --ff-only origin/main` instead of implicit `git pull`, documented
