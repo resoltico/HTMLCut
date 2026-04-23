@@ -174,11 +174,15 @@ rm -f "${artifact_path}"
 
 mkdir -p "${package_dir}"
 cp "${compiled_binary_path}" "${package_dir}/${compiled_binary_name}"
-chmod +x "${package_dir}/${compiled_binary_name}"
+if ! is_windows_environment; then
+    chmod +x "${package_dir}/${compiled_binary_name}"
+fi
 cp "${repo_root}/LICENSE" "${package_dir}/LICENSE"
 cp "${repo_root}/NOTICE" "${package_dir}/NOTICE"
-cp "${repo_root}/PATENTS.md" "${package_dir}/PATENTS.md"
-cp "${repo_root}/README.md" "${package_dir}/README.md"
+sed '/^<!--$/,/^-->$/d' "${repo_root}/PATENTS.md" > "${package_dir}/PATENTS.md"
+sed '/^<!--$/,/^-->$/d' "${repo_root}/README.md" \
+    | sed "s|(docs/|(https://github.com/resoltico/HTMLCut/blob/v${version}/docs/|g" \
+    > "${package_dir}/README.md"
 create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
 
 printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"

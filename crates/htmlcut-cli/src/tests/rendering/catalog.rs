@@ -15,7 +15,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert_eq!(
         render_catalog_text(&empty_catalog),
         format!(
-            "{TOOL_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\nCatalog: 0 operations.\nUse `htmlcut catalog --operation <OPERATION_ID> --output json` for one exact contract."
+            "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\nCatalog: 0 operations.\nUse `htmlcut catalog --operation <OPERATION_ID> --output json` for one exact contract."
         )
     );
     assert_eq!(

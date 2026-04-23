@@ -12,10 +12,20 @@ route:
 
 `htmlcut-cli` is the operator-facing adapter over `htmlcut-core`.
 
-The clap/help surface is rendered from core-owned command contracts and core-owned help documents.
+If you want install choices, a first runnable walkthrough, and request-file examples before you
+read the full command model, start with [getting-started.md](getting-started.md).
+
+The clap/help surface is rendered from core-owned command contracts and core-owned help documents,
+with the root `htmlcut --help` banner reusing the package version and description from Cargo
+metadata so the terminal identity and published crate metadata stay in sync.
 The CLI does not maintain a second operation/help taxonomy alongside `htmlcut-core`.
 
-It exposes five commands:
+This guide owns the operator-facing command model.
+The published `htmlcut_cli` library API for programmatic CLI execution, clap-tree inspection, exit
+codes, and typed CLI report structs is documented separately in
+[cli-library.md](cli-library.md).
+
+It exposes five maintained operator commands:
 
 - `catalog`
 - `schema`
@@ -23,8 +33,9 @@ It exposes five commands:
 - `select`
 - `slice`
 
-The maintained surface uses those canonical command names directly. There are no extra documented
-aliases layered on top of them.
+The maintained surface uses those canonical command names directly. Clap also exposes the built-in
+`help` subcommand for root and nested command help, but there are no extra documented aliases
+layered on top of the maintained command set.
 
 ## Source Inputs
 
@@ -299,7 +310,8 @@ For successful runs:
 
 - `--quiet` suppresses non-fatal warnings and progress lines on stderr
 - `--verbose` still increases stderr detail, but it intentionally conflicts with `--quiet`
-- `--version` prints the tool version plus engine identity, schema profile, and repository metadata
+- top-level `--version` prints the tool version plus engine identity, schema profile, and
+  repository metadata
 
 ## Slice Preview Rule
 

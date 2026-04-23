@@ -6,6 +6,12 @@ use crate::error::CliError;
 #[cfg(test)]
 use htmlcut_core::{CliHelpSection, OperationCliContract};
 
+pub(crate) const ROOT_HELP_TEMPLATE: &str = "\
+{before-help}{usage-heading} {usage}
+
+{all-args}{about-section}{after-help}\
+";
+
 pub(crate) fn catalog_about() -> &'static str {
     cache::catalog_about()
 }
@@ -40,6 +46,10 @@ pub(crate) fn inspect_slice_about() -> &'static str {
 
 pub(crate) fn root_long_about() -> &'static str {
     cache::root_long_about()
+}
+
+pub(crate) fn root_before_help() -> &'static str {
+    cache::root_before_help()
 }
 
 pub(crate) fn root_after_help() -> &'static str {

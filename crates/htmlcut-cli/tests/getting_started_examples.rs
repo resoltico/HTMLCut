@@ -6,7 +6,7 @@ const README_TEXT_OUTPUT: &str =
     "Guide\n\nCard alpha\n\nCard beta\n\nRead more\n\nSTART::Regex slice payload::END\n";
 
 #[test]
-fn readme_quick_start_commands_run_on_the_demo_page() {
+fn getting_started_quick_start_commands_run_on_the_demo_page() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(tempdir.path(), "page.html", README_FIXTURE_HTML);
 
@@ -137,7 +137,7 @@ fn readme_quick_start_commands_run_on_the_demo_page() {
 }
 
 #[test]
-fn readme_request_file_and_output_file_flows_run_end_to_end() {
+fn getting_started_request_file_and_output_file_flows_run_end_to_end() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(tempdir.path(), "page.html", README_FIXTURE_HTML);
     let request_path = tempdir.path().join("article-links.json");

@@ -8,22 +8,30 @@ fn help_prints_the_new_workflows_and_contract_language() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "HTMLCut has 5 operator-facing entry points",
-        ))
+        .stdout(predicate::str::starts_with(format!(
+            "HTMLCut {}\n{}\n",
+            expected_version(),
+            env!("CARGO_PKG_DESCRIPTION")
+        )))
+        .stdout(predicate::str::contains("Start here:"))
+        .stdout(predicate::str::contains("Reusable requests:"))
         .stdout(predicate::str::contains("catalog"))
         .stdout(predicate::str::contains("schema"))
         .stdout(predicate::str::contains("select"))
         .stdout(predicate::str::contains("slice"))
         .stdout(predicate::str::contains("inspect"))
+        .stdout(predicate::str::contains("help"))
         .stdout(predicate::str::contains("--value"))
         .stdout(predicate::str::contains("--output"))
         .stdout(predicate::str::contains("--verbose"))
         .stdout(predicate::str::contains(
-            "request/result contract refs, typed defaults, command constraints, modes, parameters, notes, and examples",
+            "--emit-request-file writes the normalized extraction definition for the current run.",
         ))
         .stdout(predicate::str::contains(
-            "--emit-request-file saves the normalized extraction definition you can reuse with --request-file.",
+            "--request-file reruns a saved definition instead of spelling the source and strategy inline.",
+        ))
+        .stdout(predicate::str::contains(
+            "htmlcut select --request-file ./article-links.json --output-file ./links.json",
         ));
 }
 
@@ -91,13 +99,32 @@ fn version_prints_workspace_version_and_description() {
 }
 
 #[test]
-fn subcommand_version_reuses_the_root_identity_banner() {
+fn help_subcommand_reuses_the_root_identity_banner() {
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .arg("help")
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with(format!(
+            "HTMLCut {}\n{}\n",
+            expected_version(),
+            env!("CARGO_PKG_DESCRIPTION")
+        )))
+        .stdout(predicate::str::contains(
+            "Usage: htmlcut [OPTIONS] <COMMAND>",
+        ));
+}
+
+#[test]
+fn subcommand_version_is_rejected_as_usage_error() {
     let mut command = Command::cargo_bin("htmlcut").expect("binary");
     command
         .args(["select", "--version"])
         .assert()
-        .success()
-        .stdout(expected_version_banner());
+        .failure()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("unexpected argument '--version'"));
 }
 
 #[test]

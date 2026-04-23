@@ -1,10 +1,10 @@
 use super::*;
 
 #[test]
-fn contract_lint_root_help_inventory_matches_clap_subcommands() {
-    let command = Cli::command();
-    let root_help = crate::help::root_long_about();
-    let subcommands = command
+fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands() {
+    let mut command = Cli::command();
+    let rendered_help = render_long_help(&mut command);
+    let subcommands = Cli::command()
         .get_subcommands()
         .map(|subcommand| {
             (
@@ -18,21 +18,38 @@ fn contract_lint_root_help_inventory_matches_clap_subcommands() {
         .collect::<Vec<_>>();
 
     assert!(
-        root_help.contains(&format!(
-            "HTMLCut has {} operator-facing entry points:",
-            subcommands.len()
+        rendered_help.starts_with(&format!(
+            "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
         )),
-        "root help drifted command count: {root_help}"
+        "root help drifted package banner: {rendered_help}"
+    );
+    let usage_index = rendered_help
+        .find("Usage: htmlcut [OPTIONS] <COMMAND>")
+        .expect("root help usage");
+    let start_here_index = rendered_help.find("Start here:").expect("root help flow");
+    assert!(
+        usage_index < start_here_index,
+        "root help should present usage before workflow detail: {rendered_help}"
+    );
+    assert!(
+        crate::help::root_long_about().contains("Start here:"),
+        "root help lost the workflow opener: {}",
+        crate::help::root_long_about()
+    );
+    assert!(
+        crate::help::root_long_about().contains("Reusable requests:"),
+        "root help lost reusable request guidance: {}",
+        crate::help::root_long_about()
     );
 
     for (name, about) in subcommands {
         assert!(
-            root_help.contains(&name),
-            "root help drifted subcommand name {name}: {root_help}"
+            rendered_help.contains(&name),
+            "root help drifted subcommand name {name}: {rendered_help}"
         );
         assert!(
-            root_help.contains(&about),
-            "root help drifted subcommand summary {about:?}: {root_help}"
+            rendered_help.contains(&about),
+            "root help drifted subcommand summary {about:?}: {rendered_help}"
         );
     }
 }

@@ -45,31 +45,70 @@ fn cargo_manifest_drives_the_public_metadata_constants() {
 fn run_covers_root_help_help_version_and_parse_error_modes() {
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned()]);
     assert_eq!(exit_code, 0);
+    assert!(stdout.starts_with(&format!(
+        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
+    )));
+    assert!(
+        stdout
+            .find("Usage: htmlcut [OPTIONS] <COMMAND>")
+            .expect("usage")
+            < stdout.find("Start here:").expect("flow")
+    );
     assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--help".to_owned()]);
     assert_eq!(exit_code, 0);
+    assert!(stdout.starts_with(&format!(
+        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
+    )));
+    assert!(
+        stdout
+            .find("Usage: htmlcut [OPTIONS] <COMMAND>")
+            .expect("usage")
+            < stdout.find("Start here:").expect("flow")
+    );
     assert!(stdout.contains("inspect"));
 
-    let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--version".to_owned()]);
+    let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "-h".to_owned()]);
     assert_eq!(exit_code, 0);
-    assert_eq!(stdout, format!("{}\n", version_banner()));
+    assert_eq!(stdout.matches(HTMLCUT_DESCRIPTION).count(), 1);
+    assert!(!stdout.contains("Start here:"));
+    assert!(stderr.is_empty());
 
-    let (exit_code, stdout, _) = run_vec(vec![
+    let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "help".to_owned()]);
+    assert_eq!(exit_code, 0);
+    assert!(stdout.starts_with(&format!(
+        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
+    )));
+    assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+    assert!(stderr.is_empty());
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
-        "select".to_owned(),
+        "--version".to_owned(),
+        "--help".to_owned(),
+    ]);
+    assert_eq!(exit_code, 0);
+    assert!(stdout.starts_with(&format!(
+        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
+    )));
+    assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+    assert!(stderr.is_empty());
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "--help".to_owned(),
         "--version".to_owned(),
     ]);
     assert_eq!(exit_code, 0);
-    assert_eq!(stdout, format!("{}\n", version_banner()));
+    assert!(stdout.starts_with(&format!(
+        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
+    )));
+    assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+    assert!(stderr.is_empty());
 
-    let (exit_code, stdout, _) = run_vec(vec![
-        "htmlcut".to_owned(),
-        "inspect".to_owned(),
-        "source".to_owned(),
-        "-V".to_owned(),
-    ]);
+    let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--version".to_owned()]);
     assert_eq!(exit_code, 0);
     assert_eq!(stdout, format!("{}\n", version_banner()));
 
@@ -77,12 +116,32 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         "htmlcut".to_owned(),
         "select".to_owned(),
         "--version".to_owned(),
+    ]);
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("unexpected argument '--version'"));
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "-V".to_owned(),
+    ]);
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.contains("\"category\": \"usage\""));
+    assert!(stdout.contains("\"command\": \"inspect-source\""));
+    assert!(stdout.contains("unexpected argument '-V'"));
+    assert!(stderr.is_empty());
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "--version".to_owned(),
         "--help".to_owned(),
     ]);
-    assert_eq!(exit_code, 0);
-    assert!(stdout.contains("Usage: htmlcut select [OPTIONS] [INPUT]"));
-    assert!(stdout.contains("-V, --version"));
-    assert!(stderr.is_empty());
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("unexpected argument '--version'"));
 
     let (exit_code, _, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

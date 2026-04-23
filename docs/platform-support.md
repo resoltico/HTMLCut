@@ -91,6 +91,10 @@ GitHub release builds run on:
 GitHub CI also runs release-target smoke on that same target matrix before the aggregate required
 check reports success.
 
+The release workflow also generates GitHub build-provenance attestations for the source archives,
+standalone packages, and checksum manifest. Those provenance records are separate from the named
+release-asset inventory above.
+
 GitHub also renders auto-generated `Source code (zip)` and `Source code (tar.gz)` links on release
 pages. Those links are GitHub-provided convenience downloads and are not part of HTMLCut's
 maintained asset inventory.

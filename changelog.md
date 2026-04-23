@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the required `main` branch-ownership handoff when a disposable release worktree is used, and
   added explicit cleanup for stale `release-prep/X.Y.Z` branches after the shipped history absorbs
   them.
+- Filled the remaining documentation gaps around workspace topology and publication metadata by
+  adding dedicated maintained guides for the `htmlcut_cli` library surface and the internal
+  `htmlcut_tempdir` helper crate, plus explicit release-doc coverage for GitHub build-provenance
+  attestations alongside the downloadable asset inventory.
+- Recut the root `htmlcut --help` experience around a single-sourced package banner, workflow-first
+  guidance, and reusable-request examples, while promoting the polished `HTMLCut` display name
+  across human-facing version, catalog, and schema text banners without changing the machine JSON
+  `tool` field. HTMLCut now also matches the maintained `ffhn` help/version contract by restoring
+  clap's `help` subcommand and limiting `--version` to top-level use instead of accepting it under
+  subcommands.
+- Corrected the standalone-package release smoke script and the maintainer publishing protocol to
+  verify the canonical `HTMLCut X.Y.Z` first version line, and added release-doc plus release-script
+  regression tests so future help/version banner changes cannot silently break tag publication.
 
 ## [4.4.0] - 2026-04-23
 

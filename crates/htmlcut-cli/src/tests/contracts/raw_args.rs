@@ -44,22 +44,42 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
 }
 
 #[test]
-fn raw_arg_helpers_detect_global_help_and_version_anywhere() {
+fn raw_arg_helpers_detect_help_anywhere_but_only_root_version_requests() {
     assert!(raw_args_requests_version(&[
         "htmlcut".to_owned(),
-        "select".to_owned(),
         "--version".to_owned(),
     ]));
     assert!(raw_args_requests_version(&[
         "htmlcut".to_owned(),
-        "inspect".to_owned(),
-        "source".to_owned(),
-        "-V".to_owned(),
+        "-qV".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "-".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "--version".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "--bogus".to_owned(),
+        "--version".to_owned(),
     ]));
     assert!(raw_args_requests_help(&[
         "htmlcut".to_owned(),
         "slice".to_owned(),
         "--help".to_owned(),
+    ]));
+    assert!(raw_args_requests_help(&[
+        "htmlcut".to_owned(),
+        "slice".to_owned(),
+        "-vh".to_owned(),
+    ]));
+    assert!(!raw_args_requests_help(&[
+        "htmlcut".to_owned(),
+        "-".to_owned(),
     ]));
     assert!(!raw_args_requests_help(&[
         "htmlcut".to_owned(),

@@ -1,3 +1,4 @@
+use crate::metadata::DISPLAY_NAME;
 use crate::model::{
     CatalogAvailability, CatalogCommandContract, CatalogCommandReport, CatalogCondition,
     CatalogConstraint, CatalogContractSurface, CatalogParameterKind, CatalogParameterRequirement,
@@ -9,7 +10,7 @@ pub(crate) fn render_catalog_text(report: &CatalogCommandReport) -> String {
     let catalog_command =
         htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Catalog);
     let mut lines = vec![
-        format!("{} {}", report.tool, report.version),
+        format!("{DISPLAY_NAME} {}", report.version),
         report.description.clone(),
     ];
 

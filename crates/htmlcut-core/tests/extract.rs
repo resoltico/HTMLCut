@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use htmlcut_core::{
     AttributeName, ExtractionRequest, ExtractionSpec, NormalizationOptions, OutputOptions,
@@ -315,47 +316,69 @@ fn source_file_loading_returns_absolute_path() {
 #[test]
 fn source_url_loading_works() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind server");
+    listener
+        .set_nonblocking(true)
+        .expect("make listener nonblocking");
     let address = listener.local_addr().expect("server addr");
     let url = format!("http://{address}");
 
     let handle = thread::spawn(move || {
-        for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept connection");
-            let mut request_buffer = [0u8; 512];
-            let read = stream.read(&mut request_buffer).expect("read request");
-            let request = String::from_utf8_lossy(&request_buffer[..read]);
-            let method = request
-                .lines()
-                .next()
-                .expect("request line")
-                .split_whitespace()
-                .next()
-                .expect("request method");
-            let body = "<article>Hello</article>";
-            let response = if method == "HEAD" {
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
-                    body.len()
-                )
-            } else {
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-                    body.len(),
-                    body
-                )
-            };
-            stream
-                .write_all(response.as_bytes())
-                .expect("write response");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut methods = Vec::new();
+
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut request_buffer = [0u8; 512];
+                    let read = stream.read(&mut request_buffer).expect("read request");
+                    let request = String::from_utf8_lossy(&request_buffer[..read]);
+                    let method = request
+                        .lines()
+                        .next()
+                        .expect("request line")
+                        .split_whitespace()
+                        .next()
+                        .expect("request method");
+                    methods.push(method.to_owned());
+
+                    let body = "<article>Hello</article>";
+                    let response = if method == "HEAD" {
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                            body.len()
+                        )
+                    } else {
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        )
+                    };
+                    stream
+                        .write_all(response.as_bytes())
+                        .expect("write response");
+
+                    if method == "GET" {
+                        return methods;
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("accept connection: {error}"),
+            }
         }
+
+        panic!("timed out waiting for HEAD/GET sequence, saw methods: {methods:?}");
     });
 
     let mut request = selector_request("", "article");
     request.source = SourceRequest::url(Url::parse(&url).expect("url"));
 
     let result = extract(&request, &RuntimeOptions::default());
-    handle.join().expect("server join");
+    let methods = handle.join().expect("server join");
     assert!(result.ok);
+    assert_eq!(methods, vec!["HEAD".to_owned(), "GET".to_owned()]);
     let expected_url = format!("{url}/");
     assert_eq!(
         result.source.input_base_url.as_deref(),

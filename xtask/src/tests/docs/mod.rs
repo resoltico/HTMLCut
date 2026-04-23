@@ -21,6 +21,7 @@ allow = [
 
 mod commands;
 mod contracts;
+mod inventory;
 mod legal;
 mod metadata;
 mod paths;

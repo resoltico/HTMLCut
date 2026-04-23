@@ -18,8 +18,8 @@ pub(crate) struct GlobalArgs {
     #[arg(short, long, global = true, action = clap::ArgAction::SetTrue, conflicts_with = "verbose")]
     pub(crate) quiet: bool,
 
-    /// Print the canonical HTMLCut version, engine identity, schema profile, and support metadata.
-    #[arg(short = 'V', long, global = true, action = clap::ArgAction::SetTrue)]
+    /// Print the HTMLCut identity banner, engine identity, schema profile, and repository.
+    #[arg(short = 'V', long, action = clap::ArgAction::SetTrue)]
     pub(crate) version: bool,
 }
 

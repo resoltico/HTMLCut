@@ -146,7 +146,7 @@ main() {
         [[ -x "${binary_path}" ]] || htmlcut_die "packaged binary is not executable: ${binary_path}"
     fi
 
-    "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
+    "${binary_path}" --version | tr -d '\r' | grep "^HTMLCut ${version}$"
     "${binary_path}" --help | tr -d '\r' | grep "inspect"
 
     printf 'Smoke-tested %s\n' "${package_name}"

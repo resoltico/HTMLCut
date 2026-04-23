@@ -80,6 +80,7 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &operation_ids,
         ));
         errors.extend(identifiers::inventory_errors(
+            repo_root,
             &display_path,
             &text,
             &schema_names,
@@ -109,4 +110,15 @@ pub(crate) fn expected_metadata_style_for_tests(repo_root: &Path, path: &Path) -
 #[cfg(test)]
 pub(crate) fn should_skip_dir_for_tests(repo_root: &Path, path: &Path) -> bool {
     paths::should_skip_dir_for_tests(repo_root, path)
+}
+
+#[cfg(test)]
+pub(crate) fn inventory_errors_for_tests(
+    repo_root: &Path,
+    display_path: &str,
+    text: &str,
+) -> Vec<String> {
+    let schema_names = identifiers::known_schema_names();
+    let operation_ids = identifiers::known_operation_ids();
+    identifiers::inventory_errors(repo_root, display_path, text, &schema_names, &operation_ids)
 }

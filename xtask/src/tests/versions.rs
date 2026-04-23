@@ -106,6 +106,117 @@ fn package_version_from_manifest_ignores_workspace_package_versions() {
 }
 
 #[test]
+fn workspace_members_from_manifest_extracts_the_workspace_member_list() {
+    let members = crate::manifest::workspace_members_from_manifest(
+        r#"[workspace]
+members = [
+    "crates/htmlcut-core",
+    "crates/htmlcut-cli",
+    "xtask",
+]
+"#,
+    )
+    .expect("workspace members");
+
+    assert_eq!(
+        members,
+        vec![
+            "crates/htmlcut-core".to_owned(),
+            "crates/htmlcut-cli".to_owned(),
+            "xtask".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn workspace_members_from_manifest_supports_single_line_lists_and_skips_other_sections() {
+    let members = crate::manifest::workspace_members_from_manifest(
+        r#"[package]
+name = "htmlcut"
+
+[workspace]
+# canonical workspace members
+members = ["crates/htmlcut-core", "xtask"]
+"#,
+    )
+    .expect("workspace members");
+
+    assert_eq!(
+        members,
+        vec!["crates/htmlcut-core".to_owned(), "xtask".to_owned(),]
+    );
+}
+
+#[test]
+fn workspace_members_from_manifest_ignores_malformed_section_headers_before_workspace() {
+    let members = crate::manifest::workspace_members_from_manifest(
+        r#"[workspace
+members = ["crates/not-real"]
+
+[workspace]
+members = ["crates/htmlcut-core", "xtask"]
+"#,
+    )
+    .expect("workspace members");
+
+    assert_eq!(
+        members,
+        vec!["crates/htmlcut-core".to_owned(), "xtask".to_owned(),]
+    );
+}
+
+#[test]
+fn workspace_members_from_manifest_ignores_malformed_member_assignments_before_the_real_list() {
+    let members = crate::manifest::workspace_members_from_manifest(
+        r#"[workspace]
+members "crates/not-real"
+members = "still-not-a-list"
+members = [
+    "crates/htmlcut-core",
+    "fuzz",
+]
+"#,
+    )
+    .expect("workspace members");
+
+    assert_eq!(
+        members,
+        vec!["crates/htmlcut-core".to_owned(), "fuzz".to_owned(),]
+    );
+}
+
+#[test]
+fn workspace_members_from_manifest_ignores_duplicate_and_unterminated_member_entries() {
+    let members = crate::manifest::workspace_members_from_manifest(
+        r#"[workspace]
+members = [
+    "crates/htmlcut-core",
+    "crates/htmlcut-core",
+    "fuzz",
+    "xtask
+]
+"#,
+    )
+    .expect("workspace members");
+
+    assert_eq!(
+        members,
+        vec!["crates/htmlcut-core".to_owned(), "fuzz".to_owned(),]
+    );
+}
+
+#[test]
+fn workspace_members_from_manifest_requires_a_members_list() {
+    let error = crate::manifest::workspace_members_from_manifest("[workspace]\nresolver = \"3\"\n")
+        .expect_err("missing members should fail");
+
+    assert_eq!(
+        error.to_string(),
+        "workspace members not found in Cargo.toml"
+    );
+}
+
+#[test]
 fn workspace_version_reads_from_repo_manifest() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(

@@ -117,6 +117,11 @@ Requirements:
 
 Workflow success is not authoritative. The release object and its assets are authoritative.
 
+The release workflow also emits GitHub build-provenance attestations for the source archives,
+standalone packages, and checksum manifest. Those attestations are part of the maintained
+publication story, but they live in GitHub's attestation system rather than in the named release
+asset inventory above.
+
 GitHub renders `Source code (zip)` and `Source code (tar.gz)` links on the release page. Those
 links are GitHub-generated convenience downloads and are not part of HTMLCut's maintained asset
 inventory.
@@ -167,7 +172,7 @@ gh release download vX.Y.Z \
   done < htmlcut-X.Y.Z-checksums.txt
 
   tar -xzf "./htmlcut-X.Y.Z-${HOST_TARGET}.tar.gz"
-  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | grep "^htmlcut X.Y.Z$"
+  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | grep "^HTMLCut X.Y.Z$"
   "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --help | grep "inspect"
 )
 
@@ -177,7 +182,7 @@ rm -rf "$TMP_DIR"
 Do not declare the release complete until the checksum manifest validates and the downloaded
 host-native binary reports the target version.
 
-The `grep "^htmlcut X.Y.Z$"` check intentionally validates only the first line because
+The `grep "^HTMLCut X.Y.Z$"` check intentionally validates only the first line because
 `htmlcut --version` is multi-line: it prints the version line first, then the product description
 from the workspace manifest.
 

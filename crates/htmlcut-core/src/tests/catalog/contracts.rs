@@ -19,8 +19,15 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
         root_help
             .sections
             .iter()
-            .any(|section| section.title.contains("operator-facing entry points")),
-        "root help should describe the top-level inventory"
+            .any(|section| section.title == "Start here"),
+        "root help should start with a workflow guide"
+    );
+    assert!(
+        root_help
+            .sections
+            .iter()
+            .any(|section| section.title == "Reusable requests"),
+        "root help should surface reusable request workflows"
     );
     assert!(
         root_help
@@ -28,6 +35,20 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
             .iter()
             .all(|example| example.starts_with("htmlcut ")),
         "root help examples should stay executable htmlcut commands"
+    );
+    assert!(
+        root_help
+            .examples
+            .iter()
+            .any(|example| example.contains("--emit-request-file")),
+        "root help examples should show how to save a reusable request"
+    );
+    assert!(
+        root_help
+            .examples
+            .iter()
+            .any(|example| example.contains("--request-file")),
+        "root help examples should show how to rerun a saved request"
     );
 
     let inspect_help = crate::cli_aux_command_help_document(crate::CliAuxCommandId::Inspect);
