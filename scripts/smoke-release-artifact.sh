@@ -18,6 +18,43 @@ extract_zip_with_powershell() {
         "Expand-Archive -Path '$(cygpath -w "${release_archive_path}")' -DestinationPath '$(cygpath -w "${release_extract_dir}")' -Force"
 }
 
+debug_release_archive_contents() {
+    local release_archive_path="$1"
+
+    printf 'Archive contents for %s:\n' "${release_archive_path}" >&2
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -Z1 "${release_archive_path}" >&2 || true
+        return
+    fi
+
+    if command -v tar >/dev/null 2>&1; then
+        tar -tf "${release_archive_path}" >&2 || true
+        return
+    fi
+
+    if command -v powershell.exe >/dev/null 2>&1; then
+        # shellcheck disable=SC2016
+        env \
+            ARCHIVE_PATH="$(cygpath -w "${release_archive_path}")" \
+            powershell.exe -NoLogo -NoProfile -Command \
+            '
+            Add-Type -AssemblyName System.IO.Compression
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($env:ARCHIVE_PATH)
+            try {
+                $archive.Entries | ForEach-Object { $_.FullName }
+            } finally {
+                $archive.Dispose()
+            }' >&2 || true
+    fi
+}
+
+debug_extracted_layout() {
+    local extract_root="$1"
+
+    printf 'Extracted layout under %s:\n' "${extract_root}" >&2
+    find "${extract_root}" -mindepth 1 -maxdepth 4 -print 2>/dev/null | sort >&2 || true
+}
+
 extract_release_archive() {
     local release_archive_path="$1"
     local release_archive_extension="$2"
@@ -76,7 +113,9 @@ main() {
     readonly binary_name
     package_path="${repo_root}/dist/${package_name}"
     readonly package_path
-    extract_root="$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-smoke-${target_triple}.XXXXXX")"
+    temp_root="$(htmlcut_temp_root)"
+    readonly temp_root
+    extract_root="$(mktemp -d "${temp_root}/htmlcut-smoke-${target_triple}.XXXXXX")"
     readonly extract_root
     extracted_package_dir="${extract_root}/${package_dir_name}"
     readonly extracted_package_dir
@@ -93,7 +132,11 @@ main() {
 
     extract_release_archive "${package_path}" "${archive_extension}" "${extract_root}"
 
-    [[ -f "${binary_path}" ]] || htmlcut_die "missing packaged binary ${binary_path}"
+    if [[ ! -f "${binary_path}" ]]; then
+        debug_release_archive_contents "${package_path}"
+        debug_extracted_layout "${extract_root}"
+        htmlcut_die "missing packaged binary ${binary_path}"
+    fi
     [[ -f "${extracted_package_dir}/README.md" ]] || htmlcut_die "missing packaged README.md"
     [[ -f "${extracted_package_dir}/LICENSE" ]] || htmlcut_die "missing packaged LICENSE"
     [[ -f "${extracted_package_dir}/NOTICE" ]] || htmlcut_die "missing packaged NOTICE"

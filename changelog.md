@@ -71,8 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Windows standalone ZIP PowerShell packaging fallback now preloads both compression
   assemblies before it opens the archive, so the native Windows release-target smoke job no
   longer fails on missing `ZipArchiveMode` type resolution during packaging.
-- Windows standalone smoke verification now prefers bash-native ZIP extractors before the
-  PowerShell fallback, so the Windows CI smoke job no longer depends on `Expand-Archive` path
+- Windows standalone packaging and smoke verification now normalize temporary paths through the
+  runner's real temp root and prefer bash-native ZIP extractors before the PowerShell fallback, so
+  the Windows CI smoke job no longer depends on raw `/tmp` handling or `Expand-Archive` path
   translation matching Git Bash's extracted-package lookup.
 - Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related
   maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the

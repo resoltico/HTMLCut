@@ -148,7 +148,9 @@ compiled_binary_name="$(binary_name_for_target "${target_triple}")"
 readonly compiled_binary_name
 compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
 readonly compiled_binary_path
-staging_root="$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-release-${target_triple}.XXXXXX")"
+temp_root="$(htmlcut_temp_root)"
+readonly temp_root
+staging_root="$(mktemp -d "${temp_root}/htmlcut-release-${target_triple}.XXXXXX")"
 readonly staging_root
 package_dir="${staging_root}/${package_dir_name}"
 readonly package_dir

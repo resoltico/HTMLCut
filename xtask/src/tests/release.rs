@@ -129,6 +129,54 @@ htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_
 }
 
 #[test]
+fn release_shell_helpers_normalize_windows_temp_roots() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let temp = tempdir().expect("tempdir");
+    let fake_bin = temp.path().join("bin");
+    fs::create_dir_all(&fake_bin).expect("create fake bin");
+
+    fs::write(
+        fake_bin.join("cygpath"),
+        "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1\" == \"-u\" ]]\nprintf '/d/a/_temp\\n'\n",
+    )
+    .expect("write fake cygpath");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(fake_bin.join("cygpath"), fs::Permissions::from_mode(0o755))
+            .expect("chmod fake cygpath");
+    }
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+PATH="{fake_bin}:$PATH"
+export OS=Windows_NT
+export RUNNER_TEMP='D:\a\_temp'
+source "{repo_root}/scripts/common.sh"
+[[ "$(htmlcut_temp_root)" == "/d/a/_temp" ]]
+"#,
+            fake_bin = fake_bin.display(),
+            repo_root = repo_root.display(),
+        ))
+        .current_dir(repo_root)
+        .output()
+        .expect("run temp-root helper smoke");
+
+    assert!(
+        output.status.success(),
+        "temp-root helper smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
