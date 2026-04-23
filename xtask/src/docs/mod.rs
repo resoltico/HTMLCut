@@ -6,8 +6,9 @@ use regex::Regex;
 use crate::model::DynResult;
 use crate::workspace_version;
 
-mod commands;
+pub(crate) mod commands;
 mod identifiers;
+mod legal;
 mod links;
 mod metadata;
 mod paths;
@@ -17,9 +18,6 @@ pub use paths::markdown_doc_paths;
 
 #[cfg(test)]
 pub(crate) use metadata::{MetadataStyle, metadata_version};
-#[cfg(test)]
-use std::collections::BTreeSet;
-
 /// Validates Markdown metadata and local links for the maintained docs set.
 pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     let workspace_version = workspace_version(repo_root)?;
@@ -88,49 +86,11 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &operation_ids,
         ));
         errors.extend(release::release_doc_errors(repo_root, &display_path, &text));
+        errors.extend(legal::legal_doc_errors(repo_root, &display_path, &text));
     }
 
     Ok(errors)
 }
-
-#[cfg(test)]
-pub(crate) fn extract_htmlcut_examples_for_tests(text: &str) -> Vec<String> {
-    commands::extract_htmlcut_examples(text)
-}
-
-#[cfg(test)]
-pub(crate) fn shell_words_for_tests(command: &str) -> Vec<String> {
-    commands::shell_words(command).expect("shell words")
-}
-
-#[cfg(test)]
-pub(crate) fn command_path_for_tests(tokens: &[String]) -> Vec<String> {
-    commands::command_path(tokens)
-        .into_iter()
-        .map(str::to_owned)
-        .collect()
-}
-
-#[cfg(test)]
-pub(crate) fn command_reference_error_for_tests(
-    display_path: &str,
-    tokens: &[String],
-    schema_names: &BTreeSet<&'static str>,
-    operation_ids: &BTreeSet<&'static str>,
-) -> Option<String> {
-    commands::command_reference_error(display_path, tokens, schema_names, operation_ids)
-}
-
-#[cfg(test)]
-pub(crate) fn command_example_errors_for_tests(
-    display_path: &str,
-    text: &str,
-    schema_names: &BTreeSet<&'static str>,
-    operation_ids: &BTreeSet<&'static str>,
-) -> Vec<String> {
-    commands::command_example_errors(display_path, text, schema_names, operation_ids)
-}
-
 #[cfg(test)]
 pub(crate) fn metadata_contract_errors_for_tests(
     display_path: &str,

@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "4.3.0"
 domain: RELEASE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -147,6 +147,7 @@ Then verify:
   - `main` is protected
   - `main` does not require approving reviews
   - `main` does not enforce branch protection for admins
+  - `main` requires conversation resolution before merge
   - required status checks are exactly:
     - `Check`
 
@@ -228,9 +229,11 @@ Verify:
 - local `main` contains the merge you expect
 - the remote release branch is deleted
 
-If a green PR is blocked by review requirements or admin-enforced branch protection, repository
-settings have drifted away from this protocol and must be corrected before the release proceeds.
-Do not work around that drift by adding manual review steps to the normal release path.
+If a green PR is blocked only because conversations are unresolved, resolve or close those threads
+and then merge normally. If it is blocked by review requirements or admin-enforced branch
+protection, repository settings have drifted away from this protocol and must be corrected before
+the release proceeds. Do not work around that drift by adding manual review steps to the normal
+release path.
 
 If the local `release/X.Y.Z` branch still exists:
 

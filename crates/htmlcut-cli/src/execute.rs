@@ -12,6 +12,8 @@ pub(crate) use self::cli_io::{output_file_notice, write_outcome, write_request_d
 pub(crate) use self::cli_io::{
     request_definition_parent_dir_for_tests, write_stdout_payload_for_tests,
 };
+#[cfg(test)]
+pub(crate) use self::commands::operation_error_outcome_for_tests;
 pub(crate) use self::commands::{
     run_catalog, run_inspect_select, run_inspect_slice, run_inspect_source, run_schema, run_select,
     run_slice,

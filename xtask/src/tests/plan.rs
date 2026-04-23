@@ -40,6 +40,7 @@ fn check_plan_includes_all_strict_gates() {
     fs::create_dir_all(&scripts_dir).expect("create scripts dir");
     fs::write(scripts_dir.join("z.sh"), "#!/usr/bin/env bash\n").expect("write z.sh");
     fs::write(scripts_dir.join("a.sh"), "#!/usr/bin/env bash\n").expect("write a.sh");
+    let release_targets = scripts_dir.join("release-targets.sh");
 
     let plan = check_plan(repo_root.path()).expect("check plan");
 
@@ -55,6 +56,7 @@ fn check_plan_includes_all_strict_gates() {
                     .to_string_lossy()
                     .into_owned(),
                 scripts_dir.join("a.sh").to_string_lossy().into_owned(),
+                release_targets.to_string_lossy().into_owned(),
                 scripts_dir.join("z.sh").to_string_lossy().into_owned(),
             ],
             false,
@@ -72,26 +74,17 @@ fn check_plan_includes_all_strict_gates() {
                     .to_string_lossy()
                     .into_owned(),
                 scripts_dir.join("a.sh").to_string_lossy().into_owned(),
+                release_targets.to_string_lossy().into_owned(),
                 scripts_dir.join("z.sh").to_string_lossy().into_owned(),
             ],
             false,
             false,
         )
     );
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "fmt",
-                "--check",
-                "--manifest-path",
-                repo_root
-                    .path()
-                    .join("fuzz")
-                    .join("Cargo.toml")
-                    .to_string_lossy()
-                    .as_ref(),
-            ]
-    }));
+    assert_eq!(
+        plan[2],
+        CommandSpec::new("cargo", ["fmt", "--check"], false, false)
+    );
     assert!(
         plan.iter()
             .any(|spec| { spec.args == ["test", "-p", "xtask", "--lib", "--locked"] })
@@ -118,24 +111,6 @@ fn check_plan_includes_all_strict_gates() {
                 "contract_lint",
             ]
     }));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "clippy",
-                "--manifest-path",
-                repo_root
-                    .path()
-                    .join("fuzz")
-                    .join("Cargo.toml")
-                    .to_string_lossy()
-                    .as_ref(),
-                "--bins",
-                "--locked",
-                "--",
-                "-D",
-                "warnings",
-            ]
-    }));
     assert!(plan.iter().any(|spec| spec.args
         == [
             "outdated",
@@ -144,60 +119,54 @@ fn check_plan_includes_all_strict_gates() {
             "--exit-code",
             "1"
         ]));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "outdated",
-                "--manifest-path",
-                repo_root
-                    .path()
-                    .join("fuzz")
-                    .join("Cargo.toml")
-                    .to_string_lossy()
-                    .as_ref(),
-                "--root-deps-only",
-                "--exit-code",
-                "1",
-            ]
-    }));
     assert!(
         plan.iter()
             .any(|spec| spec.args == ["audit", "-D", "warnings"])
     );
     assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "audit",
-                "-D",
-                "warnings",
-                "--file",
-                repo_root
-                    .path()
-                    .join("fuzz")
-                    .join("Cargo.lock")
-                    .to_string_lossy()
-                    .as_ref(),
-            ]
+        spec.program == std::path::Path::new("cargo")
+            && spec.args.first().map(String::as_str) == Some("deny")
+            && spec.args.iter().any(|arg| arg == "--target")
+            && spec.args.iter().any(|arg| arg == "x86_64-pc-windows-msvc")
+            && spec.args.iter().any(|arg| arg == "check")
     }));
     assert!(plan.iter().any(|spec| {
         spec.args
             .windows(2)
             .any(|window| window == ["--release-type", "major"])
     }));
+    assert!(
+        plan.iter()
+            .any(|spec| { spec.args == ["check", "-p", "htmlcut-fuzz", "--bins", "--locked"] })
+    );
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "check",
-                "--manifest-path",
-                repo_root
-                    .path()
-                    .join("fuzz")
-                    .join("Cargo.toml")
-                    .to_string_lossy()
-                    .as_ref(),
-                "--bins",
+                "nextest",
+                "run",
+                "--workspace",
+                "--lib",
+                "--tests",
+                "--all-features",
                 "--locked",
             ]
+    }));
+    assert!(plan.iter().all(|spec| {
+        !spec.args.iter().any(|arg| {
+            arg == repo_root
+                .path()
+                .join("fuzz")
+                .join("Cargo.toml")
+                .to_string_lossy()
+                .as_ref()
+                || arg
+                    == repo_root
+                        .path()
+                        .join("fuzz")
+                        .join("Cargo.lock")
+                        .to_string_lossy()
+                        .as_ref()
+        })
     }));
     assert_eq!(
         plan.last().expect("release smoke"),
@@ -211,7 +180,7 @@ fn check_plan_includes_all_strict_gates() {
 }
 
 #[test]
-fn check_plan_skips_shell_gates_when_no_scripts_exist() {
+fn check_plan_lints_the_canonical_release_script_even_without_extra_shell_files() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());
 
@@ -219,7 +188,67 @@ fn check_plan_skips_shell_gates_when_no_scripts_exist() {
 
     assert_eq!(
         plan[0],
+        CommandSpec::new(
+            "bash",
+            [
+                "-n".to_owned(),
+                repo_root
+                    .path()
+                    .join("scripts")
+                    .join("release-targets.sh")
+                    .to_string_lossy()
+                    .into_owned(),
+            ],
+            false,
+            false,
+        )
+    );
+    assert_eq!(
+        plan[1],
+        CommandSpec::new(
+            "shellcheck",
+            [repo_root
+                .path()
+                .join("scripts")
+                .join("release-targets.sh")
+                .to_string_lossy()
+                .into_owned()],
+            false,
+            false,
+        )
+    );
+    assert_eq!(
+        plan[2],
         CommandSpec::new("cargo", ["fmt", "--check"], false, false)
+    );
+}
+
+#[test]
+fn check_plan_still_builds_core_steps_before_missing_release_registry_errors() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"3.0.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    fs::write(repo_root.path().join("changelog.md"), "## [Unreleased]\n").expect("write changelog");
+    let baseline_dir = repo_root
+        .path()
+        .join("semver-baseline")
+        .join("htmlcut-core");
+    fs::create_dir_all(&baseline_dir).expect("create semver baseline");
+    fs::write(
+        baseline_dir.join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-core\"\nversion = \"2.0.0\"\n",
+    )
+    .expect("write baseline manifest");
+
+    let error = check_plan(repo_root.path()).expect_err("missing release registry should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing canonical release target script")
     );
 }
 
@@ -239,7 +268,12 @@ fn coverage_command_targets_repo_coverage_file() {
             "+nightly".to_owned(),
             "llvm-cov".to_owned(),
             "--branch".to_owned(),
-            "--workspace".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-core".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-cli".to_owned(),
+            "-p".to_owned(),
+            "xtask".to_owned(),
             "--all-targets".to_owned(),
             "--all-features".to_owned(),
             "--locked".to_owned(),
@@ -354,6 +388,27 @@ fn release_binary_path_uses_the_configured_target_dir_layout() {
             .join("custom-target")
             .join("dist")
             .join(binary_name())
+    );
+}
+
+#[test]
+fn plan_path_helpers_expose_canonical_workspace_layout() {
+    let repo_root = tempdir().expect("tempdir");
+
+    assert_eq!(
+        core_manifest_path(repo_root.path()),
+        repo_root
+            .path()
+            .join("crates")
+            .join("htmlcut-core")
+            .join("Cargo.toml")
+    );
+    assert_eq!(
+        semver_baseline_path(repo_root.path()),
+        repo_root
+            .path()
+            .join("semver-baseline")
+            .join("htmlcut-core")
     );
 }
 

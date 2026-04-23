@@ -10,13 +10,17 @@ route:
 
 # Architecture Guide
 
-HTMLCut has three maintained surfaces:
+HTMLCut has three maintained product/runtime surfaces:
 
 1. `htmlcut-cli`
 2. `htmlcut-core`
 3. `htmlcut_core::interop::v1`
 
 They are related, but they are not interchangeable.
+
+Maintainer-only surfaces such as `xtask`, the release shell scripts, and the checked-in fuzz
+targets are real maintained repository surfaces too, but they sit outside this runtime split and
+are documented through the maintainer guides instead of this architecture map.
 
 ## Use The Right Surface
 

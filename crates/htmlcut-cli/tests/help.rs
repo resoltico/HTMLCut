@@ -101,6 +101,21 @@ fn subcommand_version_reuses_the_root_identity_banner() {
 }
 
 #[test]
+fn parse_errors_do_not_switch_to_json_just_because_a_positional_argument_is_named_inspect() {
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["select", "inspect"])
+        .assert()
+        .failure()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains(
+            "the following required arguments were not provided:",
+        ))
+        .stderr(predicate::str::contains("\"tool\":").not());
+}
+
+#[test]
 fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(

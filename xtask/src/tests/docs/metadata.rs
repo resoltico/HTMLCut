@@ -58,11 +58,7 @@ fn markdown_contract_errors_report_missing_and_mismatched_versions() {
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"9.9.9\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [patents]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
@@ -122,11 +118,7 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [patents]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
@@ -183,11 +175,7 @@ fn markdown_contract_errors_report_malformed_metadata_blocks_and_empty_values() 
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated:\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [patents]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),

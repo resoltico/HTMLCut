@@ -22,11 +22,7 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
         "<!-- version: \"4.1.0\" -->\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!-- version: \"4.1.0\" -->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("docs").join("nested")).expect("create docs dir");
     fs::write(
         repo_root
@@ -109,11 +105,7 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [patents]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
@@ -160,11 +152,7 @@ fn markdown_contract_errors_ignore_external_anchor_and_mail_links() {
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[repo](http://example.com)\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [patents]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),

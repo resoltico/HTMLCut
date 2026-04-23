@@ -6,6 +6,8 @@ mod cli_choice;
 mod cli_contract;
 mod contracts;
 mod diagnostics;
+#[cfg(any(test, doctest))]
+mod doctests;
 mod document;
 mod extract;
 mod inspect;

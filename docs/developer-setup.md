@@ -77,6 +77,11 @@ Why this shape:
 If you are not on macOS, keep the same tool list but omit the `CC=clang CXX=clang++` override and
 use the platform's normal C toolchain instead.
 
+LLVM-backed maintainer flows are a separate concern: `cargo xtask coverage` and
+`cargo xtask fuzz-smoke` both launch Cargo with `CC=clang CXX=clang++` so coverage and libFuzzer
+stay on the LLVM toolchain. Keep `clang` and `clang++` available on `PATH` on any host where you
+plan to run those maintained commands.
+
 ## Install ShellCheck
 
 Install `shellcheck` from Homebrew on macOS:
@@ -108,7 +113,8 @@ CC=clang CXX=clang++ cargo install <tool> --locked
 ```
 
 Repository-local Cargo work is already guarded by [../.cargo/config.toml](../.cargo/config.toml),
-which forces `CC = "clang"` inside this workspace.
+which provides the `cargo xtask` alias but no longer forces a global compiler override across the
+whole workspace.
 
 One more macOS footgun: long-lived desktop app shells can inherit a stale `CC` value even after
 your `~/.zshrc` has been fixed. If local `cargo build`, `cargo run`, or `cargo test` behavior looks

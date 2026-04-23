@@ -115,6 +115,32 @@ HTMLCut has one canonical command surface:
 
 ## Quick Start
 
+If you want a reproducible local sample on a POSIX shell, create the demo page used by the
+commands below:
+
+```bash
+cat > ./page.html <<'HTML'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HTMLCut README Fixture</title>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Guide</h1>
+      <div class="card">Card alpha</div>
+      <div class="card">Card beta</div>
+      <p><a class="more" href="../guide.html">Read more</a></p>
+      <pre>START::Regex slice payload::END</pre>
+    </article>
+  </main>
+</body>
+</html>
+HTML
+```
+
 Extract readable text from the first article:
 
 ```bash
@@ -244,6 +270,7 @@ Runtime behavior and diagnostics:
 - `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
 - `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
 - `catalog`, `schema`, rendered help, recovery guidance, and the maintained concrete `htmlcut ...` examples are linted against the same core-owned operation, command-contract, help-document, diagnostic-code, and schema registries.
+- The root README quick-start, request-file, and output-file CLI flows are also exercised by integration tests so these concrete examples stay runnable instead of only parsing.
 
 ## Embedding And Interop
 

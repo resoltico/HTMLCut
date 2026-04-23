@@ -1,0 +1,3 @@
+# Frozen semver snapshot: exclude from default repository search to keep live-code discovery focused.
+# Use explicit paths or --no-ignore when you intentionally need the published baseline copy.
+semver-baseline/

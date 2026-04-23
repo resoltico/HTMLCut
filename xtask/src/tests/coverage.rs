@@ -1,5 +1,71 @@
 use super::*;
 
+#[cfg(unix)]
+fn symlink_file(source: &Path, link: &Path) {
+    std::os::unix::fs::symlink(source, link).expect("create symlink");
+}
+
+#[test]
+fn tracked_files_skip_missing_roots_non_rust_entries_and_explicit_exclusions() {
+    let repo_root = tempdir().expect("tempdir");
+    let cli_src = repo_root.path().join("crates/htmlcut-cli/src");
+    fs::create_dir_all(cli_src.join("nested")).expect("create nested cli src");
+    fs::create_dir_all(cli_src.join("tests")).expect("create cli test dir");
+    fs::create_dir_all(cli_src.join("model")).expect("create cli model dir");
+
+    fs::write(cli_src.join("lookup.rs"), "// tracked\n").expect("write lookup");
+    fs::write(cli_src.join("nested/report.rs"), "// tracked\n").expect("write nested report");
+    fs::write(cli_src.join("main.rs"), "// skipped main\n").expect("write main");
+    fs::write(cli_src.join("notes.txt"), "ignore").expect("write note");
+    fs::write(cli_src.join("tests/helper.rs"), "// skipped test module")
+        .expect("write test helper");
+    fs::write(cli_src.join("model/catalog.rs"), "// skipped declarative")
+        .expect("write excluded catalog model");
+
+    let tracked = tracked_files(repo_root.path()).expect("tracked files");
+    let tracked_paths = tracked.values().cloned().collect::<Vec<_>>();
+
+    assert!(tracked_paths.contains(&"crates/htmlcut-cli/src/lookup.rs".to_owned()));
+    assert!(tracked_paths.contains(&"crates/htmlcut-cli/src/nested/report.rs".to_owned()));
+    assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/main.rs".to_owned()));
+    assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/tests/helper.rs".to_owned()));
+    assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/model/catalog.rs".to_owned()));
+}
+
+#[cfg(unix)]
+#[test]
+fn tracked_files_reject_entries_that_resolve_outside_the_repo_root() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let outside_root = tempdir().expect("outside tempdir");
+    let cli_src = repo_root.path().join("crates/htmlcut-cli/src");
+    fs::create_dir_all(&cli_src).expect("create cli src");
+    let outside_file = outside_root.path().join("escaped.rs");
+    fs::write(&outside_file, "// outside\n").expect("write outside file");
+    symlink_file(&outside_file, &cli_src.join("escaped.rs"));
+
+    let error = tracked_files(repo_root.path()).expect_err("symlink should escape the repo");
+
+    assert!(error.to_string().contains("does not live under repo root"));
+}
+
+#[test]
+fn repo_relative_source_path_rejects_paths_outside_the_repo_root() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let outside_root = tempdir().expect("outside tempdir");
+    let outside_file = outside_root.path().join("lookup.rs");
+    fs::write(&outside_file, "// outside\n").expect("write outside file");
+    let absolute_outside_file =
+        normalize_path(repo_root.path(), &outside_file).expect("normalize outside file");
+
+    let error = crate::coverage::repo_relative_source_path_for_tests(
+        repo_root.path(),
+        &absolute_outside_file,
+    )
+    .expect_err("outside paths should fail");
+
+    assert!(error.to_string().contains("does not live under repo root"));
+}
+
 #[test]
 fn read_coverage_report_loads_json_from_disk() {
     let repo_root = tempdir().expect("tempdir");

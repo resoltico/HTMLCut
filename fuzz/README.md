@@ -12,9 +12,9 @@ RETRIEVAL_HINTS:
 
 # HTMLCut Fuzz Inventory
 
-The checked-in fuzz package lives in [`Cargo.toml`](Cargo.toml). It is intentionally separate from
-the main workspace so the normal maintainer flow stays stable-first, while fuzzing can use the
-tooling that best suits libFuzzer.
+The checked-in fuzz package lives in [`Cargo.toml`](Cargo.toml) and is a normal member of the main
+workspace. That keeps the maintained libFuzzer targets on the shared lockfile, lint policy, and
+dependency floor while still letting live fuzzing use nightly through `cargo-fuzz`.
 
 ## Targets
 
@@ -22,6 +22,7 @@ tooling that best suits libFuzzer.
 - `selector_parsing`: builds selector extraction requests from arbitrary HTML, selectors, value modes, and selection policies.
 - `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and output modes.
 - `extraction_request_building`: exercises the frozen `htmlcut_core::interop::v1` plan builder and executor with arbitrary selector and delimiter strategies.
+- `cli_parse_error_surface`: asserts that missing-argument parse failures stay human by default and switch to JSON only when the public CLI surface explicitly requests structured output.
 
 ## Seed Corpora
 
@@ -51,6 +52,9 @@ cargo install cargo-fuzz --locked
 On macOS, keep the maintained `CC=clang CXX=clang++` override from
 [`docs/developer-setup.md`](../docs/developer-setup.md) when installing `cargo-fuzz`.
 
+The smoke command itself runs `cargo +nightly fuzz run ...` with `CC=clang CXX=clang++`, so keep
+`clang` and `clang++` available on `PATH` on any host where you use `cargo xtask fuzz-smoke`.
+
 Run one maintained target without mutating the checked-in seed corpus:
 
 ```bash
@@ -60,7 +64,7 @@ cargo xtask fuzz-smoke --target selector_parsing
 Build every target without starting a fuzzing campaign:
 
 ```bash
-cargo check --manifest-path fuzz/Cargo.toml --bins --locked
+cargo check -p htmlcut-fuzz --bins --locked
 ```
 
 This compile-smoke is part of the normal maintainer gate. Full fuzzing campaigns are not.

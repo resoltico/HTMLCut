@@ -3,9 +3,9 @@ AFAD:
   afad: "3.5"
   version: "4.3.0"
   domain: LEGAL
-  updated: "2026-04-22"
+  updated: "2026-04-23"
 RETRIEVAL_HINTS:
-  keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, dependency licenses]
+  keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, ncsa, dependency licenses]
   questions: [what is HTMLCut's patent posture?, which dependency license families include explicit patent grants?, where should I look for legal attribution?]
   related: [README.md, NOTICE, deny.toml]
 -->
@@ -17,8 +17,8 @@ an explicit patent grant or patent retaliation clause.
 
 ## Dependency Patent Grants
 
-HTMLCut allows third-party dependency licenses through `deny.toml`, and those license families have
-different patent postures. The exact dependency inventory for a given release lives in
+HTMLCut allows third-party dependency licenses through `deny.toml`, and those SPDX license families
+have different patent postures. The exact dependency inventory for a given release lives in
 [NOTICE](NOTICE) and `Cargo.lock`; this note explains the policy implications rather than trying to
 freeze a crate-by-crate list in prose.
 
@@ -29,7 +29,9 @@ freeze a crate-by-crate list in prose.
 | MPL-2.0 | Yes, scoped | Section 2.1 grants patent rights within the scope of the covered files. |
 | ISC | No explicit grant | Plain permissive grant, no standalone patent clause. |
 | BSD-3-Clause | No explicit grant | Plain permissive grant, no standalone patent clause. |
-| 0BSD / Unlicense | No explicit grant | Public-domain-like or permissive terms without a dedicated patent clause. |
+| NCSA | No explicit grant | University of Illinois/NCSA terms grant broad copyright permissions but do not add a standalone patent clause. |
+| 0BSD | No explicit grant | Public-domain-like or permissive terms without a dedicated patent clause. |
+| Unlicense | No explicit grant | Public-domain-like or permissive terms without a dedicated patent clause. |
 | Unicode-3.0 | No explicit grant | Data-license terms, not a patent grant. |
 | CDLA-Permissive-2.0 | No explicit grant | Data/content sharing license, not a patent grant. |
 
