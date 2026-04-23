@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Windows standalone ZIP PowerShell packaging fallback now writes forward-slash archive entry
   names instead of backslash-separated members, so future published ZIPs unpack cleanly with
   standard ZIP tooling outside Windows as well as with `Expand-Archive`.
+- The Windows standalone ZIP PowerShell packaging fallback now preloads both compression
+  assemblies before it opens the archive, so the native Windows release-target smoke job no
+  longer fails on missing `ZipArchiveMode` type resolution during packaging.
 - Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related
   maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the
   repo root, workspace version, or release tag; the `xtask` release test suite now includes a

@@ -33,6 +33,7 @@ create_zip_with_dotnet() {
         ARCHIVE_OUTPUT_PATH="$(native_path "${archive_output_path}")" \
         powershell.exe -NoLogo -NoProfile -Command \
         '
+        Add-Type -AssemblyName System.IO.Compression
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $ErrorActionPreference = "Stop"
         $sourceParent = $env:SOURCE_PARENT_PATH
