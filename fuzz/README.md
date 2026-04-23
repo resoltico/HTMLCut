@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.3.0"
+  version: "4.4.0"
   domain: QUALITY
-  updated: "2026-04-22"
+  updated: "2026-04-23"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]

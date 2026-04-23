@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: MAINTAINER
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [versioning policy, frozen interop, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus frozen interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]

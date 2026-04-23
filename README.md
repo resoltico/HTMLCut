@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.3.0"
+  version: "4.4.0"
   domain: PRODUCT
-  updated: "2026-04-22"
+  updated: "2026-04-23"
 RETRIEVAL_HINTS:
   keywords: [htmlcut, html extraction, css selector, slice extraction, extraction-definition json, catalog, schema, inspect]
   questions: [what is HTMLCut?, how do I install HTMLCut?, what commands does htmlcut expose?, how do I save a reusable extraction-definition file?]
@@ -48,7 +48,7 @@ htmlcut --help
 Install a prebuilt standalone release package on macOS or Linux:
 
 ```bash
-VERSION=4.3.0
+VERSION=4.4.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -72,7 +72,7 @@ htmlcut --help
 Install a prebuilt standalone release package on Windows PowerShell:
 
 ```powershell
-$Version = "4.3.0"
+$Version = "4.4.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"

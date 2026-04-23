@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-04-23
+
 ### Changed
 - Moved the checked-in `fuzz/` package into the main Cargo workspace, restored one shared
   `Cargo.lock`, and re-enabled root Cargo Dependabot updates now that the maintained libFuzzer

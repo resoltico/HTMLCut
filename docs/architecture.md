@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: ARCHITECTURE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]

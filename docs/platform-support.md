@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: PLATFORM
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
