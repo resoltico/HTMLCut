@@ -1,9 +1,11 @@
 version: 2
 updates:
-  # Cargo dependency updates are maintainer-run because the repository keeps both
-  # the workspace lockfile and a separate checked-in fuzz lockfile. Dependabot's
-  # root-cargo updates do not refresh `fuzz/Cargo.lock`, which produces PRs that
-  # cannot satisfy the maintained `--locked` fuzz gate.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -23,14 +23,41 @@ native_path() {
 
 create_zip_with_dotnet() {
     local source_parent_path="$1"
-    local archive_output_path="$2"
+    local package_root_name="$2"
+    local archive_output_path="$3"
 
     # shellcheck disable=SC2016
     env \
         SOURCE_PARENT_PATH="$(native_path "${source_parent_path}")" \
+        PACKAGE_ROOT_NAME="${package_root_name}" \
         ARCHIVE_OUTPUT_PATH="$(native_path "${archive_output_path}")" \
         powershell.exe -NoLogo -NoProfile -Command \
-        'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:SOURCE_PARENT_PATH, $env:ARCHIVE_OUTPUT_PATH)'
+        '
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $ErrorActionPreference = "Stop"
+        $sourceParent = $env:SOURCE_PARENT_PATH
+        $packageRoot = $env:PACKAGE_ROOT_NAME
+        $archivePath = $env:ARCHIVE_OUTPUT_PATH
+        $rootPath = Join-Path $sourceParent $packageRoot
+
+        $archive = [System.IO.Compression.ZipFile]::Open(
+            $archivePath,
+            [System.IO.Compression.ZipArchiveMode]::Create
+        )
+        try {
+            Get-ChildItem -LiteralPath $rootPath -File -Recurse | ForEach-Object {
+                $entryName = $_.FullName.Substring($sourceParent.Length + 1) -replace "\\", "/"
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $archive,
+                    $_.FullName,
+                    $entryName,
+                    [System.IO.Compression.CompressionLevel]::Optimal
+                ) | Out-Null
+            }
+        } finally {
+            $archive.Dispose()
+        }'
 }
 
 create_zip_with_7zip() {
@@ -67,7 +94,7 @@ create_release_archive() {
             fi
 
             if is_windows_environment && command -v powershell.exe >/dev/null 2>&1; then
-                create_zip_with_dotnet "${source_parent_path}" "${archive_output_path}"
+                create_zip_with_dotnet "${source_parent_path}" "${package_root_name}" "${archive_output_path}"
                 return
             fi
 
@@ -80,7 +107,7 @@ create_release_archive() {
             done
 
             if command -v powershell.exe >/dev/null 2>&1; then
-                create_zip_with_dotnet "${source_parent_path}" "${archive_output_path}"
+                create_zip_with_dotnet "${source_parent_path}" "${package_root_name}" "${archive_output_path}"
                 return
             fi
 
@@ -121,7 +148,9 @@ compiled_binary_name="$(binary_name_for_target "${target_triple}")"
 readonly compiled_binary_name
 compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
 readonly compiled_binary_path
-staging_root="$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-release-${target_triple}.XXXXXX")"
+temp_root="$(htmlcut_temp_root)"
+readonly temp_root
+staging_root="$(mktemp -d "${temp_root}/htmlcut-release-${target_triple}.XXXXXX")"
 readonly staging_root
 package_dir="${staging_root}/${package_dir_name}"
 readonly package_dir

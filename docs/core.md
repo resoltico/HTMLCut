@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: CORE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -148,9 +148,9 @@ Those help-side contracts carry:
 - per-operation analysis overviews
 - canonical example invocations for every CLI-visible operation
 
-Together, those registries are the source of truth for `htmlcut catalog`, `command_name`
-normalization in CLI reports, rendered CLI help, and contract-lint coverage over help/examples,
-catalog text, and recovery-error guidance.
+Together, those registries are the source of truth for `htmlcut catalog`, normalized `command`
+labels in CLI reports, rendered CLI help, and contract-lint coverage over help/examples, catalog
+text, and recovery-error guidance.
 Use `operation_catalog()` and `cli_operation_catalog()` for operation discovery inside Rust callers.
 If you also need the non-operation command descriptors for `catalog`, `schema`, or the `inspect`
 command family, use `cli_aux_command_catalog()` as well instead of maintaining your own shadow

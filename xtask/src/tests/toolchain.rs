@@ -16,7 +16,7 @@ fn repo_toolchain_reads_from_repo_file_and_ignores_other_sections() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join("rust-toolchain.toml"),
-        "[workspace.package]\nversion = \"4.3.0\"\n\n[toolchain]\n# pinned here\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
+        "[workspace.package]\nversion = \"4.4.0\"\n\n[toolchain]\n# pinned here\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
     )
     .expect("write rust-toolchain.toml");
 

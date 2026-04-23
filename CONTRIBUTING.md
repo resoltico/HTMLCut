@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.3.0"
+  version: "4.4.0"
   domain: MAINTAINER
-  updated: "2026-04-22"
+  updated: "2026-04-23"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]
@@ -46,22 +46,25 @@ For a short live libFuzzer pass that stages the checked-in corpora into disposab
 `cargo xtask fuzz-smoke`.
 
 That gate includes recursive Markdown docs-contract linting across the maintained public docs
-set. It fails on missing AFAD metadata fields, metadata/version drift, ISO-date formatting,
-missing retrieval `keywords` or `questions`, broken local links, stale schema-name or
-operation-ID references, completeness drift in the maintained schema/operation inventory docs,
-release-target and release-asset drift against `scripts/release-targets.sh`, and non-parsing
-concrete `htmlcut ...` examples. The same `xtask` test suite also enforces the workspace
-`rust-version` floor and member-manifest inheritance. Keep repository docs relative-link clean,
-avoid machine-specific absolute paths, and use the canonical names exported by the product code.
+set except `changelog.md`. It fails on missing AFAD metadata fields, metadata/version drift,
+ISO-date formatting, missing retrieval `keywords` or `questions`, broken local links, stale
+schema-name or operation-ID references, completeness drift in the maintained schema/operation
+inventory docs, release-target and release-asset drift against `scripts/release-targets.sh`,
+`PATENTS.md` license-family drift against `deny.toml`, and concrete `htmlcut ...` examples that
+no longer parse or run. The same `xtask` test suite also enforces the workspace `rust-version`
+floor and member-manifest inheritance. Keep repository docs relative-link clean, avoid
+machine-specific absolute paths, and use the canonical names exported by the product code.
 
-Dependency updates that affect workspace crates must refresh both `Cargo.lock` and
-`fuzz/Cargo.lock`. The fuzz package is checked in and validated with `--locked`, so a
-workspace-only lockfile refresh is incomplete. The maintainer gate also formats, lints, audits,
-and dependency-checks the standalone fuzz package directly instead of treating it as compile-smoke
-only.
+Dependency updates that affect workspace crates must refresh `Cargo.lock`. The fuzz package is now
+a normal workspace member, so the maintainer gate picks it up through the shared `fmt`, `clippy`,
+dependency-freshness, audit, and `cargo nextest` library/integration-test passes, then adds one explicit
+`cargo check -p htmlcut-fuzz --bins --locked` compile-smoke to prove the maintained libFuzzer
+targets still build. The same gate resolves `cargo deny` target coverage from the canonical
+`scripts/release-targets.sh` registry, so dependency policy always follows the shipped standalone
+target matrix instead of drifting onto an ad hoc local graph.
 
-Cargo Dependabot PRs are intentionally disabled for this reason. Use maintainer-authored
-dependency refreshes instead of relying on bot PRs that cannot keep the two lockfiles in sync.
+Cargo Dependabot is re-enabled for the workspace root now that there is only one maintained Cargo
+lockfile. Maintainer review is still required before merging dependency PRs.
 
 ## Contract Rules
 
@@ -115,6 +118,15 @@ rather than YAML frontmatter.
 
 When docs mention a schema family or operation ID, use the canonical names from `htmlcut schema`
 and `htmlcut catalog`. The Markdown docs contract validates those identifiers directly.
+
+Concrete fenced `htmlcut ...` examples are expected to stay runnable under the docs-contract
+sandbox, and the maintained public Rust fences in `docs/architecture.md`, `docs/core.md`,
+`docs/interop-v1.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
+change those examples, treat them as executable code, not prose.
+
+Default repo search intentionally excludes `semver-baseline/` through `.ignore` so day-to-day
+symbol search stays on the live maintained tree. Use an explicit path or `rg --no-ignore` only
+when you are deliberately auditing the published baseline snapshot.
 
 ## Release Expectations
 

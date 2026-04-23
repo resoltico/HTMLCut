@@ -161,9 +161,12 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
     assert!(core_manifest.contains("rust-version.workspace = true"));
     assert!(cli_manifest.contains("rust-version.workspace = true"));
     assert!(xtask_manifest.contains("rust-version.workspace = true"));
-    assert!(fuzz_manifest.contains("rust-version = \"1.95.0\""));
-    assert!(fuzz_manifest.contains("unsafe_code = \"warn\""));
-    assert!(fuzz_manifest.contains("all = \"warn\""));
+    assert!(fuzz_manifest.contains("version.workspace = true"));
+    assert!(fuzz_manifest.contains("rust-version.workspace = true"));
+    assert!(fuzz_manifest.contains("license.workspace = true"));
+    assert!(fuzz_manifest.contains("homepage.workspace = true"));
+    assert!(fuzz_manifest.contains("[lints]"));
+    assert!(fuzz_manifest.contains("workspace = true"));
 }
 
 #[test]

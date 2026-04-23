@@ -1,0 +1,67 @@
+pub(super) use super::*;
+
+#[test]
+fn raw_arg_helpers_keep_json_detection_tied_to_real_output_requests() {
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output=text".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "html".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "none".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "mystery".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--value=structured".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "inspect".to_owned(),
+    ]));
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "inspect".to_owned(),
+            "mystery".to_owned(),
+        ]),
+        "inspect"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "--help".to_owned()]),
+        "htmlcut"
+    );
+}

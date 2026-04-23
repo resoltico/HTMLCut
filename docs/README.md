@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: INDEX
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [docs index, developer setup, architecture guide, cli guide, core guide, interop guide, release protocol, quality gates]
   questions: ["where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?"]
@@ -14,9 +14,14 @@ HTMLCut keeps its maintained developer-facing and maintainer-facing documentatio
 
 Use these documents as a system, not as isolated reference pages.
 
-The docs contract walks the maintained public Markdown tree recursively, while skipping hidden and
-generated/internal directories such as `.codex/`, `.gemini/`, `tmp/`, `target/`, and
-`semver-baseline/`.
+The maintainer docs contract walks the maintained public Markdown set recursively, excluding
+`changelog.md`, skipping every hidden directory, and also skipping generated/internal trees such as
+`tmp/`, `target/`, and `semver-baseline/`.
+
+Concrete fenced `htmlcut ...` examples are executed in a fixture-backed sandbox through the docs
+contract. Public Rust fences in the maintained architecture/core/interop/schema guides are executed
+through `htmlcut-core` doctest harnesses, so those examples fail the normal workspace doc-test gate
+when they drift.
 
 ## Product Surfaces
 

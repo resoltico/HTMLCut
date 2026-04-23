@@ -1,21 +1,27 @@
 [package]
 name = "htmlcut-fuzz"
-version = "0.0.0"
-edition = "2024"
-rust-version = "1.95.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 publish = false
 description = "libFuzzer targets for htmlcut-core's maintained public surfaces."
-license = "MIT"
-repository = "https://github.com/resoltico/HTMLCut"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
-arbitrary = { version = "1.4.2", features = ["derive"] }
-htmlcut-core = { path = "../crates/htmlcut-core" }
-libfuzzer-sys = "0.4.12"
-url = "2.5.8"
+arbitrary.workspace = true
+htmlcut-cli.workspace = true
+htmlcut-core.workspace = true
+libfuzzer-sys.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "parse_document_bytes"
@@ -45,8 +51,9 @@ test = false
 doc = false
 bench = false
 
-[lints.rust]
-unsafe_code = "warn"
-
-[lints.clippy]
-all = "warn"
+[[bin]]
+name = "cli_parse_error_surface"
+path = "fuzz_targets/cli_parse_error_surface.rs"
+test = false
+doc = false
+bench = false

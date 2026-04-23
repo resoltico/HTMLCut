@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: RELEASE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -114,6 +114,15 @@ Then verify:
 
 - `Cargo.toml` `[workspace.package] version` equals the target release version exactly. This is the
   single version source of truth for both crates and for `htmlcut --version`.
+- the release commit also updates every other maintained version-bearing surface that is expected
+  to match the workspace release:
+  - the path dependency versions for `htmlcut-cli`, `htmlcut-core`, and `htmlcut-tempdir` in
+    `Cargo.toml`
+  - the maintained Markdown metadata `version` fields in `README.md`, `CONTRIBUTING.md`,
+    `PATENTS.md`, `fuzz/README.md`, and the maintained `docs/*.md` set
+  - the concrete release-version literals in `README.md` install snippets
+  - the local path-package entries in `Cargo.lock`, so the subsequent locked gate reflects the
+    release version truthfully
 - `Cargo.toml` `[workspace.package] rust-version` still matches the pinned repository compiler
   contract, and the workspace crates still inherit it through
   `rust-version.workspace = true`.
@@ -147,6 +156,7 @@ Then verify:
   - `main` is protected
   - `main` does not require approving reviews
   - `main` does not enforce branch protection for admins
+  - `main` requires conversation resolution before merge
   - required status checks are exactly:
     - `Check`
 
@@ -186,6 +196,8 @@ Before committing:
 - `git diff --cached --name-status` must show the exact release file set.
 - `git diff --cached --stat` must reflect versioning, changelog, docs, workflow, and release-script
   updates only.
+- the staged release diff must include the full version-bearing surface described in Step 1, not
+  just the workspace manifest line by itself
 
 ## 3. Pull Request And CI
 
@@ -203,6 +215,14 @@ Then verify:
 gh pr diff <N> --name-only
 gh pr view <N> --json number,state,mergeStateStatus,statusCheckRollup,url
 gh pr checks <N>
+```
+
+If `gh pr diff <N> --name-only` fails with HTTP `406` because the diff exceeds GitHub's
+line-limit for that endpoint, enumerate the changed file set through the pull-files API instead:
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$REPO/pulls/<N>/files" --paginate --jq '.[].filename'
 ```
 
 Do not continue until the required job in workflow `CI` is green:
@@ -228,9 +248,11 @@ Verify:
 - local `main` contains the merge you expect
 - the remote release branch is deleted
 
-If a green PR is blocked by review requirements or admin-enforced branch protection, repository
-settings have drifted away from this protocol and must be corrected before the release proceeds.
-Do not work around that drift by adding manual review steps to the normal release path.
+If a green PR is blocked only because conversations are unresolved, resolve or close those threads
+and then merge normally. If it is blocked by review requirements or admin-enforced branch
+protection, repository settings have drifted away from this protocol and must be corrected before
+the release proceeds. Do not work around that drift by adding manual review steps to the normal
+release path.
 
 If the local `release/X.Y.Z` branch still exists:
 

@@ -18,11 +18,7 @@ fn markdown_contract_reports_release_doc_drift_against_canonical_release_targets
         "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [contributing, workflow, checks, release, docs]\n  questions: [how do I contribute?, which checks run?]\n-->\n\n# Contributing\n",
     )
     .expect("write contributing");
-    fs::write(
-        repo_root.path().join("PATENTS.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: LEGAL\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [patents, legal, licenses, grants, notice]\n  questions: [what is the patent posture?, where are legal notes?]\n-->\n\n# Patents\n",
-    )
-    .expect("write patents");
+    write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-22");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),

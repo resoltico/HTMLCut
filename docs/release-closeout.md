@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "4.3.0"
+version: "4.4.0"
 domain: RELEASE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]
@@ -38,9 +38,17 @@ gh pr diff <N> --name-only
 gh pr view <N> --json number,title,state,mergeStateStatus,statusCheckRollup,url
 ```
 
+If `gh pr diff <N> --name-only` fails with HTTP `406` because the diff exceeds GitHub's
+line-limit for that endpoint, enumerate the changed file set through the pull-files API instead:
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$REPO/pulls/<N>/files" --paginate --jq '.[].filename'
+```
+
 Rules:
 
-- If the PR is wanted, mergeable, and already green on the required `CI` checks, merge it
+- If the PR is wanted, mergeable, and already green on the required `Check` status, merge it
   immediately and delete its branch:
 
 ```bash

@@ -8,6 +8,7 @@ use crate::args::{
     InspectSelectArgs, InspectSliceArgs, InspectSourceArgs, SchemaArgs, SelectArgs, SliceArgs,
 };
 use crate::error::{exit_code_for_error, primary_source_inspection_error, with_source_load_steps};
+use crate::lookup;
 use crate::prepare::{
     PreparedExtraction, PreparedPreview, PreparedSourceInspection, build_catalog_report,
     build_schema_report, build_source_inspection_report, extract_prefers_json,
@@ -81,11 +82,8 @@ pub(crate) fn run_select(args: SelectArgs, verbose: u8, quiet: bool) -> Executio
     let prepared = match PreparedExtraction::from_select_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return error_outcome(
-                htmlcut_core::cli_operation_report_command(
-                    htmlcut_core::OperationId::SelectExtract,
-                )
-                .expect("CLI-visible operation should expose a report command"),
+            return operation_error_outcome(
+                htmlcut_core::OperationId::SelectExtract,
                 prefers_json,
                 output_file,
                 error,
@@ -101,9 +99,8 @@ pub(crate) fn run_slice(args: SliceArgs, verbose: u8, quiet: bool) -> ExecutionO
     let prepared = match PreparedExtraction::from_slice_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return error_outcome(
-                htmlcut_core::cli_operation_report_command(htmlcut_core::OperationId::SliceExtract)
-                    .expect("CLI-visible operation should expose a report command"),
+            return operation_error_outcome(
+                htmlcut_core::OperationId::SliceExtract,
                 prefers_json,
                 output_file,
                 error,
@@ -123,11 +120,8 @@ pub(crate) fn run_inspect_source(
     let prepared = match PreparedSourceInspection::new_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return error_outcome(
-                htmlcut_core::cli_operation_report_command(
-                    htmlcut_core::OperationId::SourceInspect,
-                )
-                .expect("CLI-visible operation should expose a report command"),
+            return operation_error_outcome(
+                htmlcut_core::OperationId::SourceInspect,
                 prefers_json,
                 output_file,
                 error,
@@ -191,11 +185,8 @@ pub(crate) fn run_inspect_select(
     let prepared = match PreparedPreview::from_select_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return error_outcome(
-                htmlcut_core::cli_operation_report_command(
-                    htmlcut_core::OperationId::SelectPreview,
-                )
-                .expect("CLI-visible operation should expose a report command"),
+            return operation_error_outcome(
+                htmlcut_core::OperationId::SelectPreview,
                 prefers_json,
                 output_file,
                 error,
@@ -215,9 +206,8 @@ pub(crate) fn run_inspect_slice(
     let prepared = match PreparedPreview::from_slice_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return error_outcome(
-                htmlcut_core::cli_operation_report_command(htmlcut_core::OperationId::SlicePreview)
-                    .expect("CLI-visible operation should expose a report command"),
+            return operation_error_outcome(
+                htmlcut_core::OperationId::SlicePreview,
                 prefers_json,
                 output_file,
                 error,
@@ -225,4 +215,54 @@ pub(crate) fn run_inspect_slice(
         }
     };
     execute_preview(prepared)
+}
+
+fn operation_error_outcome(
+    operation_id: htmlcut_core::OperationId,
+    prefers_json: bool,
+    output_file: Option<std::path::PathBuf>,
+    error: crate::error::CliError,
+) -> ExecutionOutcome {
+    operation_error_outcome_with_report_command(
+        operation_id,
+        prefers_json,
+        output_file,
+        error,
+        lookup::operation_report_command(operation_id).ok(),
+    )
+}
+
+fn operation_error_outcome_with_report_command(
+    operation_id: htmlcut_core::OperationId,
+    prefers_json: bool,
+    output_file: Option<std::path::PathBuf>,
+    error: crate::error::CliError,
+    report_command: Option<String>,
+) -> ExecutionOutcome {
+    match report_command {
+        Some(command) => error_outcome(command, prefers_json, output_file, error),
+        None => error_outcome(
+            operation_id.as_str().to_owned(),
+            prefers_json,
+            output_file,
+            lookup::missing_operation_contract_error(operation_id, "report command"),
+        ),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn operation_error_outcome_for_tests(
+    operation_id: htmlcut_core::OperationId,
+    prefers_json: bool,
+    output_file: Option<std::path::PathBuf>,
+    error: crate::error::CliError,
+    report_command: Option<String>,
+) -> ExecutionOutcome {
+    operation_error_outcome_with_report_command(
+        operation_id,
+        prefers_json,
+        output_file,
+        error,
+        report_command,
+    )
 }

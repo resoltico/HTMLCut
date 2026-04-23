@@ -5,9 +5,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-04-23
+
+### Changed
+- Moved the checked-in `fuzz/` package into the main Cargo workspace, restored one shared
+  `Cargo.lock`, and re-enabled root Cargo Dependabot updates now that the maintained libFuzzer
+  targets no longer live behind a second lockfile and duplicate maintenance gates.
+- Expanded the maintained `cargo deny` license allowlist to include `NCSA`, which keeps the
+  first-class `libfuzzer-sys` workspace dependency enforceable by policy instead of having to hide
+  fuzzing from the normal dependency gate.
+- Localized the LLVM compiler requirement to the maintained `cargo xtask coverage` and
+  `cargo xtask fuzz-smoke` flows, replacing the old repo-wide `CC=clang` override with explicit
+  clang/clang++ preflight checks plus per-command toolchain injection where it is actually needed.
+- Broke up the remaining core help-contract, slice-extraction, frozen interop execution, and
+  oversized CLI contract-test god-files into focused modules so command help ownership, delimiter
+  extraction, adapter compilation/projection/error mapping, and contract assertions no longer share
+  multi-responsibility files.
+- Broke up the remaining maintainer docs-contract runner, coverage gate, and CLI help-rendering
+  god-files into focused modules so example parsing/runtime checks, coverage command/report/file
+  tracking, and help caching/rendering no longer share single mixed-responsibility files.
+- Broke the remaining `xtask` command-execution/preflight seam and oversized CLI preparation
+  construction test into focused modules, so maintainer command launching, prerequisite detection,
+  and raw-argv/builder/rendering assertions no longer live in mixed-responsibility files.
+- Broke the remaining `xtask` gate-plan seam, CLI extraction-preparation seam, and CLI discovery
+  rendering seam into focused modules, so gate assembly/path resolution/semver helpers, preview vs
+  extraction preparation, and catalog vs schema text rendering no longer share mixed-responsibility
+  files.
+- Broke the remaining oversized CLI rendering, execution-path, request-file-builder, inspect, and
+  parity test seams into focused modules, so rendering coverage, request-file loading/preparation,
+  preview/error integration flows, and core-vs-CLI parity matrices no longer hide unrelated
+  assertions inside a handful of monolithic test files.
+- Broke the remaining oversized `htmlcut-core` catalog, document, extraction, source, and
+  interop regression suites into focused modules, so core contract validation, document/source
+  behavior, extractor coverage, and frozen interop assertions no longer share a few 500+ line
+  test files.
+- Replaced the generic CLI help-cache dispatchers and the empty `xtask::coverage` re-export shell
+  with explicit façade accessors, so impossible `document.parse` help paths and zero-line module
+  glue no longer survive inside the maintained public helper layer.
+- Tightened the maintainer docs contract so `PATENTS.md` must stay aligned with the live
+  `deny.toml` license allowlist, documented the actual docs-contract scope as “all maintained
+  public Markdown except changelog,” and updated the release preflight guide to match the live
+  GitHub conversation-resolution branch-protection rule.
+- Default repository search now excludes the frozen `semver-baseline/` snapshot through `.ignore`,
+  so normal symbol search stays on the maintained live tree unless a maintainer explicitly opts
+  into baseline inspection.
+- Added a maintained `cli_parse_error_surface` libFuzzer target plus balanced checked-in seeds so
+  short fuzz-smoke runs cover the raw-argv error-format seam that previously drifted.
+
 ### Fixed
-- Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the repo root, workspace version, or release tag; the `xtask` release test suite now includes a regression smoke that exercises those helpers under the same readonly naming pattern that broke the `v4.3.0` publication job.
-- `cargo xtask refresh-semver-baseline --git-ref ...` now strips test-only `dev-dependencies` tables from the released snapshot before it repackages `htmlcut-core`, so workspace-local maintainer helpers like `htmlcut-tempdir` do not break post-release semver baseline refresh.
+- Concrete fenced `htmlcut ...` examples in the maintained Markdown docs are now executed inside a
+  fixture-backed temp sandbox instead of only being shell-split and clap-parsed, so broken
+  request-file/output-file flows and other non-runnable examples now fail the docs contract.
+- The maintained public Rust examples in `docs/architecture.md`, `docs/core.md`,
+  `docs/interop-v1.md`, and `docs/schema.md` now run through `htmlcut-core` doctest harnesses, so
+  those Markdown examples fail the normal workspace doc-test gate when they drift.
+- Missing-argument CLI parse failures no longer switch to JSON just because a positional token is
+  literally named `inspect`; only the real parsed inspect command path or an explicit structured
+  output request can opt those failures into JSON formatting.
+- Root README quick-start examples now start from an explicit demo page, and the documented
+  request-file/output-file CLI flows are covered by integration smoke so those concrete examples
+  stay runnable instead of only parsing.
+- The Windows standalone ZIP PowerShell packaging fallback now writes forward-slash archive entry
+  names instead of backslash-separated members, so future published ZIPs unpack cleanly with
+  standard ZIP tooling outside Windows as well as with `Expand-Archive`.
+- The Windows standalone ZIP PowerShell packaging fallback now preloads both compression
+  assemblies before it opens the archive, so the native Windows release-target smoke job no
+  longer fails on missing `ZipArchiveMode` type resolution during packaging.
+- Windows standalone packaging and smoke verification now normalize temporary paths through the
+  runner's real temp root and prefer bash-native ZIP extractors before the PowerShell fallback, so
+  the Windows CI smoke job no longer depends on raw `/tmp` handling or `Expand-Archive` path
+  translation matching Git Bash's extracted-package lookup.
+- Repaired the shared release-shell helpers so `scripts/publish-github-release.sh` and related
+  maintainer scripts no longer trip over caller-owned `readonly` variables when they resolve the
+  repo root, workspace version, or release tag; the `xtask` release test suite now includes a
+  regression smoke that exercises those helpers under the same readonly naming pattern that broke
+  the `v4.3.0` publication job.
+- `cargo xtask refresh-semver-baseline --git-ref ...` now strips test-only `dev-dependencies` tables
+  from the released snapshot before it repackages `htmlcut-core`, so workspace-local maintainer
+  helpers like `htmlcut-tempdir` do not break post-release semver baseline refresh.
+- `cargo xtask check` now resolves the `cargo deny` target list from the canonical release-target
+  registry and `deny.toml` now mirrors that shipped matrix, while the one remaining Windows-only
+  build-time `getrandom 0.3` duplicate is tracked as an exact documented exception instead of
+  hiding behind an incomplete policy graph.
+- CLI help rendering and operation-preparation error paths no longer panic on missing core-owned
+  CLI contract entries; they now surface internal CLI-contract errors and fall back to stable error
+  text instead of aborting the process.
 
 ## [4.3.0] - 2026-04-22
 
@@ -45,7 +127,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standalone release packages now include the platform binary together with `README.md`, `LICENSE`, `NOTICE`, and `PATENTS.md`, and the macOS/Linux package format preserves executable metadata through extraction instead of relying on a post-download `chmod`.
 - The release workflow now follows a draft-first publication flow, generates provenance attestations for source archives, standalone packages, and the checksum manifest, and refuses to backfill missing assets into an already-published release.
 - CI and release automation now smoke-test the extracted release packages themselves, so the required gate validates the actual shipped archives rather than only the compiled binary inside the build tree.
-- Windows release ZIP creation and smoke verification now use standards-compliant native ZIP handling, avoiding non-portable backslash entry paths and validating the same unpack flow Windows users rely on.
+- Windows release ZIP creation and smoke verification moved onto native Windows ZIP handling and
+  `Expand-Archive`-based verification, but the published archives still used backslash entry
+  separators; a follow-up fix is required before those ZIPs are portable to non-Windows unzip
+  tooling.
 - Refreshed the README, platform-support doc, and maintainer release protocol to document binary-package install, clarify the maintained asset inventory, and explicitly distinguish HTMLCut-owned source archives from GitHub's auto-generated `Source code` links.
 
 ## [4.2.0] - 2026-04-20

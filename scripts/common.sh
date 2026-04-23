@@ -32,3 +32,17 @@ htmlcut_workspace_version() {
 
     "${helper_script_dir}/workspace-version.sh" "${helper_repo_root}/Cargo.toml"
 }
+
+htmlcut_temp_root() {
+    local candidate="${RUNNER_TEMP:-${TMPDIR:-${TEMP:-${TMP:-/tmp}}}}"
+
+    if command -v cygpath >/dev/null 2>&1; then
+        case "${candidate}" in
+            [A-Za-z]:\\*|[A-Za-z]:/*)
+                candidate="$(cygpath -u "${candidate}")"
+                ;;
+        esac
+    fi
+
+    printf '%s\n' "${candidate}"
+}

@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "3.5"
-  version: "4.3.0"
+  version: "4.4.0"
   domain: PRODUCT
-  updated: "2026-04-22"
+  updated: "2026-04-23"
 RETRIEVAL_HINTS:
   keywords: [htmlcut, html extraction, css selector, slice extraction, extraction-definition json, catalog, schema, inspect]
   questions: [what is HTMLCut?, how do I install HTMLCut?, what commands does htmlcut expose?, how do I save a reusable extraction-definition file?]
@@ -48,7 +48,7 @@ htmlcut --help
 Install a prebuilt standalone release package on macOS or Linux:
 
 ```bash
-VERSION=4.3.0
+VERSION=4.4.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -72,7 +72,7 @@ htmlcut --help
 Install a prebuilt standalone release package on Windows PowerShell:
 
 ```powershell
-$Version = "4.3.0"
+$Version = "4.4.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -114,6 +114,32 @@ HTMLCut has one canonical command surface:
 - `slice`
 
 ## Quick Start
+
+If you want a reproducible local sample on a POSIX shell, create the demo page used by the
+commands below:
+
+```bash
+cat > ./page.html <<'HTML'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HTMLCut README Fixture</title>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Guide</h1>
+      <div class="card">Card alpha</div>
+      <div class="card">Card beta</div>
+      <p><a class="more" href="../guide.html">Read more</a></p>
+      <pre>START::Regex slice payload::END</pre>
+    </article>
+  </main>
+</body>
+</html>
+HTML
+```
 
 Extract readable text from the first article:
 
@@ -244,6 +270,7 @@ Runtime behavior and diagnostics:
 - `--quiet` suppresses non-fatal stderr diagnostics on successful runs.
 - `--version` prints the tool version plus engine identity, schema profile, and repository metadata for bug reports.
 - `catalog`, `schema`, rendered help, recovery guidance, and the maintained concrete `htmlcut ...` examples are linted against the same core-owned operation, command-contract, help-document, diagnostic-code, and schema registries.
+- The root README quick-start, request-file, and output-file CLI flows are also exercised by integration tests so these concrete examples stay runnable instead of only parsing.
 
 ## Embedding And Interop
 

@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::error::{CliError, usage_error};
+use htmlcut_core::{CliHelpDocument, OperationCliContract, OperationId};
+
+use crate::error::{CliError, internal_error, usage_error};
 
 const MAX_SUGGESTIONS: usize = 3;
 
@@ -17,6 +19,42 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
             "Unknown operation ID: {requested}.{} Use `htmlcut {catalog_command}` to list the valid operation IDs.",
             suggestion_suffix(requested, candidates),
         ),
+    )
+}
+
+pub(crate) fn operation_contract(
+    operation_id: OperationId,
+) -> Result<&'static OperationCliContract, CliError> {
+    require_operation_value(
+        operation_id,
+        "operation contract",
+        htmlcut_core::cli_operation_contract(operation_id),
+    )
+}
+
+pub(crate) fn operation_display_command(operation_id: OperationId) -> Result<String, CliError> {
+    require_operation_value(
+        operation_id,
+        "display command",
+        htmlcut_core::cli_operation_display_command(operation_id),
+    )
+}
+
+pub(crate) fn operation_report_command(operation_id: OperationId) -> Result<String, CliError> {
+    require_operation_value(
+        operation_id,
+        "report command",
+        htmlcut_core::cli_operation_report_command(operation_id),
+    )
+}
+
+pub(crate) fn operation_help_document(
+    operation_id: OperationId,
+) -> Result<CliHelpDocument, CliError> {
+    require_operation_value(
+        operation_id,
+        "help document",
+        htmlcut_core::cli_operation_help_document(operation_id),
     )
 }
 
@@ -71,6 +109,27 @@ fn available_schema_versions(
     versions.sort_unstable();
     versions.dedup();
     versions
+}
+
+fn require_operation_value<T>(
+    operation_id: OperationId,
+    surface: &'static str,
+    value: Option<T>,
+) -> Result<T, CliError> {
+    value.ok_or_else(|| missing_operation_contract_error(operation_id, surface))
+}
+
+pub(crate) fn missing_operation_contract_error(
+    operation_id: OperationId,
+    surface: &'static str,
+) -> CliError {
+    internal_error(
+        "CLI_CONTRACT_MISSING",
+        format!(
+            "Internal HTMLCut CLI contract error: missing {surface} for {}.",
+            operation_id.as_str()
+        ),
+    )
 }
 
 fn suggestion_suffix<'a>(requested: &str, candidates: impl IntoIterator<Item = &'a str>) -> String {
@@ -220,5 +279,31 @@ mod tests {
         let error = unknown_operation_id_error("zzzzzzzzzz");
 
         assert!(!error.message.contains("Did you mean"));
+    }
+
+    #[test]
+    fn operation_lookup_helpers_surface_internal_contract_drift() {
+        let error = missing_operation_contract_error(OperationId::SelectExtract, "report command");
+
+        assert_eq!(error.code, "CLI_CONTRACT_MISSING");
+        assert!(
+            error
+                .message
+                .contains("missing report command for select.extract")
+        );
+    }
+
+    #[test]
+    fn operation_lookup_helpers_resolve_live_cli_metadata() {
+        let contract = operation_contract(OperationId::SelectExtract).expect("operation contract");
+        let display =
+            operation_display_command(OperationId::SelectExtract).expect("display command");
+        let report = operation_report_command(OperationId::SelectExtract).expect("report command");
+        let help = operation_help_document(OperationId::SelectExtract).expect("help document");
+
+        assert_eq!(contract.operation_id, OperationId::SelectExtract);
+        assert_eq!(display, "select");
+        assert_eq!(report, "select");
+        assert!(!help.examples.is_empty());
     }
 }

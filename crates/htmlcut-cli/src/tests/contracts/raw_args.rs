@@ -1,0 +1,152 @@
+use super::*;
+
+#[test]
+fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "page.html".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--value".to_owned(),
+        "structured".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--value=structured".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "text".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "inspect".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--".to_owned(),
+        "--value=structured".to_owned(),
+    ]));
+}
+
+#[test]
+fn raw_arg_helpers_detect_global_help_and_version_anywhere() {
+    assert!(raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "--version".to_owned(),
+    ]));
+    assert!(raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "-V".to_owned(),
+    ]));
+    assert!(raw_args_requests_help(&[
+        "htmlcut".to_owned(),
+        "slice".to_owned(),
+        "--help".to_owned(),
+    ]));
+    assert!(!raw_args_requests_help(&[
+        "htmlcut".to_owned(),
+        "catalog".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "--".to_owned(),
+        "--version".to_owned(),
+    ]));
+}
+
+#[test]
+fn command_name_from_raw_args_recognizes_nested_commands() {
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned()]),
+        "htmlcut"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "inspect".to_owned(),
+            "source".to_owned(),
+        ]),
+        "inspect-source"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "inspect".to_owned(),
+            "select".to_owned(),
+        ]),
+        "inspect-select"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "inspect".to_owned(),
+            "slice".to_owned(),
+        ]),
+        "inspect-slice"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "-vv".to_owned(),
+            "inspect".to_owned(),
+            "slice".to_owned(),
+            "page.html".to_owned(),
+        ]),
+        "inspect-slice"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "--quiet".to_owned(),
+            "select".to_owned(),
+            "-".to_owned(),
+        ]),
+        "select"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "inspect".to_owned()]),
+        "inspect"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "select".to_owned()]),
+        "select"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "slice".to_owned()]),
+        "slice"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "mystery".to_owned()]),
+        "mystery"
+    );
+
+    let multi_value_condition = htmlcut_core::CliCondition {
+        parameter: htmlcut_core::CliParameterId::Output,
+        values: vec![
+            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::Json),
+            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::None),
+        ],
+    };
+    assert_eq!(
+        crate::prepare::render_condition_expression_for_tests(&multi_value_condition),
+        "--output is one of json, none"
+    );
+}

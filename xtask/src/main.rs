@@ -1,21 +1,16 @@
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
 
 use clap::{Parser, Subcommand};
 use htmlcut_tempdir::tempdir;
 use xtask::{
-    CommandSpec, CoveragePreflightFailure, DEFAULT_FUZZ_SMOKE_RUNS, DynResult,
-    FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, assert_known_fuzz_target,
-    cargo_fuzz_probe_command, check_plan, coverage_clean_command, coverage_command,
-    coverage_output_path, coverage_preflight_failures, coverage_preflight_message,
-    ensure_coverage_output_dir, evaluate_coverage_report, fuzz_smoke_command,
-    fuzz_smoke_preflight_failures, fuzz_smoke_preflight_message, fuzz_smoke_targets,
-    is_semver_check_spec, read_coverage_report, repo_toolchain,
-    repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
-    repo_toolchain_preflight_message, semver_scratch_dir, stage_fuzz_corpus,
-    strip_dev_dependency_tables, tracked_files, with_workspace_stub, workspace_version,
+    CommandSpec, DEFAULT_FUZZ_SMOKE_RUNS, DynResult, assert_known_fuzz_target, check_plan,
+    coverage_clean_command, coverage_command, coverage_output_path, ensure_coverage_output_dir,
+    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites,
+    ensure_repo_toolchain_prerequisites, evaluate_coverage_report, fuzz_smoke_command,
+    fuzz_smoke_targets, is_semver_check_spec, read_coverage_report, remove_dir_if_exists,
+    repo_root, run_spec, semver_scratch_dir, stage_fuzz_corpus, strip_dev_dependency_tables,
+    tracked_files, with_workspace_stub, workspace_version,
 };
 
 #[derive(Parser)]
@@ -79,72 +74,6 @@ fn run_check(repo_root: &Path) -> DynResult<()> {
     }
 
     run_coverage(repo_root)
-}
-
-fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
-    let toolchain = repo_toolchain(repo_root).map_err(|error| {
-        format!("toolchain preflight could not read rust-toolchain.toml: {error}")
-    })?;
-    let toolchains = capture_command_output(
-        repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
-    )
-    .map_err(|error| format!("toolchain preflight could not query rustup toolchains: {error}"))?;
-    let toolchains = String::from_utf8(toolchains)
-        .map_err(|error| format!("toolchain preflight received invalid rustup output: {error}"))?;
-
-    let toolchain_failures = repo_toolchain_preflight_failures(&toolchains, "", &toolchain);
-    if toolchain_failures.contains(&RepoToolchainPreflightFailure::MissingToolchain) {
-        return Err(repo_toolchain_preflight_message(&toolchain_failures, &toolchain).into());
-    }
-
-    let components = capture_command_output(
-        repo_root,
-        &CommandSpec::new(
-            "rustup",
-            [
-                "component",
-                "list",
-                "--toolchain",
-                toolchain.channel.as_str(),
-                "--installed",
-            ],
-            false,
-            false,
-        ),
-    )
-    .map_err(|error| {
-        format!(
-            "toolchain preflight could not query `{}` components: {error}",
-            toolchain.channel
-        )
-    })?;
-    let components = String::from_utf8(components).map_err(|error| {
-        format!("toolchain preflight received invalid component output: {error}")
-    })?;
-
-    let failures = repo_toolchain_preflight_failures(&toolchains, &components, &toolchain);
-    if !failures.is_empty() {
-        Err(repo_toolchain_preflight_message(&failures, &toolchain).into())
-    } else {
-        let broken_binaries = toolchain
-            .components
-            .iter()
-            .filter_map(|component| {
-                let spec = repo_toolchain_component_probe_command(&toolchain, component)?;
-                capture_command_output(repo_root, &spec).err()?;
-                Some(RepoToolchainPreflightFailure::BrokenComponentBinary(
-                    component.clone(),
-                ))
-            })
-            .collect::<Vec<_>>();
-
-        if broken_binaries.is_empty() {
-            Ok(())
-        } else {
-            Err(repo_toolchain_preflight_message(&broken_binaries, &toolchain).into())
-        }
-    }
 }
 
 fn run_coverage(repo_root: &Path) -> DynResult<()> {
@@ -314,125 +243,4 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     fs::write(&baseline_manifest, with_workspace_stub(&cargo_toml))?;
     fs::rename(extracted_dir, baseline_dir)?;
     Ok(())
-}
-
-fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
-    let toolchains = capture_command_output(
-        repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
-    )
-    .map_err(|error| format!("coverage preflight could not query rustup toolchains: {error}"))?;
-    let toolchains = String::from_utf8(toolchains)
-        .map_err(|error| format!("coverage preflight received invalid rustup output: {error}"))?;
-
-    let toolchain_failures = coverage_preflight_failures(&toolchains, "");
-    if toolchain_failures.contains(&CoveragePreflightFailure::MissingNightlyToolchain) {
-        return Err(coverage_preflight_message(&toolchain_failures).into());
-    }
-
-    let components = capture_command_output(
-        repo_root,
-        &CommandSpec::new(
-            "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
-            false,
-            false,
-        ),
-    )
-    .map_err(|error| format!("coverage preflight could not query nightly components: {error}"))?;
-    let components = String::from_utf8(components).map_err(|error| {
-        format!("coverage preflight received invalid component output: {error}")
-    })?;
-
-    let failures = coverage_preflight_failures(&toolchains, &components);
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(coverage_preflight_message(&failures).into())
-    }
-}
-
-fn ensure_fuzz_smoke_prerequisites(repo_root: &Path) -> DynResult<()> {
-    let toolchains = capture_command_output(
-        repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
-    )
-    .map_err(|error| format!("fuzz-smoke preflight could not query rustup toolchains: {error}"))?;
-    let toolchains = String::from_utf8(toolchains)
-        .map_err(|error| format!("fuzz-smoke preflight received invalid rustup output: {error}"))?;
-
-    let cargo_fuzz_installed =
-        capture_command_output(repo_root, &cargo_fuzz_probe_command()).is_ok();
-    let failures = fuzz_smoke_preflight_failures(&toolchains, cargo_fuzz_installed);
-
-    if failures.is_empty() {
-        return Ok(());
-    }
-
-    if failures.contains(&FuzzSmokePreflightFailure::MissingNightlyToolchain)
-        || failures.contains(&FuzzSmokePreflightFailure::MissingCargoFuzz)
-    {
-        return Err(fuzz_smoke_preflight_message(&failures).into());
-    }
-
-    Ok(())
-}
-
-fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
-    let mut command = Command::new(&spec.program);
-    command.current_dir(repo_root);
-    command.args(&spec.args);
-    command.stdin(Stdio::inherit());
-    if spec.quiet_stdout {
-        command.stdout(Stdio::null());
-    } else {
-        command.stdout(Stdio::inherit());
-    }
-    command.stderr(Stdio::inherit());
-    if spec.force_clang {
-        command.env("CC", "clang");
-        command.env("CXX", "clang++");
-    }
-
-    let status = command.status()?;
-    if status.success() {
-        return Ok(());
-    }
-
-    Err(format!("command failed with status {status}").into())
-}
-
-fn remove_dir_if_exists(path: &Path) -> DynResult<()> {
-    if path.exists() {
-        fs::remove_dir_all(path)?;
-    }
-
-    Ok(())
-}
-
-fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult<Vec<u8>> {
-    let mut command = Command::new(&spec.program);
-    command.current_dir(repo_root);
-    command.args(&spec.args);
-    command.stdin(Stdio::null());
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::inherit());
-    if spec.force_clang {
-        command.env("CC", "clang");
-        command.env("CXX", "clang++");
-    }
-
-    let output = command.output()?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        Err(format!("command failed with status {}", output.status).into())
-    }
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("xtask should live directly under the workspace root")
-        .to_path_buf()
 }

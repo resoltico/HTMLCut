@@ -1,7 +1,9 @@
 [graph]
 targets = [
     "aarch64-apple-darwin",
-    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
 ]
 all-features = true
 
@@ -19,6 +21,7 @@ allow = [
     "ISC",
     "MIT",
     "MPL-2.0",
+    "NCSA",
     "Unicode-3.0",
     "Unlicense",
 ]
@@ -38,7 +41,9 @@ external-default-features = "allow"
 allow = []
 allow-workspace = false
 deny = []
-skip = []
+skip = [
+    { crate = "getrandom@0.3.4", reason = "Windows release-target graphs currently need build-only getrandom 0.3 via cc/jobserver while rustls/ring still pull runtime getrandom 0.2; keep the duplicate exception exact and narrow until that upstream ecosystem split closes." },
+]
 skip-tree = []
 
 [sources]

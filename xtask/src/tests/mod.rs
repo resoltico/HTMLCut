@@ -18,6 +18,7 @@ fn write_repo_scaffold(repo_root: &Path) {
         "[package]\nname = \"htmlcut-core\"\nversion = \"2.0.0\"\n",
     )
     .expect("write baseline Cargo.toml");
+    write_empty_release_targets_script(repo_root);
 }
 
 fn write_empty_release_targets_script(repo_root: &Path) {
@@ -27,7 +28,11 @@ fn write_empty_release_targets_script(repo_root: &Path) {
         scripts_dir.join("release-targets.sh"),
         r#"#!/usr/bin/env bash
 release_target_triples() {
-    :
+    printf '%s\n' \
+        'aarch64-apple-darwin' \
+        'x86_64-apple-darwin' \
+        'x86_64-unknown-linux-musl' \
+        'x86_64-pc-windows-msvc'
 }
 
 release_matrix_json() {
@@ -46,10 +51,14 @@ macos_deployment_target_for_target() {
     .expect("write empty release-targets.sh");
 }
 
+mod command_exec;
 mod coverage;
 mod docs;
 mod fuzz;
+mod host_tools;
 mod plan;
+mod policy;
+mod preflight;
 mod release;
 mod toolchain;
 mod versions;
