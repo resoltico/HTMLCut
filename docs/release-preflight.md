@@ -217,6 +217,14 @@ gh pr view <N> --json number,state,mergeStateStatus,statusCheckRollup,url
 gh pr checks <N>
 ```
 
+If `gh pr diff <N> --name-only` fails with HTTP `406` because the diff exceeds GitHub's
+line-limit for that endpoint, enumerate the changed file set through the pull-files API instead:
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api "repos/$REPO/pulls/<N>/files" --paginate --jq '.[].filename'
+```
+
 Do not continue until the required job in workflow `CI` is green:
 
 - `Check`
