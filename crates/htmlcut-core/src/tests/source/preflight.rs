@@ -112,6 +112,65 @@ fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
     assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
     assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
 }
+
+#[test]
+fn head_preflight_falls_back_to_get_when_head_returns_forbidden() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind forbidden-head server");
+    let address = listener.local_addr().expect("forbidden-head server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method")
+                .to_owned();
+            methods_for_server
+                .lock()
+                .expect("lock methods")
+                .push(method.clone());
+
+            let response = if method == "HEAD" {
+                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n".to_owned()
+            } else {
+                let body = "<html><body>Fallback</body></html>";
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
+    });
+
+    let url = format!("http://{address}");
+    let loaded =
+        read_url_source(&url_source(&url), &RuntimeOptions::default()).expect("fallback source");
+
+    server.join().expect("join server");
+    assert_eq!(
+        methods.lock().expect("lock methods").as_slice(),
+        ["HEAD", "GET"]
+    );
+    assert_eq!(loaded.text, "<html><body>Fallback</body></html>");
+    assert_eq!(loaded.load_steps[0].action, SourceLoadAction::HeadPreflight);
+    assert_eq!(loaded.load_steps[0].outcome, SourceLoadOutcome::Fallback);
+    assert_eq!(loaded.load_steps[0].status, Some(403));
+    assert!(loaded.load_steps[0].message.contains("fell back to GET"));
+    assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
+    assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
+}
 #[test]
 fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind broken-head server");

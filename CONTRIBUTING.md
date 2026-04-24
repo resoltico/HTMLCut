@@ -1,9 +1,9 @@
 <!--
 AFAD:
-  afad: "3.5"
-  version: "4.4.1"
+  afad: "4.0"
+  version: "5.0.0"
   domain: MAINTAINER
-  updated: "2026-04-23"
+  updated: "2026-04-24"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]
@@ -60,8 +60,8 @@ machine-specific absolute paths, and use the canonical names exported by the pro
 Dependency updates that affect workspace crates must refresh `Cargo.lock`. The fuzz package is now
 a normal workspace member, so the maintainer gate picks it up through the shared `fmt`, `clippy`,
 dependency-freshness, audit, and `cargo nextest` library/integration-test passes, then adds one explicit
-`cargo check -p htmlcut-fuzz --bins --locked` compile-smoke to prove the maintained libFuzzer
-targets still build. The same gate resolves `cargo deny` target coverage from the canonical
+`cargo check -p htmlcut-fuzz --bins --features fuzzing --locked` compile-smoke to prove the
+maintained libFuzzer targets still build in their explicit harness mode. The same gate resolves `cargo deny` target coverage from the canonical
 `scripts/release-targets.sh` registry, so dependency policy always follows the shipped standalone
 target matrix instead of drifting onto an ad hoc local graph.
 

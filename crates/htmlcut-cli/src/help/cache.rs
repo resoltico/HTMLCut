@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
-use htmlcut_core::{CliAuxCommandId, OperationId};
+use htmlcut_core::OperationId;
+use htmlcut_core::cli_contract::CliAuxCommandId;
 
 use crate::error::CliError;
 
@@ -12,36 +13,40 @@ use super::render::{
 };
 
 static ROOT_BEFORE_HELP: LazyLock<String> = LazyLock::new(identity_banner);
-static ROOT_LONG_ABOUT: LazyLock<String> =
-    LazyLock::new(|| render_help_sections(&htmlcut_core::cli_root_help_document().sections));
+static ROOT_LONG_ABOUT: LazyLock<String> = LazyLock::new(|| {
+    render_help_sections(&htmlcut_core::cli_contract::cli_root_help_document().sections)
+});
 static ROOT_AFTER_HELP: LazyLock<String> =
-    LazyLock::new(|| render_help_examples(&htmlcut_core::cli_root_help_document()));
+    LazyLock::new(|| render_help_examples(&htmlcut_core::cli_contract::cli_root_help_document()));
 
 static CATALOG_LONG_ABOUT: LazyLock<String> = LazyLock::new(|| {
     render_help_sections(
-        &htmlcut_core::cli_aux_command_help_document(CliAuxCommandId::Catalog).sections,
+        &htmlcut_core::cli_contract::cli_aux_command_help_document(CliAuxCommandId::Catalog)
+            .sections,
     )
 });
 static CATALOG_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
-    render_help_examples(&htmlcut_core::cli_aux_command_help_document(
+    render_help_examples(&htmlcut_core::cli_contract::cli_aux_command_help_document(
         CliAuxCommandId::Catalog,
     ))
 });
 
 static SCHEMA_LONG_ABOUT: LazyLock<String> = LazyLock::new(|| {
     render_help_sections(
-        &htmlcut_core::cli_aux_command_help_document(CliAuxCommandId::Schema).sections,
+        &htmlcut_core::cli_contract::cli_aux_command_help_document(CliAuxCommandId::Schema)
+            .sections,
     )
 });
 static SCHEMA_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
-    render_help_examples(&htmlcut_core::cli_aux_command_help_document(
+    render_help_examples(&htmlcut_core::cli_contract::cli_aux_command_help_document(
         CliAuxCommandId::Schema,
     ))
 });
 
 static INSPECT_LONG_ABOUT: LazyLock<String> = LazyLock::new(|| {
     render_help_sections(
-        &htmlcut_core::cli_aux_command_help_document(CliAuxCommandId::Inspect).sections,
+        &htmlcut_core::cli_contract::cli_aux_command_help_document(CliAuxCommandId::Inspect)
+            .sections,
     )
 });
 
@@ -78,15 +83,15 @@ static INSPECT_SLICE_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
 });
 
 pub(super) fn catalog_about() -> &'static str {
-    htmlcut_core::cli_aux_command_descriptor(CliAuxCommandId::Catalog).about
+    htmlcut_core::cli_contract::cli_aux_command_descriptor(CliAuxCommandId::Catalog).about
 }
 
 pub(super) fn schema_about() -> &'static str {
-    htmlcut_core::cli_aux_command_descriptor(CliAuxCommandId::Schema).about
+    htmlcut_core::cli_contract::cli_aux_command_descriptor(CliAuxCommandId::Schema).about
 }
 
 pub(super) fn inspect_about() -> &'static str {
-    htmlcut_core::cli_aux_command_descriptor(CliAuxCommandId::Inspect).about
+    htmlcut_core::cli_contract::cli_aux_command_descriptor(CliAuxCommandId::Inspect).about
 }
 
 pub(super) fn select_about() -> &'static str {

@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: CLI_LIBRARY
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [cli library, htmlcut_cli, run, command, exit codes, report schemas, typed reports, clap command]
   questions: ["what does the public htmlcut-cli crate export?", "when should I use htmlcut_cli::run instead of htmlcut_core?", "how do I consume typed catalog or schema reports from htmlcut-cli?"]
@@ -34,16 +34,20 @@ Use `htmlcut_cli` when you need one of these exact adapter-level behaviors insid
 
 The main root-level helpers are:
 
-- `htmlcut_cli::run(args, stdout, stderr) -> i32`
+- `htmlcut_cli::run(args, stdout, stderr) -> std::io::Result<i32>`
 - `htmlcut_cli::command() -> clap::Command`
 
 `run(...)` executes the full CLI adapter against one argv stream, writes the rendered output, and
-returns the canonical exit code. Use it when tests or tools need the actual CLI semantics instead
-of a reimplemented wrapper.
+returns the canonical exit code inside `std::io::Result`. Use it when tests or tools need the
+actual CLI semantics instead of a reimplemented wrapper. Writer failures such as broken pipes now
+surface as `Err(std::io::Error)` instead of being silently downgraded to a success exit code.
 
 `command()` returns the canonical clap tree used by the binary itself. HTMLCut's docs-contract and
 CLI contract-lint surfaces use this to verify that help text and parsing behavior still match the
 core-owned command contracts.
+
+The published CLI crate enables `htmlcut-core/http-client`, so URL arguments keep working in the
+adapter even though bare `htmlcut-core` embeddings now opt into built-in HTTP loading explicitly.
 
 ## Exit Codes
 

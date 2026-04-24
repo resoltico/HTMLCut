@@ -10,35 +10,35 @@ fn markdown_contract_reports_release_doc_drift_against_canonical_release_targets
     .expect("write manifest");
     fs::write(
         repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut, quick start]\n  questions: [what is HTMLCut?, where is the quick start guide?]\n-->\n\n# HTMLCut\n\n[Quick Start](docs/getting-started.md)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut, quick start]\n  questions: [what is HTMLCut?, where is the quick start guide?]\n-->\n\n# HTMLCut\n\n[Quick Start](docs/getting-started.md)\n",
     )
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [contributing, workflow, checks, release, docs]\n  questions: [how do I contribute?, which checks run?]\n-->\n\n# Contributing\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [contributing, workflow, checks, release, docs]\n  questions: [how do I contribute?, which checks run?]\n-->\n\n# Contributing\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-22");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz, corpus, targets, libfuzzer, seeds]\n  questions: [how do I run fuzzing?, which fuzz targets exist?]\n-->\n\n# Fuzz\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz, corpus, targets, libfuzzer, seeds]\n  questions: [how do I run fuzzing?, which fuzz targets exist?]\n-->\n\n# Fuzz\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("getting-started.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: SETUP\nupdated: \"2026-04-22\"\nroute:\n  keywords: [getting started]\n  questions: [\"q\"]\n---\n\n# Getting Started\n\n```bash\nVERSION=9.9.9\n```\n\n```powershell\n$Version = \"9.9.9\"\n```\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: SETUP\nupdated: \"2026-04-22\"\nroute:\n  keywords: [getting started]\n  questions: [\"q\"]\n---\n\n# Getting Started\n\n```bash\nVERSION=9.9.9\n```\n\n```powershell\n$Version = \"9.9.9\"\n```\n",
     )
     .expect("write getting started");
     fs::write(
         repo_root.path().join("docs").join("platform-support.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: PLATFORM\nupdated: \"2026-04-22\"\nroute:\n  keywords: [platform support, target matrix, release assets, runners, deployment floors]\n  questions: [which platforms ship?, which runners build the releases?]\n---\n\n# Platform Support\n\n- `aarch64-apple-darwin`\n- `x86_64-pc-windows-msvc`\n- `htmlcut-source-X.Y.Z.zip`\n- `macos-15` for `aarch64-apple-darwin`\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: PLATFORM\nupdated: \"2026-04-22\"\nroute:\n  keywords: [platform support, target matrix, release assets, runners, deployment floors]\n  questions: [which platforms ship?, which runners build the releases?]\n---\n\n# Platform Support\n\n- `aarch64-apple-darwin`\n- `x86_64-pc-windows-msvc`\n- `htmlcut-source-X.Y.Z.zip`\n- `macos-15` for `aarch64-apple-darwin`\n",
     )
     .expect("write platform support");
     fs::write(
         repo_root.path().join("docs").join("release-publishing.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: RELEASE\nupdated: \"2026-04-22\"\nroute:\n  keywords: [release publishing]\n  questions: [\"q\"]\n---\n\n# Release Publishing\n\n- `htmlcut-source-X.Y.Z.zip`\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: RELEASE\nupdated: \"2026-04-22\"\nroute:\n  keywords: [release publishing]\n  questions: [\"q\"]\n---\n\n# Release Publishing\n\n- `htmlcut-source-X.Y.Z.zip`\n",
     )
     .expect("write release publishing");
     fs::create_dir_all(repo_root.path().join("scripts")).expect("create scripts dir");

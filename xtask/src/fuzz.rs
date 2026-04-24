@@ -129,6 +129,8 @@ pub fn fuzz_smoke_command(target: &str, staged_corpus: &Path, runs: u32) -> DynR
             "run".to_owned(),
             "--fuzz-dir".to_owned(),
             "fuzz".to_owned(),
+            "--features".to_owned(),
+            "fuzzing".to_owned(),
             target.to_owned(),
             staged_corpus.to_string_lossy().to_string(),
             "--".to_owned(),

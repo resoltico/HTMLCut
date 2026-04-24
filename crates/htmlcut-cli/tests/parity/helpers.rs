@@ -70,7 +70,8 @@ pub(super) fn run_cli_json(args: &[String]) -> String {
         std::iter::once("htmlcut".to_owned()).chain(args.iter().cloned()),
         &mut stdout,
         &mut stderr,
-    );
+    )
+    .expect("cli run");
 
     assert_eq!(
         exit_code,

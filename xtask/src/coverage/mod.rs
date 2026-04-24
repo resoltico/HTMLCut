@@ -84,3 +84,8 @@ pub(crate) fn repo_relative_source_path_for_tests(
 ) -> DynResult<String> {
     tracking::repo_relative_source_path_for_tests(repo_root, absolute_path)
 }
+
+#[cfg(test)]
+pub(crate) fn is_under_coverage_root_for_tests(relative_path: &str) -> bool {
+    tracking::is_under_coverage_root_for_tests(relative_path)
+}

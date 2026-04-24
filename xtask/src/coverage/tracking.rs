@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::command_exec::repo_worktree_files;
 use crate::model::{COVERAGE_EXCLUDED_RELATIVE_PATHS, COVERAGE_SOURCE_ROOTS, DynResult};
 use crate::plan::normalize_path;
 
@@ -11,13 +12,17 @@ pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, String>> {
     let mut tracked_files = BTreeMap::new();
     let excluded_paths = coverage_excluded_paths();
 
-    for relative_root in COVERAGE_SOURCE_ROOTS {
-        collect_tracked_files(
-            repo_root,
-            &repo_root.join(relative_root),
-            &excluded_paths,
-            &mut tracked_files,
-        )?;
+    if let Some(paths) = repo_worktree_files(repo_root)? {
+        collect_inventory_tracked_files(repo_root, &paths, &excluded_paths, &mut tracked_files)?;
+    } else {
+        for relative_root in COVERAGE_SOURCE_ROOTS {
+            collect_tracked_files(
+                repo_root,
+                &repo_root.join(relative_root),
+                &excluded_paths,
+                &mut tracked_files,
+            )?;
+        }
     }
 
     Ok(tracked_files)
@@ -63,6 +68,37 @@ fn collect_tracked_files(
     Ok(())
 }
 
+fn collect_inventory_tracked_files(
+    repo_root: &Path,
+    paths: &[PathBuf],
+    excluded_paths: &BTreeSet<&str>,
+    tracked_files: &mut BTreeMap<PathBuf, String>,
+) -> DynResult<()> {
+    for path in paths {
+        if path.extension() != Some(OsStr::new("rs")) {
+            continue;
+        }
+
+        let absolute_path = normalize_path(repo_root, path)?;
+        let relative_path = repo_relative_source_path(repo_root, &absolute_path)?;
+        if !is_under_coverage_root(&relative_path)
+            || should_skip_coverage_path(&relative_path, excluded_paths)
+        {
+            continue;
+        }
+
+        tracked_files.insert(absolute_path, relative_path);
+    }
+
+    Ok(())
+}
+
+fn is_under_coverage_root(relative_path: &str) -> bool {
+    COVERAGE_SOURCE_ROOTS
+        .iter()
+        .any(|root| relative_path == *root || relative_path.starts_with(&format!("{root}/")))
+}
+
 fn repo_relative_source_path(repo_root: &Path, absolute_path: &Path) -> DynResult<String> {
     let normalized_repo_root = normalize_path(repo_root, repo_root)?;
     let relative = absolute_path
@@ -89,4 +125,9 @@ pub(crate) fn repo_relative_source_path_for_tests(
     absolute_path: &Path,
 ) -> DynResult<String> {
     repo_relative_source_path(repo_root, absolute_path)
+}
+
+#[cfg(test)]
+pub(crate) fn is_under_coverage_root_for_tests(relative_path: &str) -> bool {
+    is_under_coverage_root(relative_path)
 }

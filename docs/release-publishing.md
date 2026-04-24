@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: RELEASE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -121,6 +121,10 @@ The release workflow also emits GitHub build-provenance attestations for the sou
 standalone packages, and checksum manifest. Those attestations are part of the maintained
 publication story, but they live in GitHub's attestation system rather than in the named release
 asset inventory above.
+
+The maintained `htmlcut-source-X.Y.Z.*` assets are produced with `git archive`, so repository
+paths marked `export-ignore` in `.gitattributes` stay committed in GitHub while remaining absent
+from the downloadable source archives.
 
 GitHub renders `Source code (zip)` and `Source code (tar.gz)` links on the release page. Those
 links are GitHub-generated convenience downloads and are not part of HTMLCut's maintained asset

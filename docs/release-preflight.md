@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: RELEASE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -82,6 +82,12 @@ cd "$RELEASE_WORKTREE"
 
 That keeps the release worktree clean without discarding the real unpublished state that must ship.
 Do not hand-copy a dirty diff into a temporary checkout and hope it still matches later.
+
+If that `release-prep/X.Y.Z` commit already carries the target release version and the full
+version-bearing surface from this guide, treat it as the prepared release-candidate source commit.
+The clean `release/X.Y.Z` worktree may start at that exact commit and need no extra content commit.
+Only make an additional release-branch commit if you discover release-only fixes while running the
+preflight.
 
 Install the local maintainer toolchain if it is not already available by following
 [developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
@@ -186,6 +192,17 @@ before ending the release session.
 
 Do release commits on a release branch, not directly on `main`.
 
+If the clean `release/X.Y.Z` worktree already points at the fully prepared release-candidate
+commit captured in Step 1, verify that it is clean and push it directly:
+
+```bash
+git status --short
+git show --stat --summary --format=fuller HEAD
+git push -u origin release/X.Y.Z
+```
+
+If release-only fixes are still needed after Step 1, make them on `release/X.Y.Z` before pushing:
+
 ```bash
 git checkout -b release/X.Y.Z
 git add <every intended release file>
@@ -196,14 +213,20 @@ git commit -m "release: bump version to X.Y.Z"
 git push origin release/X.Y.Z
 ```
 
-Before committing:
+Before pushing or committing:
 
-- `git status --short` must show no intended release file left unstaged.
-- `git diff --cached --name-status` must show the exact release file set.
-- `git diff --cached --stat` must reflect versioning, changelog, docs, workflow, and release-script
-  updates only.
-- the staged release diff must include the full version-bearing surface described in Step 1, not
-  just the workspace manifest line by itself
+- if Step 1 already produced the full release candidate, `git status --short` must be empty and
+  `git show --stat --summary --format=fuller HEAD` must match the candidate you intend to publish
+- if you are making an additional release-only commit, `git status --short` must show no intended
+  release file left unstaged before the commit
+- if you are making an additional release-only commit, `git diff --cached --name-status` must show
+  the exact incremental release-only file set
+- if you are making an additional release-only commit, `git diff --cached --stat` may be limited
+  to versioning, changelog, docs, workflow, and release-script updates, but the overall PR may
+  legitimately be broader when `release/X.Y.Z` was cut from a prepared dirty-candidate capture
+- whether the candidate came from Step 1 or from an extra release-only commit, the pushed
+  `release/X.Y.Z` branch must still include the full version-bearing surface described in Step 1,
+  not just the workspace manifest line by itself
 
 ## 3. Pull Request And CI
 

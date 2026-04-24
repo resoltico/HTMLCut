@@ -1,6 +1,7 @@
 use crate::catalog::{OperationId, operation_descriptor};
-use crate::{CORE_RESULT_SCHEMA_NAME, cli_operation_contract, interop::v1::RESULT_SCHEMA_NAME};
+use crate::{CORE_RESULT_SCHEMA_NAME, interop::v1::RESULT_SCHEMA_NAME};
 
+use super::super::cli_operation_contract;
 use super::model::{
     CliAuxCommandId, CliHelpDocument, CliHelpSection, CliHelpSectionStyle,
     cli_aux_command_display_command,

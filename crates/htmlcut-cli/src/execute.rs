@@ -38,7 +38,7 @@ pub(crate) struct ExecutionOutcome {
 }
 
 /// Executes the HTMLCut CLI against one argv stream and writes the rendered result.
-pub fn run<I, W1, W2>(args: I, stdout: &mut W1, stderr: &mut W2) -> i32
+pub fn run<I, W1, W2>(args: I, stdout: &mut W1, stderr: &mut W2) -> std::io::Result<i32>
 where
     I: IntoIterator<Item = String>,
     W1: Write,
@@ -47,14 +47,14 @@ where
     let raw_args: Vec<String> = args.into_iter().collect();
     if raw_args.len() <= 1 {
         let mut command = Cli::command();
-        let _ = command.write_long_help(stdout);
-        let _ = writeln!(stdout);
-        return 0;
+        command.write_long_help(stdout)?;
+        writeln!(stdout)?;
+        return Ok(0);
     }
 
     if raw_args_requests_version(&raw_args) && !raw_args_requests_help(&raw_args) {
-        let _ = writeln!(stdout, "{}", version_banner());
-        return 0;
+        writeln!(stdout, "{}", version_banner())?;
+        return Ok(0);
     }
 
     let prefers_json_errors = raw_args_prefers_json(&raw_args);
@@ -62,8 +62,8 @@ where
         Ok(args) => args,
         Err(error) => {
             if error.kind() == ErrorKind::DisplayHelp {
-                let _ = write!(stdout, "{error}");
-                return 0;
+                write!(stdout, "{error}")?;
+                return Ok(0);
             }
 
             let outcome = error_outcome(

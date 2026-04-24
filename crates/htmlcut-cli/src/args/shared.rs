@@ -5,7 +5,7 @@ use htmlcut_core::{DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_
 
 use super::{
     CliFetchPreflightMode, CliInspectOutputMode, CliMatchMode, CliOutputMode, CliValueMode,
-    CliWhitespaceMode, TEXT_JSON_OUTPUT_MODES, cli_choice_parser, cli_choice_subset_parser,
+    CliWhitespaceMode, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -120,7 +120,7 @@ pub(crate) struct ExtractOutputArgs {
 #[command(next_help_heading = "Inspection Output")]
 pub(crate) struct InspectOutputArgs {
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, value_parser = cli_choice_subset_parser(TEXT_JSON_OUTPUT_MODES), default_value_t = CliInspectOutputMode::Json)]
+    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Json)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Maximum preview length stored in structured preview reports.

@@ -12,10 +12,10 @@ pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, Br
 
 // Coverage is intentionally enforced as a 100% line-and-branch bar over the
 // executable modules that define HTMLCut's maintained extraction, CLI adapter,
-// and maintainer-gate logic. The tracked set is derived from the live source
-// tree so future seam splits are scored automatically; only declarative-only
-// modules with no maintained executable logic stay on the explicit exclusion
-// list.
+// and maintainer-gate logic. The tracked set is derived from the maintained
+// worktree inventory so future seam splits are scored automatically without
+// letting ignored scratch files pollute the gate; only declarative-only modules
+// with no maintained executable logic stay on the explicit exclusion list.
 pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/htmlcut-core/src",
     "crates/htmlcut-cli/src",

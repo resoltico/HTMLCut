@@ -9,15 +9,23 @@ use crate::document::{
 };
 use crate::extract::position_inside_markup_for_tests;
 use crate::result::ExtractionMatchMetadata;
+#[cfg(feature = "http-client")]
 use crate::source::{
     content_type_is_obviously_non_html_for_tests, finish_url_source_from_reader_for_tests,
     head_error_allows_get_fallback_for_tests, read_stdin_source_from_reader_for_tests,
+};
+#[cfg(not(feature = "http-client"))]
+use crate::source::{
+    finish_url_source_from_reader_for_tests, read_stdin_source_from_reader_for_tests,
 };
 use scraper::ElementRef;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::io;
-use std::io::{Cursor, Error as IoError, Read, Write};
+#[cfg(feature = "http-client")]
+use std::io::Write;
+use std::io::{Cursor, Error as IoError, Read};
+#[cfg(feature = "http-client")]
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
 #[cfg(unix)]
@@ -25,8 +33,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::str::FromStr;
+#[cfg(feature = "http-client")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "http-client")]
 use std::thread;
+#[cfg(feature = "http-client")]
 use ureq::tls::RootCerts;
 use url::Url;
 

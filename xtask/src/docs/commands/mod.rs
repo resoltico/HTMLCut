@@ -99,7 +99,7 @@ pub(crate) fn command_reference_error(
         }
         Some("inspect") | Some("select") | Some("slice") => {
             let command_path = parsing::command_path(tokens);
-            htmlcut_core::find_cli_operation_by_command_path(&command_path)
+            htmlcut_core::cli_contract::find_cli_operation_by_command_path(&command_path)
                 .is_none()
                 .then(|| {
                     format!(

@@ -11,7 +11,7 @@ use crate::help::{
 
 use super::{
     CliInspectOutputMode, CliPatternMode, CliWhitespaceMode, DefinitionArgs, InspectOutputArgs,
-    SelectionArgs, SourceArgs, TEXT_JSON_OUTPUT_MODES, cli_choice_parser, cli_choice_subset_parser,
+    SelectionArgs, SourceArgs, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -56,7 +56,7 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) sample_limit: usize,
 
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, value_parser = cli_choice_subset_parser(TEXT_JSON_OUTPUT_MODES), default_value_t = CliInspectOutputMode::Json)]
+    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Json)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Include the full source text in JSON output and a bounded preview in text output.

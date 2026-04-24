@@ -293,6 +293,17 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
         })
         .is_err()
     );
+    assert_eq!(
+        source_inspection_report_command_for_tests(Some("inspect-source"))
+            .expect("command should resolve"),
+        "inspect-source"
+    );
+    assert_eq!(
+        source_inspection_report_command_for_tests(None)
+            .expect_err("missing contract command should fail")
+            .code,
+        "CLI_CONTRACT_MISSING"
+    );
 }
 
 fn default_extract_output(value: CliValueMode) -> ExtractOutputArgs {

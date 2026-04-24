@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: SETUP
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [developer setup, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?"]
@@ -155,8 +155,10 @@ Then run one maintained gate entrypoint:
 
 `cargo xtask check` is the equivalent direct invocation if you want to bypass the shell wrapper.
 For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
-`cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`
-before it launches, so missing fuzz prerequisites fail fast with one actionable message.
+`cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,
+then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
+prerequisites fail fast with one actionable message and broad default Cargo test loops stay
+finite.
 The main `cargo xtask check` gate likewise preflights the exact pinned `1.95.0` toolchain and its
 required `clippy`/`rustfmt` components before the Rust gate starts, including direct probes that
 verify the tool binaries are actually runnable.

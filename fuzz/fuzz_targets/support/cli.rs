@@ -13,7 +13,7 @@ pub fn drive(input: &[u8]) {
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    let exit_code = htmlcut_cli::run(args, &mut stdout, &mut stderr);
+    let exit_code = htmlcut_cli::run(args, &mut stdout, &mut stderr).expect("cli run");
     let stdout = String::from_utf8_lossy(&stdout);
     let stderr = String::from_utf8_lossy(&stderr);
 

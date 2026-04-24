@@ -137,9 +137,6 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
         stdout: Some(match prepared.output {
             CliInspectOutputMode::Json => to_pretty_json(&report),
             CliInspectOutputMode::Text => render_preview_text(&report),
-            CliInspectOutputMode::Html | CliInspectOutputMode::None => {
-                unreachable!("inspect output parser only allows text/json")
-            }
         }),
         output_file: prepared.output_file,
         post_write_stderr,

@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: OPERATIONS
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
@@ -17,9 +17,9 @@ The code-level source of truth lives in `htmlcut-core`:
 - `OperationId`
 - `OperationDescriptor`
 - `OPERATION_CATALOG`
-- `OperationCliContract`
-- `cli_operation_catalog`
-- `cli_operation_contract`
+- `htmlcut_core::cli_contract::OperationCliContract`
+- `htmlcut_core::cli_contract::cli_operation_catalog`
+- `htmlcut_core::cli_contract::cli_operation_contract`
 
 Those identifiers are valid because they refer only to real product operations that callers can invoke across the CLI and embeddable core. They are not decorative labels.
 

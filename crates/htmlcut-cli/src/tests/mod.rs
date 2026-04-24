@@ -19,18 +19,32 @@ use htmlcut_tempdir::tempdir;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 fn run_vec(args: Vec<String>) -> (i32, String, String) {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    let exit_code = run(args, &mut stdout, &mut stderr);
+    let exit_code = run(args, &mut stdout, &mut stderr).expect("cli run");
     (
         exit_code,
         String::from_utf8(stdout).expect("stdout utf8"),
         String::from_utf8(stderr).expect("stderr utf8"),
     )
+}
+
+#[derive(Default)]
+struct BrokenPipeWriter;
+
+impl Write for BrokenPipeWriter {
+    fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe"))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn write_fixture_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
@@ -95,8 +109,8 @@ fn render_long_help(command: &mut clap::Command) -> String {
 }
 
 fn parameter_allowed_values(
-    contract: &htmlcut_core::OperationCliContract,
-    parameter: htmlcut_core::CliParameterId,
+    contract: &htmlcut_core::cli_contract::OperationCliContract,
+    parameter: htmlcut_core::cli_contract::CliParameterId,
 ) -> Vec<String> {
     contract
         .parameters
@@ -107,21 +121,25 @@ fn parameter_allowed_values(
                 .allowed_values
                 .iter()
                 .copied()
-                .map(htmlcut_core::render_cli_value)
+                .map(htmlcut_core::cli_contract::render_cli_value)
                 .collect()
         })
         .unwrap_or_default()
 }
 
 fn parameter_default_value(
-    contract: &htmlcut_core::OperationCliContract,
-    parameter: htmlcut_core::CliParameterId,
+    contract: &htmlcut_core::cli_contract::OperationCliContract,
+    parameter: htmlcut_core::cli_contract::CliParameterId,
 ) -> Option<String> {
     contract
         .parameters
         .iter()
         .find(|descriptor| descriptor.id == parameter)
-        .and_then(|descriptor| descriptor.default.map(htmlcut_core::render_cli_value))
+        .and_then(|descriptor| {
+            descriptor
+                .default
+                .map(htmlcut_core::cli_contract::render_cli_value)
+        })
 }
 
 fn assert_command_path_registered(command: &clap::Command, command_path: &[&str]) {

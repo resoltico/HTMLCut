@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -101,17 +102,48 @@ impl ExampleSandbox {
     ) -> Option<String> {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let exit_code = htmlcut_cli::run(tokens.iter().cloned(), &mut stdout, &mut stderr);
-
-        if exit_code != 0 {
-            return Some(format!(
-                "{display_path} contains a non-runnable htmlcut example: {example} ({})",
-                render_execution_failure(exit_code, &stdout, &stderr)
-            ));
+        if let Some(error) = command_runtime_error_message(
+            display_path,
+            example,
+            htmlcut_cli::run(tokens.iter().cloned(), &mut stdout, &mut stderr),
+            &stdout,
+            &stderr,
+        ) {
+            return Some(error);
         }
 
         documented_artifact_error(display_path, example, tokens)
     }
+}
+
+fn command_runtime_error_message(
+    display_path: &str,
+    example: &str,
+    result: io::Result<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Option<String> {
+    match result {
+        Ok(0) => None,
+        Ok(exit_code) => Some(format!(
+            "{display_path} contains a non-runnable htmlcut example: {example} ({})",
+            render_execution_failure(exit_code, stdout, stderr)
+        )),
+        Err(error) => Some(format!(
+            "{display_path} contains a non-runnable htmlcut example: {example} (failed to capture CLI output: {error})"
+        )),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn command_runtime_error_message_for_tests(
+    display_path: &str,
+    example: &str,
+    result: io::Result<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Option<String> {
+    command_runtime_error_message(display_path, example, result, stdout, stderr)
 }
 
 fn current_dir_lock() -> &'static Mutex<()> {

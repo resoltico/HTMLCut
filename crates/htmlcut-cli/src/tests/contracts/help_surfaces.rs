@@ -63,7 +63,10 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("catalog command");
     assert_eq!(
         catalog.get_about().expect("catalog about").to_string(),
-        htmlcut_core::cli_aux_command_descriptor(htmlcut_core::CliAuxCommandId::Catalog).about
+        htmlcut_core::cli_contract::cli_aux_command_descriptor(
+            htmlcut_core::cli_contract::CliAuxCommandId::Catalog
+        )
+        .about
     );
 
     let schema = command
@@ -72,7 +75,10 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("schema command");
     assert_eq!(
         schema.get_about().expect("schema about").to_string(),
-        htmlcut_core::cli_aux_command_descriptor(htmlcut_core::CliAuxCommandId::Schema).about
+        htmlcut_core::cli_contract::cli_aux_command_descriptor(
+            htmlcut_core::cli_contract::CliAuxCommandId::Schema
+        )
+        .about
     );
 
     let inspect = command
@@ -81,7 +87,10 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("inspect command");
     assert_eq!(
         inspect.get_about().expect("inspect about").to_string(),
-        htmlcut_core::cli_aux_command_descriptor(htmlcut_core::CliAuxCommandId::Inspect).about
+        htmlcut_core::cli_contract::cli_aux_command_descriptor(
+            htmlcut_core::cli_contract::CliAuxCommandId::Inspect
+        )
+        .about
     );
 
     for (command_path, operation_id) in [
@@ -255,9 +264,9 @@ fn cli_choice_parser_rejects_invalid_utf8_and_invalid_values() {
 
 #[test]
 fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
-    let section = htmlcut_core::CliHelpSection {
+    let section = htmlcut_core::cli_contract::CliHelpSection {
         title: "Steps".to_owned(),
-        style: htmlcut_core::CliHelpSectionStyle::Numbered,
+        style: htmlcut_core::cli_contract::CliHelpSectionStyle::Numbered,
         lines: vec!["first".to_owned(), "second".to_owned()],
     };
     assert_eq!(
@@ -265,17 +274,22 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
         "Steps:\n1. first\n2. second"
     );
 
-    let mut contract =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
-            .expect("select extract contract")
-            .clone();
-    contract.default_output_overrides = vec![htmlcut_core::CliConditionalDefault {
-        value: htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::Json),
-        when: htmlcut_core::CliCondition {
-            parameter: htmlcut_core::CliParameterId::Value,
+    let mut contract = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SelectExtract,
+    )
+    .expect("select extract contract")
+    .clone();
+    contract.default_output_overrides = vec![htmlcut_core::cli_contract::CliConditionalDefault {
+        value: htmlcut_core::cli_contract::CliValue::OutputMode(
+            htmlcut_core::cli_contract::CliOutputMode::Json,
+        ),
+        when: htmlcut_core::cli_contract::CliCondition {
+            parameter: htmlcut_core::cli_contract::CliParameterId::Value,
             values: vec![
-                htmlcut_core::CliValue::ValueType(htmlcut_core::ValueType::Structured),
-                htmlcut_core::CliValue::ValueType(htmlcut_core::ValueType::OuterHtml),
+                htmlcut_core::cli_contract::CliValue::ValueType(
+                    htmlcut_core::ValueType::Structured,
+                ),
+                htmlcut_core::cli_contract::CliValue::ValueType(htmlcut_core::ValueType::OuterHtml),
             ],
         },
     }];
@@ -291,7 +305,7 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
 
     let empty_summary = crate::help::build_operation_long_about_from_parts_for_tests(
         Vec::new(),
-        &htmlcut_core::OperationCliContract {
+        &htmlcut_core::cli_contract::OperationCliContract {
             notes: Vec::new(),
             output_modes: Vec::new(),
             default_output: None,

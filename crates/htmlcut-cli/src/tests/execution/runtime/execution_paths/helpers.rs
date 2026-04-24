@@ -190,7 +190,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    let exit_code = write_outcome(human, &mut stdout, &mut stderr);
+    let exit_code = write_outcome(human, &mut stdout, &mut stderr).expect("write outcome");
     assert_eq!(exit_code, EXIT_CODE_SOURCE);
     assert!(stdout.is_empty());
     assert!(

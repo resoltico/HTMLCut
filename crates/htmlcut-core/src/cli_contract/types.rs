@@ -70,6 +70,37 @@ crate::cli_choice::impl_cli_choice!(CliOutputMode {
     CliOutputMode::None => "none",
 });
 
+/// Canonical stdout rendering modes for CLI commands that only expose text or JSON.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum CliTextJsonOutputMode {
+    /// Render compact human-readable text.
+    Text,
+    /// Render machine-readable JSON.
+    Json,
+}
+
+crate::cli_choice::impl_cli_choice!(CliTextJsonOutputMode {
+    CliTextJsonOutputMode::Text => "text",
+    CliTextJsonOutputMode::Json => "json",
+});
+
+impl CliTextJsonOutputMode {
+    /// Returns the corresponding general CLI output mode.
+    pub const fn as_output_mode(self) -> CliOutputMode {
+        match self {
+            Self::Text => CliOutputMode::Text,
+            Self::Json => CliOutputMode::Json,
+        }
+    }
+}
+
+impl From<CliTextJsonOutputMode> for CliOutputMode {
+    fn from(value: CliTextJsonOutputMode) -> Self {
+        value.as_output_mode()
+    }
+}
+
 /// Help-section grouping for one CLI parameter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CliParameterSection {

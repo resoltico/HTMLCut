@@ -97,25 +97,25 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
     .expect("write manifest");
     fs::write(
         repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[bad](/tmp/nope)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[bad](/tmp/nope)\n",
     )
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("guide.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n",
     )
     .expect("write guide");
 
@@ -144,25 +144,25 @@ fn markdown_contract_errors_ignore_external_anchor_and_mail_links() {
     .expect("write manifest");
     fs::write(
         repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[site](https://example.com)\n[mail](mailto:test@example.com)\n[section](#intro)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[site](https://example.com)\n[mail](mailto:test@example.com)\n[section](#intro)\n",
     )
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[repo](http://example.com)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[repo](http://example.com)\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n[wrapped](<https://example.com/docs>)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n[wrapped](<https://example.com/docs>)\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("guide.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n[top](../README.md#intro)\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n[top](../README.md#intro)\n",
     )
     .expect("write guide");
 
@@ -189,6 +189,67 @@ fn should_skip_dir_rejects_hidden_dirs_and_internal_generated_roots() {
     assert!(crate::docs::should_skip_dir_for_tests(
         repo_root.path(),
         &tmp
+    ));
+}
+
+#[test]
+fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_docs() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"4.1.0\"\n",
+    )
+    .expect("write manifest");
+    fs::write(
+        repo_root.path().join("README.md"),
+        "<!-- version: \"4.1.0\" -->\n",
+    )
+    .expect("write readme");
+    fs::write(
+        repo_root.path().join("AGENTS.md"),
+        "<!-- version: \"4.1.0\" -->\n",
+    )
+    .expect("write agents");
+    fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
+    fs::write(
+        repo_root.path().join("docs").join("guide.md"),
+        "---\nversion: \"4.1.0\"\n---\n",
+    )
+    .expect("write guide");
+    fs::create_dir_all(repo_root.path().join("tmp")).expect("create tmp dir");
+    fs::write(repo_root.path().join("tmp").join("notes.md"), "# ignore\n").expect("write tmp");
+
+    let docs = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == Path::new("git")).then(|| {
+                Ok(b"README.md\0AGENTS.md\0docs/guide.md\0.codex/AGENTS.md\0tmp/notes.md\0docs/missing.md\0".to_vec())
+            })
+        },
+        || markdown_doc_paths(repo_root.path()),
+    )
+    .expect("markdown doc paths");
+
+    assert_eq!(
+        docs,
+        vec![
+            repo_root.path().join("AGENTS.md"),
+            repo_root.path().join("README.md"),
+            repo_root.path().join("docs").join("guide.md"),
+        ]
+    );
+}
+
+#[test]
+fn is_maintained_markdown_doc_rejects_paths_outside_the_repo_root() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let outside_root = tempdir().expect("outside tempdir");
+    let outside_doc = outside_root.path().join("guide.md");
+    fs::write(&outside_doc, "# outside\n").expect("write outside doc");
+
+    assert!(!crate::docs::is_maintained_markdown_doc_for_tests(
+        repo_root.path(),
+        &outside_doc
     ));
 }
 

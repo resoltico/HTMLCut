@@ -20,6 +20,9 @@ pub struct SourceRequest {
 
 impl SourceRequest {
     /// Creates a request for an HTTP or HTTPS source.
+    ///
+    /// URL loading requires the `htmlcut-core/http-client` feature when the request is executed by
+    /// [`crate::extract`], [`crate::inspect_source`], or [`crate::parse_document`].
     pub fn url(href: Url) -> Self {
         Self {
             input: SourceInput::Url { href },
@@ -71,6 +74,9 @@ impl SourceRequest {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SourceInput {
     /// Load HTML from an HTTP or HTTPS URL.
+    ///
+    /// This source kind is available only when the executing `htmlcut-core` build enables the
+    /// `http-client` feature.
     Url {
         /// Absolute HTTP or HTTPS URL to fetch.
         href: Url,

@@ -1,21 +1,30 @@
+#[cfg(feature = "http-client")]
 use std::io;
+#[cfg(feature = "http-client")]
 use std::time::Duration;
 
 use serde_json::json;
+#[cfg(feature = "http-client")]
 use ureq::http::Response;
+#[cfg(feature = "http-client")]
 use ureq::tls::{RootCerts, TlsConfig};
 
-use crate::contracts::{
-    FetchPreflightMode, RuntimeOptions, SourceInput, SourceKind, SourceLoadAction,
-    SourceLoadOutcome, SourceLoadStep, SourceRequest,
-};
+#[cfg(feature = "http-client")]
+use crate::contracts::{FetchPreflightMode, SourceLoadAction, SourceLoadOutcome, SourceLoadStep};
+use crate::contracts::{RuntimeOptions, SourceInput, SourceKind, SourceRequest};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
+#[cfg(feature = "http-client")]
 use crate::format_byte_size;
 
+#[cfg(feature = "http-client")]
 use super::io::finish_url_source_from_reader;
 use super::metadata::source_load_failure;
 use super::{LoadedSource, SourceLoadFailure};
 
+#[cfg(not(feature = "http-client"))]
+const HTTP_CLIENT_FEATURE: &str = "http-client";
+
+#[cfg(feature = "http-client")]
 pub(crate) fn read_url_source(
     source: &SourceRequest,
     runtime: &RuntimeOptions,
@@ -29,13 +38,13 @@ pub(crate) fn read_url_source(
     if runtime.fetch_preflight == FetchPreflightMode::HeadFirst {
         match agent.head(&source_value).call() {
             Ok(head_response) => {
-                if head_status_allows_get(&head_response) {
+                if !head_response.status().is_success() {
                     load_steps.push(SourceLoadStep {
                         action: SourceLoadAction::HeadPreflight,
                         outcome: SourceLoadOutcome::Fallback,
                         status: Some(head_response.status().as_u16()),
                         message: format!(
-                            "HEAD returned {}, so HTMLCut fell back to GET.",
+                            "HEAD returned {}, so HTMLCut treated the advisory preflight as non-authoritative and fell back to GET.",
                             head_response.status().as_u16()
                         ),
                     });
@@ -179,6 +188,35 @@ pub(crate) fn read_url_source(
     )
 }
 
+#[cfg(not(feature = "http-client"))]
+pub(crate) fn read_url_source(
+    source: &SourceRequest,
+    _runtime: &RuntimeOptions,
+) -> Result<LoadedSource, SourceLoadFailure> {
+    let SourceInput::Url { href } = &source.input else {
+        unreachable!("read_url_source should only be called for URL sources");
+    };
+    let source_value = href.to_string();
+
+    Err(source_load_failure(
+        source,
+        SourceKind::Url,
+        source_value.clone(),
+        Vec::new(),
+        error_diagnostic(
+            DiagnosticCode::SourceLoadFailed,
+            format!(
+                "Could not load {source_value}: this htmlcut-core build was compiled without the `{HTTP_CLIENT_FEATURE}` feature required for URL sources."
+            ),
+            Some(json!({
+                "source": source_value,
+                "requiredFeature": HTTP_CLIENT_FEATURE,
+            })),
+        ),
+    ))
+}
+
+#[cfg(feature = "http-client")]
 pub(crate) fn build_http_agent(runtime: &RuntimeOptions) -> ureq::Agent {
     let tls_config = TlsConfig::builder()
         .root_certs(RootCerts::PlatformVerifier)
@@ -192,6 +230,7 @@ pub(crate) fn build_http_agent(runtime: &RuntimeOptions) -> ureq::Agent {
         .into()
 }
 
+#[cfg(feature = "http-client")]
 fn validate_url_response(
     response: &Response<ureq::Body>,
     runtime: &RuntimeOptions,
@@ -256,10 +295,7 @@ fn validate_url_response(
     Ok(())
 }
 
-fn head_status_allows_get(response: &Response<ureq::Body>) -> bool {
-    matches!(response.status().as_u16(), 405 | 501)
-}
-
+#[cfg(feature = "http-client")]
 fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
     match error {
         ureq::Error::Protocol(_) | ureq::Error::ConnectionFailed => true,
@@ -274,6 +310,7 @@ fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
     }
 }
 
+#[cfg(feature = "http-client")]
 fn content_type_is_obviously_non_html(content_type: &str) -> bool {
     let normalized = content_type
         .split(';')
@@ -285,12 +322,12 @@ fn content_type_is_obviously_non_html(content_type: &str) -> bool {
     !(normalized.is_empty() || normalized == "text/html" || normalized == "application/xhtml+xml")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http-client"))]
 pub(crate) fn head_error_allows_get_fallback_for_tests(error: &ureq::Error) -> bool {
     head_error_allows_get_fallback(error)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http-client"))]
 pub(crate) fn content_type_is_obviously_non_html_for_tests(content_type: &str) -> bool {
     content_type_is_obviously_non_html(content_type)
 }

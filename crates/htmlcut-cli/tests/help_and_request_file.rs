@@ -4,10 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
+use htmlcut_core::cli_contract::{
+    CliValue, OperationCliContract, cli_operation_contract, render_cli_value,
+};
 use htmlcut_core::{
-    CliValue, ExtractionDefinition, ExtractionRequest, ExtractionSpec, OperationCliContract,
-    OperationId, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, cli_operation_contract,
-    render_cli_value,
+    ExtractionDefinition, ExtractionRequest, ExtractionSpec, OperationId, SelectorQuery,
+    SliceBoundary, SliceSpec, SourceRequest,
 };
 use htmlcut_tempdir::tempdir;
 use predicates::prelude::*;

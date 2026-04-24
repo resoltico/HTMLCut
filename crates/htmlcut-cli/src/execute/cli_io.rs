@@ -11,7 +11,7 @@ pub(crate) fn write_outcome<W1, W2>(
     outcome: ExecutionOutcome,
     stdout: &mut W1,
     stderr: &mut W2,
-) -> i32
+) -> std::io::Result<i32>
 where
     W1: Write,
     W2: Write,
@@ -19,24 +19,24 @@ where
     if let Some(stdout_payload) = outcome.stdout.as_ref() {
         if let Some(path) = outcome.output_file.as_deref() {
             if let Err(error) = write_stdout_payload(path, stdout_payload) {
-                let _ = writeln!(
+                writeln!(
                     stderr,
                     "htmlcut: Could not write {}: {error}",
                     path.display()
-                );
-                return EXIT_CODE_OUTPUT;
+                )?;
+                return Ok(EXIT_CODE_OUTPUT);
             }
         } else {
-            let _ = writeln!(stdout, "{stdout_payload}");
+            writeln!(stdout, "{stdout_payload}")?;
         }
     }
     for line in &outcome.stderr {
-        let _ = writeln!(stderr, "{line}");
+        writeln!(stderr, "{line}")?;
     }
     for line in &outcome.post_write_stderr {
-        let _ = writeln!(stderr, "{line}");
+        writeln!(stderr, "{line}")?;
     }
-    outcome.exit_code
+    Ok(outcome.exit_code)
 }
 
 pub(crate) fn output_file_notice(path: Option<&Path>, verbose: u8, quiet: bool) -> Vec<String> {
