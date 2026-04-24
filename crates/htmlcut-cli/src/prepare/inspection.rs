@@ -3,7 +3,7 @@ use htmlcut_core::InspectionOptions;
 use super::PreparedSourceInspection;
 use super::build::{build_runtime, build_source_request, validate_preview_chars};
 use crate::args::InspectSourceArgs;
-use crate::error::CliError;
+use crate::error::{CliError, internal_error};
 
 impl PreparedSourceInspection {
     #[cfg(test)]
@@ -19,11 +19,12 @@ impl PreparedSourceInspection {
         let preview_chars = validate_preview_chars(args.preview_chars)?;
         let runtime = build_runtime(&args.source)?;
         let source = build_source_request(&args.source)?;
+        let report_command = htmlcut_core::cli_contract::cli_operation_report_command(
+            htmlcut_core::OperationId::SourceInspect,
+        );
+        let command = source_inspection_report_command(report_command.as_deref())?;
         Ok(Self {
-            command: htmlcut_core::cli_operation_report_command(
-                htmlcut_core::OperationId::SourceInspect,
-            )
-            .expect("source inspect should stay CLI-visible"),
+            command,
             source,
             runtime,
             output: args.output,
@@ -37,4 +38,20 @@ impl PreparedSourceInspection {
             },
         })
     }
+}
+
+fn source_inspection_report_command(command: Option<&str>) -> Result<String, CliError> {
+    command.map(str::to_owned).ok_or_else(|| {
+        internal_error(
+            "CLI_CONTRACT_MISSING",
+            "The core-owned CLI contract is missing the report command for inspect source.",
+        )
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn source_inspection_report_command_for_tests(
+    command: Option<&str>,
+) -> Result<String, CliError> {
+    source_inspection_report_command(command)
 }

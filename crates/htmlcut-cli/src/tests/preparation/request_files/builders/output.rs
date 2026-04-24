@@ -33,7 +33,8 @@ fn request_file_output_helpers_create_parent_dirs_and_preserve_stderr_ordering()
         },
         &mut stdout,
         &mut stderr,
-    );
+    )
+    .expect("write outcome");
     assert_eq!(exit_code, 0);
     assert!(stdout.is_empty());
     assert!(stderr.is_empty());
@@ -61,7 +62,8 @@ fn request_file_output_helpers_create_parent_dirs_and_preserve_stderr_ordering()
         },
         &mut stdout,
         &mut stderr,
-    );
+    )
+    .expect("write outcome");
     assert_eq!(exit_code, 0);
     assert_eq!(
         String::from_utf8(stderr).expect("stderr"),
@@ -118,7 +120,8 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
         },
         &mut stdout,
         &mut stderr,
-    );
+    )
+    .expect("write outcome");
     assert_eq!(exit_code, EXIT_CODE_OUTPUT);
     assert!(stdout.is_empty());
     assert!(
@@ -126,4 +129,23 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
             .expect("stderr")
             .contains("Could not write")
     );
+}
+
+#[test]
+fn request_file_output_helpers_propagate_stderr_failures_when_output_reporting_fails() {
+    let fixture = request_file_fixture();
+    let error = write_outcome(
+        ExecutionOutcome {
+            stdout: Some("Hello".to_owned()),
+            output_file: Some(fixture.tempdir.path().to_path_buf()),
+            post_write_stderr: Vec::new(),
+            stderr: Vec::new(),
+            exit_code: 0,
+        },
+        &mut Vec::new(),
+        &mut BrokenPipeWriter,
+    )
+    .expect_err("stderr write should fail");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
 }

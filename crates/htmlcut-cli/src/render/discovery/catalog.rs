@@ -7,8 +7,9 @@ use crate::model::{
 use super::shared::render_schema_ref;
 
 pub(crate) fn render_catalog_text(report: &CatalogCommandReport) -> String {
-    let catalog_command =
-        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Catalog);
+    let catalog_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
+        htmlcut_core::cli_contract::CliAuxCommandId::Catalog,
+    );
     let mut lines = vec![
         format!("{DISPLAY_NAME} {}", report.version),
         report.description.clone(),

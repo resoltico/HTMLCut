@@ -2,12 +2,14 @@ use super::*;
 
 #[test]
 fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
-    let select_extract =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
-            .expect("select extract contract");
-    let select_preview =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
-            .expect("select preview contract");
+    let select_extract = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SelectExtract,
+    )
+    .expect("select extract contract");
+    let select_preview = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SelectPreview,
+    )
+    .expect("select preview contract");
 
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliMatchMode>()),
@@ -16,7 +18,9 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
             .iter()
             .copied()
             .map(|mode| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(mode))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::SelectionMode(mode),
+                )
             })
             .collect::<Vec<_>>()
     );
@@ -26,7 +30,9 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
             .value_modes
             .iter()
             .copied()
-            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .map(|value| htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::ValueType(value)
+            ))
             .collect::<Vec<_>>()
     );
     assert_eq!(
@@ -35,63 +41,65 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
             .output_modes
             .iter()
             .copied()
-            .map(|mode| htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode)))
+            .map(|mode| htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::OutputMode(mode)
+            ))
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        parser_value_names(crate::args::cli_choice_subset_parser(
-            crate::args::TEXT_JSON_OUTPUT_MODES,
-        )),
+        parser_value_names(crate::args::cli_choice_parser::<CliCatalogOutputMode>()),
         select_preview
             .output_modes
             .iter()
             .copied()
-            .map(|mode| htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode)))
+            .map(|mode| htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::OutputMode(mode)
+            ))
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        parser_value_names(crate::args::cli_choice_subset_parser(
-            crate::args::TEXT_JSON_OUTPUT_MODES,
-        )),
+        parser_value_names(crate::args::cli_choice_parser::<CliSchemaOutputMode>()),
         vec!["text".to_owned(), "json".to_owned()]
     );
     assert_eq!(
-        parser_value_names(crate::args::cli_choice_subset_parser(
-            crate::args::TEXT_JSON_OUTPUT_MODES,
-        )),
+        parser_value_names(crate::args::cli_choice_parser::<CliInspectOutputMode>()),
         vec!["text".to_owned(), "json".to_owned()]
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliWhitespaceMode>()),
         vec![
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::WhitespaceMode(
-                WhitespaceMode::Preserve,
-            )),
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::WhitespaceMode(
-                WhitespaceMode::Normalize,
-            )),
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::WhitespaceMode(WhitespaceMode::Preserve,)
+            ),
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::WhitespaceMode(WhitespaceMode::Normalize,)
+            ),
         ]
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliPatternMode>()),
         vec![
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::PatternMode(
-                PatternMode::Literal,
-            )),
-            htmlcut_core::render_cli_value(
-                htmlcut_core::CliValue::PatternMode(PatternMode::Regex,)
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::PatternMode(PatternMode::Literal,)
+            ),
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::PatternMode(PatternMode::Regex,)
             ),
         ]
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliFetchPreflightMode>()),
         vec![
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::FetchPreflightMode(
-                FetchPreflightMode::HeadFirst,
-            )),
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::FetchPreflightMode(
-                FetchPreflightMode::GetOnly,
-            )),
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::FetchPreflightMode(
+                    FetchPreflightMode::HeadFirst,
+                )
+            ),
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::FetchPreflightMode(
+                    FetchPreflightMode::GetOnly,
+                )
+            ),
         ]
     );
 }
@@ -119,7 +127,7 @@ fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
     })
     .collect::<Vec<_>>();
     examples.extend(
-        htmlcut_core::cli_operation_catalog()
+        htmlcut_core::cli_contract::cli_operation_catalog()
             .iter()
             .flat_map(|contract| {
                 contract
@@ -162,8 +170,9 @@ fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
                 } else {
                     vec![top_level]
                 };
-                let contract = htmlcut_core::find_cli_operation_by_command_path(&command_path)
-                    .expect("registered operation example");
+                let contract =
+                    htmlcut_core::cli_contract::find_cli_operation_by_command_path(&command_path)
+                        .expect("registered operation example");
                 assert_eq!(
                     command_name_from_raw_args(&tokens),
                     contract.report_command(),
@@ -172,29 +181,41 @@ fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
 
                 if let Some(value) = option_value(&tokens, "--match") {
                     assert!(
-                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Match)
-                            .contains(&value.to_owned()),
+                        parameter_allowed_values(
+                            contract,
+                            htmlcut_core::cli_contract::CliParameterId::Match
+                        )
+                        .contains(&value.to_owned()),
                         "unsupported --match {value} in {example}"
                     );
                 }
                 if let Some(value) = option_value(&tokens, "--value") {
                     assert!(
-                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Value)
-                            .contains(&value.to_owned()),
+                        parameter_allowed_values(
+                            contract,
+                            htmlcut_core::cli_contract::CliParameterId::Value
+                        )
+                        .contains(&value.to_owned()),
                         "unsupported --value {value} in {example}"
                     );
                 }
                 if let Some(value) = option_value(&tokens, "--output") {
                     assert!(
-                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Output)
-                            .contains(&value.to_owned()),
+                        parameter_allowed_values(
+                            contract,
+                            htmlcut_core::cli_contract::CliParameterId::Output
+                        )
+                        .contains(&value.to_owned()),
                         "unsupported --output {value} in {example}"
                     );
                 }
                 if let Some(value) = option_value(&tokens, "--pattern") {
                     assert!(
-                        parameter_allowed_values(contract, htmlcut_core::CliParameterId::Pattern)
-                            .contains(&value.to_owned()),
+                        parameter_allowed_values(
+                            contract,
+                            htmlcut_core::cli_contract::CliParameterId::Pattern
+                        )
+                        .contains(&value.to_owned()),
                         "unsupported --pattern {value} in {example}"
                     );
                 }
@@ -202,7 +223,7 @@ fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
                     assert!(
                         parameter_allowed_values(
                             contract,
-                            htmlcut_core::CliParameterId::FetchPreflight,
+                            htmlcut_core::cli_contract::CliParameterId::FetchPreflight,
                         )
                         .contains(&value.to_owned()),
                         "unsupported --fetch-preflight {value} in {example}"
@@ -220,20 +241,23 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     assert_command_path_registered(&command, &["catalog"]);
     assert_command_path_registered(&command, &["schema"]);
 
-    let source_inspect =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SourceInspect)
-            .expect("source inspect contract");
-    let select_extract =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
-            .expect("select extract contract");
+    let source_inspect = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SourceInspect,
+    )
+    .expect("source inspect contract");
+    let select_extract = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SelectExtract,
+    )
+    .expect("select extract contract");
     let slice_extract =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SliceExtract)
+        htmlcut_core::cli_contract::cli_operation_contract(htmlcut_core::OperationId::SliceExtract)
             .expect("slice extract contract");
-    let select_preview =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
-            .expect("select preview contract");
+    let select_preview = htmlcut_core::cli_contract::cli_operation_contract(
+        htmlcut_core::OperationId::SelectPreview,
+    )
+    .expect("select preview contract");
     let slice_preview =
-        htmlcut_core::cli_operation_contract(htmlcut_core::OperationId::SlicePreview)
+        htmlcut_core::cli_contract::cli_operation_contract(htmlcut_core::OperationId::SlicePreview)
             .expect("slice preview contract");
 
     for contract in [
@@ -256,8 +280,11 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     assert_eq!(select_args.source.max_bytes, DEFAULT_MAX_BYTES.to_string());
     assert_eq!(
         select_args.source.max_bytes,
-        parameter_default_value(select_extract, htmlcut_core::CliParameterId::MaxBytes)
-            .expect("select max-bytes default"),
+        parameter_default_value(
+            select_extract,
+            htmlcut_core::cli_contract::CliParameterId::MaxBytes
+        )
+        .expect("select max-bytes default"),
     );
     assert_eq!(
         select_args.source.fetch_timeout_ms,
@@ -265,20 +292,28 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     );
     assert_eq!(
         select_args.source.fetch_timeout_ms.to_string(),
-        parameter_default_value(select_extract, htmlcut_core::CliParameterId::FetchTimeoutMs)
-            .expect("select fetch-timeout default"),
+        parameter_default_value(
+            select_extract,
+            htmlcut_core::cli_contract::CliParameterId::FetchTimeoutMs
+        )
+        .expect("select fetch-timeout default"),
     );
     assert_eq!(
         select_args.source.fetch_preflight.to_string(),
-        parameter_default_value(select_extract, htmlcut_core::CliParameterId::FetchPreflight)
-            .expect("select fetch-preflight default"),
+        parameter_default_value(
+            select_extract,
+            htmlcut_core::cli_contract::CliParameterId::FetchPreflight
+        )
+        .expect("select fetch-preflight default"),
     );
     assert_eq!(
         select_args.selection.r#match.to_string(),
         select_extract
             .default_match
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::SelectionMode(value),
+                )
             })
             .expect("select default match"),
     );
@@ -286,19 +321,27 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
         select_args.output.value.to_string(),
         select_extract
             .default_value
-            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .map(|value| htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::ValueType(value)
+            ))
             .expect("select default value"),
     );
     assert_eq!(
         select_args.output.whitespace.to_string(),
-        parameter_default_value(select_extract, htmlcut_core::CliParameterId::Whitespace)
-            .expect("select whitespace default"),
+        parameter_default_value(
+            select_extract,
+            htmlcut_core::cli_contract::CliParameterId::Whitespace
+        )
+        .expect("select whitespace default"),
     );
     assert_eq!(select_args.output.preview_chars, DEFAULT_PREVIEW_CHARS);
     assert_eq!(
         select_args.output.preview_chars.to_string(),
-        parameter_default_value(select_extract, htmlcut_core::CliParameterId::PreviewChars)
-            .expect("select preview-chars default"),
+        parameter_default_value(
+            select_extract,
+            htmlcut_core::cli_contract::CliParameterId::PreviewChars
+        )
+        .expect("select preview-chars default"),
     );
 
     let slice_args = match Cli::try_parse_from([
@@ -318,15 +361,20 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     };
     assert_eq!(
         slice_args.pattern.to_string(),
-        parameter_default_value(slice_extract, htmlcut_core::CliParameterId::Pattern)
-            .expect("slice pattern default"),
+        parameter_default_value(
+            slice_extract,
+            htmlcut_core::cli_contract::CliParameterId::Pattern
+        )
+        .expect("slice pattern default"),
     );
     assert_eq!(
         slice_args.selection.r#match.to_string(),
         slice_extract
             .default_match
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::SelectionMode(value),
+                )
             })
             .expect("slice default match"),
     );
@@ -334,13 +382,18 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
         slice_args.output.value.to_string(),
         slice_extract
             .default_value
-            .map(|value| htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value)))
+            .map(|value| htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::ValueType(value)
+            ))
             .expect("slice default value"),
     );
     assert_eq!(
         slice_args.output.whitespace.to_string(),
-        parameter_default_value(slice_extract, htmlcut_core::CliParameterId::Whitespace)
-            .expect("slice whitespace default"),
+        parameter_default_value(
+            slice_extract,
+            htmlcut_core::cli_contract::CliParameterId::Whitespace
+        )
+        .expect("slice whitespace default"),
     );
 
     let inspect_source_args =
@@ -360,28 +413,39 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     );
     assert_eq!(
         inspect_source_args.sample_limit.to_string(),
-        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::SampleLimit)
-            .expect("inspect source sample-limit default"),
+        parameter_default_value(
+            source_inspect,
+            htmlcut_core::cli_contract::CliParameterId::SampleLimit
+        )
+        .expect("inspect source sample-limit default"),
     );
     assert_eq!(
         inspect_source_args.output.to_string(),
         source_inspect
             .default_output
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::OutputMode(value),
+                )
             })
             .expect("inspect source default output"),
     );
     assert_eq!(inspect_source_args.preview_chars, DEFAULT_PREVIEW_CHARS);
     assert_eq!(
         inspect_source_args.preview_chars.to_string(),
-        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::PreviewChars)
-            .expect("inspect source preview-chars default"),
+        parameter_default_value(
+            source_inspect,
+            htmlcut_core::cli_contract::CliParameterId::PreviewChars
+        )
+        .expect("inspect source preview-chars default"),
     );
     assert_eq!(
         inspect_source_args.source.fetch_preflight.to_string(),
-        parameter_default_value(source_inspect, htmlcut_core::CliParameterId::FetchPreflight)
-            .expect("inspect source fetch-preflight default"),
+        parameter_default_value(
+            source_inspect,
+            htmlcut_core::cli_contract::CliParameterId::FetchPreflight
+        )
+        .expect("inspect source fetch-preflight default"),
     );
 
     let inspect_select_args =
@@ -400,21 +464,28 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
         select_preview
             .default_match
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::SelectionMode(value),
+                )
             })
             .expect("inspect select default match"),
     );
     assert_eq!(
         inspect_select_args.whitespace.to_string(),
-        parameter_default_value(select_preview, htmlcut_core::CliParameterId::Whitespace)
-            .expect("inspect select whitespace default"),
+        parameter_default_value(
+            select_preview,
+            htmlcut_core::cli_contract::CliParameterId::Whitespace
+        )
+        .expect("inspect select whitespace default"),
     );
     assert_eq!(
         inspect_select_args.output.output.to_string(),
         select_preview
             .default_output
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::OutputMode(value),
+                )
             })
             .expect("inspect select default output"),
     );
@@ -444,29 +515,39 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     };
     assert_eq!(
         inspect_slice_args.pattern.to_string(),
-        parameter_default_value(slice_preview, htmlcut_core::CliParameterId::Pattern)
-            .expect("inspect slice pattern default"),
+        parameter_default_value(
+            slice_preview,
+            htmlcut_core::cli_contract::CliParameterId::Pattern
+        )
+        .expect("inspect slice pattern default"),
     );
     assert_eq!(
         inspect_slice_args.selection.r#match.to_string(),
         slice_preview
             .default_match
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::SelectionMode(value),
+                )
             })
             .expect("inspect slice default match"),
     );
     assert_eq!(
         inspect_slice_args.whitespace.to_string(),
-        parameter_default_value(slice_preview, htmlcut_core::CliParameterId::Whitespace)
-            .expect("inspect slice whitespace default"),
+        parameter_default_value(
+            slice_preview,
+            htmlcut_core::cli_contract::CliParameterId::Whitespace
+        )
+        .expect("inspect slice whitespace default"),
     );
     assert_eq!(
         inspect_slice_args.output.output.to_string(),
         slice_preview
             .default_output
             .map(|value| {
-                htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(value))
+                htmlcut_core::cli_contract::render_cli_value(
+                    htmlcut_core::cli_contract::CliValue::OutputMode(value),
+                )
             })
             .expect("inspect slice default output"),
     );

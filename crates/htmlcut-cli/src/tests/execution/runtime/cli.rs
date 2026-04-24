@@ -165,3 +165,41 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
     assert!(stdout.contains("\"command\": \"select\""));
     assert!(stderr.is_empty());
 }
+
+#[test]
+fn run_propagates_stdout_write_failures_for_help_and_command_output() {
+    let mut stderr = Vec::new();
+    let help_error = run(
+        vec!["htmlcut".to_owned()],
+        &mut BrokenPipeWriter,
+        &mut stderr,
+    )
+    .expect_err("help write should fail");
+    assert_eq!(help_error.kind(), std::io::ErrorKind::BrokenPipe);
+    assert!(stderr.is_empty());
+
+    let command_error = run(
+        vec!["htmlcut".to_owned(), "catalog".to_owned()],
+        &mut BrokenPipeWriter,
+        &mut Vec::new(),
+    )
+    .expect_err("catalog write should fail");
+    assert_eq!(command_error.kind(), std::io::ErrorKind::BrokenPipe);
+}
+
+#[test]
+fn run_propagates_stderr_write_failures_for_usage_errors() {
+    let error = run(
+        vec![
+            "htmlcut".to_owned(),
+            "select".to_owned(),
+            "page.html".to_owned(),
+            "--bogus".to_owned(),
+        ],
+        &mut Vec::new(),
+        &mut BrokenPipeWriter,
+    )
+    .expect_err("stderr write should fail");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+}

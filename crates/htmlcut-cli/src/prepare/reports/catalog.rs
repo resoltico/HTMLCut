@@ -25,7 +25,7 @@ pub(crate) fn build_catalog_report(
             requested_operation.is_none_or(|operation_id| descriptor.id == operation_id)
         })
         .map(|descriptor| {
-            let cli_contract = htmlcut_core::cli_operation_contract(descriptor.id);
+            let cli_contract = htmlcut_core::cli_contract::cli_operation_contract(descriptor.id);
             CatalogOperationReport {
                 operation_id: descriptor.id,
                 command: cli_contract.map(|contract| contract.display_command()),
@@ -73,7 +73,7 @@ fn build_schema_ref_report(schema_ref: &htmlcut_core::SchemaRef) -> SchemaRefRep
 }
 
 fn build_catalog_command_contract(
-    descriptor: &htmlcut_core::OperationCliContract,
+    descriptor: &htmlcut_core::cli_contract::OperationCliContract,
 ) -> CatalogCommandContract {
     CatalogCommandContract {
         invocation: descriptor.invocation.to_owned(),
@@ -133,29 +133,29 @@ fn build_catalog_command_contract(
 }
 
 fn build_conditional_default(
-    descriptor: &htmlcut_core::CliConditionalDefault,
+    descriptor: &htmlcut_core::cli_contract::CliConditionalDefault,
 ) -> CatalogConditionalDefault {
     CatalogConditionalDefault {
-        value: htmlcut_core::render_cli_value(descriptor.value),
+        value: htmlcut_core::cli_contract::render_cli_value(descriptor.value),
         when: build_condition(&descriptor.when),
     }
 }
 
-fn build_constraint(descriptor: &htmlcut_core::CliConstraint) -> CatalogConstraint {
+fn build_constraint(descriptor: &htmlcut_core::cli_contract::CliConstraint) -> CatalogConstraint {
     match descriptor {
-        htmlcut_core::CliConstraint::RequiresParameter { parameter, when } => {
+        htmlcut_core::cli_contract::CliConstraint::RequiresParameter { parameter, when } => {
             CatalogConstraint::RequiresParameter {
                 parameter: parameter.to_string(),
                 when: build_condition(when),
             }
         }
-        htmlcut_core::CliConstraint::AllowedOnlyWhen { parameter, when } => {
+        htmlcut_core::cli_contract::CliConstraint::AllowedOnlyWhen { parameter, when } => {
             CatalogConstraint::AllowedOnlyWhen {
                 parameter: parameter.to_string(),
                 when: build_condition(when),
             }
         }
-        htmlcut_core::CliConstraint::RestrictsParameterValues {
+        htmlcut_core::cli_contract::CliConstraint::RestrictsParameterValues {
             parameter,
             allowed_values,
             when,
@@ -164,71 +164,77 @@ fn build_constraint(descriptor: &htmlcut_core::CliConstraint) -> CatalogConstrai
             allowed_values: allowed_values
                 .iter()
                 .copied()
-                .map(htmlcut_core::render_cli_value)
+                .map(htmlcut_core::cli_contract::render_cli_value)
                 .collect(),
             when: build_condition(when),
         },
     }
 }
 
-fn build_condition(condition: &htmlcut_core::CliCondition) -> CatalogCondition {
+fn build_condition(condition: &htmlcut_core::cli_contract::CliCondition) -> CatalogCondition {
     CatalogCondition {
         parameter: condition.parameter.to_string(),
         values: condition
             .values
             .iter()
             .copied()
-            .map(htmlcut_core::render_cli_value)
+            .map(htmlcut_core::cli_contract::render_cli_value)
             .collect(),
     }
 }
 
-fn build_parameter_spec(parameter: &htmlcut_core::CliParameterDescriptor) -> CatalogParameterSpec {
+fn build_parameter_spec(
+    parameter: &htmlcut_core::cli_contract::CliParameterDescriptor,
+) -> CatalogParameterSpec {
     let (requirement, requirement_note) = render_parameter_requirement(&parameter.requirement);
     CatalogParameterSpec {
         section: parameter.section.to_string(),
         name: parameter.id.to_string(),
         kind: match parameter.kind {
-            htmlcut_core::CliParameterKind::Positional => CatalogParameterKind::Positional,
-            htmlcut_core::CliParameterKind::Option => CatalogParameterKind::Option,
-            htmlcut_core::CliParameterKind::Flag => CatalogParameterKind::Flag,
+            htmlcut_core::cli_contract::CliParameterKind::Positional => {
+                CatalogParameterKind::Positional
+            }
+            htmlcut_core::cli_contract::CliParameterKind::Option => CatalogParameterKind::Option,
+            htmlcut_core::cli_contract::CliParameterKind::Flag => CatalogParameterKind::Flag,
         },
         requirement,
         requirement_note,
         value_hint: parameter.value_hint.map(str::to_owned),
-        default: parameter.default.map(htmlcut_core::render_cli_value),
+        default: parameter
+            .default
+            .map(htmlcut_core::cli_contract::render_cli_value),
         allowed_values: parameter
             .allowed_values
             .iter()
             .copied()
-            .map(htmlcut_core::render_cli_value)
+            .map(htmlcut_core::cli_contract::render_cli_value)
             .collect(),
         summary: parameter.summary.to_owned(),
     }
 }
 
 fn render_parameter_requirement(
-    requirement: &htmlcut_core::CliParameterRequirement,
+    requirement: &htmlcut_core::cli_contract::CliParameterRequirement,
 ) -> (CatalogParameterRequirement, Option<String>) {
     match requirement {
-        htmlcut_core::CliParameterRequirement::Required => {
+        htmlcut_core::cli_contract::CliParameterRequirement::Required => {
             (CatalogParameterRequirement::Required, None)
         }
-        htmlcut_core::CliParameterRequirement::Optional => {
+        htmlcut_core::cli_contract::CliParameterRequirement::Optional => {
             (CatalogParameterRequirement::Optional, None)
         }
-        htmlcut_core::CliParameterRequirement::RequiredUnless(parameter) => (
+        htmlcut_core::cli_contract::CliParameterRequirement::RequiredUnless(parameter) => (
             CatalogParameterRequirement::Conditional,
             Some(format!("required unless {parameter} is used")),
         ),
-        htmlcut_core::CliParameterRequirement::RequiredWhen(condition) => (
+        htmlcut_core::cli_contract::CliParameterRequirement::RequiredWhen(condition) => (
             CatalogParameterRequirement::Conditional,
             Some(format!(
                 "required when {}",
                 render_condition_expression(condition)
             )),
         ),
-        htmlcut_core::CliParameterRequirement::AllowedOnlyWhen(condition) => (
+        htmlcut_core::cli_contract::CliParameterRequirement::AllowedOnlyWhen(condition) => (
             CatalogParameterRequirement::Conditional,
             Some(format!(
                 "allowed only when {}",
@@ -238,12 +244,12 @@ fn render_parameter_requirement(
     }
 }
 
-fn render_condition_expression(condition: &htmlcut_core::CliCondition) -> String {
+fn render_condition_expression(condition: &htmlcut_core::cli_contract::CliCondition) -> String {
     let values = condition
         .values
         .iter()
         .copied()
-        .map(htmlcut_core::render_cli_value)
+        .map(htmlcut_core::cli_contract::render_cli_value)
         .collect::<Vec<_>>();
 
     match values.as_slice() {
@@ -254,19 +260,25 @@ fn render_condition_expression(condition: &htmlcut_core::CliCondition) -> String
 
 #[cfg(test)]
 pub(crate) fn render_condition_expression_for_tests(
-    condition: &htmlcut_core::CliCondition,
+    condition: &htmlcut_core::cli_contract::CliCondition,
 ) -> String {
     render_condition_expression(condition)
 }
 
-fn render_selection_mode(mode: htmlcut_core::CliSelectionMode) -> String {
-    htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(mode))
+fn render_selection_mode(mode: htmlcut_core::cli_contract::CliSelectionMode) -> String {
+    htmlcut_core::cli_contract::render_cli_value(
+        htmlcut_core::cli_contract::CliValue::SelectionMode(mode),
+    )
 }
 
 fn render_value_type(value_type: htmlcut_core::ValueType) -> String {
-    htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(value_type))
+    htmlcut_core::cli_contract::render_cli_value(htmlcut_core::cli_contract::CliValue::ValueType(
+        value_type,
+    ))
 }
 
-fn render_output_mode(mode: htmlcut_core::CliOutputMode) -> String {
-    htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(mode))
+fn render_output_mode(mode: htmlcut_core::cli_contract::CliOutputMode) -> String {
+    htmlcut_core::cli_contract::render_cli_value(htmlcut_core::cli_contract::CliValue::OutputMode(
+        mode,
+    ))
 }

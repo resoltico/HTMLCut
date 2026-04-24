@@ -158,11 +158,15 @@ fn command_name_from_raw_args_recognizes_nested_commands() {
         "mystery"
     );
 
-    let multi_value_condition = htmlcut_core::CliCondition {
-        parameter: htmlcut_core::CliParameterId::Output,
+    let multi_value_condition = htmlcut_core::cli_contract::CliCondition {
+        parameter: htmlcut_core::cli_contract::CliParameterId::Output,
         values: vec![
-            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::Json),
-            htmlcut_core::CliValue::OutputMode(htmlcut_core::CliOutputMode::None),
+            htmlcut_core::cli_contract::CliValue::OutputMode(
+                htmlcut_core::cli_contract::CliOutputMode::Json,
+            ),
+            htmlcut_core::cli_contract::CliValue::OutputMode(
+                htmlcut_core::cli_contract::CliOutputMode::None,
+            ),
         ],
     };
     assert_eq!(

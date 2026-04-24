@@ -61,6 +61,30 @@ pub fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult
     }
 }
 
+/// Lists existing maintained worktree paths via Git when the repository root is a Git worktree.
+pub(crate) fn repo_worktree_files(repo_root: &Path) -> DynResult<Option<Vec<PathBuf>>> {
+    if !repo_root.join(".git").exists() {
+        return Ok(None);
+    }
+
+    let output = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            [
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+            true,
+            false,
+        ),
+    )?;
+    Ok(Some(parse_repo_worktree_files(repo_root, &output)?))
+}
+
 /// Removes one directory tree when it exists and otherwise succeeds quietly.
 pub fn remove_dir_if_exists(path: &Path) -> DynResult<()> {
     if path.exists() {
@@ -76,6 +100,21 @@ pub fn repo_root() -> PathBuf {
         .parent()
         .expect("xtask should live directly under the workspace root")
         .to_path_buf()
+}
+
+fn parse_repo_worktree_files(repo_root: &Path, output: &[u8]) -> DynResult<Vec<PathBuf>> {
+    let mut paths = output
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|relative| repo_root.join(relative))
+        .filter(|path| path.exists())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
 }
 
 fn apply_clang_override(command: &mut Command, spec: &CommandSpec) {

@@ -8,8 +8,9 @@ use crate::model::SchemaCommandReport;
 use super::shared::render_schema_ref;
 
 pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
-    let schema_command =
-        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Schema);
+    let schema_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
+        htmlcut_core::cli_contract::CliAuxCommandId::Schema,
+    );
     let mut lines = vec![
         format!("{DISPLAY_NAME} {}", report.version),
         report.description.clone(),

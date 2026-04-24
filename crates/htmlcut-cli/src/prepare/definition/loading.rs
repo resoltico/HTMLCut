@@ -137,7 +137,7 @@ pub(crate) fn load_extraction_definition_for_tests(
     let operation_id = match (command, expected_strategy) {
         (command, ExtractionStrategy::Selector)
             if command
-                == htmlcut_core::cli_operation_display_command(
+                == htmlcut_core::cli_contract::cli_operation_display_command(
                     htmlcut_core::OperationId::SelectExtract,
                 )
                 .expect("select extract should stay CLI-visible") =>
@@ -146,7 +146,7 @@ pub(crate) fn load_extraction_definition_for_tests(
         }
         (command, ExtractionStrategy::Slice)
             if command
-                == htmlcut_core::cli_operation_display_command(
+                == htmlcut_core::cli_contract::cli_operation_display_command(
                     htmlcut_core::OperationId::SliceExtract,
                 )
                 .expect("slice extract should stay CLI-visible") =>
@@ -155,7 +155,7 @@ pub(crate) fn load_extraction_definition_for_tests(
         }
         (command, ExtractionStrategy::Selector)
             if command
-                == htmlcut_core::cli_operation_display_command(
+                == htmlcut_core::cli_contract::cli_operation_display_command(
                     htmlcut_core::OperationId::SelectPreview,
                 )
                 .expect("select preview should stay CLI-visible") =>
@@ -164,7 +164,7 @@ pub(crate) fn load_extraction_definition_for_tests(
         }
         (command, ExtractionStrategy::Slice)
             if command
-                == htmlcut_core::cli_operation_display_command(
+                == htmlcut_core::cli_contract::cli_operation_display_command(
                     htmlcut_core::OperationId::SlicePreview,
                 )
                 .expect("slice preview should stay CLI-visible") =>
@@ -202,10 +202,12 @@ fn request_file_recovery_hint(
     expected_strategy: ExtractionStrategy,
     shape_hint: Option<&str>,
 ) -> String {
-    let schema_command =
-        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Schema);
-    let catalog_command =
-        htmlcut_core::cli_aux_command_display_command(htmlcut_core::CliAuxCommandId::Catalog);
+    let schema_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
+        htmlcut_core::cli_contract::CliAuxCommandId::Schema,
+    );
+    let catalog_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
+        htmlcut_core::cli_contract::CliAuxCommandId::Catalog,
+    );
     let mut hint = format!(
         "Use `htmlcut {schema_command} --name {} --output json` for the exact request-file shape and `htmlcut {catalog_command} --operation {} --output json` for the command contract.",
         htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,

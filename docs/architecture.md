@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: ARCHITECTURE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -97,6 +97,8 @@ The maintained dependency direction is:
 1. `htmlcut-cli` -> `htmlcut-core`
 2. downstream embedders -> `htmlcut-core`
 3. downstream embedders that adopt frozen interop -> `htmlcut_core::interop::v1`
+4. downstream embedders that want HTMLCut-owned HTTP loading opt into
+   `htmlcut-core/http-client` explicitly instead of inheriting it by default
 
 Forbidden shapes:
 

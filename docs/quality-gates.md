@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: QUALITY
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?"]
@@ -66,12 +66,14 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields, version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
 - targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical core-owned registries
 - clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical core-owned CLI contract
+- `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
+  URL requests fail cleanly unless the `http-client` feature is explicitly enabled
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - direct dependency freshness across the workspace manifests
 - RustSec advisory auditing with warnings denied
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `scripts/release-targets.sh` registry for the target list plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
-- compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --locked`
+- compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
 - workspace library and integration tests through `cargo nextest`
 - workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v1.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
 - compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
@@ -91,11 +93,11 @@ The coverage command fails before any coverage build starts if the nightly toolc
 `htmlcut-cli`, and `xtask` packages directly, deduplicates duplicate branch spans emitted by Rust
 lowering, and then enforces the 100% line and branch bar across the maintained executable module
 set. That bar is intentional: HTMLCut treats those tracked files as contract-critical logic, not
-aspirational best effort. The tracked set is derived from the live `htmlcut-core`,
-`htmlcut-cli`, and `xtask` source roots, with an explicit exclusion list only for declarative-only
-modules and internal test-only source trees. That keeps the gate aligned automatically when the
-maintained CLI/core seams split into new executable modules while keeping libFuzzer binaries out of
-the coverage runner.
+aspirational best effort. The tracked set is derived from the maintained non-ignored worktree
+inventory under the `htmlcut-core`, `htmlcut-cli`, and `xtask` source roots, with an explicit
+exclusion list only for declarative-only modules and internal test-only source trees. That keeps
+the gate aligned automatically when the maintained CLI/core seams split into new executable
+modules while keeping ignored scratch files and libFuzzer binaries out of the coverage runner.
 
 The gate also treats the heaviest scratch directories as disposable:
 
@@ -118,10 +120,11 @@ cargo xtask fuzz-smoke
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
-`cargo +nightly fuzz run ...`, which keeps the repository-owned fuzz corpora stable after local
-smoke runs. It also preflights nightly plus `cargo-fuzz` before launching so missing fuzz tooling
-fails early with one actionable message. Use `--target <name>` to focus one maintained target or
-`--runs <count>` to adjust the libFuzzer iteration budget.
+`cargo +nightly fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
+stable after local smoke runs while still building the real libFuzzer harnesses explicitly. It
+also preflights nightly plus `cargo-fuzz` before launching so missing fuzz tooling fails early
+with one actionable message. Use `--target <name>` to focus one maintained target or `--runs
+<count>` to adjust the libFuzzer iteration budget.
 
 The maintained public artifact path does not ship from plain Cargo `release`. HTMLCut uses a
 dedicated `dist` profile that inherits `release` and then hardens it for shipped binaries with:

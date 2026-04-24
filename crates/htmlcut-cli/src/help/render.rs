@@ -1,4 +1,6 @@
-use htmlcut_core::{CliHelpDocument, CliHelpSection, CliHelpSectionStyle, OperationCliContract};
+use htmlcut_core::cli_contract::{
+    CliHelpDocument, CliHelpSection, CliHelpSectionStyle, OperationCliContract,
+};
 
 use crate::error::CliError;
 use crate::lookup;
@@ -100,7 +102,9 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
     if let Some(default_match) = contract.default_match {
         lines.push(format!(
             "Default match mode: {}.",
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::SelectionMode(default_match))
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::SelectionMode(default_match)
+            )
         ));
     }
     if !contract.selection_modes.is_empty() {
@@ -111,14 +115,16 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
                     .selection_modes
                     .iter()
                     .copied()
-                    .map(htmlcut_core::CliValue::SelectionMode)
+                    .map(htmlcut_core::cli_contract::CliValue::SelectionMode)
             )
         ));
     }
     if let Some(default_value) = contract.default_value {
         lines.push(format!(
             "Default value mode: {}.",
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::ValueType(default_value))
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::ValueType(default_value)
+            )
         ));
     }
     if !contract.value_modes.is_empty() {
@@ -129,14 +135,16 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
                     .value_modes
                     .iter()
                     .copied()
-                    .map(htmlcut_core::CliValue::ValueType)
+                    .map(htmlcut_core::cli_contract::CliValue::ValueType)
             )
         ));
     }
     if let Some(default_output) = contract.default_output {
         lines.push(format!(
             "Default output mode: {}.",
-            htmlcut_core::render_cli_value(htmlcut_core::CliValue::OutputMode(default_output))
+            htmlcut_core::cli_contract::render_cli_value(
+                htmlcut_core::cli_contract::CliValue::OutputMode(default_output)
+            )
         ));
     }
     for output_override in &contract.default_output_overrides {
@@ -148,7 +156,7 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
         };
         lines.push(format!(
             "Output default override: {} when {} {} {}.",
-            htmlcut_core::render_cli_value(output_override.value),
+            htmlcut_core::cli_contract::render_cli_value(output_override.value),
             output_override.when.parameter,
             verb,
             condition_values
@@ -162,7 +170,7 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
                     .output_modes
                     .iter()
                     .copied()
-                    .map(htmlcut_core::CliValue::OutputMode)
+                    .map(htmlcut_core::cli_contract::CliValue::OutputMode)
             )
         ));
     }
@@ -170,17 +178,19 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
     lines.join("\n")
 }
 
-fn join_cli_values(values: impl IntoIterator<Item = htmlcut_core::CliValue>) -> String {
+fn join_cli_values(
+    values: impl IntoIterator<Item = htmlcut_core::cli_contract::CliValue>,
+) -> String {
     values
         .into_iter()
-        .map(htmlcut_core::render_cli_value)
+        .map(htmlcut_core::cli_contract::render_cli_value)
         .collect::<Vec<_>>()
         .join(", ")
 }
 
 fn operation_contract(
     operation_id: htmlcut_core::OperationId,
-) -> Result<&'static htmlcut_core::OperationCliContract, CliError> {
+) -> Result<&'static htmlcut_core::cli_contract::OperationCliContract, CliError> {
     lookup::operation_contract(operation_id)
 }
 

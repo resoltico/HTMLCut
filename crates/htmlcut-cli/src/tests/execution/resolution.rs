@@ -37,103 +37,30 @@ fn resolve_selection_spec_validates_index_rules() {
 }
 
 #[test]
-fn parser_guarded_output_modes_still_panic_when_called_directly() {
-    let catalog_panic = std::panic::catch_unwind(|| {
-        run_catalog(
-            CatalogArgs {
-                output: CliCatalogOutputMode::Html,
-                output_file: None,
-                operation: None,
-            },
-            0,
-            false,
-        )
-    });
-    assert!(
-        catalog_panic.is_err(),
-        "catalog html should stay unreachable"
+fn restricted_output_modes_only_expose_text_and_json() {
+    assert_eq!(
+        parser_value_names(crate::args::cli_choice_parser::<CliCatalogOutputMode>()),
+        vec!["text".to_owned(), "json".to_owned()]
     );
-
-    let schema_panic = std::panic::catch_unwind(|| {
-        run_schema(
-            SchemaArgs {
-                output: CliSchemaOutputMode::None,
-                output_file: None,
-                name: None,
-                schema_version: None,
-            },
-            0,
-            false,
-        )
-    });
-    assert!(schema_panic.is_err(), "schema none should stay unreachable");
-
-    let tempdir = tempdir().expect("tempdir");
-    let input_path = write_fixture_file(tempdir.path(), "input.html", "<article>Hello</article>");
-    let input = input_path.to_string_lossy().into_owned();
-
-    let inspect_source_panic = std::panic::catch_unwind(|| {
-        run_inspect_source(
-            InspectSourceArgs {
-                source: SourceArgs {
-                    input: Some(input.clone()),
-                    base_url: None,
-                    max_bytes: DEFAULT_MAX_BYTES.to_string(),
-                    fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
-                },
-                sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
-                output: CliInspectOutputMode::Html,
-                include_source_text: false,
-                preview_chars: DEFAULT_PREVIEW_CHARS,
-                output_file: None,
-            },
-            0,
-            false,
-        )
-    });
-    assert!(
-        inspect_source_panic.is_err(),
-        "inspect source html should stay unreachable"
+    assert_eq!(
+        parser_value_names(crate::args::cli_choice_parser::<CliSchemaOutputMode>()),
+        vec!["text".to_owned(), "json".to_owned()]
     );
-
-    let prepared_preview = PreparedPreview::from_select(InspectSelectArgs {
-        definition: DefinitionArgs {
-            request_file: None,
-            emit_request_file: None,
-        },
-        source: SourceArgs {
-            input: Some(input),
-            base_url: None,
-            max_bytes: DEFAULT_MAX_BYTES.to_string(),
-            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-            fetch_preflight: CliFetchPreflightMode::HeadFirst,
-        },
-        css: Some("article".to_owned()),
-        selection: SelectionArgs {
-            r#match: CliMatchMode::First,
-            index: None,
-        },
-        whitespace: CliWhitespaceMode::Preserve,
-        rewrite_urls: false,
-        output: InspectOutputArgs {
-            output: CliInspectOutputMode::Text,
-            preview_chars: DEFAULT_PREVIEW_CHARS,
-            include_source_text: false,
-            output_file: None,
-        },
-    })
-    .expect("preview builder");
-
-    let preview_panic = std::panic::catch_unwind(|| {
-        execute_preview(PreparedPreview {
-            output: CliInspectOutputMode::None,
-            ..prepared_preview
-        })
-    });
-    assert!(
-        preview_panic.is_err(),
-        "inspect preview none should stay unreachable"
+    assert_eq!(
+        parser_value_names(crate::args::cli_choice_parser::<CliInspectOutputMode>()),
+        vec!["text".to_owned(), "json".to_owned()]
+    );
+    assert_eq!(
+        CliOutputMode::from(CliCatalogOutputMode::Text),
+        CliOutputMode::Text
+    );
+    assert_eq!(
+        CliOutputMode::from(CliSchemaOutputMode::Json),
+        CliOutputMode::Json
+    );
+    assert_eq!(
+        CliOutputMode::from(CliInspectOutputMode::Text),
+        CliOutputMode::Text
     );
 }
 

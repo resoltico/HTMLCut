@@ -32,6 +32,83 @@ fn shell_script_paths_returns_empty_when_scripts_dir_is_missing() {
 }
 
 #[test]
+fn shell_script_paths_use_git_inventory_when_available() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    fs::write(repo_root.path().join("check.sh"), "#!/usr/bin/env bash\n").expect("write check.sh");
+    let scripts_dir = repo_root.path().join("scripts");
+    fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+    fs::write(
+        scripts_dir.join("release-targets.sh"),
+        "#!/usr/bin/env bash\n",
+    )
+    .expect("write release-targets.sh");
+    fs::write(scripts_dir.join("local-only.sh"), "#!/usr/bin/env bash\n")
+        .expect("write local-only.sh");
+
+    let scripts = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == std::path::Path::new("git"))
+                .then(|| Ok(b"check.sh\0scripts/release-targets.sh\0".to_vec()))
+        },
+        || shell_script_paths(repo_root.path()),
+    )
+    .expect("script paths");
+
+    assert_eq!(
+        scripts,
+        vec![
+            repo_root.path().join("check.sh"),
+            scripts_dir.join("release-targets.sh"),
+        ]
+    );
+}
+
+#[test]
+fn is_maintained_shell_script_rejects_paths_outside_the_repo_root() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let outside_root = tempdir().expect("outside tempdir");
+    let inside_check = repo_root.path().join("check.sh");
+    let inside_script = repo_root.path().join("scripts").join("release-targets.sh");
+    let nested_script = repo_root
+        .path()
+        .join("scripts")
+        .join("nested")
+        .join("release-targets.sh");
+    let non_shell_note = repo_root.path().join("scripts").join("notes.txt");
+    let outside_script = outside_root.path().join("check.sh");
+    fs::create_dir_all(inside_script.parent().expect("parent")).expect("create scripts dir");
+    fs::create_dir_all(nested_script.parent().expect("nested parent"))
+        .expect("create nested scripts dir");
+    fs::write(&inside_check, "#!/usr/bin/env bash\n").expect("write inside check");
+    fs::write(&inside_script, "#!/usr/bin/env bash\n").expect("write inside script");
+    fs::write(&nested_script, "#!/usr/bin/env bash\n").expect("write nested script");
+    fs::write(&non_shell_note, "ignore").expect("write note");
+    fs::write(&outside_script, "#!/usr/bin/env bash\n").expect("write outside script");
+
+    assert!(crate::plan::is_maintained_shell_script_for_tests(
+        repo_root.path(),
+        &inside_check
+    ));
+    assert!(crate::plan::is_maintained_shell_script_for_tests(
+        repo_root.path(),
+        &inside_script
+    ));
+    assert!(!crate::plan::is_maintained_shell_script_for_tests(
+        repo_root.path(),
+        &nested_script
+    ));
+    assert!(!crate::plan::is_maintained_shell_script_for_tests(
+        repo_root.path(),
+        &non_shell_note
+    ));
+    assert!(!crate::plan::is_maintained_shell_script_for_tests(
+        repo_root.path(),
+        &outside_script
+    ));
+}
+
+#[test]
 fn check_plan_includes_all_strict_gates() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());
@@ -135,10 +212,18 @@ fn check_plan_includes_all_strict_gates() {
             .windows(2)
             .any(|window| window == ["--release-type", "major"])
     }));
-    assert!(
-        plan.iter()
-            .any(|spec| { spec.args == ["check", "-p", "htmlcut-fuzz", "--bins", "--locked"] })
-    );
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "check",
+                "-p",
+                "htmlcut-fuzz",
+                "--bins",
+                "--features",
+                "fuzzing",
+                "--locked",
+            ]
+    }));
     assert!(plan.iter().any(|spec| {
         spec.args
             == [

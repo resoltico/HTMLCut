@@ -32,6 +32,55 @@ fn tracked_files_skip_missing_roots_non_rust_entries_and_explicit_exclusions() {
     assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/model/catalog.rs".to_owned()));
 }
 
+#[test]
+fn tracked_files_use_git_inventory_when_available() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    let tracked_file = repo_root.path().join("crates/htmlcut-cli/src/execute.rs");
+    let ignored_local_file = repo_root
+        .path()
+        .join("crates/htmlcut-cli/src/local_only.rs");
+    let skipped_main = repo_root.path().join("xtask/src/main.rs");
+    let outside_root_rs = repo_root.path().join("scripts/helper.rs");
+    let non_rust_file = repo_root.path().join("Cargo.toml");
+    fs::create_dir_all(tracked_file.parent().expect("parent")).expect("create tracked parent");
+    fs::write(&tracked_file, "// tracked\n").expect("write tracked file");
+    fs::write(&ignored_local_file, "// local only\n").expect("write local-only file");
+    fs::create_dir_all(skipped_main.parent().expect("parent")).expect("create xtask parent");
+    fs::write(&skipped_main, "// main\n").expect("write skipped main");
+    fs::create_dir_all(outside_root_rs.parent().expect("parent")).expect("create scripts dir");
+    fs::write(&outside_root_rs, "// helper\n").expect("write outside-root helper");
+    fs::write(&non_rust_file, "[workspace]\n").expect("write Cargo.toml");
+
+    let tracked = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == Path::new("git"))
+                .then(|| {
+                    Ok(
+                        b"Cargo.toml\0crates/htmlcut-cli/src/execute.rs\0scripts/helper.rs\0xtask/src/main.rs\0".to_vec(),
+                    )
+                })
+        },
+        || tracked_files(repo_root.path()),
+    )
+    .expect("tracked files");
+    let tracked_paths = tracked.values().cloned().collect::<Vec<_>>();
+
+    assert_eq!(
+        tracked_paths,
+        vec!["crates/htmlcut-cli/src/execute.rs".to_owned()]
+    );
+    assert!(crate::coverage::is_under_coverage_root_for_tests(
+        "xtask/src"
+    ));
+    assert!(crate::coverage::is_under_coverage_root_for_tests(
+        "xtask/src/lib.rs"
+    ));
+    assert!(!crate::coverage::is_under_coverage_root_for_tests(
+        "scripts/helper.rs"
+    ));
+}
+
 #[cfg(unix)]
 #[test]
 fn tracked_files_reject_entries_that_resolve_outside_the_repo_root() {

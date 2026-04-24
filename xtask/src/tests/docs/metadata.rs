@@ -3,7 +3,7 @@ use regex::Regex;
 
 #[test]
 fn metadata_version_reads_yaml_frontmatter() {
-    let text = "---\nafad: \"3.5\"\nversion: \"4.1.0\"\n---\n# Title\n";
+    let text = "---\nafad: \"4.0\"\nversion: \"4.1.0\"\n---\n# Title\n";
 
     assert_eq!(
         crate::docs::metadata_version(text, crate::docs::MetadataStyle::Frontmatter),
@@ -13,7 +13,7 @@ fn metadata_version_reads_yaml_frontmatter() {
 
 #[test]
 fn metadata_version_reads_html_comment_metadata() {
-    let text = "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n-->\n# Title\n";
+    let text = "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n-->\n# Title\n";
 
     assert_eq!(
         crate::docs::metadata_version(text, crate::docs::MetadataStyle::HtmlComment),
@@ -24,7 +24,7 @@ fn metadata_version_reads_html_comment_metadata() {
 #[test]
 fn metadata_version_returns_none_for_missing_or_versionless_frontmatter() {
     let missing_frontmatter = "version: \"4.1.0\"\n# Title\n";
-    let versionless_frontmatter = "---\nafad: \"3.5\"\n---\n# Title\n";
+    let versionless_frontmatter = "---\nafad: \"4.0\"\n---\n# Title\n";
 
     assert_eq!(
         crate::docs::metadata_version(missing_frontmatter, crate::docs::MetadataStyle::Frontmatter),
@@ -50,30 +50,30 @@ fn markdown_contract_errors_report_missing_and_mismatched_versions() {
     .expect("write manifest");
     fs::write(
         repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"9.9.9\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"9.9.9\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("guide.md"),
-        "---\nafad: \"3.5\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n",
+        "---\nafad: \"4.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n",
     )
     .expect("write guide");
     fs::write(
         repo_root.path().join("docs").join("reference.md"),
-        "---\nafad: \"3.5\"\nversion: \"9.9.9\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [reference]\n  questions: [\"q\"]\n---\n",
+        "---\nafad: \"4.0\"\nversion: \"9.9.9\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [reference]\n  questions: [\"q\"]\n---\n",
     )
     .expect("write reference");
 
@@ -115,25 +115,25 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("schema.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: SCHEMA\nupdated: \"2026-04-20\"\nroute:\n  keywords: [schema]\n  questions: [\"q\"]\n---\n- `htmlcut.source_request`\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: SCHEMA\nupdated: \"2026-04-20\"\nroute:\n  keywords: [schema]\n  questions: [\"q\"]\n---\n- `htmlcut.source_request`\n",
     )
     .expect("write schema doc");
     fs::write(
         repo_root.path().join("docs").join("operations.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: OPERATIONS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [operations]\n---\n| Operation ID | CLI surface |\n| --- | --- |\n| `source.inspect` | `inspect source` |\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: OPERATIONS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [operations]\n---\n| Operation ID | CLI surface |\n| --- | --- |\n| `source.inspect` | `inspect source` |\n",
     )
     .expect("write operations doc");
 
@@ -142,7 +142,7 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
     assert!(
         errors
             .iter()
-            .any(|error| error == "README.md metadata afad is 3.4, expected 3.5")
+            .any(|error| error == "README.md metadata afad is 3.4, expected 4.0")
     );
     assert!(
         errors.iter().any(|error| error
@@ -172,20 +172,20 @@ fn markdown_contract_errors_report_malformed_metadata_blocks_and_empty_values() 
     fs::write(repo_root.path().join("README.md"), "# no metadata\n").expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated:\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated:\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.path().join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.path().join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("guide.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n",
     )
     .expect("write guide");
 
@@ -214,6 +214,7 @@ fn metadata_helpers_report_missing_frontmatter_and_html_comment_fields_directly(
         "---\nversion: \"4.1.0\"\nupdated: \"2026-04-20\"\n---\n",
         crate::docs::MetadataStyle::Frontmatter,
         &updated_pattern,
+        "4.0",
     );
     for expected in [
         "missing the expected frontmatter metadata afad entry",
@@ -235,6 +236,7 @@ fn metadata_helpers_report_missing_frontmatter_and_html_comment_fields_directly(
         "<!--\nAFAD:\n  version: \"4.1.0\"\n  updated: \"2026-04-20\"\n-->\n",
         crate::docs::MetadataStyle::HtmlComment,
         &updated_pattern,
+        "4.0",
     );
     for expected in [
         "missing the expected HTML comment metadata afad entry",
@@ -265,5 +267,31 @@ fn expected_metadata_style_maps_docs_to_frontmatter_and_root_docs_to_html_commen
     assert_eq!(
         crate::docs::expected_metadata_style_for_tests(repo_root.path(), &readme_path),
         crate::docs::MetadataStyle::HtmlComment
+    );
+}
+
+#[test]
+fn expected_afad_version_reads_and_validates_the_protocol_file() {
+    let repo_root = tempdir().expect("tempdir");
+    write_docs_protocol(repo_root.path(), "4.0");
+
+    assert_eq!(
+        crate::docs::expected_afad_version_for_tests(repo_root.path())
+            .expect("expected AFAD version"),
+        "4.0"
+    );
+
+    fs::write(
+        repo_root.path().join(".codex").join("PROTOCOL_AFAD.md"),
+        "# PROTOCOL_AFAD.md\n\nProtocol: `AGENT_FIRST_DOCUMENTATION`\n",
+    )
+    .expect("write malformed protocol");
+    let error = crate::docs::expected_afad_version_for_tests(repo_root.path())
+        .expect_err("missing protocol version should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("could not determine AFAD version")
     );
 }

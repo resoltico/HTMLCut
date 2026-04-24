@@ -36,9 +36,6 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
         stdout: Some(match args.output {
             CliCatalogOutputMode::Json => to_pretty_json(&report),
             CliCatalogOutputMode::Text => render_catalog_text(&report),
-            CliCatalogOutputMode::Html | CliCatalogOutputMode::None => {
-                unreachable!("catalog output parser only allows text/json")
-            }
         }),
         output_file: args.output_file,
         post_write_stderr,
@@ -65,9 +62,6 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
         stdout: Some(match args.output {
             CliSchemaOutputMode::Json => to_pretty_json(&report),
             CliSchemaOutputMode::Text => render_schema_text(&report),
-            CliSchemaOutputMode::Html | CliSchemaOutputMode::None => {
-                unreachable!("schema output parser only allows text/json")
-            }
         }),
         output_file: args.output_file,
         post_write_stderr,
@@ -159,9 +153,6 @@ pub(crate) fn run_inspect_source(
             CliInspectOutputMode::Json => to_pretty_json(&report),
             CliInspectOutputMode::Text => {
                 render_source_inspection_text(&report, prepared.preview_chars)
-            }
-            CliInspectOutputMode::Html | CliInspectOutputMode::None => {
-                unreachable!("inspect output parser only allows text/json")
             }
         }),
         output_file: prepared.output_file,

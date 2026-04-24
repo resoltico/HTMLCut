@@ -5,6 +5,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-04-24
+
+### Changed
+- Tightened the public `htmlcut_cli::run` library contract to return `std::io::Result<i32>`,
+  updated the binary and maintainer tooling to surface writer failures explicitly, and revised the
+  maintained CLI-library docs so broken pipes and other output-sink failures are no longer treated
+  as silent success cases.
+- Replaced the maintainer gate's filesystem-first inventory lookups with one maintained Git-backed
+  worktree inventory for Markdown docs, shell scripts, and tracked coverage sources, removed the
+  local-only ignore rule for the repository-root `AGENTS.md`, and added canonical metadata so the
+  agent entry protocol is validated like the rest of the maintainer docs surface.
+- Split the checked-in libFuzzer targets into a finite default Cargo mode plus an explicit
+  `fuzzing` harness mode, updated `cargo xtask check`, `cargo xtask fuzz-smoke`, and the public
+  maintainer docs around that contract, and synchronized the docs metadata gate with the canonical
+  AFAD protocol version instead of a stale hardcoded literal.
+- Made the repository-root `AGENTS.md` and the `.codex/` maintainer protocol directory explicit
+  Git-tracked surfaces while keeping them out of shipped source archives through canonical
+  `.gitattributes` `export-ignore` rules, and documented that archive contract in the release
+  publishing guide.
+- Narrowed the public `htmlcut-core` surface so CLI help documents, command registries, and related
+  contract types now live under the explicit `htmlcut_core::cli_contract` namespace instead of
+  being re-exported from the crate root, and promoted the workspace to `5.0.0` to reflect those
+  intentional breaking changes.
+- Made built-in HTTP(S) loading an explicit `htmlcut-core/http-client` feature, kept the published
+  CLI opted in by default, and added a default-feature-free core test gate so fetch-free embedders
+  keep a small dependency graph and a verified failure mode for URL requests.
+
+### Fixed
+- Catalog, schema, and inspection output modes now use a dedicated text/json-only type instead of
+  relying on parser filtering plus `unreachable!` panic guardrails for impossible `html`/`none`
+  variants.
+- Broad verification commands such as `cargo test --workspace --all-targets --locked` now stay
+  finite even with the maintained fuzz package in the workspace, while live fuzz-smoke and explicit
+  fuzz compile-smoke still exercise the real libFuzzer harnesses.
+- HEAD-first URL loading now treats GET as authoritative whenever HEAD fails or returns a
+  non-success status, so HTMLCut no longer rejects servers that serve the page correctly but send
+  `403` or similar responses to `HEAD`.
+- The docs-contract parser now reports malformed `htmlcut inspect` examples as normal lint errors
+  instead of panicking inside `xtask`.
+
 ## [4.4.1] - 2026-04-23
 
 ### Changed

@@ -1,14 +1,15 @@
+use std::fs;
 use std::path::Path;
 
 use regex::Regex;
+
+use crate::model::DynResult;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MetadataStyle {
     Frontmatter,
     HtmlComment,
 }
-
-const EXPECTED_AFAD_VERSION: &str = "3.5";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct MetadataFields {
@@ -27,6 +28,23 @@ pub(crate) fn metadata_version(text: &str, style: MetadataStyle) -> Option<Strin
         MetadataStyle::Frontmatter => frontmatter_version(text),
         MetadataStyle::HtmlComment => html_comment_version(text),
     }
+}
+
+pub(crate) fn expected_afad_version(repo_root: &Path) -> DynResult<String> {
+    let protocol_path = repo_root.join(".codex").join("PROTOCOL_AFAD.md");
+    let protocol = fs::read_to_string(&protocol_path)
+        .map_err(|error| format!("could not read {}: {error}", protocol_path.display()))?;
+
+    protocol
+        .lines()
+        .find_map(parse_protocol_version)
+        .ok_or_else(|| {
+            format!(
+                "could not determine AFAD version from {}",
+                protocol_path.display()
+            )
+            .into()
+        })
 }
 
 pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> MetadataStyle {
@@ -49,6 +67,7 @@ pub(super) fn metadata_contract_errors(
     text: &str,
     style: MetadataStyle,
     updated_pattern: &Regex,
+    expected_afad_version: &str,
 ) -> Vec<String> {
     let Some(fields) = metadata_fields(text, style) else {
         return vec![format!(
@@ -59,9 +78,9 @@ pub(super) fn metadata_contract_errors(
 
     let mut errors = Vec::new();
     match fields.afad.as_deref() {
-        Some(EXPECTED_AFAD_VERSION) => {}
+        Some(value) if value == expected_afad_version => {}
         Some(value) => errors.push(format!(
-            "{display_path} metadata afad is {value}, expected {EXPECTED_AFAD_VERSION}"
+            "{display_path} metadata afad is {value}, expected {expected_afad_version}"
         )),
         None => errors.push(format!(
             "{display_path} is missing the expected {} metadata afad entry",
@@ -199,6 +218,14 @@ fn parse_metadata_field(line: &str, key: &str) -> Option<String> {
     }
 
     Some(value.to_owned())
+}
+
+fn parse_protocol_version(line: &str) -> Option<String> {
+    let value = line.trim().strip_prefix("Version:")?.trim();
+    value
+        .strip_prefix('`')
+        .and_then(|value| value.strip_suffix('`'))
+        .map(str::to_owned)
 }
 
 impl MetadataStyle {

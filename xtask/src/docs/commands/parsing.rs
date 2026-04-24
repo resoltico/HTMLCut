@@ -59,13 +59,10 @@ pub(super) fn option_value<'a>(tokens: &'a [String], flag: &str) -> Option<&'a s
 
 pub(crate) fn command_path(tokens: &[String]) -> Vec<&str> {
     match tokens.get(1).map(String::as_str) {
-        Some("inspect") => vec![
-            "inspect",
-            tokens
-                .get(2)
-                .map(String::as_str)
-                .expect("inspect examples should include a subcommand"),
-        ],
+        Some("inspect") => tokens.get(2).map_or_else(
+            || vec!["inspect"],
+            |subcommand| vec!["inspect", subcommand.as_str()],
+        ),
         Some(top_level) => vec![top_level],
         None => Vec::new(),
     }

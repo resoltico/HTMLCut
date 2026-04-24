@@ -1,9 +1,9 @@
 <!--
 AFAD:
-  afad: "3.5"
-  version: "4.4.1"
+  afad: "4.0"
+  version: "5.0.0"
   domain: QUALITY
-  updated: "2026-04-23"
+  updated: "2026-04-24"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
@@ -52,8 +52,9 @@ cargo install cargo-fuzz --locked
 On macOS, keep the maintained `CC=clang CXX=clang++` override from
 [`docs/developer-setup.md`](../docs/developer-setup.md) when installing `cargo-fuzz`.
 
-The smoke command itself runs `cargo +nightly fuzz run ...` with `CC=clang CXX=clang++`, so keep
-`clang` and `clang++` available on `PATH` on any host where you use `cargo xtask fuzz-smoke`.
+The smoke command itself runs `cargo +nightly fuzz run --features fuzzing ...` with
+`CC=clang CXX=clang++`, so keep `clang` and `clang++` available on `PATH` on any host where you
+use `cargo xtask fuzz-smoke`.
 
 Run one maintained target without mutating the checked-in seed corpus:
 
@@ -64,10 +65,12 @@ cargo xtask fuzz-smoke --target selector_parsing
 Build every target without starting a fuzzing campaign:
 
 ```bash
-cargo check -p htmlcut-fuzz --bins --locked
+cargo check -p htmlcut-fuzz --bins --features fuzzing --locked
 ```
 
-This compile-smoke is part of the normal maintainer gate. Full fuzzing campaigns are not.
+This compile-smoke is part of the normal maintainer gate. Full fuzzing campaigns are not. The
+default `cargo test -p htmlcut-fuzz --all-targets --locked` loop stays finite because the checked-
+in bins only enter libFuzzer mode when the explicit `fuzzing` feature is enabled.
 
 Run the full short local smoke inventory:
 
@@ -82,5 +85,5 @@ cargo xtask fuzz-smoke --runs 500
 ```
 
 `cargo xtask fuzz-smoke` preflights nightly plus `cargo-fuzz`, then stages each checked-in corpus
-into a temporary directory before calling `cargo +nightly fuzz run ...`, so the checked-in seed
-inventory stays clean after local smoke runs.
+into a temporary directory before calling `cargo +nightly fuzz run --features fuzzing ...`, so
+the checked-in seed inventory stays clean after local smoke runs.

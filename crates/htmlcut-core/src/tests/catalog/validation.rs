@@ -48,47 +48,51 @@ fn cli_choice_and_non_empty_contract_values_reject_drift_and_blank_inputs() {
 #[test]
 fn render_cli_value_covers_every_public_variant() {
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::SelectionMode(
-            crate::CliSelectionMode::Nth
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::SelectionMode(
+            crate::cli_contract::CliSelectionMode::Nth
         )),
         "nth"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::ValueType(ValueType::InnerHtml)),
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::ValueType(
+            ValueType::InnerHtml
+        )),
         "inner-html"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::OutputMode(
-            crate::CliOutputMode::Html
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::OutputMode(
+            crate::cli_contract::CliOutputMode::Html
         )),
         "html"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::WhitespaceMode(
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::WhitespaceMode(
             WhitespaceMode::Normalize
         )),
         "normalize"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::PatternMode(PatternMode::Regex)),
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::PatternMode(
+            PatternMode::Regex
+        )),
         "regex"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::FetchPreflightMode(
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::FetchPreflightMode(
             FetchPreflightMode::GetOnly
         )),
         "get-only"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::Boolean(true)),
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::Boolean(true)),
         "true"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::Usize(12)),
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::Usize(12)),
         "12"
     );
     assert_eq!(
-        crate::cli_contract::render_cli_value(crate::CliValue::U64(64)),
+        crate::cli_contract::render_cli_value(crate::cli_contract::CliValue::U64(64)),
         "64"
     );
 }

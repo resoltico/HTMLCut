@@ -96,3 +96,8 @@ pub(crate) fn release_binary_path_for_tests(
 pub(crate) fn semver_scratch_dir_for_tests(repo_root: &Path, target_dir: Option<&Path>) -> PathBuf {
     paths::semver_scratch_dir_for_tests(repo_root, target_dir)
 }
+
+#[cfg(test)]
+pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path) -> bool {
+    check::is_maintained_shell_script_for_tests(repo_root, path)
+}

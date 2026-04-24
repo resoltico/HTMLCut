@@ -86,3 +86,59 @@ fn remove_dir_if_exists_is_idempotent_and_repo_root_points_at_workspace() {
             .expect("workspace root")
     );
 }
+
+#[test]
+fn repo_worktree_files_use_git_inventory_when_available() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    fs::write(repo_root.path().join("README.md"), "# readme\n").expect("write readme");
+    fs::create_dir_all(repo_root.path().join("scripts")).expect("create scripts dir");
+    fs::write(
+        repo_root.path().join("scripts").join("release-targets.sh"),
+        "#!/usr/bin/env bash\n",
+    )
+    .expect("write release script");
+
+    let files = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == Path::new("git"))
+                .then(|| Ok(b"README.md\0scripts/release-targets.sh\0missing.md\0".to_vec()))
+        },
+        || crate::command_exec::repo_worktree_files(repo_root.path()),
+    )
+    .expect("repo worktree files")
+    .expect("git inventory");
+
+    assert_eq!(
+        files,
+        vec![
+            repo_root.path().join("README.md"),
+            repo_root.path().join("scripts").join("release-targets.sh"),
+        ]
+    );
+}
+
+#[test]
+fn repo_worktree_files_return_none_outside_git_worktrees() {
+    let repo_root = tempdir().expect("tempdir");
+
+    assert!(
+        crate::command_exec::repo_worktree_files(repo_root.path())
+            .expect("repo worktree files")
+            .is_none()
+    );
+}
+
+#[test]
+fn repo_worktree_files_propagate_git_inventory_failures() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let error = crate::command_exec::with_capture_command_output_override(
+        |_, spec| (spec.program == Path::new("git")).then(|| Err("git failed".into())),
+        || crate::command_exec::repo_worktree_files(repo_root.path()),
+    )
+    .expect_err("git failure should surface");
+
+    assert!(error.to_string().contains("git failed"));
+}

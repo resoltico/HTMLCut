@@ -1,9 +1,9 @@
 <!--
 AFAD:
-  afad: "3.5"
-  version: "4.4.1"
+  afad: "4.0"
+  version: "5.0.0"
   domain: PRODUCT
-  updated: "2026-04-23"
+  updated: "2026-04-24"
 RETRIEVAL_HINTS:
   keywords: [htmlcut, html extraction, repeatable extraction, request file, quick start, sample page, command guide]
   questions: [what is HTMLCut?, why would I use HTMLCut instead of copying values by hand?, how do I start HTMLCut quickly?, can HTMLCut save a request and run it again later?]
@@ -65,6 +65,9 @@ command, or a heavier stack.
 
 Try one sample page first. If that saved step feels useful, you will know quickly whether HTMLCut
 belongs in the rest of your workflow.
+
+Rust embedders can use `htmlcut-core` directly. Built-in URL fetching is opt-in through the
+`htmlcut-core/http-client` feature, while the published CLI enables it for you.
 
 ## Easy To Check, Clear About Limits
 

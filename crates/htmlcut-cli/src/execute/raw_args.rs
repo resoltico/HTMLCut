@@ -98,7 +98,7 @@ impl<'a> RawInvocation<'a> {
             return TOOL_NAME.to_owned();
         };
 
-        if let Some(contract) = htmlcut_core::cli_operation_catalog()
+        if let Some(contract) = htmlcut_core::cli_contract::cli_operation_catalog()
             .iter()
             .filter(|contract| self.command_tokens.len() >= contract.command_path.len())
             .find(|contract| self.command_tokens.starts_with(contract.command_path))

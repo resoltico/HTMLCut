@@ -21,6 +21,7 @@ pub(crate) use metadata::{MetadataStyle, metadata_version};
 /// Validates Markdown metadata and local links for the maintained docs set.
 pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     let workspace_version = workspace_version(repo_root)?;
+    let expected_afad_version = metadata::expected_afad_version(repo_root)?;
     let link_pattern = Regex::new(r"\[[^\]]+\]\(([^)]+)\)")?;
     let schema_name_pattern = Regex::new(r"\bhtmlcut\.[a-z_]+\b")?;
     let operation_id_pattern =
@@ -52,6 +53,7 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &text,
             metadata_style,
             &updated_pattern,
+            &expected_afad_version,
         ));
         errors.extend(links::local_link_errors(
             repo_root,
@@ -98,8 +100,15 @@ pub(crate) fn metadata_contract_errors_for_tests(
     text: &str,
     style: MetadataStyle,
     updated_pattern: &Regex,
+    expected_afad_version: &str,
 ) -> Vec<String> {
-    metadata::metadata_contract_errors(display_path, text, style, updated_pattern)
+    metadata::metadata_contract_errors(
+        display_path,
+        text,
+        style,
+        updated_pattern,
+        expected_afad_version,
+    )
 }
 
 #[cfg(test)]
@@ -108,8 +117,18 @@ pub(crate) fn expected_metadata_style_for_tests(repo_root: &Path, path: &Path) -
 }
 
 #[cfg(test)]
+pub(crate) fn expected_afad_version_for_tests(repo_root: &Path) -> DynResult<String> {
+    metadata::expected_afad_version(repo_root)
+}
+
+#[cfg(test)]
 pub(crate) fn should_skip_dir_for_tests(repo_root: &Path, path: &Path) -> bool {
     paths::should_skip_dir_for_tests(repo_root, path)
+}
+
+#[cfg(test)]
+pub(crate) fn is_maintained_markdown_doc_for_tests(repo_root: &Path, path: &Path) -> bool {
+    paths::is_maintained_markdown_doc_for_tests(repo_root, path)
 }
 
 #[cfg(test)]

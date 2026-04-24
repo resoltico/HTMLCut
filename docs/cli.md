@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: CLI
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -51,9 +51,9 @@ produce the effective base URL used by `--rewrite-urls`.
 
 For URL inputs, HTMLCut uses HEAD-first fetch preflight by default:
 
-- `head-first` probes status, `Content-Length`, and obvious non-HTML `Content-Type` values before
-  issuing the full GET, and it automatically falls back to GET when a server rejects HEAD or
-  breaks the HEAD exchange
+- `head-first` treats successful HEAD responses as advisory preflight for status,
+  `Content-Length`, and obvious non-HTML `Content-Type` values, and it automatically falls back to
+  GET whenever HEAD fails or returns a non-success status
 - `get-only` skips the HEAD probe for servers that still mishandle HEAD badly
 
 The CLI exposes that policy through `--fetch-preflight head-first|get-only`.

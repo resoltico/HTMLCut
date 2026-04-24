@@ -40,6 +40,8 @@ fn fuzz_smoke_command_uses_the_staged_corpus_and_runs_budget() {
             "run",
             "--fuzz-dir",
             "fuzz",
+            "--features",
+            "fuzzing",
             "selector_parsing",
             "/tmp/htmlcut-fuzz/selector_parsing",
             "--",

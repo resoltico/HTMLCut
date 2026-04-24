@@ -2,14 +2,12 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use super::{
-    CliCatalogOutputMode, CliSchemaOutputMode, TEXT_JSON_OUTPUT_MODES, cli_choice_subset_parser,
-};
+use super::{CliCatalogOutputMode, CliSchemaOutputMode, cli_choice_parser};
 
 #[derive(Debug, Args)]
 pub(crate) struct CatalogArgs {
     /// Render the catalog as detailed text or structured JSON.
-    #[arg(long, value_parser = cli_choice_subset_parser(TEXT_JSON_OUTPUT_MODES), default_value_t = CliCatalogOutputMode::Text)]
+    #[arg(long, value_parser = cli_choice_parser::<CliCatalogOutputMode>(), default_value_t = CliCatalogOutputMode::Text)]
     pub(crate) output: CliCatalogOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.
@@ -24,7 +22,7 @@ pub(crate) struct CatalogArgs {
 #[derive(Debug, Args)]
 pub(crate) struct SchemaArgs {
     /// Render the schema registry as compact text or structured JSON.
-    #[arg(long, value_parser = cli_choice_subset_parser(TEXT_JSON_OUTPUT_MODES), default_value_t = CliSchemaOutputMode::Text)]
+    #[arg(long, value_parser = cli_choice_parser::<CliSchemaOutputMode>(), default_value_t = CliSchemaOutputMode::Text)]
     pub(crate) output: CliSchemaOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.

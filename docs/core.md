@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "4.4.1"
+afad: "4.0"
+version: "5.0.0"
 domain: CORE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -25,16 +25,6 @@ The crate root exposes several especially important stable execution and discove
 - `extract`
 - `operation_catalog`
 - `operation_descriptor`
-- `cli_aux_command_catalog`
-- `cli_aux_command_descriptor`
-- `cli_aux_command_help_document`
-- `cli_operation_catalog`
-- `cli_operation_contract`
-- `cli_operation_display_command`
-- `cli_operation_help_document`
-- `cli_operation_report_command`
-- `cli_root_help_document`
-- `find_cli_operation_by_command_path`
 - `schema_catalog`
 - `schema_descriptor`
 
@@ -43,9 +33,9 @@ That list calls out the main execution and discovery helpers. It is not the full
 Additional stable exports also include:
 
 - the `htmlcut_core::request` and `htmlcut_core::result` namespaces
+- the `htmlcut_core::cli_contract` namespace for CLI command contracts and help documents
 - schema/profile/version constants
 - `DiagnosticCode`
-- CLI-contract helpers such as `cli_aux_command_display_command()` and `render_cli_value()`
 - the versioned `htmlcut_core::interop` module
 
 The implementation modules stay private. Consumers should build on the crate root and the
@@ -56,6 +46,8 @@ Detailed contract types live behind explicit namespaces:
 - `htmlcut_core::request` for typed request-side contracts
 - `htmlcut_core::result` for typed result-side contracts such as `ExtractionMatch`,
   `ExtractionStats`, `Range`, and structured metadata enums
+- `htmlcut_core::cli_contract` for `OperationCliContract`, `CliHelpDocument`, canonical command
+  lookup helpers, and CLI-value rendering
 
 ## Core Request Model
 
@@ -80,7 +72,9 @@ Important invariants:
 - slice requests are mode-correct: literal slices do not carry regex flags, regex slices do
 - reusable extraction-definition files serialize `ExtractionDefinition`, which owns the full `ExtractionRequest`
   plus `RuntimeOptions`
-- URL loading defaults to `FetchPreflightMode::HeadFirst` with an explicit `GetOnly` escape hatch
+- URL loading is optional and requires the `htmlcut-core/http-client` feature
+- when URL loading is enabled, `FetchPreflightMode::HeadFirst` treats successful HEAD responses as
+  advisory preflight and falls back to GET whenever HEAD fails or returns a non-success status
 - structured extraction metadata is typed, not loose JSON
 
 ## Result Model
@@ -127,8 +121,8 @@ Each operation descriptor includes:
 
 That catalog is the source of truth for the operation matrix.
 
-For CLI-exposed operations, `htmlcut-core` also owns a companion `OperationCliContract` registry.
-That companion catalog carries:
+For CLI-exposed operations, `htmlcut-core` also owns a companion
+`htmlcut_core::cli_contract::OperationCliContract` registry. That companion catalog carries:
 
 - concrete command path tokens
 - invocation synopsis
@@ -139,7 +133,8 @@ That companion catalog carries:
 - catalog notes and example invocations
 
 `htmlcut-core` also owns the non-operation CLI command descriptors plus the structured root,
-aux-command, and per-operation help documents that the CLI renders.
+aux-command, and per-operation help documents that the CLI renders through
+`htmlcut_core::cli_contract`.
 
 Those help-side contracts carry:
 
@@ -151,10 +146,11 @@ Those help-side contracts carry:
 Together, those registries are the source of truth for `htmlcut catalog`, normalized `command`
 labels in CLI reports, rendered CLI help, and contract-lint coverage over help/examples, catalog
 text, and recovery-error guidance.
-Use `operation_catalog()` and `cli_operation_catalog()` for operation discovery inside Rust callers.
-If you also need the non-operation command descriptors for `catalog`, `schema`, or the `inspect`
-command family, use `cli_aux_command_catalog()` as well instead of maintaining your own shadow
-matrix of supported behaviors.
+Use `operation_catalog()` for generic operation discovery inside Rust callers. When you also need
+CLI-facing command contracts, use `htmlcut_core::cli_contract::cli_operation_catalog()`. If you
+need the non-operation command descriptors for `catalog`, `schema`, or the `inspect` command
+family, use `htmlcut_core::cli_contract::cli_aux_command_catalog()` as well instead of
+maintaining your own shadow matrix of supported behaviors.
 
 ## Schema Registry
 
@@ -224,8 +220,16 @@ match &result.matches[0].metadata {
 assert!(!operation_catalog().is_empty());
 ```
 
+## Feature Flags
+
+- `http-client` enables built-in HTTP(S) URL loading for `SourceRequest::url(...)`
+- the published `htmlcut` CLI enables `http-client` automatically
+- embedders that already own fetch, retries, and auth should usually keep the feature disabled and
+  pass HTML through `SourceRequest::memory(...)`, `SourceRequest::file(...)`, or stdin instead
+
 Use `SourceRequest::memory(...)` when HTML is already loaded by the embedding application. Reserve
-`SourceRequest::url(...)` for generic HTMLCut-owned loading workflows.
+`SourceRequest::url(...)` for builds that explicitly enable `http-client` and genuinely want
+generic HTMLCut-owned loading workflows.
 
 For a complete reusable-definition round trip, see
 `crates/htmlcut-core/examples/reusable_extraction_definition.rs`.
@@ -236,8 +240,10 @@ For frozen deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md)
 
 `htmlcut-core` owns:
 
-- source loading for generic CLI/core workflows
-- HEAD-first URL preflight policy and content-type/size rejection
+- source loading for generic CLI/core workflows, including optional URL loading when
+  `http-client` is enabled
+- HEAD-first URL preflight policy, where non-success HEAD responses fall back to GET and successful
+  HEAD responses still enforce obvious content-type and size rejection before the full body read
 - document parsing
 - inspection
 - selector extraction

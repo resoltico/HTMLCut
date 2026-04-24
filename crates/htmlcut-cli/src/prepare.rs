@@ -28,6 +28,8 @@ pub(crate) use self::definition::{
 };
 pub(crate) use self::extraction::default_regex_flags;
 #[cfg(test)]
+pub(crate) use self::inspection::source_inspection_report_command_for_tests;
+#[cfg(test)]
 pub(crate) use self::reports::render_condition_expression_for_tests;
 pub(crate) use self::reports::{
     build_catalog_report, build_extraction_report, build_schema_report,

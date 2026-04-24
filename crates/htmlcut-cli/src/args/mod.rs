@@ -28,17 +28,14 @@ pub(crate) use self::shared::{
 };
 
 pub(crate) type CliPatternMode = htmlcut_core::PatternMode;
-pub(crate) type CliMatchMode = htmlcut_core::CliSelectionMode;
+pub(crate) type CliMatchMode = htmlcut_core::cli_contract::CliSelectionMode;
 pub(crate) type CliValueMode = htmlcut_core::ValueType;
-pub(crate) type CliOutputMode = htmlcut_core::CliOutputMode;
-pub(crate) type CliInspectOutputMode = htmlcut_core::CliOutputMode;
-pub(crate) type CliCatalogOutputMode = htmlcut_core::CliOutputMode;
-pub(crate) type CliSchemaOutputMode = htmlcut_core::CliOutputMode;
+pub(crate) type CliOutputMode = htmlcut_core::cli_contract::CliOutputMode;
+pub(crate) type CliInspectOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
+pub(crate) type CliCatalogOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
+pub(crate) type CliSchemaOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
 pub(crate) type CliWhitespaceMode = htmlcut_core::WhitespaceMode;
 pub(crate) type CliFetchPreflightMode = htmlcut_core::FetchPreflightMode;
-
-pub(crate) const TEXT_JSON_OUTPUT_MODES: &[CliOutputMode] =
-    &[CliOutputMode::Text, CliOutputMode::Json];
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CliChoiceParser<T: 'static> {
@@ -50,15 +47,8 @@ pub(crate) fn cli_choice_parser<T>() -> CliChoiceParser<T>
 where
     T: CliChoice,
 {
-    cli_choice_subset_parser(T::variants())
-}
-
-pub(crate) fn cli_choice_subset_parser<T>(allowed: &'static [T]) -> CliChoiceParser<T>
-where
-    T: CliChoice,
-{
     CliChoiceParser {
-        allowed,
+        allowed: T::variants(),
         _marker: PhantomData,
     }
 }

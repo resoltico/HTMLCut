@@ -1,8 +1,12 @@
 use std::collections::BTreeSet;
+use std::io;
 
 use super::command_example_errors_with_prepared_sandbox;
 use super::runtime::{documented_artifact_error, render_execution_failure};
-use super::sandbox::{ExampleSandbox, prepare_sandbox_with_hooks};
+use super::sandbox::{
+    ExampleSandbox, command_runtime_error_message_for_tests as sandbox_runtime_error_for_tests,
+    prepare_sandbox_with_hooks,
+};
 
 pub(crate) fn documented_artifact_error_for_tests(
     display_path: &str,
@@ -55,4 +59,14 @@ pub(crate) fn injected_sandbox_error_for_tests(message: &str) -> Vec<String> {
         &BTreeSet::new(),
         Err(vec![message.to_owned()]),
     )
+}
+
+pub(crate) fn command_runtime_error_message_for_tests(
+    display_path: &str,
+    example: &str,
+    result: io::Result<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Option<String> {
+    sandbox_runtime_error_for_tests(display_path, example, result, stdout, stderr)
 }

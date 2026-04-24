@@ -1,5 +1,6 @@
 use super::*;
-use htmlcut_core::{CliHelpDocument, OperationId};
+use htmlcut_core::OperationId;
+use htmlcut_core::cli_contract::CliHelpDocument;
 
 use crate::help::{
     build_operation_long_about_from_sources_for_tests,

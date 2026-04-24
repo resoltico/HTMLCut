@@ -313,6 +313,7 @@ fn source_file_loading_returns_absolute_path() {
     assert!(result.source.value.ends_with("input.html"));
 }
 
+#[cfg(feature = "http-client")]
 #[test]
 fn source_url_loading_works() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind server");

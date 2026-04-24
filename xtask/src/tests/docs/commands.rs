@@ -1,4 +1,5 @@
 use super::*;
+use std::io;
 
 fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
     write_empty_release_targets_script(repo_root);
@@ -10,26 +11,26 @@ fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
     fs::write(
         repo_root.join("README.md"),
         format!(
-            "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n{readme_body}\n"
+            "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n{readme_body}\n"
         ),
     )
     .expect("write readme");
     fs::write(
         repo_root.join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root, "4.1.0", "2026-04-20");
     fs::create_dir_all(repo_root.join("fuzz")).expect("create fuzz dir");
     fs::write(
         repo_root.join("fuzz").join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.5\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: QUALITY\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [fuzz]\n  questions: [\"q\"]\n-->\n",
     )
     .expect("write fuzz readme");
     fs::create_dir_all(repo_root.join("docs")).expect("create docs dir");
     fs::write(
         repo_root.join("docs").join("guide.md"),
-        "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction_result` and `select.extract`.\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction_result` and `select.extract`.\n",
     )
     .expect("write guide");
     write_schema_inventory_doc(repo_root);
@@ -56,7 +57,7 @@ fn write_schema_inventory_doc(repo_root: &Path) {
     fs::write(
         repo_root.join("docs").join("schema.md"),
         format!(
-            "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: SCHEMA\nupdated: \"2026-04-20\"\nroute:\n  keywords: [schema]\n  questions: [\"q\"]\n---\n{schemas}\n"
+            "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: SCHEMA\nupdated: \"2026-04-20\"\nroute:\n  keywords: [schema]\n  questions: [\"q\"]\n---\n{schemas}\n"
         ),
     )
     .expect("write schema doc");
@@ -72,7 +73,7 @@ fn write_operations_inventory_doc(repo_root: &Path) {
     fs::write(
         repo_root.join("docs").join("operations.md"),
         format!(
-            "---\nafad: \"3.5\"\nversion: \"4.1.0\"\ndomain: OPERATIONS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [operations]\n  questions: [\"q\"]\n---\n| Operation ID |\n| --- |\n{operations}\n"
+            "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: OPERATIONS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [operations]\n  questions: [\"q\"]\n---\n| Operation ID |\n| --- |\n{operations}\n"
         ),
     )
     .expect("write operations doc");
@@ -239,6 +240,19 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
         ),
         None
     );
+    assert_eq!(
+        crate::docs::commands::command_path(&["htmlcut".to_owned(), "inspect".to_owned()]),
+        vec!["inspect"]
+    );
+    assert_eq!(
+        crate::docs::commands::command_reference_error(
+            "README.md",
+            &["htmlcut".to_owned(), "inspect".to_owned()],
+            &known_schemas,
+            &known_operations,
+        ),
+        Some("README.md example references unknown CLI command path: inspect".to_owned())
+    );
 }
 
 #[test]
@@ -360,4 +374,18 @@ fn docs_runtime_helpers_report_injected_sandbox_failures() {
         crate::docs::commands::testing::injected_sandbox_error_for_tests("injected failure"),
         vec!["injected failure".to_owned()]
     );
+}
+
+#[test]
+fn docs_runtime_helpers_report_cli_output_capture_failures() {
+    let error = crate::docs::commands::testing::command_runtime_error_message_for_tests(
+        "README.md",
+        "htmlcut select page.html --css article",
+        Err(io::Error::other("broken pipe")),
+        &[],
+        &[],
+    )
+    .expect("runtime error");
+
+    assert!(error.contains("failed to capture CLI output: broken pipe"));
 }
