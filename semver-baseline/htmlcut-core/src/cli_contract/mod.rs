@@ -21,7 +21,7 @@ pub use help::{
 pub use types::{
     CliCondition, CliConditionalDefault, CliConstraint, CliInputForm, CliOutputMode,
     CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
-    CliParameterSection, CliSelectionMode, CliValue, OperationCliContract,
+    CliParameterSection, CliSelectionMode, CliTextJsonOutputMode, CliValue, OperationCliContract,
 };
 
 static CLI_OPERATION_CATALOG: LazyLock<Vec<OperationCliContract>> =

@@ -3,11 +3,8 @@ mod io;
 mod metadata;
 mod types;
 
-#[cfg(test)]
-pub(crate) use http::{
-    build_http_agent, content_type_is_obviously_non_html_for_tests,
-    head_error_allows_get_fallback_for_tests, read_url_source,
-};
+use http as url_loader;
+
 pub(crate) use io::read_stdin_source;
 #[cfg(test)]
 pub(crate) use io::{
@@ -17,6 +14,13 @@ pub(crate) use io::{
 use metadata::source_load_failure;
 pub(crate) use metadata::{empty_source_metadata, memory_label, source_metadata};
 pub(crate) use types::{LoadedSource, SourceLoadFailure};
+#[cfg(test)]
+pub(crate) use url_loader::read_url_source;
+#[cfg(all(test, feature = "http-client"))]
+pub(crate) use url_loader::{
+    build_http_agent, content_type_is_obviously_non_html_for_tests,
+    head_error_allows_get_fallback_for_tests,
+};
 
 use crate::contracts::{RuntimeOptions, SourceInput, SourceKind, SourceRequest};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
@@ -54,7 +58,7 @@ pub(crate) fn load_source(
                 load_steps: Vec::new(),
             })
         }
-        SourceInput::Url { .. } => http::read_url_source(source, runtime),
+        SourceInput::Url { .. } => url_loader::read_url_source(source, runtime),
         SourceInput::File { .. } => io::read_file_source(source, runtime),
         SourceInput::Stdin => read_stdin_source(source, runtime),
     }

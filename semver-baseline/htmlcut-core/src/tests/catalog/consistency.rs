@@ -46,14 +46,15 @@ fn catalog_lint_rejects_missing_cli_entries_core_only_leaks_duplicates_and_displ
             description: "slice",
         },
     ];
-    let mut slice_contract = crate::cli_operation_contract(OperationId::SliceExtract)
+    let mut slice_contract = crate::cli_contract::cli_operation_contract(OperationId::SliceExtract)
         .expect("slice contract")
         .clone();
     slice_contract.command_path = &["inspect", "slice"];
     let duplicate = slice_contract.clone();
-    let mut core_only_leak = crate::cli_operation_contract(OperationId::SelectExtract)
-        .expect("select contract")
-        .clone();
+    let mut core_only_leak =
+        crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
+            .expect("select contract")
+            .clone();
     core_only_leak.operation_id = OperationId::DocumentParse;
     core_only_leak.command_path = &["document", "parse"];
 
@@ -106,9 +107,10 @@ fn catalog_lint_accepts_consistent_cli_and_core_catalogs() {
             description: "parse",
         },
     ];
-    let mut select_contract = crate::cli_operation_contract(OperationId::SelectExtract)
-        .expect("select contract")
-        .clone();
+    let mut select_contract =
+        crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
+            .expect("select contract")
+            .clone();
     select_contract.command_path = &["select"];
 
     let errors = crate::cli_contract::cli_operation_catalog_validation_errors_for(

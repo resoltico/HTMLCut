@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.95.0"
 name = "htmlcut-core"
-version = "4.4.1"
+version = "5.0.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -26,6 +26,10 @@ homepage = "https://github.com/resoltico/HTMLCut"
 readme = false
 license = "MIT"
 repository = "https://github.com/resoltico/HTMLCut"
+
+[features]
+default = []
+http-client = ["dep:ureq"]
 
 [lib]
 name = "htmlcut_core"
@@ -90,6 +94,7 @@ features = [
     "platform-verifier",
     "rustls",
 ]
+optional = true
 default-features = false
 
 [dependencies.url]
@@ -100,6 +105,8 @@ features = ["serde"]
 all = "warn"
 
 [lints.rust]
-unsafe_code = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
 
 [workspace]

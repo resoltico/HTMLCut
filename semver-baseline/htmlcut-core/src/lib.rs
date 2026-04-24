@@ -3,7 +3,8 @@
 
 mod catalog;
 mod cli_choice;
-mod cli_contract;
+/// Canonical CLI command contracts, help documents, and discovery helpers owned by `htmlcut-core`.
+pub mod cli_contract;
 mod contracts;
 mod diagnostics;
 #[cfg(any(test, doctest))]
@@ -44,16 +45,6 @@ pub use catalog::{
     operation_catalog, operation_descriptor,
 };
 pub use cli_choice::CliChoice;
-pub use cli_contract::{
-    CliAuxCommandDescriptor, CliAuxCommandId, CliCondition, CliConditionalDefault, CliConstraint,
-    CliHelpDocument, CliHelpSection, CliHelpSectionStyle, CliInputForm, CliOutputMode,
-    CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
-    CliParameterSection, CliSelectionMode, CliValue, OperationCliContract, cli_aux_command_catalog,
-    cli_aux_command_descriptor, cli_aux_command_display_command, cli_aux_command_help_document,
-    cli_operation_catalog, cli_operation_contract, cli_operation_display_command,
-    cli_operation_help_document, cli_operation_report_command, cli_root_help_document,
-    find_cli_operation_by_command_path, render_cli_value,
-};
 pub use contracts::{
     AttributeName, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
     CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION,
@@ -92,8 +83,10 @@ pub(crate) use extract::{
     build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,
     run_selector_extraction, run_slice_extraction, select_candidates, validate_request,
 };
+#[cfg(all(test, feature = "http-client"))]
+pub(crate) use source::build_http_agent;
 #[cfg(test)]
 pub(crate) use source::{
-    LoadedSource, build_http_agent, load_source, read_file_source, read_limited_to_string,
-    read_url_source, source_metadata,
+    LoadedSource, load_source, read_file_source, read_limited_to_string, read_url_source,
+    source_metadata,
 };

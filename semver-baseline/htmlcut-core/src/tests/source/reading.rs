@@ -64,7 +64,11 @@ fn source_reading_helpers_cover_error_paths() {
             .message
             .contains("Input path is a directory, not a file:")
     );
+}
 
+#[cfg(feature = "http-client")]
+#[test]
+fn url_source_reading_helpers_cover_error_paths() {
     let closed_listener = TcpListener::bind("127.0.0.1:0").expect("bind closed listener");
     let closed_address = closed_listener.local_addr().expect("closed listener addr");
     drop(closed_listener);

@@ -14,7 +14,7 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
         Vec::<String>::new()
     );
 
-    let root_help = crate::cli_root_help_document();
+    let root_help = crate::cli_contract::cli_root_help_document();
     assert!(
         root_help
             .sections
@@ -51,7 +51,9 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
         "root help examples should show how to rerun a saved request"
     );
 
-    let inspect_help = crate::cli_aux_command_help_document(crate::CliAuxCommandId::Inspect);
+    let inspect_help = crate::cli_contract::cli_aux_command_help_document(
+        crate::cli_contract::CliAuxCommandId::Inspect,
+    );
     let inspect_lines = inspect_help
         .sections
         .iter()
@@ -73,7 +75,7 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
             .any(|line| line.starts_with("inspect slice"))
     );
 
-    let select_help = crate::cli_operation_help_document(OperationId::SelectExtract)
+    let select_help = crate::cli_contract::cli_operation_help_document(OperationId::SelectExtract)
         .expect("select extract help should exist");
     assert!(
         select_help
@@ -86,107 +88,125 @@ fn contract_lint_cli_help_catalog_stays_consistent() {
 }
 #[test]
 fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
-    let mut contract = crate::cli_operation_contract(OperationId::SelectExtract)
+    let mut contract = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
         .expect("select contract")
         .clone();
     contract.command_path = &[];
     contract.invocation = "select";
     contract.examples = vec!["select ./page.html --css article"];
-    contract.default_match = Some(crate::CliSelectionMode::Single);
-    contract.selection_modes = vec![crate::CliSelectionMode::First];
+    contract.default_match = Some(crate::cli_contract::CliSelectionMode::Single);
+    contract.selection_modes = vec![crate::cli_contract::CliSelectionMode::First];
     contract.default_value = Some(ValueType::Structured);
     contract.value_modes = vec![ValueType::Text];
-    contract.default_output = Some(crate::CliOutputMode::Json);
-    contract.output_modes = vec![crate::CliOutputMode::Text];
+    contract.default_output = Some(crate::cli_contract::CliOutputMode::Json);
+    contract.output_modes = vec![crate::cli_contract::CliOutputMode::Text];
     contract.default_output_overrides = vec![
-        crate::CliConditionalDefault {
-            value: crate::CliValue::ValueType(ValueType::Text),
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Pattern,
-                values: vec![crate::CliValue::PatternMode(PatternMode::Regex)],
+        crate::cli_contract::CliConditionalDefault {
+            value: crate::cli_contract::CliValue::ValueType(ValueType::Text),
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Pattern,
+                values: vec![crate::cli_contract::CliValue::PatternMode(
+                    PatternMode::Regex,
+                )],
             },
         },
-        crate::CliConditionalDefault {
-            value: crate::CliValue::OutputMode(crate::CliOutputMode::Json),
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Output,
-                values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Html)],
+        crate::cli_contract::CliConditionalDefault {
+            value: crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::Json,
+            ),
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Output,
+                values: vec![crate::cli_contract::CliValue::OutputMode(
+                    crate::cli_contract::CliOutputMode::Html,
+                )],
             },
         },
     ];
     contract.parameters = vec![
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::Output,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::Optional,
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::Output,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::Optional,
             value_hint: Some("<MODE>"),
-            default: Some(crate::CliValue::OutputMode(crate::CliOutputMode::Json)),
-            allowed_values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Text)],
+            default: Some(crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::Json,
+            )),
+            allowed_values: vec![crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::Text,
+            )],
             summary: "output",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::Output,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::Optional,
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::Output,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::Optional,
             value_hint: Some("<MODE>"),
             default: None,
-            allowed_values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Text)],
+            allowed_values: vec![crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::Text,
+            )],
             summary: "duplicate output",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Selection,
-            id: crate::CliParameterId::Match,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::Optional,
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Selection,
+            id: crate::cli_contract::CliParameterId::Match,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::Optional,
             value_hint: Some("<MATCH>"),
-            default: Some(crate::CliValue::SelectionMode(
-                crate::CliSelectionMode::Single,
+            default: Some(crate::cli_contract::CliValue::SelectionMode(
+                crate::cli_contract::CliSelectionMode::Single,
             )),
-            allowed_values: vec![crate::CliValue::SelectionMode(
-                crate::CliSelectionMode::First,
+            allowed_values: vec![crate::cli_contract::CliValue::SelectionMode(
+                crate::cli_contract::CliSelectionMode::First,
             )],
             summary: "match",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::Value,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::Optional,
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::Value,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::Optional,
             value_hint: Some("<VALUE>"),
-            default: Some(crate::CliValue::ValueType(ValueType::Structured)),
-            allowed_values: vec![crate::CliValue::ValueType(ValueType::Text)],
+            default: Some(crate::cli_contract::CliValue::ValueType(
+                ValueType::Structured,
+            )),
+            allowed_values: vec![crate::cli_contract::CliValue::ValueType(ValueType::Text)],
             summary: "value",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::RewriteUrls,
-            kind: crate::CliParameterKind::Flag,
-            requirement: crate::CliParameterRequirement::Optional,
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::RewriteUrls,
+            kind: crate::cli_contract::CliParameterKind::Flag,
+            requirement: crate::cli_contract::CliParameterRequirement::Optional,
             value_hint: Some("<BOOL>"),
-            default: Some(crate::CliValue::Boolean(true)),
+            default: Some(crate::cli_contract::CliValue::Boolean(true)),
             allowed_values: Vec::new(),
             summary: "rewrite URLs",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::Bundle,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::RequiredUnless(crate::CliParameterId::Css),
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::Bundle,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::RequiredUnless(
+                crate::cli_contract::CliParameterId::Css,
+            ),
             value_hint: Some("<DIR>"),
             default: None,
             allowed_values: Vec::new(),
             summary: "bundle",
         },
-        crate::CliParameterDescriptor {
-            section: crate::CliParameterSection::Extraction,
-            id: crate::CliParameterId::Attribute,
-            kind: crate::CliParameterKind::Option,
-            requirement: crate::CliParameterRequirement::AllowedOnlyWhen(crate::CliCondition {
-                parameter: crate::CliParameterId::Bundle,
-                values: vec![crate::CliValue::Boolean(true)],
-            }),
+        crate::cli_contract::CliParameterDescriptor {
+            section: crate::cli_contract::CliParameterSection::Extraction,
+            id: crate::cli_contract::CliParameterId::Attribute,
+            kind: crate::cli_contract::CliParameterKind::Option,
+            requirement: crate::cli_contract::CliParameterRequirement::AllowedOnlyWhen(
+                crate::cli_contract::CliCondition {
+                    parameter: crate::cli_contract::CliParameterId::Bundle,
+                    values: vec![crate::cli_contract::CliValue::Boolean(true)],
+                },
+            ),
             value_hint: Some("<NAME>"),
             default: None,
             allowed_values: Vec::new(),
@@ -194,27 +214,37 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
         },
     ];
     contract.constraints = vec![
-        crate::CliConstraint::RequiresParameter {
-            parameter: crate::CliParameterId::Css,
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Output,
-                values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Text)],
+        crate::cli_contract::CliConstraint::RequiresParameter {
+            parameter: crate::cli_contract::CliParameterId::Css,
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Output,
+                values: vec![crate::cli_contract::CliValue::OutputMode(
+                    crate::cli_contract::CliOutputMode::Text,
+                )],
             },
         },
-        crate::CliConstraint::RestrictsParameterValues {
-            parameter: crate::CliParameterId::Css,
-            allowed_values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::None)],
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Output,
-                values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Text)],
+        crate::cli_contract::CliConstraint::RestrictsParameterValues {
+            parameter: crate::cli_contract::CliParameterId::Css,
+            allowed_values: vec![crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::None,
+            )],
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Output,
+                values: vec![crate::cli_contract::CliValue::OutputMode(
+                    crate::cli_contract::CliOutputMode::Text,
+                )],
             },
         },
-        crate::CliConstraint::RestrictsParameterValues {
-            parameter: crate::CliParameterId::Output,
-            allowed_values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::None)],
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Output,
-                values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Html)],
+        crate::cli_contract::CliConstraint::RestrictsParameterValues {
+            parameter: crate::cli_contract::CliParameterId::Output,
+            allowed_values: vec![crate::cli_contract::CliValue::OutputMode(
+                crate::cli_contract::CliOutputMode::None,
+            )],
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Output,
+                values: vec![crate::cli_contract::CliValue::OutputMode(
+                    crate::cli_contract::CliOutputMode::Html,
+                )],
             },
         },
     ];
@@ -249,9 +279,11 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
     let missing_condition_errors = crate::cli_contract::validate_condition_for_tests(
         OperationId::SelectExtract,
         "default_output_override",
-        &crate::CliCondition {
-            parameter: crate::CliParameterId::Pattern,
-            values: vec![crate::CliValue::PatternMode(PatternMode::Regex)],
+        &crate::cli_contract::CliCondition {
+            parameter: crate::cli_contract::CliParameterId::Pattern,
+            values: vec![crate::cli_contract::CliValue::PatternMode(
+                PatternMode::Regex,
+            )],
         },
         &contract.parameters,
     );
@@ -262,10 +294,10 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
         "missing explicit condition-lint error: {missing_condition_errors:#?}"
     );
 
-    let mut match_drift = crate::cli_operation_contract(OperationId::SelectExtract)
+    let mut match_drift = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
         .expect("select contract")
         .clone();
-    match_drift.selection_modes = vec![crate::CliSelectionMode::All];
+    match_drift.selection_modes = vec![crate::cli_contract::CliSelectionMode::All];
     let match_drift_errors = crate::cli_contract::validate_command_contract_for_tests(&match_drift);
     assert!(
         match_drift_errors
@@ -274,7 +306,7 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
         "missing selection-mode drift error: {match_drift_errors:#?}"
     );
 
-    let mut value_drift = crate::cli_operation_contract(OperationId::SelectExtract)
+    let mut value_drift = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
         .expect("select contract")
         .clone();
     value_drift.value_modes = vec![ValueType::Structured];
@@ -286,10 +318,10 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
         "missing value-mode drift error: {value_drift_errors:#?}"
     );
 
-    let mut output_drift = crate::cli_operation_contract(OperationId::SelectExtract)
+    let mut output_drift = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
         .expect("select contract")
         .clone();
-    output_drift.output_modes = vec![crate::CliOutputMode::Json];
+    output_drift.output_modes = vec![crate::cli_contract::CliOutputMode::Json];
     let output_drift_errors =
         crate::cli_contract::validate_command_contract_for_tests(&output_drift);
     assert!(
@@ -301,7 +333,7 @@ fn contract_lint_rejects_malformed_command_contracts_and_conditions() {
 }
 #[test]
 fn contract_lint_covers_optional_output_and_empty_restriction_target_branches() {
-    let base_contract = crate::cli_operation_contract(OperationId::SelectExtract)
+    let base_contract = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
         .expect("select contract")
         .clone();
 
@@ -320,7 +352,7 @@ fn contract_lint_covers_optional_output_and_empty_restriction_target_branches() 
     without_output_parameter.constraints.clear();
     without_output_parameter
         .parameters
-        .retain(|parameter| parameter.id != crate::CliParameterId::Output);
+        .retain(|parameter| parameter.id != crate::cli_contract::CliParameterId::Output);
     let without_output_parameter_errors =
         crate::cli_contract::validate_command_contract_for_tests(&without_output_parameter);
     assert!(
@@ -329,15 +361,18 @@ fn contract_lint_covers_optional_output_and_empty_restriction_target_branches() 
     );
 
     let mut empty_target_allowed_values = base_contract;
-    empty_target_allowed_values.constraints =
-        vec![crate::CliConstraint::RestrictsParameterValues {
-            parameter: crate::CliParameterId::Bundle,
+    empty_target_allowed_values.constraints = vec![
+        crate::cli_contract::CliConstraint::RestrictsParameterValues {
+            parameter: crate::cli_contract::CliParameterId::Bundle,
             allowed_values: vec![],
-            when: crate::CliCondition {
-                parameter: crate::CliParameterId::Output,
-                values: vec![crate::CliValue::OutputMode(crate::CliOutputMode::Json)],
+            when: crate::cli_contract::CliCondition {
+                parameter: crate::cli_contract::CliParameterId::Output,
+                values: vec![crate::cli_contract::CliValue::OutputMode(
+                    crate::cli_contract::CliOutputMode::Json,
+                )],
             },
-        }];
+        },
+    ];
     let empty_target_allowed_values_errors =
         crate::cli_contract::validate_command_contract_for_tests(&empty_target_allowed_values);
     assert!(

@@ -9,6 +9,10 @@ repository.workspace = true
 homepage.workspace = true
 description = "Library for extracting and inspecting HTML with CSS selectors, literal or regex slicing, and structured diagnostics."
 
+[features]
+default = []
+http-client = ["dep:ureq"]
+
 [dependencies]
 ego-tree.workspace = true
 regex.workspace = true
@@ -18,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-ureq.workspace = true
+ureq = { workspace = true, optional = true }
 url.workspace = true
 
 [lints]
