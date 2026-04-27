@@ -60,7 +60,7 @@ jobs:
           sudo apt-get install --yes shellcheck
 
       - name: Install Rust QA tools
-        uses: taiki-e/install-action@5f57d6cb7cd20b14a8a27f522884c4bc8a187458 # v2.75.19
+        uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a # v2.75.23
         with:
           tool: cargo-llvm-cov,cargo-nextest,cargo-audit,cargo-deny,cargo-semver-checks,cargo-outdated
 
