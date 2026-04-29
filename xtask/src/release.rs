@@ -74,7 +74,6 @@ fn script_output_with_program(
     args: &[&str],
 ) -> DynResult<String> {
     let script_path = release_targets_script_path(repo_root);
-    let script_argument = shell_script_argument(program, &script_path);
     if !script_path.is_file() {
         return Err(format!(
             "missing canonical release target script: {}",
@@ -88,7 +87,7 @@ fn script_output_with_program(
     command.arg("-c");
     command.arg(script_command(function_name, args.len()));
     command.arg("bash");
-    command.arg(script_argument);
+    command.arg(release_targets_script_argument());
     command.args(args);
 
     let output = command.output().map_err(|error| {
@@ -120,17 +119,12 @@ fn script_command(function_name: &str, arg_count: usize) -> String {
     command
 }
 
-fn shell_script_argument(program: &str, script_path: &Path) -> String {
-    let argument = script_path.to_string_lossy().into_owned();
-    if program.eq_ignore_ascii_case("bash") {
-        argument.replace('\\', "/")
-    } else {
-        argument
-    }
-}
-
 fn release_targets_script_path(repo_root: &Path) -> PathBuf {
     repo_root.join("scripts").join("release-targets.sh")
+}
+
+fn release_targets_script_argument() -> &'static str {
+    "scripts/release-targets.sh"
 }
 
 #[cfg(test)]
@@ -192,16 +186,5 @@ release_matrix_json() {
         let error = release_matrix(repo_root.path()).expect_err("failing script should fail");
         assert!(error.to_string().contains("release_matrix_json failed"));
         assert!(error.to_string().contains("status"));
-    }
-
-    #[test]
-    fn shell_script_argument_normalizes_backslashes_for_bash() {
-        let bash_argument =
-            shell_script_argument("bash", Path::new(r"D:\repo\scripts\release-targets.sh"));
-        assert_eq!(bash_argument, "D:/repo/scripts/release-targets.sh");
-
-        let native_argument =
-            shell_script_argument("sh", Path::new(r"D:\repo\scripts\release-targets.sh"));
-        assert_eq!(native_argument, r"D:\repo\scripts\release-targets.sh");
     }
 }
