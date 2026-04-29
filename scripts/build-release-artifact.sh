@@ -193,11 +193,9 @@ main() {
     local package_dir="${staging_root}/${package_dir_name}"
     readonly package_dir
 
-    cleanup() {
-        rm -rf "${staging_root}"
-    }
-
-    trap cleanup EXIT
+    HTMLCUT_RELEASE_ARTIFACT_STAGING_ROOT="${staging_root}"
+    readonly HTMLCUT_RELEASE_ARTIFACT_STAGING_ROOT
+    trap 'rm -rf -- "${HTMLCUT_RELEASE_ARTIFACT_STAGING_ROOT}"' EXIT
 
     mkdir -p "${output_dir}"
     rm -f "${artifact_path}"

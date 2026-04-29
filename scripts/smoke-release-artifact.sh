@@ -143,11 +143,9 @@ main() {
     binary_path="${extracted_package_dir}/${binary_name}"
     readonly binary_path
 
-    cleanup() {
-        rm -rf "${extract_root}"
-    }
-
-    trap cleanup EXIT
+    HTMLCUT_SMOKE_RELEASE_EXTRACT_ROOT="${extract_root}"
+    readonly HTMLCUT_SMOKE_RELEASE_EXTRACT_ROOT
+    trap 'rm -rf -- "${HTMLCUT_SMOKE_RELEASE_EXTRACT_ROOT}"' EXIT
 
     [[ -f "${package_path}" ]] || htmlcut_die "missing package ${package_path}"
 

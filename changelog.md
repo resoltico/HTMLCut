@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The release preflight and closeout guides now recognize GitHub CLI's current Dependabot author
   identity surface (`app/dependabot` as well as `dependabot[bot]`), so post-release dependency
   hygiene matches the live GitHub metadata instead of a stale login spelling.
+- Release packaging and smoke helpers now keep their temporary staging roots alive for the full
+  script lifetime, so standalone macOS release builds no longer abort after writing the artifact
+  during the release-target smoke gate.
 
 ## [5.0.0] - 2026-04-24
 
