@@ -180,6 +180,8 @@ fn release_shell_helpers_normalize_windows_temp_roots() {
             .expect("chmod fake cygpath");
     }
 
+    let fake_bin_for_bash = crate::release::bash_source_argument_for_tests(&fake_bin);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
     let output = bash_command()
         .arg("-c")
         .arg(format!(
@@ -190,8 +192,8 @@ export RUNNER_TEMP='D:\a\_temp'
 source "{repo_root}/scripts/common.sh"
 [[ "$(htmlcut_temp_root)" == "/d/a/_temp" ]]
 "#,
-            fake_bin = fake_bin.display(),
-            repo_root = repo_root.display(),
+            fake_bin = fake_bin_for_bash,
+            repo_root = repo_root_for_bash,
         ))
         .current_dir(repo_root)
         .output()
@@ -210,6 +212,7 @@ fn release_shell_helpers_normalize_windows_source_paths() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
 
     let output = bash_command()
         .arg("-c")
@@ -219,7 +222,7 @@ source "{repo_root}/scripts/common.sh"
 [[ "$(htmlcut_normalize_bash_path 'D:\a\HTMLCut\scripts\release-targets.sh')" == '/d/a/HTMLCut/scripts/release-targets.sh' ]]
 [[ "$(htmlcut_normalize_bash_path 'scripts\release-targets.sh')" == 'scripts/release-targets.sh' ]]
 "#,
-            repo_root = repo_root.display(),
+            repo_root = repo_root_for_bash,
         ))
         .current_dir(repo_root)
         .output()
@@ -244,12 +247,13 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
     let fake_extract_root = temp.path().join("extract-root");
     fs::create_dir_all(&fake_bin).expect("create fake bin");
     let log_path = temp.path().join("extractor.log");
+    let log_path_for_bash = crate::release::bash_source_argument_for_tests(&log_path);
 
     fs::write(
         fake_bin.join("unzip"),
         format!(
             "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'unzip\\n' > \"{}\"\n",
-            log_path.display()
+            log_path_for_bash
         ),
     )
     .expect("write fake unzip");
@@ -257,7 +261,7 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
         fake_bin.join("powershell.exe"),
         format!(
             "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'powershell\\n' > \"{}\"\n",
-            log_path.display()
+            log_path_for_bash
         ),
     )
     .expect("write fake powershell");
