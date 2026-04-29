@@ -169,6 +169,25 @@ mod tests {
     }
 
     #[test]
+    fn release_helpers_execute_the_canonical_registry_from_temp_repos() {
+        let repo_root = tempdir().expect("tempdir");
+        let scripts_dir = repo_root.path().join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+        fs::write(
+            scripts_dir.join("release-targets.sh"),
+            r#"#!/usr/bin/env bash
+release_target_triples() {
+    printf 'ok\n'
+}
+"#,
+        )
+        .expect("write release-targets.sh");
+
+        let triples = release_target_triples(repo_root.path()).expect("release targets");
+        assert_eq!(triples, vec!["ok".to_owned()]);
+    }
+
+    #[test]
     fn release_helpers_report_script_failures() {
         let repo_root = tempdir().expect("tempdir");
         let scripts_dir = repo_root.path().join("scripts");
