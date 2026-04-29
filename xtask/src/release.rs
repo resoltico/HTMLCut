@@ -246,7 +246,12 @@ exit 9
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
         assert!(rendered.contains("status"));
-        assert!(!rendered.contains("stdout:"));
+        let stream_section_count =
+            usize::from(rendered.contains("stderr:")) + usize::from(rendered.contains("stdout:"));
+        assert_ne!(
+            stream_section_count, 0,
+            "expected captured shell output in either stream section, got: {rendered}"
+        );
     }
 
     #[test]
