@@ -8,14 +8,14 @@ use http as url_loader;
 pub(crate) use io::read_stdin_source;
 #[cfg(test)]
 pub(crate) use io::{
-    finish_url_source_from_reader_for_tests, read_file_source, read_limited_to_string,
-    read_stdin_source_from_reader_for_tests,
+    finish_url_source_from_reader_for_tests, read_file_source as read_file_source_from_path,
+    read_limited_to_string, read_stdin_source_from_reader_for_tests,
 };
 use metadata::source_load_failure;
 pub(crate) use metadata::{empty_source_metadata, memory_label, source_metadata};
 pub(crate) use types::{LoadedSource, SourceLoadFailure};
-#[cfg(test)]
-pub(crate) use url_loader::read_url_source;
+#[cfg(all(test, feature = "http-client"))]
+pub(crate) use url_loader::read_url_source as read_url_source_from_href;
 #[cfg(all(test, feature = "http-client"))]
 pub(crate) use url_loader::{
     build_http_agent, content_type_is_obviously_non_html_for_tests,
@@ -58,8 +58,8 @@ pub(crate) fn load_source(
                 load_steps: Vec::new(),
             })
         }
-        SourceInput::Url { .. } => url_loader::read_url_source(source, runtime),
-        SourceInput::File { .. } => io::read_file_source(source, runtime),
+        SourceInput::Url { href } => url_loader::read_url_source(source, href, runtime),
+        SourceInput::File { path } => io::read_file_source(source, path, runtime),
         SourceInput::Stdin => read_stdin_source(source, runtime),
     }
 }

@@ -96,10 +96,9 @@ pub fn remove_dir_if_exists(path: &Path) -> DynResult<()> {
 
 /// Resolves the repository root that contains the `xtask` package.
 pub fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("xtask should live directly under the workspace root")
-        .to_path_buf()
+    let mut repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let _popped = repo_root.pop();
+    repo_root
 }
 
 fn parse_repo_worktree_files(repo_root: &Path, output: &[u8]) -> DynResult<Vec<PathBuf>> {

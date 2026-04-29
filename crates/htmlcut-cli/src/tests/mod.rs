@@ -1,11 +1,17 @@
 //! Internal behavior tests for `htmlcut-cli`'s parsing, preparation, rendering, and execution seams.
 
 use super::*;
+use crate::args::*;
+use crate::error::*;
+use crate::execute::*;
+use crate::metadata::*;
+use crate::prepare::*;
+use crate::render::*;
 use clap::builder::TypedValueParser;
 use clap::{CommandFactory, Parser};
 use htmlcut_core::{
     AttributeName, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
-    DEFAULT_PREVIEW_CHARS, DEFAULT_REGEX_FLAGS, Diagnostic, DiagnosticLevel, ExtractionDefinition,
+    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticCode, DiagnosticLevel, ExtractionDefinition,
     ExtractionRequest, ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode,
     PatternMode, SelectionSpec, SelectorQuery, SourceKind, SourceLoadAction, SourceLoadOutcome,
     SourceLoadStep, SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
@@ -86,6 +92,7 @@ fn known_schema_names() -> std::collections::BTreeSet<String> {
         .map(|descriptor| descriptor.schema_ref.schema_name.to_owned())
         .chain([
             crate::model::CATALOG_REPORT_SCHEMA_NAME.to_owned(),
+            crate::model::ERROR_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),

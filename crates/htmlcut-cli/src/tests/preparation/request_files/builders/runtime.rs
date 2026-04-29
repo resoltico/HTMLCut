@@ -9,6 +9,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
         fetch_preflight: CliFetchPreflightMode::GetOnly,
     })
     .expect("runtime");
@@ -23,6 +24,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
             fetch_preflight: CliFetchPreflightMode::HeadFirst,
         })
         .expect_err("missing input")

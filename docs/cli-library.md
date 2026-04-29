@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: CLI_LIBRARY
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [cli library, htmlcut_cli, run, command, exit codes, report schemas, typed reports, clap command]
   questions: ["what does the public htmlcut-cli crate export?", "when should I use htmlcut_cli::run instead of htmlcut_core?", "how do I consume typed catalog or schema reports from htmlcut-cli?"]
@@ -94,6 +94,17 @@ Source inspection:
 - `SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME`
 - `SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION`
 - `SourceInspectionCommandReport`
+
+Structured CLI failures:
+
+- `CliErrorCode`
+- `ERROR_COMMAND_REPORT_SCHEMA_NAME`
+- `ERROR_COMMAND_REPORT_SCHEMA_VERSION`
+- `ErrorCommandReport`
+- `ErrorReportBody`
+- `ErrorReportCategory`
+- `ErrorReportCode`
+- `ErrorReportDiagnostic`
 
 These types are useful when a Rust caller wants to deserialize or inspect the exact CLI-facing
 documents rather than the lower-level `htmlcut_core` result types.

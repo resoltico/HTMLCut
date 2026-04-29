@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use schemars::JsonSchema;
@@ -12,7 +12,7 @@ use super::super::stable_json::digest_stable_json_omitting_field;
 use super::plan::{OutputKind, SelectionMode, StrategyKind};
 use super::shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
-    RESULT_SCHEMA_VERSION, validate_schema_identity,
+    RESULT_SCHEMA_VERSION, validate_schema_identity, validate_sha256_hex,
 };
 
 /// Source summary carried in one successful extraction result.
@@ -149,11 +149,11 @@ pub struct SelectedMatch {
 /// Successful extraction result owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct InteropResult {
-    /// Frozen schema identity.
+    /// Schema identity.
     pub schema_name: String,
-    /// Frozen schema version.
+    /// Schema version.
     pub schema_version: u32,
-    /// Frozen interoperability profile identifier.
+    /// Interoperability profile identifier.
     pub interop_profile: String,
     /// Digest of the exact validated plan document.
     pub plan_digest_sha256: String,
@@ -167,8 +167,8 @@ pub struct InteropResult {
     pub candidate_count: usize,
     /// Source summary.
     pub source: ResultSource,
-    /// Exactly one selected match.
-    pub selected_match: SelectedMatch,
+    /// One or more selected matches.
+    pub selected_matches: Vec<SelectedMatch>,
     /// Warning and informational diagnostics emitted during extraction.
     pub diagnostics: Vec<Diagnostic>,
     /// Reserved extension object ignored by v1 consumers.
@@ -177,11 +177,11 @@ pub struct InteropResult {
 }
 
 impl InteropResult {
-    /// Builds one successful extraction result with the frozen v1 schema identity.
+    /// Builds one successful extraction result with the v1 schema identity.
     pub fn new(
         execution: ResultExecution,
         source: ResultSource,
-        selected_match: SelectedMatch,
+        selected_matches: Vec<SelectedMatch>,
         diagnostics: Vec<Diagnostic>,
     ) -> Self {
         Self {
@@ -194,14 +194,13 @@ impl InteropResult {
             selection_mode: execution.selection_mode,
             candidate_count: execution.candidate_count,
             source,
-            selected_match,
+            selected_matches,
             diagnostics,
             extensions: None,
         }
     }
 
-    /// Validates the schema identity and semantic invariants for this result.
-    pub fn validate(&self) -> Result<(), ContractError> {
+    fn validate_body(&self) -> Result<(), ContractError> {
         validate_schema_identity(
             &self.schema_name,
             RESULT_SCHEMA_NAME,
@@ -210,33 +209,58 @@ impl InteropResult {
             &self.interop_profile,
             INTEROP_V1_PROFILE,
         )?;
+        validate_sha256_hex("plan_digest_sha256", &self.plan_digest_sha256)?;
 
         if self.candidate_count == 0 {
             return Err(ContractError::ZeroCandidateCount);
         }
 
-        let selected = self.selected_match.candidate_index.get();
-        if selected > self.candidate_count {
-            return Err(ContractError::SelectedCandidateOutOfRange {
-                selected,
+        if self.selected_matches.is_empty() {
+            return Err(ContractError::ZeroSelectedMatchCount);
+        }
+
+        let expected_selected_matches = match self.selection_mode {
+            SelectionMode::Single | SelectionMode::First | SelectionMode::Nth => 1,
+            SelectionMode::All => self.candidate_count,
+        };
+        if self.selected_matches.len() != expected_selected_matches {
+            return Err(ContractError::SelectionModeCountMismatch {
+                selection_mode: self.selection_mode,
+                selected_match_count: self.selected_matches.len(),
+                expected_selected_matches,
                 candidate_count: self.candidate_count,
             });
         }
 
-        if self.selected_match.metadata.kind() != self.strategy_kind {
-            return Err(ContractError::MetadataKindMismatch {
-                strategy_kind: self.strategy_kind,
-                metadata_kind: self.selected_match.metadata.kind(),
-            });
-        }
+        let mut seen_candidates = BTreeSet::new();
+        for selected_match in &self.selected_matches {
+            let selected = selected_match.candidate_index.get();
+            if selected > self.candidate_count {
+                return Err(ContractError::SelectedCandidateOutOfRange {
+                    selected,
+                    candidate_count: self.candidate_count,
+                });
+            }
 
-        if self.selected_match.metadata.candidate_count() != self.candidate_count
-            || self.selected_match.metadata.candidate_index() != self.selected_match.candidate_index
-        {
-            return Err(ContractError::SelectedCandidateOutOfRange {
-                selected,
-                candidate_count: self.candidate_count,
-            });
+            if !seen_candidates.insert(selected) {
+                return Err(ContractError::DuplicateSelectedCandidate { selected });
+            }
+
+            if selected_match.metadata.kind() != self.strategy_kind {
+                return Err(ContractError::MetadataKindMismatch {
+                    strategy_kind: self.strategy_kind,
+                    metadata_kind: selected_match.metadata.kind(),
+                });
+            }
+
+            if selected_match.metadata.candidate_count() != self.candidate_count
+                || selected_match.metadata.candidate_index() != selected_match.candidate_index
+            {
+                return Err(ContractError::SelectedCandidateOutOfRange {
+                    selected,
+                    candidate_count: self.candidate_count,
+                });
+            }
         }
 
         if self
@@ -250,7 +274,24 @@ impl InteropResult {
         Ok(())
     }
 
-    /// Serializes this result with the frozen stable JSON profile.
+    /// Validates the schema identity, semantic invariants, and canonical digest for this result.
+    pub fn validate(&self) -> Result<(), ContractError> {
+        self.validate_body()?;
+        validate_sha256_hex("result_digest_sha256", &self.result_digest_sha256)?;
+
+        let expected = digest_stable_json_omitting_field(self, "result_digest_sha256")?;
+        if self.result_digest_sha256 != expected {
+            return Err(ContractError::DigestMismatch {
+                field: "result_digest_sha256",
+                expected,
+                received: self.result_digest_sha256.clone(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Serializes this result with the stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         super::super::stable_json::stable_json_v1(self)
@@ -258,7 +299,7 @@ impl InteropResult {
 
     /// Computes the SHA-256 digest of this result with `result_digest_sha256` omitted.
     pub fn digest_sha256(&self) -> Result<String, ContractError> {
-        self.validate()?;
+        self.validate_body()?;
         digest_stable_json_omitting_field(self, "result_digest_sha256")
     }
 
@@ -269,11 +310,11 @@ impl InteropResult {
     }
 }
 
-/// Frozen extraction error vocabulary owned by HTMLCut.
+/// Extraction error vocabulary owned by HTMLCut.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
-    /// The plan was invalid for the frozen interop profile.
+    /// The plan was invalid for the interop profile.
     PlanInvalid,
     /// No candidate matched the requested strategy and selection.
     NoMatch,
@@ -286,17 +327,17 @@ pub enum ErrorCode {
 /// Typed extraction error document owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct InteropError {
-    /// Frozen schema identity.
+    /// Schema identity.
     pub schema_name: String,
-    /// Frozen schema version.
+    /// Schema version.
     pub schema_version: u32,
-    /// Frozen interoperability profile identifier.
+    /// Interoperability profile identifier.
     pub interop_profile: String,
     /// Digest of the exact validated plan document.
     pub plan_digest_sha256: String,
     /// Digest of this exact error document with this field omitted.
     pub error_digest_sha256: String,
-    /// Frozen error code.
+    /// Interop error code.
     pub error_code: ErrorCode,
     /// Human-readable error summary.
     pub message: String,
@@ -313,7 +354,7 @@ pub struct InteropError {
 }
 
 impl InteropError {
-    /// Builds one extraction error with the frozen v1 schema identity.
+    /// Builds one extraction error with the v1 schema identity.
     pub fn new(
         plan_digest_sha256: impl Into<String>,
         error_code: ErrorCode,
@@ -337,8 +378,7 @@ impl InteropError {
         }
     }
 
-    /// Validates the schema identity for this error document.
-    pub fn validate(&self) -> Result<(), ContractError> {
+    fn validate_body(&self) -> Result<(), ContractError> {
         validate_schema_identity(
             &self.schema_name,
             ERROR_SCHEMA_NAME,
@@ -346,10 +386,29 @@ impl InteropError {
             ERROR_SCHEMA_VERSION,
             &self.interop_profile,
             INTEROP_V1_PROFILE,
-        )
+        )?;
+        validate_sha256_hex("plan_digest_sha256", &self.plan_digest_sha256)?;
+        Ok(())
     }
 
-    /// Serializes this error with the frozen stable JSON profile.
+    /// Validates the schema identity and canonical digest for this error document.
+    pub fn validate(&self) -> Result<(), ContractError> {
+        self.validate_body()?;
+        validate_sha256_hex("error_digest_sha256", &self.error_digest_sha256)?;
+
+        let expected = digest_stable_json_omitting_field(self, "error_digest_sha256")?;
+        if self.error_digest_sha256 != expected {
+            return Err(ContractError::DigestMismatch {
+                field: "error_digest_sha256",
+                expected,
+                received: self.error_digest_sha256.clone(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Serializes this error with the stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         super::super::stable_json::stable_json_v1(self)
@@ -357,7 +416,7 @@ impl InteropError {
 
     /// Computes the SHA-256 digest of this error with `error_digest_sha256` omitted.
     pub fn digest_sha256(&self) -> Result<String, ContractError> {
-        self.validate()?;
+        self.validate_body()?;
         digest_stable_json_omitting_field(self, "error_digest_sha256")
     }
 

@@ -28,6 +28,7 @@ pub(crate) use self::raw_args::{
 use crate::args::{Cli, Commands, InspectCommands};
 use crate::error::usage_error;
 use crate::metadata::version_banner;
+use crate::model::CliErrorCode;
 
 pub(crate) struct ExecutionOutcome {
     pub(crate) stdout: Option<String>,
@@ -70,7 +71,7 @@ where
                 command_name_from_raw_args(&raw_args),
                 prefers_json_errors,
                 None,
-                usage_error("CLI_PARSE_ERROR", clap_error_message(&error)),
+                usage_error(CliErrorCode::ParseError, clap_error_message(&error)),
             );
             return write_outcome(outcome, stdout, stderr);
         }

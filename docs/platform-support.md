@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: PLATFORM
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
@@ -110,6 +110,10 @@ The target policy is implemented in:
 - `scripts/smoke-release-artifact.sh`
 - `scripts/publish-github-release.sh`
 - `scripts/verify-github-release.sh`
+
+Use `./scripts/release-targets.sh --help` for the local inspection interface, then
+`./scripts/release-targets.sh triples` or `./scripts/release-targets.sh matrix-json` when you need
+the canonical target list without reading the implementation.
 
 Do not change the public target matrix in only one of those places. The release system must stay
 derived from the same target policy.

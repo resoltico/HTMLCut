@@ -14,11 +14,9 @@ pub(super) fn local_link_errors(
     let mut errors = Vec::new();
 
     for capture in link_pattern.captures_iter(text) {
-        let target_match = capture
+        let target = capture
             .get(1)
-            .expect("link regex should always capture the target");
-        let target = target_match
-            .as_str()
+            .map_or("", |target_match| target_match.as_str())
             .trim()
             .trim_matches(|character| character == '<' || character == '>');
         let target = target.split('#').next().unwrap_or_default();
@@ -37,10 +35,7 @@ pub(super) fn local_link_errors(
             continue;
         }
 
-        let resolved = doc_path
-            .parent()
-            .expect("markdown file should have a parent directory")
-            .join(target);
+        let resolved = doc_path.parent().unwrap_or(Path::new("")).join(target);
         if !resolved.exists() {
             errors.push(format!(
                 "{display_path} links to missing local path: {target}"

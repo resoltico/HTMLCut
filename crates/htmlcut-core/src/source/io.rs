@@ -1,12 +1,12 @@
 use std::fs;
 use std::io::{self, Read};
+use std::path::Path;
 
 use serde_json::json;
 
-use crate::contracts::{
-    Diagnostic, RuntimeOptions, SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep,
-    SourceRequest,
-};
+use crate::contracts::{Diagnostic, RuntimeOptions, SourceKind, SourceLoadStep, SourceRequest};
+#[cfg(any(test, feature = "http-client"))]
+use crate::contracts::{SourceLoadAction, SourceLoadOutcome};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 use crate::format_byte_size;
 
@@ -15,11 +15,9 @@ use super::{LoadedSource, SourceLoadFailure};
 
 pub(crate) fn read_file_source(
     source: &SourceRequest,
+    path: &Path,
     runtime: &RuntimeOptions,
 ) -> Result<LoadedSource, SourceLoadFailure> {
-    let crate::contracts::SourceInput::File { path } = &source.input else {
-        unreachable!("read_file_source should only be called for file sources");
-    };
     let source_value = path.to_string_lossy().into_owned();
     let metadata = fs::metadata(path).map_err(|error| {
         source_load_failure(
@@ -160,6 +158,7 @@ pub(crate) fn read_limited_to_string(
     })
 }
 
+#[cfg(any(test, feature = "http-client"))]
 pub(super) fn finish_url_source_from_reader(
     source: &SourceRequest,
     runtime: &RuntimeOptions,

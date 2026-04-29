@@ -5,6 +5,7 @@ use htmlcut_core::{
 
 use crate::args::{CliPatternMode, SelectionArgs, SourceArgs};
 use crate::error::{CliError, usage_error};
+use crate::model::CliErrorCode;
 
 use super::output::resolve_regex_flags;
 use super::selection::resolve_selection_spec;
@@ -84,10 +85,10 @@ fn build_slice_pattern(
 
 fn parse_selector_query(selector: String) -> Result<SelectorQuery, CliError> {
     SelectorQuery::new(selector)
-        .map_err(|error| usage_error("CLI_SELECTOR_INVALID", error.to_string()))
+        .map_err(|error| usage_error(CliErrorCode::SelectorInvalid, error.to_string()))
 }
 
 fn parse_slice_boundary(boundary: String) -> Result<SliceBoundary, CliError> {
     SliceBoundary::new(boundary)
-        .map_err(|error| usage_error("CLI_SLICE_BOUNDARY_INVALID", error.to_string()))
+        .map_err(|error| usage_error(CliErrorCode::SliceBoundaryInvalid, error.to_string()))
 }

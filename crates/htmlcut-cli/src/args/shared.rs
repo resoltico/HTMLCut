@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use htmlcut_core::{DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS};
+use htmlcut_core::{
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
+    DEFAULT_PREVIEW_CHARS,
+};
 
 use super::{
     CliFetchPreflightMode, CliInspectOutputMode, CliMatchMode, CliOutputMode, CliValueMode,
@@ -49,13 +52,17 @@ pub(crate) struct SourceArgs {
     #[arg(short = 'b', long, value_name = "URL")]
     pub(crate) base_url: Option<String>,
 
-    /// Refuse sources larger than this limit. Accepts raw bytes or `KB`, `MB`, and `GB`.
+    /// Refuse sources larger than this limit. Accepts raw bytes or `KiB`, `MiB`, and `GiB`.
     #[arg(long, default_value_t = DEFAULT_MAX_BYTES.to_string(), value_name = "SIZE")]
     pub(crate) max_bytes: String,
 
     /// HTTP fetch timeout in milliseconds for URL inputs.
     #[arg(long, default_value_t = DEFAULT_FETCH_TIMEOUT_MS, value_name = "MILLISECONDS")]
     pub(crate) fetch_timeout_ms: u64,
+
+    /// HTTP connect timeout in milliseconds for URL inputs.
+    #[arg(long, default_value_t = DEFAULT_FETCH_CONNECT_TIMEOUT_MS, value_name = "MILLISECONDS")]
+    pub(crate) fetch_connect_timeout_ms: u64,
 
     /// Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected
     /// or broken, or skip the HEAD preflight entirely.

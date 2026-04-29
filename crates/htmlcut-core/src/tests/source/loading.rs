@@ -64,6 +64,14 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
         agent.config().tls_config().root_certs(),
         RootCerts::PlatformVerifier
     ));
+    assert_eq!(
+        agent.config().timeouts().connect,
+        Some(std::time::Duration::from_millis(5_000))
+    );
+    assert_eq!(
+        agent.config().timeouts().global,
+        Some(std::time::Duration::from_millis(DEFAULT_FETCH_TIMEOUT_MS))
+    );
 }
 #[test]
 fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
@@ -190,7 +198,21 @@ fn url_loading_accepts_headerless_and_xhtml_success_responses() {
     assert!(!content_type_is_obviously_non_html_for_tests(""));
     assert!(!content_type_is_obviously_non_html_for_tests("text/html"));
     assert!(!content_type_is_obviously_non_html_for_tests(
+        "text/html; charset=utf-8"
+    ));
+    assert!(!content_type_is_obviously_non_html_for_tests(
+        "text/html;charset=UTF-8"
+    ));
+    assert!(!content_type_is_obviously_non_html_for_tests(
         "application/xhtml+xml"
     ));
+    assert!(!content_type_is_obviously_non_html_for_tests(
+        "application/xhtml+xml; charset=utf-8"
+    ));
+    assert!(content_type_is_obviously_non_html_for_tests("text/plain"));
+    assert!(content_type_is_obviously_non_html_for_tests(
+        "application/json"
+    ));
+    assert!(content_type_is_obviously_non_html_for_tests("text/xml"));
     assert!(content_type_is_obviously_non_html_for_tests("image/png"));
 }

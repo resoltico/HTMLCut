@@ -46,6 +46,7 @@ fn write_schema_inventory_doc(repo_root: &Path) {
             htmlcut_cli::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             htmlcut_cli::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             htmlcut_cli::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+            htmlcut_cli::ERROR_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
         ])
         .collect::<std::collections::BTreeSet<_>>();
     let schemas = schema_names

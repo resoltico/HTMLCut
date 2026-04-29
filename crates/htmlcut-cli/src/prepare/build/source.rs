@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::args::SourceArgs;
 use crate::error::{CliError, usage_error};
+use crate::model::CliErrorCode;
 
 use crate::prepare::required_cli_value;
 
@@ -39,6 +40,7 @@ pub(crate) fn build_runtime(args: &SourceArgs) -> Result<RuntimeOptions, CliErro
     Ok(RuntimeOptions {
         max_bytes: parse_byte_size(&args.max_bytes)?,
         fetch_timeout_ms: args.fetch_timeout_ms,
+        fetch_connect_timeout_ms: args.fetch_connect_timeout_ms,
         fetch_preflight: args.fetch_preflight,
     })
 }
@@ -50,15 +52,15 @@ pub(crate) fn validate_base_url(base_url: Option<&str>) -> Result<Option<Url>, C
 
     Ok(Some(validate_http_url(
         value,
-        "CLI_BASE_URL_INVALID",
-        "CLI_BASE_URL_SCHEME_INVALID",
+        CliErrorCode::BaseUrlInvalid,
+        CliErrorCode::BaseUrlSchemeInvalid,
     )?))
 }
 
 pub(crate) fn validate_preview_chars(preview_chars: usize) -> Result<NonZeroUsize, CliError> {
     NonZeroUsize::new(preview_chars).ok_or_else(|| {
         usage_error(
-            "CLI_PREVIEW_CHARS_INVALID",
+            CliErrorCode::PreviewCharsInvalid,
             "--preview-chars must be greater than zero.",
         )
     })
@@ -72,9 +74,9 @@ pub(crate) fn parse_byte_size(value: &str) -> Result<usize, CliError> {
     let (amount_text, unit_text) = normalized.split_at(split_at);
     let multiplier = match unit_text.trim() {
         "" | "b" => 1u128,
-        "kb" => KIBIBYTE,
-        "mb" => MEBIBYTE,
-        "gb" => GIBIBYTE,
+        "kib" => KIBIBYTE,
+        "mib" => MEBIBYTE,
+        "gib" => GIBIBYTE,
         _ => return Err(invalid_byte_size(value)),
     };
 
@@ -142,14 +144,14 @@ fn decimal_scale(fractional_digits: usize, original: &str) -> Result<u128, CliEr
 
 fn invalid_byte_size(value: &str) -> CliError {
     usage_error(
-        "CLI_BYTE_SIZE_INVALID",
+        CliErrorCode::ByteSizeInvalid,
         format!("Invalid byte size: {value}"),
     )
 }
 
 fn too_large_byte_size(value: &str) -> CliError {
     usage_error(
-        "CLI_BYTE_SIZE_INVALID",
+        CliErrorCode::ByteSizeInvalid,
         format!("Byte size is too large: {value}"),
     )
 }
@@ -157,15 +159,15 @@ fn too_large_byte_size(value: &str) -> CliError {
 fn validate_input_url(value: &str) -> Result<Url, CliError> {
     validate_http_url(
         value,
-        "CLI_SOURCE_URL_INVALID",
-        "CLI_SOURCE_URL_SCHEME_INVALID",
+        CliErrorCode::SourceUrlInvalid,
+        CliErrorCode::SourceUrlSchemeInvalid,
     )
 }
 
 fn validate_http_url(
     value: &str,
-    invalid_code: &'static str,
-    invalid_scheme_code: &'static str,
+    invalid_code: CliErrorCode,
+    invalid_scheme_code: CliErrorCode,
 ) -> Result<Url, CliError> {
     let parsed = Url::parse(value)
         .map_err(|_| usage_error(invalid_code, format!("Invalid URL: {value}")))?;

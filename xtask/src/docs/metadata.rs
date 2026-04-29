@@ -48,9 +48,7 @@ pub(crate) fn expected_afad_version(repo_root: &Path) -> DynResult<String> {
 }
 
 pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> MetadataStyle {
-    let relative = path
-        .strip_prefix(repo_root)
-        .expect("doc path should stay inside repo root");
+    let relative = path.strip_prefix(repo_root).unwrap_or(path);
     if relative
         .components()
         .next()
@@ -221,11 +219,15 @@ fn parse_metadata_field(line: &str, key: &str) -> Option<String> {
 }
 
 fn parse_protocol_version(line: &str) -> Option<String> {
-    let value = line.trim().strip_prefix("Version:")?.trim();
+    let value = line
+        .trim()
+        .strip_prefix("Version:")
+        .or_else(|| line.trim().strip_prefix("**Version:**"))?
+        .trim();
     value
         .strip_prefix('`')
         .and_then(|value| value.strip_suffix('`'))
-        .map(str::to_owned)
+        .map_or_else(|| Some(value.to_owned()), |value| Some(value.to_owned()))
 }
 
 impl MetadataStyle {

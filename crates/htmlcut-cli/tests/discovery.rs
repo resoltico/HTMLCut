@@ -153,6 +153,11 @@ fn schema_json_surfaces_registry_for_core_cli_and_interop() {
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner_surface == "htmlcut-cli"
     }));
+    assert!(report.schemas.iter().any(|schema| {
+        schema.schema_name == ERROR_COMMAND_REPORT_SCHEMA_NAME
+            && schema.schema_version == ERROR_COMMAND_REPORT_SCHEMA_VERSION
+            && schema.owner_surface == "htmlcut-cli"
+    }));
 }
 
 #[test]

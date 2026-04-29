@@ -98,7 +98,7 @@ fn is_markdown_doc(path: &Path) -> bool {
 
 pub(super) fn repo_relative_display(repo_root: &Path, path: &Path) -> String {
     path.strip_prefix(repo_root)
-        .expect("path should stay inside repo root")
+        .unwrap_or(path)
         .to_string_lossy()
         .into_owned()
 }

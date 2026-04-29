@@ -88,7 +88,21 @@ extract_release_archive() {
     esac
 }
 
+print_usage() {
+    local command_name="$1"
+
+    cat <<EOF
+Usage: ${command_name} <target-triple>
+
+Extract one maintained ./dist release archive and verify the packaged binary and legal files.
+
+Supported target triples:
+$(release_target_triples | sed 's/^/  /')
+EOF
+}
+
 main() {
+    local command_name="${BASH_SOURCE[0]}"
     script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
     readonly script_dir
     repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
@@ -96,10 +110,17 @@ main() {
     # shellcheck disable=SC1091
     . "${script_dir}/release-targets.sh"
 
+    if htmlcut_is_help_flag "${1:-}"; then
+        print_usage "${command_name}"
+        return 0
+    fi
+
     target_triple="${1:-}"
     readonly target_triple
-    [[ -n "${target_triple}" ]] || htmlcut_die "target triple is required"
-    is_supported_release_target "${target_triple}" || htmlcut_die "unsupported release target triple: ${target_triple}"
+    [[ -n "${target_triple}" ]] || htmlcut_usage_error "${command_name}" "target triple is required"
+    is_supported_release_target "${target_triple}" || htmlcut_usage_error \
+        "${command_name}" \
+        "unsupported release target triple: ${target_triple}"
 
     version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
     readonly version

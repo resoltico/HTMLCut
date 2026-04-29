@@ -70,7 +70,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("option --regex-flags <REGEX_FLAGS> | conditional (allowed only when --pattern regex is used)"));
     assert!(stdout.contains("option --output-file <PATH> | optional"));
     assert!(stdout.contains(
-        "For --value outer-html, HTMLCut returns the full outer matched range including both boundaries."
+        "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely."
     ));
     assert!(stderr.is_empty());
 

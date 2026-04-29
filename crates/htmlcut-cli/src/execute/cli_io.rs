@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::EXIT_CODE_OUTPUT;
 use crate::error::CliError;
+use crate::model::CliErrorCode;
 
 use super::ExecutionOutcome;
 
@@ -55,7 +56,7 @@ pub(crate) fn write_request_definition(
     if let Some(parent) = request_definition_parent_dir(&request_definition_output.path) {
         fs::create_dir_all(parent).map_err(|error| {
             crate::error::output_error(
-                "CLI_REQUEST_FILE_WRITE_FAILED",
+                CliErrorCode::RequestFileWriteFailed,
                 format!(
                     "Could not create request file directory {}: {error}",
                     parent.display()
@@ -64,17 +65,17 @@ pub(crate) fn write_request_definition(
         })?;
     }
 
-    fs::write(
-        &request_definition_output.path,
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(&request_definition_output.definition)
-                .expect("request definitions should always serialize"),
+    let definition = crate::render::render_json_string(
+        &request_definition_output.definition,
+        &format!(
+            "request definition {}",
+            request_definition_output.path.display()
         ),
-    )
-    .map_err(|error| {
+    )?;
+
+    fs::write(&request_definition_output.path, format!("{definition}\n")).map_err(|error| {
         crate::error::output_error(
-            "CLI_REQUEST_FILE_WRITE_FAILED",
+            CliErrorCode::RequestFileWriteFailed,
             format!(
                 "Could not write request file {}: {error}",
                 request_definition_output.path.display(),

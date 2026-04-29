@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: RELEASE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -144,7 +144,7 @@ Then verify:
 - `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and
   release expectations.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
-- `docs/versioning-policy.md` still matches the shipped contract policy, frozen interop model, and
+- `docs/versioning-policy.md` still matches the shipped contract policy, interop model, and
   semver-baseline rules.
 - `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v1.md` still match the shipped
   surfaces.
@@ -183,10 +183,12 @@ gh pr list --state open \
   --json number,title,url,headRefName,mergeStateStatus,isDraft,author,statusCheckRollup
 ```
 
-If any open PR is authored by `dependabot[bot]`, decide up front whether it changes release
-machinery, release assets, or release-critical dependencies. If it does, land or reject it before
-cutting the release branch. If it does not, carry that decision forward and complete Step 10
-before ending the release session.
+If any open PR is authored by Dependabot, decide up front whether it changes release machinery,
+release assets, or release-critical dependencies. Depending on the `gh` endpoint, that author may
+appear as `dependabot[bot]` or `app/dependabot`; treat either login as the same automation owner.
+If it does change release-critical surfaces, land or reject it before cutting the release branch.
+If it does not, carry that decision forward and complete Step 10 before ending the release
+session.
 
 ## 2. Release Branch
 

@@ -283,6 +283,17 @@ fn expected_afad_version_reads_and_validates_the_protocol_file() {
 
     fs::write(
         repo_root.path().join(".codex").join("PROTOCOL_AFAD.md"),
+        "# PROTOCOL_AFAD.md — Agent-First Documentation Protocol\n\n**Version:** 4.1\n",
+    )
+    .expect("write bold protocol");
+    assert_eq!(
+        crate::docs::expected_afad_version_for_tests(repo_root.path())
+            .expect("expected bold AFAD version"),
+        "4.1"
+    );
+
+    fs::write(
+        repo_root.path().join(".codex").join("PROTOCOL_AFAD.md"),
         "# PROTOCOL_AFAD.md\n\nProtocol: `AGENT_FIRST_DOCUMENTATION`\n",
     )
     .expect("write malformed protocol");

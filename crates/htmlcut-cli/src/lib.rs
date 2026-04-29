@@ -31,11 +31,14 @@ pub use model::{
     BundlePaths, CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogAvailability,
     CatalogCommandContract, CatalogCommandReport, CatalogCondition, CatalogConditionalDefault,
     CatalogConstraint, CatalogContractSurface, CatalogOperationReport, CatalogParameterKind,
-    CatalogParameterRequirement, CatalogParameterSpec, EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
-    EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION, ExtractionCommandReport,
-    SCHEMA_COMMAND_REPORT_SCHEMA_NAME, SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
-    SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-    SchemaCommandReport, SchemaDocumentReport, SchemaRefReport, SourceInspectionCommandReport,
+    CatalogParameterRequirement, CatalogParameterSpec, CliErrorCode,
+    ERROR_COMMAND_REPORT_SCHEMA_NAME, ERROR_COMMAND_REPORT_SCHEMA_VERSION,
+    EXTRACTION_COMMAND_REPORT_SCHEMA_NAME, EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
+    ErrorCommandReport, ErrorReportBody, ErrorReportCategory, ErrorReportCode,
+    ErrorReportDiagnostic, ExtractionCommandReport, SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
+    SCHEMA_COMMAND_REPORT_SCHEMA_VERSION, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
+    SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SchemaCommandReport, SchemaDocumentReport,
+    SchemaRefReport, SourceInspectionCommandReport,
 };
 
 /// Builds the canonical HTMLCut clap command tree for tooling and docs-contract validation.
@@ -44,16 +47,3 @@ pub fn command() -> Command {
 
     args::Cli::command()
 }
-
-#[cfg(test)]
-pub(crate) use args::*;
-#[cfg(test)]
-pub(crate) use error::*;
-#[cfg(test)]
-pub(crate) use execute::*;
-#[cfg(test)]
-pub(crate) use metadata::*;
-#[cfg(test)]
-pub(crate) use prepare::*;
-#[cfg(test)]
-pub(crate) use render::*;

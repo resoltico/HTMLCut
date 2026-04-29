@@ -19,11 +19,13 @@ pub(crate) fn render_attribute_summary(attributes: &BTreeMap<String, String>) ->
     )
 }
 
+pub(crate) fn format_range_summary(range: &Range) -> String {
+    format!("{}..{}", range.start, range.end)
+}
+
+#[cfg(test)]
 pub(crate) fn render_range_summary(range: Option<&Range>) -> Option<String> {
-    let range = range?;
-    let start = u64::try_from(range.start).ok()?;
-    let end = u64::try_from(range.end).ok()?;
-    Some(format!("{start}..{end}"))
+    range.map(format_range_summary)
 }
 
 pub(crate) fn compact_inline_preview(input: &str, preview_chars: usize) -> String {

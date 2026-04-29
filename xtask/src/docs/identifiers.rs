@@ -133,6 +133,7 @@ pub(super) fn known_schema_names() -> BTreeSet<&'static str> {
     names.insert(htmlcut_cli::SCHEMA_COMMAND_REPORT_SCHEMA_NAME);
     names.insert(htmlcut_cli::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME);
     names.insert(htmlcut_cli::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME);
+    names.insert(htmlcut_cli::ERROR_COMMAND_REPORT_SCHEMA_NAME);
     names
 }
 

@@ -5,6 +5,21 @@ htmlcut_die() {
     exit 1
 }
 
+htmlcut_is_help_flag() {
+    local candidate="${1:-}"
+
+    [[ "${candidate}" == "-h" || "${candidate}" == "--help" ]]
+}
+
+htmlcut_usage_error() {
+    local command_name="$1"
+    local message="$2"
+
+    printf 'error: %s\n' "${message}" >&2
+    printf 'Run %s --help for usage.\n' "${command_name}" >&2
+    exit 1
+}
+
 htmlcut_resolve_script_dir() {
     local source_path="$1"
 

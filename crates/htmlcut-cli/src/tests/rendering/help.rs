@@ -10,14 +10,14 @@ use crate::lookup::operation_contract;
 
 #[test]
 fn help_rendering_helpers_surface_contract_errors_without_panicking() {
-    let error = internal_error("CLI_CONTRACT_MISSING", "missing help contract");
+    let error = internal_error(CliErrorCode::ContractMissing, "missing help contract");
 
     assert_eq!(
         resolve_cached_help_text_for_tests(Ok("ready".to_owned())),
         "ready"
     );
     let fallback = resolve_cached_help_text_for_tests(Err(internal_error(
-        "CLI_CONTRACT_MISSING",
+        CliErrorCode::ContractMissing,
         "missing cached help",
     )));
     assert!(fallback.contains("Internal HTMLCut CLI contract error."));
@@ -25,7 +25,10 @@ fn help_rendering_helpers_surface_contract_errors_without_panicking() {
 
     assert_eq!(
         build_operation_long_about_from_sources_for_tests(
-            Err(internal_error("CLI_CONTRACT_MISSING", "missing contract")),
+            Err(internal_error(
+                CliErrorCode::ContractMissing,
+                "missing contract",
+            )),
             Ok(CliHelpDocument {
                 sections: Vec::new(),
                 examples: Vec::new(),
@@ -46,7 +49,7 @@ fn help_rendering_helpers_surface_contract_errors_without_panicking() {
     );
     assert_eq!(
         operation_examples_after_help_from_document_for_tests(Err(internal_error(
-            "CLI_CONTRACT_MISSING",
+            CliErrorCode::ContractMissing,
             "missing examples",
         )))
         .expect_err("missing examples should fail")

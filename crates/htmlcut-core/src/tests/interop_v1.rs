@@ -10,6 +10,9 @@ use crate::result::{
 };
 use std::collections::BTreeMap;
 
+const TEST_PLAN_DIGEST_SHA256: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 fn selector_plan() -> Plan {
     Plan::new(
         PlanStrategy::css_selector(selector_query("article")),
@@ -41,24 +44,37 @@ fn delimiter_plan() -> Plan {
     )
 }
 
-fn selector_selected_match() -> SelectedMatch {
+fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) -> SelectedMatch {
+    let candidate_index = NonZeroUsize::new(candidate_index).expect("candidate index");
     SelectedMatch {
-        candidate_index: NonZeroUsize::new(1).expect("candidate index"),
+        candidate_index,
         value_kind: OutputKind::Text,
         value: "Hello".to_owned(),
         comparison_input_text: "Hello".to_owned(),
         inner_html: Some("Hello".to_owned()),
         outer_html: Some("<article>Hello</article>".to_owned()),
         metadata: SelectedMatchMetadata::CssSelector {
-            candidate_count: 1,
-            candidate_index: NonZeroUsize::new(1).expect("candidate index"),
+            candidate_count,
+            candidate_index,
             path: "html:nth-of-type(1) > body:nth-of-type(1) > article:nth-of-type(1)".to_owned(),
             tag_name: "article".to_owned(),
         },
     }
 }
 
-fn selector_core_match(index: usize, candidate_index: usize) -> ExtractionMatch {
+fn selector_selected_match() -> SelectedMatch {
+    selector_selected_match_with(1, 1)
+}
+
+fn selector_selected_matches() -> Vec<SelectedMatch> {
+    vec![selector_selected_match()]
+}
+
+fn selector_core_match(
+    index: usize,
+    candidate_index: usize,
+    candidate_count: usize,
+) -> ExtractionMatch {
     ExtractionMatch {
         index,
         path: Some(format!("article:nth-of-type({index})")),
@@ -72,7 +88,7 @@ fn selector_core_match(index: usize, candidate_index: usize) -> ExtractionMatch 
         text: Some("Hello".to_owned()),
         preview: "Hello".to_owned(),
         metadata: ExtractionMatchMetadata::Selector(SelectorMatchMetadata {
-            candidate_count: index,
+            candidate_count,
             candidate_index,
             path: format!("article:nth-of-type({index})"),
             tag_name: "article".to_owned(),

@@ -1,18 +1,18 @@
 use thiserror::Error;
 
-/// Frozen interop profile identifier for v1.
+/// Interop profile identifier for v1.
 pub const INTEROP_V1_PROFILE: &str = "htmlcut-v1";
-/// Frozen schema name for the extraction plan.
+/// Schema name for the extraction plan.
 pub const PLAN_SCHEMA_NAME: &str = "htmlcut.plan";
-/// Frozen schema name for the extraction result.
+/// Schema name for the extraction result.
 pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
-/// Frozen schema name for the extraction error.
+/// Schema name for the extraction error.
 pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
-/// Frozen schema version for the extraction plan.
-pub const PLAN_SCHEMA_VERSION: u32 = 1;
-/// Frozen schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 1;
-/// Frozen schema version for the extraction error.
+/// Schema version for the extraction plan.
+pub const PLAN_SCHEMA_VERSION: u32 = 2;
+/// Schema version for the extraction result.
+pub const RESULT_SCHEMA_VERSION: u32 = 2;
+/// Schema version for the extraction error.
 pub const ERROR_SCHEMA_VERSION: u32 = 1;
 
 /// Error returned when interop contract values or schema identities are invalid.
@@ -21,25 +21,43 @@ pub enum ContractError {
     /// The input could not be serialized into stable JSON.
     #[error("could not serialize interop JSON: {0}")]
     Serialize(#[from] serde_json::Error),
-    /// One schema identity field was not the required frozen value.
+    /// One schema identity field was not the required value.
     #[error("{field} must be {expected:?}; received {received:?}")]
     InvalidIdentity {
         /// Schema field name that failed validation.
         field: &'static str,
-        /// Expected frozen value.
+        /// Expected value.
         expected: &'static str,
         /// Received value.
         received: String,
     },
-    /// One schema version field was not the required frozen value.
+    /// One schema version field was not the required value.
     #[error("{field} must be {expected}; received {received}")]
     InvalidVersion {
         /// Schema field name that failed validation.
         field: &'static str,
-        /// Expected frozen value.
+        /// Expected value.
         expected: u32,
         /// Received value.
         received: u32,
+    },
+    /// One digest field was not a lowercase SHA-256 hex string.
+    #[error("{field} must be a 64-character lowercase SHA-256 hex digest; received {received:?}")]
+    InvalidDigest {
+        /// Digest field name that failed validation.
+        field: &'static str,
+        /// Received value.
+        received: String,
+    },
+    /// One stored digest did not match the canonical document content.
+    #[error("{field} did not match the canonical document digest")]
+    DigestMismatch {
+        /// Digest field name that failed validation.
+        field: &'static str,
+        /// Recomputed canonical digest.
+        expected: String,
+        /// Received value.
+        received: String,
     },
     /// A delimiter-pair plan tried to use regex flags in literal mode.
     #[error("delimiter_pair flags are only valid when mode is regex")]
@@ -47,6 +65,9 @@ pub enum ContractError {
     /// A successful result claimed to select zero candidates.
     #[error("successful extraction results must report at least one candidate")]
     ZeroCandidateCount,
+    /// A successful result claimed to select zero matches.
+    #[error("successful extraction results must include at least one selected match")]
+    ZeroSelectedMatchCount,
     /// A selected match referenced a candidate outside the candidate count.
     #[error("selected candidate index {selected} is out of range for {candidate_count} candidates")]
     SelectedCandidateOutOfRange {
@@ -54,6 +75,12 @@ pub enum ContractError {
         selected: usize,
         /// Total candidate count.
         candidate_count: usize,
+    },
+    /// A successful result repeated the same candidate more than once.
+    #[error("selected candidate index {selected} appeared more than once")]
+    DuplicateSelectedCandidate {
+        /// Repeated selected candidate ordinal.
+        selected: usize,
     },
     /// A successful result carried error-level diagnostics.
     #[error("successful extraction results must not contain error-level diagnostics")]
@@ -67,6 +94,20 @@ pub enum ContractError {
         strategy_kind: super::plan::StrategyKind,
         /// Strategy kind declared by the selected match metadata.
         metadata_kind: super::plan::StrategyKind,
+    },
+    /// Selected-match cardinality did not agree with the selection mode and candidate count.
+    #[error(
+        "selection mode {selection_mode:?} expected {expected_selected_matches} selected matches for {candidate_count} candidates, but received {selected_match_count}"
+    )]
+    SelectionModeCountMismatch {
+        /// Executed selection mode.
+        selection_mode: super::plan::SelectionMode,
+        /// Number of matches actually carried in the result.
+        selected_match_count: usize,
+        /// Number of matches the selection mode requires.
+        expected_selected_matches: usize,
+        /// Total candidate count.
+        candidate_count: usize,
     },
     /// The source label was blank.
     #[error("source label must not be empty")]
@@ -106,4 +147,19 @@ pub(super) fn validate_schema_identity(
     }
 
     Ok(())
+}
+
+pub(super) fn validate_sha256_hex(field: &'static str, value: &str) -> Result<(), ContractError> {
+    let valid = value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    if valid {
+        Ok(())
+    } else {
+        Err(ContractError::InvalidDigest {
+            field,
+            received: value.to_owned(),
+        })
+    }
 }

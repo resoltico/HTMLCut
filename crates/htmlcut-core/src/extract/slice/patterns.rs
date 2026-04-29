@@ -1,27 +1,71 @@
 use regex::RegexBuilder;
 use serde_json::json;
 
-use crate::contracts::{DEFAULT_REGEX_FLAGS, Diagnostic, PatternMode, SliceSpec};
+use crate::contracts::{Diagnostic, PatternMode, SliceSpec};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 use crate::result::Range;
 
-use super::super::{Finder, FoundRange, SliceCandidate};
+use super::super::{FoundRange, SliceCandidate};
 
+#[derive(Clone, Debug)]
+pub(crate) enum CompiledPatternMatcher {
+    Literal(String),
+    Regex(regex::Regex),
+}
+
+impl CompiledPatternMatcher {
+    pub(crate) fn find(&self, source: &str, offset: usize) -> Option<FoundRange> {
+        match self {
+            Self::Literal(pattern) => source[offset..].find(pattern).map(|relative| FoundRange {
+                start: offset + relative,
+                end: offset + relative + pattern.len(),
+            }),
+            Self::Regex(regex) => regex.find_at(source, offset).map(|matched| FoundRange {
+                start: matched.start(),
+                end: matched.end(),
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CompiledSlicePatterns {
+    start: CompiledPatternMatcher,
+    end: CompiledPatternMatcher,
+}
+
+impl CompiledSlicePatterns {
+    pub(crate) fn compile(slice: &SliceSpec) -> Result<Self, Diagnostic> {
+        Ok(Self {
+            start: build_finder(slice.from().as_str(), slice.mode(), slice.flags())?,
+            end: build_finder(slice.to().as_str(), slice.mode(), slice.flags())?,
+        })
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn extract_slice_candidates(
     source_text: &str,
     slice: &SliceSpec,
 ) -> Result<Vec<SliceCandidate>, Diagnostic> {
-    let start_finder = build_finder(slice.from().as_str(), slice.mode(), slice.flags())?;
-    let end_finder = build_finder(slice.to().as_str(), slice.mode(), slice.flags())?;
+    let patterns = CompiledSlicePatterns::compile(slice)?;
+    extract_compiled_slice_candidates(source_text, slice, &patterns)
+}
+
+pub(crate) fn extract_compiled_slice_candidates(
+    source_text: &str,
+    slice: &SliceSpec,
+    patterns: &CompiledSlicePatterns,
+) -> Result<Vec<SliceCandidate>, Diagnostic> {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
 
     while cursor <= source_text.len() {
-        let Some(start) = start_finder(source_text, cursor) else {
+        let Some(start) = patterns.start.find(source_text, cursor) else {
             break;
         };
 
-        let Some(end) = end_finder(source_text, start.end) else {
+        let Some(end) = patterns.end.find(source_text, start.end) else {
             return Err(error_diagnostic(
                 DiagnosticCode::NoMatch,
                 format!(
@@ -95,7 +139,7 @@ pub(crate) fn build_finder(
     pattern: &str,
     mode: PatternMode,
     flags: Option<&str>,
-) -> Result<Finder, Diagnostic> {
+) -> Result<CompiledPatternMatcher, Diagnostic> {
     if pattern.is_empty() {
         return Err(error_diagnostic(
             DiagnosticCode::InvalidSlicePattern,
@@ -105,24 +149,11 @@ pub(crate) fn build_finder(
     }
 
     match mode {
-        PatternMode::Literal => {
-            let pattern = pattern.to_owned();
-            Ok(Box::new(move |source, offset| {
-                source[offset..].find(&pattern).map(|relative| FoundRange {
-                    start: offset + relative,
-                    end: offset + relative + pattern.len(),
-                })
-            }))
-        }
-        PatternMode::Regex => {
-            let regex = build_regex(pattern, flags.unwrap_or(DEFAULT_REGEX_FLAGS))?;
-            Ok(Box::new(move |source, offset| {
-                regex.find_at(source, offset).map(|matched| FoundRange {
-                    start: matched.start(),
-                    end: matched.end(),
-                })
-            }))
-        }
+        PatternMode::Literal => Ok(CompiledPatternMatcher::Literal(pattern.to_owned())),
+        PatternMode::Regex => Ok(CompiledPatternMatcher::Regex(build_regex(
+            pattern,
+            flags.unwrap_or_default(),
+        )?)),
     }
 }
 
@@ -131,7 +162,6 @@ pub(crate) fn build_regex(pattern: &str, flags: &str) -> Result<regex::Regex, Di
 
     for flag in flags.chars() {
         match flag {
-            'g' | 'u' => {}
             'i' => {
                 builder.case_insensitive(true);
             }

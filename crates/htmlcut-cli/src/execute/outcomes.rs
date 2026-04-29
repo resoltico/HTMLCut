@@ -1,10 +1,13 @@
 use super::{ExecutionOutcome, output_file_notice, write_request_definition};
 use crate::args::{CliInspectOutputMode, CliOutputMode};
 use crate::error::{
-    CliError, CliErrorBody, CliErrorReport, exit_code_for_error, json_error_diagnostics,
-    primary_extraction_error, render_error_category, with_source_load_steps,
+    CliError, error_report_body, exit_code_for_error, json_error_diagnostics,
+    primary_extraction_error, with_source_load_steps,
 };
 use crate::metadata::{ENGINE_NAME, HTMLCUT_VERSION, TOOL_NAME};
+use crate::model::{
+    ERROR_COMMAND_REPORT_SCHEMA_NAME, ERROR_COMMAND_REPORT_SCHEMA_VERSION, ErrorCommandReport,
+};
 use crate::prepare::{PreparedExtraction, PreparedPreview, build_extraction_report};
 use crate::render::{
     build_human_diagnostic_stderr_lines, build_source_load_error_lines, build_verbose_lines,
@@ -34,12 +37,15 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
             &report.source,
         );
         return if prepared.output == CliOutputMode::Json {
-            ExecutionOutcome {
-                stdout: Some(to_pretty_json(&report)),
-                output_file: prepared.output_file,
-                post_write_stderr: Vec::new(),
-                stderr: Vec::new(),
-                exit_code: exit_code_for_error(&error),
+            match to_pretty_json(&report) {
+                Ok(stdout) => ExecutionOutcome {
+                    stdout: Some(stdout),
+                    output_file: prepared.output_file,
+                    post_write_stderr: Vec::new(),
+                    stderr: Vec::new(),
+                    exit_code: exit_code_for_error(&error),
+                },
+                Err(render_error) => human_error_outcome(render_error),
             }
         } else {
             error_outcome(prepared.command.clone(), false, None, error)
@@ -86,12 +92,15 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
         prepared.verbose,
         prepared.quiet,
     );
-    ExecutionOutcome {
-        stdout: render_extraction_output(&report, prepared.output),
-        output_file: prepared.output_file,
-        post_write_stderr,
-        stderr,
-        exit_code: 0,
+    match render_extraction_output(&report, prepared.output) {
+        Ok(stdout) => ExecutionOutcome {
+            stdout,
+            output_file: prepared.output_file,
+            post_write_stderr,
+            stderr,
+            exit_code: 0,
+        },
+        Err(error) => human_error_outcome(error),
     }
 }
 
@@ -116,12 +125,15 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
             &report.source,
         );
         if prepared.output == CliInspectOutputMode::Json {
-            return ExecutionOutcome {
-                stdout: Some(to_pretty_json(&report)),
-                output_file: prepared.output_file,
-                post_write_stderr: Vec::new(),
-                stderr: Vec::new(),
-                exit_code: exit_code_for_error(&error),
+            return match to_pretty_json(&report) {
+                Ok(stdout) => ExecutionOutcome {
+                    stdout: Some(stdout),
+                    output_file: prepared.output_file,
+                    post_write_stderr: Vec::new(),
+                    stderr: Vec::new(),
+                    exit_code: exit_code_for_error(&error),
+                },
+                Err(render_error) => human_error_outcome(render_error),
             };
         }
 
@@ -133,11 +145,16 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
         prepared.verbose,
         prepared.quiet,
     );
+    let stdout = match prepared.output {
+        CliInspectOutputMode::Json => match to_pretty_json(&report) {
+            Ok(stdout) => stdout,
+            Err(error) => return human_error_outcome(error),
+        },
+        CliInspectOutputMode::Text => render_preview_text(&report),
+    };
+
     ExecutionOutcome {
-        stdout: Some(match prepared.output {
-            CliInspectOutputMode::Json => to_pretty_json(&report),
-            CliInspectOutputMode::Text => render_preview_text(&report),
-        }),
+        stdout: Some(stdout),
         output_file: prepared.output_file,
         post_write_stderr,
         stderr: if prepared.quiet {
@@ -177,26 +194,29 @@ pub(crate) fn json_error_outcome(
 ) -> ExecutionOutcome {
     let exit_code = exit_code_for_error(&error);
     let diagnostics = json_error_diagnostics(&error);
-
-    ExecutionOutcome {
-        stdout: Some(to_pretty_json(&CliErrorReport {
-            tool: TOOL_NAME.to_owned(),
-            engine: ENGINE_NAME.to_owned(),
-            version: HTMLCUT_VERSION.to_owned(),
-            command,
-            ok: false,
-            exit_code,
-            error: CliErrorBody {
-                category: render_error_category(error.category).to_owned(),
-                code: error.code,
-                message: error.message,
-            },
-            diagnostics,
-        })),
-        output_file,
-        post_write_stderr: Vec::new(),
-        stderr: Vec::new(),
+    let report = ErrorCommandReport {
+        tool: TOOL_NAME.to_owned(),
+        engine: ENGINE_NAME.to_owned(),
+        version: HTMLCUT_VERSION.to_owned(),
+        schema_name: ERROR_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+        schema_version: ERROR_COMMAND_REPORT_SCHEMA_VERSION,
+        command,
+        ok: false,
         exit_code,
+        error: error_report_body(&error),
+        diagnostics,
+        source_load_steps: error.source_load_steps.clone(),
+    };
+
+    match to_pretty_json(&report) {
+        Ok(stdout) => ExecutionOutcome {
+            stdout: Some(stdout),
+            output_file,
+            post_write_stderr: Vec::new(),
+            stderr: Vec::new(),
+            exit_code,
+        },
+        Err(render_error) => human_error_outcome(render_error),
     }
 }
 

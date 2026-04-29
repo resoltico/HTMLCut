@@ -150,6 +150,8 @@ pub enum CliParameterId {
     MaxBytes,
     /// HTTP fetch timeout in milliseconds.
     FetchTimeoutMs,
+    /// HTTP connect timeout in milliseconds.
+    FetchConnectTimeoutMs,
     /// URL preflight policy.
     FetchPreflight,
     /// Inspection sample-limit option.
@@ -202,6 +204,7 @@ impl CliParameterId {
             Self::BaseUrl => "--base-url",
             Self::MaxBytes => "--max-bytes",
             Self::FetchTimeoutMs => "--fetch-timeout-ms",
+            Self::FetchConnectTimeoutMs => "--fetch-connect-timeout-ms",
             Self::FetchPreflight => "--fetch-preflight",
             Self::SampleLimit => "--sample-limit",
             Self::Css => "--css",

@@ -1,7 +1,12 @@
 use crate::catalog::{OperationId, operation_descriptor};
-use crate::{CORE_RESULT_SCHEMA_NAME, interop::v1::RESULT_SCHEMA_NAME};
+use crate::{
+    CORE_RESULT_SCHEMA_NAME,
+    interop::v1::{RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION},
+};
 
 use super::super::cli_operation_contract;
+use super::super::operation_specs::operation_surface_spec;
+use super::ensure_cli_help_catalog_validated;
 use super::model::{
     CliAuxCommandId, CliHelpDocument, CliHelpSection, CliHelpSectionStyle,
     cli_aux_command_display_command,
@@ -9,6 +14,11 @@ use super::model::{
 
 /// Builds the canonical root help document for the HTMLCut CLI.
 pub fn cli_root_help_document() -> CliHelpDocument {
+    ensure_cli_help_catalog_validated();
+    build_cli_root_help_document()
+}
+
+pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
     let start_here_lines = vec![
         format!(
             "{} learns document shape, headings, links, classes, and effective base URL.",
@@ -119,6 +129,11 @@ pub fn cli_root_help_document() -> CliHelpDocument {
 
 /// Builds the canonical help document for one non-operation CLI command.
 pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
+    ensure_cli_help_catalog_validated();
+    build_cli_aux_command_help_document(id)
+}
+
+pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
     match id {
         CliAuxCommandId::Catalog => CliHelpDocument {
             sections: vec![CliHelpSection {
@@ -168,7 +183,7 @@ pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
                     lines: vec![
                         "htmlcut-core request/result schemas".to_owned(),
                         "htmlcut-cli report schemas".to_owned(),
-                        "the frozen interop schemas shipped by htmlcut_core::interop::v1"
+                        "the versioned interop schemas shipped by htmlcut_core::interop::v1"
                             .to_owned(),
                     ],
                 },
@@ -196,9 +211,10 @@ pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
                     CORE_RESULT_SCHEMA_NAME
                 ),
                 format!(
-                    "htmlcut {} --name {} --schema-version 1 --output json",
+                    "htmlcut {} --name {} --schema-version {} --output json",
                     cli_aux_command_display_command(CliAuxCommandId::Schema),
-                    RESULT_SCHEMA_NAME
+                    RESULT_SCHEMA_NAME,
+                    RESULT_SCHEMA_VERSION
                 ),
             ],
         },
@@ -213,13 +229,13 @@ pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
                 ]
                 .into_iter()
                 .filter_map(|operation_id| {
-                    cli_operation_contract(operation_id).map(|contract| {
-                        format!(
-                            "{}    {}",
-                            contract.display_command(),
-                            operation_descriptor(operation_id).description
-                        )
-                    })
+                    let contract = cli_operation_contract(operation_id)?;
+                    let descriptor = operation_descriptor(operation_id)?;
+                    Some(format!(
+                        "{}    {}",
+                        contract.display_command(),
+                        descriptor.description
+                    ))
                 })
                 .collect(),
             }],
@@ -230,49 +246,18 @@ pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
 
 /// Builds the canonical help document for one CLI-visible operation.
 pub fn cli_operation_help_document(operation_id: OperationId) -> Option<CliHelpDocument> {
-    match operation_id {
-        OperationId::DocumentParse => None,
-        OperationId::SourceInspect => cli_operation_help_document_with_overview(
-            operation_id,
-            vec![
-                operation_descriptor(operation_id).description.to_owned(),
-                "This command summarizes title, counts, headings, link previews, top tags, top classes, document base behavior, and optional source text. It is designed to help you choose selectors or confirm how URL rewriting will behave before extracting data."
-                    .to_owned(),
-            ],
-        ),
-        OperationId::SelectExtract => cli_operation_help_document_with_overview(
-            operation_id,
-            vec![
-                operation_descriptor(operation_id).description.to_owned(),
-                "Use inspect source first when you need to learn the document shape, then inspect select to preview matches before emitting the final payload."
-                    .to_owned(),
-            ],
-        ),
-        OperationId::SliceExtract => cli_operation_help_document_with_overview(
-            operation_id,
-            vec![
-                operation_descriptor(operation_id).description.to_owned(),
-                "Use --pattern literal for plain substring boundaries or --pattern regex for regex boundaries. Boundary matches are consumed exactly as matched."
-                    .to_owned(),
-            ],
-        ),
-        OperationId::SelectPreview => cli_operation_help_document_with_overview(
-            operation_id,
-            vec![
-                operation_descriptor(operation_id).description.to_owned(),
-                "Use this preview workflow to inspect structured per-match metadata before final extraction."
-                    .to_owned(),
-            ],
-        ),
-        OperationId::SlicePreview => cli_operation_help_document_with_overview(
-            operation_id,
-            vec![
-                operation_descriptor(operation_id).description.to_owned(),
-                "Use this preview workflow to inspect literal or regex slice ranges before final extraction."
-                    .to_owned(),
-            ],
-        ),
-    }
+    ensure_cli_help_catalog_validated();
+    build_cli_operation_help_document(operation_id)
+}
+
+pub(super) fn build_cli_operation_help_document(
+    operation_id: OperationId,
+) -> Option<CliHelpDocument> {
+    let surface = operation_surface_spec(operation_id)?;
+    let cli_spec = surface.cli.as_ref()?;
+    let mut overview_lines = vec![operation_descriptor(operation_id)?.description.to_owned()];
+    overview_lines.extend(cli_spec.help_overview.iter().map(|line| (*line).to_owned()));
+    cli_operation_help_document_with_overview(operation_id, overview_lines)
 }
 
 fn cli_operation_help_document_with_overview(
@@ -315,7 +300,7 @@ fn operation_example_containing(operation_id: OperationId, needle: &str) -> Opti
 
 fn cli_operation_display_command(operation_id: OperationId) -> String {
     operation_descriptor(operation_id)
-        .cli_surface
+        .and_then(|descriptor| descriptor.cli_surface)
         .unwrap_or(operation_id.as_str())
         .to_owned()
 }

@@ -115,7 +115,9 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
                 .get_about()
                 .expect("operation about")
                 .to_string(),
-            htmlcut_core::operation_descriptor(operation_id).description
+            htmlcut_core::operation_descriptor(operation_id)
+                .expect("operation descriptor")
+                .description
         );
     }
 }

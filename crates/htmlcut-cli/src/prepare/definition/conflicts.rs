@@ -1,4 +1,7 @@
-use htmlcut_core::{DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS};
+use htmlcut_core::{
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
+    DEFAULT_PREVIEW_CHARS,
+};
 
 use crate::args::{
     CliFetchPreflightMode, CliMatchMode, CliPatternMode, CliValueMode, CliWhitespaceMode,
@@ -6,6 +9,7 @@ use crate::args::{
     SelectionArgs, SliceArgs, SourceArgs,
 };
 use crate::error::{CliError, usage_error};
+use crate::model::CliErrorCode;
 
 pub(in crate::prepare) fn ensure_inline_select_request_is_default(
     args: &SelectArgs,
@@ -93,6 +97,11 @@ fn collect_source_request_file_conflicts(source: &SourceArgs) -> Vec<&'static st
     );
     push_conflict(
         &mut conflicts,
+        source.fetch_connect_timeout_ms != DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        "--fetch-connect-timeout-ms",
+    );
+    push_conflict(
+        &mut conflicts,
         source.fetch_preflight != CliFetchPreflightMode::HeadFirst,
         "--fetch-preflight",
     );
@@ -163,7 +172,7 @@ fn reject_request_file_conflicts(conflicts: Vec<&'static str>) -> Result<(), Cli
     }
 
     Err(usage_error(
-        "CLI_REQUEST_FILE_CONFLICT",
+        CliErrorCode::RequestFileConflict,
         format!(
             "--request-file owns the extraction definition; remove the inline request flags: {}. If you want to keep the inline form, drop `--request-file` and use `--emit-request-file <PATH>` to save the canonical definition.",
             conflicts.join(", ")

@@ -71,6 +71,65 @@ jobs:
         shell: bash
         run: cargo xtask check
 
+  cross-platform-rust-gate:
+    name: Cross-platform Rust gate (${{ matrix.id }})
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-arm64
+            runs_on: macos-15
+          - id: windows-x64
+            runs_on: windows-2022
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup component add clippy rustfmt --toolchain 1.95.0
+
+      - name: Install Rust QA tools
+        uses: taiki-e/install-action@5f57d6cb7cd20b14a8a27f522884c4bc8a187458 # v2.75.19
+        with:
+          tool: cargo-nextest,cargo-audit,cargo-deny,cargo-outdated,cargo-semver-checks
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        shell: bash
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Run workspace tests
+        shell: bash
+        run: cargo nextest run --workspace --lib --tests --all-features --locked
+
+      - name: Check dependency freshness
+        shell: bash
+        run: cargo outdated --workspace --root-deps-only --exit-code 1
+
+      - name: Check advisories
+        shell: bash
+        run: cargo audit -D warnings
+
+      - name: Check dependency policy
+        shell: bash
+        run: cargo deny check -D warnings advisories bans licenses sources
+
+      - name: Run semver gate
+        shell: bash
+        run: cargo xtask semver-check
+
   release-target-smoke:
     name: Release target smoke ${{ matrix.id }}
     needs:
@@ -124,6 +183,7 @@ jobs:
     name: Check
     needs:
       - rust-gate
+      - cross-platform-rust-gate
       - release-target-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 5

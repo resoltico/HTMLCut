@@ -1,20 +1,7 @@
 use super::*;
 
 #[test]
-fn source_helpers_cover_remaining_unreachable_and_locator_paths() {
-    let wrong_url_kind = catch_unwind(AssertUnwindSafe(|| {
-        let _ = read_url_source(&file_source("fixture.html"), &RuntimeOptions::default());
-    }));
-    assert!(wrong_url_kind.is_err());
-
-    let wrong_file_kind = catch_unwind(AssertUnwindSafe(|| {
-        let _ = read_file_source(
-            &url_source("https://example.com"),
-            &RuntimeOptions::default(),
-        );
-    }));
-    assert!(wrong_file_kind.is_err());
-
+fn source_helpers_cover_remaining_locator_paths() {
     let file_metadata = empty_source_metadata(
         &file_source("fixtures/input.html")
             .with_base_url(Url::parse("https://example.com/base/").expect("base")),

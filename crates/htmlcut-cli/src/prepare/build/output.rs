@@ -4,8 +4,7 @@ use htmlcut_core::{AttributeName, ValueSpec, ValueType};
 
 use crate::args::{CliOutputMode, CliPatternMode, CliValueMode, ExtractOutputArgs};
 use crate::error::{CliError, usage_error};
-
-use crate::prepare::default_regex_flags;
+use crate::model::CliErrorCode;
 
 pub(crate) fn resolve_value_spec(
     value_mode: CliValueMode,
@@ -27,13 +26,14 @@ pub(crate) fn resolve_value_spec(
         CliValueMode::Attribute => {
             let Some(attribute) = attribute else {
                 return Err(usage_error(
-                    "CLI_ATTRIBUTE_REQUIRED",
+                    CliErrorCode::AttributeRequired,
                     "--attribute is required with --value attribute.",
                 ));
             };
             Ok(ValueSpec::Attribute {
-                name: AttributeName::new(attribute)
-                    .map_err(|error| usage_error("CLI_ATTRIBUTE_INVALID", error.to_string()))?,
+                name: AttributeName::new(attribute).map_err(|error| {
+                    usage_error(CliErrorCode::AttributeInvalid, error.to_string())
+                })?,
             })
         }
         CliValueMode::Structured => {
@@ -61,14 +61,14 @@ pub(crate) fn resolve_extract_output_mode_with_output_file(
     let output = requested.unwrap_or(default_output_for_value(value_type));
     if output == CliOutputMode::None && bundle.is_none() {
         return Err(usage_error(
-            "CLI_OUTPUT_NONE_WITHOUT_BUNDLE",
+            CliErrorCode::OutputNoneWithoutBundle,
             "--output none requires --bundle so the command still produces artifacts.",
         ));
     }
 
     if output == CliOutputMode::None && output_file.is_some() {
         return Err(usage_error(
-            "CLI_OUTPUT_FILE_REQUIRES_STDOUT_PAYLOAD",
+            CliErrorCode::OutputFileRequiresStdoutPayload,
             "--output-file cannot be used with --output none because no stdout payload is produced.",
         ));
     }
@@ -78,7 +78,7 @@ pub(crate) fn resolve_extract_output_mode_with_output_file(
             ValueType::InnerHtml | ValueType::OuterHtml => {}
             _ => {
                 return Err(usage_error(
-                    "CLI_OUTPUT_HTML_INVALID",
+                    CliErrorCode::OutputHtmlInvalid,
                     "--output html can only be used with --value inner-html or --value outer-html.",
                 ));
             }
@@ -90,7 +90,7 @@ pub(crate) fn resolve_extract_output_mode_with_output_file(
             CliOutputMode::Json | CliOutputMode::None => {}
             _ => {
                 return Err(usage_error(
-                    "CLI_STRUCTURED_OUTPUT_INVALID",
+                    CliErrorCode::StructuredOutputInvalid,
                     "Structured extraction only supports --output json or --output none.",
                 ));
             }
@@ -108,13 +108,13 @@ pub(crate) fn resolve_regex_flags(
         CliPatternMode::Literal => {
             if regex_flags.is_some() {
                 return Err(usage_error(
-                    "CLI_REGEX_FLAGS_CONFLICT",
+                    CliErrorCode::RegexFlagsConflict,
                     "--regex-flags can only be used with --pattern regex.",
                 ));
             }
             Ok(None)
         }
-        CliPatternMode::Regex => Ok(Some(regex_flags.unwrap_or_else(default_regex_flags))),
+        CliPatternMode::Regex => Ok(Some(regex_flags.unwrap_or_default())),
     }
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn extract_prefers_json(args: &ExtractOutputArgs) -> bool {
 fn reject_attribute_conflict(attribute: Option<String>) -> Result<(), CliError> {
     if attribute.is_some() {
         return Err(usage_error(
-            "CLI_ATTRIBUTE_CONFLICT",
+            CliErrorCode::AttributeConflict,
             "--attribute can only be used with --value attribute.",
         ));
     }

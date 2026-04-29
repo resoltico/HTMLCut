@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: ARCHITECTURE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -45,10 +45,10 @@ Use `htmlcut-core` when you need:
 - operation discovery through `operation_catalog()`
 - schema discovery through `schema_catalog()`
 
-Use `htmlcut_core::interop::v1` when you need the frozen `htmlcut-v1` downstream integration
+Use `htmlcut_core::interop::v1` when you need the `htmlcut-v1` downstream integration
 contract.
 
-It is the frozen versioned interop surface for downstream integrations, not a replacement for the
+It is the versioned interop surface for downstream integrations, not a replacement for the
 broader `htmlcut-core` API, and not a CLI command.
 
 ## Ownership Boundary
@@ -80,11 +80,11 @@ broader `htmlcut-core` API, and not a CLI command.
 - downstream plan validation for `htmlcut-v1`
 - plan-to-core-request compilation for `htmlcut-v1`
 - typed interop result and error documents
-- stable JSON and digest helpers for the frozen interop profile
+- stable JSON and digest helpers for the interop profile
 
 Those owners are maintained as focused domain modules, not giant mixed-role files. In practice that
 means HTMLCut keeps request contracts, source loading, document handling, extraction execution, and
-frozen interop execution/stable-JSON logic in separate seams so the canonical owner for one concern
+interop execution/stable-JSON logic in separate seams so the canonical owner for one concern
 does not disappear into a monolith.
 
 Downstream applications own fetch, retries, orchestration, comparison, and persistence. HTMLCut
@@ -96,7 +96,7 @@ The maintained dependency direction is:
 
 1. `htmlcut-cli` -> `htmlcut-core`
 2. downstream embedders -> `htmlcut-core`
-3. downstream embedders that adopt frozen interop -> `htmlcut_core::interop::v1`
+3. downstream embedders that adopt the interop profile -> `htmlcut_core::interop::v1`
 4. downstream embedders that want HTMLCut-owned HTTP loading opt into
    `htmlcut-core/http-client` explicitly instead of inheriting it by default
 

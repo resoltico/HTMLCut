@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: RELEASE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -14,6 +14,9 @@ Use this guide for Step 5 through Step 9 of the HTMLCut release flow.
 
 This phase begins after the release PR has merged into `main` and ends only after the published
 GitHub release object and the downloaded host-native package have both been verified.
+
+Every maintained release helper script is self-describing. Run `./scripts/<name>.sh --help`
+locally before using a helper you do not already know.
 
 ## 5. Tag And Push
 

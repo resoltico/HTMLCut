@@ -236,6 +236,10 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
+    assert!(
+        plan.iter()
+            .any(|spec| { spec.args == ["doc", "--workspace", "--no-deps", "--locked"] })
+    );
     assert!(plan.iter().all(|spec| {
         !spec.args.iter().any(|arg| {
             arg == repo_root

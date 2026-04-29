@@ -66,25 +66,19 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
         .success()
         .stdout(predicate::str::contains("Boundary matches are consumed exactly as matched."))
         .stdout(predicate::str::contains(
-            "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, `u`, and `x`",
+            "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, and `x`",
         ))
         .stdout(predicate::str::contains(
-            "`g` is accepted for compatibility and ignored",
+            "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely.",
         ))
         .stdout(predicate::str::contains(
-            "The selected fragment excludes both matched boundaries by default;",
+            "Structured extraction only supports --output json or --output none.",
         ))
         .stdout(predicate::str::contains(
-            "use --include-start when the opening tag lives in the start boundary.",
+            "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",
         ))
         .stdout(predicate::str::contains(
-            "For --value inner-html, HTMLCut returns the selected fragment as HTML. For --value outer-html, HTMLCut returns the full outer matched range including both boundaries.",
-        ))
-        .stdout(predicate::str::contains(
-            "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --match all --output json",
-        ))
-        .stdout(predicate::str::contains(
-            "htmlcut slice ./page.html --from '<a ' --to '</a>' --include-start --include-end --value attribute --attribute href",
+            "htmlcut slice ./page.html --from '<a' --to '</a>' --include-start --include-end --value attribute --attribute href --rewrite-urls",
         ));
 }
 

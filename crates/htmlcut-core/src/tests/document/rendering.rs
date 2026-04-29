@@ -1,4 +1,5 @@
 use super::*;
+use scraper::Html;
 
 #[test]
 fn rendering_and_url_helpers_cover_remaining_paths() {
@@ -41,6 +42,15 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(attribute_supports_url_rewrite("ping"));
     assert!(!attribute_supports_url_rewrite("class"));
     assert!(first_fragment_attributes("plain text", None, false).is_empty());
+    assert_eq!(
+        first_fragment_attributes(
+            "<a href=\"guide.html\" title=\"Guide\">Guide</a>",
+            Some("https://example.com/base/"),
+            true
+        )
+        .get("href"),
+        Some(&"https://example.com/base/guide.html".to_owned())
+    );
     let non_refresh_meta = parse_document_node(
         "<meta http-equiv=\"content-security-policy\" content=\"0; url=next.html\">",
     );
@@ -77,6 +87,43 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(rendered.contains("- One"));
     assert!(rendered.contains("---"));
     assert!(rendered.contains("  keep"));
+    let semantic_rendered = render_html_as_text(
+        "<article><ol><li>First</li><li><img src=\"hero.png\" alt=\"Hero\"></li></ol></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert!(semantic_rendered.contains("1. First"));
+    assert!(semantic_rendered.contains("2. Hero"));
+    assert_eq!(
+        render_html_as_text(
+            "<article><ol start=\"5\"><li>Five</li><li>Six</li></ol></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "5. Five\n6. Six"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><ol reversed><li>Two</li><li>One</li></ol></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "2. Two\n1. One"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><ol><li value=\"7\">Seven</li><li>Eight</li></ol></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "7. Seven\n8. Eight"
+    );
+    let pre_image_rendered = render_html_as_text(
+        "<pre><img src=\"hero.png\" alt=\"  Hero  \"></pre>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(pre_image_rendered, "Hero");
+    let empty_alt_rendered = render_html_as_text(
+        "<p><img src=\"hero.png\" alt=\"   \"></p>",
+        WhitespaceMode::Preserve,
+    );
+    assert!(empty_alt_rendered.is_empty());
     let richer_rendered = render_html_as_text(
         "<blockquote><p>Quote</p></blockquote><dl><dt>Term</dt><dd>Definition</dd></dl><p>Use <code>cargo test</code></p>",
         WhitespaceMode::Preserve,
@@ -135,6 +182,11 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert_eq!(
         rewrite_html_urls("<p>Hello</p>", None, false),
         "<p>Hello</p>"
+    );
+    let fragment_without_body = Html::parse_fragment("<p>Fragment only</p>");
+    assert_eq!(
+        render_document_body_as_text(&fragment_without_body, WhitespaceMode::Preserve),
+        "Fragment only"
     );
     assert!(!looks_like_full_document("<body>Hello</body>"));
     assert!(first_body(&parse_wrapped_fragment("<p>Hello</p>")).is_some());
@@ -221,6 +273,38 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     let mut list_item_output = String::new();
     render_node(*list_item, &mut list_item_output, false, false);
     assert!(list_item_output.contains("- Hello"));
+    let mut detached_list_document = parse_wrapped_fragment("<ol><li>Detached</li></ol>");
+    let detached_list_id = {
+        let detached = select_first(&detached_list_document, "li").expect("list item");
+        detached.id()
+    };
+    detached_list_document
+        .tree
+        .get_mut(detached_list_id)
+        .expect("detached list item")
+        .detach();
+    let detached_list_item = ElementRef::wrap(
+        detached_list_document
+            .tree
+            .get(detached_list_id)
+            .expect("detached list ref"),
+    )
+    .expect("detached list element");
+    let mut detached_list_output = String::new();
+    render_node(*detached_list_item, &mut detached_list_output, false, false);
+    assert!(detached_list_output.contains("- Detached"));
+    let selected_semantics_document =
+        parse_document_node("<img src=\"hero.png\" alt=\"Hero\"><pre>line 1\n  line 2</pre>");
+    let selected_image = select_first(&selected_semantics_document, "img").expect("img");
+    let selected_pre = select_first(&selected_semantics_document, "pre").expect("pre");
+    assert_eq!(
+        render_element_as_text(&selected_image, WhitespaceMode::Preserve),
+        "Hero"
+    );
+    assert_eq!(
+        render_element_as_text(&selected_pre, WhitespaceMode::Preserve),
+        "line 1\n  line 2"
+    );
     let pre_document = parse_wrapped_fragment("<pre>  keep   spacing</pre>");
     let pre = select_first(&pre_document, "pre").expect("pre");
     let mut pre_output = String::new();
@@ -276,6 +360,20 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         false,
     );
     assert!(rewritten_single_srcset.contains("srcset=\"https://example.com/docs/plain.png\""));
+    let foreign_node_ids = parse_document_node(
+        "<div><a href=\"one.html\">One</a><a href=\"two.html\">Two</a><a href=\"three.html\">Three</a></div>",
+    )
+    .tree
+    .nodes()
+    .map(|node| node.id())
+    .collect::<Vec<_>>();
+    let mut tiny_document = parse_document_node("<p>Small</p>");
+    rewrite_urls_in_document_with_node_ids_for_tests(
+        &mut tiny_document,
+        "https://example.com/docs/",
+        foreign_node_ids,
+    );
+    assert!(serialize_document(&tiny_document).contains("Small"));
     let unchanged_empty_srcset = rewrite_html_urls(
         "<img srcset=\" , \">",
         Some("https://example.com/docs/"),

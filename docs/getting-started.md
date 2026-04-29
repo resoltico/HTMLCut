@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: SETUP
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, request file]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction request?"]
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=5.0.0
+VERSION=6.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "5.0.0"
+$Version = "6.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -227,6 +227,6 @@ The deeper output rules, bundle behavior, request-file constraints, and discover
 
 - [cli.md](cli.md) for the full command model, output rules, and bundle workflow
 - [core.md](core.md) for the Rust library entrypoints
-- [interop-v1.md](interop-v1.md) for the frozen downstream integration profile
+- [interop-v1.md](interop-v1.md) for the downstream integration profile
 - [schema.md](schema.md) for the maintained public schema registry
 - [README.md](../README.md) for the short product-facing overview

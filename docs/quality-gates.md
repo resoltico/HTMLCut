@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: QUALITY
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?"]
@@ -66,6 +66,9 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields, version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
 - targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical core-owned registries
 - clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical core-owned CLI contract
+- `cargo clippy -p htmlcut-core --lib --tests --locked -- -D warnings` on the published
+  default-feature core surface so cfg-specific warnings cannot hide behind the all-features
+  workspace build
 - `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
   URL requests fail cleanly unless the `http-client` feature is explicitly enabled
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`

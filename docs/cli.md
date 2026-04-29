@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: CLI
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -58,6 +58,11 @@ For URL inputs, HTMLCut uses HEAD-first fetch preflight by default:
 
 The CLI exposes that policy through `--fetch-preflight head-first|get-only`.
 
+Timeout controls are explicit:
+
+- `--fetch-connect-timeout-ms` bounds the TCP connect phase for URL inputs
+- `--fetch-timeout-ms` bounds the overall HTTP exchange for URL inputs
+
 ## Command Model
 
 ### `catalog`
@@ -109,7 +114,8 @@ The registry includes:
 
 - `htmlcut-core` request/result schemas
 - `htmlcut-cli` report schemas
-- frozen interop v1 schemas
+- `htmlcut-cli` error-report schema
+- interop v1 schemas
 
 ### `inspect`
 
@@ -161,6 +167,21 @@ Top-level JSON reports carry their own schema identity:
 - `schema_name`
 - `schema_version`
 
+When JSON rendering is active and the CLI fails before it can emit a command-specific success or
+failure report, it emits `htmlcut.error_report` instead. That error report carries:
+
+- `exit_code`
+- primary `error` category/code/message
+- structured `diagnostics`
+- `source_load_steps` when source loading reached a traced network stage before failing
+- `schema_name`
+- `schema_version`
+
+The `code` values in that error report are stable strings from one of two maintained inventories:
+
+- core `DiagnosticCode` values projected through the CLI
+- CLI-specific `CliErrorCode` values such as parse, request-file, and bundle-write failures
+
 ### `select`
 
 `select` extracts from CSS selector matches.
@@ -185,6 +206,10 @@ Value modes:
 - `attribute`
 - `structured`
 
+`--value text` uses HTML-aware text rendering rather than raw descendant concatenation. That means
+ordered-list numbering, image `alt` text, and preformatted whitespace on the selected node are
+preserved in the extracted value.
+
 ### `slice`
 
 `slice` extracts between raw source boundaries.
@@ -196,7 +221,7 @@ Boundary semantics are exact:
 - literal matching is raw substring matching, not tag-aware
 - literal slice requests do not expose regex flags in JSON contracts
 - regex boundaries are consumed exactly as matched
-- regex flags accept `i`, `m`, `s`, `U`, `u`, and `x`; `g` is accepted for compatibility and ignored because HTMLCut already scans for all candidate slices
+- regex flags accept `i`, `m`, `s`, `U`, and `x`
 - default selection excludes both matched boundaries
 - `--include-start` and `--include-end` control boundary inclusion independently
 - `--value inner-html` returns the selected fragment as HTML
@@ -228,7 +253,7 @@ Default stdout behavior:
 - `--value inner-html` and `--value outer-html` default to `html`
 - `--value structured` defaults to `json`
 - `inspect` defaults to `json`
-- `--max-bytes` accepts raw bytes or KB/MB/GB values only when they resolve to a whole positive byte count after unit scaling
+- `--max-bytes` accepts raw bytes or KiB/MiB/GiB values only when they resolve to a whole positive byte count after unit scaling
 
 `--output none` is valid only with `--bundle`.
 

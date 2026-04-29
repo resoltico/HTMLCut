@@ -95,23 +95,33 @@ pub(super) fn inspect_about() -> &'static str {
 }
 
 pub(super) fn select_about() -> &'static str {
-    htmlcut_core::operation_descriptor(OperationId::SelectExtract).description
+    htmlcut_core::operation_descriptor(OperationId::SelectExtract)
+        .map(|descriptor| descriptor.description)
+        .unwrap_or("Operation description unavailable.")
 }
 
 pub(super) fn slice_about() -> &'static str {
-    htmlcut_core::operation_descriptor(OperationId::SliceExtract).description
+    htmlcut_core::operation_descriptor(OperationId::SliceExtract)
+        .map(|descriptor| descriptor.description)
+        .unwrap_or("Operation description unavailable.")
 }
 
 pub(super) fn inspect_source_about() -> &'static str {
-    htmlcut_core::operation_descriptor(OperationId::SourceInspect).description
+    htmlcut_core::operation_descriptor(OperationId::SourceInspect)
+        .map(|descriptor| descriptor.description)
+        .unwrap_or("Operation description unavailable.")
 }
 
 pub(super) fn inspect_select_about() -> &'static str {
-    htmlcut_core::operation_descriptor(OperationId::SelectPreview).description
+    htmlcut_core::operation_descriptor(OperationId::SelectPreview)
+        .map(|descriptor| descriptor.description)
+        .unwrap_or("Operation description unavailable.")
 }
 
 pub(super) fn inspect_slice_about() -> &'static str {
-    htmlcut_core::operation_descriptor(OperationId::SlicePreview).description
+    htmlcut_core::operation_descriptor(OperationId::SlicePreview)
+        .map(|descriptor| descriptor.description)
+        .unwrap_or("Operation description unavailable.")
 }
 
 pub(super) fn root_long_about() -> &'static str {

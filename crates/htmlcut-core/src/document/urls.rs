@@ -74,8 +74,9 @@ pub(crate) fn rewrite_html_urls(
     if is_document {
         serialize_document(&document)
     } else {
-        let body = first_body(&document).expect("wrapped fragments always contain a body");
-        serialize_children(&body)
+        first_body(&document)
+            .map(|body| serialize_children(&body))
+            .unwrap_or_else(|| serialize_document(&document))
     }
 }
 
@@ -86,12 +87,18 @@ pub(crate) fn looks_like_full_document(fragment: &str) -> bool {
 
 pub(crate) fn rewrite_urls_in_document(document: &mut Html, base_url: &str) {
     let node_ids: Vec<NodeId> = document.tree.nodes().map(|node| node.id()).collect();
+    rewrite_urls_in_document_with_node_ids(document, base_url, node_ids);
+}
 
+fn rewrite_urls_in_document_with_node_ids(
+    document: &mut Html,
+    base_url: &str,
+    node_ids: impl IntoIterator<Item = NodeId>,
+) {
     for node_id in node_ids {
-        let mut node = document
-            .tree
-            .get_mut(node_id)
-            .expect("collected node ids must remain valid");
+        let Some(mut node) = document.tree.get_mut(node_id) else {
+            continue;
+        };
         if let Node::Element(element) = node.value() {
             let tag_name = element.name().to_owned();
             let is_meta_refresh = raw_element_is_meta_refresh(element);
@@ -109,6 +116,15 @@ pub(crate) fn rewrite_urls_in_document(document: &mut Html, base_url: &str) {
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn rewrite_urls_in_document_with_node_ids_for_tests(
+    document: &mut Html,
+    base_url: &str,
+    node_ids: Vec<NodeId>,
+) {
+    rewrite_urls_in_document_with_node_ids(document, base_url, node_ids);
 }
 
 #[cfg(test)]

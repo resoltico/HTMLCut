@@ -57,7 +57,7 @@ pub(super) fn slice_extraction(
     let to = SliceBoundary::new(to).expect("slice boundary");
     let slice = match mode {
         PatternMode::Literal => SliceSpec::new(from, to),
-        PatternMode::Regex => SliceSpec::regex(from, to, htmlcut_core::DEFAULT_REGEX_FLAGS),
+        PatternMode::Regex => SliceSpec::regex(from, to, ""),
     }
     .with_boundary_inclusion(include_start, include_end);
     ExtractionSpec::slice(slice)

@@ -5,6 +5,7 @@ use htmlcut_core::{ExtractionDefinition, ExtractionRequest, ExtractionStrategy, 
 use serde_json::Value;
 
 use crate::error::{CliError, usage_error};
+use crate::model::CliErrorCode;
 
 use super::super::{MaterializedDefinition, PendingExtractionDefinitionWrite};
 use crate::args::DefinitionArgs;
@@ -52,7 +53,7 @@ fn load_extraction_definition(
 ) -> Result<ExtractionDefinition, CliError> {
     let raw = fs::read_to_string(path).map_err(|error| {
         usage_error(
-            "CLI_REQUEST_FILE_READ_FAILED",
+            CliErrorCode::RequestFileReadFailed,
             format!(
                 "Could not read extraction definition {}: {error}. {}",
                 path.display(),
@@ -62,7 +63,7 @@ fn load_extraction_definition(
     })?;
     let value: Value = serde_json::from_str(&raw).map_err(|error| {
         usage_error(
-            "CLI_REQUEST_FILE_INVALID",
+            CliErrorCode::RequestFileInvalid,
             format!(
                 "Could not parse extraction definition {} as JSON: {error}. {}",
                 path.display(),
@@ -70,12 +71,12 @@ fn load_extraction_definition(
             ),
         )
     })?;
-    let mut deserializer = serde_json::Deserializer::from_str(&raw);
-    let definition: ExtractionDefinition = serde_path_to_error::deserialize(&mut deserializer)
-        .map_err(|error| {
+    let shape_hint = request_file_shape_hint(&value, expected_strategy);
+    let definition: ExtractionDefinition =
+        serde_path_to_error::deserialize(value).map_err(|error| {
             let json_path = render_json_error_path(&error);
             usage_error(
-                "CLI_REQUEST_FILE_INVALID",
+                CliErrorCode::RequestFileInvalid,
                 format!(
                     "Could not parse extraction definition {} as {}@{} at JSON path {}: {}. {}",
                     path.display(),
@@ -86,7 +87,7 @@ fn load_extraction_definition(
                     request_file_recovery_hint(
                         operation_id,
                         expected_strategy,
-                        request_file_shape_hint(&value, expected_strategy).as_deref()
+                        shape_hint.as_deref()
                     )
                 ),
             )
@@ -96,7 +97,7 @@ fn load_extraction_definition(
         || definition.schema_version != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION
     {
         return Err(usage_error(
-            "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED",
+            CliErrorCode::RequestFileSchemaUnsupported,
             format!(
                 "Unsupported extraction definition schema in {}: expected {}@{}, got {}@{}. {} Re-emit a current definition with `htmlcut {} ... --emit-request-file <PATH>` or hand-author one that matches the maintained contract.",
                 path.display(),
@@ -112,7 +113,7 @@ fn load_extraction_definition(
 
     if definition.request.extraction.strategy() != expected_strategy {
         return Err(usage_error(
-            "CLI_REQUEST_FILE_STRATEGY_MISMATCH",
+            CliErrorCode::RequestFileStrategyMismatch,
             format!(
                 "{} cannot execute a {} extraction definition from {} because it only accepts {} extraction definitions. {} Re-emit a matching definition with `htmlcut {} ... --emit-request-file <PATH>` or hand-author one that matches the maintained contract.",
                 command,

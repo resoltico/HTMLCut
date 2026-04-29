@@ -119,74 +119,117 @@ create_release_archive() {
     esac
 }
 
-script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
-readonly script_dir
-repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
-readonly repo_root
-# shellcheck disable=SC1091
-. "${script_dir}/release-targets.sh"
-target_triple="${1:-}"
-readonly target_triple
+print_usage() {
+    local command_name="$1"
 
-[[ -n "${target_triple}" ]] || htmlcut_die "target triple is required"
-is_supported_release_target "${target_triple}" || htmlcut_die "unsupported release target triple: ${target_triple}"
+    cat <<EOF
+Usage: ${command_name} <target-triple>
 
-version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
-readonly version
-artifact_name="$(release_package_name_for_target "${version}" "${target_triple}")"
-readonly artifact_name
-readonly output_dir="${repo_root}/dist"
-readonly artifact_path="${output_dir}/${artifact_name}"
-readonly cargo_profile="dist"
-deployment_target="$(macos_deployment_target_for_target "${target_triple}")"
-readonly deployment_target
-package_dir_name="$(release_package_basename_for_target "${version}" "${target_triple}")"
-readonly package_dir_name
-archive_extension="$(release_archive_extension_for_target "${target_triple}")"
-readonly archive_extension
-compiled_binary_name="$(binary_name_for_target "${target_triple}")"
-readonly compiled_binary_name
-compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
-readonly compiled_binary_path
-temp_root="$(htmlcut_temp_root)"
-readonly temp_root
-staging_root="$(mktemp -d "${temp_root}/htmlcut-release-${target_triple}.XXXXXX")"
-readonly staging_root
-package_dir="${staging_root}/${package_dir_name}"
-readonly package_dir
+Build one maintained standalone HTMLCut release artifact under ./dist.
 
-cleanup() {
-    rm -rf "${staging_root}"
+Supported target triples:
+$(release_target_triples | sed 's/^/  /')
+
+Use ./scripts/release-targets.sh matrix-json to inspect the canonical release matrix.
+EOF
 }
 
-trap cleanup EXIT
+main() {
+    local command_name="${BASH_SOURCE[0]}"
+    local script_dir
+    script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
+    readonly script_dir
+    local repo_root
+    repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
+    readonly repo_root
+    # shellcheck disable=SC1091
+    . "${script_dir}/release-targets.sh"
 
-mkdir -p "${output_dir}"
-rm -f "${artifact_path}"
-
-(
-    cd "${repo_root}"
-    if [[ -n "${deployment_target}" ]]; then
-        export MACOSX_DEPLOYMENT_TARGET="${deployment_target}"
+    if htmlcut_is_help_flag "${1:-}"; then
+        print_usage "${command_name}"
+        return 0
     fi
-    cargo build --profile "${cargo_profile}" --locked -p htmlcut-cli --bin htmlcut --target "${target_triple}"
-)
 
-mkdir -p "${package_dir}"
-cp "${compiled_binary_path}" "${package_dir}/${compiled_binary_name}"
-if ! is_windows_environment; then
-    chmod +x "${package_dir}/${compiled_binary_name}"
-fi
-cp "${repo_root}/LICENSE" "${package_dir}/LICENSE"
-cp "${repo_root}/NOTICE" "${package_dir}/NOTICE"
-sed '/^<!--$/,/^-->$/d' "${repo_root}/PATENTS.md" > "${package_dir}/PATENTS.md"
-sed '/^<!--$/,/^-->$/d' "${repo_root}/README.md" \
-    | sed "s|(docs/|(https://github.com/resoltico/HTMLCut/blob/v${version}/docs/|g" \
-    > "${package_dir}/README.md"
-create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
+    local target_triple="${1:-}"
+    [[ -n "${target_triple}" ]] || htmlcut_usage_error \
+        "${command_name}" \
+        "target triple is required"
+    is_supported_release_target "${target_triple}" || htmlcut_usage_error \
+        "${command_name}" \
+        "unsupported release target triple: ${target_triple}"
 
-printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"
-if [[ -n "${deployment_target}" ]]; then
-    printf 'Pinned macOS deployment target to %s\n' "${deployment_target}"
+    local version
+    version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
+    readonly version
+    local artifact_name
+    artifact_name="$(release_package_name_for_target "${version}" "${target_triple}")"
+    readonly artifact_name
+    local output_dir="${repo_root}/dist"
+    readonly output_dir
+    local artifact_path="${output_dir}/${artifact_name}"
+    readonly artifact_path
+    local cargo_profile="dist"
+    readonly cargo_profile
+    local deployment_target
+    deployment_target="$(macos_deployment_target_for_target "${target_triple}")"
+    readonly deployment_target
+    local package_dir_name
+    package_dir_name="$(release_package_basename_for_target "${version}" "${target_triple}")"
+    readonly package_dir_name
+    local archive_extension
+    archive_extension="$(release_archive_extension_for_target "${target_triple}")"
+    readonly archive_extension
+    local compiled_binary_name
+    compiled_binary_name="$(binary_name_for_target "${target_triple}")"
+    readonly compiled_binary_name
+    local compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
+    readonly compiled_binary_path
+    local temp_root
+    temp_root="$(htmlcut_temp_root)"
+    readonly temp_root
+    local staging_root
+    staging_root="$(mktemp -d "${temp_root}/htmlcut-release-${target_triple}.XXXXXX")"
+    readonly staging_root
+    local package_dir="${staging_root}/${package_dir_name}"
+    readonly package_dir
+
+    cleanup() {
+        rm -rf "${staging_root}"
+    }
+
+    trap cleanup EXIT
+
+    mkdir -p "${output_dir}"
+    rm -f "${artifact_path}"
+
+    (
+        cd "${repo_root}"
+        if [[ -n "${deployment_target}" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET="${deployment_target}"
+        fi
+        cargo build --profile "${cargo_profile}" --locked -p htmlcut-cli --bin htmlcut --target "${target_triple}"
+    )
+
+    mkdir -p "${package_dir}"
+    cp "${compiled_binary_path}" "${package_dir}/${compiled_binary_name}"
+    if ! is_windows_environment; then
+        chmod +x "${package_dir}/${compiled_binary_name}"
+    fi
+    cp "${repo_root}/LICENSE" "${package_dir}/LICENSE"
+    cp "${repo_root}/NOTICE" "${package_dir}/NOTICE"
+    sed '/^<!--$/,/^-->$/d' "${repo_root}/PATENTS.md" > "${package_dir}/PATENTS.md"
+    sed '/^<!--$/,/^-->$/d' "${repo_root}/README.md" \
+        | sed "s|(docs/|(https://github.com/resoltico/HTMLCut/blob/v${version}/docs/|g" \
+        > "${package_dir}/README.md"
+    create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
+
+    printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"
+    if [[ -n "${deployment_target}" ]]; then
+        printf 'Pinned macOS deployment target to %s\n' "${deployment_target}"
+    fi
+    printf 'Wrote %s\n' "${artifact_path}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
 fi
-printf 'Wrote %s\n' "${artifact_path}"

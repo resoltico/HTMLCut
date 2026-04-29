@@ -6,9 +6,8 @@ use htmlcut_core::{
 use crate::model::ExtractionCommandReport;
 
 use super::shared::{
-    compact_inline_preview, render_attribute_summary, render_diagnostic_line,
-    render_fragment_preview, render_range_summary, render_source_kind,
-    render_source_load_trace_lines,
+    compact_inline_preview, format_range_summary, render_attribute_summary, render_diagnostic_line,
+    render_fragment_preview, render_source_kind, render_source_load_trace_lines,
 };
 
 pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
@@ -78,18 +77,15 @@ pub(crate) fn render_preview_match_lines(
                 lines.push(format!("   candidate index: {}", metadata.candidate_index));
                 lines.push(format!(
                     "   selected range: {}",
-                    render_range_summary(Some(&metadata.selected_range))
-                        .expect("selected range should always be present")
+                    format_range_summary(&metadata.selected_range)
                 ));
                 lines.push(format!(
                     "   inner range: {}",
-                    render_range_summary(Some(&metadata.inner_range))
-                        .expect("inner range should always be present")
+                    format_range_summary(&metadata.inner_range)
                 ));
                 lines.push(format!(
                     "   outer range: {}",
-                    render_range_summary(Some(&metadata.outer_range))
-                        .expect("outer range should always be present")
+                    format_range_summary(&metadata.outer_range)
                 ));
                 lines.push(format!("   include start: {}", metadata.include_start));
                 lines.push(format!("   include end: {}", metadata.include_end));
@@ -137,8 +133,7 @@ pub(crate) fn render_preview_location(
     if operation_id == htmlcut_core::OperationId::SlicePreview
         && let ExtractionMatchMetadata::DelimiterPair(metadata) = &matched.metadata
     {
-        let range = render_range_summary(Some(&metadata.selected_range))
-            .expect("selected range should always be present");
+        let range = format_range_summary(&metadata.selected_range);
         return format!("range {range}");
     }
 

@@ -21,6 +21,57 @@ fn select_text_output_extracts_text_for_humans() {
 }
 
 #[test]
+fn select_text_output_preserves_ordered_lists_and_image_alt_text() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "semantic-text.html",
+        "<article><ol start=\"5\"><li>Five</li><li><img src=\"hero.png\" alt=\"Hero\"></li></ol></article>",
+    );
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["select"])
+        .arg(&input_path)
+        .args(["--css", "article"])
+        .assert()
+        .success()
+        .stdout("5. Five\n6. Hero\n");
+}
+
+#[test]
+fn select_text_output_honors_selected_element_semantics() {
+    let tempdir = tempdir().expect("tempdir");
+    let image_path = write_fixture(
+        tempdir.path(),
+        "selected-image.html",
+        "<img src=\"hero.png\" alt=\"Hero\">",
+    );
+    let pre_path = write_fixture(
+        tempdir.path(),
+        "selected-pre.html",
+        "<pre>line 1\n  line 2</pre>",
+    );
+
+    let mut image = Command::cargo_bin("htmlcut").expect("binary");
+    image
+        .args(["select"])
+        .arg(&image_path)
+        .args(["--css", "img"])
+        .assert()
+        .success()
+        .stdout("Hero\n");
+
+    let mut pre = Command::cargo_bin("htmlcut").expect("binary");
+    pre.args(["select"])
+        .arg(&pre_path)
+        .args(["--css", "pre"])
+        .assert()
+        .success()
+        .stdout("line 1\n  line 2\n");
+}
+
+#[test]
 fn select_html_value_modes_default_to_html_stdout() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(
@@ -88,6 +139,37 @@ fn select_single_fails_when_multiple_candidates_exist() {
         .stderr(predicate::str::contains(
             "Exact-one selection requires exactly one candidate",
         ));
+}
+
+#[test]
+fn select_json_parse_failures_emit_a_versioned_error_report() {
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    let report = parse_error_report(
+        command
+            .args(["select", "--output", "json"])
+            .assert()
+            .failure()
+            .code(2),
+    );
+
+    assert_eq!(report.tool, "htmlcut");
+    assert_eq!(report.engine, "htmlcut-core");
+    assert_eq!(report.version, expected_version());
+    assert_eq!(report.schema_name, ERROR_COMMAND_REPORT_SCHEMA_NAME);
+    assert_eq!(report.schema_version, ERROR_COMMAND_REPORT_SCHEMA_VERSION);
+    assert_eq!(report.command, "select");
+    assert!(!report.ok);
+    assert_eq!(report.exit_code, 2);
+    assert_eq!(
+        report.error.category,
+        htmlcut_cli::ErrorReportCategory::Usage
+    );
+    assert_eq!(
+        report.error.code,
+        ErrorReportCode::Cli(CliErrorCode::ParseError)
+    );
+    assert!(!report.diagnostics.is_empty());
+    assert!(report.source_load_steps.is_empty());
 }
 
 #[test]

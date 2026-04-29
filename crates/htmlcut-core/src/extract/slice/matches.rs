@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use serde_json::{Value, json};
 
 use crate::contracts::{
@@ -6,20 +8,56 @@ use crate::contracts::{
 };
 use crate::diagnostics::{DiagnosticCode, error_diagnostic, unresolved_effective_base_diagnostic};
 use crate::document::{
-    apply_whitespace_mode, build_preview, document_base_href, extract_document_title,
-    first_fragment_attributes, parse_document_node, render_html_as_text, resolve_document_base_url,
-    rewrite_html_urls,
+    apply_whitespace_mode, build_preview, document_base_href, element_attributes,
+    extract_document_title, first_body_child_element, parse_document_node, parse_wrapped_fragment,
+    render_document_body_as_text, resolve_document_base_url, rewrite_html_urls,
 };
 use crate::source::LoadedSource;
 
-use super::super::{ExtractionRun, SliceCandidate, SliceStructuredValue};
+use super::super::{ExtractionRun, SliceCandidate};
 use super::markup::slice_markup_diagnostics;
-use super::patterns::extract_slice_candidates;
+use super::patterns::{CompiledSlicePatterns, extract_compiled_slice_candidates};
 use super::selection::select_candidates;
 
+#[cfg(test)]
 pub(crate) fn run_slice_extraction(
     request: &ExtractionRequest,
     source: &LoadedSource,
+) -> ExtractionRun {
+    let Some(slice) = request.extraction.slice_spec() else {
+        return ExtractionRun {
+            document_title: None,
+            effective_base_url: None,
+            candidate_count: 0,
+            diagnostics: vec![error_diagnostic(
+                DiagnosticCode::InvalidSlicePattern,
+                "Slice extraction request is missing its boundaries.",
+                None,
+            )],
+            matches: Vec::new(),
+        };
+    };
+    let patterns = match CompiledSlicePatterns::compile(slice) {
+        Ok(patterns) => patterns,
+        Err(diagnostic) => {
+            return ExtractionRun {
+                document_title: None,
+                effective_base_url: None,
+                candidate_count: 0,
+                diagnostics: vec![diagnostic],
+                matches: Vec::new(),
+            };
+        }
+    };
+
+    run_validated_slice_extraction(request, source, slice, &patterns)
+}
+
+pub(crate) fn run_validated_slice_extraction(
+    request: &ExtractionRequest,
+    source: &LoadedSource,
+    slice: &SliceSpec,
+    patterns: &CompiledSlicePatterns,
 ) -> ExtractionRun {
     let document = parse_document_node(&source.text);
     let document_title = extract_document_title(&document);
@@ -32,12 +70,7 @@ pub(crate) fn run_slice_extraction(
     } else {
         Vec::new()
     };
-    let slice = request
-        .extraction
-        .slice_spec()
-        .expect("slice extraction should carry slice boundaries");
-
-    let candidates = match extract_slice_candidates(&source.text, slice) {
+    let candidates = match extract_compiled_slice_candidates(&source.text, slice, patterns) {
         Ok(candidates) => candidates,
         Err(diagnostic) => {
             return ExtractionRun {
@@ -95,44 +128,78 @@ pub(crate) fn build_slice_match(
     candidate_count: usize,
 ) -> Result<ExtractionMatch, Diagnostic> {
     let value_spec = request.extraction.value();
-    let slice = request
-        .extraction
-        .slice_spec()
-        .expect("slice extraction should carry slice boundaries");
-    let selected_html = rewrite_html_urls(&candidate.selected_html, effective_base_url, false);
-    let outer_html = rewrite_html_urls(&candidate.outer_html, effective_base_url, false);
-    let inner_html = rewrite_html_urls(&candidate.inner_html, effective_base_url, false);
-    let text = render_html_as_text(&selected_html, request.normalization.whitespace);
-    let value = match value_spec {
-        ValueSpec::Text => Value::String(text.clone()),
-        ValueSpec::InnerHtml => Value::String(selected_html.clone()),
-        ValueSpec::OuterHtml => Value::String(outer_html.clone()),
-        ValueSpec::Attribute { name } => build_attribute_value(
+    let Some(slice) = request.extraction.slice_spec() else {
+        return Err(error_diagnostic(
+            DiagnosticCode::InvalidSlicePattern,
+            "Slice extraction request is missing its boundaries.",
+            None,
+        ));
+    };
+    let rewrite_urls = request.normalization.rewrite_urls;
+    let whitespace = request.normalization.whitespace;
+    let selected_html = OnceCell::new();
+    let selected_html_value = || {
+        selected_html
+            .get_or_init(|| {
+                normalized_fragment_html(&candidate.selected_html, effective_base_url, rewrite_urls)
+            })
+            .clone()
+    };
+    let selected_document = OnceCell::new();
+    let selected_document_value =
+        || selected_document.get_or_init(|| parse_wrapped_fragment(&selected_html_value()));
+    let outer_html = OnceCell::new();
+    let outer_html_value = || {
+        outer_html
+            .get_or_init(|| {
+                normalized_fragment_html(&candidate.outer_html, effective_base_url, rewrite_urls)
+            })
+            .clone()
+    };
+    let inner_html = OnceCell::new();
+    let inner_html_value = || {
+        inner_html
+            .get_or_init(|| {
+                normalized_fragment_html(&candidate.inner_html, effective_base_url, rewrite_urls)
+            })
+            .clone()
+    };
+    let text = OnceCell::new();
+    let text_value = || {
+        text.get_or_init(|| render_document_body_as_text(selected_document_value(), whitespace))
+            .clone()
+    };
+    let attribute_value = |attribute_name: &str| -> Result<Value, Diagnostic> {
+        build_attribute_value(
             request,
             slice,
             candidate,
-            &selected_html,
-            effective_base_url,
-            name.as_str(),
-        )?,
-        ValueSpec::Structured => serde_json::to_value(SliceStructuredValue {
-            match_index,
-            match_count,
-            candidate_index,
-            candidate_count,
-            text: text.clone(),
-            html: selected_html.clone(),
-            inner_html: inner_html.clone(),
-            outer_html: outer_html.clone(),
-            selected_range: candidate.selected_range.clone(),
-            inner_range: candidate.inner_range.clone(),
-            outer_range: candidate.outer_range.clone(),
-            include_start: slice.include_start,
-            include_end: slice.include_end,
-            matched_start: candidate.matched_start.clone(),
-            matched_end: candidate.matched_end.clone(),
-        })
-        .expect("slice structured value should serialize"),
+            selected_document_value(),
+            attribute_name,
+        )
+    };
+    let value = match value_spec {
+        ValueSpec::Text => Value::String(text_value()),
+        ValueSpec::InnerHtml => Value::String(selected_html_value()),
+        ValueSpec::OuterHtml => Value::String(outer_html_value()),
+        ValueSpec::Attribute { name } => attribute_value(name.as_str())?,
+        ValueSpec::Structured => json!({
+            "matchIndex": match_index,
+            "matchCount": match_count,
+            "candidateIndex": candidate_index,
+            "candidateCount": candidate_count,
+            "text": text_value(),
+            "html": selected_html_value(),
+            "innerHtml": inner_html_value(),
+            "outerHtml": outer_html_value(),
+            "selectedRange": candidate.selected_range.clone(),
+            "innerRange": candidate.inner_range.clone(),
+            "outerRange": candidate.outer_range.clone(),
+            "includeStart": slice.include_start,
+            "includeEnd": slice.include_end,
+            "matchedStart": candidate.matched_start.clone(),
+            "matchedEnd": candidate.matched_end.clone(),
+        }),
     };
 
     Ok(ExtractionMatch {
@@ -141,8 +208,16 @@ pub(crate) fn build_slice_match(
         value_type: value_spec.value_type(),
         preview: build_preview(&value, request.output.preview_chars.get()),
         value,
-        html: request.output.include_html.then_some(outer_html.clone()),
-        text: request.output.include_text.then_some(text),
+        html: if request.output.include_html {
+            Some(outer_html_value())
+        } else {
+            None
+        },
+        text: if request.output.include_text {
+            Some(text_value())
+        } else {
+            None
+        },
         metadata: ExtractionMatchMetadata::DelimiterPair(DelimiterPairMatchMetadata {
             candidate_count,
             candidate_index,
@@ -161,15 +236,12 @@ fn build_attribute_value(
     request: &ExtractionRequest,
     slice: &SliceSpec,
     candidate: &SliceCandidate,
-    selected_html: &str,
-    effective_base_url: Option<&str>,
+    selected_document: &scraper::Html,
     attribute_name: &str,
 ) -> Result<Value, Diagnostic> {
-    let attributes = first_fragment_attributes(
-        selected_html,
-        effective_base_url,
-        request.normalization.rewrite_urls,
-    );
+    let attributes = first_body_child_element(selected_document)
+        .map(|element| element_attributes(&element, None, false))
+        .unwrap_or_default();
     let Some(value) = attributes.get(attribute_name) else {
         let hint_include_start =
             !slice.include_start && candidate.selected_range.start != candidate.outer_range.start;
@@ -195,4 +267,16 @@ fn build_attribute_value(
         value,
         request.normalization.whitespace,
     )))
+}
+
+fn normalized_fragment_html(
+    fragment: &str,
+    effective_base_url: Option<&str>,
+    rewrite_urls: bool,
+) -> String {
+    if rewrite_urls {
+        rewrite_html_urls(fragment, effective_base_url, false)
+    } else {
+        fragment.to_owned()
+    }
 }

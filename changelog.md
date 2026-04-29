@@ -5,6 +5,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-04-29
+
+### Changed
+- Tightened the `htmlcut_core::interop::v1` surface with reusable `prepare_plan(...)` /
+  `execute_validated_plan(...)` APIs, multi-match selection support, enforced size limits for
+  preloaded HTML inputs, and canonical digest validation for interop result/error documents
+  instead of relying on construction order.
+- Removed the redundant `validate_plan(...)` preflight from `htmlcut_core::interop::v1`;
+  `prepare_plan(...)` is now the sole maintained validated-plan entrypoint before execution.
+- Structured CLI failures emitted on the JSON path now use a first-class
+  `htmlcut.error_report` schema, and the published `htmlcut_cli` Rust surface now exports
+  first-class `CliErrorCode` / `ErrorReportCode` types plus the error-report structs and schema
+  constants alongside the existing command-report types.
+- Source loading now exposes an explicit `--fetch-connect-timeout-ms` contract alongside the
+  overall `--fetch-timeout-ms` budget instead of hiding a hardcoded 5-second connect ceiling under
+  the total timeout flag.
+- Operation catalog entries, CLI command contracts, and CLI help documents now derive from one
+  canonical core-owned operation surface spec instead of three manually synchronized registries.
+- The public schema registry now materializes JSON Schema documents through typed
+  `SchemaExportError` results instead of aborting on serialization failures.
+- Promoted the workspace to `6.0.0` to reflect the intentional `htmlcut-core` contract changes in
+  interop validation, diagnostic typing, and regex/default contract cleanup.
+
+### Fixed
+- Corrected byte-size rendering and CLI/docs unit labels to use IEC `KiB`/`MiB`/`GiB`, removed the
+  no-op default regex `u` flag from the core/interop pipeline, and refreshed the maintained docs
+  around those public contracts.
+- Selector extraction now rewrites URLs from one cloned parsed DOM instead of reparsing inner and
+  outer HTML per selected match, the core/CLI catalog metadata gains live drift assertions for
+  `rust_shape`/surface strings, and `cargo xtask check` now includes `cargo doc --workspace
+  --no-deps` so broken public docs fail the maintainer gate.
+- Ordered-list text extraction now preserves real list numbering including `start` / `reversed` /
+  `li[value]` semantics, selector text extraction now preserves selected-node `img[alt]` and
+  preformatted whitespace, slice extraction no longer parses a selected fragment just to emit
+  `inner-html`, and JSON CLI error reports now carry typed code fields plus any captured
+  `source_load_steps` trace.
+- Core rendering no longer rescans or reallocates whole output buffers just to decide spacing or
+  trim trailing blank lines, slice-match construction no longer relies on `expect(...)` panics for
+  value/output invariants, and interop plan-digest failures now return structured internal errors
+  instead of aborting.
+- File and URL source loaders now take typed inputs from the dispatcher instead of relying on
+  runtime `unreachable!` checks, schema-catalog validation now reports unknown schema refs instead
+  of panicking, HTTP URL loading now caps the connect phase separately inside the existing fetch
+  timeout budget, and the macOS/Windows CI gate now runs dependency freshness, advisory, and
+  policy checks alongside formatting, clippy, and tests.
+- Invalid selector and slice requests now fail during request validation before any source I/O or
+  document parsing, and delimiter-pattern compilation is reused across the later extraction phase
+  instead of being rediscovered only after the source is loaded.
+- The maintained `cargo xtask` entrypoint and every executable release helper script now explain
+  themselves through `--help`, the canonical `scripts/release-targets.sh` registry is directly
+  inspectable from the shell, and the runnable namespace core example now prints a compact JSON
+  summary instead of exiting silently.
+- CLI JSON/report/request rendering now returns structured internal errors instead of aborting on
+  serialization, slice-preview range formatting no longer reasserts required metadata with
+  `expect(...)`, and the exported operation/schema registries now avoid production drift panics by
+  deriving metadata from their maintained owners instead of runtime assertion shims.
+- The release preflight and closeout guides now recognize GitHub CLI's current Dependabot author
+  identity surface (`app/dependabot` as well as `dependabot[bot]`), so post-release dependency
+  hygiene matches the live GitHub metadata instead of a stale login spelling.
+
 ## [5.0.0] - 2026-04-24
 
 ### Changed
