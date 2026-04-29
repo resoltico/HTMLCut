@@ -240,6 +240,8 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
         .expect("workspace root");
     let temp = tempdir().expect("tempdir");
     let fake_bin = temp.path().join("bin");
+    let fake_archive = temp.path().join("archive.zip");
+    let fake_extract_root = temp.path().join("extract-root");
     fs::create_dir_all(&fake_bin).expect("create fake bin");
     let log_path = temp.path().join("extractor.log");
 
@@ -270,6 +272,11 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
             .expect("chmod fake powershell");
     }
 
+    let fake_bin_for_bash = crate::release::bash_source_argument_for_tests(&fake_bin);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
+    let fake_archive_for_bash = crate::release::bash_source_argument_for_tests(&fake_archive);
+    let fake_extract_root_for_bash =
+        crate::release::bash_source_argument_for_tests(&fake_extract_root);
     let output = bash_command()
         .arg("-c")
         .arg(format!(
@@ -277,10 +284,12 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
 PATH="{fake_bin}:$PATH"
 export OS=Windows_NT
 source "{repo_root}/scripts/smoke-release-artifact.sh"
-extract_release_archive "/tmp/archive.zip" "zip" "/tmp/extract-root"
+extract_release_archive "{fake_archive}" "zip" "{fake_extract_root}"
 "#,
-            fake_bin = fake_bin.display(),
-            repo_root = repo_root.display(),
+            fake_bin = fake_bin_for_bash,
+            repo_root = repo_root_for_bash,
+            fake_archive = fake_archive_for_bash,
+            fake_extract_root = fake_extract_root_for_bash,
         ))
         .current_dir(repo_root)
         .output()
