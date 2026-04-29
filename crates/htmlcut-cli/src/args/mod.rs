@@ -106,6 +106,7 @@ where
 #[derive(Debug, Parser)]
 #[command(
     name = TOOL_NAME,
+    bin_name = TOOL_NAME,
     before_help = root_before_help(),
     help_template = ROOT_HELP_TEMPLATE,
     long_about = root_long_about(),
