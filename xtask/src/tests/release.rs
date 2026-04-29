@@ -111,6 +111,8 @@ fn release_shell_helpers_survive_readonly_caller_names() {
         .expect("workspace root");
     let scripts_dir = repo_root.join("scripts");
     let version = workspace_version(repo_root).expect("workspace version");
+    let scripts_dir = crate::release::bash_source_argument_for_tests(&scripts_dir);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
     let script = format!(
         r#"set -euo pipefail
 script_dir="{scripts_dir}"
@@ -135,8 +137,8 @@ resolved_tag="$(htmlcut_resolve_release_tag "$tag_name")"
 
 htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_version"
 "#,
-        scripts_dir = scripts_dir.display(),
-        repo_root = repo_root.display(),
+        scripts_dir = scripts_dir,
+        repo_root = repo_root_for_bash,
         version = version,
     );
 
