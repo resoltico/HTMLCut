@@ -1,3 +1,5 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::contracts::{Diagnostic, DiagnosticLevel};
@@ -10,10 +12,23 @@ macro_rules! diagnostic_codes {
         )+
     ) => {
         /// Stable diagnostic-code identifiers emitted by `htmlcut-core`.
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Serialize,
+            Deserialize,
+            JsonSchema,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+        )]
         pub enum DiagnosticCode {
             $(
                 $(#[$meta])*
+                #[serde(rename = $code)]
                 $variant,
             )+
         }
@@ -43,6 +58,18 @@ macro_rules! diagnostic_codes {
         impl fmt::Display for DiagnosticCode {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 formatter.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for DiagnosticCode {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<DiagnosticCode> for &str {
+            fn eq(&self, other: &DiagnosticCode) -> bool {
+                *self == other.as_str()
             }
         }
 
@@ -76,8 +103,6 @@ diagnostic_codes! {
     SourceLoadFailed => "SOURCE_LOAD_FAILED",
     /// The request spec version is unsupported.
     UnsupportedSpecVersion => "UNSUPPORTED_SPEC_VERSION",
-    /// The request shape is invalid.
-    InvalidRequest => "INVALID_REQUEST",
     /// The CSS selector is invalid.
     InvalidSelector => "INVALID_SELECTOR",
     /// The slice pattern or regex flags are invalid.
@@ -90,8 +115,6 @@ diagnostic_codes! {
     MatchIndexOutOfRange => "MATCH_INDEX_OUT_OF_RANGE",
     /// The selected HTML is missing the requested attribute.
     MissingAttribute => "MISSING_ATTRIBUTE",
-    /// Parsing failed before extraction could complete.
-    ParseFailed => "PARSE_FAILED",
     /// More than one candidate matched while first-match mode was active.
     MultipleMatches => "MULTIPLE_MATCHES",
     /// URL rewriting depended on an unresolved effective base URL.
@@ -113,7 +136,7 @@ pub(crate) fn error_diagnostic(
 ) -> Diagnostic {
     Diagnostic {
         level: DiagnosticLevel::Error,
-        code: code.to_string(),
+        code,
         message: message.into(),
         details,
     }
@@ -126,7 +149,7 @@ pub(crate) fn warning_diagnostic(
 ) -> Diagnostic {
     Diagnostic {
         level: DiagnosticLevel::Warning,
-        code: code.to_string(),
+        code,
         message: message.into(),
         details,
     }

@@ -1,18 +1,34 @@
 use super::*;
 use crate::contracts::{
     default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
-    default_preview_chars, default_regex_flags, default_spec_version, default_true,
+    default_preview_chars, default_spec_version, default_true,
 };
+use crate::diagnostics::{error_diagnostic, has_errors, warning_diagnostic};
 use crate::document::{
-    ELLIPSIS, attribute_supports_url_rewrite, collapse_blank_lines_for_tests, element_name,
-    rewrite_srcset_for_tests,
+    ELLIPSIS, apply_whitespace_mode, attribute_supports_url_rewrite, build_node_path,
+    build_preview, collapse_blank_lines_for_tests, collapse_inline_whitespace, element_attributes,
+    element_name, first_body, first_body_child_element, first_fragment_attributes,
+    looks_like_full_document, needs_space, parse_document_node, parse_wrapped_fragment,
+    push_newline, render_element_as_text, render_html_as_text, render_node,
+    resolve_document_base_url, resolve_url, rewrite_html_urls, rewrite_srcset_for_tests,
+    rewrite_urls_in_document, select_first, serialize_children, serialize_document,
 };
-use crate::extract::position_inside_markup_for_tests;
+use crate::extract::{
+    build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,
+    position_inside_markup_for_tests, run_selector_extraction, run_slice_extraction,
+    select_candidates, validate_request,
+};
 use crate::result::ExtractionMatchMetadata;
 #[cfg(feature = "http-client")]
+use crate::source::read_url_source_from_href;
 use crate::source::{
-    content_type_is_obviously_non_html_for_tests, finish_url_source_from_reader_for_tests,
-    head_error_allows_get_fallback_for_tests, read_stdin_source_from_reader_for_tests,
+    LoadedSource, load_source, read_file_source_from_path, read_limited_to_string, source_metadata,
+};
+#[cfg(feature = "http-client")]
+use crate::source::{
+    build_http_agent, content_type_is_obviously_non_html_for_tests,
+    finish_url_source_from_reader_for_tests, head_error_allows_get_fallback_for_tests,
+    read_stdin_source_from_reader_for_tests,
 };
 #[cfg(not(feature = "http-client"))]
 use crate::source::{
@@ -28,9 +44,6 @@ use std::io::{Cursor, Error as IoError, Read};
 #[cfg(feature = "http-client")]
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::str::FromStr;
 #[cfg(feature = "http-client")]
@@ -63,11 +76,7 @@ fn slice_spec(from: &str, to: &str) -> SliceSpec {
 }
 
 fn regex_slice_spec(from: &str, to: &str) -> SliceSpec {
-    SliceSpec::regex(
-        slice_boundary(from),
-        slice_boundary(to),
-        default_regex_flags(),
-    )
+    SliceSpec::regex(slice_boundary(from), slice_boundary(to), "")
 }
 
 fn slice_request(html: &str, from: &str, to: &str) -> ExtractionRequest {
@@ -101,6 +110,27 @@ fn file_source(path: impl AsRef<Path>) -> SourceRequest {
 
 fn url_source(url: &str) -> SourceRequest {
     SourceRequest::url(Url::parse(url).expect("url"))
+}
+
+fn read_file_source(
+    source: &SourceRequest,
+    runtime: &RuntimeOptions,
+) -> Result<LoadedSource, crate::source::SourceLoadFailure> {
+    let SourceInput::File { path } = &source.input else {
+        panic!("test helper expected a file source request");
+    };
+    read_file_source_from_path(source, path, runtime)
+}
+
+#[cfg(feature = "http-client")]
+fn read_url_source(
+    source: &SourceRequest,
+    runtime: &RuntimeOptions,
+) -> Result<LoadedSource, crate::source::SourceLoadFailure> {
+    let SourceInput::Url { href } = &source.input else {
+        panic!("test helper expected a URL source request");
+    };
+    read_url_source_from_href(source, href, runtime)
 }
 
 mod catalog;

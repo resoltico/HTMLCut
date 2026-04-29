@@ -48,7 +48,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
             RegexFlag::SwapGreed,
             RegexFlag::IgnoreWhitespace,
         ]),
-        format!("{DEFAULT_REGEX_FLAGS}imsUx")
+        "imsUx"
     );
 
     let selector_match = ExtractionMatch {
@@ -112,14 +112,18 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
             .with_input_base_url(Url::parse("https://example.com/start.html").expect("url")),
         &selector_plan(),
         successful_selector_extraction(
-            vec![selector_core_match(1, 1)],
+            vec![selector_core_match(1, 1, 1)],
             1,
             Some("https://example.com/base.html"),
         ),
     )
     .expect("adapted text result");
-    assert_eq!(adapted_text.selected_match.value_kind, OutputKind::Text);
-    assert_eq!(adapted_text.selected_match.value, "Hello");
+    assert_eq!(adapted_text.selected_matches.len(), 1);
+    assert_eq!(
+        adapted_text.selected_matches[0].value_kind,
+        OutputKind::Text
+    );
+    assert_eq!(adapted_text.selected_matches[0].value, "Hello");
     assert_eq!(
         adapted_text
             .source
@@ -137,10 +141,10 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
             Output::new(OutputKind::InnerHtml),
             Normalization::new(TextWhitespace::Normalize, false),
         ),
-        successful_selector_extraction(vec![selector_core_match(1, 1)], 1, None),
+        successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
     )
     .expect("adapted inner-html result");
-    assert!(adapted_inner.selected_match.value.contains("<article"));
+    assert!(adapted_inner.selected_matches[0].value.contains("<article"));
 
     let adapted_outer = v1::adapt_successful_extraction_for_tests(
         &selector_source,
@@ -150,10 +154,30 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
             Output::new(OutputKind::OuterHtml),
             Normalization::new(TextWhitespace::Normalize, false),
         ),
-        successful_selector_extraction(vec![selector_core_match(1, 1)], 1, None),
+        successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
     )
     .expect("adapted outer-html result");
-    assert!(adapted_outer.selected_match.value.contains("<article"));
+    assert!(adapted_outer.selected_matches[0].value.contains("<article"));
+
+    let adapted_all = v1::adapt_successful_extraction_for_tests(
+        &selector_source,
+        &Plan::new(
+            PlanStrategy::css_selector(selector_query("article")),
+            Selection::all(),
+            Output::new(OutputKind::Text),
+            Normalization::new(TextWhitespace::Normalize, false),
+        ),
+        successful_selector_extraction(
+            vec![selector_core_match(1, 1, 2), selector_core_match(2, 2, 2)],
+            2,
+            None,
+        ),
+    )
+    .expect("adapted all-selection result");
+    assert_eq!(adapted_all.selected_matches.len(), 2);
+    assert_eq!(adapted_all.selection_mode, SelectionMode::All);
+    assert_eq!(adapted_all.selected_matches[0].candidate_index.get(), 1);
+    assert_eq!(adapted_all.selected_matches[1].candidate_index.get(), 2);
 
     let adapted_projection_error = v1::adapt_successful_extraction_for_tests(
         &selector_source,
@@ -161,7 +185,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         successful_selector_extraction(
             vec![ExtractionMatch {
                 value: json!({"text": "Hello", "outerHtml": "<article>Hello</article>"}),
-                ..selector_core_match(1, 1)
+                ..selector_core_match(1, 1, 1)
             }],
             1,
             None,
@@ -177,7 +201,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     let adapted_url_error = v1::adapt_successful_extraction_for_tests(
         &selector_source,
         &selector_plan(),
-        successful_selector_extraction(vec![selector_core_match(1, 1)], 1, Some("not a url")),
+        successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, Some("not a url")),
     )
     .expect_err("invalid effective base URL should surface as interop error");
     assert_eq!(adapted_url_error.error_code, ErrorCode::InternalError);
@@ -200,7 +224,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         &selector_source,
         &selector_plan(),
         successful_selector_extraction(
-            vec![selector_core_match(1, 1), selector_core_match(2, 2)],
+            vec![selector_core_match(1, 1, 2), selector_core_match(2, 2, 2)],
             2,
             None,
         ),
@@ -213,7 +237,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     assert!(
         multi_match_adapter_error
             .message
-            .contains("exactly one selected match")
+            .contains("invalid interop result")
     );
 
     let non_object_error = v1::project_structured_match_for_tests(
@@ -415,7 +439,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         &selector_plan(),
         &[Diagnostic {
             level: DiagnosticLevel::Error,
-            code: DiagnosticCode::NoMatch.to_string(),
+            code: DiagnosticCode::NoMatch,
             message: "no match".to_owned(),
             details: None,
         }],
@@ -426,7 +450,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         &selector_plan(),
         &[Diagnostic {
             level: DiagnosticLevel::Error,
-            code: DiagnosticCode::AmbiguousMatch.to_string(),
+            code: DiagnosticCode::AmbiguousMatch,
             message: "ambiguous".to_owned(),
             details: Some(json!({"candidateCount": 2})),
         }],
@@ -438,23 +462,23 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         &selector_plan(),
         &[Diagnostic {
             level: DiagnosticLevel::Error,
-            code: DiagnosticCode::InvalidRequest.to_string(),
+            code: DiagnosticCode::InvalidSelector,
             message: "invalid".to_owned(),
             details: None,
         }],
     );
     assert_eq!(invalid_request_error.error_code, ErrorCode::PlanInvalid);
 
-    let unknown_code_error = v1::core_execution_error_for_tests(
+    let unexpected_code_error = v1::core_execution_error_for_tests(
         &selector_plan(),
         &[Diagnostic {
             level: DiagnosticLevel::Error,
-            code: "NOT_A_REAL_CODE".to_owned(),
+            code: DiagnosticCode::MultipleMatches,
             message: "weird".to_owned(),
             details: None,
         }],
     );
-    assert_eq!(unknown_code_error.error_code, ErrorCode::InternalError);
+    assert_eq!(unexpected_code_error.error_code, ErrorCode::InternalError);
 
     let adapter_error = v1::internal_adapter_error_for_tests(
         "adapter failure",
@@ -463,6 +487,56 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     );
     assert_eq!(adapter_error.error_code, ErrorCode::InternalError);
     assert_eq!(adapter_error.error_digest_sha256.len(), 64);
+
+    let fallback_error = v1::internal_adapter_error_with_plan_digest_for_tests(
+        "not-a-digest",
+        "adapter failure",
+        BTreeMap::from([("field".to_owned(), Value::from("effective_base_url"))]),
+        Vec::new(),
+    );
+    assert_eq!(fallback_error.error_code, ErrorCode::InternalError);
+    assert_eq!(
+        fallback_error.error_digest_sha256,
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(
+        fallback_error
+            .message
+            .contains("could not finalize its interop error payload")
+    );
+
+    let plan_digest_error = v1::plan_digest_error_for_tests(
+        &selector_plan(),
+        ContractError::InvalidDigest {
+            field: "plan_digest_sha256",
+            received: "not-a-digest".to_owned(),
+        },
+    );
+    assert_eq!(plan_digest_error.error_code, ErrorCode::InternalError);
+    assert_eq!(
+        plan_digest_error.plan_digest_sha256,
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(
+        plan_digest_error
+            .message
+            .contains("could not compute the interop plan digest")
+    );
+
+    let recoverable_error = v1::finalize_error_for_tests(InteropError {
+        schema_name: "htmlcut.not-real".to_owned(),
+        ..InteropError::new(
+            TEST_PLAN_DIGEST_SHA256,
+            ErrorCode::InternalError,
+            "adapter failure",
+            Some(StrategyKind::CssSelector),
+            BTreeMap::new(),
+            Vec::new(),
+        )
+    });
+    assert_eq!(recoverable_error.schema_name, v1::ERROR_SCHEMA_NAME);
+    assert_eq!(recoverable_error.error_code, ErrorCode::InternalError);
+    assert_eq!(recoverable_error.error_digest_sha256.len(), 64);
 
     let _typed: Box<InteropError> = Box::new(adapter_error);
 }

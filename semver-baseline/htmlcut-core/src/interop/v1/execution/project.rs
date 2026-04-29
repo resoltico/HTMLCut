@@ -32,7 +32,7 @@ pub(super) fn adapt_successful_extraction(
     extraction: crate::ExtractionResult,
 ) -> Result<InteropResult, Box<InteropError>> {
     let strategy_kind = plan.strategy.kind();
-    let Some(selected) = extraction.matches.first() else {
+    if extraction.matches.is_empty() {
         let mut details = BTreeMap::new();
         details.insert(
             "match_count".to_owned(),
@@ -45,33 +45,21 @@ pub(super) fn adapt_successful_extraction(
             details,
             extraction.diagnostics,
         )));
-    };
-
-    if extraction.matches.len() != 1 {
-        let mut details = BTreeMap::new();
-        details.insert(
-            "match_count".to_owned(),
-            Value::from(extraction.matches.len() as u64),
-        );
-        details.insert(
-            "candidate_count".to_owned(),
-            Value::from(extraction.stats.candidate_count as u64),
-        );
-        return Err(Box::new(internal_adapter_error(
-            &plan_digest_sha256,
-            Some(strategy_kind),
-            "successful execution must produce exactly one selected match",
-            details,
-            extraction.diagnostics,
-        )));
     }
 
-    let projected = project_structured_match(
-        selected,
-        strategy_kind,
-        &plan_digest_sha256,
-        &extraction.diagnostics,
-    )?;
+    let projected_matches = extraction
+        .matches
+        .iter()
+        .map(|matched| {
+            project_structured_match(
+                matched,
+                strategy_kind,
+                &plan_digest_sha256,
+                &extraction.diagnostics,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let diagnostics = extraction.diagnostics.clone();
     let source_summary = ResultSource {
         input_base_url: source.input_base_url.clone(),
         effective_base_url: parse_optional_url(
@@ -83,32 +71,40 @@ pub(super) fn adapt_successful_extraction(
         )?,
         document_title: extraction.document_title.clone(),
     };
-    let selected_match = SelectedMatch {
-        candidate_index: projected.candidate_index,
-        value_kind: plan.output.kind,
-        value: match plan.output.kind {
-            OutputKind::Text => projected.comparison_input_text.clone(),
-            OutputKind::InnerHtml => projected.selected_html.clone(),
-            OutputKind::OuterHtml => projected.outer_html.clone(),
-        },
-        comparison_input_text: projected.comparison_input_text,
-        inner_html: Some(projected.inner_html),
-        outer_html: Some(projected.outer_html),
-        metadata: projected.metadata,
-    };
+    let selected_matches = projected_matches
+        .into_iter()
+        .map(|projected| SelectedMatch {
+            candidate_index: projected.candidate_index,
+            value_kind: plan.output.kind,
+            value: match plan.output.kind {
+                OutputKind::Text => projected.comparison_input_text.clone(),
+                OutputKind::InnerHtml => projected.selected_html.clone(),
+                OutputKind::OuterHtml => projected.outer_html.clone(),
+            },
+            comparison_input_text: projected.comparison_input_text,
+            inner_html: Some(projected.inner_html),
+            outer_html: Some(projected.outer_html),
+            metadata: projected.metadata,
+        })
+        .collect();
     let execution = ResultExecution::new(
-        plan_digest_sha256,
+        plan_digest_sha256.clone(),
         strategy_kind,
         plan.selection.mode(),
         extraction.stats.candidate_count,
     );
 
-    Ok(finalize_result(InteropResult::new(
-        execution,
-        source_summary,
-        selected_match,
-        extraction.diagnostics,
-    )))
+    finalize_result(
+        InteropResult::new(
+            execution,
+            source_summary,
+            selected_matches,
+            extraction.diagnostics,
+        ),
+        &plan_digest_sha256,
+        strategy_kind,
+        diagnostics,
+    )
 }
 
 pub(super) fn project_structured_match(
@@ -292,8 +288,21 @@ pub(super) fn parse_optional_url(
         .transpose()
 }
 
-fn finalize_result(result: InteropResult) -> InteropResult {
-    result
-        .with_computed_digest()
-        .expect("results should always validate and serialize")
+fn finalize_result(
+    result: InteropResult,
+    plan_digest_sha256: &str,
+    strategy_kind: StrategyKind,
+    diagnostics: Vec<Diagnostic>,
+) -> Result<InteropResult, Box<InteropError>> {
+    result.with_computed_digest().map_err(|error| {
+        let mut details = BTreeMap::new();
+        details.insert("contract_error".to_owned(), Value::from(error.to_string()));
+        Box::new(internal_adapter_error(
+            plan_digest_sha256,
+            Some(strategy_kind),
+            "execution produced an invalid interop result during finalization",
+            details,
+            diagnostics,
+        ))
+    })
 }

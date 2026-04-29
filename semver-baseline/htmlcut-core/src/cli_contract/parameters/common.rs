@@ -1,6 +1,6 @@
 use crate::contracts::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS, FetchPreflightMode,
-    ValueType, WhitespaceMode,
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
+    DEFAULT_PREVIEW_CHARS, FetchPreflightMode, ValueType, WhitespaceMode,
 };
 
 use super::descriptors::{param_flag, param_option, param_positional};
@@ -70,7 +70,7 @@ pub(super) fn common_source_parameters(
             "SIZE",
             Some(CliValue::Usize(DEFAULT_MAX_BYTES)),
             Vec::new(),
-            "Refuse sources larger than this limit. Accepts raw bytes or KB, MB, and GB when the final byte count is a whole positive number.",
+            "Refuse sources larger than this limit. Accepts raw bytes or KiB, MiB, and GiB when the final byte count is a whole positive number.",
         ),
         param_option(
             CliParameterSection::Source,
@@ -80,6 +80,15 @@ pub(super) fn common_source_parameters(
             Some(CliValue::U64(DEFAULT_FETCH_TIMEOUT_MS)),
             Vec::new(),
             "HTTP fetch timeout in milliseconds for URL inputs.",
+        ),
+        param_option(
+            CliParameterSection::Source,
+            CliParameterId::FetchConnectTimeoutMs,
+            CliParameterRequirement::Optional,
+            "MILLISECONDS",
+            Some(CliValue::U64(DEFAULT_FETCH_CONNECT_TIMEOUT_MS)),
+            Vec::new(),
+            "HTTP connect timeout in milliseconds for URL inputs.",
         ),
         param_option(
             CliParameterSection::Source,

@@ -8,10 +8,11 @@ use serde_json::json;
 use ureq::http::Response;
 #[cfg(feature = "http-client")]
 use ureq::tls::{RootCerts, TlsConfig};
+use url::Url;
 
 #[cfg(feature = "http-client")]
 use crate::contracts::{FetchPreflightMode, SourceLoadAction, SourceLoadOutcome, SourceLoadStep};
-use crate::contracts::{RuntimeOptions, SourceInput, SourceKind, SourceRequest};
+use crate::contracts::{RuntimeOptions, SourceKind, SourceRequest};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 #[cfg(feature = "http-client")]
 use crate::format_byte_size;
@@ -27,11 +28,9 @@ const HTTP_CLIENT_FEATURE: &str = "http-client";
 #[cfg(feature = "http-client")]
 pub(crate) fn read_url_source(
     source: &SourceRequest,
+    href: &Url,
     runtime: &RuntimeOptions,
 ) -> Result<LoadedSource, SourceLoadFailure> {
-    let SourceInput::Url { href } = &source.input else {
-        unreachable!("read_url_source should only be called for URL sources");
-    };
     let source_value = href.to_string();
     let agent = build_http_agent(runtime);
     let mut load_steps = Vec::new();
@@ -191,11 +190,9 @@ pub(crate) fn read_url_source(
 #[cfg(not(feature = "http-client"))]
 pub(crate) fn read_url_source(
     source: &SourceRequest,
+    href: &Url,
     _runtime: &RuntimeOptions,
 ) -> Result<LoadedSource, SourceLoadFailure> {
-    let SourceInput::Url { href } = &source.input else {
-        unreachable!("read_url_source should only be called for URL sources");
-    };
     let source_value = href.to_string();
 
     Err(source_load_failure(
@@ -225,6 +222,9 @@ pub(crate) fn build_http_agent(runtime: &RuntimeOptions) -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .tls_config(tls_config)
+        .timeout_connect(Some(Duration::from_millis(
+            runtime.fetch_connect_timeout_ms,
+        )))
         .timeout_global(Some(Duration::from_millis(runtime.fetch_timeout_ms)))
         .build()
         .into()

@@ -1,14 +1,14 @@
 use std::sync::LazyLock;
 
-use serde::Serialize;
-
+use crate::CliChoice;
 use crate::catalog::OperationId;
 #[cfg(test)]
-use crate::catalog::{operation_catalog, operation_descriptor};
+use crate::catalog::operation_catalog;
 #[cfg(test)]
 use std::collections::BTreeSet;
 
 mod help;
+pub(crate) mod operation_specs;
 mod operations;
 mod parameters;
 mod types;
@@ -61,12 +61,12 @@ pub fn find_cli_operation_by_command_path(
 /// Renders one typed CLI contract value as the stable user-facing string form.
 pub fn render_cli_value(value: CliValue) -> String {
     match value {
-        CliValue::SelectionMode(mode) => render_enum_name(mode),
-        CliValue::ValueType(value_type) => render_enum_name(value_type),
-        CliValue::OutputMode(mode) => render_enum_name(mode),
-        CliValue::WhitespaceMode(mode) => render_enum_name(mode),
-        CliValue::PatternMode(mode) => render_enum_name(mode),
-        CliValue::FetchPreflightMode(mode) => render_enum_name(mode),
+        CliValue::SelectionMode(mode) => render_choice_name(mode),
+        CliValue::ValueType(value_type) => render_choice_name(value_type),
+        CliValue::OutputMode(mode) => render_choice_name(mode),
+        CliValue::WhitespaceMode(mode) => render_choice_name(mode),
+        CliValue::PatternMode(mode) => render_choice_name(mode),
+        CliValue::FetchPreflightMode(mode) => render_choice_name(mode),
         CliValue::Boolean(value) => value.to_string(),
         CliValue::Usize(value) => value.to_string(),
         CliValue::U64(value) => value.to_string(),
@@ -112,7 +112,16 @@ pub(crate) fn cli_operation_catalog_validation_errors_for(
             ));
         }
 
-        let descriptor = operation_descriptor(contract.operation_id);
+        let Some(descriptor) = operation_descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == contract.operation_id)
+        else {
+            errors.push(format!(
+                "{} is missing from OPERATION_CATALOG",
+                contract.operation_id
+            ));
+            continue;
+        };
         let display_command = contract.display_command();
         if descriptor.cli_surface != Some(display_command.as_str()) {
             errors.push(format!(
@@ -130,6 +139,23 @@ pub(crate) fn cli_operation_catalog_validation_errors_for(
 #[cfg(test)]
 pub(crate) fn cli_help_catalog_validation_errors() -> Vec<String> {
     help::cli_help_catalog_validation_errors()
+}
+
+#[cfg(test)]
+pub(crate) fn cli_aux_command_catalog_validation_errors_for_tests(
+    descriptors: &[CliAuxCommandDescriptor],
+) -> Vec<String> {
+    help::cli_aux_command_catalog_validation_errors_for_tests(descriptors)
+}
+
+#[cfg(test)]
+pub(crate) fn assert_cli_aux_command_catalog_for_tests(descriptors: &[CliAuxCommandDescriptor]) {
+    help::assert_cli_aux_command_catalog_for_tests(descriptors);
+}
+
+#[cfg(test)]
+pub(crate) fn assert_cli_help_catalog_errors_for_tests(errors: Vec<String>) {
+    help::assert_cli_help_catalog_errors_for_tests(errors);
 }
 
 #[cfg(test)]
@@ -394,9 +420,18 @@ fn validate_condition(
     }
 }
 
-fn render_enum_name<T: Serialize>(value: T) -> String {
-    serde_json::to_string(&value)
-        .expect("catalog enum values should always serialize")
-        .trim_matches('"')
-        .to_owned()
+#[cfg(test)]
+pub(crate) fn assert_cli_operation_catalog_consistency_for_tests(
+    cli_contracts: &[OperationCliContract],
+) {
+    let errors = cli_operation_catalog_validation_errors_for(operation_catalog(), cli_contracts);
+    assert!(
+        errors.is_empty(),
+        "cli_operation_catalog drifted from OPERATION_CATALOG:\n- {}",
+        errors.join("\n- ")
+    );
+}
+
+fn render_choice_name<T: CliChoice>(value: T) -> String {
+    value.as_cli_str().to_owned()
 }

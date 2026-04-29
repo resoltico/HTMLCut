@@ -1,12 +1,12 @@
+#[cfg(test)]
+use std::collections::BTreeSet;
+use std::sync::LazyLock;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    CORE_REQUEST_SCHEMA_VERSION, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
-    CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-    EXTRACTION_REQUEST_SCHEMA_NAME, INSPECTION_OPTIONS_SCHEMA_NAME, RUNTIME_OPTIONS_SCHEMA_NAME,
-    SOURCE_REQUEST_SCHEMA_NAME, SchemaRef,
-};
+use crate::SchemaRef;
+use crate::cli_contract::operation_specs::operation_surface_specs;
 
 macro_rules! operation_ids {
     (
@@ -32,6 +32,13 @@ macro_rules! operation_ids {
         }
 
         impl OperationId {
+            /// Every stable operation ID in declaration order.
+            pub const ALL: &'static [Self] = &[
+                $(
+                    Self::$variant,
+                )+
+            ];
+
             /// Returns the stable string form of this operation ID.
             pub const fn as_str(self) -> &'static str {
                 match self {
@@ -102,116 +109,13 @@ pub struct OperationDescriptor {
     pub description: &'static str,
 }
 
-const NO_SCHEMA_REFS: &[SchemaRef] = &[];
-const SOURCE_RUNTIME_SCHEMA_REFS: &[SchemaRef] = &[
-    SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-];
-const SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS: &[SchemaRef] = &[
-    SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-    SchemaRef::new(INSPECTION_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-];
-const EXTRACTION_RUNTIME_SCHEMA_REFS: &[SchemaRef] = &[
-    SchemaRef::new(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-];
-const EXTRACTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
-    CORE_RESULT_SCHEMA_NAME,
-    CORE_RESULT_SCHEMA_VERSION,
-)];
-const SOURCE_INSPECTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
-    CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-)];
-
 /// Canonical catalog of every stable HTMLCut operation ID.
-pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
-    OperationDescriptor {
-        id: OperationId::DocumentParse,
-        cli_surface: None,
-        core_surface: "parse_document(SourceRequest, RuntimeOptions)",
-        request_contract: OperationContract {
-            rust_shape: "SourceRequest + RuntimeOptions",
-            schema_refs: SOURCE_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "ParseDocumentResult",
-            schema_refs: NO_SCHEMA_REFS,
-        },
-        description: "Load and parse HTML into a document tree for in-process callers.",
-    },
-    OperationDescriptor {
-        id: OperationId::SourceInspect,
-        cli_surface: Some("inspect source"),
-        core_surface: "inspect_source(SourceRequest, RuntimeOptions, InspectionOptions)",
-        request_contract: OperationContract {
-            rust_shape: "SourceRequest + RuntimeOptions + InspectionOptions",
-            schema_refs: SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "SourceInspectionResult",
-            schema_refs: SOURCE_INSPECTION_RESULT_SCHEMA_REFS,
-        },
-        description: "Inspect the parsed document and summarize structure, samples, and base-URL behavior.",
-    },
-    OperationDescriptor {
-        id: OperationId::SelectPreview,
-        cli_surface: Some("inspect select"),
-        core_surface: "preview_extraction(ExtractionRequest{kind=selector}, RuntimeOptions)",
-        request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
-            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
-            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
-        },
-        description: "Preview selector matches without committing to a final extraction payload.",
-    },
-    OperationDescriptor {
-        id: OperationId::SlicePreview,
-        cli_surface: Some("inspect slice"),
-        core_surface: "preview_extraction(ExtractionRequest{kind=slice}, RuntimeOptions)",
-        request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
-            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
-            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
-        },
-        description: "Preview literal or regex slices without committing to a final extraction payload.",
-    },
-    OperationDescriptor {
-        id: OperationId::SelectExtract,
-        cli_surface: Some("select"),
-        core_surface: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)",
-        request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
-            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
-            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
-        },
-        description: "Extract final values from CSS selector matches.",
-    },
-    OperationDescriptor {
-        id: OperationId::SliceExtract,
-        cli_surface: Some("slice"),
-        core_surface: "extract(ExtractionRequest{kind=slice}, RuntimeOptions)",
-        request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
-            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
-            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
-        },
-        description: "Extract final values between literal or regex boundaries in raw source text.",
-    },
-];
+pub static OPERATION_CATALOG: LazyLock<Vec<OperationDescriptor>> = LazyLock::new(|| {
+    operation_surface_specs()
+        .iter()
+        .map(|spec| spec.descriptor)
+        .collect::<Vec<_>>()
+});
 
 impl std::fmt::Display for OperationId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -228,14 +132,68 @@ impl std::fmt::Display for OperationIdParseError {
 impl std::error::Error for OperationIdParseError {}
 
 /// Returns the canonical catalog of HTMLCut operations.
-pub const fn operation_catalog() -> &'static [OperationDescriptor] {
-    OPERATION_CATALOG
+pub fn operation_catalog() -> &'static [OperationDescriptor] {
+    OPERATION_CATALOG.as_slice()
 }
 
 /// Returns the descriptor for one canonical operation ID.
-pub fn operation_descriptor(id: OperationId) -> &'static OperationDescriptor {
+pub fn operation_descriptor(id: OperationId) -> Option<&'static OperationDescriptor> {
     operation_catalog()
         .iter()
         .find(|descriptor| descriptor.id == id)
-        .expect("every OperationId should appear in OPERATION_CATALOG")
+}
+
+#[cfg(test)]
+pub(crate) fn operation_catalog_contract_string_errors_for_tests() -> Vec<String> {
+    operation_catalog_contract_string_errors(operation_catalog())
+}
+
+#[cfg(test)]
+pub(crate) fn operation_catalog_contract_string_errors_for_tests_with(
+    catalog: &[OperationDescriptor],
+) -> Vec<String> {
+    operation_catalog_contract_string_errors(catalog)
+}
+
+#[cfg(test)]
+pub(crate) fn assert_operation_catalog_contract_strings_for_tests(catalog: &[OperationDescriptor]) {
+    let errors = operation_catalog_contract_string_errors(catalog);
+    assert!(
+        errors.is_empty(),
+        "operation catalog contract strings drifted:\n- {}",
+        errors.join("\n- ")
+    );
+}
+
+#[cfg(test)]
+fn operation_catalog_contract_string_errors(catalog: &[OperationDescriptor]) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut seen_ids = BTreeSet::new();
+
+    for descriptor in catalog {
+        if !seen_ids.insert(descriptor.id) {
+            errors.push(format!(
+                "{} appears more than once in OPERATION_CATALOG",
+                descriptor.id
+            ));
+        }
+
+        if descriptor.core_surface.trim().is_empty() {
+            errors.push(format!("{} has an empty core_surface", descriptor.id));
+        }
+        if descriptor.request_contract.rust_shape.trim().is_empty() {
+            errors.push(format!("{} has an empty request rust_shape", descriptor.id));
+        }
+        if descriptor.result_contract.rust_shape.trim().is_empty() {
+            errors.push(format!("{} has an empty result rust_shape", descriptor.id));
+        }
+    }
+
+    for operation_id in OperationId::ALL {
+        if !seen_ids.contains(operation_id) {
+            errors.push(format!("{operation_id} is missing from OPERATION_CATALOG"));
+        }
+    }
+
+    errors
 }

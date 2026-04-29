@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::catalog::OperationId;
+use crate::diagnostics::DiagnosticCode;
 
 use super::{ExtractionSpec, SourceKind, ValueType};
 
@@ -27,7 +28,7 @@ pub struct Diagnostic {
     /// Severity level for the diagnostic.
     pub level: DiagnosticLevel,
     /// Stable diagnostic code.
-    pub code: String,
+    pub code: DiagnosticCode,
     /// Human-readable diagnostic message.
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -80,7 +80,8 @@ fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
                 .push(method.clone());
 
             let response = if method == "HEAD" {
-                "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n".to_owned()
+                "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+                    .to_owned()
             } else {
                 let body = "<html><body>Fallback</body></html>";
                 format!(
@@ -139,7 +140,8 @@ fn head_preflight_falls_back_to_get_when_head_returns_forbidden() {
                 .push(method.clone());
 
             let response = if method == "HEAD" {
-                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n".to_owned()
+                "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+                    .to_owned()
             } else {
                 let body = "<html><body>Fallback</body></html>";
                 format!(

@@ -5,19 +5,13 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
     let mut request = selector_request("<article data-id=\"7\"><p>Hello</p></article>");
     let document = parse_document_node("<article data-id=\"7\"><p>Hello</p></article>");
     let node = select_first(&document, "article").expect("selector");
-    let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
-    let effective_base_url = resolve_document_base_url(&document, loaded.input_base_url.as_deref());
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::InnerHtml);
-    let html_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
-            .expect("html match");
+    let html_match = build_selector_match(&request, &node, 1, 1, 1, 1).expect("html match");
     assert_eq!(html_match.value.as_str(), Some("<p>Hello</p>"));
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::OuterHtml);
-    let outer_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
-            .expect("outer match");
+    let outer_match = build_selector_match(&request, &node, 1, 1, 1, 1).expect("outer match");
     assert!(
         outer_match
             .value
@@ -31,8 +25,7 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
         .with_value(attribute_value("data-id"));
     request.normalization.whitespace = WhitespaceMode::Normalize;
     let attribute_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
-            .expect("attribute match");
+        build_selector_match(&request, &node, 1, 1, 1, 1).expect("attribute match");
     assert_eq!(attribute_match.value.as_str(), Some("7"));
 
     request.extraction = request
@@ -40,16 +33,13 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
         .clone()
         .with_value(attribute_value("href"));
     let missing_attribute =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
-            .expect_err("missing attr");
+        build_selector_match(&request, &node, 1, 1, 1, 1).expect_err("missing attr");
     assert_eq!(missing_attribute.code, "MISSING_ATTRIBUTE");
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::Structured);
     request.output.include_html = false;
     request.output.include_text = false;
-    let structured_match =
-        build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 2)
-            .expect("structured");
+    let structured_match = build_selector_match(&request, &node, 1, 1, 1, 2).expect("structured");
     assert!(structured_match.html.is_none());
     assert!(structured_match.text.is_none());
     assert_eq!(structured_match.value["tagName"], "article");
@@ -65,11 +55,8 @@ fn selector_match_builder_emits_optional_payloads_when_requested() {
     let request = selector_request("<article><p>Hello</p></article>");
     let document = parse_document_node("<article><p>Hello</p></article>");
     let node = select_first(&document, "article").expect("selector");
-    let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
-    let effective_base_url = resolve_document_base_url(&document, loaded.input_base_url.as_deref());
 
-    let matched = build_selector_match(&request, effective_base_url.as_deref(), &node, 1, 1, 1, 1)
-        .expect("match");
+    let matched = build_selector_match(&request, &node, 1, 1, 1, 1).expect("match");
 
     assert!(
         matched
@@ -78,6 +65,54 @@ fn selector_match_builder_emits_optional_payloads_when_requested() {
             .is_some_and(|html| html.contains("<article>"))
     );
     assert_eq!(matched.text.as_deref(), Some("Hello"));
+}
+
+#[test]
+fn selector_match_builder_renders_selected_element_semantics() {
+    let image_request = selector_request("<img src=\"hero.png\" alt=\"Hero\">");
+    let image_document = parse_document_node("<img src=\"hero.png\" alt=\"Hero\">");
+    let image = select_first(&image_document, "img").expect("img");
+    let image_match = build_selector_match(&image_request, &image, 1, 1, 1, 1).expect("image");
+    assert_eq!(image_match.value.as_str(), Some("Hero"));
+    assert_eq!(image_match.text.as_deref(), Some("Hero"));
+
+    let pre_request = selector_request("<pre>line 1\n  line 2</pre>");
+    let pre_document = parse_document_node("<pre>line 1\n  line 2</pre>");
+    let pre = select_first(&pre_document, "pre").expect("pre");
+    let pre_match = build_selector_match(&pre_request, &pre, 1, 1, 1, 1).expect("pre");
+    assert_eq!(pre_match.value.as_str(), Some("line 1\n  line 2"));
+    assert_eq!(pre_match.text.as_deref(), Some("line 1\n  line 2"));
+}
+
+#[test]
+fn selector_runtime_reports_misrouted_and_per_match_builder_errors() {
+    let invalid_request = ExtractionRequest::new(
+        memory_source("inline", "<article>Hello</article>"),
+        ExtractionSpec::slice(slice_spec("<article>", "</article>")),
+    );
+    let loaded = load_source(&invalid_request.source, &RuntimeOptions::default()).expect("loaded");
+    let invalid_run = run_selector_extraction(&invalid_request, &loaded);
+    assert_eq!(invalid_run.candidate_count, 0);
+    assert!(invalid_run.matches.is_empty());
+    assert_eq!(invalid_run.diagnostics[0].code, "INVALID_SELECTOR");
+
+    let mut missing_attribute_request = selector_request("<article>Hello</article>");
+    missing_attribute_request.extraction = missing_attribute_request
+        .extraction
+        .clone()
+        .with_value(attribute_value("href"));
+    let loaded = load_source(
+        &missing_attribute_request.source,
+        &RuntimeOptions::default(),
+    )
+    .expect("loaded");
+    let missing_attribute_run = run_selector_extraction(&missing_attribute_request, &loaded);
+    assert_eq!(missing_attribute_run.candidate_count, 1);
+    assert!(missing_attribute_run.matches.is_empty());
+    assert_eq!(
+        missing_attribute_run.diagnostics[0].code,
+        "MISSING_ATTRIBUTE"
+    );
 }
 #[test]
 fn select_candidates_and_source_helpers_cover_remaining_branches() {

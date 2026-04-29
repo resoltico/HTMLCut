@@ -49,14 +49,15 @@ fn schema_catalog_is_unique_and_covers_core_and_interop_contracts() {
         interop_result_schema.owner_surface,
         "htmlcut_core::interop::v1"
     );
-    assert_eq!(interop_result_schema.stability, SchemaStability::Frozen);
+    assert_eq!(interop_result_schema.stability, SchemaStability::Versioned);
 }
 #[test]
 fn schemas_cover_inner_html_and_structured_metadata_variants() {
     let extraction_request_schema =
         (schema_descriptor(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION)
             .expect("extraction request schema")
-            .json_schema)();
+            .json_schema)()
+        .expect("request schema json");
     let value_spec_variants = extraction_request_schema["$defs"]["ValueSpec"]["oneOf"]
         .as_array()
         .expect("value spec variants");
@@ -71,7 +72,8 @@ fn schemas_cover_inner_html_and_structured_metadata_variants() {
     let extraction_result_schema =
         (schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION)
             .expect("extraction result schema")
-            .json_schema)();
+            .json_schema)()
+        .expect("result schema json");
     let metadata_variants = extraction_result_schema["$defs"]["ExtractionMatchMetadata"]["oneOf"]
         .as_array()
         .expect("metadata variants");
@@ -95,4 +97,20 @@ fn schemas_cover_inner_html_and_structured_metadata_variants() {
         .collect::<BTreeSet<_>>();
     assert!(serialized_value_types.contains("inner-html"));
     assert!(!serialized_value_types.contains("html"));
+}
+
+#[test]
+fn schema_export_errors_preserve_schema_identity_and_message() {
+    let schema_ref = SchemaRef::new("htmlcut.synthetic_schema", 42);
+    let error = crate::schema::schema_export_serialize_error_for_tests(schema_ref);
+
+    assert_eq!(
+        error,
+        SchemaExportError::Serialize {
+            schema_name: "htmlcut.synthetic_schema",
+            schema_version: 42,
+            message: "synthetic schema serialization failure".to_owned(),
+        }
+    );
+    assert!(error.to_string().contains("htmlcut.synthetic_schema@42"));
 }

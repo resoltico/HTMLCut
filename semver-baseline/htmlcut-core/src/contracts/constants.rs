@@ -14,10 +14,10 @@ pub const DEFAULT_PREVIEW_CHARS: usize = 160;
 pub const DEFAULT_MAX_BYTES: usize = 50 * 1024 * 1024;
 /// Default timeout for HTTP source loading.
 pub const DEFAULT_FETCH_TIMEOUT_MS: u64 = 15_000;
+/// Default timeout for establishing one HTTP connection.
+pub const DEFAULT_FETCH_CONNECT_TIMEOUT_MS: u64 = 5_000;
 /// Default fetch preflight policy for URL source loading.
 pub const DEFAULT_FETCH_PREFLIGHT_MODE: &str = "head-first";
-/// Default regex flags for slice operations.
-pub const DEFAULT_REGEX_FLAGS: &str = "u";
 /// Default limit for sampled inspection headings, links, tags, and classes.
 pub const DEFAULT_INSPECTION_SAMPLE_LIMIT: usize = 8;
 
@@ -25,16 +25,13 @@ pub(crate) const fn default_spec_version() -> u32 {
     CORE_SPEC_VERSION
 }
 
+#[cfg(test)]
 pub(crate) const fn default_preview_chars() -> usize {
     DEFAULT_PREVIEW_CHARS
 }
 
 pub(crate) const fn default_inspection_sample_limit() -> usize {
     DEFAULT_INSPECTION_SAMPLE_LIMIT
-}
-
-pub(crate) fn default_regex_flags() -> String {
-    DEFAULT_REGEX_FLAGS.to_owned()
 }
 
 pub(crate) const fn default_true() -> bool {
@@ -47,4 +44,8 @@ pub(crate) const fn default_max_bytes() -> usize {
 
 pub(crate) const fn default_fetch_timeout_ms() -> u64 {
     DEFAULT_FETCH_TIMEOUT_MS
+}
+
+pub(crate) const fn default_fetch_connect_timeout_ms() -> u64 {
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS
 }

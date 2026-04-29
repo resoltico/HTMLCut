@@ -6,6 +6,21 @@ use crate::{Diagnostic, DiagnosticCode};
 
 use super::super::{ContractError, ErrorCode, InteropError, Plan, StrategyKind};
 
+const ZERO_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+pub(super) fn plan_digest_error(plan: &Plan, error: ContractError) -> InteropError {
+    let mut details = BTreeMap::new();
+    details.insert("contract_error".to_owned(), Value::from(error.to_string()));
+    finalize_error(InteropError::new(
+        ZERO_SHA256,
+        ErrorCode::InternalError,
+        "HTMLCut could not compute the interop plan digest.",
+        Some(plan.strategy.kind()),
+        details,
+        Vec::new(),
+    ))
+}
+
 pub(super) fn plan_invalid_error(
     plan: &Plan,
     plan_digest_sha256: &str,
@@ -41,21 +56,18 @@ pub(super) fn core_execution_error(
         );
     };
 
-    let error_code = match primary.code.parse::<DiagnosticCode>() {
-        Ok(
-            DiagnosticCode::UnsupportedSpecVersion
-            | DiagnosticCode::InvalidSelector
-            | DiagnosticCode::InvalidSlicePattern
-            | DiagnosticCode::InvalidRequest,
-        ) => ErrorCode::PlanInvalid,
-        Ok(DiagnosticCode::NoMatch | DiagnosticCode::MatchIndexOutOfRange) => ErrorCode::NoMatch,
-        Ok(DiagnosticCode::AmbiguousMatch) => ErrorCode::AmbiguousMatch,
+    let error_code = match primary.code {
+        DiagnosticCode::UnsupportedSpecVersion
+        | DiagnosticCode::InvalidSelector
+        | DiagnosticCode::InvalidSlicePattern => ErrorCode::PlanInvalid,
+        DiagnosticCode::NoMatch | DiagnosticCode::MatchIndexOutOfRange => ErrorCode::NoMatch,
+        DiagnosticCode::AmbiguousMatch => ErrorCode::AmbiguousMatch,
         _ => ErrorCode::InternalError,
     };
     let mut details = BTreeMap::new();
     details.insert(
         "core_diagnostic_code".to_owned(),
-        Value::from(primary.code.clone()),
+        Value::from(primary.code.as_str()),
     );
     if let Some(core_details) = &primary.details {
         details.insert("core_details".to_owned(), core_details.clone());
@@ -89,7 +101,35 @@ pub(super) fn internal_adapter_error(
 }
 
 pub(super) fn finalize_error(error: InteropError) -> InteropError {
-    error
-        .with_computed_digest()
-        .expect("errors should always validate and serialize")
+    let plan_digest_sha256 = error.plan_digest_sha256.clone();
+    let strategy_kind = error.strategy_kind;
+    let diagnostics = error.diagnostics.clone();
+
+    match error.with_computed_digest() {
+        Ok(error) => error,
+        Err(contract_error) => {
+            let mut details = BTreeMap::new();
+            details.insert(
+                "contract_error".to_owned(),
+                Value::from(contract_error.to_string()),
+            );
+
+            let fallback = InteropError::new(
+                plan_digest_sha256,
+                ErrorCode::InternalError,
+                "HTMLCut could not finalize its interop error payload.",
+                strategy_kind,
+                details,
+                diagnostics,
+            );
+
+            match fallback.clone().with_computed_digest() {
+                Ok(fallback) => fallback,
+                Err(_) => InteropError {
+                    error_digest_sha256: ZERO_SHA256.to_owned(),
+                    ..fallback
+                },
+            }
+        }
+    }
 }

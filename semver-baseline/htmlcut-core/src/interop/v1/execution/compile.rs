@@ -1,22 +1,24 @@
 use crate::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_REGEX_FLAGS, ExtractionRequest, ExtractionSpec,
-    NormalizationOptions, OutputOptions, RuntimeOptions, SelectionSpec, SlicePatternSpec,
-    SliceSpec, ValueSpec, WhitespaceMode,
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
+    ExtractionRequest, ExtractionSpec, NormalizationOptions, OutputOptions, RuntimeOptions,
+    SelectionSpec, SlicePatternSpec, SliceSpec, ValueSpec, WhitespaceMode,
 };
 
 use super::super::stable_json::digest_stable_json;
 use super::super::{
-    DelimiterMode, HtmlInput, Plan, PlanStrategy, RegexFlag, Selection, TextWhitespace,
+    ContractError, DelimiterMode, HtmlInput, Plan, PlanStrategy, RegexFlag, Selection,
+    TextWhitespace,
 };
 
-pub(super) fn exact_plan_digest_sha256(plan: &Plan) -> String {
-    digest_stable_json(plan).expect("plans should always serialize to stable JSON")
+pub(super) fn exact_plan_digest_sha256(plan: &Plan) -> Result<String, ContractError> {
+    digest_stable_json(plan)
 }
 
-pub(super) fn runtime_options(source: &HtmlInput) -> RuntimeOptions {
+pub(super) fn runtime_options(_source: &HtmlInput) -> RuntimeOptions {
     RuntimeOptions {
-        max_bytes: source.html.len(),
+        max_bytes: DEFAULT_MAX_BYTES,
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_connect_timeout_ms: DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
         fetch_preflight: crate::FetchPreflightMode::HeadFirst,
     }
 }
@@ -67,11 +69,12 @@ fn compile_selection(selection: &Selection) -> SelectionSpec {
         Selection::Single => SelectionSpec::single(),
         Selection::First => SelectionSpec::First,
         Selection::Nth { index } => SelectionSpec::nth(*index),
+        Selection::All => SelectionSpec::All,
     }
 }
 
 pub(super) fn compile_regex_flags(flags: &[RegexFlag]) -> String {
-    let mut compiled = DEFAULT_REGEX_FLAGS.to_owned();
+    let mut compiled = String::new();
     for flag in flags {
         compiled.push(match flag {
             RegexFlag::CaseInsensitive => 'i',

@@ -1,18 +1,35 @@
-use crate::catalog::{OperationDescriptor, OperationId, operation_catalog, operation_descriptor};
+#[cfg(test)]
+use crate::catalog::operation_descriptor;
+#[cfg(test)]
+use crate::catalog::{OperationDescriptor, OperationId, operation_catalog};
 
-use super::cli_root_help_document;
-use super::documents::cli_operation_help_document;
-use super::model::{CliAuxCommandDescriptor, CliAuxCommandId, cli_aux_command_catalog};
+#[cfg(test)]
+use super::documents::{build_cli_operation_help_document, build_cli_root_help_document};
+#[cfg(test)]
+use super::model::CliAuxCommandId;
+#[cfg(test)]
+use super::model::{CliAuxCommandDescriptor, cli_aux_command_catalog};
 
+#[cfg(test)]
 pub(crate) fn cli_help_catalog_validation_errors() -> Vec<String> {
     cli_help_catalog_validation_errors_with(
         cli_aux_command_catalog(),
         operation_catalog(),
-        |operation_id| cli_operation_help_document(operation_id).is_some(),
-        cli_root_help_document().examples.is_empty(),
+        |operation_id| build_cli_operation_help_document(operation_id).is_some(),
+        build_cli_root_help_document().examples.is_empty(),
     )
 }
 
+#[cfg(test)]
+pub(crate) fn assert_cli_help_catalog_errors_for_tests(errors: Vec<String>) {
+    assert!(
+        errors.is_empty(),
+        "cli_help_catalog drifted:\n- {}",
+        errors.join("\n- ")
+    );
+}
+
+#[cfg(test)]
 fn cli_help_catalog_validation_errors_with(
     aux_descriptors: &[CliAuxCommandDescriptor],
     operation_descriptors: &[OperationDescriptor],
@@ -31,6 +48,12 @@ fn cli_help_catalog_validation_errors_with(
         }
         if descriptor.about.trim().is_empty() {
             errors.push(format!("{:?} has an empty about string", descriptor.id));
+        }
+        if descriptor.command_path != descriptor.id.command_path() {
+            errors.push(format!(
+                "{:?} command path drifted from CliAuxCommandId::command_path()",
+                descriptor.id
+            ));
         }
     }
 
@@ -68,7 +91,7 @@ mod tests {
 
     #[test]
     fn document_parse_remains_core_only_in_operation_help() {
-        assert!(cli_operation_help_document(OperationId::DocumentParse).is_none());
+        assert!(build_cli_operation_help_document(OperationId::DocumentParse).is_none());
     }
 
     #[test]
@@ -78,7 +101,9 @@ mod tests {
             command_path: &[],
             about: "   ",
         }];
-        let select_extract = *operation_descriptor(OperationId::SelectExtract);
+        let select_extract = operation_descriptor(OperationId::SelectExtract)
+            .copied()
+            .expect("select.extract descriptor");
 
         let errors = cli_help_catalog_validation_errors_with(
             &malformed_aux,
@@ -122,7 +147,9 @@ mod tests {
 
     #[test]
     fn validation_helper_reports_help_for_core_only_operations() {
-        let document_parse = *operation_descriptor(OperationId::DocumentParse);
+        let document_parse = operation_descriptor(OperationId::DocumentParse)
+            .copied()
+            .expect("document.parse descriptor");
 
         let errors = cli_help_catalog_validation_errors_with(
             cli_aux_command_catalog(),

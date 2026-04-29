@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.95.0"
 name = "htmlcut-core"
-version = "5.0.0"
+version = "6.0.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -42,6 +42,10 @@ path = "examples/request_and_result_namespaces.rs"
 [[example]]
 name = "reusable_extraction_definition"
 path = "examples/reusable_extraction_definition.rs"
+
+[[test]]
+name = "examples"
+path = "tests/examples.rs"
 
 [[test]]
 name = "extract"

@@ -6,14 +6,17 @@ use htmlcut_core::interop::v1::{
     InteropResult, Normalization, Output, OutputKind, PLAN_SCHEMA_NAME, Plan, PlanStrategy,
     RESULT_SCHEMA_NAME, RegexFlag, ResultExecution, ResultSource, SelectedMatch,
     SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace, execute_plan,
-    stable_json_v1, validate_plan,
+    execute_validated_plan, prepare_plan, stable_json_v1,
 };
 use htmlcut_core::{
-    Diagnostic, DiagnosticLevel, SelectorQuery, SliceBoundary, SourceInput, SourceKind,
-    result::Range,
+    DEFAULT_MAX_BYTES, Diagnostic, DiagnosticCode, DiagnosticLevel, SelectorQuery, SliceBoundary,
+    SourceInput, SourceKind, result::Range,
 };
 use serde_json::json;
 use url::Url;
+
+const TEST_PLAN_DIGEST_SHA256: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn selector_query(selector: &str) -> SelectorQuery {
     SelectorQuery::new(selector).expect("selector")
@@ -38,6 +41,17 @@ fn selector_match() -> SelectedMatch {
             tag_name: "article".to_owned(),
         },
     }
+}
+
+fn selected_matches(selected_match: SelectedMatch) -> Vec<SelectedMatch> {
+    vec![selected_match]
+}
+
+fn only_selected_match(result: &InteropResult) -> &SelectedMatch {
+    result
+        .selected_matches
+        .first()
+        .expect("interop result should carry one selected match")
 }
 
 #[test]
@@ -127,7 +141,7 @@ fn plan_uses_frozen_schema_identity() {
 fn interop_result_digest_ignores_existing_digest_field() {
     let mut result_one = InteropResult::new(
         ResultExecution::new(
-            "plan-digest",
+            TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
             1,
@@ -137,10 +151,10 @@ fn interop_result_digest_ignores_existing_digest_field() {
             effective_base_url: Some(Url::parse("https://example.com/base/").expect("url")),
             document_title: Some("Example".to_owned()),
         },
-        selector_match(),
+        selected_matches(selector_match()),
         vec![Diagnostic {
             level: DiagnosticLevel::Warning,
-            code: "EFFECTIVE_BASE_URL_UNRESOLVED".to_owned(),
+            code: DiagnosticCode::EffectiveBaseUrlUnresolved,
             message: "ignored for digest stability".to_owned(),
             details: None,
         }],
@@ -161,7 +175,7 @@ fn interop_result_digest_ignores_existing_digest_field() {
 fn interop_result_validation_rejects_error_diagnostics() {
     let result = InteropResult::new(
         ResultExecution::new(
-            "plan-digest",
+            TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
             1,
@@ -171,10 +185,10 @@ fn interop_result_validation_rejects_error_diagnostics() {
             effective_base_url: None,
             document_title: None,
         },
-        selector_match(),
+        selected_matches(selector_match()),
         vec![Diagnostic {
             level: DiagnosticLevel::Error,
-            code: "NO_MATCH".to_owned(),
+            code: DiagnosticCode::NoMatch,
             message: "should not be present on success".to_owned(),
             details: None,
         }],
@@ -192,7 +206,7 @@ fn interop_error_digest_ignores_existing_digest_field() {
     details.insert("candidate_count".to_owned(), json!(0));
 
     let mut error_one = InteropError::new(
-        "plan-digest",
+        TEST_PLAN_DIGEST_SHA256,
         ErrorCode::NoMatch,
         "No matching candidate.",
         None,
@@ -215,7 +229,7 @@ fn interop_error_digest_ignores_existing_digest_field() {
 fn interop_result_round_trips_through_stable_json() {
     let result = InteropResult::new(
         ResultExecution::new(
-            "plan-digest",
+            TEST_PLAN_DIGEST_SHA256,
             StrategyKind::DelimiterPair,
             SelectionMode::Nth,
             3,
@@ -225,7 +239,7 @@ fn interop_result_round_trips_through_stable_json() {
             effective_base_url: None,
             document_title: Some("Example".to_owned()),
         },
-        SelectedMatch {
+        selected_matches(SelectedMatch {
             candidate_index: NonZeroUsize::new(2).expect("candidate index"),
             value_kind: OutputKind::Text,
             value: "Hello".to_owned(),
@@ -241,7 +255,7 @@ fn interop_result_round_trips_through_stable_json() {
                 include_start: true,
                 include_end: false,
             },
-        },
+        }),
         Vec::new(),
     )
     .with_computed_digest()
@@ -254,7 +268,7 @@ fn interop_result_round_trips_through_stable_json() {
 }
 
 #[test]
-fn validate_plan_returns_typed_plan_invalid_error() {
+fn prepare_plan_returns_typed_plan_invalid_error() {
     let plan = Plan::new(
         PlanStrategy::delimiter_pair(
             slice_boundary("<article>"),
@@ -269,7 +283,7 @@ fn validate_plan_returns_typed_plan_invalid_error() {
         Normalization::new(TextWhitespace::Normalize, false),
     );
 
-    let error = validate_plan(&plan).expect_err("invalid plan");
+    let error = prepare_plan(&plan).expect_err("invalid plan");
     assert_eq!(error.error_code, ErrorCode::PlanInvalid);
     assert_eq!(error.strategy_kind, Some(StrategyKind::DelimiterPair));
     assert_eq!(error.plan_digest_sha256.len(), 64);
@@ -280,6 +294,36 @@ fn validate_plan_returns_typed_plan_invalid_error() {
             .get("contract_error")
             .and_then(serde_json::Value::as_str)
             .is_some_and(|message| message.contains("delimiter_pair flags"))
+    );
+}
+
+#[test]
+fn prepared_plan_executes_without_revalidating_the_plan_surface() {
+    let source = HtmlInput::new(
+        "target-story",
+        "<html><head><title>Example</title></head><body><article><a href=\"guide.html\">Guide</a></article></body></html>",
+    )
+    .expect("source")
+    .with_input_base_url(Url::parse("https://example.com/docs/start.html").expect("url"));
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article a")),
+        Selection::single(),
+        Output::new(OutputKind::OuterHtml),
+        Normalization::new(TextWhitespace::Normalize, true),
+    );
+
+    let prepared = prepare_plan(&plan).expect("prepared plan");
+    assert_eq!(prepared.plan(), &plan);
+    assert_eq!(
+        prepared.plan_digest_sha256(),
+        plan.digest_sha256().expect("plan digest")
+    );
+
+    let result = execute_validated_plan(&source, &prepared).expect("validated execution");
+    assert_eq!(result.plan_digest_sha256, prepared.plan_digest_sha256());
+    assert_eq!(
+        only_selected_match(&result).value,
+        "<a href=\"https://example.com/docs/guide.html\">Guide</a>"
     );
 }
 
@@ -313,25 +357,26 @@ fn execute_plan_executes_css_selector_with_rewritten_outer_html() {
     );
     assert_eq!(result.source.document_title.as_deref(), Some("Example"));
     assert_eq!(result.candidate_count, 1);
-    assert_eq!(result.selected_match.value_kind, OutputKind::OuterHtml);
+    let selected_match = only_selected_match(&result);
+    assert_eq!(selected_match.value_kind, OutputKind::OuterHtml);
     assert_eq!(
-        result.selected_match.value,
+        selected_match.value,
         "<a href=\"https://example.com/docs/guide.html\">Guide</a>"
     );
-    assert_eq!(result.selected_match.comparison_input_text, "Guide");
-    assert_eq!(result.selected_match.inner_html.as_deref(), Some("Guide"));
+    assert_eq!(selected_match.comparison_input_text, "Guide");
+    assert_eq!(selected_match.inner_html.as_deref(), Some("Guide"));
     assert_eq!(
-        result.selected_match.outer_html.as_deref(),
+        selected_match.outer_html.as_deref(),
         Some("<a href=\"https://example.com/docs/guide.html\">Guide</a>")
     );
-    match result.selected_match.metadata {
+    match &selected_match.metadata {
         SelectedMatchMetadata::CssSelector {
             candidate_count,
             candidate_index,
-            ref path,
-            ref tag_name,
+            path,
+            tag_name,
         } => {
-            assert_eq!(candidate_count, 1);
+            assert_eq!(*candidate_count, 1);
             assert_eq!(candidate_index.get(), 1);
             assert!(path.contains("article:nth-of-type(1)"));
             assert_eq!(tag_name, "a");
@@ -360,18 +405,19 @@ fn execute_plan_executes_regex_delimiter_pair() {
 
     let result = execute_plan(&source, &plan).expect("interop result");
 
-    assert_eq!(result.selected_match.value_kind, OutputKind::InnerHtml);
+    let selected_match = only_selected_match(&result);
+    assert_eq!(selected_match.value_kind, OutputKind::InnerHtml);
     assert_eq!(
-        result.selected_match.value,
+        selected_match.value,
         "<ARTICLE data-id=\"7\">Hello</ARTICLE>"
     );
-    assert_eq!(result.selected_match.comparison_input_text, "Hello");
-    assert_eq!(result.selected_match.inner_html.as_deref(), Some("Hello"));
+    assert_eq!(selected_match.comparison_input_text, "Hello");
+    assert_eq!(selected_match.inner_html.as_deref(), Some("Hello"));
     assert_eq!(
-        result.selected_match.outer_html.as_deref(),
+        selected_match.outer_html.as_deref(),
         Some("<ARTICLE data-id=\"7\">Hello</ARTICLE>")
     );
-    match result.selected_match.metadata {
+    match &selected_match.metadata {
         SelectedMatchMetadata::DelimiterPair {
             candidate_count,
             candidate_index,
@@ -381,16 +427,56 @@ fn execute_plan_executes_regex_delimiter_pair() {
             include_start,
             include_end,
         } => {
-            assert_eq!(candidate_count, 1);
+            assert_eq!(*candidate_count, 1);
             assert_eq!(candidate_index.get(), 1);
-            assert_eq!(selected_range, Range { start: 0, end: 36 });
-            assert_eq!(inner_range, Range { start: 21, end: 26 });
-            assert_eq!(outer_range, Range { start: 0, end: 36 });
-            assert!(include_start);
-            assert!(include_end);
+            assert_eq!(*selected_range, Range { start: 0, end: 36 });
+            assert_eq!(*inner_range, Range { start: 21, end: 26 });
+            assert_eq!(*outer_range, Range { start: 0, end: 36 });
+            assert!(*include_start);
+            assert!(*include_end);
         }
         other => panic!("expected delimiter metadata, got {other:?}"),
     }
+}
+
+#[test]
+fn execute_plan_executes_all_selection_in_one_result_document() {
+    let source = HtmlInput::new(
+        "target-news",
+        "<article>One</article><article>Two</article>",
+    )
+    .expect("source");
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article")),
+        Selection::all(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, false),
+    );
+
+    let result = execute_plan(&source, &plan).expect("interop result");
+
+    assert_eq!(result.selection_mode, SelectionMode::All);
+    assert_eq!(result.candidate_count, 2);
+    assert_eq!(result.selected_matches.len(), 2);
+    assert_eq!(result.selected_matches[0].value, "One");
+    assert_eq!(result.selected_matches[1].value, "Two");
+}
+
+#[test]
+fn execute_plan_enforces_the_default_html_size_limit_for_preloaded_input() {
+    let oversized = format!("<article>{}</article>", "x".repeat(DEFAULT_MAX_BYTES + 1));
+    let source = HtmlInput::new("target-oversized", oversized).expect("source");
+    let plan = Plan::new(
+        PlanStrategy::css_selector(selector_query("article")),
+        Selection::single(),
+        Output::new(OutputKind::Text),
+        Normalization::new(TextWhitespace::Normalize, false),
+    );
+
+    let error = execute_plan(&source, &plan).expect_err("oversized source should fail");
+    assert_eq!(error.error_code, ErrorCode::InternalError);
+    assert_eq!(error.diagnostics[0].code, DiagnosticCode::SourceLoadFailed);
+    assert!(error.message.contains("exceeds"));
 }
 
 #[test]
