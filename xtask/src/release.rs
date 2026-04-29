@@ -64,11 +64,11 @@ fn script_lines(repo_root: &Path, function_name: &str, args: &[&str]) -> DynResu
 }
 
 fn script_output(repo_root: &Path, function_name: &str, args: &[&str]) -> DynResult<String> {
-    script_output_with_program("bash", repo_root, function_name, args)
+    script_output_with_program(bash_program(), repo_root, function_name, args)
 }
 
 fn script_output_with_program(
-    program: &str,
+    program: impl AsRef<std::ffi::OsStr>,
     repo_root: &Path,
     function_name: &str,
     args: &[&str],
@@ -82,6 +82,7 @@ fn script_output_with_program(
         .into());
     }
 
+    let program = program.as_ref();
     let mut command = Command::new(program);
     command.current_dir(repo_root);
     command.arg(bash_source_argument(&script_path));
@@ -143,6 +144,29 @@ fn script_command_args(function_name: &str, args: &[&str]) -> DynResult<Vec<Stri
 
 fn release_targets_script_path(repo_root: &Path) -> PathBuf {
     repo_root.join("scripts").join("release-targets.sh")
+}
+
+fn bash_program() -> PathBuf {
+    let program_files = std::env::var_os("ProgramW6432")
+        .or_else(|| std::env::var_os("ProgramFiles"))
+        .map(PathBuf::from);
+    let program_files_x86 = std::env::var_os("ProgramFiles(x86)").map(PathBuf::from);
+
+    resolve_bash_program_with_roots(program_files.as_deref(), program_files_x86.as_deref())
+}
+
+fn resolve_bash_program_with_roots(
+    program_files: Option<&Path>,
+    program_files_x86: Option<&Path>,
+) -> PathBuf {
+    [
+        program_files.map(|root| root.join("Git").join("bin").join("bash.exe")),
+        program_files_x86.map(|root| root.join("Git").join("bin").join("bash.exe")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|candidate| candidate.is_file())
+    .unwrap_or_else(|| PathBuf::from("bash"))
 }
 
 fn bash_source_argument(path: &Path) -> String {
@@ -310,6 +334,32 @@ exit 9
             error
                 .to_string()
                 .contains("unsupported canonical release-target helper call")
+        );
+    }
+
+    #[test]
+    fn release_helpers_prefer_git_bash_when_program_files_contains_it() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let program_files = repo_root.path().join("Program Files");
+        let git_bash = program_files.join("Git").join("bin").join("bash.exe");
+        fs::create_dir_all(git_bash.parent().expect("git bash parent"))
+            .expect("create git bash parent");
+        fs::write(&git_bash, "").expect("write fake git bash");
+
+        assert_eq!(
+            resolve_bash_program_with_roots(Some(&program_files), None),
+            git_bash
+        );
+    }
+
+    #[test]
+    fn release_helpers_fall_back_to_bare_bash_without_git_bash_installation() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let missing_program_files = repo_root.path().join("missing");
+
+        assert_eq!(
+            resolve_bash_program_with_roots(Some(&missing_program_files), None),
+            PathBuf::from("bash")
         );
     }
 }

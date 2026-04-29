@@ -133,6 +133,11 @@ fn stage_fuzz_corpus_copies_nested_seed_files_into_scratch_space() {
 fn stage_fuzz_corpus_reports_missing_checked_in_seed_directories() {
     let repo_root = tempdir().expect("repo tempdir");
     let scratch_root = tempdir().expect("scratch tempdir");
+    let expected_source = repo_root
+        .path()
+        .join("fuzz")
+        .join("corpus")
+        .join("selector_parsing");
 
     let error = stage_fuzz_corpus(repo_root.path(), scratch_root.path(), "selector_parsing")
         .expect_err("missing corpus should fail");
@@ -142,5 +147,9 @@ fn stage_fuzz_corpus_reports_missing_checked_in_seed_directories() {
             .to_string()
             .contains("failed to stage fuzz corpus for `selector_parsing`")
     );
-    assert!(error.to_string().contains("fuzz/corpus/selector_parsing"));
+    assert!(
+        error
+            .to_string()
+            .contains(expected_source.to_string_lossy().as_ref())
+    );
 }
