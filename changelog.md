@@ -67,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release packaging and smoke helpers now keep their temporary staging roots alive for the full
   script lifetime, so standalone macOS release builds no longer abort after writing the artifact
   during the release-target smoke gate.
+- Maintained CI now retries Rustup toolchain and target installation in the Rust and
+  release-target smoke jobs, so transient upstream DNS/download failures no longer derail an
+  otherwise healthy release candidate.
 
 ## [5.0.0] - 2026-04-24
 

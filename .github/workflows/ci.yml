@@ -48,9 +48,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.95.0 --profile minimal
-          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-          rustup component add clippy rustfmt --toolchain 1.95.0
+          retry() {
+            local attempts="$1"
+            local delay_seconds="$2"
+            shift 2
+            local attempt=1
+            until "$@"; do
+              if (( attempt >= attempts )); then
+                return 1
+              fi
+              sleep "${delay_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
+          retry 3 5 rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+          retry 3 5 rustup component add clippy rustfmt --toolchain 1.95.0
 
       - name: Install shellcheck
         shell: bash
@@ -91,8 +104,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.95.0 --profile minimal
-          rustup component add clippy rustfmt --toolchain 1.95.0
+          retry() {
+            local attempts="$1"
+            local delay_seconds="$2"
+            shift 2
+            local attempt=1
+            until "$@"; do
+              if (( attempt >= attempts )); then
+                return 1
+              fi
+              sleep "${delay_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
+          retry 3 5 rustup component add clippy rustfmt --toolchain 1.95.0
 
       - name: Install Rust QA tools
         uses: taiki-e/install-action@5f57d6cb7cd20b14a8a27f522884c4bc8a187458 # v2.75.19
@@ -155,8 +181,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.95.0 --profile minimal
-          rustup target add --toolchain 1.95.0 "${{ matrix.target_triple }}"
+          retry() {
+            local attempts="$1"
+            local delay_seconds="$2"
+            shift 2
+            local attempt=1
+            until "$@"; do
+              if (( attempt >= attempts )); then
+                return 1
+              fi
+              sleep "${delay_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
+          retry 3 5 rustup target add --toolchain 1.95.0 "${{ matrix.target_triple }}"
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
