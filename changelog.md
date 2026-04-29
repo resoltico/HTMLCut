@@ -74,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source `scripts/release-targets.sh` through Bash, so temporary release-doc validation repos and
   the Windows cross-platform gate use the same release-target registry behavior instead of
   diverging on native `D:\\...` paths.
+- Release-helper shell failures now report captured stderr in `xtask`, and the maintained Windows
+  release gate no longer depends on a duplicate temp-repo shell-smoke that overlapped the stronger
+  canonical registry coverage already present in the release test suite.
 
 ## [5.0.0] - 2026-04-24
 

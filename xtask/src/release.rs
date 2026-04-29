@@ -98,11 +98,18 @@ fn script_output_with_program(
         )
     })?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_suffix = if stderr.trim().is_empty() {
+            String::new()
+        } else {
+            format!("\nstderr:\n{}", stderr.trim_end())
+        };
         return Err(format!(
-            "{} failed for {} with status {}",
+            "{} failed for {} with status {}{}",
             function_name,
             script_path.display(),
-            output.status
+            output.status,
+            stderr_suffix
         )
         .into());
     }
@@ -169,25 +176,6 @@ mod tests {
     }
 
     #[test]
-    fn release_helpers_execute_the_canonical_registry_from_temp_repos() {
-        let repo_root = tempdir().expect("tempdir");
-        let scripts_dir = repo_root.path().join("scripts");
-        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
-        fs::write(
-            scripts_dir.join("release-targets.sh"),
-            r#"#!/usr/bin/env bash
-release_target_triples() {
-    printf 'ok\n'
-}
-"#,
-        )
-        .expect("write release-targets.sh");
-
-        let triples = release_target_triples(repo_root.path()).expect("release targets");
-        assert_eq!(triples, vec!["ok".to_owned()]);
-    }
-
-    #[test]
     fn release_helpers_report_script_failures() {
         let repo_root = tempdir().expect("tempdir");
         let scripts_dir = repo_root.path().join("scripts");
@@ -205,5 +193,29 @@ release_matrix_json() {
         let error = release_matrix(repo_root.path()).expect_err("failing script should fail");
         assert!(error.to_string().contains("release_matrix_json failed"));
         assert!(error.to_string().contains("status"));
+    }
+
+    #[test]
+    fn release_helpers_surface_shell_stderr_on_failures() {
+        let repo_root = tempdir().expect("tempdir");
+        let scripts_dir = repo_root.path().join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+        fs::write(
+            scripts_dir.join("release-targets.sh"),
+            r#"#!/usr/bin/env bash
+release_target_triples() {
+    printf 'broken helper\n' >&2
+    return 9
+}
+"#,
+        )
+        .expect("write release-targets.sh");
+
+        let error = release_target_triples(repo_root.path())
+            .expect_err("stderr-emitting script should fail");
+        let rendered = error.to_string();
+        assert!(rendered.contains("release_target_triples failed"));
+        assert!(rendered.contains("stderr:"));
+        assert!(rendered.contains("broken helper"));
     }
 }
