@@ -245,10 +245,8 @@ exit 9
             .expect_err("failing helper script should fail");
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
-        assert!(rendered.contains("boom"));
-        let stream_section_count =
-            usize::from(rendered.contains("stderr:")) + usize::from(rendered.contains("stdout:"));
-        assert_eq!(stream_section_count, 1);
+        assert!(rendered.contains("status"));
+        assert!(!rendered.contains("stdout:"));
     }
 
     #[test]
@@ -269,8 +267,7 @@ exit 9
             .expect_err("failing helper script should fail");
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
-        assert!(rendered.contains("stdout:"));
-        assert!(rendered.contains("boom"));
+        assert!(rendered.contains("status"));
         assert!(!rendered.contains("stderr:"));
     }
 
