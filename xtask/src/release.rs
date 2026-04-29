@@ -84,11 +84,8 @@ fn script_output_with_program(
 
     let mut command = Command::new(program);
     command.current_dir(repo_root);
-    command.arg("-c");
-    command.arg(script_command(function_name, args.len()));
-    command.arg("bash");
     command.arg(bash_source_argument(&script_path));
-    command.args(args);
+    command.args(script_command_args(function_name, args)?);
 
     let output = command.output().map_err(|error| {
         format!(
@@ -118,12 +115,25 @@ fn script_output_with_program(
         .map_err(|error| format!("{} returned non-UTF-8 output: {error}", function_name).into())
 }
 
-fn script_command(function_name: &str, arg_count: usize) -> String {
-    let mut command = format!("source \"$1\" && {function_name}");
-    for index in 0..arg_count {
-        command.push_str(&format!(" \"${}\"", index + 2));
+fn script_command_args(function_name: &str, args: &[&str]) -> DynResult<Vec<String>> {
+    match (function_name, args) {
+        ("release_target_triples", []) => Ok(vec!["triples".to_owned()]),
+        ("release_asset_names_for_version", [version]) => Ok(vec![
+            "assets".to_owned(),
+            "--version".to_owned(),
+            (*version).to_owned(),
+        ]),
+        ("release_matrix_json", []) => Ok(vec!["matrix-json".to_owned()]),
+        ("macos_deployment_target_for_target", [target]) => Ok(vec![
+            "macos-deployment-target".to_owned(),
+            "--target".to_owned(),
+            (*target).to_owned(),
+        ]),
+        _ => Err(format!(
+            "unsupported canonical release-target helper call: {function_name}({args:?})"
+        )
+        .into()),
     }
-    command
 }
 
 fn release_targets_script_path(repo_root: &Path) -> PathBuf {
@@ -173,7 +183,7 @@ mod tests {
         fs::create_dir_all(&scripts_dir).expect("create scripts dir");
         fs::write(
             scripts_dir.join("release-targets.sh"),
-            "#!/usr/bin/env bash\nrelease_target_triples() { printf 'ok\\n'; }\n",
+            "#!/usr/bin/env bash\nprintf 'ok\\n'\n",
         )
         .expect("write release-targets.sh");
 
@@ -199,9 +209,9 @@ mod tests {
         fs::write(
             scripts_dir.join("release-targets.sh"),
             r#"#!/usr/bin/env bash
-release_matrix_json() {
-    return 7
-}
+if [[ "${1:-}" == "matrix-json" ]]; then
+    exit 7
+fi
 "#,
         )
         .expect("write release-targets.sh");
@@ -209,6 +219,7 @@ release_matrix_json() {
         let error = release_matrix(repo_root.path()).expect_err("failing script should fail");
         assert!(error.to_string().contains("release_matrix_json failed"));
         assert!(error.to_string().contains("status"));
+        assert!(!error.to_string().contains("stderr:"));
     }
 
     #[test]
@@ -219,20 +230,18 @@ release_matrix_json() {
         fs::write(
             scripts_dir.join("release-targets.sh"),
             r#"#!/usr/bin/env bash
-# Intentionally empty so Bash itself emits the missing-function error.
+printf 'boom\n' >&2
+exit 9
 "#,
         )
         .expect("write release-targets.sh");
 
         let error = script_output(repo_root.path(), "release_target_triples", &[])
-            .expect_err("missing helper function should fail");
+            .expect_err("failing helper script should fail");
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
-        #[cfg(not(windows))]
-        {
-            assert!(rendered.contains("stderr:"));
-            assert!(rendered.contains("command not found"));
-        }
+        assert!(rendered.contains("stderr:"));
+        assert!(rendered.contains("boom"));
     }
 
     #[test]
@@ -258,6 +267,17 @@ release_matrix_json() {
         assert_eq!(
             bash_source_argument(Path::new("1:/not-a-drive")),
             "1:/not-a-drive"
+        );
+    }
+
+    #[test]
+    fn release_helpers_reject_unknown_canonical_script_calls() {
+        let error = script_command_args("definitely_not_a_real_helper", &["arg"])
+            .expect_err("unknown helper call should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported canonical release-target helper call")
         );
     }
 }

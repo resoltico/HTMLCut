@@ -97,12 +97,12 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
     .expect("write manifest");
     fs::write(
         repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[bad](/tmp/nope)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[posix](/tmp/nope)\n[windows-forward](C:/nope)\n[windows-backslash](C:\\nope)\n[unc](\\\\server\\share)\n",
     )
     .expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n",
+        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n[wrapped-local](<./wrapped-missing.md>)\n",
     )
     .expect("write contributing");
     write_minimal_docs_legal_scaffold(repo_root.path(), "4.1.0", "2026-04-20");
@@ -124,12 +124,32 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
     assert!(
         errors
             .iter()
-            .any(|error| error.contains("absolute local link target"))
+            .any(|error| error.contains("absolute local link target: /tmp/nope"))
     );
     assert!(
         errors
             .iter()
-            .any(|error| error.contains("links to missing local path"))
+            .any(|error| error.contains("absolute local link target: C:/nope"))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains(r"absolute local link target: C:\nope"))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains(r"absolute local link target: \\server\share"))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("links to missing local path: ./missing.md"))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("links to missing local path: ./wrapped-missing.md"))
     );
 }
 

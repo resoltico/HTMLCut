@@ -39,6 +39,23 @@ macos_deployment_target_for_target() {
         *) printf '\n' ;;
     esac
 }
+
+case "${1:-}" in
+    triples)
+        release_target_triples
+        ;;
+    matrix-json)
+        release_matrix_json
+        ;;
+    assets)
+        [[ "${2:-}" == "--version" ]] || exit 64
+        release_asset_names_for_version "${3:-}"
+        ;;
+    macos-deployment-target)
+        [[ "${2:-}" == "--target" ]] || exit 64
+        macos_deployment_target_for_target "${3:-}"
+        ;;
+esac
 "#,
     )
     .expect("write release-targets.sh");
