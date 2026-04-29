@@ -102,8 +102,17 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
     );
     fs::remove_file(&relative_output).expect("remove relative output file");
     assert!(
-        write_stdout_payload_for_tests(Path::new("/"), "Hello")
-            .expect_err("root write should fail")
+        write_stdout_payload_for_tests(Path::new(""), "Hello")
+            .expect_err("empty path write should fail")
+            .kind()
+            != std::io::ErrorKind::AlreadyExists
+    );
+
+    let directory_output = fixture.tempdir.path().join("directory-output");
+    fs::create_dir(&directory_output).expect("create directory output placeholder");
+    assert!(
+        write_stdout_payload_for_tests(&directory_output, "Hello")
+            .expect_err("directory write should fail")
             .kind()
             != std::io::ErrorKind::NotFound
     );
