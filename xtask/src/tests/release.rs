@@ -3,6 +3,16 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use serde_json::Value;
+
+fn bash_command() -> Command {
+    Command::new(crate::release::bash_program_for_tests())
+}
+
+fn release_script_argument(repo_root: &Path, script_name: &str) -> String {
+    crate::release::bash_source_argument_for_tests(&repo_root.join("scripts").join(script_name))
+}
+
 #[test]
 fn release_helpers_read_the_canonical_shell_registry() {
     let repo_root = tempdir().expect("tempdir");
@@ -37,6 +47,23 @@ macos_deployment_target_for_target() {
         *) printf '\n' ;;
     esac
 }
+
+case "${1:-}" in
+    triples)
+        release_target_triples
+        ;;
+    matrix-json)
+        release_matrix_json
+        ;;
+    assets)
+        [[ "${2:-}" == "--version" ]] || exit 64
+        release_asset_names_for_version "${3:-}"
+        ;;
+    macos-deployment-target)
+        [[ "${2:-}" == "--target" ]] || exit 64
+        macos_deployment_target_for_target "${3:-}"
+        ;;
+esac
 "#,
     )
     .expect("write release-targets.sh");
@@ -84,6 +111,8 @@ fn release_shell_helpers_survive_readonly_caller_names() {
         .expect("workspace root");
     let scripts_dir = repo_root.join("scripts");
     let version = workspace_version(repo_root).expect("workspace version");
+    let scripts_dir = crate::release::bash_source_argument_for_tests(&scripts_dir);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
     let script = format!(
         r#"set -euo pipefail
 script_dir="{scripts_dir}"
@@ -108,12 +137,12 @@ resolved_tag="$(htmlcut_resolve_release_tag "$tag_name")"
 
 htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_version"
 "#,
-        scripts_dir = scripts_dir.display(),
-        repo_root = repo_root.display(),
+        scripts_dir = scripts_dir,
+        repo_root = repo_root_for_bash,
         version = version,
     );
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-c")
         .arg(script)
         .current_dir(repo_root)
@@ -151,7 +180,9 @@ fn release_shell_helpers_normalize_windows_temp_roots() {
             .expect("chmod fake cygpath");
     }
 
-    let output = Command::new("bash")
+    let fake_bin_for_bash = crate::release::bash_source_argument_for_tests(&fake_bin);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
+    let output = bash_command()
         .arg("-c")
         .arg(format!(
             r#"set -euo pipefail
@@ -161,8 +192,8 @@ export RUNNER_TEMP='D:\a\_temp'
 source "{repo_root}/scripts/common.sh"
 [[ "$(htmlcut_temp_root)" == "/d/a/_temp" ]]
 "#,
-            fake_bin = fake_bin.display(),
-            repo_root = repo_root.display(),
+            fake_bin = fake_bin_for_bash,
+            repo_root = repo_root_for_bash,
         ))
         .current_dir(repo_root)
         .output()
@@ -177,20 +208,52 @@ source "{repo_root}/scripts/common.sh"
 }
 
 #[test]
+fn release_shell_helpers_normalize_windows_source_paths() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
+
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+source "{repo_root}/scripts/common.sh"
+[[ "$(htmlcut_normalize_bash_path 'D:\a\HTMLCut\scripts\release-targets.sh')" == '/d/a/HTMLCut/scripts/release-targets.sh' ]]
+[[ "$(htmlcut_normalize_bash_path 'scripts\release-targets.sh')" == 'scripts/release-targets.sh' ]]
+"#,
+            repo_root = repo_root_for_bash,
+        ))
+        .current_dir(repo_root)
+        .output()
+        .expect("run path-normalization smoke");
+
+    assert!(
+        output.status.success(),
+        "path-normalization smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
     let temp = tempdir().expect("tempdir");
     let fake_bin = temp.path().join("bin");
+    let fake_archive = temp.path().join("archive.zip");
+    let fake_extract_root = temp.path().join("extract-root");
     fs::create_dir_all(&fake_bin).expect("create fake bin");
     let log_path = temp.path().join("extractor.log");
+    let log_path_for_bash = crate::release::bash_source_argument_for_tests(&log_path);
 
     fs::write(
         fake_bin.join("unzip"),
         format!(
             "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'unzip\\n' > \"{}\"\n",
-            log_path.display()
+            log_path_for_bash
         ),
     )
     .expect("write fake unzip");
@@ -198,7 +261,7 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
         fake_bin.join("powershell.exe"),
         format!(
             "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'powershell\\n' > \"{}\"\n",
-            log_path.display()
+            log_path_for_bash
         ),
     )
     .expect("write fake powershell");
@@ -213,17 +276,24 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
             .expect("chmod fake powershell");
     }
 
-    let output = Command::new("bash")
+    let fake_bin_for_bash = crate::release::bash_source_argument_for_tests(&fake_bin);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
+    let fake_archive_for_bash = crate::release::bash_source_argument_for_tests(&fake_archive);
+    let fake_extract_root_for_bash =
+        crate::release::bash_source_argument_for_tests(&fake_extract_root);
+    let output = bash_command()
         .arg("-c")
         .arg(format!(
             r#"set -euo pipefail
 PATH="{fake_bin}:$PATH"
 export OS=Windows_NT
 source "{repo_root}/scripts/smoke-release-artifact.sh"
-extract_release_archive "/tmp/archive.zip" "zip" "/tmp/extract-root"
+extract_release_archive "{fake_archive}" "zip" "{fake_extract_root}"
 "#,
-            fake_bin = fake_bin.display(),
-            repo_root = repo_root.display(),
+            fake_bin = fake_bin_for_bash,
+            repo_root = repo_root_for_bash,
+            fake_archive = fake_archive_for_bash,
+            fake_extract_root = fake_extract_root_for_bash,
         ))
         .current_dir(repo_root)
         .output()
@@ -378,4 +448,147 @@ fn release_smoke_script_checks_the_canonical_htmlcut_version_banner() {
 
     assert!(script.contains("grep \"^HTMLCut ${version}$\""));
     assert!(!script.contains("grep \"^htmlcut ${version}$\""));
+}
+
+#[test]
+fn maintained_release_shell_entrypoints_are_self_describing() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+
+    for (script_name, expected_fragment) in [
+        (
+            "build-release-artifact.sh",
+            "Build one maintained standalone HTMLCut release artifact",
+        ),
+        (
+            "build-release-checksums.sh",
+            "Write the canonical SHA-256 checksum manifest",
+        ),
+        (
+            "publish-github-release.sh",
+            "Publish or converge the GitHub release object",
+        ),
+        (
+            "release-tag.sh",
+            "Validate one release tag against the current workspace version",
+        ),
+        (
+            "release-targets.sh",
+            "Inspect the canonical HTMLCut standalone release-target registry",
+        ),
+        (
+            "smoke-release-artifact.sh",
+            "Extract one maintained ./dist release archive",
+        ),
+        (
+            "verify-github-release.sh",
+            "Verify the published GitHub release object",
+        ),
+        (
+            "workspace-version.sh",
+            "Print the [workspace.package] version",
+        ),
+    ] {
+        let output = bash_command()
+            .arg(release_script_argument(repo_root, script_name))
+            .arg("--help")
+            .current_dir(repo_root)
+            .output()
+            .expect("run script --help");
+
+        assert!(
+            output.status.success(),
+            "{script_name} --help failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Usage:"));
+        assert!(
+            stdout.contains(expected_fragment),
+            "{script_name} help missing expected fragment {expected_fragment:?}:\n{stdout}",
+        );
+    }
+}
+
+#[test]
+fn release_targets_cli_prints_canonical_registry_views() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+
+    let triples_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
+        .arg("triples")
+        .current_dir(repo_root)
+        .output()
+        .expect("run release-targets triples");
+    assert!(triples_output.status.success());
+    let triples = String::from_utf8(triples_output.stdout).expect("utf8 triples");
+    assert!(triples.lines().any(|line| line == "aarch64-apple-darwin"));
+    assert!(triples.lines().any(|line| line == "x86_64-pc-windows-msvc"));
+
+    let matrix_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
+        .arg("matrix-json")
+        .current_dir(repo_root)
+        .output()
+        .expect("run release-targets matrix-json");
+    assert!(matrix_output.status.success());
+    let matrix: Value = serde_json::from_slice(&matrix_output.stdout).expect("parse matrix json");
+    let include = matrix["include"].as_array().expect("matrix include");
+    assert!(
+        include
+            .iter()
+            .any(|entry| entry["target_triple"] == "aarch64-apple-darwin")
+    );
+    assert!(
+        include
+            .iter()
+            .any(|entry| entry["target_triple"] == "x86_64-unknown-linux-musl")
+    );
+
+    let assets_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
+        .args(["assets", "--version", "9.9.9"])
+        .current_dir(repo_root)
+        .output()
+        .expect("run release-targets assets");
+    assert!(assets_output.status.success());
+    let assets = String::from_utf8(assets_output.stdout).expect("utf8 assets");
+    assert!(
+        assets
+            .lines()
+            .any(|line| line == "htmlcut-source-9.9.9.zip")
+    );
+    assert!(
+        assets
+            .lines()
+            .any(|line| line == "htmlcut-9.9.9-x86_64-pc-windows-msvc.zip")
+    );
+    assert!(
+        assets
+            .lines()
+            .any(|line| line == "htmlcut-9.9.9-checksums.txt")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn release_targets_script_is_shipped_as_an_executable_entrypoint() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let metadata = fs::metadata(repo_root.join("scripts").join("release-targets.sh"))
+        .expect("release-targets metadata");
+
+    assert_ne!(
+        metadata.permissions().mode() & 0o111,
+        0,
+        "release-targets.sh should be directly runnable for local inspection",
+    );
 }

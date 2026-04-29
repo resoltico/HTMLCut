@@ -174,7 +174,7 @@ fn catalog_and_schema_output_files_report_verbose_success() {
         "--name".to_owned(),
         "htmlcut.result".to_owned(),
         "--schema-version".to_owned(),
-        "1".to_owned(),
+        "2".to_owned(),
         "--output".to_owned(),
         "json".to_owned(),
         "--output-file".to_owned(),
@@ -193,7 +193,11 @@ fn catalog_and_schema_output_files_report_verbose_success() {
 #[test]
 fn human_error_outcome_renders_source_load_traces() {
     let error = with_source_load_steps(
-        source_error("SOURCE_LOAD_FAILED", "Could not fetch source.", Vec::new()),
+        source_error(
+            DiagnosticCode::SourceLoadFailed,
+            "Could not fetch source.",
+            Vec::new(),
+        ),
         &SourceMetadata {
             kind: SourceKind::Url,
             value: "https://example.com".to_owned(),
@@ -236,6 +240,30 @@ fn human_error_outcome_renders_source_load_traces() {
             .iter()
             .any(|line| line.contains("get failed (500)"))
     );
+}
+
+#[test]
+fn request_definition_write_reports_json_render_failures_without_panicking() {
+    let tempdir = tempdir().expect("tempdir");
+    let definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::memory("inline", "<article>Hello</article>"),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    ));
+    let output = PendingExtractionDefinitionWrite {
+        path: tempdir.path().join("request.json"),
+        definition,
+    };
+
+    let error = with_json_render_failure_for_tests(|| write_request_definition(&output))
+        .expect_err("synthetic JSON render failure");
+
+    assert_eq!(error.code, "CLI_JSON_RENDER_FAILED");
+    assert!(
+        error
+            .message
+            .contains("Could not render request definition")
+    );
+    assert!(error.message.contains("request.json"));
 }
 
 #[test]

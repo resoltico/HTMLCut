@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: RELEASE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]
@@ -27,9 +27,11 @@ gh pr list --state open \
   --json number,title,url,headRefName,mergeStateStatus,isDraft,author,statusCheckRollup
 ```
 
-Treat any PR whose `author.login` is `dependabot[bot]` as in scope for this step, even if it was
-already reviewed during Step 1. Step 1 creates the release-time decision; Step 10 closes the loop
-before the release session is allowed to end.
+Treat any PR whose `author.login` is `dependabot[bot]` or `app/dependabot` as in scope for this
+step, even if it was already reviewed during Step 1. GitHub CLI currently surfaces
+`app/dependabot` for some authenticated views; that is still Dependabot-owned release hygiene.
+Step 1 creates the release-time decision; Step 10 closes the loop before the release session is
+allowed to end.
 
 For each open Dependabot PR, inspect the exact payload and its current gate status:
 

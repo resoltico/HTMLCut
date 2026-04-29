@@ -119,7 +119,7 @@ pub(crate) struct InspectSliceArgs {
     #[arg(long, value_parser = cli_choice_parser::<CliPatternMode>(), default_value_t = CliPatternMode::Literal)]
     pub(crate) pattern: CliPatternMode,
 
-    /// Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, `u`, and `x`; `g` is accepted for compatibility and ignored.
+    /// Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, and `x`.
     #[arg(long)]
     pub(crate) regex_flags: Option<String>,
 

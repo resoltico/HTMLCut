@@ -86,7 +86,7 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
         "--to".to_owned(),
         "</article>".to_owned(),
         "--regex-flags".to_owned(),
-        "u".to_owned(),
+        "i".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.contains("\"code\": \"CLI_REGEX_FLAGS_CONFLICT\""));

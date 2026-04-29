@@ -4,6 +4,7 @@ use super::PreparedSourceInspection;
 use super::build::{build_runtime, build_source_request, validate_preview_chars};
 use crate::args::InspectSourceArgs;
 use crate::error::{CliError, internal_error};
+use crate::model::CliErrorCode;
 
 impl PreparedSourceInspection {
     #[cfg(test)]
@@ -43,7 +44,7 @@ impl PreparedSourceInspection {
 fn source_inspection_report_command(command: Option<&str>) -> Result<String, CliError> {
     command.map(str::to_owned).ok_or_else(|| {
         internal_error(
-            "CLI_CONTRACT_MISSING",
+            CliErrorCode::ContractMissing,
             "The core-owned CLI contract is missing the report command for inspect source.",
         )
     })

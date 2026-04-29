@@ -13,8 +13,20 @@ use xtask::{
     tracked_files, with_workspace_stub, workspace_version,
 };
 
+const XTASK_AFTER_HELP: &str = "\
+Examples:
+  cargo xtask check
+  cargo xtask semver-check
+  cargo xtask coverage
+  cargo xtask fuzz-smoke --target extract_selector
+  cargo xtask refresh-semver-baseline --git-ref v6.0.0";
+
 #[derive(Parser)]
-#[command(name = "xtask", about = "Rust-native maintenance tasks for HTMLCut.")]
+#[command(
+    name = "xtask",
+    about = "Rust-native maintenance tasks for HTMLCut.",
+    after_help = XTASK_AFTER_HELP
+)]
 struct Cli {
     #[command(subcommand)]
     command: Task,
@@ -22,8 +34,25 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Task {
+    #[command(
+        about = "Run the full maintainer quality gate.",
+        long_about = "Run the full maintainer quality gate, including formatting, docs, dependency policy, tests, and the final curated 100% coverage pass."
+    )]
     Check,
+    #[command(
+        about = "Run only the maintained htmlcut-core semver gate.",
+        long_about = "Run only the maintained htmlcut-core cargo-semver-checks gate with the same baseline and release-type policy used by cargo xtask check."
+    )]
+    SemverCheck,
+    #[command(
+        about = "Run only the curated 100% coverage gate.",
+        long_about = "Run the curated 100% line-and-branch coverage gate plus its prerequisite checks without rerunning the broader maintainer gate."
+    )]
     Coverage,
+    #[command(
+        about = "Run a short maintained libFuzzer smoke pass.",
+        long_about = "Run a short maintained libFuzzer smoke pass over one target or the whole maintained target inventory."
+    )]
     FuzzSmoke {
         /// One maintained fuzz target to run. Omit to run the full smoke inventory.
         #[arg(long = "target", value_name = "TARGET")]
@@ -37,6 +66,10 @@ enum Task {
         )]
         runs: u32,
     },
+    #[command(
+        about = "Refresh the checked-in htmlcut-core semver baseline.",
+        long_about = "Refresh the checked-in htmlcut-core semver baseline from one published Git tag, branch, or commit."
+    )]
     RefreshSemverBaseline {
         /// Git tag, branch, or commit that represents the published baseline.
         #[arg(long = "git-ref", value_name = "REF")]
@@ -50,6 +83,7 @@ fn main() -> DynResult<()> {
 
     match cli.command {
         Task::Check => run_check(&repo_root),
+        Task::SemverCheck => run_semver_check(&repo_root),
         Task::Coverage => run_coverage(&repo_root),
         Task::FuzzSmoke { target, runs } => run_fuzz_smoke(&repo_root, target.as_deref(), runs),
         Task::RefreshSemverBaseline { git_ref } => refresh_semver_baseline(&repo_root, &git_ref),
@@ -74,6 +108,23 @@ fn run_check(repo_root: &Path) -> DynResult<()> {
     }
 
     run_coverage(repo_root)
+}
+
+fn run_semver_check(repo_root: &Path) -> DynResult<()> {
+    ensure_repo_toolchain_prerequisites(repo_root)?;
+    let Some(spec) = check_plan(repo_root)?
+        .into_iter()
+        .find(is_semver_check_spec)
+    else {
+        return Err("semver gate step is missing from cargo xtask check".into());
+    };
+
+    remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
+    let result = run_spec(repo_root, &spec);
+    let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
+    result?;
+    cleanup?;
+    Ok(())
 }
 
 fn run_coverage(repo_root: &Path) -> DynResult<()> {

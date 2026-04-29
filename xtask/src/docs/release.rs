@@ -111,7 +111,21 @@ fn matrix_pair_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<S
 }
 
 fn macos_floor_errors(repo_root: &Path, display_path: &str, text: &str) -> Vec<String> {
-    match macos_deployment_target(repo_root, "aarch64-apple-darwin") {
+    macos_floor_errors_with_loader(repo_root, display_path, text, |root| {
+        macos_deployment_target(root, "aarch64-apple-darwin")
+    })
+}
+
+fn macos_floor_errors_with_loader<F>(
+    repo_root: &Path,
+    display_path: &str,
+    text: &str,
+    load_target: F,
+) -> Vec<String>
+where
+    F: FnOnce(&Path) -> crate::model::DynResult<Option<String>>,
+{
+    match load_target(repo_root) {
         Ok(Some(target)) => {
             let expected = format!("macOS {target}");
             (!text.contains(&expected))
@@ -201,7 +215,6 @@ fn missing_literals(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     use htmlcut_tempdir::tempdir;
 
@@ -247,36 +260,11 @@ mod tests {
 
     #[test]
     fn release_doc_errors_report_missing_macos_floor_from_registry() {
-        let repo_root = tempdir().expect("tempdir");
-        let scripts_dir = repo_root.path().join("scripts");
-        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
-        fs::write(
-            scripts_dir.join("release-targets.sh"),
-            r#"#!/usr/bin/env bash
-release_target_triples() {
-    printf 'aarch64-apple-darwin\n'
-}
-
-release_matrix_json() {
-    printf '{"include":[{"id":"macos-arm64","runs_on":"macos-15","target_triple":"aarch64-apple-darwin","artifact_bundle_name":"standalone-macos-arm64","needs_musl_tools":false}]}\n'
-}
-
-release_asset_names_for_version() {
-    local release_version="$1"
-    printf 'htmlcut-%s-checksums.txt\n' "${release_version}"
-}
-
-macos_deployment_target_for_target() {
-    :
-}
-"#,
-        )
-        .expect("write release-targets.sh");
-
-        let errors = release_doc_errors(
-            repo_root.path(),
+        let errors = macos_floor_errors_with_loader(
+            Path::new("."),
             "docs/platform-support.md",
             "- `aarch64-apple-darwin`\n- `macos-15` for `aarch64-apple-darwin`\n- `htmlcut-X.Y.Z-checksums.txt`\n",
+            |_repo_root| Ok(None),
         );
 
         assert!(errors.iter().any(|error| error.contains(

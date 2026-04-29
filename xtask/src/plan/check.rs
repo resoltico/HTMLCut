@@ -53,6 +53,22 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
+            "clippy",
+            "-p",
+            "htmlcut-core",
+            "--lib",
+            "--tests",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        [
             "test",
             "-p",
             "htmlcut-core",
@@ -156,6 +172,12 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         ["test", "--workspace", "--doc", "--all-features", "--locked"],
+        false,
+        true,
+    ));
+    plan.push(CommandSpec::new(
+        "cargo",
+        ["doc", "--workspace", "--no-deps", "--locked"],
         false,
         true,
     ));

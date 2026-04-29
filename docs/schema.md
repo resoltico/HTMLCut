@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: SCHEMA
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -24,7 +24,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 1 --output json
+htmlcut schema --name htmlcut.result --schema-version 2 --output json
 ```
 
 Rust:
@@ -40,6 +40,9 @@ assert!(!registry.is_empty());
 let extraction_result =
     schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION).unwrap();
 assert_eq!(extraction_result.owner_surface, "htmlcut-core");
+
+let schema_json = (extraction_result.json_schema)().unwrap();
+assert!(schema_json.is_object());
 ```
 
 The exported registry profile is:
@@ -72,8 +75,9 @@ CLI report contracts:
 - `htmlcut.schema_report`
 - `htmlcut.extraction_report`
 - `htmlcut.source_inspection_report`
+- `htmlcut.error_report`
 
-Frozen interop v1 contracts:
+Interop v1 contracts:
 
 - `htmlcut.plan`
 - `htmlcut.result`
@@ -141,6 +145,14 @@ Successful source loads expose `SourceMetadata.load_steps`, a structured trace o
 HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded, was
 skipped, fell back, or failed before the final `GET`.
 
+`htmlcut.error_report` reuses that same `SourceLoadStep` shape as `source_load_steps` when a
+JSON-mode CLI failure already reached the traced source-loading path before aborting.
+
+CLI error-report `code` fields are typed unions at the Rust/schema layer:
+
+- core-side `DiagnosticCode` values when the CLI is projecting a core diagnostic directly
+- CLI-owned `CliErrorCode` values for parse, request-file, output, and catalog/contract failures
+
 ## Top-Level Document Identity
 
 Every maintained public JSON document exported by HTMLCut carries:
@@ -156,11 +168,12 @@ That applies to:
 - CLI source inspection reports
 - CLI catalog reports
 - CLI schema reports
+- CLI error reports
 - interop v1 plan/result/error documents
 
 ## Interop Note
 
-The frozen interop v1 schemas are exported through the same registry, but `HtmlInput` is not.
+The interop v1 schemas are exported through the same registry, but `HtmlInput` is not.
 
 That is intentional.
 
@@ -172,9 +185,10 @@ decoded HTML delivery in production flows.
 Generic HTMLCut schemas are versioned and may hard-break by version when architecture quality
 requires it.
 
-Interop v1 schemas are frozen by profile:
+Interop v1 documents are versioned under one stable profile string:
 
 - `htmlcut-v1`
 
-Do not mutate the v1 schemas in place. Add a new interop profile instead.
+When the interop plan/result/error contracts change, update their integer schema versions, tests,
+fixtures, and maintained docs in the same change.
 The maintained policy details live in [versioning-policy.md](versioning-policy.md).

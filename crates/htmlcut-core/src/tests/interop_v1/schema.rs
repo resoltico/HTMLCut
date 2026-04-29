@@ -9,6 +9,7 @@ fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {
         Selection::nth(NonZeroUsize::new(3).expect("index")).mode(),
         SelectionMode::Nth
     );
+    assert_eq!(Selection::all().mode(), SelectionMode::All);
 
     let source = HtmlInput::new("inline", "<article>Hello</article>").expect("source");
     assert_eq!(source.to_source_request().kind(), SourceKind::Memory);

@@ -10,7 +10,7 @@ use crate::prepare::definition::{
 };
 use crate::prepare::{PreparedPreview, RequestBuildOptions, required_cli_value};
 
-use super::shared::materialize_operation_definition;
+use super::materialize_operation_definition;
 
 impl PreparedPreview {
     #[cfg(test)]

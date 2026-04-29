@@ -108,11 +108,7 @@ pub fn coverage_output_path(repo_root: &Path) -> PathBuf {
 
 /// Ensures the target directory that will receive `coverage.json` already exists.
 pub fn ensure_coverage_output_dir(repo_root: &Path) -> DynResult<()> {
-    let output_path = coverage_output_path(repo_root);
-    let parent = output_path
-        .parent()
-        .expect("coverage output path should have a parent directory");
-    std::fs::create_dir_all(parent)?;
+    std::fs::create_dir_all(coverage_target_dir(repo_root))?;
     Ok(())
 }
 

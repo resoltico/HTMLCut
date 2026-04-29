@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: RELEASE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
   questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]
@@ -43,7 +43,7 @@ Release choreography lives in this document set. Contract-versioning policy live
 
 - [Quality Gates](quality-gates.md) defines the maintained local gate.
 - [Platform Support](platform-support.md) defines the release-target matrix and deployment floors.
-- [Versioning Policy](versioning-policy.md) defines generic-contract versioning, frozen interop
+- [Versioning Policy](versioning-policy.md) defines generic-contract versioning, interop
   rules, and semver-baseline policy.
 - `scripts/release-targets.sh`, `.github/workflows/ci.yml`, and `.github/workflows/release.yml`
   implement the published target matrix and release asset inventory.

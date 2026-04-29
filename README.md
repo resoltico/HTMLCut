@@ -1,16 +1,16 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "5.0.0"
-  domain: PRODUCT
-  updated: "2026-04-24"
+  version: "6.0.0"
+  domain: FRONTDOOR
+  updated: "2026-04-29"
 RETRIEVAL_HINTS:
-  keywords: [htmlcut, html extraction, repeatable extraction, request file, quick start, sample page, command guide]
-  questions: [what is HTMLCut?, why would I use HTMLCut instead of copying values by hand?, how do I start HTMLCut quickly?, can HTMLCut save a request and run it again later?]
-  related: [docs/getting-started.md, docs/cli.md, docs/README.md, PATENTS.md]
+  keywords: [htmlcut, html extraction, cli, selectors, slice extraction, request files, html inspection]
+  questions: [what is HTMLCut?, how do I extract values from HTML files or URLs?, how do I save a reusable HTMLCut request?]
+  related: [docs/getting-started.md, docs/cli.md, docs/core.md, docs/interop-v1.md]
 -->
 
-# HTMLCut
+# HTMLCut — repeatable HTML extraction from files, URLs, and stdin
 
 HTMLCut is a command-line tool for people who keep pulling links, text, and fragments out of HTML,
 so they can save the step once and run it again instead of rebuilding the same command each time.
@@ -41,44 +41,40 @@ htmlcut select ./page.html \
 htmlcut select --request-file ./article-links.json
 ```
 
-The first line saves the request while the page is still warm. The second line runs the same step
-again later without rebuilding it from scratch.
+The first command saves the extraction as a file while the page is still warm. The second runs
+the same step again later — same selector, same options — without rebuilding it from scratch.
 
-## For Repeated Page Work
+## Where It Fits
 
-HTMLCut fits people who keep revisiting the same page work in scripts or agent workflows and want
-something smaller than full browser automation.
+HTMLCut is for recurring page work: pulling the same title, price, link, or fragment from pages
+you return to repeatedly. It fits scripts, agent workflows, and anything smaller than full browser
+automation.
 
-- Pull the same title, price, link, or fragment from recurring pages
-- Check the match before wiring it into a script
-- Save the request as a file you can rerun or hand to someone else
+Skip it when:
+- A page only becomes useful after JavaScript runs — render it first, then hand the HTML to HTMLCut
+- You need a full browser session, login flow, or crawling — let that tool handle the session; HTMLCut handles the extraction afterward
+- A one-off copy-paste is faster than saving and running a request file
 
-It is for the recurring page task you would otherwise handle with copy-paste, a brittle one-off
-command, or a heavier stack.
+Rust developers can embed `htmlcut-core` directly — see [docs/core.md](docs/core.md) and [docs/interop-v1.md](docs/interop-v1.md).
 
-## Start With One Sample Page
+## Install
 
-- [Getting Started](docs/getting-started.md) takes you from install to a first saved request.
-- [Releases](https://github.com/resoltico/HTMLCut/releases) publish prebuilt packages for macOS,
-  Linux, and Windows.
-- [The command guide](docs/cli.md) is there when you want more than the quick start.
+Prebuilt packages for macOS, Linux, and Windows at [Releases](https://github.com/resoltico/HTMLCut/releases).
 
-Try one sample page first. If that saved step feels useful, you will know quickly whether HTMLCut
-belongs in the rest of your workflow.
+From source:
 
-Rust embedders can use `htmlcut-core` directly. Built-in URL fetching is opt-in through the
-`htmlcut-core/http-client` feature, while the published CLI enables it for you.
+```bash
+cargo build --locked -p htmlcut-cli --bin htmlcut
+```
 
-## Easy To Check, Clear About Limits
+- [Getting started — install to first saved request](docs/getting-started.md)
+- [Command guide](docs/cli.md)
 
-- The sample page and example commands are tested with each release.
-- Releases are public and easy to inspect.
-- HTMLCut is open source and MIT-licensed.
+## What You Can Check
 
-HTMLCut works best when the source already contains the content you need. If a page only becomes
-useful after JavaScript runs, render it first and then hand the resulting HTML to HTMLCut. If you
-need a full browser session, let that tool handle the session and let HTMLCut handle the
-extraction afterward.
+- The sample page and example commands are tested with each release
+- Releases are public and checksummed
+- MIT-licensed
 
 ## Legal
 

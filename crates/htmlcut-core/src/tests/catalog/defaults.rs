@@ -35,16 +35,16 @@ fn defaults_cover_public_default_contracts() {
         default_inspection_sample_limit(),
         DEFAULT_INSPECTION_SAMPLE_LIMIT
     );
-    assert_eq!(default_regex_flags(), DEFAULT_REGEX_FLAGS);
     assert!(default_true());
     assert_eq!(default_max_bytes(), DEFAULT_MAX_BYTES);
     assert_eq!(default_fetch_timeout_ms(), DEFAULT_FETCH_TIMEOUT_MS);
-    assert_eq!(format_byte_size(1024), "1 KB");
-    assert_eq!(format_byte_size(1024 * 1024), "1 MB");
-    assert_eq!(format_byte_size(1024 * 1024 * 1024), "1 GB");
-    assert_eq!(format_byte_size(1024 * 1024 + 1), "1048577 bytes");
-    assert_eq!(format_byte_size(1024 * 1024 * 1024 + 1), "1073741825 bytes");
-    assert_eq!(format_byte_size(1536), "1536 bytes");
+    assert_eq!(format_byte_size(1), "1 byte");
+    assert_eq!(format_byte_size(1024), "1 KiB");
+    assert_eq!(format_byte_size(1024 * 1024), "1 MiB");
+    assert_eq!(format_byte_size(1024 * 1024 * 1024), "1 GiB");
+    assert_eq!(format_byte_size(1024 * 1024 + 1), "1 MiB");
+    assert_eq!(format_byte_size(1024 * 1024 * 1024 + 1), "1 GiB");
+    assert_eq!(format_byte_size(1536), "1.5 KiB");
 }
 #[test]
 fn operation_catalog_is_unique_and_complete() {
@@ -104,7 +104,9 @@ fn operation_catalog_is_unique_and_complete() {
         "unknown HTMLCut operation ID"
     );
     assert_eq!(
-        operation_descriptor(OperationId::SourceInspect).cli_surface,
+        operation_descriptor(OperationId::SourceInspect)
+            .expect("source.inspect descriptor")
+            .cli_surface,
         Some("inspect source")
     );
 

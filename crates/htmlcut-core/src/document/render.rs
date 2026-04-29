@@ -1,5 +1,5 @@
 use ego_tree::NodeRef as DomNodeRef;
-use scraper::Node;
+use scraper::{ElementRef, Html, Node};
 
 use crate::contracts::WhitespaceMode;
 
@@ -33,13 +33,43 @@ const SKIP_TAGS: [&str; 5] = ["head", "noscript", "script", "style", "template"]
 
 pub(crate) fn render_html_as_text(fragment: &str, whitespace: WhitespaceMode) -> String {
     let document = parse_wrapped_fragment(fragment);
-    let body = first_body(&document).expect("wrapped fragments always contain a body");
+    render_document_body_as_text(&document, whitespace)
+}
 
+pub(crate) fn render_document_body_as_text(document: &Html, whitespace: WhitespaceMode) -> String {
+    if let Some(body) = first_body(document) {
+        render_children_as_text(body.children(), whitespace)
+    } else {
+        render_children_as_text(document.root_element().children(), whitespace)
+    }
+}
+
+pub(crate) fn render_element_children_as_text(
+    node: &ElementRef<'_>,
+    whitespace: WhitespaceMode,
+) -> String {
+    render_children_as_text(node.children(), whitespace)
+}
+
+pub(crate) fn render_element_as_text(node: &ElementRef<'_>, whitespace: WhitespaceMode) -> String {
     let mut output = String::new();
-    for child in body.children() {
+    render_node(**node, &mut output, false, false);
+    normalize_rendered_output(output, whitespace)
+}
+
+fn render_children_as_text<'a>(
+    children: impl Iterator<Item = DomNodeRef<'a, Node>>,
+    whitespace: WhitespaceMode,
+) -> String {
+    let mut output = String::new();
+    for child in children {
         render_node(child, &mut output, false, false);
     }
 
+    normalize_rendered_output(output, whitespace)
+}
+
+fn normalize_rendered_output(output: String, whitespace: WhitespaceMode) -> String {
     let normalized = collapse_blank_lines(
         &output
             .lines()
@@ -90,9 +120,28 @@ pub(crate) fn render_node(
                 return;
             }
 
+            if tag_name == "img" {
+                let alt_text = data.attr("alt").map(|alt| {
+                    if in_pre {
+                        alt.to_owned()
+                    } else {
+                        collapse_inline_whitespace(alt)
+                    }
+                });
+                let Some(alt_text) = alt_text.filter(|alt| !alt.is_empty()) else {
+                    return;
+                };
+
+                if needs_space(output, &alt_text) {
+                    output.push(' ');
+                }
+                output.push_str(&alt_text);
+                return;
+            }
+
             if tag_name == "li" {
                 push_newline(output, 1);
-                output.push_str("- ");
+                output.push_str(&list_item_marker(node));
                 for child in node.children() {
                     render_node(child, output, false, true);
                 }
@@ -172,6 +221,52 @@ pub(crate) fn render_node(
     }
 }
 
+fn list_item_marker(node: DomNodeRef<'_, Node>) -> String {
+    let Some(parent) = node.parent().and_then(ElementRef::wrap) else {
+        return "- ".to_owned();
+    };
+    if parent.value().name() != "ol" {
+        return "- ".to_owned();
+    }
+
+    let reversed = parent.value().attr("reversed").is_some();
+    let list_items = parent
+        .children()
+        .filter_map(ElementRef::wrap)
+        .filter(|element| element.value().name() == "li")
+        .collect::<Vec<_>>();
+
+    let mut ordinal = parent
+        .value()
+        .attr("start")
+        .and_then(parse_list_ordinal)
+        .unwrap_or(if reversed { list_items.len() as i64 } else { 1 });
+
+    for list_item in list_items
+        .iter()
+        .copied()
+        .take_while(|list_item| list_item.id() != node.id())
+    {
+        if let Some(explicit_value) = list_item.value().attr("value").and_then(parse_list_ordinal) {
+            ordinal = explicit_value;
+        }
+        ordinal += if reversed { -1 } else { 1 };
+    }
+
+    if let Some(explicit_value) = ElementRef::wrap(node)
+        .and_then(|element| element.value().attr("value"))
+        .and_then(parse_list_ordinal)
+    {
+        ordinal = explicit_value;
+    }
+
+    format!("{ordinal}. ")
+}
+
+fn parse_list_ordinal(value: &str) -> Option<i64> {
+    value.parse().ok()
+}
+
 pub(crate) fn collapse_inline_whitespace(input: &str) -> String {
     let mut output = String::new();
     let mut previous_was_whitespace = false;
@@ -194,7 +289,7 @@ pub(crate) fn collapse_inline_whitespace(input: &str) -> String {
 }
 
 pub(crate) fn needs_space(output: &str, next_text: &str) -> bool {
-    let Some(last_character) = output.chars().last() else {
+    let Some(last_character) = output.chars().next_back() else {
         return false;
     };
     let Some(first_character) = next_text.chars().next() else {
@@ -210,8 +305,8 @@ pub(crate) fn needs_space(output: &str, next_text: &str) -> bool {
 }
 
 pub(crate) fn push_newline(output: &mut String, count: usize) {
-    let trimmed = output.trim_end_matches('\n').to_owned();
-    *output = trimmed;
+    let trimmed_len = output.trim_end_matches('\n').len();
+    output.truncate(trimmed_len);
     if !output.is_empty() {
         output.push_str(&"\n".repeat(count));
     }
@@ -266,10 +361,21 @@ fn push_prefixed_block(output: &mut String, block: &str, prefix: &str) {
 }
 
 fn collapse_blank_lines(input: &str) -> String {
-    let mut collapsed = input.to_owned();
-    while collapsed.contains("\n\n\n") {
-        collapsed = collapsed.replace("\n\n\n", "\n\n");
+    let mut collapsed = String::with_capacity(input.len());
+    let mut consecutive_newlines = 0usize;
+
+    for ch in input.chars() {
+        if ch == '\n' {
+            if consecutive_newlines < 2 {
+                collapsed.push(ch);
+            }
+            consecutive_newlines += 1;
+        } else {
+            consecutive_newlines = 0;
+            collapsed.push(ch);
+        }
     }
+
     collapsed
 }
 

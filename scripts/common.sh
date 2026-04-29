@@ -5,9 +5,42 @@ htmlcut_die() {
     exit 1
 }
 
+htmlcut_is_help_flag() {
+    local candidate="${1:-}"
+
+    [[ "${candidate}" == "-h" || "${candidate}" == "--help" ]]
+}
+
+htmlcut_usage_error() {
+    local command_name="$1"
+    local message="$2"
+
+    printf 'error: %s\n' "${message}" >&2
+    printf 'Run %s --help for usage.\n' "${command_name}" >&2
+    exit 1
+}
+
+htmlcut_normalize_bash_path() {
+    local candidate="$1"
+
+    candidate="${candidate//\\//}"
+    if [[ "${candidate}" =~ ^([A-Za-z]):/(.*)$ ]]; then
+        local drive_letter="${BASH_REMATCH[1],,}"
+        local remainder="${BASH_REMATCH[2]}"
+        if [[ -n "${remainder}" ]]; then
+            candidate="/${drive_letter}/${remainder}"
+        else
+            candidate="/${drive_letter}"
+        fi
+    fi
+
+    printf '%s\n' "${candidate}"
+}
+
 htmlcut_resolve_script_dir() {
     local source_path="$1"
 
+    source_path="$(htmlcut_normalize_bash_path "${source_path}")"
     while [[ -h "${source_path}" ]]; do
         local source_dir
         source_dir="$(cd -P -- "$(dirname -- "${source_path}")" && pwd)"
@@ -15,6 +48,7 @@ htmlcut_resolve_script_dir() {
         if [[ "${source_path}" != /* ]]; then
             source_path="${source_dir}/${source_path}"
         fi
+        source_path="$(htmlcut_normalize_bash_path "${source_path}")"
     done
 
     cd -P -- "$(dirname -- "${source_path}")" && pwd

@@ -35,7 +35,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
         "--to".to_owned(),
         "</article>".to_owned(),
         "--regex-flags".to_owned(),
-        "u".to_owned(),
+        "i".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stderr.contains("--regex-flags can only be used with --pattern regex."));

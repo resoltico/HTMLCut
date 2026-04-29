@@ -47,7 +47,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     preview.matches.clear();
     preview.diagnostics.push(Diagnostic {
         level: DiagnosticLevel::Info,
-        code: "NOTE".to_owned(),
+        code: DiagnosticCode::MultipleMatches,
         message: "preview note".to_owned(),
         details: None,
     });
@@ -59,7 +59,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     empty_inspection.document = None;
     empty_inspection.diagnostics.push(Diagnostic {
         level: DiagnosticLevel::Warning,
-        code: "WARN".to_owned(),
+        code: DiagnosticCode::EffectiveBaseUrlUnresolved,
         message: "watch out".to_owned(),
         details: None,
     });
@@ -111,11 +111,15 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     );
     wrapped.document_title = None;
     wrapped.source.effective_base_url = Some("https://example.net/docs/start.html".to_owned());
-    assert!(wrap_html_document(&wrapped).contains("<title>example.net</title>"));
+    assert!(
+        wrap_html_document(&wrapped)
+            .expect("wrapped html document")
+            .contains("<title>example.net</title>")
+    );
 
     let source = primary_extraction_error(&[Diagnostic {
         level: DiagnosticLevel::Error,
-        code: "SOURCE_LOAD_FAILED".to_owned(),
+        code: DiagnosticCode::SourceLoadFailed,
         message: "boom".to_owned(),
         details: None,
     }]);
@@ -123,7 +127,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let usage = primary_extraction_error(&[Diagnostic {
         level: DiagnosticLevel::Error,
-        code: "INVALID_REQUEST".to_owned(),
+        code: DiagnosticCode::InvalidSelector,
         message: "bad".to_owned(),
         details: None,
     }]);
@@ -131,7 +135,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let extraction = primary_extraction_error(&[Diagnostic {
         level: DiagnosticLevel::Error,
-        code: "AMBIGUOUS_MATCH".to_owned(),
+        code: DiagnosticCode::AmbiguousMatch,
         message: "too many".to_owned(),
         details: None,
     }]);
@@ -139,7 +143,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let internal = primary_extraction_error(&[Diagnostic {
         level: DiagnosticLevel::Error,
-        code: "SURPRISE".to_owned(),
+        code: DiagnosticCode::MultipleMatches,
         message: "unexpected".to_owned(),
         details: None,
     }]);
@@ -151,7 +155,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
 
     let inspection_source = primary_source_inspection_error(&[Diagnostic {
         level: DiagnosticLevel::Error,
-        code: "SOURCE_LOAD_FAILED".to_owned(),
+        code: DiagnosticCode::SourceLoadFailed,
         message: "missing".to_owned(),
         details: None,
     }]);
@@ -159,7 +163,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     assert_eq!(
         exit_code_for_error(&primary_source_inspection_error(&[Diagnostic {
             level: DiagnosticLevel::Error,
-            code: "OTHER".to_owned(),
+            code: DiagnosticCode::InvalidSelector,
             message: "other".to_owned(),
             details: None,
         }])),
@@ -170,23 +174,50 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
         EXIT_CODE_INTERNAL
     );
 
-    assert_eq!(render_error_category(CliErrorCategory::Usage), "usage");
-    assert_eq!(render_error_category(CliErrorCategory::Source), "source");
     assert_eq!(
-        render_error_category(CliErrorCategory::Extraction),
-        "extraction"
+        error_report_body(&usage_error(CliErrorCode::ParseError, "bad input")).category,
+        ErrorReportCategory::Usage
     );
-    assert_eq!(render_error_category(CliErrorCategory::Output), "output");
     assert_eq!(
-        render_error_category(CliErrorCategory::Internal),
-        "internal"
+        error_report_body(&source_error(
+            DiagnosticCode::SourceLoadFailed,
+            "missing",
+            Vec::new()
+        ))
+        .category,
+        ErrorReportCategory::Source
+    );
+    assert_eq!(
+        error_report_body(&extraction_error(
+            DiagnosticCode::NoMatch,
+            "no match",
+            Vec::new()
+        ))
+        .category,
+        ErrorReportCategory::Extraction
+    );
+    assert_eq!(
+        error_report_body(&output_error(
+            CliErrorCode::BundleTextWriteFailed,
+            "write failed"
+        ))
+        .category,
+        ErrorReportCategory::Output
+    );
+    assert_eq!(
+        error_report_body(&internal_error(CliErrorCode::ContractMissing, "boom")).category,
+        ErrorReportCategory::Internal
     );
 
     let human = error_outcome(
         "select".to_owned(),
         false,
         None,
-        source_error("SRC", "could not load", Vec::new()),
+        source_error(
+            DiagnosticCode::SourceLoadFailed,
+            "could not load",
+            Vec::new(),
+        ),
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -203,7 +234,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
         htmlcut_core::OperationId::SelectExtract,
         true,
         None,
-        usage_error("CLI_PARSE_ERROR", "bad invocation"),
+        usage_error(CliErrorCode::ParseError, "bad invocation"),
         None,
     );
     assert_eq!(contract_drift.exit_code, EXIT_CODE_INTERNAL);

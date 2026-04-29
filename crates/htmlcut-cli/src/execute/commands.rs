@@ -32,11 +32,15 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
     };
 
     let post_write_stderr = output_file_notice(args.output_file.as_deref(), verbose, quiet);
+    let stdout = match args.output {
+        CliCatalogOutputMode::Json => match to_pretty_json(&report) {
+            Ok(stdout) => stdout,
+            Err(error) => return error_outcome("catalog".to_owned(), false, None, error),
+        },
+        CliCatalogOutputMode::Text => render_catalog_text(&report),
+    };
     ExecutionOutcome {
-        stdout: Some(match args.output {
-            CliCatalogOutputMode::Json => to_pretty_json(&report),
-            CliCatalogOutputMode::Text => render_catalog_text(&report),
-        }),
+        stdout: Some(stdout),
         output_file: args.output_file,
         post_write_stderr,
         stderr: Vec::new(),
@@ -58,11 +62,15 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
     };
 
     let post_write_stderr = output_file_notice(args.output_file.as_deref(), verbose, quiet);
+    let stdout = match args.output {
+        CliSchemaOutputMode::Json => match to_pretty_json(&report) {
+            Ok(stdout) => stdout,
+            Err(error) => return error_outcome("schema".to_owned(), false, None, error),
+        },
+        CliSchemaOutputMode::Text => render_schema_text(&report),
+    };
     ExecutionOutcome {
-        stdout: Some(match args.output {
-            CliSchemaOutputMode::Json => to_pretty_json(&report),
-            CliSchemaOutputMode::Text => render_schema_text(&report),
-        }),
+        stdout: Some(stdout),
         output_file: args.output_file,
         post_write_stderr,
         stderr: Vec::new(),
@@ -131,12 +139,17 @@ pub(crate) fn run_inspect_source(
             &report.source,
         );
         if prepared.output == CliInspectOutputMode::Json {
-            return ExecutionOutcome {
-                stdout: Some(to_pretty_json(&report)),
-                output_file: prepared.output_file,
-                post_write_stderr: Vec::new(),
-                stderr: Vec::new(),
-                exit_code: exit_code_for_error(&error),
+            return match to_pretty_json(&report) {
+                Ok(stdout) => ExecutionOutcome {
+                    stdout: Some(stdout),
+                    output_file: prepared.output_file,
+                    post_write_stderr: Vec::new(),
+                    stderr: Vec::new(),
+                    exit_code: exit_code_for_error(&error),
+                },
+                Err(render_error) => {
+                    error_outcome(prepared.command.clone(), false, None, render_error)
+                }
             };
         }
 
@@ -148,13 +161,17 @@ pub(crate) fn run_inspect_source(
         prepared.verbose,
         prepared.quiet,
     );
+    let stdout = match prepared.output {
+        CliInspectOutputMode::Json => match to_pretty_json(&report) {
+            Ok(stdout) => stdout,
+            Err(error) => return error_outcome(prepared.command.clone(), false, None, error),
+        },
+        CliInspectOutputMode::Text => {
+            render_source_inspection_text(&report, prepared.preview_chars)
+        }
+    };
     ExecutionOutcome {
-        stdout: Some(match prepared.output {
-            CliInspectOutputMode::Json => to_pretty_json(&report),
-            CliInspectOutputMode::Text => {
-                render_source_inspection_text(&report, prepared.preview_chars)
-            }
-        }),
+        stdout: Some(stdout),
         output_file: prepared.output_file,
         post_write_stderr,
         stderr: if prepared.quiet {

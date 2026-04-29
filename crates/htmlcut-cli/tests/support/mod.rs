@@ -14,12 +14,13 @@ pub(crate) use std::thread;
 
 pub(crate) use assert_cmd::Command;
 pub(crate) use htmlcut_cli::{
-    CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogCommandReport,
+    CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION, CatalogCommandReport, CliErrorCode,
+    ERROR_COMMAND_REPORT_SCHEMA_NAME, ERROR_COMMAND_REPORT_SCHEMA_VERSION,
     EXTRACTION_COMMAND_REPORT_SCHEMA_NAME, EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
-    ExtractionCommandReport, SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
-    SCHEMA_COMMAND_REPORT_SCHEMA_VERSION, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
-    SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SchemaCommandReport,
-    SourceInspectionCommandReport,
+    ErrorCommandReport, ErrorReportCode, ExtractionCommandReport,
+    SCHEMA_COMMAND_REPORT_SCHEMA_NAME, SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
+    SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
+    SchemaCommandReport, SourceInspectionCommandReport,
 };
 pub(crate) use htmlcut_core::{
     AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
@@ -86,7 +87,7 @@ pub(crate) fn slice_extraction(
     let to = SliceBoundary::new(to).expect("slice boundary");
     let slice = match mode {
         PatternMode::Literal => SliceSpec::new(from, to),
-        PatternMode::Regex => SliceSpec::regex(from, to, htmlcut_core::DEFAULT_REGEX_FLAGS),
+        PatternMode::Regex => SliceSpec::regex(from, to, ""),
     }
     .with_boundary_inclusion(include_start, include_end);
     ExtractionSpec::slice(slice)
@@ -109,6 +110,11 @@ pub(crate) fn parse_source_inspection_report(
 pub(crate) fn parse_catalog_report(assert: assert_cmd::assert::Assert) -> CatalogCommandReport {
     let stdout = assert.get_output().stdout.clone();
     serde_json::from_slice(&stdout).expect("parse catalog report")
+}
+
+pub(crate) fn parse_error_report(assert: assert_cmd::assert::Assert) -> ErrorCommandReport {
+    let stdout = assert.get_output().stdout.clone();
+    serde_json::from_slice(&stdout).expect("parse error report")
 }
 
 pub(crate) fn parse_schema_report(assert: assert_cmd::assert::Assert) -> SchemaCommandReport {

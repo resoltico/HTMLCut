@@ -1,20 +1,7 @@
 use super::*;
 
 #[test]
-fn source_helpers_cover_remaining_unreachable_and_locator_paths() {
-    let wrong_url_kind = catch_unwind(AssertUnwindSafe(|| {
-        let _ = read_url_source(&file_source("fixture.html"), &RuntimeOptions::default());
-    }));
-    assert!(wrong_url_kind.is_err());
-
-    let wrong_file_kind = catch_unwind(AssertUnwindSafe(|| {
-        let _ = read_file_source(
-            &url_source("https://example.com"),
-            &RuntimeOptions::default(),
-        );
-    }));
-    assert!(wrong_file_kind.is_err());
-
+fn source_helpers_cover_remaining_locator_paths() {
     let file_metadata = empty_source_metadata(
         &file_source("fixtures/input.html")
             .with_base_url(Url::parse("https://example.com/base/").expect("base")),
@@ -34,19 +21,37 @@ fn source_helpers_cover_remaining_unreachable_and_locator_paths() {
     assert_eq!(unnamed_memory_metadata.value, "memory");
 }
 #[test]
-fn read_file_source_reports_permission_denied_reads() {
+fn read_file_source_reports_unreadable_inputs() {
     let tempdir = htmlcut_tempdir::tempdir().expect("tempdir");
-    let unreadable_path = tempdir.path().join("unreadable.html");
-    std::fs::write(&unreadable_path, "<article>Hello</article>").expect("write html");
+    let unreadable_path = tempdir.path().join("unreadable");
 
-    let mut permissions = std::fs::metadata(&unreadable_path)
-        .expect("metadata")
-        .permissions();
-    permissions.set_mode(0o000);
-    std::fs::set_permissions(&unreadable_path, permissions).expect("chmod 000");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::write(&unreadable_path, "<article>Hello</article>").expect("write html");
+
+        let mut permissions = std::fs::metadata(&unreadable_path)
+            .expect("metadata")
+            .permissions();
+        permissions.set_mode(0o000);
+        std::fs::set_permissions(&unreadable_path, permissions).expect("chmod 000");
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(&unreadable_path).expect("create unreadable directory placeholder");
+    }
 
     let error = read_file_source(&file_source(&unreadable_path), &RuntimeOptions::default())
-        .expect_err("permission denied");
+        .expect_err("unreadable input");
     assert_eq!(error.code, "SOURCE_LOAD_FAILED");
+    #[cfg(unix)]
     assert!(error.message.contains("Could not read file"));
+    #[cfg(not(unix))]
+    assert!(
+        error
+            .message
+            .contains("Input path is a directory, not a file")
+    );
 }

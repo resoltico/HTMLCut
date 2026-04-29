@@ -137,6 +137,8 @@ pub enum SelectionMode {
     First,
     /// Select one explicit 1-based candidate.
     Nth,
+    /// Select every candidate.
+    All,
 }
 
 /// v1 candidate selection contract.
@@ -152,6 +154,8 @@ pub enum Selection {
         /// 1-based selected candidate index.
         index: NonZeroUsize,
     },
+    /// Select every candidate.
+    All,
 }
 
 impl Selection {
@@ -170,12 +174,18 @@ impl Selection {
         Self::Nth { index }
     }
 
+    /// Builds the all-candidates selection mode.
+    pub const fn all() -> Self {
+        Self::All
+    }
+
     /// Returns the stable selection mode for this selection contract.
     pub const fn mode(&self) -> SelectionMode {
         match self {
             Self::Single => SelectionMode::Single,
             Self::First => SelectionMode::First,
             Self::Nth { .. } => SelectionMode::Nth,
+            Self::All => SelectionMode::All,
         }
     }
 }
@@ -238,11 +248,11 @@ impl Normalization {
 /// Versioned extraction plan owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct Plan {
-    /// Frozen schema identity.
+    /// Schema identity.
     pub schema_name: String,
-    /// Frozen schema version.
+    /// Schema version.
     pub schema_version: u32,
-    /// Frozen interoperability profile identifier.
+    /// Interoperability profile identifier.
     pub interop_profile: String,
     /// Requested extraction strategy.
     pub strategy: PlanStrategy,
@@ -258,7 +268,7 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// Builds one extraction plan with the frozen v1 schema identity.
+    /// Builds one extraction plan with the v1 schema identity.
     pub fn new(
         strategy: PlanStrategy,
         selection: Selection,
@@ -290,7 +300,7 @@ impl Plan {
         self.strategy.validate()
     }
 
-    /// Serializes this plan with the frozen stable JSON profile.
+    /// Serializes this plan with the stable JSON profile.
     pub fn stable_json(&self) -> Result<String, ContractError> {
         self.validate()?;
         super::super::stable_json::stable_json_v1(self)

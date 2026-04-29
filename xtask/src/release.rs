@@ -64,11 +64,11 @@ fn script_lines(repo_root: &Path, function_name: &str, args: &[&str]) -> DynResu
 }
 
 fn script_output(repo_root: &Path, function_name: &str, args: &[&str]) -> DynResult<String> {
-    script_output_with_program("bash", repo_root, function_name, args)
+    script_output_with_program(bash_program(), repo_root, function_name, args)
 }
 
 fn script_output_with_program(
-    program: &str,
+    program: impl AsRef<std::ffi::OsStr>,
     repo_root: &Path,
     function_name: &str,
     args: &[&str],
@@ -82,13 +82,11 @@ fn script_output_with_program(
         .into());
     }
 
+    let program = program.as_ref();
     let mut command = Command::new(program);
     command.current_dir(repo_root);
-    command.arg("-c");
-    command.arg(script_command(function_name, args.len()));
-    command.arg("bash");
-    command.arg(&script_path);
-    command.args(args);
+    command.arg(bash_source_argument(&script_path));
+    command.args(script_command_args(function_name, args)?);
 
     let output = command.output().map_err(|error| {
         format!(
@@ -98,11 +96,23 @@ fn script_output_with_program(
         )
     })?;
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut stream_suffix = String::new();
+        if !stdout.trim().is_empty() {
+            stream_suffix.push_str("\nstdout:\n");
+            stream_suffix.push_str(stdout.trim_end());
+        }
+        if !stderr.trim().is_empty() {
+            stream_suffix.push_str("\nstderr:\n");
+            stream_suffix.push_str(stderr.trim_end());
+        }
         return Err(format!(
-            "{} failed for {} with status {}",
+            "{} failed for {} with status {}{}",
             function_name,
             script_path.display(),
-            output.status
+            output.status,
+            stream_suffix
         )
         .into());
     }
@@ -111,16 +121,82 @@ fn script_output_with_program(
         .map_err(|error| format!("{} returned non-UTF-8 output: {error}", function_name).into())
 }
 
-fn script_command(function_name: &str, arg_count: usize) -> String {
-    let mut command = format!("source \"$1\" && {function_name}");
-    for index in 0..arg_count {
-        command.push_str(&format!(" \"${}\"", index + 2));
+fn script_command_args(function_name: &str, args: &[&str]) -> DynResult<Vec<String>> {
+    match (function_name, args) {
+        ("release_target_triples", []) => Ok(vec!["triples".to_owned()]),
+        ("release_asset_names_for_version", [version]) => Ok(vec![
+            "assets".to_owned(),
+            "--version".to_owned(),
+            (*version).to_owned(),
+        ]),
+        ("release_matrix_json", []) => Ok(vec!["matrix-json".to_owned()]),
+        ("macos_deployment_target_for_target", [target]) => Ok(vec![
+            "macos-deployment-target".to_owned(),
+            "--target".to_owned(),
+            (*target).to_owned(),
+        ]),
+        _ => Err(format!(
+            "unsupported canonical release-target helper call: {function_name}({args:?})"
+        )
+        .into()),
     }
-    command
 }
 
 fn release_targets_script_path(repo_root: &Path) -> PathBuf {
     repo_root.join("scripts").join("release-targets.sh")
+}
+
+fn bash_program() -> PathBuf {
+    let program_files = std::env::var_os("ProgramW6432")
+        .or_else(|| std::env::var_os("ProgramFiles"))
+        .map(PathBuf::from);
+    let program_files_x86 = std::env::var_os("ProgramFiles(x86)").map(PathBuf::from);
+
+    resolve_bash_program_with_roots(program_files.as_deref(), program_files_x86.as_deref())
+}
+
+fn resolve_bash_program_with_roots(
+    program_files: Option<&Path>,
+    program_files_x86: Option<&Path>,
+) -> PathBuf {
+    [
+        program_files.map(|root| root.join("Git").join("bin").join("bash.exe")),
+        program_files_x86.map(|root| root.join("Git").join("bin").join("bash.exe")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|candidate| candidate.is_file())
+    .unwrap_or_else(|| PathBuf::from("bash"))
+}
+
+fn bash_source_argument(path: &Path) -> String {
+    let mut rendered = path.to_string_lossy().replace('\\', "/");
+    if let Some(stripped) = rendered.strip_prefix("//?/") {
+        rendered = stripped.to_owned();
+    }
+
+    let bytes = rendered.as_bytes();
+    if bytes.len() >= 3 && bytes[1] == b':' && bytes[2] == b'/' && bytes[0].is_ascii_alphabetic() {
+        let drive_letter = (bytes[0] as char).to_ascii_lowercase();
+        let remainder = &rendered[3..];
+        rendered = if remainder.is_empty() {
+            format!("/{drive_letter}")
+        } else {
+            format!("/{drive_letter}/{remainder}")
+        };
+    }
+
+    rendered
+}
+
+#[cfg(test)]
+pub(crate) fn bash_program_for_tests() -> PathBuf {
+    bash_program()
+}
+
+#[cfg(test)]
+pub(crate) fn bash_source_argument_for_tests(path: &Path) -> String {
+    bash_source_argument(path)
 }
 
 #[cfg(test)]
@@ -146,7 +222,7 @@ mod tests {
         fs::create_dir_all(&scripts_dir).expect("create scripts dir");
         fs::write(
             scripts_dir.join("release-targets.sh"),
-            "#!/usr/bin/env bash\nrelease_target_triples() { printf 'ok\\n'; }\n",
+            "#!/usr/bin/env bash\nprintf 'ok\\n'\n",
         )
         .expect("write release-targets.sh");
 
@@ -172,9 +248,9 @@ mod tests {
         fs::write(
             scripts_dir.join("release-targets.sh"),
             r#"#!/usr/bin/env bash
-release_matrix_json() {
-    return 7
-}
+if [[ "${1:-}" == "matrix-json" ]]; then
+    exit 7
+fi
 "#,
         )
         .expect("write release-targets.sh");
@@ -182,5 +258,118 @@ release_matrix_json() {
         let error = release_matrix(repo_root.path()).expect_err("failing script should fail");
         assert!(error.to_string().contains("release_matrix_json failed"));
         assert!(error.to_string().contains("status"));
+        assert!(!error.to_string().contains("stderr:"));
+    }
+
+    #[test]
+    fn release_helpers_preserve_shell_stderr_when_available() {
+        let repo_root = tempdir().expect("tempdir");
+        let scripts_dir = repo_root.path().join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+        fs::write(
+            scripts_dir.join("release-targets.sh"),
+            r#"#!/usr/bin/env bash
+printf 'boom\n' >&2
+exit 9
+"#,
+        )
+        .expect("write release-targets.sh");
+
+        let error = script_output(repo_root.path(), "release_target_triples", &[])
+            .expect_err("failing helper script should fail");
+        let rendered = error.to_string();
+        assert!(rendered.contains("release_target_triples failed"));
+        assert!(rendered.contains("status"));
+        let stream_section_count =
+            usize::from(rendered.contains("stderr:")) + usize::from(rendered.contains("stdout:"));
+        assert_ne!(
+            stream_section_count, 0,
+            "expected captured shell output in either stream section, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn release_helpers_preserve_shell_stdout_when_stderr_is_empty() {
+        let repo_root = tempdir().expect("tempdir");
+        let scripts_dir = repo_root.path().join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+        fs::write(
+            scripts_dir.join("release-targets.sh"),
+            r#"#!/usr/bin/env bash
+printf 'boom\n'
+exit 9
+"#,
+        )
+        .expect("write release-targets.sh");
+
+        let error = script_output(repo_root.path(), "release_target_triples", &[])
+            .expect_err("failing helper script should fail");
+        let rendered = error.to_string();
+        assert!(rendered.contains("release_target_triples failed"));
+        assert!(rendered.contains("status"));
+        assert!(!rendered.contains("stderr:"));
+    }
+
+    #[test]
+    fn release_helpers_normalize_windows_script_paths_for_bash() {
+        assert_eq!(
+            bash_source_argument(Path::new(r"D:\a\HTMLCut\scripts\release-targets.sh")),
+            "/d/a/HTMLCut/scripts/release-targets.sh"
+        );
+        assert_eq!(
+            bash_source_argument(Path::new(r"\\?\D:\a\HTMLCut\scripts\release-targets.sh")),
+            "/d/a/HTMLCut/scripts/release-targets.sh"
+        );
+        assert_eq!(bash_source_argument(Path::new("D:/")), "/d");
+        assert_eq!(
+            bash_source_argument(Path::new("scripts/release-targets.sh")),
+            "scripts/release-targets.sh"
+        );
+        assert_eq!(bash_source_argument(Path::new("")), "");
+        assert_eq!(
+            bash_source_argument(Path::new("D:relative-path")),
+            "D:relative-path"
+        );
+        assert_eq!(
+            bash_source_argument(Path::new("1:/not-a-drive")),
+            "1:/not-a-drive"
+        );
+    }
+
+    #[test]
+    fn release_helpers_reject_unknown_canonical_script_calls() {
+        let error = script_command_args("definitely_not_a_real_helper", &["arg"])
+            .expect_err("unknown helper call should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported canonical release-target helper call")
+        );
+    }
+
+    #[test]
+    fn release_helpers_prefer_git_bash_when_program_files_contains_it() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let program_files = repo_root.path().join("Program Files");
+        let git_bash = program_files.join("Git").join("bin").join("bash.exe");
+        fs::create_dir_all(git_bash.parent().expect("git bash parent"))
+            .expect("create git bash parent");
+        fs::write(&git_bash, "").expect("write fake git bash");
+
+        assert_eq!(
+            resolve_bash_program_with_roots(Some(&program_files), None),
+            git_bash
+        );
+    }
+
+    #[test]
+    fn release_helpers_fall_back_to_bare_bash_without_git_bash_installation() {
+        let repo_root = tempdir().expect("repo tempdir");
+        let missing_program_files = repo_root.path().join("missing");
+
+        assert_eq!(
+            resolve_bash_program_with_roots(Some(&missing_program_files), None),
+            PathBuf::from("bash")
+        );
     }
 }

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: OPERATIONS
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
@@ -54,7 +54,7 @@ maintained human guide, but it is not allowed to silently drift away from the ca
 
 ## Interop Boundary
 
-The frozen downstream adapter lives in `htmlcut_core::interop::v1`.
+The downstream interop adapter lives in `htmlcut_core::interop::v1`.
 
 It is intentionally **not** an operation ID because it is a versioned library integration profile,
 not a user-facing product operation exposed across the CLI and the generic core catalog.

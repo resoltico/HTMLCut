@@ -6,11 +6,15 @@ use htmlcut_core::interop::v1::{
     PlanStrategy, RegexFlag, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata,
     Selection, SelectionMode, StrategyKind, TextWhitespace, stable_json_v1,
 };
-use htmlcut_core::{Diagnostic, DiagnosticLevel, SelectorQuery, SliceBoundary, result::Range};
+use htmlcut_core::{
+    Diagnostic, DiagnosticCode, DiagnosticLevel, SelectorQuery, SliceBoundary, result::Range,
+};
 use serde_json::{Map, Value};
 use url::Url;
 
 const CASES: usize = 256;
+const TEST_PLAN_DIGEST_SHA256: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 struct CaseGenerator {
     state: u64,
@@ -130,18 +134,20 @@ impl CaseGenerator {
     }
 
     fn selection(&mut self) -> Selection {
-        match self.bounded(3) {
+        match self.bounded(4) {
             0 => Selection::single(),
             1 => Selection::first(),
-            _ => Selection::nth(NonZeroUsize::new(self.bounded(4) + 1).expect("non-zero index")),
+            2 => Selection::nth(NonZeroUsize::new(self.bounded(4) + 1).expect("non-zero index")),
+            _ => Selection::all(),
         }
     }
 
     fn selection_mode(&mut self) -> SelectionMode {
-        match self.bounded(3) {
+        match self.bounded(4) {
             0 => SelectionMode::Single,
             1 => SelectionMode::First,
-            _ => SelectionMode::Nth,
+            2 => SelectionMode::Nth,
+            _ => SelectionMode::All,
         }
     }
 
@@ -180,10 +186,21 @@ impl CaseGenerator {
         Some(extensions)
     }
 
+    fn selector_text(&mut self) -> &'static str {
+        const SELECTORS: &[&str] = &[
+            "article",
+            "article a",
+            "main > p",
+            "section.item",
+            "[data-id]",
+        ];
+        SELECTORS[self.bounded(SELECTORS.len())]
+    }
+
     fn plan(&mut self) -> Plan {
         let strategy = if self.next_bool() {
             PlanStrategy::css_selector(
-                SelectorQuery::new(self.non_empty_text(16)).expect("non-empty selector"),
+                SelectorQuery::new(self.selector_text()).expect("generated selector"),
             )
         } else {
             let mode = if self.next_bool() {
@@ -239,7 +256,7 @@ impl CaseGenerator {
 
         Diagnostic {
             level,
-            code: self.non_empty_text(16),
+            code: DiagnosticCode::ALL[self.bounded(DiagnosticCode::ALL.len())],
             message: self.text(24, true),
             details: self.next_bool().then(|| self.json_value_non_null(2)),
         }
@@ -255,9 +272,8 @@ impl CaseGenerator {
         &mut self,
         strategy_kind: StrategyKind,
         candidate_count: usize,
+        candidate_index: NonZeroUsize,
     ) -> SelectedMatch {
-        let candidate_index =
-            NonZeroUsize::new(self.bounded(candidate_count) + 1).expect("non-zero index");
         let metadata = match strategy_kind {
             StrategyKind::CssSelector => SelectedMatchMetadata::CssSelector {
                 candidate_count,
@@ -287,6 +303,35 @@ impl CaseGenerator {
         }
     }
 
+    fn selected_matches(
+        &mut self,
+        strategy_kind: StrategyKind,
+        candidate_count: usize,
+        selection_mode: SelectionMode,
+    ) -> Vec<SelectedMatch> {
+        match selection_mode {
+            SelectionMode::Single | SelectionMode::First => vec![self.selected_match(
+                strategy_kind,
+                candidate_count,
+                NonZeroUsize::new(1).expect("non-zero index"),
+            )],
+            SelectionMode::Nth => {
+                let candidate_index =
+                    NonZeroUsize::new(self.bounded(candidate_count) + 1).expect("non-zero index");
+                vec![self.selected_match(strategy_kind, candidate_count, candidate_index)]
+            }
+            SelectionMode::All => (1..=candidate_count)
+                .map(|index| {
+                    self.selected_match(
+                        strategy_kind,
+                        candidate_count,
+                        NonZeroUsize::new(index).expect("non-zero index"),
+                    )
+                })
+                .collect(),
+        }
+    }
+
     fn interop_result(&mut self) -> InteropResult {
         let strategy_kind = if self.next_bool() {
             StrategyKind::CssSelector
@@ -294,16 +339,17 @@ impl CaseGenerator {
             StrategyKind::DelimiterPair
         };
         let candidate_count = self.bounded(4) + 1;
+        let selection_mode = self.selection_mode();
         let execution = ResultExecution::new(
-            "plan-digest",
+            TEST_PLAN_DIGEST_SHA256,
             strategy_kind,
-            self.selection_mode(),
+            selection_mode,
             candidate_count,
         );
         let mut result = InteropResult::new(
             execution,
             self.result_source(),
-            self.selected_match(strategy_kind, candidate_count),
+            self.selected_matches(strategy_kind, candidate_count, selection_mode),
             self.diagnostics(false),
         );
         result.extensions = self.extensions();
@@ -323,7 +369,7 @@ impl CaseGenerator {
         }
 
         let mut error = InteropError::new(
-            "plan-digest",
+            TEST_PLAN_DIGEST_SHA256,
             error_code,
             self.text(24, true),
             self.next_bool().then(|| {
@@ -422,6 +468,7 @@ fn results_round_trip_through_stable_json_and_ignore_existing_self_digest() {
         let digest_with_existing = result
             .digest_sha256()
             .expect("result digest with existing field");
+        result.result_digest_sha256 = digest_once.clone();
         let stable = result.stable_json().expect("result stable JSON");
         let round_trip: InteropResult = serde_json::from_str(&stable).expect("result round trip");
 
@@ -449,6 +496,7 @@ fn errors_round_trip_through_stable_json_and_ignore_existing_self_digest() {
         let digest_with_existing = error
             .digest_sha256()
             .expect("error digest with existing field");
+        error.error_digest_sha256 = digest_once.clone();
         let stable = error.stable_json().expect("error stable JSON");
         let round_trip: InteropError = serde_json::from_str(&stable).expect("error round trip");
 

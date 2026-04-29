@@ -236,6 +236,10 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
+    assert!(
+        plan.iter()
+            .any(|spec| { spec.args == ["doc", "--workspace", "--no-deps", "--locked"] })
+    );
     assert!(plan.iter().all(|spec| {
         !spec.args.iter().any(|arg| {
             arg == repo_root
@@ -383,6 +387,8 @@ fn coverage_command_targets_repo_coverage_file() {
 #[test]
 fn coverage_output_path_uses_the_configured_target_dir_layout() {
     let repo_root = tempdir().expect("tempdir");
+    let absolute_target_root = tempdir().expect("absolute target tempdir");
+    let absolute_target_dir = absolute_target_root.path().join("htmlcut-gate");
 
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(repo_root.path(), None),
@@ -391,9 +397,9 @@ fn coverage_output_path_uses_the_configured_target_dir_layout() {
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(
             repo_root.path(),
-            Some(Path::new("/tmp/htmlcut-gate")),
+            Some(&absolute_target_dir),
         ),
-        Path::new("/tmp/htmlcut-gate").join("coverage.json")
+        absolute_target_dir.join("coverage.json")
     );
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(
@@ -407,6 +413,8 @@ fn coverage_output_path_uses_the_configured_target_dir_layout() {
 #[test]
 fn semver_scratch_dir_uses_target_tree() {
     let repo_root = tempdir().expect("tempdir");
+    let absolute_target_root = tempdir().expect("absolute target tempdir");
+    let absolute_target_dir = absolute_target_root.path().join("htmlcut-gate");
     let expected_live_target = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .map(|target_dir| {
@@ -427,11 +435,8 @@ fn semver_scratch_dir_uses_target_tree() {
         repo_root.path().join("target").join("semver-checks")
     );
     assert_eq!(
-        crate::plan::semver_scratch_dir_for_tests(
-            repo_root.path(),
-            Some(Path::new("/tmp/htmlcut-gate"))
-        ),
-        Path::new("/tmp/htmlcut-gate").join("semver-checks")
+        crate::plan::semver_scratch_dir_for_tests(repo_root.path(), Some(&absolute_target_dir)),
+        absolute_target_dir.join("semver-checks")
     );
     assert_eq!(
         crate::plan::semver_scratch_dir_for_tests(
@@ -445,6 +450,8 @@ fn semver_scratch_dir_uses_target_tree() {
 #[test]
 fn release_binary_path_uses_the_configured_target_dir_layout() {
     let repo_root = tempdir().expect("tempdir");
+    let absolute_target_root = tempdir().expect("absolute target tempdir");
+    let absolute_target_dir = absolute_target_root.path().join("htmlcut-gate");
 
     assert_eq!(
         crate::plan::release_binary_path_for_tests(repo_root.path(), None),
@@ -455,13 +462,8 @@ fn release_binary_path_uses_the_configured_target_dir_layout() {
             .join(binary_name())
     );
     assert_eq!(
-        crate::plan::release_binary_path_for_tests(
-            repo_root.path(),
-            Some(Path::new("/tmp/htmlcut-gate"))
-        ),
-        Path::new("/tmp/htmlcut-gate")
-            .join("dist")
-            .join(binary_name())
+        crate::plan::release_binary_path_for_tests(repo_root.path(), Some(&absolute_target_dir)),
+        absolute_target_dir.join("dist").join(binary_name())
     );
     assert_eq!(
         crate::plan::release_binary_path_for_tests(

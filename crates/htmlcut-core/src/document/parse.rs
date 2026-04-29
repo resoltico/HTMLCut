@@ -6,7 +6,7 @@ use ego_tree::NodeRef as DomNodeRef;
 use scraper::Node;
 use scraper::{ElementRef, Html, Selector};
 
-use super::render::render_html_as_text;
+use super::render::render_element_children_as_text;
 use super::urls::rewrite_attribute_value;
 use crate::contracts::WhitespaceMode;
 
@@ -33,7 +33,7 @@ pub(crate) fn serialize_children(node: &ElementRef<'_>) -> String {
 }
 
 pub(crate) fn select_first<'a>(document: &'a Html, selector: &str) -> Option<ElementRef<'a>> {
-    let selector = Selector::parse(selector).expect("static selectors should parse");
+    let selector = Selector::parse(selector).ok()?;
     document.select(&selector).next()
 }
 
@@ -99,6 +99,7 @@ pub(crate) fn element_attributes(
     attributes
 }
 
+#[cfg(test)]
 pub(crate) fn first_fragment_attributes(
     fragment: &str,
     base_url: Option<&str>,
@@ -123,7 +124,7 @@ pub(crate) fn first_body_child_element(document: &Html) -> Option<ElementRef<'_>
 
 pub(crate) fn text_from_title(document: &Html) -> Option<String> {
     select_first(document, "title").and_then(|title| {
-        let text = render_html_as_text(&serialize_children(&title), WhitespaceMode::Normalize);
+        let text = render_element_children_as_text(&title, WhitespaceMode::Normalize);
         (!text.is_empty()).then_some(text)
     })
 }

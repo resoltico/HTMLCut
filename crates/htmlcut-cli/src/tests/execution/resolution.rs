@@ -68,6 +68,9 @@ fn restricted_output_modes_only_expose_text_and_json() {
 fn resolve_value_spec_validates_attribute_usage() {
     assert!(resolve_value_spec(CliValueMode::Attribute, None).is_err());
     assert!(resolve_value_spec(CliValueMode::Text, Some("href".to_owned())).is_err());
+    let invalid_attribute = resolve_value_spec(CliValueMode::Attribute, Some("   ".to_owned()))
+        .expect_err("invalid attribute");
+    assert_eq!(invalid_attribute.code, "CLI_ATTRIBUTE_INVALID");
     assert_eq!(
         resolve_value_spec(CliValueMode::Attribute, Some("href".to_owned()))
             .expect("attribute value")
@@ -154,9 +157,9 @@ fn resolve_regex_flags_rejects_literal_mode_overrides() {
     );
     assert_eq!(
         resolve_regex_flags(CliPatternMode::Regex, None).expect("default regex flags"),
-        Some(DEFAULT_REGEX_FLAGS.to_owned())
+        Some(String::new())
     );
-    assert!(resolve_regex_flags(CliPatternMode::Literal, Some("u".to_owned())).is_err());
+    assert!(resolve_regex_flags(CliPatternMode::Literal, Some("i".to_owned())).is_err());
     assert_eq!(
         resolve_regex_flags(CliPatternMode::Literal, None).expect("flags"),
         None

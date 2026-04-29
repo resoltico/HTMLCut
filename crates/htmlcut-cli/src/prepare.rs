@@ -14,6 +14,7 @@ use htmlcut_core::{
 
 use crate::args::{CliOutputMode, CliWhitespaceMode};
 use crate::error::{CliError, usage_error};
+use crate::model::CliErrorCode;
 
 pub(crate) use self::build::extract_prefers_json;
 #[cfg(test)]
@@ -26,11 +27,14 @@ pub(crate) use self::build::{
 pub(crate) use self::definition::{
     format_json_error_path_for_tests, load_extraction_definition_for_tests,
 };
-pub(crate) use self::extraction::default_regex_flags;
 #[cfg(test)]
 pub(crate) use self::inspection::source_inspection_report_command_for_tests;
 #[cfg(test)]
-pub(crate) use self::reports::render_condition_expression_for_tests;
+pub(crate) use self::reports::{
+    assert_cli_schema_catalog_for_tests, cli_schema_catalog_for_tests,
+    cli_schema_catalog_validation_errors_for_tests, render_condition_expression_for_tests,
+    schema_export_error_for_tests, schema_export_serialize_error_for_tests,
+};
 pub(crate) use self::reports::{
     build_catalog_report, build_extraction_report, build_schema_report,
     build_source_inspection_report,
@@ -94,7 +98,7 @@ pub(super) struct MaterializedDefinition {
 fn required_cli_value(value: Option<String>, parameter: &'static str) -> Result<String, CliError> {
     value.ok_or_else(|| {
         usage_error(
-            "CLI_REQUIRED_PARAMETER_MISSING",
+            CliErrorCode::RequiredParameterMissing,
             format!("{parameter} is required unless --request-file is used."),
         )
     })

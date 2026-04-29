@@ -158,7 +158,9 @@ pub(super) struct CurrentDirGuard {
 
 impl CurrentDirGuard {
     fn enter(dir: &Path) -> DynResult<Self> {
-        let lock = current_dir_lock().lock().expect("cwd mutex poisoned");
+        let lock = current_dir_lock()
+            .lock()
+            .map_err(|_| "cwd mutex poisoned".to_owned())?;
         let previous_dir = env::current_dir()?;
         env::set_current_dir(dir)?;
 

@@ -1,21 +1,23 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: INTEROP
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
-  keywords: [interop, v1, htmlcut-v1, execute_plan, validate_plan, HtmlInput, Plan, InteropResult, interop profile]
+  keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?"]
 ---
 
 # HTMLCut Interop v1 Guide
 
-**Purpose**: Embed HTMLCut extraction into a downstream Rust project using the frozen `htmlcut-v1` interop profile.
+**Purpose**: Embed HTMLCut extraction into a downstream Rust project using the maintained `htmlcut-v1` interop profile.
 **Prerequisites**: Rust project with `htmlcut-core` as a Cargo dependency.
 
 ## Overview
 
-The `htmlcut_core::interop::v1` module is a frozen, versioned integration surface. It exposes plan construction, plan validation, and plan execution for downstream consumers. The profile name is `htmlcut-v1`.
+The `htmlcut_core::interop::v1` module is the versioned downstream integration surface. It
+exposes plan construction, plan preparation, and plan execution for downstream consumers. The
+profile name is `htmlcut-v1`.
 
 This is a library integration surface, not a CLI command and not an operation catalog entry.
 
@@ -43,20 +45,22 @@ HTMLCut owns:
 
 Use:
 
-- `validate_plan(&Plan) -> Result<(), Box<InteropError>>`
+- `prepare_plan(&Plan) -> Result<ValidatedPlan, Box<InteropError>>`
+- `execute_validated_plan(&HtmlInput, &ValidatedPlan) -> Result<InteropResult, Box<InteropError>>`
 - `execute_plan(&HtmlInput, &Plan) -> Result<InteropResult, Box<InteropError>>`
 
 Main types:
 
 - `HtmlInput`
 - `Plan`
+- `ValidatedPlan`
 - `InteropResult`
 - `InteropError`
 
 Validator discovery:
 
-- `htmlcut schema --name htmlcut.plan --schema-version 1 --output json`
-- `htmlcut schema --name htmlcut.result --schema-version 1 --output json`
+- `htmlcut schema --name htmlcut.plan --schema-version 2 --output json`
+- `htmlcut schema --name htmlcut.result --schema-version 2 --output json`
 - `htmlcut schema --name htmlcut.error --schema-version 1 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
@@ -73,8 +77,8 @@ Deterministic JSON and digest helpers:
 ```rust
 use htmlcut_core::SelectorQuery;
 use htmlcut_core::interop::v1::{
-    HtmlInput, Normalization, Output, OutputKind, Plan, PlanStrategy,
-    Selection, TextWhitespace, execute_plan, validate_plan,
+    HtmlInput, Normalization, Output, OutputKind, Plan, PlanStrategy, Selection,
+    TextWhitespace, execute_validated_plan, prepare_plan,
 };
 use url::Url;
 
@@ -92,11 +96,15 @@ let plan = Plan::new(
     Normalization::new(TextWhitespace::Normalize, false),
 );
 
-validate_plan(&plan).unwrap();
-let result = execute_plan(&source, &plan).unwrap();
+let prepared = prepare_plan(&plan).unwrap();
+let result = execute_validated_plan(&source, &prepared).unwrap();
 
-assert_eq!(result.selected_match.comparison_input_text, "Headline");
+assert_eq!(result.selected_matches[0].comparison_input_text, "Headline");
 ```
+
+For one-shot callers, `execute_plan(...)` still performs validation internally. Use
+`prepare_plan(...)` plus `execute_validated_plan(...)` when you want explicit preflight validation
+and a reusable validated artifact instead of a one-shot call.
 
 ## Supported v1 Capability
 
@@ -110,6 +118,7 @@ Selection modes:
 - `single`
 - `first`
 - `nth`
+- `all`
 
 Output kinds:
 
@@ -119,7 +128,7 @@ Output kinds:
 
 ## Determinism Rules
 
-The interop surface is frozen around:
+The interop surface is versioned around:
 
 - `stable_json_v1`
 - SHA-256 digests over canonical JSON
@@ -140,7 +149,6 @@ These are intentionally not part of `htmlcut-v1`:
 - XPath
 - regex window extraction
 - text-anchor extraction
-- all-match compare aggregation
 - HTMLCut-owned fetch orchestration
 - browser automation inside HTMLCut
 - attribute extraction
@@ -153,7 +161,9 @@ Because attribute extraction is out of scope, `missing_attribute` is not part of
 
 ## Versioning Rule
 
-`htmlcut-v1` is frozen.
+`htmlcut_core::interop::v1` is versioned through its exported schema families.
 
-If a downstream consumer later needs capability that v1 does not expose, add a new versioned interop profile and a new adapter surface. Do not mutate `htmlcut-v1` in place.
+When `Plan`, `InteropResult`, or `InteropError` changes shape, update the corresponding integer
+schema version, refresh the acceptance fixtures, and ship the docs change in the same release
+slice.
 The maintained policy details live in [versioning-policy.md](versioning-policy.md).

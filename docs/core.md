@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: CORE
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -151,6 +151,9 @@ CLI-facing command contracts, use `htmlcut_core::cli_contract::cli_operation_cat
 need the non-operation command descriptors for `catalog`, `schema`, or the `inspect` command
 family, use `htmlcut_core::cli_contract::cli_aux_command_catalog()` as well instead of
 maintaining your own shadow matrix of supported behaviors.
+Use `operation_descriptor(id)` when you want one catalog entry by stable operation ID and are
+prepared to handle the absence of a descriptor explicitly instead of assuming a panic-backed
+lookup.
 
 ## Schema Registry
 
@@ -160,12 +163,14 @@ Use:
 
 - `schema_catalog()` to enumerate exported schemas
 - `schema_descriptor(name, version)` to resolve one exact schema
+- `(descriptor.json_schema)() -> Result<Value, SchemaExportError>` to materialize one schema
+  document
 
 That registry covers:
 
 - core request/result contracts
 - reusable extraction-definition documents
-- frozen interop v1 documents
+- interop v1 documents
 
 It does not cover CLI-only report documents. Those are added by `htmlcut-cli` on the CLI side.
 Use the exported schema constants instead of hard-coded version integers when you want one exact
@@ -234,7 +239,11 @@ generic HTMLCut-owned loading workflows.
 For a complete reusable-definition round trip, see
 `crates/htmlcut-core/examples/reusable_extraction_definition.rs`.
 
-For frozen deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md).
+For a compact runnable summary that demonstrates the `htmlcut_core::request` and
+`htmlcut_core::result` namespaces directly, see
+`crates/htmlcut-core/examples/request_and_result_namespaces.rs`.
+
+For interop deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md).
 
 ## Design Boundary
 

@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "5.0.0"
+  version: "6.0.0"
   domain: MAINTAINER
-  updated: "2026-04-24"
+  updated: "2026-04-29"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]

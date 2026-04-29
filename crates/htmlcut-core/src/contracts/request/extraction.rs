@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use super::{
     AttributeName, ExtractionStrategy, PatternMode, SelectorQuery, SliceBoundary, ValueType,
 };
-use crate::contracts::default_regex_flags;
 
 /// Mode-correct pattern contract for slice extraction.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -25,7 +24,7 @@ pub enum SlicePatternSpec {
         from: SliceBoundary,
         /// Ending boundary pattern.
         to: SliceBoundary,
-        #[serde(default = "default_regex_flags")]
+        #[serde(default)]
         /// Regex flags applied to both boundaries.
         flags: String,
     },

@@ -1,7 +1,11 @@
+#[cfg(feature = "http-client")]
 use std::io::{Read, Write};
+#[cfg(feature = "http-client")]
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
+#[cfg(feature = "http-client")]
 use std::thread;
+#[cfg(feature = "http-client")]
 use std::time::{Duration, Instant};
 
 use htmlcut_core::{
@@ -70,6 +74,18 @@ fn selector_extraction_returns_normalized_text() {
             .as_deref()
             .is_some_and(|path| path.contains("article:nth-of-type(1)"))
     );
+}
+
+#[test]
+fn selector_text_preserves_ordered_list_numbers_and_image_alt_text() {
+    let request = selector_request(
+        "<article><ol><li>First</li><li><img src=\"hero.png\" alt=\"Hero\"></li></ol></article>",
+        "article",
+    );
+
+    let result = extract(&request, &RuntimeOptions::default());
+    assert!(result.ok);
+    assert_eq!(result.matches[0].value.as_str(), Some("1. First\n2. Hero"));
 }
 
 #[test]
@@ -151,6 +167,74 @@ fn slice_attribute_extraction_rewrites_relative_urls_with_input_base() {
     assert_eq!(
         result.matches[0].value.as_str(),
         Some("https://example.com/docs/guide.html")
+    );
+}
+
+#[test]
+fn slice_text_preserves_ordered_list_numbers_and_image_alt_text() {
+    let mut request = slice_request(
+        "<section><ol><li>First</li><li><img src=\"hero.png\" alt=\"Hero\"></li></ol></section>",
+        "<ol>",
+        "</ol>",
+    );
+    request.extraction = ExtractionSpec::slice(
+        request
+            .extraction
+            .slice_spec()
+            .expect("slice spec")
+            .clone()
+            .with_boundary_inclusion(true, true),
+    )
+    .with_value(ValueSpec::Text);
+    request.normalization = NormalizationOptions {
+        whitespace: WhitespaceMode::Normalize,
+        rewrite_urls: false,
+    };
+
+    let result = extract(&request, &RuntimeOptions::default());
+    assert!(result.ok);
+    assert_eq!(result.matches[0].value.as_str(), Some("1. First\n2. Hero"));
+}
+
+#[test]
+fn slice_inner_html_preserves_relative_urls_until_rewrite_is_requested() {
+    let base_url = "https://example.com/docs/start.html";
+    let mut request = slice_request(
+        "<section><a href=\"guide.html\">Guide</a></section>",
+        "<a ",
+        "</a>",
+    );
+    request.source = request
+        .source
+        .clone()
+        .with_base_url(Url::parse(base_url).expect("base url"));
+    request.extraction = ExtractionSpec::slice(
+        request
+            .extraction
+            .slice_spec()
+            .expect("slice spec")
+            .clone()
+            .with_boundary_inclusion(true, true),
+    )
+    .with_value(ValueSpec::InnerHtml);
+    request.normalization = NormalizationOptions {
+        whitespace: WhitespaceMode::Preserve,
+        rewrite_urls: false,
+    };
+
+    let unrevised = extract(&request, &RuntimeOptions::default());
+    assert!(unrevised.ok);
+    assert_eq!(
+        unrevised.matches[0].value.as_str(),
+        Some("<a href=\"guide.html\">Guide</a>")
+    );
+
+    request.normalization.rewrite_urls = true;
+    let rewritten = extract(&request, &RuntimeOptions::default());
+    assert!(rewritten.ok);
+    assert_eq!(
+        rewritten.matches[0].value.as_str(),
+        Some("<a href=\"https://example.com/docs/guide.html\">Guide</a>")
     );
 }
 
@@ -331,7 +415,15 @@ fn source_url_loading_works() {
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     let mut request_buffer = [0u8; 512];
-                    let read = stream.read(&mut request_buffer).expect("read request");
+                    let read = loop {
+                        match stream.read(&mut request_buffer) {
+                            Ok(read) => break read,
+                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                                thread::sleep(Duration::from_millis(10));
+                            }
+                            Err(error) => panic!("read request: {error}"),
+                        }
+                    };
                     let request = String::from_utf8_lossy(&request_buffer[..read]);
                     let method = request
                         .lines()
@@ -410,5 +502,6 @@ fn source_size_limits_are_enforced() {
 #[test]
 fn format_byte_size_has_friendly_units() {
     assert_eq!(format_byte_size(5), "5 bytes");
-    assert_eq!(format_byte_size(1024), "1 KB");
+    assert_eq!(format_byte_size(1024), "1 KiB");
+    assert_eq!(format_byte_size(1536), "1.5 KiB");
 }

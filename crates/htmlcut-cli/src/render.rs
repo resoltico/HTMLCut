@@ -1,3 +1,5 @@
+#[cfg(test)]
+use std::cell::Cell;
 use std::fs;
 use std::path::Path;
 
@@ -9,8 +11,13 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::args::CliOutputMode;
-use crate::error::{CliError, output_error};
-use crate::model::{BundlePaths, ExtractionCommandReport};
+use crate::error::{CliError, internal_error, output_error};
+use crate::model::{BundlePaths, CliErrorCode, ExtractionCommandReport};
+
+#[cfg(test)]
+thread_local! {
+    static JSON_RENDER_FAILURE_OVERRIDE: Cell<bool> = const { Cell::new(false) };
+}
 
 #[cfg(test)]
 pub(crate) use self::discovery::render_catalog_surface;
@@ -41,27 +48,31 @@ pub(crate) fn write_bundle(
     report: &ExtractionCommandReport,
     bundle: &BundlePaths,
 ) -> Result<(), CliError> {
+    let html_document = wrap_html_document(report)?;
+    let text_payload = render_text_payload(report)?;
+    let report_payload = to_pretty_json(report)?;
+
     fs::create_dir_all(&bundle.dir).map_err(|error| {
         output_error(
-            "CLI_BUNDLE_DIRECTORY_CREATE_FAILED",
+            CliErrorCode::BundleDirectoryCreateFailed,
             format!("Could not create bundle directory {}: {error}", bundle.dir),
         )
     })?;
-    fs::write(&bundle.html, wrap_html_document(report)).map_err(|error| {
+    fs::write(&bundle.html, html_document).map_err(|error| {
         output_error(
-            "CLI_BUNDLE_HTML_WRITE_FAILED",
+            CliErrorCode::BundleHtmlWriteFailed,
             format!("Could not write {}: {error}", bundle.html),
         )
     })?;
-    fs::write(&bundle.text, render_text_payload(report)).map_err(|error| {
+    fs::write(&bundle.text, text_payload).map_err(|error| {
         output_error(
-            "CLI_BUNDLE_TEXT_WRITE_FAILED",
+            CliErrorCode::BundleTextWriteFailed,
             format!("Could not write {}: {error}", bundle.text),
         )
     })?;
-    fs::write(&bundle.report, format!("{}\n", to_pretty_json(report))).map_err(|error| {
+    fs::write(&bundle.report, format!("{report_payload}\n")).map_err(|error| {
         output_error(
-            "CLI_BUNDLE_REPORT_WRITE_FAILED",
+            CliErrorCode::BundleReportWriteFailed,
             format!("Could not write {}: {error}", bundle.report),
         )
     })?;
@@ -71,82 +82,84 @@ pub(crate) fn write_bundle(
 pub(crate) fn render_extraction_output(
     report: &ExtractionCommandReport,
     output: CliOutputMode,
-) -> Option<String> {
+) -> Result<Option<String>, CliError> {
     match output {
-        CliOutputMode::Text => Some(render_text_payload(report)),
-        CliOutputMode::Html => Some(render_html_payload(report)),
-        CliOutputMode::Json => Some(to_pretty_json(report)),
-        CliOutputMode::None => None,
+        CliOutputMode::Text => render_text_payload(report).map(Some),
+        CliOutputMode::Html => render_html_payload(report).map(Some),
+        CliOutputMode::Json => to_pretty_json(report).map(Some),
+        CliOutputMode::None => Ok(None),
     }
 }
 
-pub(crate) fn render_text_payload(report: &ExtractionCommandReport) -> String {
+pub(crate) fn render_text_payload(report: &ExtractionCommandReport) -> Result<String, CliError> {
     report
         .matches
         .iter()
         .map(render_match_as_text)
-        .collect::<Vec<_>>()
-        .join("\n\n")
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("\n\n"))
 }
 
-pub(crate) fn render_html_payload(report: &ExtractionCommandReport) -> String {
+pub(crate) fn render_html_payload(report: &ExtractionCommandReport) -> Result<String, CliError> {
     report
         .matches
         .iter()
         .map(render_match_as_html)
-        .collect::<Vec<_>>()
-        .join("\n\n")
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("\n\n"))
 }
 
-pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> String {
+pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> Result<String, CliError> {
     if let Value::String(text) = &matched.value {
-        return text.clone();
+        return Ok(text.clone());
     }
 
-    serde_json::to_string_pretty(&matched.value)
-        .expect("serde_json::Value should always serialize to pretty JSON")
+    render_json_string(&matched.value, "extracted match payload")
 }
 
-pub(crate) fn render_match_as_html(matched: &ExtractionMatch) -> String {
+pub(crate) fn render_match_as_html(matched: &ExtractionMatch) -> Result<String, CliError> {
     if let Value::String(html) = &matched.value
         && (matched.value_type == ValueType::InnerHtml
             || matched.value_type == ValueType::OuterHtml)
     {
-        return html.clone();
+        return Ok(html.clone());
     }
 
-    matched
-        .html
-        .clone()
-        .unwrap_or_else(|| format!("<pre>{}</pre>", escape_html(&render_match_as_text(matched))))
+    match matched.html.as_ref() {
+        Some(html) => Ok(html.clone()),
+        None => {
+            render_match_as_text(matched).map(|text| format!("<pre>{}</pre>", escape_html(&text)))
+        }
+    }
 }
 
-pub(crate) fn wrap_html_document(report: &ExtractionCommandReport) -> String {
+pub(crate) fn wrap_html_document(report: &ExtractionCommandReport) -> Result<String, CliError> {
     if report.matches.len() == 1
         && let Some(Value::String(html)) = report.matches.first().map(|matched| &matched.value)
         && looks_like_document(html)
     {
-        return html.clone();
+        return Ok(html.clone());
     }
 
     let body = report
         .matches
         .iter()
         .map(|matched| {
-            format!(
-                "<section data-match-index=\"{}\">{}</section>",
-                matched.index,
-                render_match_as_html(matched)
-            )
+            render_match_as_html(matched).map(|html| {
+                format!(
+                    "<section data-match-index=\"{}\">{}</section>",
+                    matched.index, html
+                )
+            })
         })
-        .collect::<Vec<_>>()
+        .collect::<Result<Vec<_>, _>>()?
         .join("\n\n");
 
-    format!(
+    Ok(format!(
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>{}</title>\n  <style>\n    body {{ font-family: ui-serif, Georgia, serif; margin: 2rem auto; max-width: 72rem; padding: 0 1.25rem 3rem; line-height: 1.6; }}\n    section + section {{ border-top: 1px solid #d6d6d6; margin-top: 2rem; padding-top: 2rem; }}\n  </style>\n</head>\n<body>\n{}\n</body>\n</html>\n",
         escape_html(&bundle_document_title(report)),
         body
-    )
+    ))
 }
 
 pub(crate) fn looks_like_document(fragment: &str) -> bool {
@@ -169,7 +182,46 @@ pub(crate) fn bundle_document_title(report: &ExtractionCommandReport) -> String 
         .unwrap_or_else(|| fallback_document_title(&report.source))
 }
 
-pub(crate) fn to_pretty_json<T: Serialize>(value: &T) -> String {
+pub(crate) fn to_pretty_json<T: Serialize>(value: &T) -> Result<String, CliError> {
+    render_json_string(value, "CLI JSON payload")
+}
+
+pub(crate) fn render_json_string<T: Serialize>(
+    value: &T,
+    context: &str,
+) -> Result<String, CliError> {
+    render_pretty_json(value).map_err(|error| json_render_error(context, error))
+}
+
+fn json_render_error(context: &str, error: serde_json::Error) -> CliError {
+    internal_error(
+        CliErrorCode::JsonRenderFailed,
+        format!("Could not render {context}: {error}"),
+    )
+}
+
+fn render_pretty_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    #[cfg(test)]
+    if JSON_RENDER_FAILURE_OVERRIDE.with(Cell::get) {
+        return Err(serde_json::Error::io(std::io::Error::other(
+            "synthetic JSON render failure",
+        )));
+    }
+
     serde_json::to_string_pretty(value)
-        .expect("HTMLCut CLI reports should always serialize to pretty JSON")
+}
+
+#[cfg(test)]
+pub(crate) fn with_json_render_failure_for_tests<T>(operation: impl FnOnce() -> T) -> T {
+    struct ResetJsonRenderFailure;
+
+    impl Drop for ResetJsonRenderFailure {
+        fn drop(&mut self) {
+            JSON_RENDER_FAILURE_OVERRIDE.with(|enabled| enabled.set(false));
+        }
+    }
+
+    JSON_RENDER_FAILURE_OVERRIDE.with(|enabled| enabled.set(true));
+    let _reset = ResetJsonRenderFailure;
+    operation()
 }

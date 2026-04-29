@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "5.0.0"
+version: "6.0.0"
 domain: INDEX
-updated: "2026-04-24"
+updated: "2026-04-29"
 route:
   keywords: [docs index, getting started, developer setup, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, tempdir helper]
   questions: ["where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the htmlcut_tempdir helper documented?"]
@@ -58,6 +58,10 @@ when they drift.
 
 The core crate also ships a runnable namespace example at
 [crates/htmlcut-core/examples/request_and_result_namespaces.rs](../crates/htmlcut-core/examples/request_and_result_namespaces.rs).
+Run `cargo run -q -p htmlcut-core --example request_and_result_namespaces` to print a compact JSON
+summary that shows the `htmlcut_core::request` / `htmlcut_core::result` namespace split in action.
 
 Reusable extraction-definition workflows are illustrated in
 [crates/htmlcut-core/examples/reusable_extraction_definition.rs](../crates/htmlcut-core/examples/reusable_extraction_definition.rs).
+Run `cargo run -q -p htmlcut-core --example reusable_extraction_definition` to print the reusable
+JSON definition that the example round-trips before extraction.

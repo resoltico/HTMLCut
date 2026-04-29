@@ -4,11 +4,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::constants::{
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT,
+    DEFAULT_MAX_BYTES,
 };
 use super::super::{
-    default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
-    default_preview_chars_non_zero, default_true,
+    default_fetch_connect_timeout_ms, default_fetch_timeout_ms, default_inspection_sample_limit,
+    default_max_bytes, default_preview_chars_non_zero, default_true,
 };
 use super::{FetchPreflightMode, WhitespaceMode};
 
@@ -69,6 +70,9 @@ pub struct RuntimeOptions {
     #[serde(default = "default_fetch_timeout_ms")]
     /// HTTP fetch timeout in milliseconds.
     pub fetch_timeout_ms: u64,
+    #[serde(default = "default_fetch_connect_timeout_ms")]
+    /// HTTP connect timeout in milliseconds.
+    pub fetch_connect_timeout_ms: u64,
     #[serde(default)]
     /// URL-fetch preflight policy used before reading a remote response body.
     pub fetch_preflight: FetchPreflightMode,
@@ -79,6 +83,7 @@ impl Default for RuntimeOptions {
         Self {
             max_bytes: DEFAULT_MAX_BYTES,
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_connect_timeout_ms: DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
             fetch_preflight: FetchPreflightMode::default(),
         }
     }

@@ -4,6 +4,7 @@ use htmlcut_core::OperationId;
 use htmlcut_core::cli_contract::{CliHelpDocument, OperationCliContract};
 
 use crate::error::{CliError, internal_error, usage_error};
+use crate::model::CliErrorCode;
 
 const MAX_SUGGESTIONS: usize = 3;
 
@@ -16,7 +17,7 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
         htmlcut_core::cli_contract::CliAuxCommandId::Catalog,
     );
     usage_error(
-        "CLI_OPERATION_ID_UNKNOWN",
+        CliErrorCode::OperationIdUnknown,
         format!(
             "Unknown operation ID: {requested}.{} Use `htmlcut {catalog_command}` to list the valid operation IDs.",
             suggestion_suffix(requested, candidates),
@@ -93,7 +94,7 @@ pub(crate) fn unknown_schema_error(
     );
 
     usage_error(
-        "CLI_SCHEMA_UNKNOWN",
+        CliErrorCode::SchemaUnknown,
         format!(
             "Unknown schema: {requested}.{recovery} Use `htmlcut {schema_command}` to list the valid schemas.",
         ),
@@ -127,7 +128,7 @@ pub(crate) fn missing_operation_contract_error(
     surface: &'static str,
 ) -> CliError {
     internal_error(
-        "CLI_CONTRACT_MISSING",
+        CliErrorCode::ContractMissing,
         format!(
             "Internal HTMLCut CLI contract error: missing {surface} for {}.",
             operation_id.as_str()
