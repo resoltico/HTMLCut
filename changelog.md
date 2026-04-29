@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintained CI now retries Rustup toolchain and target installation in the Rust and
   release-target smoke jobs, so transient upstream DNS/download failures no longer derail an
   otherwise healthy release candidate.
+- The maintainer release registry helpers now normalize canonical shell-script paths before they
+  source `scripts/release-targets.sh` through Bash, so temporary release-doc validation repos and
+  the Windows cross-platform gate use the same release-target registry behavior instead of
+  diverging on native `D:\\...` paths.
 
 ## [5.0.0] - 2026-04-24
 
