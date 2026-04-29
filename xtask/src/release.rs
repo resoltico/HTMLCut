@@ -87,7 +87,7 @@ fn script_output_with_program(
     command.arg("-c");
     command.arg(script_command(function_name, args.len()));
     command.arg("bash");
-    command.arg(release_targets_script_argument());
+    command.arg(bash_source_argument(&script_path));
     command.args(args);
 
     let output = command.output().map_err(|error| {
@@ -130,8 +130,24 @@ fn release_targets_script_path(repo_root: &Path) -> PathBuf {
     repo_root.join("scripts").join("release-targets.sh")
 }
 
-fn release_targets_script_argument() -> &'static str {
-    "scripts/release-targets.sh"
+fn bash_source_argument(path: &Path) -> String {
+    let mut rendered = path.to_string_lossy().replace('\\', "/");
+    if let Some(stripped) = rendered.strip_prefix("//?/") {
+        rendered = stripped.to_owned();
+    }
+
+    let bytes = rendered.as_bytes();
+    if bytes.len() >= 3 && bytes[1] == b':' && bytes[2] == b'/' && bytes[0].is_ascii_alphabetic() {
+        let drive_letter = (bytes[0] as char).to_ascii_lowercase();
+        let remainder = &rendered[3..];
+        rendered = if remainder.is_empty() {
+            format!("/{drive_letter}")
+        } else {
+            format!("/{drive_letter}/{remainder}")
+        };
+    }
+
+    rendered
 }
 
 #[cfg(test)]
@@ -217,5 +233,31 @@ release_matrix_json() {
             assert!(rendered.contains("stderr:"));
             assert!(rendered.contains("command not found"));
         }
+    }
+
+    #[test]
+    fn release_helpers_normalize_windows_script_paths_for_bash() {
+        assert_eq!(
+            bash_source_argument(Path::new(r"D:\a\HTMLCut\scripts\release-targets.sh")),
+            "/d/a/HTMLCut/scripts/release-targets.sh"
+        );
+        assert_eq!(
+            bash_source_argument(Path::new(r"\\?\D:\a\HTMLCut\scripts\release-targets.sh")),
+            "/d/a/HTMLCut/scripts/release-targets.sh"
+        );
+        assert_eq!(bash_source_argument(Path::new("D:/")), "/d");
+        assert_eq!(
+            bash_source_argument(Path::new("scripts/release-targets.sh")),
+            "scripts/release-targets.sh"
+        );
+        assert_eq!(bash_source_argument(Path::new("")), "");
+        assert_eq!(
+            bash_source_argument(Path::new("D:relative-path")),
+            "D:relative-path"
+        );
+        assert_eq!(
+            bash_source_argument(Path::new("1:/not-a-drive")),
+            "1:/not-a-drive"
+        );
     }
 }

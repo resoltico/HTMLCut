@@ -33,7 +33,11 @@ EOF
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    script_source="$(printf '%s\n' "${BASH_SOURCE[0]}" | sed 's#\\#/#g')"
+    if [[ "${script_source}" =~ ^([A-Za-z]):/(.*)$ ]]; then
+        script_source="/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+    fi
+    script_dir="$(cd -- "$(dirname -- "${script_source}")" && pwd)"
     # shellcheck source=scripts/common.sh
     . "${script_dir}/common.sh"
 

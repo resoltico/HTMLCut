@@ -179,6 +179,34 @@ source "{repo_root}/scripts/common.sh"
 }
 
 #[test]
+fn release_shell_helpers_normalize_windows_source_paths() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+source "{repo_root}/scripts/common.sh"
+[[ "$(htmlcut_normalize_bash_path 'D:\a\HTMLCut\scripts\release-targets.sh')" == '/d/a/HTMLCut/scripts/release-targets.sh' ]]
+[[ "$(htmlcut_normalize_bash_path 'scripts\release-targets.sh')" == 'scripts/release-targets.sh' ]]
+"#,
+            repo_root = repo_root.display(),
+        ))
+        .current_dir(repo_root)
+        .output()
+        .expect("run path-normalization smoke");
+
+    assert!(
+        output.status.success(),
+        "path-normalization smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

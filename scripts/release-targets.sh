@@ -2,8 +2,12 @@
 
 set -euo pipefail
 
+script_source="$(printf '%s\n' "${BASH_SOURCE[0]}" | sed 's#\\#/#g')"
+if [[ "${script_source}" =~ ^([A-Za-z]):/(.*)$ ]]; then
+    script_source="/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+fi
 # shellcheck source=scripts/common.sh
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+. "$(cd -- "$(dirname -- "${script_source}")" && pwd)/common.sh"
 
 release_target_triples() {
     cat <<'EOF'

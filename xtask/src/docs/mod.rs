@@ -117,6 +117,11 @@ pub(crate) fn expected_metadata_style_for_tests(repo_root: &Path, path: &Path) -
 }
 
 #[cfg(test)]
+pub(crate) fn repo_relative_display_for_tests(repo_root: &Path, path: &Path) -> String {
+    paths::repo_relative_display_for_tests(repo_root, path)
+}
+
+#[cfg(test)]
 pub(crate) fn expected_afad_version_for_tests(repo_root: &Path) -> DynResult<String> {
     metadata::expected_afad_version(repo_root)
 }

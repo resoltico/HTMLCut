@@ -253,6 +253,17 @@ fn is_maintained_markdown_doc_rejects_paths_outside_the_repo_root() {
     ));
 }
 
+#[test]
+fn repo_relative_display_normalizes_windows_style_separators() {
+    let repo_root = Path::new(r"D:\workspace");
+    let doc_path = repo_root.join(r"docs\workspace-layout.md");
+
+    assert_eq!(
+        crate::docs::repo_relative_display_for_tests(repo_root, &doc_path),
+        "docs/workspace-layout.md"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn should_skip_dir_rejects_non_utf8_directory_names() {

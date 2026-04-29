@@ -77,6 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release-helper shell failures now report captured stderr in `xtask`, and the maintained Windows
   release gate no longer depends on a duplicate temp-repo shell-smoke that overlapped the stronger
   canonical registry coverage already present in the release test suite.
+- Release tooling now normalizes Windows-style script paths before Bash sources the canonical
+  release registry or sibling shell helpers, and docs-contract inventory checks now normalize
+  repo-relative Markdown paths to forward slashes so temporary validation repos and Windows CI
+  enforce the same release/documentation contract as Unix.
 
 ## [5.0.0] - 2026-04-24
 
