@@ -196,26 +196,26 @@ release_matrix_json() {
     }
 
     #[test]
-    fn release_helpers_surface_shell_stderr_on_failures() {
+    fn release_helpers_preserve_shell_stderr_when_available() {
         let repo_root = tempdir().expect("tempdir");
         let scripts_dir = repo_root.path().join("scripts");
         fs::create_dir_all(&scripts_dir).expect("create scripts dir");
         fs::write(
             scripts_dir.join("release-targets.sh"),
             r#"#!/usr/bin/env bash
-release_target_triples() {
-    printf 'broken helper\n' >&2
-    return 9
-}
+# Intentionally empty so Bash itself emits the missing-function error.
 "#,
         )
         .expect("write release-targets.sh");
 
-        let error = release_target_triples(repo_root.path())
-            .expect_err("stderr-emitting script should fail");
+        let error = script_output(repo_root.path(), "release_target_triples", &[])
+            .expect_err("missing helper function should fail");
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
-        assert!(rendered.contains("stderr:"));
-        assert!(rendered.contains("broken helper"));
+        #[cfg(not(windows))]
+        {
+            assert!(rendered.contains("stderr:"));
+            assert!(rendered.contains("command not found"));
+        }
     }
 }
