@@ -46,5 +46,12 @@ fn read_file_source_reports_unreadable_inputs() {
     let error = read_file_source(&file_source(&unreadable_path), &RuntimeOptions::default())
         .expect_err("unreadable input");
     assert_eq!(error.code, "SOURCE_LOAD_FAILED");
+    #[cfg(unix)]
     assert!(error.message.contains("Could not read file"));
+    #[cfg(not(unix))]
+    assert!(
+        error
+            .message
+            .contains("Input path is a directory, not a file")
+    );
 }
