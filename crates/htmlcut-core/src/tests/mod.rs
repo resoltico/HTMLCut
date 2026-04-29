@@ -44,8 +44,6 @@ use std::io::{Cursor, Error as IoError, Read};
 #[cfg(feature = "http-client")]
 use std::net::TcpListener;
 use std::num::NonZeroUsize;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::str::FromStr;
 #[cfg(feature = "http-client")]
