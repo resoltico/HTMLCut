@@ -5,6 +5,14 @@ use std::process::Command;
 
 use serde_json::Value;
 
+fn bash_command() -> Command {
+    Command::new(crate::release::bash_program_for_tests())
+}
+
+fn release_script_argument(repo_root: &Path, script_name: &str) -> String {
+    crate::release::bash_source_argument_for_tests(&repo_root.join("scripts").join(script_name))
+}
+
 #[test]
 fn release_helpers_read_the_canonical_shell_registry() {
     let repo_root = tempdir().expect("tempdir");
@@ -132,7 +140,7 @@ htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_
         version = version,
     );
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-c")
         .arg(script)
         .current_dir(repo_root)
@@ -170,7 +178,7 @@ fn release_shell_helpers_normalize_windows_temp_roots() {
             .expect("chmod fake cygpath");
     }
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-c")
         .arg(format!(
             r#"set -euo pipefail
@@ -201,7 +209,7 @@ fn release_shell_helpers_normalize_windows_source_paths() {
         .parent()
         .expect("workspace root");
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-c")
         .arg(format!(
             r#"set -euo pipefail
@@ -260,7 +268,7 @@ fn windows_release_smoke_prefers_bash_native_unzip_before_powershell() {
             .expect("chmod fake powershell");
     }
 
-    let output = Command::new("bash")
+    let output = bash_command()
         .arg("-c")
         .arg(format!(
             r#"set -euo pipefail
@@ -467,8 +475,8 @@ fn maintained_release_shell_entrypoints_are_self_describing() {
             "Print the [workspace.package] version",
         ),
     ] {
-        let output = Command::new("bash")
-            .arg(repo_root.join("scripts").join(script_name))
+        let output = bash_command()
+            .arg(release_script_argument(repo_root, script_name))
             .arg("--help")
             .current_dir(repo_root)
             .output()
@@ -496,8 +504,8 @@ fn release_targets_cli_prints_canonical_registry_views() {
         .parent()
         .expect("workspace root");
 
-    let triples_output = Command::new("bash")
-        .arg(repo_root.join("scripts").join("release-targets.sh"))
+    let triples_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
         .arg("triples")
         .current_dir(repo_root)
         .output()
@@ -507,8 +515,8 @@ fn release_targets_cli_prints_canonical_registry_views() {
     assert!(triples.lines().any(|line| line == "aarch64-apple-darwin"));
     assert!(triples.lines().any(|line| line == "x86_64-pc-windows-msvc"));
 
-    let matrix_output = Command::new("bash")
-        .arg(repo_root.join("scripts").join("release-targets.sh"))
+    let matrix_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
         .arg("matrix-json")
         .current_dir(repo_root)
         .output()
@@ -527,8 +535,8 @@ fn release_targets_cli_prints_canonical_registry_views() {
             .any(|entry| entry["target_triple"] == "x86_64-unknown-linux-musl")
     );
 
-    let assets_output = Command::new("bash")
-        .arg(repo_root.join("scripts").join("release-targets.sh"))
+    let assets_output = bash_command()
+        .arg(release_script_argument(repo_root, "release-targets.sh"))
         .args(["assets", "--version", "9.9.9"])
         .current_dir(repo_root)
         .output()

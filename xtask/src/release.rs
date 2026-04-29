@@ -190,6 +190,16 @@ fn bash_source_argument(path: &Path) -> String {
 }
 
 #[cfg(test)]
+pub(crate) fn bash_program_for_tests() -> PathBuf {
+    bash_program()
+}
+
+#[cfg(test)]
+pub(crate) fn bash_source_argument_for_tests(path: &Path) -> String {
+    bash_source_argument(path)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
