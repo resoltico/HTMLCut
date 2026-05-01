@@ -166,6 +166,10 @@ plus run `devcontainer exec`. Use `./scripts/devcontainer-check.sh` when you wan
 maintainer gate to run through the same contributor image, named volume contract, lifecycle
 scripts, and repo-root `./check.sh` entrypoint from the host side. Run both host commands when you
 change `.devcontainer/`, the devcontainer lifecycle scripts, or the contributor-container docs.
+GitHub CI keeps the fresh-volume and devcontainer-client proof but sets
+`HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES=skip` because the same job immediately runs
+`./scripts/devcontainer-check.sh`, which provides the stronger raw-image repo-command proof without
+paying for duplicate help-surface compiles inside the validator.
 
 GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
 the built release packages, checking that the packaged README stays package-specific, and

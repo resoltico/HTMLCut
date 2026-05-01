@@ -17,6 +17,17 @@ readonly bootstrap_script="${repo_root}/scripts/devcontainer-bootstrap.sh"
 readonly prepare_script="${repo_root}/scripts/devcontainer-prepare-user-home.sh"
 readonly helper_image_tag="htmlcut-devcontainer-cli-helper:local"
 readonly volume_mode="${HTMLCUT_DEVCONTAINER_VOLUME_MODE:-isolated}"
+readonly repo_command_probe_mode="${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES:-full}"
+
+assert_repo_command_probe_mode() {
+    case "${repo_command_probe_mode}" in
+        full|skip) ;;
+        *)
+            htmlcut_die \
+                "unsupported HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES=${repo_command_probe_mode}; expected full or skip"
+            ;;
+    esac
+}
 
 select_volume_name() {
     local shared_name="$1"
@@ -65,6 +76,7 @@ command -v python3 >/dev/null 2>&1 || htmlcut_die "python3 is required to valida
 [[ -f "${helper_dockerfile_path}" ]] || htmlcut_die "missing ${helper_dockerfile_path}"
 [[ -f "${bootstrap_script}" ]] || htmlcut_die "missing ${bootstrap_script}"
 [[ -f "${prepare_script}" ]] || htmlcut_die "missing ${prepare_script}"
+assert_repo_command_probe_mode
 
 python3 - <<'PY' "${config_path}"
 import json
@@ -200,6 +212,7 @@ docker run --rm \
     --volume "${cargo_volume}:/home/vscode/.cargo" \
     --volume "${rustup_volume}:/home/vscode/.rustup" \
     --volume "${cache_volume}:/home/vscode/.cache" \
+    --env HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES="${repo_command_probe_mode}" \
     "${image_tag}" bash -lc '
         set -euo pipefail
         /workspaces/htmlcut/scripts/devcontainer-prepare-user-home.sh
@@ -215,10 +228,19 @@ docker run --rm \
         cargo semver-checks --version >/dev/null
         cargo outdated --version >/dev/null
         cargo fuzz --version >/dev/null
-        export CARGO_TARGET_DIR=/tmp/htmlcut-target
         cd /workspaces/htmlcut
-        cargo xtask --help >/dev/null
-        cargo run --quiet -- --help >/dev/null
+        case "${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES}" in
+            full)
+                export CARGO_TARGET_DIR=/tmp/htmlcut-target
+                cargo xtask --help >/dev/null
+                cargo run --quiet -- --help >/dev/null
+                ;;
+            skip) ;;
+            *)
+                echo "unsupported HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES=${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES}" >&2
+                exit 1
+                ;;
+        esac
     '
 
 printf 'devcontainer validation: build helper image for devcontainer CLI coverage\n'
