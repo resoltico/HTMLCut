@@ -34,7 +34,7 @@ fn write_coverage_report(
             "data": [{
                 "files": [{
                     "filename": tracked_file,
-                    "segments": [[7, 0, line_count, false, true, false]],
+                    "segments": [[1, 0, line_count, false, true, false]],
                     "branches": [],
                     "summary": {
                         "branches": {
@@ -98,85 +98,93 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
     )
 }
 
+fn with_isolated_target_dir<T>(repo_root: &Path, operation: impl FnOnce() -> T) -> T {
+    crate::plan::with_cargo_target_dir_override_for_tests(repo_root.join("target"), operation)
+}
+
 #[test]
 fn main_entry_with_runs_the_full_check_flow_and_cleans_semver_scratch() {
     let repo_root = tempdir().expect("repo tempdir");
-    write_repo_scaffold(repo_root.path());
-    write_toolchain_contract(repo_root.path());
-    let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/runner.rs");
-    let semver_scratch = semver_scratch_dir(repo_root.path());
-    fs::create_dir_all(semver_scratch.join("before")).expect("create initial semver scratch");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/runner.rs");
+        let semver_scratch = semver_scratch_dir(repo_root.path());
+        fs::create_dir_all(semver_scratch.join("before")).expect("create initial semver scratch");
 
-    let calls = Rc::new(RefCell::new(Vec::new()));
-    let calls_for_override = Rc::clone(&calls);
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_for_override = Rc::clone(&calls);
 
-    with_ready_preflight(|| {
-        crate::command_exec::with_run_spec_override(
-            move |current_root, spec| {
-                calls_for_override.borrow_mut().push(spec.clone());
-                if is_semver_check_spec(spec) {
-                    fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
-                        .expect("recreate semver scratch");
-                }
-                if *spec == coverage_command(current_root) {
-                    write_coverage_report(current_root, &tracked_file, 1, 1, 1, 0);
-                }
-                Some(Ok(()))
-            },
-            || main_entry_with(repo_root.path(), ["xtask", "check"]),
-        )
-    })
-    .expect("xtask check should pass");
+        with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    calls_for_override.borrow_mut().push(spec.clone());
+                    if is_semver_check_spec(spec) {
+                        fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
+                            .expect("recreate semver scratch");
+                    }
+                    if *spec == coverage_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 1, 1, 1, 0);
+                    }
+                    Some(Ok(()))
+                },
+                || main_entry_with(repo_root.path(), ["xtask", "check"]),
+            )
+        })
+        .expect("xtask check should pass");
 
-    assert!(!semver_scratch.exists(), "semver scratch should be cleaned");
-    assert!(
-        calls.borrow().iter().any(is_semver_check_spec),
-        "check flow should include the semver step"
-    );
-    assert_eq!(
-        calls
-            .borrow()
-            .iter()
-            .filter(|spec| **spec == coverage_clean_command())
-            .count(),
-        2,
-        "coverage cleanup should run before and after measurement"
-    );
+        assert!(!semver_scratch.exists(), "semver scratch should be cleaned");
+        assert!(
+            calls.borrow().iter().any(is_semver_check_spec),
+            "check flow should include the semver step"
+        );
+        assert_eq!(
+            calls
+                .borrow()
+                .iter()
+                .filter(|spec| **spec == coverage_clean_command())
+                .count(),
+            2,
+            "coverage cleanup should run before and after measurement"
+        );
+    });
 }
 
 #[test]
 fn main_entry_with_runs_only_the_semver_step_for_semver_check() {
     let repo_root = tempdir().expect("repo tempdir");
-    write_repo_scaffold(repo_root.path());
-    write_toolchain_contract(repo_root.path());
-    let semver_scratch = semver_scratch_dir(repo_root.path());
-    fs::create_dir_all(semver_scratch.join("before")).expect("create initial semver scratch");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let semver_scratch = semver_scratch_dir(repo_root.path());
+        fs::create_dir_all(semver_scratch.join("before")).expect("create initial semver scratch");
 
-    let calls = Rc::new(RefCell::new(Vec::new()));
-    let calls_for_override = Rc::clone(&calls);
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_for_override = Rc::clone(&calls);
 
-    with_ready_preflight(|| {
-        crate::command_exec::with_run_spec_override(
-            move |current_root, spec| {
-                calls_for_override.borrow_mut().push(spec.clone());
-                if is_semver_check_spec(spec) {
-                    fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
-                        .expect("recreate semver scratch");
-                }
-                Some(Ok(()))
-            },
-            || main_entry_with(repo_root.path(), ["xtask", "semver-check"]),
-        )
-    })
-    .expect("xtask semver-check should pass");
+        with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    calls_for_override.borrow_mut().push(spec.clone());
+                    if is_semver_check_spec(spec) {
+                        fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
+                            .expect("recreate semver scratch");
+                    }
+                    Some(Ok(()))
+                },
+                || main_entry_with(repo_root.path(), ["xtask", "semver-check"]),
+            )
+        })
+        .expect("xtask semver-check should pass");
 
-    assert!(!semver_scratch.exists(), "semver scratch should be cleaned");
-    assert_eq!(
-        calls.borrow().len(),
-        1,
-        "semver-check should run one command"
-    );
-    assert!(is_semver_check_spec(&calls.borrow()[0]));
+        assert!(!semver_scratch.exists(), "semver scratch should be cleaned");
+        assert_eq!(
+            calls.borrow().len(),
+            1,
+            "semver-check should run one command"
+        );
+        assert!(is_semver_check_spec(&calls.borrow()[0]));
+    });
 }
 
 #[test]
@@ -194,76 +202,82 @@ fn semver_check_spec_requires_the_semver_gate_step() {
 #[test]
 fn main_entry_with_reports_coverage_failures_and_runs_cleanup() {
     let repo_root = tempdir().expect("repo tempdir");
-    let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/uncovered.rs");
-    let calls = Rc::new(RefCell::new(Vec::new()));
-    let calls_for_override = Rc::clone(&calls);
+    with_isolated_target_dir(repo_root.path(), || {
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/uncovered.rs");
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_for_override = Rc::clone(&calls);
 
-    let error = with_ready_preflight(|| {
-        crate::command_exec::with_run_spec_override(
-            move |current_root, spec| {
-                calls_for_override.borrow_mut().push(spec.clone());
-                if *spec == coverage_command(current_root) {
-                    write_coverage_report(current_root, &tracked_file, 0, 1, 0, 1);
-                }
-                Some(Ok(()))
-            },
-            || main_entry_with(repo_root.path(), ["xtask", "coverage"]),
-        )
-    })
-    .expect_err("xtask coverage should fail");
+        let error = with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    calls_for_override.borrow_mut().push(spec.clone());
+                    if *spec == coverage_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 0, 1, 0, 1);
+                    }
+                    Some(Ok(()))
+                },
+                || main_entry_with(repo_root.path(), ["xtask", "coverage"]),
+            )
+        })
+        .expect_err("xtask coverage should fail");
 
-    assert!(error.to_string().contains("coverage gate failed"));
-    assert_eq!(
-        calls
-            .borrow()
-            .iter()
-            .filter(|spec| **spec == coverage_clean_command())
-            .count(),
-        2,
-        "coverage cleanup should run on failure as well"
-    );
+        assert!(error.to_string().contains("coverage gate failed"));
+        assert_eq!(
+            calls
+                .borrow()
+                .iter()
+                .filter(|spec| **spec == coverage_clean_command())
+                .count(),
+            2,
+            "coverage cleanup should run on failure as well"
+        );
+    });
 }
 
 #[test]
 fn run_coverage_for_tests_reports_branch_only_failures() {
     let repo_root = tempdir().expect("repo tempdir");
-    let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/branch_only.rs");
+    with_isolated_target_dir(repo_root.path(), || {
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/branch_only.rs");
 
-    let error = with_ready_preflight(|| {
-        crate::command_exec::with_run_spec_override(
-            move |current_root, spec| {
-                if *spec == coverage_command(current_root) {
-                    write_coverage_report(current_root, &tracked_file, 1, 1, 0, 1);
-                }
-                Some(Ok(()))
-            },
-            || run_coverage_for_tests(repo_root.path()),
-        )
-    })
-    .expect_err("branch-only coverage drift should fail");
+        let error = with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    if *spec == coverage_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 1, 1, 0, 1);
+                    }
+                    Some(Ok(()))
+                },
+                || run_coverage_for_tests(repo_root.path()),
+            )
+        })
+        .expect_err("branch-only coverage drift should fail");
 
-    assert!(error.to_string().contains("coverage gate failed"));
+        assert!(error.to_string().contains("coverage gate failed"));
+    });
 }
 
 #[test]
 fn run_coverage_for_tests_reports_line_only_failures() {
     let repo_root = tempdir().expect("repo tempdir");
-    let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/line_only.rs");
+    with_isolated_target_dir(repo_root.path(), || {
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/line_only.rs");
 
-    let error = with_ready_preflight(|| {
-        crate::command_exec::with_run_spec_override(
-            move |current_root, spec| {
-                if *spec == coverage_command(current_root) {
-                    write_coverage_report(current_root, &tracked_file, 0, 0, 0, 0);
-                }
-                Some(Ok(()))
-            },
-            || run_coverage_for_tests(repo_root.path()),
-        )
-    })
-    .expect_err("line-only coverage drift should fail");
+        let error = with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    if *spec == coverage_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 0, 0, 0, 0);
+                    }
+                    Some(Ok(()))
+                },
+                || run_coverage_for_tests(repo_root.path()),
+            )
+        })
+        .expect_err("line-only coverage drift should fail");
 
-    assert!(error.to_string().contains("coverage gate failed"));
+        assert!(error.to_string().contains("coverage gate failed"));
+    });
 }
 
 #[test]
@@ -304,6 +318,24 @@ fn main_entry_with_runs_one_targeted_fuzz_smoke_command() {
     assert_eq!(calls[0].program, PathBuf::from("cargo"));
     assert!(calls[0].args.iter().any(|arg| arg == "selector_parsing"));
     assert!(calls[0].args.iter().any(|arg| arg == "-runs=13"));
+}
+
+#[test]
+fn main_entry_with_rejects_unknown_fuzz_targets_before_tool_preflight() {
+    let repo_root = tempdir().expect("repo tempdir");
+
+    let error = main_entry_with(
+        repo_root.path(),
+        ["xtask", "fuzz-smoke", "--target", "not-real"],
+    )
+    .expect_err("unknown fuzz target should fail before preflight");
+
+    let message = error.to_string();
+    assert!(message.contains("unknown fuzz target `not-real`"));
+    assert!(
+        !message.contains("missing prerequisites"),
+        "unknown target should not depend on tool preflight: {message}"
+    );
 }
 
 #[test]

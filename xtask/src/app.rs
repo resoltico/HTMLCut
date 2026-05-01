@@ -179,14 +179,15 @@ fn run_coverage(repo_root: &Path) -> DynResult<()> {
 }
 
 fn run_fuzz_smoke(repo_root: &Path, target: Option<&str>, runs: u32) -> DynResult<()> {
+    if let Some(target) = target {
+        assert_known_fuzz_target(target)?;
+    }
+
     ensure_fuzz_smoke_prerequisites(repo_root)?;
 
-    let targets = if let Some(target) = target {
-        assert_known_fuzz_target(target)?;
-        vec![target]
-    } else {
-        fuzz_smoke_targets().to_vec()
-    };
+    let targets = target
+        .map(|target| vec![target])
+        .unwrap_or_else(|| fuzz_smoke_targets().to_vec());
 
     for target in targets {
         println!("==> Fuzz smoke: {target}");

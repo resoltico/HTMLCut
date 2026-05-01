@@ -4,8 +4,21 @@ use std::path::{Path, PathBuf};
 
 use crate::model::DynResult;
 
+#[cfg(test)]
+use std::cell::RefCell;
+
+#[cfg(test)]
+thread_local! {
+    static TEST_CARGO_TARGET_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
 /// Resolves the Cargo target directory, honoring `CARGO_TARGET_DIR` when present.
 pub fn cargo_target_dir(repo_root: &Path) -> PathBuf {
+    #[cfg(test)]
+    if let Some(override_dir) = test_cargo_target_dir_override() {
+        return override_dir;
+    }
+
     cargo_target_dir_from(
         repo_root,
         env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
@@ -84,4 +97,31 @@ pub(crate) fn release_binary_path_for_tests(
     cargo_target_dir_for_tests(repo_root, target_dir)
         .join("dist")
         .join(binary_name())
+}
+
+#[cfg(test)]
+pub(crate) fn with_cargo_target_dir_override<T>(
+    target_dir: PathBuf,
+    operation: impl FnOnce() -> T,
+) -> T {
+    TEST_CARGO_TARGET_DIR_OVERRIDE.with_borrow_mut(|slot| {
+        assert!(
+            slot.is_none(),
+            "test cargo target dir override should not already be installed"
+        );
+        *slot = Some(target_dir);
+    });
+
+    let outcome = operation();
+
+    TEST_CARGO_TARGET_DIR_OVERRIDE.with_borrow_mut(|slot| {
+        *slot = None;
+    });
+
+    outcome
+}
+
+#[cfg(test)]
+fn test_cargo_target_dir_override() -> Option<PathBuf> {
+    TEST_CARGO_TARGET_DIR_OVERRIDE.with_borrow(|slot| slot.clone())
 }

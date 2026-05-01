@@ -30,9 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recognize valid catalog entries, and the coverage/reporting docs now describe the curated
   tracked executable module set honestly instead of overstating the covered surface.
 - `cargo xtask --help` now prints a fuzz-smoke example target that belongs to the maintained
-  inventory, the help tests validate those example commands against the live parser surface, and
-  the release-preflight guide plus docs-test fixtures no longer teach the removed root-README
-  metadata contract.
+  inventory, the help tests validate those example commands against the live parser surface,
+  invalid fuzz-target errors now fail before tool-preflight checks on every runner, and the
+  release-preflight guide plus docs-test fixtures no longer teach the removed root-README metadata
+  contract.
 - Repo-root `cargo run -- ...` now resolves to the public `htmlcut` CLI, `xtask` prints readable
   non-clap failures without Rust debug quoting, and the help/docs surfaces teach the hard-break
   overwrite rule for request files, output files, and bundle directories.
