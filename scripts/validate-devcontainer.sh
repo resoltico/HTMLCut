@@ -120,11 +120,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+printf 'devcontainer validation: build raw contributor image\n'
 docker build \
     --file "${dockerfile_path}" \
     --tag "${image_tag}" \
     "${repo_root}/.devcontainer" >/dev/null
 
+printf 'devcontainer validation: probe raw image package contract\n'
 docker run --rm "${image_tag}" bash -lc '
     set -euo pipefail
     . /etc/os-release
@@ -146,6 +148,7 @@ docker volume create "${cargo_volume}" >/dev/null
 docker volume create "${rustup_volume}" >/dev/null
 docker volume create "${cache_volume}" >/dev/null
 
+printf 'devcontainer validation: seed root-owned cache, cargo, and rustup mounts\n'
 docker run --rm --user root \
     --volume "${cargo_volume}:/home/vscode/.cargo" \
     --volume "${rustup_volume}:/home/vscode/.rustup" \
@@ -158,6 +161,7 @@ docker run --rm --user root \
         touch /home/vscode/.cache/probe/root-owned-marker
     '
 
+printf 'devcontainer validation: repair mounts and bootstrap the raw contributor image\n'
 docker run --rm \
     --volume "${repo_root}:/workspaces/htmlcut:ro" \
     --volume "${cargo_volume}:/home/vscode/.cargo" \
@@ -184,11 +188,13 @@ docker run --rm \
         cargo run --quiet -- --help >/dev/null
     '
 
+printf 'devcontainer validation: build helper image for devcontainer CLI coverage\n'
 docker build \
     --file "${helper_dockerfile_path}" \
     --tag "${helper_image_tag}" \
     "${repo_root}/scripts" >/dev/null
 
+printf 'devcontainer validation: bring up the committed devcontainer through the client path\n'
 docker run --rm \
     --volume /var/run/docker.sock:/var/run/docker.sock \
     --volume "${repo_root}:${repo_root}" \
@@ -198,6 +204,7 @@ docker run --rm \
         set -euo pipefail
         trap '\''docker rm -f $(docker ps -aq --filter "label=devcontainer.local_folder='"${repo_root}"'") >/dev/null 2>&1 || true'\'' EXIT
         devcontainer up --remove-existing-container --workspace-folder '"${repo_root}"' >/dev/null
+        printf '\''devcontainer validation: run inner runtime probe through devcontainer exec\n'\''
         devcontainer exec --workspace-folder '"${repo_root}"' ./scripts/validate-devcontainer.sh
     '
 

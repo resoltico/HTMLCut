@@ -74,9 +74,15 @@ install_tool_if_needed() {
 
     current_version="$(tool_current_version "${crate_name}" "${binary_name}" || true)"
     if [[ "${current_version}" == "${version}" ]]; then
+        printf 'contributor cargo tool: %s %s already installed as %s\n' "${binary_name}" "${version}" "${current_version}"
         return 0
     fi
 
+    if [[ -n "${current_version}" ]]; then
+        printf 'contributor cargo tool: updating %s from %s to %s\n' "${binary_name}" "${current_version}" "${version}"
+    else
+        printf 'contributor cargo tool: installing %s %s\n' "${binary_name}" "${version}"
+    fi
     cargo install "${crate_name}" --locked --version "${version}" --force
 }
 

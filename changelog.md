@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   invalid fuzz-target errors now fail before tool-preflight checks on every runner, and the
   release-preflight guide plus docs-test fixtures no longer teach the removed root-README metadata
   contract.
+- The contributor devcontainer validation and bootstrap scripts now emit explicit phase progress,
+  including Rust toolchain and cargo QA tool installation milestones, so long release and CI
+  container checks are observable instead of looking hung.
 - Repo-root `cargo run -- ...` now resolves to the public `htmlcut` CLI, `xtask` prints readable
   non-clap failures without Rust debug quoting, and the help/docs surfaces teach the hard-break
   overwrite rule for request files, output files, and bundle directories.
