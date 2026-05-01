@@ -202,7 +202,7 @@ commit captured in Step 1, verify that it is clean and push it directly:
 ```bash
 git status --short
 git show --stat --summary --format=fuller HEAD
-git push -u origin release/X.Y.Z
+git push origin release/X.Y.Z
 ```
 
 If release-only fixes are still needed after Step 1, make them on `release/X.Y.Z` before pushing:
@@ -231,6 +231,10 @@ Before pushing or committing:
 - whether the candidate came from Step 1 or from an extra release-only commit, the pushed
   `release/X.Y.Z` branch must still include the full version-bearing surface described in Step 1,
   not just the workspace manifest line by itself
+
+Upstream tracking for `release/X.Y.Z` is optional. The release workflow does not rely on it, and
+skipping `-u` avoids mutating the shared repository config from a disposable worktree just to make
+one release push.
 
 ## 3. Pull Request And CI
 

@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   observable while they warm a fresh build cache.
 - The root README now renders its storefront artwork from the tagged tree rather than loading it
   from the moving `main` branch, so historical tag views keep their own release-facing art.
+- The release preflight guide now pushes `release/X.Y.Z` without `-u`, so the disposable release
+  worktree does not need to mutate the shared repository config just to publish the release branch.
 - HTMLCut now refuses to replace existing `--emit-request-file`, `--output-file`, or `--bundle`
   targets unless `--overwrite` is explicit, while keeping parent-directory creation automatic for
   fresh paths.
