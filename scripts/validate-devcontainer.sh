@@ -40,6 +40,7 @@ validate_inner_runtime() {
     [[ "${HTMLCUT_DEVCONTAINER:-}" == "1" ]] || htmlcut_die "inner runtime mode requires HTMLCUT_DEVCONTAINER=1"
 
     cd "${repo_root}"
+    [[ -f Cargo.toml ]] || htmlcut_die "inner runtime probe requires the HTMLCut workspace checkout"
     "${prepare_script}"
     rustc --version | grep -E '^rustc 1\.95\.0 '
     cargo +nightly llvm-cov --version >/dev/null
@@ -49,9 +50,6 @@ validate_inner_runtime() {
     cargo semver-checks --version >/dev/null
     cargo outdated --version >/dev/null
     cargo fuzz --version >/dev/null
-    export CARGO_TARGET_DIR=/tmp/htmlcut-target
-    cargo xtask --help >/dev/null
-    cargo run --quiet -- --help >/dev/null
 }
 
 if [[ "${HTMLCUT_DEVCONTAINER:-}" == "1" ]]; then

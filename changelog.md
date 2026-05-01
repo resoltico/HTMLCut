@@ -37,7 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The contributor devcontainer validation and bootstrap scripts now emit explicit phase progress,
   including Rust toolchain and cargo QA tool installation milestones, and CI now reuses the same
   named contributor volumes across validation and the full maintainer gate so release-time
-  container checks do not pay two unrelated cold-bootstrap costs.
+  container checks do not pay two unrelated cold-bootstrap costs; the devcontainer-client probe no
+  longer recompiles duplicate CLI help surfaces that the raw contributor-image phase already
+  proves.
 - Repo-root `cargo run -- ...` now resolves to the public `htmlcut` CLI, `xtask` prints readable
   non-clap failures without Rust debug quoting, and the help/docs surfaces teach the hard-break
   overwrite rule for request files, output files, and bundle directories.
