@@ -1,10 +1,35 @@
 use std::fmt;
 
+use htmlcut_core::CliChoice;
 use serde::Serialize;
 
 use super::render_cli_value;
-use crate::catalog::OperationId;
-use crate::contracts::{FetchPreflightMode, PatternMode, ValueType, WhitespaceMode};
+use htmlcut_core::{FetchPreflightMode, OperationId, PatternMode, ValueType, WhitespaceMode};
+
+macro_rules! impl_cli_choice {
+    ($ty:ty { $($variant:path => $name:literal),+ $(,)? }) => {
+        impl CliChoice for $ty {
+            fn variants() -> &'static [Self] {
+                const VARIANTS: &[$ty] = &[$($variant),+];
+                VARIANTS
+            }
+
+            fn as_cli_str(self) -> &'static str {
+                match self {
+                    $(
+                        $variant => $name,
+                    )+
+                }
+            }
+        }
+
+        impl fmt::Display for $ty {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(<Self as CliChoice>::as_cli_str(*self))
+            }
+        }
+    };
+}
 
 /// Canonical input forms accepted by HTMLCut's CLI extraction and inspection commands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,7 +67,7 @@ pub enum CliSelectionMode {
     All,
 }
 
-crate::cli_choice::impl_cli_choice!(CliSelectionMode {
+impl_cli_choice!(CliSelectionMode {
     CliSelectionMode::Single => "single",
     CliSelectionMode::First => "first",
     CliSelectionMode::Nth => "nth",
@@ -63,7 +88,7 @@ pub enum CliOutputMode {
     None,
 }
 
-crate::cli_choice::impl_cli_choice!(CliOutputMode {
+impl_cli_choice!(CliOutputMode {
     CliOutputMode::Text => "text",
     CliOutputMode::Html => "html",
     CliOutputMode::Json => "json",
@@ -80,7 +105,7 @@ pub enum CliTextJsonOutputMode {
     Json,
 }
 
-crate::cli_choice::impl_cli_choice!(CliTextJsonOutputMode {
+impl_cli_choice!(CliTextJsonOutputMode {
     CliTextJsonOutputMode::Text => "text",
     CliTextJsonOutputMode::Json => "json",
 });
@@ -114,6 +139,8 @@ pub enum CliParameterSection {
     Extraction,
     /// Parameters that shape inspection output.
     InspectionOutput,
+    /// Parameters that control whether filesystem outputs may replace existing paths.
+    FilesystemOutput,
 }
 
 impl CliParameterSection {
@@ -125,6 +152,7 @@ impl CliParameterSection {
             Self::Selection => "Selection",
             Self::Extraction => "Extraction",
             Self::InspectionOutput => "Inspection Output",
+            Self::FilesystemOutput => "Filesystem Output",
         }
     }
 }
@@ -176,6 +204,8 @@ pub enum CliParameterId {
     Bundle,
     /// Exact stdout output-file path.
     OutputFile,
+    /// Command-wide overwrite authorization for filesystem outputs.
+    Overwrite,
     /// Preview-character limit.
     PreviewChars,
     /// Include-source-text flag.
@@ -217,6 +247,7 @@ impl CliParameterId {
             Self::Output => "--output",
             Self::Bundle => "--bundle",
             Self::OutputFile => "--output-file",
+            Self::Overwrite => "--overwrite",
             Self::PreviewChars => "--preview-chars",
             Self::IncludeSourceText => "--include-source-text",
             Self::From => "--from",

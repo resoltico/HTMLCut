@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: WORKSPACE
-updated: "2026-04-29"
+updated: "2026-05-01"
 route:
-  keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, package name, crate name]
-  questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?"]
+  keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name]
+  questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where does the HTMLCut contributor devcontainer live?"]
 ---
 
 # Workspace Layout
@@ -64,6 +64,8 @@ These paths matter, but they are not normal workspace members:
 
 - `semver-baseline/htmlcut-core` is a checked-in snapshot of the last published `htmlcut-core`
   API used by semver checks. It is intentionally excluded from the live workspace.
+- `.devcontainer/` owns the committed contributor-container contract and is backed by lifecycle
+  scripts plus host-side entrypoints under `scripts/`.
 - `docs/` is the maintained Markdown contract set.
 - `dist/` and `target/` are generated artifact trees, not source-of-truth contract owners.
 

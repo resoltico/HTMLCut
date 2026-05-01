@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: CLI
 updated: "2026-04-29"
 route:
@@ -15,10 +15,10 @@ route:
 If you want install choices, a first runnable walkthrough, and request-file examples before you
 read the full command model, start with [getting-started.md](getting-started.md).
 
-The clap/help surface is rendered from core-owned command contracts and core-owned help documents,
-with the root `htmlcut --help` banner reusing the package version and description from Cargo
-metadata so the terminal identity and published crate metadata stay in sync.
-The CLI does not maintain a second operation/help taxonomy alongside `htmlcut-core`.
+The clap/help surface is rendered from `htmlcut_cli::contract`, with the root `htmlcut --help`
+banner reusing the package version and description from Cargo metadata so the terminal identity
+and published crate metadata stay in sync. The CLI does not maintain a second operation/help
+taxonomy alongside `htmlcut-core` and `htmlcut_cli::contract`.
 
 This guide owns the operator-facing command model.
 The published `htmlcut_cli` library API for programmatic CLI execution, clap-tree inspection, exit
@@ -94,6 +94,8 @@ Use:
 - `htmlcut catalog --operation <id>` when you want one operation in detail
 - `htmlcut catalog --output-file <PATH>` when you want that text or JSON payload written to disk
 
+If `--output-file` points at an existing path, pass `--overwrite` or choose a fresh file.
+
 In text mode, every operation prints the mapped core surface plus the request/result contracts
 plus the parameter inventory, typed default overrides, and command constraints.
 
@@ -109,6 +111,8 @@ Use:
 - `htmlcut schema --name <schema_name>` for one schema family
 - `htmlcut schema --name <schema_name> --schema-version <n>` for one exact schema version
 - `htmlcut schema --output-file <PATH>` when you want that text or JSON payload written to disk
+
+If `--output-file` points at an existing path, pass `--overwrite` or choose a fresh file.
 
 The registry includes:
 
@@ -266,6 +270,9 @@ That works for text, HTML, JSON, and inspection text/JSON outputs. It is intenti
 When `--bundle`, `--output-file`, or `--emit-request-file` points into a directory tree that does
 not exist yet, the CLI creates the parent directories automatically.
 
+When any of those targets already exists, HTMLCut refuses to replace it until you pass
+`--overwrite`.
+
 With `--verbose`, successful `catalog`, `schema`, extraction, and inspection runs confirm
 `--output-file` writes on stderr. Extraction and preview commands also confirm successful
 `--emit-request-file` writes there.
@@ -280,6 +287,9 @@ With `--verbose`, successful `catalog`, `schema`, extraction, and inspection run
 
 `selection.html` is a wrapped review artifact, not a byte-for-byte replay of the source document.
 `report.json` is the structured execution report.
+
+If `<dir>` already exists, rerun with `--overwrite` only when you intend to replace the managed
+bundle artifacts in place.
 
 ## Reusable Extraction-Definition Files
 

@@ -1,7 +1,7 @@
 #[cfg(test)]
 use std::collections::BTreeSet;
 
-/// Canonical non-operation CLI commands whose help surface is owned by `htmlcut-core`.
+/// Canonical non-operation CLI commands whose help surface is owned by `htmlcut-cli`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CliAuxCommandId {
     /// `htmlcut catalog`
@@ -127,7 +127,7 @@ pub(crate) fn assert_cli_aux_command_catalog_for_tests(descriptors: &[CliAuxComm
 }
 
 #[cfg(test)]
-fn cli_aux_command_catalog_validation_errors(
+pub(crate) fn cli_aux_command_catalog_validation_errors(
     descriptors: &[CliAuxCommandDescriptor],
 ) -> Vec<String> {
     let mut errors = Vec::new();

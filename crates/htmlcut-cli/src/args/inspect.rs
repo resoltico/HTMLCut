@@ -10,8 +10,8 @@ use crate::help::{
 };
 
 use super::{
-    CliInspectOutputMode, CliPatternMode, CliWhitespaceMode, DefinitionArgs, InspectOutputArgs,
-    SelectionArgs, SourceArgs, cli_choice_parser,
+    CliInspectOutputMode, CliPatternMode, CliWhitespaceMode, DefinitionArgs, FileWriteArgs,
+    InspectOutputArgs, SelectionArgs, SourceArgs, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -68,8 +68,13 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) preview_chars: usize,
 
     /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) output_file: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 }
 
 #[derive(Debug, Args)]
@@ -97,6 +102,9 @@ pub(crate) struct InspectSelectArgs {
 
     #[command(flatten)]
     pub(crate) output: InspectOutputArgs,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 }
 
 #[derive(Debug, Args)]
@@ -144,4 +152,7 @@ pub(crate) struct InspectSliceArgs {
 
     #[command(flatten)]
     pub(crate) output: InspectOutputArgs,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 }

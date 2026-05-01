@@ -1,5 +1,7 @@
 use std::process::Command;
 
+use xtask::{assert_known_fuzz_target, fuzz_smoke_targets};
+
 fn run_xtask_help(args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
         .args(args)
@@ -17,6 +19,22 @@ fn run_xtask_help(args: &[&str]) -> String {
     String::from_utf8(output.stdout).expect("utf8 help output")
 }
 
+fn xtask_help_examples(help: &str) -> Vec<&str> {
+    help.lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("cargo xtask "))
+        .collect()
+}
+
+fn run_xtask_example_help(example: &str) -> String {
+    let args = example
+        .split_ascii_whitespace()
+        .skip(2)
+        .chain(["--help"])
+        .collect::<Vec<_>>();
+    run_xtask_help(&args)
+}
+
 #[test]
 fn root_help_describes_each_maintained_task() {
     let help = run_xtask_help(&["--help"]);
@@ -26,7 +44,49 @@ fn root_help_describes_each_maintained_task() {
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
     assert!(help.contains("Refresh the checked-in htmlcut-core semver baseline."));
     assert!(help.contains("cargo xtask check"));
-    assert!(help.contains("cargo xtask refresh-semver-baseline --git-ref v6.0.0"));
+    assert!(help.contains("cargo xtask refresh-semver-baseline --git-ref v7.0.0"));
+}
+
+#[test]
+fn root_help_examples_parse_against_the_live_cli_surface() {
+    let help = run_xtask_help(&["--help"]);
+    let examples = xtask_help_examples(&help);
+
+    assert_eq!(examples.len(), 5, "root help example inventory drifted");
+
+    assert_eq!(
+        examples
+            .iter()
+            .copied()
+            .filter(|line| !line.starts_with("cargo xtask fuzz-smoke --target "))
+            .collect::<Vec<_>>(),
+        vec![
+            "cargo xtask check",
+            "cargo xtask semver-check",
+            "cargo xtask coverage",
+            "cargo xtask refresh-semver-baseline --git-ref v7.0.0",
+        ]
+    );
+
+    for example in &examples {
+        let example_help = run_xtask_example_help(example);
+        assert!(
+            !example_help.is_empty(),
+            "example should parse and emit help: {example}"
+        );
+    }
+
+    let fuzz_example = examples
+        .iter()
+        .find(|line| line.starts_with("cargo xtask fuzz-smoke --target "))
+        .expect("fuzz-smoke example");
+    let target = fuzz_example
+        .split_ascii_whitespace()
+        .last()
+        .expect("fuzz-smoke target");
+
+    assert_known_fuzz_target(target).expect("canonical fuzz target");
+    assert!(fuzz_smoke_targets().contains(&target));
 }
 
 #[test]
@@ -43,4 +103,18 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
 
     let semver_help = run_xtask_help(&["refresh-semver-baseline", "--help"]);
     assert!(semver_help.contains("Refresh the checked-in htmlcut-core semver baseline"));
+}
+
+#[test]
+fn invalid_fuzz_target_errors_readably_without_debug_quotes() {
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["fuzz-smoke", "--target", "not-real"])
+        .output()
+        .expect("run xtask invalid fuzz target");
+
+    assert!(!output.status.success(), "unknown fuzz target should fail");
+
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("xtask: unknown fuzz target `not-real`"));
+    assert!(!stderr.contains("xtask: \"unknown fuzz target"));
 }

@@ -1,21 +1,9 @@
-<!--
-AFAD:
-  afad: "4.0"
-  version: "6.0.0"
-  domain: PROTOCOL
-  updated: "2026-04-29"
-RETRIEVAL_HINTS:
-  keywords: [agents, codex, repository protocol, load order, precedence, quality gates, documentation routing]
-  questions: [how should an agent enter this repository?, what protocols must be loaded before changes?, what final summary format does this repo expect?]
-  related: [.codex/UNIVERSAL_ENGINEERING_CONTRACT.md, .codex/AGENTS_RUST195_CARGO.md, .codex/PROTOCOL_AFAD.md]
--->
-
 # AGENTS.md — Agent Entry Protocol
 
-**Version:** 2.2.0
-**Updated:** 2026-04-29
+**Version:** 2.3.0
+**Updated:** 2026-04-30
 
-This file is the repository entry point for agent work. It defines load order, precedence, repository-wide exceptions, and the universal minimum that applies before any specialized language, framework, database/native, or documentation rule.
+This file is the repository entry point for agent work. It defines load order, precedence, repository-wide exceptions, and the universal minimum that applies before any specialized language, framework, database/native, domain-modeling, or documentation rule.
 
 ## 0. Frame
 
@@ -33,7 +21,7 @@ A passing build, a closed issue, or a generated patch is not the outcome.
 When opening a repository, load context in this order:
 
 1. Read this file completely.
-2. Load `.codex/UNIVERSAL_ENGINEERING_CONTRACT.md` (v2.0.0+). This is the cross-language engineering contract.
+2. Load `.codex/UNIVERSAL_ENGINEERING_CONTRACT.md` (v2.1.0+). This is the cross-language engineering contract.
 3. Load `.codex/AGENTS_EXTRA.md` if it exists. This contains project-specific instructions.
 4. Load the language/runtime protocol for each touched surface:
    - Java 26+ / Gradle: `.codex/AGENTS_JAVA26_GRADLE.md` (v2.0.0+)
@@ -44,7 +32,8 @@ When opening a repository, load context in this order:
    - Tauri 2.10.x: `.codex/AGENTS_TAURI210.md` (v2.0.0+)
 6. Load the database/native dependency protocol for each touched surface:
    - SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0: `.codex/AGENTS_SQLITE3MC233_SQLITE353.md` (v2.0.0+)
-7. For documentation authoring, documentation refactoring, or code changes that alter documented public contracts, load `.codex/PROTOCOL_AFAD.md` unless the only touched document is the repository root `README.md`.
+7. Load the domain-modeling lens **only when the change touches business meaning**: `.codex/DOMAIN_DRIVEN_DESIGN_LENS.md` (v1.0.0+). Triggers include domain state, business rules, workflow names, commands, domain events, permissions, policies, calculations, lifecycle transitions, user-facing business terms, or integration contracts between models. Do not load for purely mechanical work — build wiring, generic plumbing, infrastructure with no domain meaning. The Universal Engineering Contract §1.7 *Domain meaning gate* is the formal trigger.
+8. For documentation authoring, documentation refactoring, or code changes that alter documented public contracts, load `.codex/PROTOCOL_AFAD.md` unless the only touched document is the repository root `README.md`.
 
 If a referenced file is absent, continue with the best available context and state the missing file in the work summary when it matters.
 
@@ -62,9 +51,10 @@ Precedence order:
 4. Applicable application-framework protocol.
 5. Applicable language/runtime-specific protocol.
 6. Applicable database/native dependency protocol.
-7. Applicable documentation protocol.
-8. Universal Engineering Contract.
-9. General language, framework, ecosystem, and documentation norms.
+7. Applicable domain-modeling lens (when the gate fires).
+8. Applicable documentation protocol.
+9. Universal Engineering Contract.
+10. General language, framework, ecosystem, and documentation norms.
 
 When instructions conflict, prefer the stricter or more specific instruction unless it would make the task incorrect. Surface the conflict rather than guessing.
 
@@ -78,6 +68,8 @@ For every non-trivial change, build the smallest useful system map (per Universa
 - **Invariant:** What must remain true after the change?
 - **Justification:** Can you explain *why* each touched part is the way it is, in terms of the world it maps to? If not, surface that as a known gap rather than a confident edit.
 - **Re-cueing:** Where should the cues that help the next reader rebuild this slice of theory live? What part of the relevant theory could not be written down, and who currently holds it?
+
+If the change touches business meaning, additionally apply the UEC §1.7 *Domain meaning gate* and the Domain-Driven Design Lens. Do not force the lens onto mechanical work.
 
 Use this map to decide what to change, how far to widen the change, what to verify, what to document, and what to flag as unresolved.
 
@@ -98,9 +90,13 @@ Database/native dependency surfaces:
 
 - SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0 surfaces use `.codex/AGENTS_SQLITE3MC233_SQLITE353.md` in addition to any applicable language or framework protocol.
 
+Domain-modeling surfaces:
+
+- Changes that touch business meaning, business rules, business state, workflows, commands, domain events, permissions, policies, calculations, lifecycle transitions, user-facing business terms, or integration contracts between models additionally use `.codex/DOMAIN_DRIVEN_DESIGN_LENS.md`. The lens is loaded conditionally, not by language. Touching Java does not mean DDD; touching the *billing* module of a Java app does. Always run the lens triage (lens §1) before applying its tactical chapters.
+
 Other surfaces:
 
-- Other languages, runtimes, frameworks, databases, and native dependencies use the Universal Engineering Contract plus repository-specific instructions. Do not apply Java-, Kotlin-, Python-, Rust-, Tauri-, or SQLite3MC-specific rules to unrelated systems unless the repository explicitly asks for them.
+- Other languages, runtimes, frameworks, databases, and native dependencies use the Universal Engineering Contract plus repository-specific instructions. Do not apply Java-, Kotlin-, Python-, Rust-, Tauri-, SQLite3MC-, or DDD-specific rules to unrelated systems unless the repository explicitly asks for them.
 - If a repository spans multiple languages, frameworks, or native dependencies, use the relevant protocol for each touched surface and the Universal Engineering Contract across all boundaries.
 
 ## 5. Documentation dispatch and root README exception
@@ -123,7 +119,7 @@ Nested `README.md` files are governed by their actual role. If a nested README i
 
 ## 6. Work summary requirement
 
-For non-trivial changes, the final work summary must follow the Universal Engineering Contract §9 output template (Truth, Evidence, Consequence, Invariant, Justification, Re-cueing). Keep the summary proportional to the risk of the change. Silence on justification gaps and inexpressible theory claims a theory you do not have.
+For non-trivial changes, the final work summary must follow the Universal Engineering Contract §9 output template (Truth, Evidence, Consequence, Invariant, Justification, Re-cueing). For changes that fired the §1.7 domain-meaning gate, also include the proportional domain-design block defined in UEC §9. Keep the summary proportional to the risk of the change. Silence on justification gaps and inexpressible theory claims a theory you do not have.
 
 ## 7. Standing working norms
 
@@ -158,12 +154,12 @@ The Universal Engineering Contract's "next improvement is a separate slice" rule
 Per Universal Engineering Contract §0, in concrete operational form:
 
 - fix root causes, not symptoms;
-- prefer clean, decisive architecture over compatibility-preserving compromises;
-- breaking refactors are welcome and preferred when they are the correct engineering answer;
+- choose clean, decisive architecture over compatibility-preserving compromises;
+- choose breaking refactors when they are the correct engineering answer;
 - do not add backwards-compatibility layers, migration shims, transitional APIs, or legacy-preserving glue unless genuinely unavoidable;
 - when a shim is genuinely unavoidable, defend the decision with proof — name the consumer, the contract, and the removal trigger;
 - treat compatibility shims and migrations as technical debt;
-- break up god-files where appropriate.
+- break up god-files when you encounter them.
 
 ### 7.5 Quality gates
 
@@ -176,6 +172,8 @@ If the project has a standard check script, use it. Include relevant build, test
 Tests must assert the corrected or newly intended behavior. Do not merely loosen tests, broaden assertions, or skip tests to tolerate broken behavior.
 
 For projects with fuzzing, property tests, randomized tests, or seed corpora: update them where relevant; add or revise seeds carefully to avoid skewing the corpus toward only the discovered cases; run the relevant fuzz/property checks where feasible, including live hands-on fuzzing when the project supports it.
+
+For domain-touching work, prefer tests that state the local language: given a domain situation, when a command or event occurs, then the invariant or state transition holds.
 
 ### 7.7 Documentation, CHANGELOG, and public-facing artifacts
 
@@ -193,13 +191,21 @@ The same public-facing rule applies to README, release notes, examples, error me
 
 Apply the project's specified language, runtime, framework, and platform baseline when modernizing or refactoring code. Do not assume a baseline the project does not specify, and do not silently raise a baseline.
 
-If the touched surface has a protocol in this stack (Java/Kotlin/Python/Rust/Tauri/SQLite3MC), follow it. If it does not, fall back to the Universal Engineering Contract plus repository-specific instructions per §4.
+If the touched surface has a protocol in this stack (Java/Kotlin/Python/Rust/Tauri/SQLite3MC/DDD), follow it. If it does not, fall back to the Universal Engineering Contract plus repository-specific instructions per §4.
 
 ### 7.9 Final response
 
 For non-trivial work, the final report combines two shapes:
 
-- the Universal Engineering Contract §9 output template (Truth, Evidence, Consequence, Invariant, Justification, Re-cueing) for the structural part;
+- the Universal Engineering Contract §9 output template (Truth, Evidence, Consequence, Invariant, Justification, Re-cueing) for the structural part, plus the conditional domain-design block when §1.7 fired;
 - plus the operational items: what was done; breaking refactors performed (if any); tests, fuzzing, examples, docs, changelog updates; quality-gate commands run and final results; only genuinely blocked items, with precise reasons.
 
 Keep the report proportional to risk. For tiny edits, a concise sentence with verification is enough.
+
+## 7.10 No emoji
+
+Do not add, retain, or introduce emoji anywhere. This rule applies across all programming languages, markup languages, documentation formats, and plain text.
+
+This includes, without limitation, source code, inline comments, documentation comments, docstrings, commit messages, changelogs, release notes, configuration files, documentation, and this AGENTS.md file.
+
+There are no exceptions. Remove any emoji encountered while creating, editing, reviewing, or refactoring content.

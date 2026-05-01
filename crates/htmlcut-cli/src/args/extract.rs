@@ -1,7 +1,8 @@
 use clap::Args;
 
 use super::{
-    CliPatternMode, DefinitionArgs, ExtractOutputArgs, SelectionArgs, SourceArgs, cli_choice_parser,
+    CliPatternMode, DefinitionArgs, ExtractOutputArgs, FileWriteArgs, SelectionArgs, SourceArgs,
+    cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -21,6 +22,9 @@ pub(crate) struct SelectArgs {
 
     #[command(flatten)]
     pub(crate) output: ExtractOutputArgs,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 }
 
 #[derive(Debug, Args)]
@@ -60,4 +64,7 @@ pub(crate) struct SliceArgs {
 
     #[command(flatten)]
     pub(crate) output: ExtractOutputArgs,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 }

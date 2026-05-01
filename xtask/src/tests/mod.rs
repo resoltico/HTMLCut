@@ -68,6 +68,7 @@ esac
     .expect("write empty release-targets.sh");
 }
 
+mod app;
 mod command_exec;
 mod coverage;
 mod docs;

@@ -22,6 +22,42 @@ pub(super) fn identifier_errors(
         .collect()
 }
 
+pub(super) fn operation_identifier_errors(
+    display_path: &str,
+    text: &str,
+    operation_ids: &BTreeSet<&'static str>,
+) -> Vec<String> {
+    let pattern =
+        Regex::new(r"\b[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+\b").expect("valid operation regex");
+    let known_prefixes = operation_ids
+        .iter()
+        .filter_map(|operation_id| operation_id.split_once('.').map(|(prefix, _)| prefix))
+        .collect::<BTreeSet<_>>();
+    let known_suffixes = operation_ids
+        .iter()
+        .filter_map(|operation_id| operation_id.rsplit_once('.').map(|(_, suffix)| suffix))
+        .collect::<BTreeSet<_>>();
+
+    let unknown_identifiers = pattern
+        .find_iter(text)
+        .map(|matched| matched.as_str())
+        .filter(|identifier| !operation_ids.contains(identifier))
+        .filter(|identifier| {
+            identifier
+                .split_once('.')
+                .is_some_and(|(prefix, _)| known_prefixes.contains(prefix))
+                || identifier
+                    .rsplit_once('.')
+                    .is_some_and(|(_, suffix)| known_suffixes.contains(suffix))
+        })
+        .collect::<BTreeSet<_>>();
+
+    unknown_identifiers
+        .into_iter()
+        .map(|identifier| format!("{display_path} references unknown operation ID: {identifier}"))
+        .collect()
+}
+
 pub(super) fn inventory_errors(
     repo_root: &Path,
     display_path: &str,
@@ -47,7 +83,7 @@ pub(super) fn inventory_errors(
     }
 
     if display_path == "docs/operations.md" {
-        let documented = documented_operation_ids(text);
+        let documented = documented_operation_ids(text, operation_ids);
         let missing = operation_ids
             .iter()
             .filter(|operation_id| !documented.contains(**operation_id))
@@ -105,13 +141,15 @@ fn documented_schema_names(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn documented_operation_ids(text: &str) -> BTreeSet<String> {
-    let pattern =
-        Regex::new(r"\b(?:document|source|select|slice)\.(?:parse|inspect|preview|extract)\b")
-            .expect("valid operation regex");
-    pattern
-        .find_iter(text)
-        .map(|matched| matched.as_str().to_owned())
+fn documented_operation_ids(
+    text: &str,
+    operation_ids: &BTreeSet<&'static str>,
+) -> BTreeSet<String> {
+    operation_ids
+        .iter()
+        .copied()
+        .filter(|operation_id| text.contains(operation_id))
+        .map(ToOwned::to_owned)
         .collect()
 }
 

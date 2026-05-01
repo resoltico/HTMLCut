@@ -439,7 +439,7 @@ fn tar_octal_field(field: &[u8]) -> usize {
 }
 
 #[test]
-fn release_smoke_script_checks_the_canonical_htmlcut_version_banner() {
+fn release_smoke_script_checks_the_canonical_version_and_real_extraction_flow() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
@@ -448,6 +448,22 @@ fn release_smoke_script_checks_the_canonical_htmlcut_version_banner() {
 
     assert!(script.contains("grep \"^HTMLCut ${version}$\""));
     assert!(!script.contains("grep \"^htmlcut ${version}$\""));
+    assert!(script.contains("--emit-request-file"));
+    assert!(script.contains("packaged README.md leaked source-build instructions"));
+    assert!(script.contains("request-file replay drifted"));
+}
+
+#[test]
+fn release_build_script_generates_a_package_specific_readme() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let script = fs::read_to_string(repo_root.join("scripts").join("build-release-artifact.sh"))
+        .expect("read build-release-artifact.sh");
+
+    assert!(script.contains("write_packaged_readme"));
+    assert!(script.contains("package-specific install and verification guide"));
+    assert!(!script.contains("sed '/^<!--$/,/^-->$/d' \"${repo_root}/README.md\""));
 }
 
 #[test]

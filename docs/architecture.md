@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: ARCHITECTURE
 updated: "2026-04-29"
 route:
@@ -64,13 +64,14 @@ broader `htmlcut-core` API, and not a CLI command.
 - canonical operation IDs and operation catalog entries
 - canonical CLI choice domains and spellings for match, value, output, pattern, whitespace, and
   fetch-preflight modes
-- canonical CLI help metadata for the maintained command surfaces, including display summaries,
-  discovery narratives, and operation-analysis guidance that the CLI renders without rewriting
 
 `htmlcut-cli` owns:
 
 - argument parsing
-- clap tree assembly from the core-owned command/help contracts
+- clap tree assembly from the `htmlcut_cli::contract` command/help registries
+- canonical CLI command/help metadata in `htmlcut_cli::contract`, including display summaries,
+  discovery narratives, operation-analysis guidance, examples, and command constraints that the
+  CLI renders without rewriting
 - human vs JSON rendering
 - bundles
 - exit codes
@@ -127,16 +128,16 @@ let schemas = schema_catalog();
 assert!(!schemas.is_empty());
 ```
 
-The catalog is owned by `htmlcut-core`. The CLI projects that same catalog and the same
-core-owned CLI command-contract registry; it does not maintain a separate capability map or a
-shadow command-contract builder.
+The catalog is owned by `htmlcut-core`. The CLI projects that same catalog and the
+`htmlcut_cli::contract` command-contract registry; it does not maintain a separate capability map
+or a shadow command-contract builder.
 
 That ownership line is enforced, not merely described. The maintainer gate parses the real clap
-command tree and defaulted arguments and fails if they drift away from the core-owned CLI
-contract registry. The CLI help surface is expected to render the same core-owned summaries,
-analysis text, mode facts, default overrides, notes, and examples instead of hand-authoring a
-second behavioral description. The CLI also parses the core-owned choice types directly instead of
-defining its own parallel enums for those user-facing values.
+command tree and defaulted arguments and fails if they drift away from the `htmlcut_cli::contract`
+registry. The CLI help surface is expected to render the same canonical summaries, analysis text,
+mode facts, default overrides, notes, and examples instead of hand-authoring a second behavioral
+description. The CLI also parses the canonical choice types directly instead of defining its own
+parallel enums for those user-facing values.
 
 For CLI-exposed operations, the catalog also carries a machine-readable command contract:
 

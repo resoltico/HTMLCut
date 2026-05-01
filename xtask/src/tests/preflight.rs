@@ -56,7 +56,7 @@ fn coverage_and_fuzz_preflight_helpers_report_missing_prerequisites() {
         |_| true,
     )
     .expect("missing cargo-fuzz");
-    assert!(missing_cargo_fuzz.contains("cargo install cargo-fuzz --locked"));
+    assert!(missing_cargo_fuzz.contains("install-contributor-cargo-tools.sh cargo-fuzz"));
 
     let missing_fuzz_clang = crate::preflight::fuzz_smoke_preflight_error_for_tests(
         "nightly-x86_64-unknown-linux-gnu\n",
@@ -303,7 +303,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             assert!(
                 error
                     .to_string()
-                    .contains("cargo install cargo-fuzz --locked")
+                    .contains("install-contributor-cargo-tools.sh cargo-fuzz")
             );
         },
     );

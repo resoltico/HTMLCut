@@ -24,16 +24,17 @@ pub(crate) use self::inspect::{
     InspectArgs, InspectCommands, InspectSelectArgs, InspectSliceArgs, InspectSourceArgs,
 };
 pub(crate) use self::shared::{
-    DefinitionArgs, ExtractOutputArgs, GlobalArgs, InspectOutputArgs, SelectionArgs, SourceArgs,
+    DefinitionArgs, ExtractOutputArgs, FileWriteArgs, GlobalArgs, InspectOutputArgs, SelectionArgs,
+    SourceArgs,
 };
 
 pub(crate) type CliPatternMode = htmlcut_core::PatternMode;
-pub(crate) type CliMatchMode = htmlcut_core::cli_contract::CliSelectionMode;
+pub(crate) type CliMatchMode = crate::contract::CliSelectionMode;
 pub(crate) type CliValueMode = htmlcut_core::ValueType;
-pub(crate) type CliOutputMode = htmlcut_core::cli_contract::CliOutputMode;
-pub(crate) type CliInspectOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
-pub(crate) type CliCatalogOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
-pub(crate) type CliSchemaOutputMode = htmlcut_core::cli_contract::CliTextJsonOutputMode;
+pub(crate) type CliOutputMode = crate::contract::CliOutputMode;
+pub(crate) type CliInspectOutputMode = crate::contract::CliTextJsonOutputMode;
+pub(crate) type CliCatalogOutputMode = crate::contract::CliTextJsonOutputMode;
+pub(crate) type CliSchemaOutputMode = crate::contract::CliTextJsonOutputMode;
 pub(crate) type CliWhitespaceMode = htmlcut_core::WhitespaceMode;
 pub(crate) type CliFetchPreflightMode = htmlcut_core::FetchPreflightMode;
 

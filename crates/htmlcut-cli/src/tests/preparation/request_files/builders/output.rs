@@ -27,6 +27,7 @@ fn request_file_output_helpers_create_parent_dirs_and_preserve_stderr_ordering()
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(nested_output.clone()),
+            write_mode: create_fresh_write_mode(),
             post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code: 0,
@@ -51,6 +52,7 @@ fn request_file_output_helpers_create_parent_dirs_and_preserve_stderr_ordering()
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(ordered_output.clone()),
+            write_mode: create_fresh_write_mode(),
             post_write_stderr: vec![
                 "htmlcut: wrote output file to ordered/output/report.txt".to_owned(),
             ],
@@ -123,6 +125,7 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(fixture.tempdir.path().to_path_buf()),
+            write_mode: create_fresh_write_mode(),
             post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code: 0,
@@ -147,6 +150,7 @@ fn request_file_output_helpers_propagate_stderr_failures_when_output_reporting_f
         ExecutionOutcome {
             stdout: Some("Hello".to_owned()),
             output_file: Some(fixture.tempdir.path().to_path_buf()),
+            write_mode: create_fresh_write_mode(),
             post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code: 0,

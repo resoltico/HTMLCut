@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: SETUP
 updated: "2026-04-29"
 route:
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=6.0.0
+VERSION=7.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "6.0.0"
+$Version = "7.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -79,7 +79,7 @@ Build from source with the repo-pinned Rust `1.95.0` toolchain:
 rustup toolchain install 1.95.0 --profile minimal
 source "$HOME/.cargo/env"
 cargo build --locked -p htmlcut-cli --bin htmlcut
-./target/debug/htmlcut --help
+cargo run -- --help
 ```
 
 `rust-toolchain.toml` is the canonical exact repo toolchain pin, and `Cargo.toml`
@@ -206,6 +206,8 @@ htmlcut select ./page.html \
   --emit-request-file ./article-links.json
 ```
 
+If `./article-links.json` already exists, rerun with `--overwrite` or choose a fresh path.
+
 Run that saved request again:
 
 ```bash
@@ -219,6 +221,8 @@ htmlcut select ./page.html \
   --css article \
   --output-file ./article.txt
 ```
+
+If `./article.txt` already exists, rerun with `--overwrite` or choose a fresh path.
 
 The deeper output rules, bundle behavior, request-file constraints, and discovery surfaces live in
 [cli.md](cli.md).

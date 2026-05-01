@@ -13,8 +13,11 @@ pub const EXIT_CODE_EXTRACTION: i32 = 4;
 pub const EXIT_CODE_OUTPUT: i32 = 5;
 
 mod args;
+/// Canonical CLI command contracts, help documents, and discovery helpers owned by `htmlcut-cli`.
+pub mod contract;
 mod error;
 mod execute;
+mod file_output;
 mod help;
 mod lookup;
 mod metadata;

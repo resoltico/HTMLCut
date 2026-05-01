@@ -8,6 +8,10 @@ use crate::args::{
     InspectSelectArgs, InspectSliceArgs, InspectSourceArgs, SchemaArgs, SelectArgs, SliceArgs,
 };
 use crate::error::{exit_code_for_error, primary_source_inspection_error, with_source_load_steps};
+use crate::file_output::{
+    FileWriteMode, validate_bundle_target, validate_output_file_target,
+    validate_request_file_target,
+};
 use crate::lookup;
 use crate::prepare::{
     PreparedExtraction, PreparedPreview, PreparedSourceInspection, build_catalog_report,
@@ -19,6 +23,19 @@ use crate::render::{
 };
 
 pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
+    if let Some(path) = args.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return error_outcome(
+            "catalog".to_owned(),
+            args.output == CliCatalogOutputMode::Json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+
     let report = match build_catalog_report(args.operation.as_deref()) {
         Ok(report) => report,
         Err(error) => {
@@ -26,6 +43,7 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
                 "catalog".to_owned(),
                 args.output == CliCatalogOutputMode::Json,
                 args.output_file,
+                write_mode,
                 error,
             );
         }
@@ -35,13 +53,16 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
     let stdout = match args.output {
         CliCatalogOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
-            Err(error) => return error_outcome("catalog".to_owned(), false, None, error),
+            Err(error) => {
+                return error_outcome("catalog".to_owned(), false, None, write_mode, error);
+            }
         },
         CliCatalogOutputMode::Text => render_catalog_text(&report),
     };
     ExecutionOutcome {
         stdout: Some(stdout),
         output_file: args.output_file,
+        write_mode,
         post_write_stderr,
         stderr: Vec::new(),
         exit_code: 0,
@@ -49,6 +70,19 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
 }
 
 pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
+    if let Some(path) = args.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return error_outcome(
+            "schema".to_owned(),
+            args.output == CliSchemaOutputMode::Json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+
     let report = match build_schema_report(args.name.as_deref(), args.schema_version) {
         Ok(report) => report,
         Err(error) => {
@@ -56,6 +90,7 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
                 "schema".to_owned(),
                 args.output == CliSchemaOutputMode::Json,
                 args.output_file,
+                write_mode,
                 error,
             );
         }
@@ -65,13 +100,16 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
     let stdout = match args.output {
         CliSchemaOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
-            Err(error) => return error_outcome("schema".to_owned(), false, None, error),
+            Err(error) => {
+                return error_outcome("schema".to_owned(), false, None, write_mode, error);
+            }
         },
         CliSchemaOutputMode::Text => render_schema_text(&report),
     };
     ExecutionOutcome {
         stdout: Some(stdout),
         output_file: args.output_file,
+        write_mode,
         post_write_stderr,
         stderr: Vec::new(),
         exit_code: 0,
@@ -80,7 +118,41 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
 
 pub(crate) fn run_select(args: SelectArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
     let prefers_json = extract_prefers_json(&args.output);
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     let output_file = args.output.output_file.clone();
+    if let Some(path) = args.definition.emit_request_file.as_deref()
+        && let Err(error) = validate_request_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SelectExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SelectExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.bundle.as_deref()
+        && let Err(error) = validate_bundle_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SelectExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
     let prepared = match PreparedExtraction::from_select_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -88,16 +160,51 @@ pub(crate) fn run_select(args: SelectArgs, verbose: u8, quiet: bool) -> Executio
                 htmlcut_core::OperationId::SelectExtract,
                 prefers_json,
                 output_file,
+                write_mode,
                 error,
             );
         }
     };
-    execute_extraction(prepared)
+    execute_extraction(prepared, write_mode)
 }
 
 pub(crate) fn run_slice(args: SliceArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
     let prefers_json = extract_prefers_json(&args.output);
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     let output_file = args.output.output_file.clone();
+    if let Some(path) = args.definition.emit_request_file.as_deref()
+        && let Err(error) = validate_request_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SliceExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SliceExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.bundle.as_deref()
+        && let Err(error) = validate_bundle_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SliceExtract,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
     let prepared = match PreparedExtraction::from_slice_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -105,11 +212,12 @@ pub(crate) fn run_slice(args: SliceArgs, verbose: u8, quiet: bool) -> ExecutionO
                 htmlcut_core::OperationId::SliceExtract,
                 prefers_json,
                 output_file,
+                write_mode,
                 error,
             );
         }
     };
-    execute_extraction(prepared)
+    execute_extraction(prepared, write_mode)
 }
 
 pub(crate) fn run_inspect_source(
@@ -118,7 +226,19 @@ pub(crate) fn run_inspect_source(
     quiet: bool,
 ) -> ExecutionOutcome {
     let prefers_json = args.output == CliInspectOutputMode::Json;
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     let output_file = args.output_file.clone();
+    if let Some(path) = args.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SourceInspect,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
     let prepared = match PreparedSourceInspection::new_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -126,6 +246,7 @@ pub(crate) fn run_inspect_source(
                 htmlcut_core::OperationId::SourceInspect,
                 prefers_json,
                 output_file,
+                write_mode,
                 error,
             );
         }
@@ -143,17 +264,22 @@ pub(crate) fn run_inspect_source(
                 Ok(stdout) => ExecutionOutcome {
                     stdout: Some(stdout),
                     output_file: prepared.output_file,
+                    write_mode,
                     post_write_stderr: Vec::new(),
                     stderr: Vec::new(),
                     exit_code: exit_code_for_error(&error),
                 },
-                Err(render_error) => {
-                    error_outcome(prepared.command.clone(), false, None, render_error)
-                }
+                Err(render_error) => error_outcome(
+                    prepared.command.clone(),
+                    false,
+                    None,
+                    write_mode,
+                    render_error,
+                ),
             };
         }
 
-        return error_outcome(prepared.command.clone(), false, None, error);
+        return error_outcome(prepared.command.clone(), false, None, write_mode, error);
     }
 
     let post_write_stderr = output_file_notice(
@@ -164,7 +290,9 @@ pub(crate) fn run_inspect_source(
     let stdout = match prepared.output {
         CliInspectOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
-            Err(error) => return error_outcome(prepared.command.clone(), false, None, error),
+            Err(error) => {
+                return error_outcome(prepared.command.clone(), false, None, write_mode, error);
+            }
         },
         CliInspectOutputMode::Text => {
             render_source_inspection_text(&report, prepared.preview_chars)
@@ -173,6 +301,7 @@ pub(crate) fn run_inspect_source(
     ExecutionOutcome {
         stdout: Some(stdout),
         output_file: prepared.output_file,
+        write_mode,
         post_write_stderr,
         stderr: if prepared.quiet {
             Vec::new()
@@ -189,7 +318,30 @@ pub(crate) fn run_inspect_select(
     quiet: bool,
 ) -> ExecutionOutcome {
     let prefers_json = args.output.output == CliInspectOutputMode::Json;
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     let output_file = args.output.output_file.clone();
+    if let Some(path) = args.definition.emit_request_file.as_deref()
+        && let Err(error) = validate_request_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SelectPreview,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SelectPreview,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
     let prepared = match PreparedPreview::from_select_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -197,11 +349,12 @@ pub(crate) fn run_inspect_select(
                 htmlcut_core::OperationId::SelectPreview,
                 prefers_json,
                 output_file,
+                write_mode,
                 error,
             );
         }
     };
-    execute_preview(prepared)
+    execute_preview(prepared, write_mode)
 }
 
 pub(crate) fn run_inspect_slice(
@@ -210,7 +363,30 @@ pub(crate) fn run_inspect_slice(
     quiet: bool,
 ) -> ExecutionOutcome {
     let prefers_json = args.output.output == CliInspectOutputMode::Json;
+    let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     let output_file = args.output.output_file.clone();
+    if let Some(path) = args.definition.emit_request_file.as_deref()
+        && let Err(error) = validate_request_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SlicePreview,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
+    if let Some(path) = args.output.output_file.as_deref()
+        && let Err(error) = validate_output_file_target(path, write_mode)
+    {
+        return operation_error_outcome(
+            htmlcut_core::OperationId::SlicePreview,
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
+    }
     let prepared = match PreparedPreview::from_slice_with_logging(args, verbose, quiet) {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -218,23 +394,26 @@ pub(crate) fn run_inspect_slice(
                 htmlcut_core::OperationId::SlicePreview,
                 prefers_json,
                 output_file,
+                write_mode,
                 error,
             );
         }
     };
-    execute_preview(prepared)
+    execute_preview(prepared, write_mode)
 }
 
 fn operation_error_outcome(
     operation_id: htmlcut_core::OperationId,
     prefers_json: bool,
     output_file: Option<std::path::PathBuf>,
+    write_mode: FileWriteMode,
     error: crate::error::CliError,
 ) -> ExecutionOutcome {
     operation_error_outcome_with_report_command(
         operation_id,
         prefers_json,
         output_file,
+        write_mode,
         error,
         lookup::operation_report_command(operation_id).ok(),
     )
@@ -244,15 +423,17 @@ fn operation_error_outcome_with_report_command(
     operation_id: htmlcut_core::OperationId,
     prefers_json: bool,
     output_file: Option<std::path::PathBuf>,
+    write_mode: FileWriteMode,
     error: crate::error::CliError,
     report_command: Option<String>,
 ) -> ExecutionOutcome {
     match report_command {
-        Some(command) => error_outcome(command, prefers_json, output_file, error),
+        Some(command) => error_outcome(command, prefers_json, output_file, write_mode, error),
         None => error_outcome(
             operation_id.as_str().to_owned(),
             prefers_json,
             output_file,
+            write_mode,
             lookup::missing_operation_contract_error(operation_id, "report command"),
         ),
     }
@@ -263,6 +444,7 @@ pub(crate) fn operation_error_outcome_for_tests(
     operation_id: htmlcut_core::OperationId,
     prefers_json: bool,
     output_file: Option<std::path::PathBuf>,
+    write_mode: FileWriteMode,
     error: crate::error::CliError,
     report_command: Option<String>,
 ) -> ExecutionOutcome {
@@ -270,6 +452,7 @@ pub(crate) fn operation_error_outcome_for_tests(
         operation_id,
         prefers_json,
         output_file,
+        write_mode,
         error,
         report_command,
     )

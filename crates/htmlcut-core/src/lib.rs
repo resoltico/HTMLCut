@@ -3,8 +3,6 @@
 
 mod catalog;
 mod cli_choice;
-/// Canonical CLI command contracts, help documents, and discovery helpers owned by `htmlcut-core`.
-pub mod cli_contract;
 mod contracts;
 mod diagnostics;
 #[cfg(any(test, doctest))]

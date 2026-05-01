@@ -98,7 +98,7 @@ print_usage() {
     cat <<EOF
 Usage: ${command_name} <target-triple>
 
-Extract one maintained ./dist release archive and verify the packaged binary and legal files.
+Extract one maintained ./dist release archive and verify the packaged binary, package guide, and legal files.
 
 Supported target triples:
 $(release_target_triples | sed 's/^/  /')
@@ -164,13 +164,39 @@ main() {
     [[ -f "${extracted_package_dir}/LICENSE" ]] || htmlcut_die "missing packaged LICENSE"
     [[ -f "${extracted_package_dir}/NOTICE" ]] || htmlcut_die "missing packaged NOTICE"
     [[ -f "${extracted_package_dir}/PATENTS.md" ]] || htmlcut_die "missing packaged PATENTS.md"
+    grep "${target_triple}" "${extracted_package_dir}/README.md" >/dev/null
+    if grep -q "From source" "${extracted_package_dir}/README.md"; then
+        htmlcut_die "packaged README.md leaked source-build instructions"
+    fi
 
     if [[ "${target_triple}" != x86_64-pc-windows-msvc ]]; then
         [[ -x "${binary_path}" ]] || htmlcut_die "packaged binary is not executable: ${binary_path}"
     fi
 
     "${binary_path}" --version | tr -d '\r' | grep "^HTMLCut ${version}$"
-    "${binary_path}" --help | tr -d '\r' | grep "inspect"
+    local smoke_dir="${extract_root}/smoke-fixture"
+    local fixture_path="${smoke_dir}/page.html"
+    local request_path="${smoke_dir}/article-links.json"
+    mkdir -p "${smoke_dir}"
+    printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > "${fixture_path}"
+
+    local first_output
+    first_output="$(
+        "${binary_path}" select "${fixture_path}" \
+            --css 'article a.more' \
+            --value attribute \
+            --attribute href \
+            --emit-request-file "${request_path}" \
+            | tr -d '\r'
+    )"
+    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit request file ${request_path}"
+    [[ "${first_output}" == "../guide.html" ]] || htmlcut_die \
+        "packaged binary returned unexpected extraction output: ${first_output}"
+
+    local replay_output
+    replay_output="$("${binary_path}" select --request-file "${request_path}" | tr -d '\r')"
+    [[ "${replay_output}" == "${first_output}" ]] || htmlcut_die \
+        "request-file replay drifted: expected ${first_output}, got ${replay_output}"
 
     printf 'Smoke-tested %s\n' "${package_name}"
 }

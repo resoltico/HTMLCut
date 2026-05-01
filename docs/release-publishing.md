@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: RELEASE
 updated: "2026-04-29"
 route:
@@ -179,19 +179,23 @@ gh release download vX.Y.Z \
   done < htmlcut-X.Y.Z-checksums.txt
 
   tar -xzf "./htmlcut-X.Y.Z-${HOST_TARGET}.tar.gz"
-  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | grep "^HTMLCut X.Y.Z$"
-  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --help | grep "inspect"
+  grep "${HOST_TARGET}" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
+  ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
+  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^HTMLCut X.Y.Z$"
+  printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-links.json)"
+  [ -f ./article-links.json ]
+  [ "${FIRST_OUTPUT}" = "../guide.html" ]
+  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select --request-file ./article-links.json)"
+  [ "${REPLAY_OUTPUT}" = "${FIRST_OUTPUT}" ]
 )
 
 rm -rf "$TMP_DIR"
 ```
 
-Do not declare the release complete until the checksum manifest validates and the downloaded
-host-native binary reports the target version.
-
-The `grep "^HTMLCut X.Y.Z$"` check intentionally validates only the first line because
-`htmlcut --version` is multi-line: it prints the version line first, then the product description
-from the workspace manifest.
+Do not declare the release complete until the checksum manifest validates, the packaged README
+identifies the target package without leaking source-build instructions, and the downloaded
+host-native binary completes one extraction-plus-request-replay flow from the extracted package.
 
 The release workflow already performs runtime smoke on each target's native runner. The local
 post-release command above is an additional asset-integrity check plus a host-native runtime

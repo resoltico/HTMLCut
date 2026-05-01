@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: CLI_LIBRARY
 updated: "2026-04-29"
 route:
@@ -26,6 +26,7 @@ Use `htmlcut_cli` when you need one of these exact adapter-level behaviors insid
 
 - execute the real CLI parser and rendering pipeline
 - inspect the canonical clap command tree
+- inspect the canonical CLI command/help contract through `htmlcut_cli::contract`
 - consume the typed CLI report documents that correspond to `catalog`, `schema`, extraction, and
   inspection commands
 - reason about CLI exit-code categories directly
@@ -44,7 +45,7 @@ surface as `Err(std::io::Error)` instead of being silently downgraded to a succe
 
 `command()` returns the canonical clap tree used by the binary itself. HTMLCut's docs-contract and
 CLI contract-lint surfaces use this to verify that help text and parsing behavior still match the
-core-owned command contracts.
+`htmlcut_cli::contract` registry.
 
 The published CLI crate enables `htmlcut-core/http-client`, so URL arguments keep working in the
 adapter even though bare `htmlcut-core` embeddings now opt into built-in HTTP loading explicitly.

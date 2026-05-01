@@ -123,6 +123,59 @@ create_release_archive() {
     esac
 }
 
+packaged_binary_invocation() {
+    local binary_name="$1"
+
+    if [[ "${binary_name}" == *.exe ]]; then
+        printf '.\\%s\n' "${binary_name}"
+    else
+        printf './%s\n' "${binary_name}"
+    fi
+}
+
+write_packaged_readme() {
+    local package_dir="$1"
+    local version="$2"
+    local target_triple="$3"
+    local binary_name="$4"
+    local binary_command="$5"
+
+    cat > "${package_dir}/README.md" <<EOF
+# HTMLCut ${version}
+
+This package contains the standalone HTMLCut CLI for \`${target_triple}\`.
+
+## Package Contents
+
+- \`${binary_name}\` — the packaged HTMLCut executable
+- \`README.md\` — package-specific install and verification guide
+- \`LICENSE\`, \`NOTICE\`, and \`PATENTS.md\` — legal notices for this package
+
+## Run It
+
+Run the binary from this directory or move it onto your PATH.
+
+\`\`\`bash
+${binary_command} --version
+\`\`\`
+
+## Quick Smoke
+
+Create a tiny fixture and extract one link:
+
+\`\`\`bash
+printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
+${binary_command} select ./page.html --css 'article a.more' --value attribute --attribute href
+\`\`\`
+
+## More
+
+- CLI guide: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/cli.md
+- Getting started: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/getting-started.md
+- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/core.md
+EOF
+}
+
 print_usage() {
     local command_name="$1"
 
@@ -186,6 +239,9 @@ main() {
     local compiled_binary_name
     compiled_binary_name="$(binary_name_for_target "${target_triple}")"
     readonly compiled_binary_name
+    local packaged_binary_command
+    packaged_binary_command="$(packaged_binary_invocation "${compiled_binary_name}")"
+    readonly packaged_binary_command
     local compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
     readonly compiled_binary_path
     local temp_root
@@ -220,9 +276,12 @@ main() {
     cp "${repo_root}/LICENSE" "${package_dir}/LICENSE"
     cp "${repo_root}/NOTICE" "${package_dir}/NOTICE"
     sed '/^<!--$/,/^-->$/d' "${repo_root}/PATENTS.md" > "${package_dir}/PATENTS.md"
-    sed '/^<!--$/,/^-->$/d' "${repo_root}/README.md" \
-        | sed "s|(docs/|(https://github.com/resoltico/HTMLCut/blob/v${version}/docs/|g" \
-        > "${package_dir}/README.md"
+    write_packaged_readme \
+        "${package_dir}" \
+        "${version}" \
+        "${target_triple}" \
+        "${compiled_binary_name}" \
+        "${packaged_binary_command}"
     create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
 
     printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"

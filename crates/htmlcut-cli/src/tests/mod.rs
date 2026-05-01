@@ -40,6 +40,76 @@ fn run_vec(args: Vec<String>) -> (i32, String, String) {
     )
 }
 
+fn default_file_write_args() -> FileWriteArgs {
+    FileWriteArgs::default()
+}
+
+fn create_fresh_write_mode() -> crate::file_output::FileWriteMode {
+    crate::file_output::FileWriteMode::CreateFresh
+}
+
+fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutcome {
+    crate::execute::execute_extraction(prepared, create_fresh_write_mode())
+}
+
+fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
+    crate::execute::execute_preview(prepared, create_fresh_write_mode())
+}
+
+fn error_outcome(
+    command: String,
+    prefers_json: bool,
+    output_file: Option<PathBuf>,
+    error: CliError,
+) -> ExecutionOutcome {
+    crate::execute::error_outcome(
+        command,
+        prefers_json,
+        output_file,
+        create_fresh_write_mode(),
+        error,
+    )
+}
+
+fn json_error_outcome(
+    command: String,
+    output_file: Option<PathBuf>,
+    error: CliError,
+) -> ExecutionOutcome {
+    crate::execute::json_error_outcome(command, output_file, create_fresh_write_mode(), error)
+}
+
+fn operation_error_outcome_for_tests(
+    operation_id: htmlcut_core::OperationId,
+    prefers_json: bool,
+    output_file: Option<PathBuf>,
+    error: CliError,
+    report_command: Option<String>,
+) -> ExecutionOutcome {
+    crate::execute::operation_error_outcome_for_tests(
+        operation_id,
+        prefers_json,
+        output_file,
+        create_fresh_write_mode(),
+        error,
+        report_command,
+    )
+}
+
+fn write_bundle(report: &ExtractionCommandReport, bundle: &BundlePaths) -> Result<(), CliError> {
+    crate::render::write_bundle(report, bundle, create_fresh_write_mode())
+}
+
+fn write_request_definition(
+    request_definition_output: &PendingExtractionDefinitionWrite,
+) -> Result<(), CliError> {
+    crate::execute::write_request_definition(request_definition_output, create_fresh_write_mode())
+}
+
+fn write_stdout_payload_for_tests(path: &Path, stdout_payload: &str) -> std::io::Result<()> {
+    crate::execute::write_stdout_payload_for_tests(path, stdout_payload, create_fresh_write_mode())
+}
+
 #[derive(Default)]
 struct BrokenPipeWriter;
 
@@ -116,8 +186,8 @@ fn render_long_help(command: &mut clap::Command) -> String {
 }
 
 fn parameter_allowed_values(
-    contract: &htmlcut_core::cli_contract::OperationCliContract,
-    parameter: htmlcut_core::cli_contract::CliParameterId,
+    contract: &crate::contract::OperationCliContract,
+    parameter: crate::contract::CliParameterId,
 ) -> Vec<String> {
     contract
         .parameters
@@ -128,25 +198,21 @@ fn parameter_allowed_values(
                 .allowed_values
                 .iter()
                 .copied()
-                .map(htmlcut_core::cli_contract::render_cli_value)
+                .map(crate::contract::render_cli_value)
                 .collect()
         })
         .unwrap_or_default()
 }
 
 fn parameter_default_value(
-    contract: &htmlcut_core::cli_contract::OperationCliContract,
-    parameter: htmlcut_core::cli_contract::CliParameterId,
+    contract: &crate::contract::OperationCliContract,
+    parameter: crate::contract::CliParameterId,
 ) -> Option<String> {
     contract
         .parameters
         .iter()
         .find(|descriptor| descriptor.id == parameter)
-        .and_then(|descriptor| {
-            descriptor
-                .default
-                .map(htmlcut_core::cli_contract::render_cli_value)
-        })
+        .and_then(|descriptor| descriptor.default.map(crate::contract::render_cli_value))
 }
 
 fn assert_command_path_registered(command: &clap::Command, command_path: &[&str]) {
@@ -201,6 +267,25 @@ fn workspace_package_field(manifest: &str, field: &str) -> Option<String> {
     }
 
     None
+}
+
+fn workspace_array_field(manifest: &str, field: &str) -> Option<Vec<String>> {
+    let prefix = format!("{field} = [");
+    let start = manifest.find(&prefix)? + prefix.len();
+    let rest = &manifest[start..];
+    let end = rest.find(']')?;
+
+    Some(
+        rest[..end]
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| line.trim_end_matches(','))
+            .map(|line| line.trim_matches('"'))
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+    )
 }
 
 fn fixture_result(value: Value, value_type: ValueType) -> ExtractionResult {

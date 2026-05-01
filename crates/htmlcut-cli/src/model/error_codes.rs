@@ -78,6 +78,8 @@ cli_error_codes! {
     PrimaryDiagnosticMissing => "CLI_PRIMARY_DIAGNOSTIC_MISSING",
     /// Writing a request definition file failed.
     RequestFileWriteFailed => "CLI_REQUEST_FILE_WRITE_FAILED",
+    /// A request-definition output path already exists and `--overwrite` was not supplied.
+    RequestFileExists => "CLI_REQUEST_FILE_EXISTS",
     /// The CLI operation catalog is missing a required surface.
     ContractMissing => "CLI_CONTRACT_MISSING",
     /// The user asked for an unknown canonical operation ID.
@@ -102,6 +104,10 @@ cli_error_codes! {
     AttributeRequired => "CLI_ATTRIBUTE_REQUIRED",
     /// Output-file mode requires a stdout-capable payload mode.
     OutputFileRequiresStdoutPayload => "CLI_OUTPUT_FILE_REQUIRES_STDOUT_PAYLOAD",
+    /// Writing the stdout payload into one file failed.
+    OutputFileWriteFailed => "CLI_OUTPUT_FILE_WRITE_FAILED",
+    /// A stdout output-file path already exists and `--overwrite` was not supplied.
+    OutputFileExists => "CLI_OUTPUT_FILE_EXISTS",
     /// The requested HTML output mode is invalid for the selected value mode.
     OutputHtmlInvalid => "CLI_OUTPUT_HTML_INVALID",
     /// `--output none` is only valid when a bundle is requested.
@@ -142,6 +148,8 @@ cli_error_codes! {
     SchemaVersionRequiresName => "CLI_SCHEMA_VERSION_REQUIRES_NAME",
     /// Creating the bundle directory failed.
     BundleDirectoryCreateFailed => "CLI_BUNDLE_DIRECTORY_CREATE_FAILED",
+    /// A bundle target path already exists and `--overwrite` was not supplied.
+    BundlePathExists => "CLI_BUNDLE_PATH_EXISTS",
     /// Writing the bundle HTML artifact failed.
     BundleHtmlWriteFailed => "CLI_BUNDLE_HTML_WRITE_FAILED",
     /// Writing the bundle report artifact failed.

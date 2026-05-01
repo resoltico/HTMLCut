@@ -1,10 +1,11 @@
-use crate::contracts::{
+use htmlcut_core::{
     DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_PREVIEW_CHARS, PatternMode, WhitespaceMode,
 };
 
 use super::common::{
-    common_definition_parameters, common_extract_parameters, common_inspect_output_parameters,
-    common_selection_parameters, common_source_parameters, request_file_aware_source_parameters,
+    common_definition_parameters, common_extract_parameters, common_filesystem_output_parameters,
+    common_inspect_output_parameters, common_selection_parameters, common_source_parameters,
+    request_file_aware_source_parameters,
 };
 use super::descriptors::{param_flag, param_option};
 use super::{
@@ -56,6 +57,7 @@ pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
         Vec::new(),
         "Write the stdout payload to exactly one file instead of stdout.",
     ));
+    parameters.extend(common_filesystem_output_parameters());
     parameters
 }
 
@@ -87,6 +89,7 @@ pub(super) fn inspect_select_parameters() -> Vec<CliParameterDescriptor> {
         "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
     ));
     parameters.extend(common_inspect_output_parameters());
+    parameters.extend(common_filesystem_output_parameters());
     parameters
 }
 
@@ -110,6 +113,7 @@ pub(super) fn inspect_slice_parameters() -> Vec<CliParameterDescriptor> {
         "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
     ));
     parameters.extend(common_inspect_output_parameters());
+    parameters.extend(common_filesystem_output_parameters());
     parameters
 }
 
@@ -127,6 +131,7 @@ pub(super) fn select_extract_parameters() -> Vec<CliParameterDescriptor> {
     ));
     parameters.extend(common_selection_parameters());
     parameters.extend(common_extract_parameters());
+    parameters.extend(common_filesystem_output_parameters());
     parameters
 }
 
@@ -136,6 +141,7 @@ pub(super) fn slice_extract_parameters() -> Vec<CliParameterDescriptor> {
     parameters.extend(slice_strategy_parameters(CliParameterSection::Source));
     parameters.extend(common_selection_parameters());
     parameters.extend(common_extract_parameters());
+    parameters.extend(common_filesystem_output_parameters());
     parameters
 }
 

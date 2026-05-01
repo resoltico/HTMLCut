@@ -4,6 +4,7 @@ use crate::error::{
     CliError, error_report_body, exit_code_for_error, json_error_diagnostics,
     primary_extraction_error, with_source_load_steps,
 };
+use crate::file_output::FileWriteMode;
 use crate::metadata::{ENGINE_NAME, HTMLCUT_VERSION, TOOL_NAME};
 use crate::model::{
     ERROR_COMMAND_REPORT_SCHEMA_NAME, ERROR_COMMAND_REPORT_SCHEMA_VERSION, ErrorCommandReport,
@@ -15,14 +16,18 @@ use crate::render::{
 };
 use htmlcut_core::{extract, preview_extraction};
 
-pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutcome {
+pub(crate) fn execute_extraction(
+    prepared: PreparedExtraction,
+    write_mode: FileWriteMode,
+) -> ExecutionOutcome {
     if let Some(request_definition_output) = prepared.request_definition_output.as_ref()
-        && let Err(error) = write_request_definition(request_definition_output)
+        && let Err(error) = write_request_definition(request_definition_output, write_mode)
     {
         return error_outcome(
             prepared.command.clone(),
             prepared.output == CliOutputMode::Json,
             prepared.output_file.clone(),
+            write_mode,
             error,
         );
     }
@@ -41,6 +46,7 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
                 Ok(stdout) => ExecutionOutcome {
                     stdout: Some(stdout),
                     output_file: prepared.output_file,
+                    write_mode,
                     post_write_stderr: Vec::new(),
                     stderr: Vec::new(),
                     exit_code: exit_code_for_error(&error),
@@ -48,17 +54,18 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
                 Err(render_error) => human_error_outcome(render_error),
             }
         } else {
-            error_outcome(prepared.command.clone(), false, None, error)
+            error_outcome(prepared.command.clone(), false, None, write_mode, error)
         };
     }
 
     if let Some(bundle) = bundle_paths.as_ref()
-        && let Err(error) = write_bundle(&report, bundle)
+        && let Err(error) = write_bundle(&report, bundle, write_mode)
     {
         return error_outcome(
             prepared.command.clone(),
             prepared.output == CliOutputMode::Json,
             prepared.output_file.clone(),
+            write_mode,
             error,
         );
     }
@@ -96,6 +103,7 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
         Ok(stdout) => ExecutionOutcome {
             stdout,
             output_file: prepared.output_file,
+            write_mode,
             post_write_stderr,
             stderr,
             exit_code: 0,
@@ -104,14 +112,18 @@ pub(crate) fn execute_extraction(prepared: PreparedExtraction) -> ExecutionOutco
     }
 }
 
-pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
+pub(crate) fn execute_preview(
+    prepared: PreparedPreview,
+    write_mode: FileWriteMode,
+) -> ExecutionOutcome {
     if let Some(request_definition_output) = prepared.request_definition_output.as_ref()
-        && let Err(error) = write_request_definition(request_definition_output)
+        && let Err(error) = write_request_definition(request_definition_output, write_mode)
     {
         return error_outcome(
             prepared.command.clone(),
             prepared.output == CliInspectOutputMode::Json,
             prepared.output_file.clone(),
+            write_mode,
             error,
         );
     }
@@ -129,6 +141,7 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
                 Ok(stdout) => ExecutionOutcome {
                     stdout: Some(stdout),
                     output_file: prepared.output_file,
+                    write_mode,
                     post_write_stderr: Vec::new(),
                     stderr: Vec::new(),
                     exit_code: exit_code_for_error(&error),
@@ -137,7 +150,7 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
             };
         }
 
-        return error_outcome(prepared.command.clone(), false, None, error);
+        return error_outcome(prepared.command.clone(), false, None, write_mode, error);
     }
 
     let post_write_stderr = output_file_notice(
@@ -156,6 +169,7 @@ pub(crate) fn execute_preview(prepared: PreparedPreview) -> ExecutionOutcome {
     ExecutionOutcome {
         stdout: Some(stdout),
         output_file: prepared.output_file,
+        write_mode,
         post_write_stderr,
         stderr: if prepared.quiet {
             Vec::new()
@@ -179,10 +193,11 @@ pub(crate) fn error_outcome(
     command: String,
     prefers_json: bool,
     output_file: Option<std::path::PathBuf>,
+    write_mode: FileWriteMode,
     error: CliError,
 ) -> ExecutionOutcome {
     match prefers_json {
-        true => json_error_outcome(command, output_file, error),
+        true => json_error_outcome(command, output_file, write_mode, error),
         false => human_error_outcome(error),
     }
 }
@@ -190,6 +205,7 @@ pub(crate) fn error_outcome(
 pub(crate) fn json_error_outcome(
     command: String,
     output_file: Option<std::path::PathBuf>,
+    write_mode: FileWriteMode,
     error: CliError,
 ) -> ExecutionOutcome {
     let exit_code = exit_code_for_error(&error);
@@ -212,6 +228,7 @@ pub(crate) fn json_error_outcome(
         Ok(stdout) => ExecutionOutcome {
             stdout: Some(stdout),
             output_file,
+            write_mode,
             post_write_stderr: Vec::new(),
             stderr: Vec::new(),
             exit_code,
@@ -228,6 +245,7 @@ pub(crate) fn human_error_outcome(error: CliError) -> ExecutionOutcome {
     ExecutionOutcome {
         stdout: None,
         output_file: None,
+        write_mode: FileWriteMode::CreateFresh,
         post_write_stderr: Vec::new(),
         stderr,
         exit_code: exit_code_for_error(&error),

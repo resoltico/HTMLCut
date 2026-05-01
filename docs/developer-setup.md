@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: SETUP
-updated: "2026-04-29"
+updated: "2026-05-01"
 route:
-  keywords: [developer setup, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
-  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?"]
+  keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
+  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
 ---
 
 # Developer Setup
@@ -14,6 +14,12 @@ route:
 **Prerequisites**: network access and a working C toolchain such as macOS Command Line Tools.
 
 ## Overview
+
+HTMLCut's preferred contributor path is the committed devcontainer on Ubuntu `26.04`.
+If you use that path, the host needs only Docker plus a devcontainer-spec-aware client.
+Use [developer-devcontainer.md](developer-devcontainer.md) for that workflow.
+
+The rest of this document is the host-native Rust path.
 
 HTMLCut pins Rust `1.95.0` as the default repository toolchain and installs nightly for the
 branch-coverage gate plus live `cargo-fuzz` campaigns. The maintainer workflow also depends on
@@ -26,7 +32,7 @@ Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit 
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
 manage. Use your system package manager for `shellcheck` because it is an external non-Cargo tool.
 
-## Install The Rust Toolchains
+## Install The Host-Native Rust Toolchains
 
 If `xcode-select -p` fails on macOS, install the Apple command-line tools first:
 
@@ -53,21 +59,22 @@ Why this shape:
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
   actually uses.
 
-## Install The Rust QA Commands
+## Install The Host-Native Rust QA Commands
 
-On the maintained macOS path, install the cargo subcommands with the system compiler explicitly:
+On the maintained macOS path, install the pinned cargo subcommands with the system compiler
+explicitly:
 
 ```bash
 source "$HOME/.cargo/env"
-CC=clang CXX=clang++ cargo install cargo-nextest cargo-audit cargo-deny cargo-semver-checks cargo-outdated cargo-llvm-cov cargo-fuzz --locked
+CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh
 ```
 
 Why this shape:
 
-- These commands are Rust-native tools, so `cargo install` keeps them in the same Rust-managed
-  toolchain path as `cargo` itself.
-- `--locked` uses each tool's checked-in lockfile and avoids drifting dependency resolution during
-  bootstrap.
+- `./scripts/install-contributor-cargo-tools.sh` installs the repo-owned pinned contributor tool
+  inventory instead of whichever helper versions crates.io happens to serve on that day.
+- The script uses each tool's checked-in lockfile and keeps the QA commands in the same
+  Rust-managed toolchain path as `cargo` itself.
 - `CC=clang CXX=clang++` protects fresh macOS machines from stale shell overrides that point at a
   removed Homebrew LLVM install.
 - `cargo-fuzz` is not part of the default maintainer gate, but HTMLCut keeps checked-in fuzz
@@ -75,14 +82,19 @@ Why this shape:
   campaigns and incident reproduction.
 
 If you are not on macOS, keep the same tool list but omit the `CC=clang CXX=clang++` override and
-use the platform's normal C toolchain instead.
+use the platform's normal C toolchain instead:
+
+```bash
+source "$HOME/.cargo/env"
+./scripts/install-contributor-cargo-tools.sh
+```
 
 LLVM-backed maintainer flows are a separate concern: `cargo xtask coverage` and
 `cargo xtask fuzz-smoke` both launch Cargo with `CC=clang CXX=clang++` so coverage and libFuzzer
 stay on the LLVM toolchain. Keep `clang` and `clang++` available on `PATH` on any host where you
 plan to run those maintained commands.
 
-## Install ShellCheck
+## Install Host-Native ShellCheck
 
 Install `shellcheck` from Homebrew on macOS:
 
@@ -106,10 +118,10 @@ failed to find tool "/opt/homebrew/opt/llvm/bin/clang"
 
 your shell is exporting a stale `CC` override for a Homebrew LLVM install that is no longer
 present. Fix the shell config so it only exports that path when LLVM actually exists, or rerun the
-global cargo install with:
+pinned contributor-tool install with:
 
 ```bash
-CC=clang CXX=clang++ cargo install <tool> --locked
+CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh <tool>
 ```
 
 Repository-local Cargo work is already guarded by [../.cargo/config.toml](../.cargo/config.toml),
@@ -129,7 +141,7 @@ unset CFLAGS
 unset CXXFLAGS
 ```
 
-## Verify The Setup
+## Verify The Host-Native Setup
 
 Verify the toolchain first:
 
@@ -165,6 +177,10 @@ verify the tool binaries are actually runnable.
 
 Rust `1.95.0` should remain the pinned repository toolchain. If the gate fails, treat the first
 real failure as the next missing prerequisite and fix that root cause before rerunning.
+
+If you are using the committed devcontainer instead of host-native Rust, use
+[developer-devcontainer.md](developer-devcontainer.md) and verify the host-side container path with
+`./scripts/validate-devcontainer.sh` plus `./scripts/devcontainer-check.sh` from the host shell.
 
 ## Disk Usage
 

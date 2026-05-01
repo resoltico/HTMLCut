@@ -5,8 +5,12 @@ use std::sync::LazyLock;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::SchemaRef;
-use crate::cli_contract::operation_specs::operation_surface_specs;
+use crate::{
+    CORE_REQUEST_SCHEMA_VERSION, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
+    CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
+    EXTRACTION_REQUEST_SCHEMA_NAME, INSPECTION_OPTIONS_SCHEMA_NAME, RUNTIME_OPTIONS_SCHEMA_NAME,
+    SOURCE_REQUEST_SCHEMA_NAME, SchemaRef,
+};
 
 macro_rules! operation_ids {
     (
@@ -109,13 +113,119 @@ pub struct OperationDescriptor {
     pub description: &'static str,
 }
 
+const NO_SCHEMA_REFS: &[SchemaRef] = &[];
+const SOURCE_RUNTIME_SCHEMA_REFS: &[SchemaRef] = &[
+    SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+];
+const SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS: &[SchemaRef] = &[
+    SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+    SchemaRef::new(INSPECTION_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+];
+const EXTRACTION_RUNTIME_SCHEMA_REFS: &[SchemaRef] = &[
+    SchemaRef::new(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
+];
+const EXTRACTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
+    CORE_RESULT_SCHEMA_NAME,
+    CORE_RESULT_SCHEMA_VERSION,
+)];
+const SOURCE_INSPECTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
+    CORE_SOURCE_INSPECTION_SCHEMA_NAME,
+    CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
+)];
+
+const OPERATION_DESCRIPTORS: &[OperationDescriptor] = &[
+    OperationDescriptor {
+        id: OperationId::DocumentParse,
+        cli_surface: None,
+        core_surface: "parse_document(SourceRequest, RuntimeOptions)",
+        request_contract: OperationContract {
+            rust_shape: "SourceRequest + RuntimeOptions",
+            schema_refs: SOURCE_RUNTIME_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "ParseDocumentResult",
+            schema_refs: NO_SCHEMA_REFS,
+        },
+        description: "Load and parse HTML into a document tree for in-process callers.",
+    },
+    OperationDescriptor {
+        id: OperationId::SourceInspect,
+        cli_surface: Some("inspect source"),
+        core_surface: "inspect_source(SourceRequest, RuntimeOptions, InspectionOptions)",
+        request_contract: OperationContract {
+            rust_shape: "SourceRequest + RuntimeOptions + InspectionOptions",
+            schema_refs: SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "SourceInspectionResult",
+            schema_refs: SOURCE_INSPECTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Inspect the parsed document and summarize structure, samples, and base-URL behavior.",
+    },
+    OperationDescriptor {
+        id: OperationId::SelectPreview,
+        cli_surface: Some("inspect select"),
+        core_surface: "preview_extraction(ExtractionRequest{kind=selector}, RuntimeOptions)",
+        request_contract: OperationContract {
+            rust_shape: "ExtractionRequest + RuntimeOptions",
+            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "ExtractionResult",
+            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Preview selector matches without committing to a final extraction payload.",
+    },
+    OperationDescriptor {
+        id: OperationId::SlicePreview,
+        cli_surface: Some("inspect slice"),
+        core_surface: "preview_extraction(ExtractionRequest{kind=slice}, RuntimeOptions)",
+        request_contract: OperationContract {
+            rust_shape: "ExtractionRequest + RuntimeOptions",
+            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "ExtractionResult",
+            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Preview literal or regex slices without committing to a final extraction payload.",
+    },
+    OperationDescriptor {
+        id: OperationId::SelectExtract,
+        cli_surface: Some("select"),
+        core_surface: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)",
+        request_contract: OperationContract {
+            rust_shape: "ExtractionRequest + RuntimeOptions",
+            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "ExtractionResult",
+            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Extract final values from CSS selector matches.",
+    },
+    OperationDescriptor {
+        id: OperationId::SliceExtract,
+        cli_surface: Some("slice"),
+        core_surface: "extract(ExtractionRequest{kind=slice}, RuntimeOptions)",
+        request_contract: OperationContract {
+            rust_shape: "ExtractionRequest + RuntimeOptions",
+            schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            rust_shape: "ExtractionResult",
+            schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Extract final values between literal or regex boundaries in raw source text.",
+    },
+];
+
 /// Canonical catalog of every stable HTMLCut operation ID.
-pub static OPERATION_CATALOG: LazyLock<Vec<OperationDescriptor>> = LazyLock::new(|| {
-    operation_surface_specs()
-        .iter()
-        .map(|spec| spec.descriptor)
-        .collect::<Vec<_>>()
-});
+pub static OPERATION_CATALOG: LazyLock<Vec<OperationDescriptor>> =
+    LazyLock::new(|| OPERATION_DESCRIPTORS.to_vec());
 
 impl std::fmt::Display for OperationId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

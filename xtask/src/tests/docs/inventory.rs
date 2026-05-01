@@ -60,11 +60,10 @@ version = "4.1.0"
 "#,
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(
+        repo_root,
+        "# HTMLCut\n\n[Quick Start](docs/getting-started.md)\n",
+    );
     fs::write(
         repo_root.join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",

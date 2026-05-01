@@ -12,11 +12,7 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!-- version: \"4.1.0\" -->\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(repo_root.path(), "# HTMLCut\n");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!-- version: \"4.1.0\" -->\n",
@@ -95,11 +91,10 @@ fn markdown_contract_errors_report_absolute_and_missing_links() {
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[posix](/tmp/nope)\n[windows-forward](C:/nope)\n[windows-backslash](C:\\nope)\n[unc](\\\\server\\share)\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(
+        repo_root.path(),
+        "[posix](/tmp/nope)\n[windows-forward](C:/nope)\n[windows-backslash](C:\\nope)\n[unc](\\\\server\\share)\n",
+    );
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[missing](./missing.md)\n[wrapped-local](<./wrapped-missing.md>)\n",
@@ -162,11 +157,10 @@ fn markdown_contract_errors_ignore_external_anchor_and_mail_links() {
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n[site](https://example.com)\n[mail](mailto:test@example.com)\n[section](#intro)\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(
+        repo_root.path(),
+        "[site](https://example.com)\n[mail](mailto:test@example.com)\n[section](#intro)\n",
+    );
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n[repo](http://example.com)\n",
@@ -221,11 +215,7 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!-- version: \"4.1.0\" -->\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(repo_root.path(), "# HTMLCut\n");
     fs::write(
         repo_root.path().join("AGENTS.md"),
         "<!-- version: \"4.1.0\" -->\n",
@@ -253,7 +243,6 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
     assert_eq!(
         docs,
         vec![
-            repo_root.path().join("AGENTS.md"),
             repo_root.path().join("README.md"),
             repo_root.path().join("docs").join("guide.md"),
         ]

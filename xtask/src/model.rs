@@ -11,11 +11,12 @@ pub(crate) type BranchCounts = (u64, u64);
 pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, BranchCounts>>;
 
 // Coverage is intentionally enforced as a 100% line-and-branch bar over the
-// executable modules that define HTMLCut's maintained extraction, CLI adapter,
-// and maintainer-gate logic. The tracked set is derived from the maintained
-// worktree inventory so future seam splits are scored automatically without
-// letting ignored scratch files pollute the gate; only declarative-only modules
-// with no maintained executable logic stay on the explicit exclusion list.
+// tracked executable modules that define HTMLCut's maintained extraction, CLI
+// adapter, and maintainer-gate logic. The tracked set is derived from the
+// maintained worktree inventory so future seam splits are scored automatically
+// without letting ignored scratch files pollute the gate; declarative
+// clap/report-model surfaces and thin binary entrypoints stay on the explicit
+// exclusion list.
 pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/htmlcut-core/src",
     "crates/htmlcut-cli/src",
@@ -36,7 +37,7 @@ pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
     "crates/htmlcut-cli/src/render/inspection/mod.rs",
     "crates/htmlcut-cli/src/prepare/reports/mod.rs",
     "crates/htmlcut-core/src/contracts/request/mod.rs",
-    "crates/htmlcut-core/src/cli_contract/help/mod.rs",
+    "crates/htmlcut-cli/src/contract/help/mod.rs",
     "crates/htmlcut-core/src/document/mod.rs",
     "crates/htmlcut-core/src/extract/mod.rs",
     "crates/htmlcut-core/src/extract/slice/mod.rs",

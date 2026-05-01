@@ -1,9 +1,8 @@
 use std::sync::LazyLock;
 
-use crate::CliChoice;
-use crate::catalog::OperationId;
+use htmlcut_core::{CliChoice, OperationId};
 #[cfg(test)]
-use crate::catalog::operation_catalog;
+use htmlcut_core::{OperationDescriptor, operation_catalog};
 #[cfg(test)]
 use std::collections::BTreeSet;
 
@@ -80,7 +79,7 @@ pub(crate) fn cli_operation_catalog_validation_errors() -> Vec<String> {
 
 #[cfg(test)]
 pub(crate) fn cli_operation_catalog_validation_errors_for(
-    operation_descriptors: &[crate::catalog::OperationDescriptor],
+    operation_descriptors: &[OperationDescriptor],
     cli_contracts: &[OperationCliContract],
 ) -> Vec<String> {
     let mut errors = Vec::new();
