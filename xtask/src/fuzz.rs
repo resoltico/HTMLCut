@@ -11,6 +11,8 @@ const FUZZ_SMOKE_TARGETS: [&str; 5] = [
     "cli_parse_error_surface",
 ];
 pub(crate) const FUZZ_PACKAGE_NAME: &str = "htmlcut-fuzz";
+/// Canonical maintained fuzz target used in human-facing `cargo xtask --help` examples.
+pub(crate) const FUZZ_SMOKE_EXAMPLE_TARGET: &str = FUZZ_SMOKE_TARGETS[1];
 
 /// Default libFuzzer iteration budget for the short smoke workflow.
 pub const DEFAULT_FUZZ_SMOKE_RUNS: u32 = 200;
@@ -105,7 +107,7 @@ pub fn fuzz_smoke_preflight_message(failures: &[FuzzSmokePreflightFailure]) -> S
 
     if missing_cargo_fuzz {
         message.push_str(
-            "\nInstall the fuzz runner on the maintained macOS path with:\n  CC=clang CXX=clang++ cargo install cargo-fuzz --locked\n",
+            "\nInstall the fuzz runner on the maintained macOS path with:\n  CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-fuzz\n",
         );
     }
 

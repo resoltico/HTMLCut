@@ -8,13 +8,7 @@ fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.join("README.md"),
-        format!(
-            "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n{readme_body}\n"
-        ),
-    )
-    .expect("write readme");
+    fs::write(repo_root.join("README.md"), readme_body).expect("write readme");
     fs::write(
         repo_root.join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",

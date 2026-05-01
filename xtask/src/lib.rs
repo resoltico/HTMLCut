@@ -1,6 +1,7 @@
 //! Shared maintenance primitives behind HTMLCut's `cargo xtask` workflows.
 #![deny(missing_docs)]
 
+mod app;
 mod command_exec;
 mod coverage;
 mod docs;
@@ -62,5 +63,21 @@ pub use toolchain::{
     repo_toolchain_preflight_failures, repo_toolchain_preflight_message,
 };
 
+/// Runs `cargo xtask` using the current process arguments at the repository root.
+pub fn main_entry() -> DynResult<()> {
+    match app::main_entry_with(&repo_root(), std::env::args_os()) {
+        Ok(()) => Ok(()),
+        Err(error) => match error.downcast::<clap::Error>() {
+            Ok(clap_error) => clap_error.exit(),
+            Err(error) => Err(error),
+        },
+    }
+}
+
+#[cfg(test)]
+pub(crate) use app::{
+    main_entry_with, refresh_semver_baseline_for_tests, run_coverage_for_tests,
+    semver_check_spec_for_tests,
+};
 #[cfg(test)]
 pub(crate) use model::*;

@@ -1,9 +1,9 @@
-use std::fs;
 use std::io::Write;
 use std::path::Path;
 
 use crate::EXIT_CODE_OUTPUT;
 use crate::error::CliError;
+use crate::file_output::{FileWriteMode, write_text_file};
 use crate::model::CliErrorCode;
 
 use super::ExecutionOutcome;
@@ -19,7 +19,7 @@ where
 {
     if let Some(stdout_payload) = outcome.stdout.as_ref() {
         if let Some(path) = outcome.output_file.as_deref() {
-            if let Err(error) = write_stdout_payload(path, stdout_payload) {
+            if let Err(error) = write_stdout_payload(path, stdout_payload, outcome.write_mode) {
                 writeln!(
                     stderr,
                     "htmlcut: Could not write {}: {error}",
@@ -52,19 +52,8 @@ pub(crate) fn output_file_notice(path: Option<&Path>, verbose: u8, quiet: bool) 
 
 pub(crate) fn write_request_definition(
     request_definition_output: &crate::prepare::PendingExtractionDefinitionWrite,
+    write_mode: FileWriteMode,
 ) -> Result<(), CliError> {
-    if let Some(parent) = request_definition_parent_dir(&request_definition_output.path) {
-        fs::create_dir_all(parent).map_err(|error| {
-            crate::error::output_error(
-                CliErrorCode::RequestFileWriteFailed,
-                format!(
-                    "Could not create request file directory {}: {error}",
-                    parent.display()
-                ),
-            )
-        })?;
-    }
-
     let definition = crate::render::render_json_string(
         &request_definition_output.definition,
         &format!(
@@ -73,7 +62,22 @@ pub(crate) fn write_request_definition(
         ),
     )?;
 
-    fs::write(&request_definition_output.path, format!("{definition}\n")).map_err(|error| {
+    if matches!(write_mode, FileWriteMode::CreateFresh) && request_definition_output.path.exists() {
+        return Err(crate::error::output_error(
+            CliErrorCode::RequestFileExists,
+            format!(
+                "Refusing to overwrite existing request file {}. Remove it, choose a fresh path, or pass --overwrite.",
+                request_definition_output.path.display(),
+            ),
+        ));
+    }
+
+    write_text_file(
+        &request_definition_output.path,
+        &format!("{definition}\n"),
+        write_mode,
+    )
+    .map_err(|error| {
         crate::error::output_error(
             CliErrorCode::RequestFileWriteFailed,
             format!(
@@ -84,16 +88,15 @@ pub(crate) fn write_request_definition(
     })
 }
 
-fn write_stdout_payload(path: &Path, stdout_payload: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::write(path, format!("{stdout_payload}\n"))
+fn write_stdout_payload(
+    path: &Path,
+    stdout_payload: &str,
+    write_mode: FileWriteMode,
+) -> std::io::Result<()> {
+    write_text_file(path, &format!("{stdout_payload}\n"), write_mode)
 }
 
+#[cfg(test)]
 fn request_definition_parent_dir(path: &Path) -> Option<&Path> {
     let parent = path.parent()?;
     (!parent.as_os_str().is_empty()).then_some(parent)
@@ -103,8 +106,9 @@ fn request_definition_parent_dir(path: &Path) -> Option<&Path> {
 pub(crate) fn write_stdout_payload_for_tests(
     path: &Path,
     stdout_payload: &str,
+    write_mode: FileWriteMode,
 ) -> std::io::Result<()> {
-    write_stdout_payload(path, stdout_payload)
+    write_stdout_payload(path, stdout_payload, write_mode)
 }
 
 #[cfg(test)]

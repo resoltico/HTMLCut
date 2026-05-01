@@ -1,7 +1,7 @@
-use crate::catalog::{OperationId, operation_descriptor};
-use crate::{
-    CORE_RESULT_SCHEMA_NAME,
+use htmlcut_core::{
+    CORE_RESULT_SCHEMA_NAME, OperationId,
     interop::v1::{RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION},
+    operation_descriptor,
 };
 
 use super::super::cli_operation_contract;
@@ -56,6 +56,8 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                         .to_owned(),
                     "--request-file reruns a saved definition instead of spelling the source and strategy inline."
                         .to_owned(),
+                    "--overwrite is required before HTMLCut will replace an existing request file, output file, or bundle path."
+                        .to_owned(),
                 ],
             },
             CliHelpSection {
@@ -66,7 +68,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                         .to_owned(),
                     "select, slice, inspect select, and inspect slice can load a saved definition with --request-file."
                         .to_owned(),
-                    "Bundle directories are created automatically when you use --bundle."
+                    "Parent directories are created automatically for --emit-request-file, --output-file, and --bundle."
                         .to_owned(),
                 ],
             },
@@ -143,6 +145,8 @@ pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHel
                     "Print HTMLCut's capability catalog.".to_owned(),
                     "Use this command to discover stable operation IDs, the command and core surfaces that expose each operation, the public request/result contracts tied to that operation, and the machine-readable CLI command contract when one exists, including parameter inventory, typed defaults, command constraints, and schema references.".to_owned(),
                     "Use --output json when an agent or script wants machine-readable capability introspection.".to_owned(),
+                    "When --output-file points at an existing path, pass --overwrite or choose a fresh file instead."
+                        .to_owned(),
                 ],
             }],
             examples: vec![
@@ -174,6 +178,8 @@ pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHel
                     lines: vec![
                         "Export HTMLCut's validator-grade JSON schema registry.".to_owned(),
                         "Use this command when a downstream tool needs the actual JSON Schema documents for HTMLCut's public JSON contracts instead of descriptive capability text."
+                            .to_owned(),
+                        "When --output-file points at an existing path, pass --overwrite or choose a fresh file instead."
                             .to_owned(),
                     ],
                 },

@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: OPERATIONS
 updated: "2026-04-29"
 route:
@@ -12,14 +12,12 @@ route:
 
 This document is the developer-facing matrix for HTMLCut's canonical operations.
 
-The code-level source of truth lives in `htmlcut-core`:
+The code-level source of truth lives in two maintained registries:
 
-- `OperationId`
-- `OperationDescriptor`
-- `OPERATION_CATALOG`
-- `htmlcut_core::cli_contract::OperationCliContract`
-- `htmlcut_core::cli_contract::cli_operation_catalog`
-- `htmlcut_core::cli_contract::cli_operation_contract`
+- `htmlcut-core` owns `OperationId`, `OperationDescriptor`, and `OPERATION_CATALOG`
+- `htmlcut-cli` owns `htmlcut_cli::contract::OperationCliContract`
+- `htmlcut-cli` owns `htmlcut_cli::contract::cli_operation_catalog`
+- `htmlcut-cli` owns `htmlcut_cli::contract::cli_operation_contract`
 
 Those identifiers are valid because they refer only to real product operations that callers can invoke across the CLI and embeddable core. They are not decorative labels.
 
@@ -29,7 +27,7 @@ Those identifiers are valid because they refer only to real product operations t
 - Operation IDs exist only for canonical product operations.
 - Flags, helper functions, internal builders, and request fields do not get operation IDs.
 - Failure classes already have their own stable identifier system through diagnostic `code` values.
-- CLI-facing command paths, defaults, mode inventories, parameter rules, and examples are owned by the core-side CLI contract registry, not rebuilt ad hoc in `htmlcut-cli`.
+- CLI-facing command paths, defaults, mode inventories, parameter rules, and examples are owned by the `htmlcut_cli::contract` registry, not rebuilt ad hoc elsewhere.
 - The CLI must project the canonical operation IDs from `htmlcut-core`; it must not invent a second taxonomy.
 - CLI-visible operations map to one canonical command path each. Hidden aliases do not get their own parallel contract surface.
 - `htmlcut catalog` must stay derived from the same canonical operation IDs instead of inventing a separate capability list.
@@ -64,7 +62,7 @@ not a user-facing product operation exposed across the CLI and the generic core 
 Any change to the operation surface must update all of the following together:
 
 1. `htmlcut-core` operation catalog and any affected result contracts.
-2. Core-owned CLI contract metadata so invocation strings, mode inventories, parameter rules, examples, and normalized command labels stay canonical.
+2. `htmlcut_cli::contract` metadata so invocation strings, mode inventories, parameter rules, examples, and normalized command labels stay canonical.
 3. CLI report projection so the CLI keeps surfacing the same canonical IDs and command contracts.
 4. `htmlcut catalog` so the CLI's discovery surface stays aligned with the same IDs, summaries, and schema refs.
 5. `htmlcut schema` so the exported JSON schema registry stays aligned with the same contracts.

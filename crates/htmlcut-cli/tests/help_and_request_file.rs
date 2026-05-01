@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
-use htmlcut_core::cli_contract::{
+use htmlcut_cli::contract::{
     CliValue, OperationCliContract, cli_operation_contract, render_cli_value,
 };
 use htmlcut_core::{

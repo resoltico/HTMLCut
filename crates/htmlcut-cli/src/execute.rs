@@ -33,6 +33,7 @@ use crate::model::CliErrorCode;
 pub(crate) struct ExecutionOutcome {
     pub(crate) stdout: Option<String>,
     pub(crate) output_file: Option<std::path::PathBuf>,
+    pub(crate) write_mode: crate::file_output::FileWriteMode,
     pub(crate) post_write_stderr: Vec<String>,
     pub(crate) stderr: Vec<String>,
     pub(crate) exit_code: i32,
@@ -71,6 +72,7 @@ where
                 command_name_from_raw_args(&raw_args),
                 prefers_json_errors,
                 None,
+                crate::file_output::FileWriteMode::CreateFresh,
                 usage_error(CliErrorCode::ParseError, clap_error_message(&error)),
             );
             return write_outcome(outcome, stdout, stderr);

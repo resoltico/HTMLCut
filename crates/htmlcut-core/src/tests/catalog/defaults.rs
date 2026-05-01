@@ -109,15 +109,4 @@ fn operation_catalog_is_unique_and_complete() {
             .cli_surface,
         Some("inspect source")
     );
-
-    let select_contract = crate::cli_contract::cli_operation_contract(OperationId::SelectExtract)
-        .expect("select cli contract");
-    assert_eq!(select_contract.display_command(), "select");
-    assert_eq!(select_contract.report_command(), "select");
-    assert_eq!(
-        crate::cli_contract::find_cli_operation_by_command_path(&["inspect", "slice"])
-            .expect("inspect slice contract")
-            .operation_id,
-        OperationId::SlicePreview
-    );
 }

@@ -1,13 +1,13 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "6.0.0"
+  version: "7.0.0"
   domain: MAINTAINER
-  updated: "2026-04-29"
+  updated: "2026-05-01"
 RETRIEVAL_HINTS:
-  keywords: [contributing, maintainer workflow, developer setup, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
-  questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?]
-  related: [docs/developer-setup.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
+  keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
+  questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
+  related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
 -->
 
 # Contributing
@@ -17,9 +17,12 @@ surfaces may change when the architecture needs to improve; frozen interop profi
 
 ## Setup
 
-Follow [docs/developer-setup.md](docs/developer-setup.md) for the canonical machine bootstrap.
-That guide owns the exact `rustup`, cargo QA tool, `shellcheck`, and macOS compiler-override
-commands plus the reasoning behind them.
+The preferred contributor environment is the committed devcontainer on Ubuntu `26.04`.
+Use [docs/developer-devcontainer.md](docs/developer-devcontainer.md) for that path.
+Use [docs/developer-setup.md](docs/developer-setup.md) when you explicitly want the host-native
+Rust workflow instead.
+The setup guide owns the exact `rustup`, cargo QA tool, `shellcheck`, and macOS
+compiler-override commands plus the reasoning behind them.
 Use [docs/workspace-layout.md](docs/workspace-layout.md) when you need the current workspace-member
 map or the package-name versus Rust-path naming rule.
 
@@ -46,6 +49,9 @@ cargo xtask check
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 For a short live libFuzzer pass that stages the checked-in corpora into disposable scratch, use
 `cargo xtask fuzz-smoke`.
+If you changed `.devcontainer/`, the contributor-container lifecycle scripts, or the contributor
+container docs, also run `./scripts/validate-devcontainer.sh` plus
+`./scripts/devcontainer-check.sh` from the host shell.
 
 That gate includes recursive Markdown docs-contract linting across the maintained public docs
 set except `changelog.md`. It fails on missing AFAD metadata fields, metadata/version drift,
@@ -148,3 +154,5 @@ Important rules:
 - Do not leave public docs, schemas, and tests describing different contracts.
 - Prefer removing obsolete surface area to carrying dead compatibility debt.
 - If you touch release, quality, or versioning policy, update the matching maintainer docs in the same change.
+- If you touch the contributor-container surface, update the matching devcontainer docs, scripts,
+  and CI validation in the same change.

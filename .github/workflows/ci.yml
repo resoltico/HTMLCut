@@ -36,53 +36,24 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
-  rust-gate:
-    name: Rust Gate
+  contributor-devcontainer:
+    name: Contributor devcontainer gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
+    env:
+      HTMLCUT_DEVCONTAINER_VOLUME_MODE: shared-ci
+      HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES: skip
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Rust toolchain
+      - name: Validate contributor devcontainer contract
         shell: bash
-        run: |
-          set -euo pipefail
-          retry() {
-            local attempts="$1"
-            local delay_seconds="$2"
-            shift 2
-            local attempt=1
-            until "$@"; do
-              if (( attempt >= attempts )); then
-                return 1
-              fi
-              sleep "${delay_seconds}"
-              attempt=$((attempt + 1))
-            done
-          }
-          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
-          retry 3 5 rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-          retry 3 5 rustup component add clippy rustfmt --toolchain 1.95.0
+        run: ./scripts/validate-devcontainer.sh
 
-      - name: Install shellcheck
+      - name: Run full maintainer gate through contributor devcontainer
         shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes shellcheck
-
-      - name: Install Rust QA tools
-        uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a # v2.75.23
-        with:
-          tool: cargo-llvm-cov,cargo-nextest,cargo-audit,cargo-deny,cargo-semver-checks,cargo-outdated
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-
-      - name: Run Rust workspace gate
-        shell: bash
-        run: cargo xtask check
+        run: ./scripts/devcontainer-check.sh
 
   cross-platform-rust-gate:
     name: Cross-platform Rust gate (${{ matrix.id }})
@@ -120,10 +91,18 @@ jobs:
           retry 3 5 rustup toolchain install 1.95.0 --profile minimal
           retry 3 5 rustup component add clippy rustfmt --toolchain 1.95.0
 
+      - name: Export contributor Rust QA tool inventory
+        id: rust_qa_tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-nextest cargo-audit cargo-deny cargo-outdated cargo-semver-checks)" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust QA tools
         uses: taiki-e/install-action@5f57d6cb7cd20b14a8a27f522884c4bc8a187458 # v2.75.19
         with:
-          tool: cargo-nextest,cargo-audit,cargo-deny,cargo-outdated,cargo-semver-checks
+          tool: ${{ steps.rust_qa_tools.outputs.tool_csv }}
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -221,7 +200,7 @@ jobs:
   check:
     name: Check
     needs:
-      - rust-gate
+      - contributor-devcontainer
       - cross-platform-rust-gate
       - release-target-smoke
     runs-on: ubuntu-24.04
@@ -232,4 +211,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Rust gate and release target smoke matrix passed."
+          echo "Contributor devcontainer gate, cross-platform Rust gate, and release target smoke matrix passed."

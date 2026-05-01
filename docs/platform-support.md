@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: PLATFORM
-updated: "2026-04-29"
+updated: "2026-05-01"
 route:
-  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix]
-  questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?"]
+  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 26.04]
+  questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]
 ---
 
 # Platform Support
@@ -14,13 +14,14 @@ This document defines HTMLCut's maintained build and release target policy.
 
 ## Local Development
 
-Local maintainer builds are host-native.
+Local maintainer work has two maintained shapes:
 
-On the current maintained maintainer machine shape, that means:
+- host-native on the current maintainer machine shape:
+  - `aarch64-apple-darwin`
+- contributor-container workflow through the committed Ubuntu `26.04` devcontainer:
+  - [developer-devcontainer.md](developer-devcontainer.md)
 
-- `aarch64-apple-darwin`
-
-Local development is not expected to produce every public release artifact. Cross-platform public
+Neither local shape is expected to produce every public release artifact. Cross-platform public
 artifact production belongs to GitHub release automation.
 
 ## Public Standalone Release Targets
@@ -88,8 +89,9 @@ GitHub release builds run on:
 - `ubuntu-24.04` for `x86_64-unknown-linux-musl`
 - `windows-2022` for `x86_64-pc-windows-msvc`
 
-GitHub CI also runs release-target smoke on that same target matrix before the aggregate required
-check reports success.
+GitHub CI also runs release-target smoke on that same target matrix, including packaged-README
+checks plus one extraction-and-request-replay flow from the unpacked binary, before the aggregate
+required check reports success.
 
 The release workflow also generates GitHub build-provenance attestations for the source archives,
 standalone packages, and checksum manifest. Those provenance records are separate from the named

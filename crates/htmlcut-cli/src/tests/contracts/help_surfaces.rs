@@ -1,4 +1,5 @@
 use super::*;
+use std::panic::catch_unwind;
 
 #[test]
 fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands() {
@@ -63,10 +64,8 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("catalog command");
     assert_eq!(
         catalog.get_about().expect("catalog about").to_string(),
-        htmlcut_core::cli_contract::cli_aux_command_descriptor(
-            htmlcut_core::cli_contract::CliAuxCommandId::Catalog
-        )
-        .about
+        crate::contract::cli_aux_command_descriptor(crate::contract::CliAuxCommandId::Catalog)
+            .about
     );
 
     let schema = command
@@ -75,10 +74,7 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("schema command");
     assert_eq!(
         schema.get_about().expect("schema about").to_string(),
-        htmlcut_core::cli_contract::cli_aux_command_descriptor(
-            htmlcut_core::cli_contract::CliAuxCommandId::Schema
-        )
-        .about
+        crate::contract::cli_aux_command_descriptor(crate::contract::CliAuxCommandId::Schema).about
     );
 
     let inspect = command
@@ -87,10 +83,8 @@ fn contract_lint_clap_help_summaries_match_core_help_contracts() {
         .expect("inspect command");
     assert_eq!(
         inspect.get_about().expect("inspect about").to_string(),
-        htmlcut_core::cli_contract::cli_aux_command_descriptor(
-            htmlcut_core::cli_contract::CliAuxCommandId::Inspect
-        )
-        .about
+        crate::contract::cli_aux_command_descriptor(crate::contract::CliAuxCommandId::Inspect)
+            .about
     );
 
     for (command_path, operation_id) in [
@@ -265,10 +259,63 @@ fn cli_choice_parser_rejects_invalid_utf8_and_invalid_values() {
 }
 
 #[test]
+fn contract_validation_helpers_report_auxiliary_catalog_drift_and_assert_failures() {
+    let empty_errors = crate::contract::cli_aux_command_catalog_validation_errors_for_tests(&[]);
+    assert!(
+        empty_errors
+            .iter()
+            .any(|error| error.contains("cli_aux_command_catalog() is empty")),
+        "empty auxiliary catalog should be rejected: {empty_errors:#?}"
+    );
+
+    let malformed = [
+        crate::contract::CliAuxCommandDescriptor {
+            id: crate::contract::CliAuxCommandId::Catalog,
+            command_path: &[],
+            about: "   ",
+        },
+        crate::contract::CliAuxCommandDescriptor {
+            id: crate::contract::CliAuxCommandId::Catalog,
+            command_path: &["wrong"],
+            about: "Catalog drift",
+        },
+    ];
+
+    let errors = crate::contract::cli_aux_command_catalog_validation_errors_for_tests(&malformed);
+
+    for expected in [
+        "Catalog appears more than once",
+        "Catalog has an empty command path",
+        "Catalog has an empty about string",
+        "Catalog command path drifted",
+        "Schema is missing from cli_aux_command_catalog()",
+        "Inspect is missing from cli_aux_command_catalog()",
+    ] {
+        assert!(
+            errors.iter().any(|error| error.contains(expected)),
+            "missing auxiliary catalog error containing {expected:?}: {errors:#?}"
+        );
+    }
+
+    assert!(
+        catch_unwind(|| crate::contract::assert_cli_aux_command_catalog_for_tests(&malformed))
+            .is_err(),
+        "auxiliary catalog assertion should panic on drift"
+    );
+    assert!(
+        catch_unwind(|| {
+            crate::contract::assert_cli_help_catalog_errors_for_tests(vec!["drift".to_owned()])
+        })
+        .is_err(),
+        "help assertion should panic on drift"
+    );
+}
+
+#[test]
 fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
-    let section = htmlcut_core::cli_contract::CliHelpSection {
+    let section = crate::contract::CliHelpSection {
         title: "Steps".to_owned(),
-        style: htmlcut_core::cli_contract::CliHelpSectionStyle::Numbered,
+        style: crate::contract::CliHelpSectionStyle::Numbered,
         lines: vec!["first".to_owned(), "second".to_owned()],
     };
     assert_eq!(
@@ -276,22 +323,17 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
         "Steps:\n1. first\n2. second"
     );
 
-    let mut contract = htmlcut_core::cli_contract::cli_operation_contract(
-        htmlcut_core::OperationId::SelectExtract,
-    )
-    .expect("select extract contract")
-    .clone();
-    contract.default_output_overrides = vec![htmlcut_core::cli_contract::CliConditionalDefault {
-        value: htmlcut_core::cli_contract::CliValue::OutputMode(
-            htmlcut_core::cli_contract::CliOutputMode::Json,
-        ),
-        when: htmlcut_core::cli_contract::CliCondition {
-            parameter: htmlcut_core::cli_contract::CliParameterId::Value,
+    let mut contract =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select extract contract")
+            .clone();
+    contract.default_output_overrides = vec![crate::contract::CliConditionalDefault {
+        value: crate::contract::CliValue::OutputMode(crate::contract::CliOutputMode::Json),
+        when: crate::contract::CliCondition {
+            parameter: crate::contract::CliParameterId::Value,
             values: vec![
-                htmlcut_core::cli_contract::CliValue::ValueType(
-                    htmlcut_core::ValueType::Structured,
-                ),
-                htmlcut_core::cli_contract::CliValue::ValueType(htmlcut_core::ValueType::OuterHtml),
+                crate::contract::CliValue::ValueType(htmlcut_core::ValueType::Structured),
+                crate::contract::CliValue::ValueType(htmlcut_core::ValueType::OuterHtml),
             ],
         },
     }];
@@ -307,7 +349,7 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
 
     let empty_summary = crate::help::build_operation_long_about_from_parts_for_tests(
         Vec::new(),
-        &htmlcut_core::cli_contract::OperationCliContract {
+        &crate::contract::OperationCliContract {
             notes: Vec::new(),
             output_modes: Vec::new(),
             default_output: None,

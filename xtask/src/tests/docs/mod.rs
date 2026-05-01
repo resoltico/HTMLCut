@@ -32,6 +32,10 @@ allow = [
     .expect("write patents");
 }
 
+fn write_storefront_readme(repo_root: &Path, body: &str) {
+    fs::write(repo_root.join("README.md"), body).expect("write readme");
+}
+
 mod commands;
 mod contracts;
 mod inventory;

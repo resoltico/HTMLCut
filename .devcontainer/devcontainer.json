@@ -1,0 +1,44 @@
+{
+  "name": "HTMLCut Contributor",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "workspaceFolder": "/workspaces/htmlcut",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/htmlcut,type=bind,consistency=cached",
+  "mounts": [
+    "source=htmlcut-cargo-home,target=/home/vscode/.cargo,type=volume",
+    "source=htmlcut-rustup-home,target=/home/vscode/.rustup,type=volume",
+    "source=htmlcut-general-cache,target=/home/vscode/.cache,type=volume"
+  ],
+  "containerEnv": {
+    "HTMLCUT_DEVCONTAINER": "1",
+    "CARGO_HOME": "/home/vscode/.cargo",
+    "RUSTUP_HOME": "/home/vscode/.rustup",
+    "PATH": "/home/vscode/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  },
+  "postCreateCommand": "bash -lc './scripts/devcontainer-prepare-user-home.sh && ./scripts/devcontainer-bootstrap.sh'",
+  "postStartCommand": "./scripts/devcontainer-prepare-user-home.sh",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "remote.extensionKind": {
+          "rust-lang.rust-analyzer": [
+            "workspace"
+          ],
+          "tamasfe.even-better-toml": [
+            "workspace"
+          ]
+        },
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "EditorConfig.EditorConfig",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}

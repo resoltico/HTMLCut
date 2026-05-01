@@ -1,10 +1,9 @@
-use crate::catalog::{OperationContract, OperationDescriptor, OperationId};
-use crate::contracts::ValueType;
-use crate::{
+use htmlcut_core::{
     CORE_REQUEST_SCHEMA_VERSION, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
     CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-    EXTRACTION_REQUEST_SCHEMA_NAME, INSPECTION_OPTIONS_SCHEMA_NAME, RUNTIME_OPTIONS_SCHEMA_NAME,
-    SOURCE_REQUEST_SCHEMA_NAME, SchemaRef,
+    EXTRACTION_REQUEST_SCHEMA_NAME, INSPECTION_OPTIONS_SCHEMA_NAME, OperationContract,
+    OperationDescriptor, OperationId, RUNTIME_OPTIONS_SCHEMA_NAME, SOURCE_REQUEST_SCHEMA_NAME,
+    SchemaRef, ValueType,
 };
 
 use super::parameters::{

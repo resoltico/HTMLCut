@@ -2,9 +2,9 @@ mod cache;
 mod render;
 
 #[cfg(test)]
-use crate::error::CliError;
+use crate::contract::{CliHelpSection, OperationCliContract};
 #[cfg(test)]
-use htmlcut_core::cli_contract::{CliHelpSection, OperationCliContract};
+use crate::error::CliError;
 
 pub(crate) const ROOT_HELP_TEMPLATE: &str = "\
 {before-help}{usage-heading} {usage}
@@ -142,14 +142,14 @@ pub(crate) fn resolve_cached_help_text_for_tests(result: Result<String, CliError
 #[cfg(test)]
 pub(crate) fn build_operation_long_about_from_sources_for_tests(
     contract: Result<&'static OperationCliContract, CliError>,
-    document: Result<htmlcut_core::cli_contract::CliHelpDocument, CliError>,
+    document: Result<crate::contract::CliHelpDocument, CliError>,
 ) -> Result<String, CliError> {
     render::build_operation_long_about_from_sources_for_tests(contract, document)
 }
 
 #[cfg(test)]
 pub(crate) fn operation_examples_after_help_from_document_for_tests(
-    document: Result<htmlcut_core::cli_contract::CliHelpDocument, CliError>,
+    document: Result<crate::contract::CliHelpDocument, CliError>,
 ) -> Result<String, CliError> {
     render::operation_examples_after_help_from_document_for_tests(document)
 }

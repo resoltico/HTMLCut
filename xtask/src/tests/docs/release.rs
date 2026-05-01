@@ -8,11 +8,10 @@ fn markdown_contract_reports_release_doc_drift_against_canonical_release_targets
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut, quick start]\n  questions: [what is HTMLCut?, where is the quick start guide?]\n-->\n\n# HTMLCut\n\n[Quick Start](docs/getting-started.md)\n",
-    )
-    .expect("write readme");
+    write_storefront_readme(
+        repo_root.path(),
+        "# HTMLCut\n\n[Quick Start](docs/getting-started.md)\n",
+    );
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-22\"\nRETRIEVAL_HINTS:\n  keywords: [contributing, workflow, checks, release, docs]\n  questions: [how do I contribute?, which checks run?]\n-->\n\n# Contributing\n",

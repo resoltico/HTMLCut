@@ -24,8 +24,6 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     let expected_afad_version = metadata::expected_afad_version(repo_root)?;
     let link_pattern = Regex::new(r"\[[^\]]+\]\(([^)]+)\)")?;
     let schema_name_pattern = Regex::new(r"\bhtmlcut\.[a-z_]+\b")?;
-    let operation_id_pattern =
-        Regex::new(r"\b(?:document|source|select|slice)\.(?:parse|inspect|preview|extract)\b")?;
     let updated_pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}$")?;
     let schema_names = identifiers::known_schema_names();
     let operation_ids = identifiers::known_operation_ids();
@@ -34,27 +32,28 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     for path in markdown_doc_paths(repo_root)? {
         let display_path = paths::repo_relative_display(repo_root, &path);
         let text = fs::read_to_string(&path)?;
-        let metadata_style = metadata::expected_metadata_style(repo_root, &path);
-        let version = metadata::metadata_version(&text, metadata_style);
+        if let Some(metadata_style) = metadata::expected_metadata_style(repo_root, &path) {
+            let version = metadata::metadata_version(&text, metadata_style);
 
-        match version {
-            Some(version) if version == workspace_version => {}
-            Some(version) => errors.push(format!(
-                "{display_path} metadata version is {version}, expected {workspace_version}"
-            )),
-            None => errors.push(format!(
-                "{display_path} is missing the expected {} metadata version entry",
-                metadata_style.label()
-            )),
+            match version {
+                Some(version) if version == workspace_version => {}
+                Some(version) => errors.push(format!(
+                    "{display_path} metadata version is {version}, expected {workspace_version}"
+                )),
+                None => errors.push(format!(
+                    "{display_path} is missing the expected {} metadata version entry",
+                    metadata_style.label()
+                )),
+            }
+
+            errors.extend(metadata::metadata_contract_errors(
+                &display_path,
+                &text,
+                metadata_style,
+                &updated_pattern,
+                &expected_afad_version,
+            ));
         }
-
-        errors.extend(metadata::metadata_contract_errors(
-            &display_path,
-            &text,
-            metadata_style,
-            &updated_pattern,
-            &expected_afad_version,
-        ));
         errors.extend(links::local_link_errors(
             repo_root,
             &path,
@@ -68,12 +67,10 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &schema_names,
             "schema name",
         ));
-        errors.extend(identifiers::identifier_errors(
+        errors.extend(identifiers::operation_identifier_errors(
             &display_path,
             &text,
-            &operation_id_pattern,
             &operation_ids,
-            "operation ID",
         ));
         errors.extend(commands::command_example_errors(
             &display_path,
@@ -112,7 +109,10 @@ pub(crate) fn metadata_contract_errors_for_tests(
 }
 
 #[cfg(test)]
-pub(crate) fn expected_metadata_style_for_tests(repo_root: &Path, path: &Path) -> MetadataStyle {
+pub(crate) fn expected_metadata_style_for_tests(
+    repo_root: &Path,
+    path: &Path,
+) -> Option<MetadataStyle> {
     metadata::expected_metadata_style(repo_root, path)
 }
 

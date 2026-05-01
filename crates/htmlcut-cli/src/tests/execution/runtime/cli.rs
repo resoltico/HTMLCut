@@ -36,9 +36,23 @@ fn cargo_manifest_drives_the_public_metadata_constants() {
         workspace_package_field(&workspace_manifest, "version").expect("workspace version");
     let workspace_description =
         workspace_package_field(&workspace_manifest, "description").expect("workspace description");
+    let workspace_members =
+        workspace_array_field(&workspace_manifest, "members").expect("workspace members");
+    let workspace_default_members = workspace_array_field(&workspace_manifest, "default-members")
+        .expect("workspace default-members");
 
     assert_eq!(HTMLCUT_VERSION, workspace_version);
     assert_eq!(HTMLCUT_DESCRIPTION, workspace_description);
+    assert!(workspace_members.contains(&"xtask".to_owned()));
+    assert!(workspace_members.contains(&"fuzz".to_owned()));
+    assert_eq!(
+        workspace_default_members,
+        vec![
+            "crates/htmlcut-core".to_owned(),
+            "crates/htmlcut-cli".to_owned(),
+            "crates/htmlcut-tempdir".to_owned(),
+        ]
+    );
 }
 
 #[test]

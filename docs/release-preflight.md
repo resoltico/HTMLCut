@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: RELEASE
-updated: "2026-04-29"
+updated: "2026-04-30"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -124,8 +124,8 @@ Then verify:
   to match the workspace release:
   - the path dependency versions for `htmlcut-cli`, `htmlcut-core`, and `htmlcut-tempdir` in
     `Cargo.toml`
-  - the maintained Markdown metadata `version` fields in `README.md`, `CONTRIBUTING.md`,
-    `PATENTS.md`, `fuzz/README.md`, and the maintained `docs/*.md` set
+  - the maintained Markdown metadata `version` fields in `CONTRIBUTING.md`, `PATENTS.md`,
+    `fuzz/README.md`, and the maintained `docs/*.md` set
   - the concrete release-version literals in `docs/getting-started.md` install snippets
   - the local path-package entries in `Cargo.lock`, so the subsequent locked gate reflects the
     release version truthfully
@@ -139,6 +139,8 @@ Then verify:
 - `changelog.md` has a `## [X.Y.Z] - YYYY-MM-DD` section with at least one entry.
 - `README.md` still works as the short product-facing front window and still points at the quick
   start and full docs.
+- any local assets referenced by `README.md` such as `images/HTMLCut.png` are committed in the
+  tagged tree and render from a versioned checkout instead of depending on `main`.
 - `docs/getting-started.md` still documents the current user-facing install flow and runnable
   first-use examples.
 - `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and
@@ -200,7 +202,7 @@ commit captured in Step 1, verify that it is clean and push it directly:
 ```bash
 git status --short
 git show --stat --summary --format=fuller HEAD
-git push -u origin release/X.Y.Z
+git push origin release/X.Y.Z
 ```
 
 If release-only fixes are still needed after Step 1, make them on `release/X.Y.Z` before pushing:
@@ -229,6 +231,10 @@ Before pushing or committing:
 - whether the candidate came from Step 1 or from an extra release-only commit, the pushed
   `release/X.Y.Z` branch must still include the full version-bearing surface described in Step 1,
   not just the workspace manifest line by itself
+
+Upstream tracking for `release/X.Y.Z` is optional. The release workflow does not rely on it, and
+skipping `-u` avoids mutating the shared repository config from a disposable worktree just to make
+one release push.
 
 ## 3. Pull Request And CI
 

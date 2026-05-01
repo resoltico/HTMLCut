@@ -47,16 +47,19 @@ pub(crate) fn expected_afad_version(repo_root: &Path) -> DynResult<String> {
         })
 }
 
-pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> MetadataStyle {
+pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> Option<MetadataStyle> {
     let relative = path.strip_prefix(repo_root).unwrap_or(path);
+    if relative == Path::new("README.md") {
+        return None;
+    }
     if relative
         .components()
         .next()
         .is_some_and(|component| component.as_os_str() == "docs")
     {
-        MetadataStyle::Frontmatter
+        Some(MetadataStyle::Frontmatter)
     } else {
-        MetadataStyle::HtmlComment
+        Some(MetadataStyle::HtmlComment)
     }
 }
 

@@ -1,8 +1,9 @@
 # Universal Engineering Contract
 
-**Version:** 2.0.0
-**Updated:** 2026-04-27
+**Version:** 2.1.0
+**Updated:** 2026-04-30
 **Applies to:** all languages, runtimes, frameworks, tools, and repositories.
+**Companion:** `DOMAIN_DRIVEN_DESIGN_LENS.md` for changes that touch business meaning, business rules, workflows, state transitions, or cross-context integration. Loaded on demand, not by default.
 
 ## 0. What this contract is, and is not
 
@@ -17,11 +18,13 @@ A passing build, a closed issue, or a generated patch is not the outcome. The ou
 
 Avoid orphan code: code that appears locally correct but has no clear owner, feedback loop, justification, invariant, or understandable place in the system.
 
+When the work touches business meaning, treat the Universal Engineering Contract as the operating discipline and the Domain-Driven Design Lens as the model-design discipline. Do not force domain ceremony onto mechanical infrastructure work.
+
 ## 1. Build the minimum system map before touching code
 
 Before making a non-trivial change, identify the relevant system theory — concretely enough that another engineer or agent could continue safely, lightly enough that the map does not become its own artifact.
 
-The map has six concerns. Treat them as questions, not as a form to fill in.
+The map has six concerns. Treat them as questions, not as a form to fill in. A seventh concern (§1.7) applies only when the change touches business meaning.
 
 ### 1.1 Truth — where does state live?
 
@@ -79,6 +82,24 @@ The relevant theory cannot be fully written down. What can be written down is th
 
 Do not leave essential cues trapped in a chat transcript or temporary reasoning. Equally, do not pretend an artifact transfers a theory it can only re-cue.
 
+### 1.7 Domain meaning gate (conditional)
+
+Apply this subsection only when the change touches business meaning. This includes domain state, business rules, workflow names, commands, domain events, permissions, policies, calculations, lifecycle transitions, user-facing business terms, or integration contracts between models. For purely mechanical work — build wiring, generic plumbing, infrastructure with no business meaning — skip §1.7 and load nothing further.
+
+When it applies, ask:
+
+- Which Bounded Context gives the touched terms their meaning?
+- What local Ubiquitous Language is being added, corrected, renamed, or protected?
+- Are any terms overloaded elsewhere in the organization or codebase?
+- Is the work Core Domain, Supporting Subdomain, Generic Subdomain, or non-domain infrastructure?
+- Which Aggregate, Entity, Value Object, Domain Service, Factory, Repository, command, or Domain Event owns the behavior?
+- What true invariant is being protected, and where is the transactional consistency boundary?
+- Is a foreign model entering this context? If yes, where is the translation boundary, Published Language, Open Host Service, or Anticorruption Layer?
+
+Do not guess these answers into existence. If the context or language is not known, state the uncertainty and leave a durable cue for the next theory-holder. A vague class name, duplicated status enum, or copied integration DTO can become a false model.
+
+The full discipline lives in the companion lens. Load it when this gate fires.
+
 ## 2. Red → Green → Refactor
 
 For new behavior, start with the smallest failing proof of behavior: a test, assertion, contract check, type-level check, reproducible script, golden case, or manual verification path.
@@ -114,6 +135,8 @@ Treat architecture as accumulated system theory. Preserve the parts that encode 
 
 Architecture should emerge through repeated validated improvements, not speculative rewrites. When changing structure, make the new structure easier to explain, justify, test, and modify than the old one.
 
+For domain-heavy work, architecture must protect the domain model rather than replace it. Layered architecture, hexagonal architecture, REST, messaging, CQRS, event sourcing, data grids, and other styles are not the model. They are support structures. Use them only when they reduce real risk or satisfy real quality demands. The domain model should remain expressible in the local Ubiquitous Language, insulated from persistence, transport, UI, and foreign models where practical.
+
 ## 5. Canonical ownership of contract facts
 
 Shared contract facts must have exactly one canonical owner. Which facts qualify is itself a domain judgment, not a mechanical rule.
@@ -134,6 +157,8 @@ Do not hard-code contract facts in parallel across code, interfaces, tools, test
 
 When no canonical owner exists, create the smallest appropriate one before spreading the fact further.
 
+For domain work, canonical ownership is context-sensitive. A term, status, event, or identifier may have one meaning in one Bounded Context and a different meaning in another. Do not create a false global owner for language that is only locally true. Across Bounded Contexts, the canonical owner may be a Published Language, stable API resource, event schema, command contract, Open Host Service, or translation map, not a shared domain class.
+
 ## 6. State ownership and mutation discipline
 
 Every meaningful piece of state needs an owner and a mutation policy.
@@ -150,6 +175,8 @@ Before changing stateful behavior, identify:
 
 Do not introduce a second source of truth. Do not patch derived state when the canonical state or mutation path is wrong. Do not add hidden state that future maintainers cannot locate or reason about.
 
+For domain work, identify the Aggregate or process that owns each invariant. Aggregates are consistency boundaries, not object graphs. Keep them as small as the true invariant permits. Prefer referencing other Aggregates by identity and using eventual consistency outside the boundary unless a real business rule demands atomic consistency.
+
 ## 7. Feedback must match risk
 
 Use the cheapest feedback that proves the important behavior, but do not confuse cheap feedback with sufficient feedback.
@@ -157,6 +184,8 @@ Use the cheapest feedback that proves the important behavior, but do not confuse
 A pure function may need a unit test. A protocol may need a contract test. A migration may need rollback validation. A distributed workflow may need integration coverage, idempotency checks, logs, metrics, and failure-mode tests.
 
 When fixing a bug, reproduce it first if practical. When preventing recurrence, add the feedback that would have caught it.
+
+For domain work, evidence should use business examples, not merely technical assertions. Prefer tests and executable examples that state the local language: given a domain situation, when a command or event occurs, then the invariant or state transition holds. If domain expert validation is required and unavailable, record that gap explicitly.
 
 ## 8. Deletion and simplification require proof
 
@@ -209,6 +238,24 @@ Re-cueing:
 - Theory that could not be expressed in artifacts, and who currently holds it:
 ```
 
+When the change touches domain meaning, also include a proportional domain-design block:
+
+```text
+Domain design lens:
+- Domain / subdomain:
+- Core / Supporting / Generic / non-domain judgment:
+- Bounded Context:
+- Ubiquitous Language terms changed or clarified:
+- Term collisions or foreign concepts:
+- Aggregate or consistency boundary affected:
+- Entity / Value Object / Domain Service / Factory / Repository choices:
+- Commands, workflows, or Domain Events affected:
+- Cross-context relationship, if any:
+- Published Language, Open Host Service, or Anticorruption Layer, if any:
+- Domain examples, tests, or expert validation used:
+- Known model gaps:
+```
+
 Keep the summary proportional to the change. Small changes need small summaries. Risky changes need explicit reasoning. The "Known gaps" and "Theory that could not be expressed" lines are first-class outputs, not optional caveats — silence on them claims a theory the agent does not have.
 
 ## 10. Stop conditions
@@ -222,7 +269,8 @@ Stop when:
 - important invariants are protected;
 - blast radius has been considered and checked with available tools;
 - justification gaps have been surfaced rather than silently closed;
-- newly discovered cues have been left in a durable place; and
+- newly discovered cues have been left in a durable place;
+- for domain changes, the local language, Bounded Context, invariant owner, and cross-context translation boundary are explicit enough for the next change; and
 - the next improvement is a separate slice.
 
 Do not continue expanding scope after the next step stops being clearly connected, safe, and validated.

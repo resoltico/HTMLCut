@@ -28,6 +28,12 @@ fn help_prints_the_new_workflows_and_contract_language() {
             "--emit-request-file writes the normalized extraction definition for the current run.",
         ))
         .stdout(predicate::str::contains(
+            "--overwrite is required before HTMLCut will replace an existing request file, output file, or bundle path.",
+        ))
+        .stdout(predicate::str::contains(
+            "Parent directories are created automatically for --emit-request-file, --output-file, and --bundle.",
+        ))
+        .stdout(predicate::str::contains(
             "--request-file reruns a saved definition instead of spelling the source and strategy inline.",
         ))
         .stdout(predicate::str::contains(

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
+use crate::contract::{CliHelpDocument, OperationCliContract};
 use htmlcut_core::OperationId;
-use htmlcut_core::cli_contract::{CliHelpDocument, OperationCliContract};
 
 use crate::error::{CliError, internal_error, usage_error};
 use crate::model::CliErrorCode;
@@ -13,9 +13,8 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
         .iter()
         .map(|descriptor| descriptor.id.as_str())
         .collect::<Vec<_>>();
-    let catalog_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
-        htmlcut_core::cli_contract::CliAuxCommandId::Catalog,
-    );
+    let catalog_command =
+        crate::contract::cli_aux_command_display_command(crate::contract::CliAuxCommandId::Catalog);
     usage_error(
         CliErrorCode::OperationIdUnknown,
         format!(
@@ -31,7 +30,7 @@ pub(crate) fn operation_contract(
     require_operation_value(
         operation_id,
         "operation contract",
-        htmlcut_core::cli_contract::cli_operation_contract(operation_id),
+        crate::contract::cli_operation_contract(operation_id),
     )
 }
 
@@ -39,7 +38,7 @@ pub(crate) fn operation_display_command(operation_id: OperationId) -> Result<Str
     require_operation_value(
         operation_id,
         "display command",
-        htmlcut_core::cli_contract::cli_operation_display_command(operation_id),
+        crate::contract::cli_operation_display_command(operation_id),
     )
 }
 
@@ -47,7 +46,7 @@ pub(crate) fn operation_report_command(operation_id: OperationId) -> Result<Stri
     require_operation_value(
         operation_id,
         "report command",
-        htmlcut_core::cli_contract::cli_operation_report_command(operation_id),
+        crate::contract::cli_operation_report_command(operation_id),
     )
 }
 
@@ -57,7 +56,7 @@ pub(crate) fn operation_help_document(
     require_operation_value(
         operation_id,
         "help document",
-        htmlcut_core::cli_contract::cli_operation_help_document(operation_id),
+        crate::contract::cli_operation_help_document(operation_id),
     )
 }
 
@@ -89,9 +88,8 @@ pub(crate) fn unknown_schema_error(
     } else {
         suggestion_suffix(requested_name, name_candidates)
     };
-    let schema_command = htmlcut_core::cli_contract::cli_aux_command_display_command(
-        htmlcut_core::cli_contract::CliAuxCommandId::Schema,
-    );
+    let schema_command =
+        crate::contract::cli_aux_command_display_command(crate::contract::CliAuxCommandId::Schema);
 
     usage_error(
         CliErrorCode::SchemaUnknown,

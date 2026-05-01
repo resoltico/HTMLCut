@@ -48,11 +48,7 @@ fn markdown_contract_errors_report_missing_and_mismatched_versions() {
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"4.0\"\n  domain: PRODUCT\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [htmlcut]\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write readme");
+    fs::write(repo_root.path().join("README.md"), "# HTMLCut\n").expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"9.9.9\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
@@ -80,10 +76,6 @@ fn markdown_contract_errors_report_missing_and_mismatched_versions() {
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
 
     assert!(
-        errors.iter().any(|error| error
-            == "README.md is missing the expected HTML comment metadata version entry")
-    );
-    assert!(
         errors
             .iter()
             .any(|error| error == "CONTRIBUTING.md metadata version is 9.9.9, expected 4.1.0")
@@ -108,11 +100,7 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
         "[workspace.package]\nversion = \"4.1.0\"\n",
     )
     .expect("write manifest");
-    fs::write(
-        repo_root.path().join("README.md"),
-        "<!--\nAFAD:\n  afad: \"3.4\"\n  version: \"4.1.0\"\n  domain: PRODUCT\n  updated: \"2026/04/20\"\nRETRIEVAL_HINTS:\n  questions: [\"q\"]\n-->\n",
-    )
-    .expect("write readme");
+    fs::write(repo_root.path().join("README.md"), "# HTMLCut\n").expect("write readme");
     fs::write(
         repo_root.path().join("CONTRIBUTING.md"),
         "<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n  domain: MAINTAINER\n  updated: \"2026-04-20\"\nRETRIEVAL_HINTS:\n  keywords: [contrib]\n  questions: [\"q\"]\n-->\n",
@@ -139,17 +127,6 @@ fn markdown_contract_errors_report_missing_metadata_fields_and_inventory_drift()
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
 
-    assert!(
-        errors
-            .iter()
-            .any(|error| error == "README.md metadata afad is 3.4, expected 4.0")
-    );
-    assert!(
-        errors.iter().any(|error| error
-            == "README.md metadata updated value is not ISO-8601 YYYY-MM-DD: 2026/04/20")
-    );
-    assert!(errors.iter().any(|error| error
-        == "README.md is missing the expected HTML comment RETRIEVAL_HINTS keywords entry"));
     assert!(errors.iter().any(|error| error
         == "docs/operations.md is missing the expected frontmatter route questions entry"));
     assert!(errors.iter().any(|error| {
@@ -191,11 +168,6 @@ fn markdown_contract_errors_report_malformed_metadata_blocks_and_empty_values() 
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
 
-    assert!(
-        errors
-            .iter()
-            .any(|error| error == "README.md is missing the expected HTML comment metadata block")
-    );
     assert!(errors.iter().any(|error| error
         == "CONTRIBUTING.md is missing the expected HTML comment metadata updated entry"));
     assert!(
@@ -232,7 +204,7 @@ fn metadata_helpers_report_missing_frontmatter_and_html_comment_fields_directly(
     }
 
     let html_comment_errors = crate::docs::metadata_contract_errors_for_tests(
-        "README.md",
+        "CONTRIBUTING.md",
         "<!--\nAFAD:\n  version: \"4.1.0\"\n  updated: \"2026-04-20\"\n-->\n",
         crate::docs::MetadataStyle::HtmlComment,
         &updated_pattern,
@@ -255,18 +227,44 @@ fn metadata_helpers_report_missing_frontmatter_and_html_comment_fields_directly(
 }
 
 #[test]
-fn expected_metadata_style_maps_docs_to_frontmatter_and_root_docs_to_html_comments() {
+fn metadata_helpers_report_mismatched_afad_and_invalid_updated_values() {
+    let updated_pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}$").expect("updated pattern");
+
+    let frontmatter_errors = crate::docs::metadata_contract_errors_for_tests(
+        "docs/guide.md",
+        "---\nafad: \"9.9\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026/04/20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\n",
+        crate::docs::MetadataStyle::Frontmatter,
+        &updated_pattern,
+        "4.0",
+    );
+    assert!(
+        frontmatter_errors
+            .iter()
+            .any(|error| { error.contains("metadata afad is 9.9, expected 4.0") })
+    );
+    assert!(frontmatter_errors.iter().any(|error| {
+        error.contains("metadata updated value is not ISO-8601 YYYY-MM-DD: 2026/04/20")
+    }));
+}
+
+#[test]
+fn expected_metadata_style_exempts_the_root_readme_but_keeps_nested_readmes_managed() {
     let repo_root = tempdir().expect("tempdir");
     let docs_path = repo_root.path().join("docs").join("guide.md");
     let readme_path = repo_root.path().join("README.md");
+    let nested_readme_path = repo_root.path().join("fuzz").join("README.md");
 
     assert_eq!(
         crate::docs::expected_metadata_style_for_tests(repo_root.path(), &docs_path),
-        crate::docs::MetadataStyle::Frontmatter
+        Some(crate::docs::MetadataStyle::Frontmatter)
     );
     assert_eq!(
         crate::docs::expected_metadata_style_for_tests(repo_root.path(), &readme_path),
-        crate::docs::MetadataStyle::HtmlComment
+        None
+    );
+    assert_eq!(
+        crate::docs::expected_metadata_style_for_tests(repo_root.path(), &nested_readme_path),
+        Some(crate::docs::MetadataStyle::HtmlComment)
     );
 }
 

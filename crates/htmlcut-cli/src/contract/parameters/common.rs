@@ -1,4 +1,4 @@
-use crate::contracts::{
+use htmlcut_core::{
     DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, FetchPreflightMode, ValueType, WhitespaceMode,
 };
@@ -129,6 +129,14 @@ pub(super) fn common_definition_parameters() -> Vec<CliParameterDescriptor> {
             "Write the normalized extraction definition used for this run to a JSON file.",
         ),
     ]
+}
+
+pub(super) fn common_filesystem_output_parameters() -> Vec<CliParameterDescriptor> {
+    vec![param_flag(
+        CliParameterSection::FilesystemOutput,
+        CliParameterId::Overwrite,
+        "Allow HTMLCut to replace existing --output-file, --emit-request-file, and bundle paths.",
+    )]
 }
 
 pub(super) fn request_file_aware_source_parameters() -> Vec<CliParameterDescriptor> {

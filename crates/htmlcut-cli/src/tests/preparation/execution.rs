@@ -72,6 +72,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output_file: None,
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             preview_chars: DEFAULT_PREVIEW_CHARS,
+            file_write: default_file_write_args(),
         },
         0,
         false,
@@ -95,6 +96,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output_file: None,
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             preview_chars: DEFAULT_PREVIEW_CHARS,
+            file_write: default_file_write_args(),
         },
         0,
         false,
@@ -134,6 +136,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -168,6 +171,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -206,6 +210,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -247,6 +252,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .expect("extract builder"),
     );
@@ -286,6 +292,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             },
             1,
             false,
@@ -331,6 +338,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .expect("extract builder"),
     );
@@ -368,6 +376,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             },
             1,
             false,
@@ -412,6 +421,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         })
         .is_err()
     );
@@ -533,6 +543,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output_file: None,
                 sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
+                file_write: default_file_write_args(),
             },
             0,
             false,
@@ -563,6 +574,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output_file: None,
                 sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
+                file_write: default_file_write_args(),
             },
             0,
             false,
@@ -599,6 +611,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             })
             .expect("preview builder"),
         )
@@ -634,6 +647,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             })
             .expect("preview builder"),
         )
@@ -672,6 +686,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             })
             .expect("extract builder"),
         )
@@ -710,6 +725,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
+                file_write: default_file_write_args(),
             })
             .expect("extract builder"),
         )

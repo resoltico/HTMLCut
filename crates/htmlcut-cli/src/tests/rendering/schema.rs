@@ -325,6 +325,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         SchemaArgs {
             output: CliSchemaOutputMode::Text,
             output_file: None,
+            file_write: default_file_write_args(),
             name: Some("htmlcut.result".to_owned()),
             schema_version: Some(2),
         },
@@ -343,6 +344,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         SchemaArgs {
             output: CliSchemaOutputMode::Json,
             output_file: None,
+            file_write: default_file_write_args(),
             name: Some("synthetic.missing".to_owned()),
             schema_version: Some(99),
         },
@@ -361,6 +363,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         SchemaArgs {
             output: CliSchemaOutputMode::Text,
             output_file: None,
+            file_write: default_file_write_args(),
             name: None,
             schema_version: Some(1),
         },
@@ -571,6 +574,7 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
             CatalogArgs {
                 output: CliCatalogOutputMode::Json,
                 output_file: None,
+                file_write: default_file_write_args(),
                 operation: None,
             },
             0,
@@ -591,6 +595,7 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
             SchemaArgs {
                 output: CliSchemaOutputMode::Json,
                 output_file: None,
+                file_write: default_file_write_args(),
                 name: Some("htmlcut.result".to_owned()),
                 schema_version: Some(2),
             },

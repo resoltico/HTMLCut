@@ -27,11 +27,12 @@ fn url_select_recovers_when_head_preflight_returns_forbidden() {
                 .push(method.clone());
 
             let response = if method == "HEAD" {
-                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n".to_owned()
+                "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+                    .to_owned()
             } else {
                 let body = "<html><body><article>Recovered</article></body></html>";
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
                     body.len(),
                     body
                 )
@@ -88,7 +89,7 @@ fn url_select_recovers_when_head_preflight_transport_breaks() {
 
             let body = "<html><body><article>Recovered</article></body></html>";
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
                 body.len(),
                 body
             );

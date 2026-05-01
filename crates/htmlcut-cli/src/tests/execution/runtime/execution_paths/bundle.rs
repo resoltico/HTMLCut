@@ -32,13 +32,94 @@ fn write_bundle_reports_each_output_failure() {
         )
         .expect_err("directory creation should fail")
         .code,
+        "CLI_BUNDLE_PATH_EXISTS"
+    );
+
+    assert_eq!(
+        crate::render::write_bundle(
+            &report,
+            &BundlePaths {
+                dir: create_dir_path.to_string_lossy().into_owned(),
+                html: create_dir_path
+                    .join("selection.html")
+                    .to_string_lossy()
+                    .into_owned(),
+                text: create_dir_path
+                    .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                report: create_dir_path
+                    .join("report.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            },
+            crate::file_output::FileWriteMode::Overwrite,
+        )
+        .expect_err("overwrite should still reject non-directory bundle targets")
+        .code,
+        "CLI_BUNDLE_DIRECTORY_CREATE_FAILED"
+    );
+
+    let blocked_parent = create_dir_temp.path().join("blocked-parent");
+    fs::write(&blocked_parent, "sentinel").expect("blocked parent");
+    assert_eq!(
+        crate::render::write_bundle(
+            &report,
+            &BundlePaths {
+                dir: blocked_parent.join("bundle").to_string_lossy().into_owned(),
+                html: blocked_parent
+                    .join("bundle")
+                    .join("selection.html")
+                    .to_string_lossy()
+                    .into_owned(),
+                text: blocked_parent
+                    .join("bundle")
+                    .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                report: blocked_parent
+                    .join("bundle")
+                    .join("report.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            },
+            crate::file_output::FileWriteMode::CreateFresh,
+        )
+        .expect_err("blocked parent should reject bundle creation")
+        .code,
         "CLI_BUNDLE_DIRECTORY_CREATE_FAILED"
     );
 
     let html_temp = tempdir().expect("tempdir");
-    fs::create_dir(html_temp.path().join("selection.html")).expect("html dir");
+    let existing_bundle = html_temp.path().join("existing-bundle");
+    fs::create_dir(&existing_bundle).expect("existing bundle dir");
     assert_eq!(
         write_bundle(
+            &report,
+            &BundlePaths {
+                dir: existing_bundle.to_string_lossy().into_owned(),
+                html: existing_bundle
+                    .join("selection.html")
+                    .to_string_lossy()
+                    .into_owned(),
+                text: existing_bundle
+                    .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                report: existing_bundle
+                    .join("report.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            },
+        )
+        .expect_err("existing bundle dir should require overwrite")
+        .code,
+        "CLI_BUNDLE_PATH_EXISTS"
+    );
+
+    fs::create_dir(html_temp.path().join("selection.html")).expect("html dir");
+    assert_eq!(
+        crate::render::write_bundle(
             &report,
             &BundlePaths {
                 dir: html_temp.path().to_string_lossy().into_owned(),
@@ -58,6 +139,7 @@ fn write_bundle_reports_each_output_failure() {
                     .to_string_lossy()
                     .into_owned(),
             },
+            crate::file_output::FileWriteMode::Overwrite,
         )
         .expect_err("html write should fail")
         .code,
@@ -67,7 +149,7 @@ fn write_bundle_reports_each_output_failure() {
     let text_temp = tempdir().expect("tempdir");
     fs::create_dir(text_temp.path().join("selection.txt")).expect("text dir");
     assert_eq!(
-        write_bundle(
+        crate::render::write_bundle(
             &report,
             &BundlePaths {
                 dir: text_temp.path().to_string_lossy().into_owned(),
@@ -87,6 +169,7 @@ fn write_bundle_reports_each_output_failure() {
                     .to_string_lossy()
                     .into_owned(),
             },
+            crate::file_output::FileWriteMode::Overwrite,
         )
         .expect_err("text write should fail")
         .code,
@@ -96,7 +179,7 @@ fn write_bundle_reports_each_output_failure() {
     let report_temp = tempdir().expect("tempdir");
     fs::create_dir(report_temp.path().join("report.json")).expect("report dir");
     assert_eq!(
-        write_bundle(
+        crate::render::write_bundle(
             &report,
             &BundlePaths {
                 dir: report_temp.path().to_string_lossy().into_owned(),
@@ -116,6 +199,7 @@ fn write_bundle_reports_each_output_failure() {
                     .to_string_lossy()
                     .into_owned(),
             },
+            crate::file_output::FileWriteMode::Overwrite,
         )
         .expect_err("report write should fail")
         .code,

@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: INTEROP
 updated: "2026-04-29"
 route:

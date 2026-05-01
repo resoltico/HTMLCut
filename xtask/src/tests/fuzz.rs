@@ -1,4 +1,5 @@
 use super::*;
+use crate::fuzz::FUZZ_SMOKE_EXAMPLE_TARGET;
 
 #[test]
 fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
@@ -12,6 +13,12 @@ fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
             "cli_parse_error_surface",
         ]
     );
+}
+
+#[test]
+fn fuzz_smoke_example_target_belongs_to_the_canonical_inventory() {
+    assert_eq!(FUZZ_SMOKE_EXAMPLE_TARGET, "selector_parsing");
+    assert!(fuzz_smoke_targets().contains(&FUZZ_SMOKE_EXAMPLE_TARGET));
 }
 
 #[test]
@@ -76,7 +83,11 @@ fn fuzz_smoke_preflight_message_lists_every_missing_prerequisite() {
 
     assert!(message.contains("requires nightly plus the `cargo-fuzz` runner"));
     assert!(message.contains("rustup toolchain install nightly --profile minimal"));
-    assert!(message.contains("CC=clang CXX=clang++ cargo install cargo-fuzz --locked"));
+    assert!(
+        message.contains(
+            "CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-fuzz"
+        )
+    );
 }
 
 #[test]
@@ -84,11 +95,11 @@ fn fuzz_smoke_preflight_message_lists_only_the_missing_prerequisite() {
     let nightly_only =
         fuzz_smoke_preflight_message(&[FuzzSmokePreflightFailure::MissingNightlyToolchain]);
     assert!(nightly_only.contains("rustup toolchain install nightly --profile minimal"));
-    assert!(!nightly_only.contains("cargo install cargo-fuzz"));
+    assert!(!nightly_only.contains("install-contributor-cargo-tools.sh"));
 
     let cargo_fuzz_only =
         fuzz_smoke_preflight_message(&[FuzzSmokePreflightFailure::MissingCargoFuzz]);
-    assert!(cargo_fuzz_only.contains("cargo install cargo-fuzz --locked"));
+    assert!(cargo_fuzz_only.contains("install-contributor-cargo-tools.sh cargo-fuzz"));
     assert!(!cargo_fuzz_only.contains("rustup toolchain install nightly"));
 }
 

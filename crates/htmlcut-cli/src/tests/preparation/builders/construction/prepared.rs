@@ -35,6 +35,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
             include_source_text: false,
             output_file: None,
         },
+        file_write: default_file_write_args(),
     })
     .expect("select builder");
     assert_eq!(select.command, "select");
@@ -73,6 +74,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
             include_source_text: false,
             output_file: None,
         },
+        file_write: default_file_write_args(),
     })
     .expect("slice builder");
     assert_eq!(slice.command, "slice");
@@ -103,6 +105,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
             include_source_text: false,
             output_file: None,
         },
+        file_write: default_file_write_args(),
     })
     .expect("preview builder");
     assert_eq!(
@@ -142,6 +145,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
                 include_source_text: false,
                 output_file: None,
             },
+            file_write: default_file_write_args(),
         },
         2,
         true,

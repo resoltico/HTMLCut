@@ -20,9 +20,8 @@ impl PreparedSourceInspection {
         let preview_chars = validate_preview_chars(args.preview_chars)?;
         let runtime = build_runtime(&args.source)?;
         let source = build_source_request(&args.source)?;
-        let report_command = htmlcut_core::cli_contract::cli_operation_report_command(
-            htmlcut_core::OperationId::SourceInspect,
-        );
+        let report_command =
+            crate::contract::cli_operation_report_command(htmlcut_core::OperationId::SourceInspect);
         let command = source_inspection_report_command(report_command.as_deref())?;
         Ok(Self {
             command,
@@ -45,7 +44,7 @@ fn source_inspection_report_command(command: Option<&str>) -> Result<String, Cli
     command.map(str::to_owned).ok_or_else(|| {
         internal_error(
             CliErrorCode::ContractMissing,
-            "The core-owned CLI contract is missing the report command for inspect source.",
+            "The htmlcut-cli contract registry is missing the report command for inspect source.",
         )
     })
 }

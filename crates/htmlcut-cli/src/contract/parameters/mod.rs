@@ -1,4 +1,4 @@
-use crate::contracts::{FetchPreflightMode, PatternMode, ValueType, WhitespaceMode};
+use htmlcut_core::{FetchPreflightMode, PatternMode, ValueType, WhitespaceMode};
 
 #[cfg(test)]
 use super::OperationCliContract;

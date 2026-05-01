@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "6.0.0"
+  version: "7.0.0"
   domain: QUALITY
-  updated: "2026-04-29"
+  updated: "2026-05-01"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
@@ -46,7 +46,8 @@ workspace root `target/` tree.
 Install the fuzz driver once:
 
 ```bash
-cargo install cargo-fuzz --locked
+source "$HOME/.cargo/env"
+./scripts/install-contributor-cargo-tools.sh cargo-fuzz
 ```
 
 On macOS, keep the maintained `CC=clang CXX=clang++` override from

@@ -5,6 +5,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-05-01
+
+### Changed
+- Promoted the workspace to `7.0.0` after removing the public `htmlcut_core::cli_contract`
+  namespace and making `htmlcut_cli::contract` the sole maintained Rust surface for CLI command
+  contracts, help documents, and command/help discovery helpers.
+- `htmlcut-core` now owns only the generic operation catalog and execution contracts; `htmlcut-cli`
+  owns the CLI command/help contract registry, packaged release README generation, and the release
+  smoke flow that exercises one real extraction-plus-request replay from the shipped archive.
+- Added a first-class contributor devcontainer on Ubuntu `26.04`, with committed lifecycle
+  scripts that repair named Rust/Cargo cache volumes, bootstrap the pinned Rust toolchains and
+  maintainer QA commands on first create, validate the real devcontainer-client path, and
+  document the container workflow as the preferred contributor path.
+- The canonical Linux maintainer gate now runs through that committed contributor devcontainer via
+  a host-side `./scripts/devcontainer-check.sh` entrypoint instead of a second host-native Linux
+  Rust gate.
+
+### Fixed
+- The docs contract now honors the repository rule that the root `README.md` is not AFAD-managed,
+  so the root README remains in the maintained docs set for links/examples without being forced to
+  carry AFAD metadata the repository explicitly forbids.
+- Operation-ID documentation lint no longer hardcodes the current operation family matrix just to
+  recognize valid catalog entries, and the coverage/reporting docs now describe the curated
+  tracked executable module set honestly instead of overstating the covered surface.
+- `cargo xtask --help` now prints a fuzz-smoke example target that belongs to the maintained
+  inventory, the help tests validate those example commands against the live parser surface,
+  invalid fuzz-target errors now fail before tool-preflight checks on every runner, and the
+  release-preflight guide plus docs-test fixtures no longer teach the removed root-README metadata
+  contract.
+- The contributor devcontainer validation and bootstrap scripts now emit explicit phase progress,
+  including Rust toolchain and cargo QA tool installation milestones, and CI now reuses the same
+  named contributor volumes across validation and the full maintainer gate while skipping raw-image
+  help probes that `./scripts/devcontainer-check.sh` already proves, so release-time container
+  checks do not pay two unrelated cold-bootstrap costs or duplicate raw contributor-image command
+  compiles.
+- Repo-root `cargo run -- ...` now resolves to the public `htmlcut` CLI, `xtask` prints readable
+  non-clap failures without Rust debug quoting, and the help/docs surfaces teach the hard-break
+  overwrite rule for request files, output files, and bundle directories.
+- The repo-root `./check.sh` entrypoint now shows Cargo compile progress instead of hiding startup
+  work behind `--quiet`, so first-run maintainer gates and the contributor devcontainer path are
+  observable while they warm a fresh build cache.
+- The root README now renders its storefront artwork from the tagged tree rather than loading it
+  from the moving `main` branch, so historical tag views keep their own release-facing art.
+- The release preflight guide now pushes `release/X.Y.Z` without `-u`, so the disposable release
+  worktree does not need to mutate the shared repository config just to publish the release branch.
+- HTMLCut now refuses to replace existing `--emit-request-file`, `--output-file`, or `--bundle`
+  targets unless `--overwrite` is explicit, while keeping parent-directory creation automatic for
+  fresh paths.
+- Contributor-container validation no longer depends on Docker access from inside the contributor
+  shell, so the Ubuntu `26.04` devcontainer now follows a cleaner host-Docker/container-Rust split
+  without mounted-socket permission failures.
+- Contributor cargo-tool bootstrap now reads Cargo install metadata before probing binaries, so
+  already-correct QA tool installs are reused on later devcontainer starts instead of being
+  rebuilt unnecessarily.
+- CI now validates the committed contributor devcontainer as its own job before the aggregate
+  `Check` result reports success, and that Linux job now runs the full maintainer gate through the
+  committed container instead of duplicating a separate host-native Rust path.
+
 ## [6.0.0] - 2026-04-29
 
 ### Changed

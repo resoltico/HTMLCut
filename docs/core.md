@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "6.0.0"
+version: "7.0.0"
 domain: CORE
 updated: "2026-04-29"
 route:
@@ -33,7 +33,6 @@ That list calls out the main execution and discovery helpers. It is not the full
 Additional stable exports also include:
 
 - the `htmlcut_core::request` and `htmlcut_core::result` namespaces
-- the `htmlcut_core::cli_contract` namespace for CLI command contracts and help documents
 - schema/profile/version constants
 - `DiagnosticCode`
 - the versioned `htmlcut_core::interop` module
@@ -46,8 +45,6 @@ Detailed contract types live behind explicit namespaces:
 - `htmlcut_core::request` for typed request-side contracts
 - `htmlcut_core::result` for typed result-side contracts such as `ExtractionMatch`,
   `ExtractionStats`, `Range`, and structured metadata enums
-- `htmlcut_core::cli_contract` for `OperationCliContract`, `CliHelpDocument`, canonical command
-  lookup helpers, and CLI-value rendering
 
 ## Core Request Model
 
@@ -121,36 +118,15 @@ Each operation descriptor includes:
 
 That catalog is the source of truth for the operation matrix.
 
-For CLI-exposed operations, `htmlcut-core` also owns a companion
-`htmlcut_core::cli_contract::OperationCliContract` registry. That companion catalog carries:
-
-- concrete command path tokens
-- invocation synopsis
-- typed match/value/output mode inventories
-- typed default values and conditional default overrides
-- parameter inventory with typed requiredness rules
-- cross-parameter constraints
-- catalog notes and example invocations
-
-`htmlcut-core` also owns the non-operation CLI command descriptors plus the structured root,
-aux-command, and per-operation help documents that the CLI renders through
-`htmlcut_core::cli_contract`.
-
-Those help-side contracts carry:
-
-- non-operation command summaries for `catalog`, `schema`, and `inspect`
-- root discovery-flow sections and example inventory
-- per-operation analysis overviews
-- canonical example invocations for every CLI-visible operation
-
-Together, those registries are the source of truth for `htmlcut catalog`, normalized `command`
-labels in CLI reports, rendered CLI help, and contract-lint coverage over help/examples, catalog
-text, and recovery-error guidance.
+The companion CLI command-contract and help registries live in `htmlcut_cli::contract`, not in
+`htmlcut-core`. They are the source of truth for `htmlcut catalog`, normalized `command` labels in
+CLI reports, rendered CLI help, and contract-lint coverage over help/examples, catalog text, and
+recovery-error guidance.
 Use `operation_catalog()` for generic operation discovery inside Rust callers. When you also need
-CLI-facing command contracts, use `htmlcut_core::cli_contract::cli_operation_catalog()`. If you
-need the non-operation command descriptors for `catalog`, `schema`, or the `inspect` command
-family, use `htmlcut_core::cli_contract::cli_aux_command_catalog()` as well instead of
-maintaining your own shadow matrix of supported behaviors.
+CLI-facing command contracts, use `htmlcut_cli::contract::cli_operation_catalog()`. If you need
+the non-operation command descriptors for `catalog`, `schema`, or the `inspect` command family,
+use `htmlcut_cli::contract::cli_aux_command_catalog()` as well instead of maintaining your own
+shadow matrix of supported behaviors.
 Use `operation_descriptor(id)` when you want one catalog entry by stable operation ID and are
 prepared to handle the absence of a descriptor explicitly instead of assuming a panic-backed
 lookup.

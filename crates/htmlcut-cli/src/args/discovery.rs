@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use super::{CliCatalogOutputMode, CliSchemaOutputMode, cli_choice_parser};
+use super::{CliCatalogOutputMode, CliSchemaOutputMode, FileWriteArgs, cli_choice_parser};
 
 #[derive(Debug, Args)]
 pub(crate) struct CatalogArgs {
@@ -11,8 +11,13 @@ pub(crate) struct CatalogArgs {
     pub(crate) output: CliCatalogOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) output_file: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 
     /// Filter the catalog to one stable operation ID.
     #[arg(long, value_name = "OPERATION_ID")]
@@ -26,8 +31,13 @@ pub(crate) struct SchemaArgs {
     pub(crate) output: CliSchemaOutputMode,
 
     /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) output_file: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub(crate) file_write: FileWriteArgs,
 
     /// Filter the registry to one stable schema name.
     #[arg(long, value_name = "SCHEMA_NAME")]

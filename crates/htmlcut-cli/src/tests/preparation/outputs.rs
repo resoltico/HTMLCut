@@ -44,7 +44,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
             .stdout
             .as_deref()
             .expect("json error payload")
-            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
+            .contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\"")
     );
     assert!(extraction_failure.stderr.is_empty());
 
@@ -92,7 +92,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
             .stdout
             .as_deref()
             .expect("json error payload")
-            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
+            .contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\"")
     );
 
     let preview_request_path = tempdir

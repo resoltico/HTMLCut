@@ -34,6 +34,8 @@ pub(crate) struct DefinitionArgs {
     pub(crate) request_file: Option<PathBuf>,
 
     /// Write the normalized extraction definition used for this run to a JSON file.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) emit_request_file: Option<PathBuf>,
 }
@@ -107,10 +109,14 @@ pub(crate) struct ExtractOutputArgs {
     pub(crate) output: Option<CliOutputMode>,
 
     /// Write `report.json`, `selection.html`, and `selection.txt` to this directory.
+    ///
+    /// Parent directories are created automatically. Existing bundle paths require `--overwrite`.
     #[arg(long)]
     pub(crate) bundle: Option<PathBuf>,
 
     /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) output_file: Option<PathBuf>,
 
@@ -139,6 +145,16 @@ pub(crate) struct InspectOutputArgs {
     pub(crate) include_source_text: bool,
 
     /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
     #[arg(long, value_name = "PATH")]
     pub(crate) output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Args)]
+#[command(next_help_heading = "Filesystem Output")]
+pub(crate) struct FileWriteArgs {
+    /// Allow HTMLCut to replace existing `--output-file`, `--emit-request-file`, and bundle paths.
+    #[arg(long, default_value_t = false)]
+    pub(crate) overwrite: bool,
 }

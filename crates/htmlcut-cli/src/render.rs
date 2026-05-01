@@ -1,6 +1,5 @@
 #[cfg(test)]
 use std::cell::Cell;
-use std::fs;
 use std::path::Path;
 
 mod discovery;
@@ -12,6 +11,7 @@ use serde_json::Value;
 
 use crate::args::CliOutputMode;
 use crate::error::{CliError, internal_error, output_error};
+use crate::file_output::{FileWriteMode, prepare_bundle_directory, write_text_file};
 use crate::model::{BundlePaths, CliErrorCode, ExtractionCommandReport};
 
 #[cfg(test)]
@@ -47,30 +47,42 @@ pub(crate) fn get_bundle_paths(dir: &Path) -> BundlePaths {
 pub(crate) fn write_bundle(
     report: &ExtractionCommandReport,
     bundle: &BundlePaths,
+    write_mode: FileWriteMode,
 ) -> Result<(), CliError> {
+    let bundle_dir = Path::new(&bundle.dir);
     let html_document = wrap_html_document(report)?;
     let text_payload = render_text_payload(report)?;
     let report_payload = to_pretty_json(report)?;
 
-    fs::create_dir_all(&bundle.dir).map_err(|error| {
+    prepare_bundle_directory(bundle_dir, write_mode).map_err(|error| {
+        let code = if matches!(write_mode, FileWriteMode::CreateFresh) && bundle_dir.exists() {
+            CliErrorCode::BundlePathExists
+        } else {
+            CliErrorCode::BundleDirectoryCreateFailed
+        };
         output_error(
-            CliErrorCode::BundleDirectoryCreateFailed,
+            code,
             format!("Could not create bundle directory {}: {error}", bundle.dir),
         )
     })?;
-    fs::write(&bundle.html, html_document).map_err(|error| {
+    write_text_file(Path::new(&bundle.html), &html_document, write_mode).map_err(|error| {
         output_error(
             CliErrorCode::BundleHtmlWriteFailed,
             format!("Could not write {}: {error}", bundle.html),
         )
     })?;
-    fs::write(&bundle.text, text_payload).map_err(|error| {
+    write_text_file(Path::new(&bundle.text), &text_payload, write_mode).map_err(|error| {
         output_error(
             CliErrorCode::BundleTextWriteFailed,
             format!("Could not write {}: {error}", bundle.text),
         )
     })?;
-    fs::write(&bundle.report, format!("{report_payload}\n")).map_err(|error| {
+    write_text_file(
+        Path::new(&bundle.report),
+        &format!("{report_payload}\n"),
+        write_mode,
+    )
+    .map_err(|error| {
         output_error(
             CliErrorCode::BundleReportWriteFailed,
             format!("Could not write {}: {error}", bundle.report),

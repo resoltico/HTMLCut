@@ -101,3 +101,11 @@ pub(crate) fn semver_scratch_dir_for_tests(repo_root: &Path, target_dir: Option<
 pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path) -> bool {
     check::is_maintained_shell_script_for_tests(repo_root, path)
 }
+
+#[cfg(test)]
+pub(crate) fn with_cargo_target_dir_override_for_tests<T>(
+    target_dir: PathBuf,
+    operation: impl FnOnce() -> T,
+) -> T {
+    paths::with_cargo_target_dir_override(target_dir, operation)
+}

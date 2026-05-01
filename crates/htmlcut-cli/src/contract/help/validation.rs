@@ -1,14 +1,15 @@
 #[cfg(test)]
-use crate::catalog::operation_descriptor;
+use htmlcut_core::operation_descriptor;
 #[cfg(test)]
-use crate::catalog::{OperationDescriptor, OperationId, operation_catalog};
+use htmlcut_core::{OperationDescriptor, OperationId, operation_catalog};
 
 #[cfg(test)]
 use super::documents::{build_cli_operation_help_document, build_cli_root_help_document};
 #[cfg(test)]
-use super::model::CliAuxCommandId;
-#[cfg(test)]
-use super::model::{CliAuxCommandDescriptor, cli_aux_command_catalog};
+use super::model::{
+    CliAuxCommandDescriptor, CliAuxCommandId, cli_aux_command_catalog,
+    cli_aux_command_catalog_validation_errors,
+};
 
 #[cfg(test)]
 pub(crate) fn cli_help_catalog_validation_errors() -> Vec<String> {
@@ -36,26 +37,7 @@ fn cli_help_catalog_validation_errors_with(
     has_help: impl Fn(OperationId) -> bool,
     root_examples_empty: bool,
 ) -> Vec<String> {
-    let mut errors = Vec::new();
-
-    if aux_descriptors.is_empty() {
-        errors.push("cli_aux_command_catalog() is empty".to_owned());
-    }
-
-    for descriptor in aux_descriptors {
-        if descriptor.command_path.is_empty() {
-            errors.push(format!("{:?} has an empty command path", descriptor.id));
-        }
-        if descriptor.about.trim().is_empty() {
-            errors.push(format!("{:?} has an empty about string", descriptor.id));
-        }
-        if descriptor.command_path != descriptor.id.command_path() {
-            errors.push(format!(
-                "{:?} command path drifted from CliAuxCommandId::command_path()",
-                descriptor.id
-            ));
-        }
-    }
+    let mut errors = cli_aux_command_catalog_validation_errors(aux_descriptors);
 
     for descriptor in operation_descriptors {
         match (descriptor.cli_surface.is_some(), has_help(descriptor.id)) {
@@ -95,12 +77,19 @@ mod tests {
     }
 
     #[test]
-    fn validation_helper_reports_missing_help_and_empty_catalog_fields() {
-        let malformed_aux = [CliAuxCommandDescriptor {
-            id: CliAuxCommandId::Catalog,
-            command_path: &[],
-            about: "   ",
-        }];
+    fn validation_helper_reuses_the_canonical_auxiliary_catalog_validator() {
+        let malformed_aux = [
+            CliAuxCommandDescriptor {
+                id: CliAuxCommandId::Catalog,
+                command_path: &[],
+                about: "   ",
+            },
+            CliAuxCommandDescriptor {
+                id: CliAuxCommandId::Catalog,
+                command_path: &["wrong"],
+                about: "Catalog drift",
+            },
+        ];
         let select_extract = operation_descriptor(OperationId::SelectExtract)
             .copied()
             .expect("select.extract descriptor");
@@ -121,6 +110,26 @@ mod tests {
             errors
                 .iter()
                 .any(|error| error.contains("empty about string"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("appears more than once"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("command path drifted"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("Schema is missing from cli_aux_command_catalog()"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("Inspect is missing from cli_aux_command_catalog()"))
         );
         assert!(
             errors

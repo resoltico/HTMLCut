@@ -10,14 +10,22 @@ use std::cell::RefCell;
 
 #[cfg(test)]
 type CaptureOverride = dyn FnMut(&Path, &CommandSpec) -> Option<DynResult<Vec<u8>>>;
+#[cfg(test)]
+type RunSpecOverride = dyn FnMut(&Path, &CommandSpec) -> Option<DynResult<()>>;
 
 #[cfg(test)]
 thread_local! {
     static CAPTURE_OVERRIDE: RefCell<Option<Box<CaptureOverride>>> = RefCell::new(None);
+    static RUN_SPEC_OVERRIDE: RefCell<Option<Box<RunSpecOverride>>> = RefCell::new(None);
 }
 
 /// Executes one maintainer command against the repository root.
 pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
+    #[cfg(test)]
+    if let Some(result) = run_spec_override_result(repo_root, spec) {
+        return result;
+    }
+
     let mut command = Command::new(&spec.program);
     command.current_dir(repo_root);
     command.args(&spec.args);
@@ -133,6 +141,15 @@ fn capture_override_result(repo_root: &Path, spec: &CommandSpec) -> Option<DynRe
 }
 
 #[cfg(test)]
+fn run_spec_override_result(repo_root: &Path, spec: &CommandSpec) -> Option<DynResult<()>> {
+    RUN_SPEC_OVERRIDE.with_borrow_mut(|override_fn| {
+        override_fn
+            .as_mut()
+            .and_then(|override_fn| override_fn(repo_root, spec))
+    })
+}
+
+#[cfg(test)]
 pub(crate) fn with_capture_command_output_override<F, T>(
     override_fn: F,
     operation: impl FnOnce() -> T,
@@ -151,6 +168,28 @@ where
     let outcome = operation();
 
     CAPTURE_OVERRIDE.with_borrow_mut(|slot| {
+        *slot = None;
+    });
+
+    outcome
+}
+
+#[cfg(test)]
+pub(crate) fn with_run_spec_override<F, T>(override_fn: F, operation: impl FnOnce() -> T) -> T
+where
+    F: FnMut(&Path, &CommandSpec) -> Option<DynResult<()>> + 'static,
+{
+    RUN_SPEC_OVERRIDE.with_borrow_mut(|slot| {
+        assert!(
+            slot.is_none(),
+            "run-spec override should not already be installed"
+        );
+        *slot = Some(Box::new(override_fn));
+    });
+
+    let outcome = operation();
+
+    RUN_SPEC_OVERRIDE.with_borrow_mut(|slot| {
         *slot = None;
     });
 
