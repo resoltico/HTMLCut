@@ -16,6 +16,25 @@ readonly helper_dockerfile_path="${repo_root}/scripts/devcontainer-cli-helper.Do
 readonly bootstrap_script="${repo_root}/scripts/devcontainer-bootstrap.sh"
 readonly prepare_script="${repo_root}/scripts/devcontainer-prepare-user-home.sh"
 readonly helper_image_tag="htmlcut-devcontainer-cli-helper:local"
+readonly volume_mode="${HTMLCUT_DEVCONTAINER_VOLUME_MODE:-isolated}"
+
+select_volume_name() {
+    local shared_name="$1"
+    local isolated_name="$2"
+
+    case "${volume_mode}" in
+        isolated)
+            printf '%s\n' "${isolated_name}"
+            ;;
+        shared-ci)
+            printf '%s\n' "${shared_name}"
+            ;;
+        *)
+            htmlcut_die \
+                "unsupported HTMLCUT_DEVCONTAINER_VOLUME_MODE=${volume_mode}; expected isolated or shared-ci"
+            ;;
+    esac
+}
 
 validate_inner_runtime() {
     [[ "${HTMLCUT_DEVCONTAINER:-}" == "1" ]] || htmlcut_die "inner runtime mode requires HTMLCUT_DEVCONTAINER=1"
@@ -105,14 +124,25 @@ for extension_id in ("EditorConfig.EditorConfig", "rust-lang.rust-analyzer", "ta
 PY
 
 readonly image_tag="htmlcut-devcontainer-validate:local"
-readonly cargo_volume="htmlcut-devcontainer-validate-cargo-$$"
-readonly rustup_volume="htmlcut-devcontainer-validate-rustup-$$"
-readonly cache_volume="htmlcut-devcontainer-validate-cache-$$"
+cargo_volume="$(
+    select_volume_name "htmlcut-cargo-home" "htmlcut-devcontainer-validate-cargo-$$"
+)"
+readonly cargo_volume
+rustup_volume="$(
+    select_volume_name "htmlcut-rustup-home" "htmlcut-devcontainer-validate-rustup-$$"
+)"
+readonly rustup_volume
+cache_volume="$(
+    select_volume_name "htmlcut-general-cache" "htmlcut-devcontainer-validate-cache-$$"
+)"
+readonly cache_volume
 
 cleanup() {
     local devcontainer_ids=()
 
-    docker volume rm -f "${cargo_volume}" "${rustup_volume}" "${cache_volume}" >/dev/null 2>&1 || true
+    if [[ "${volume_mode}" == "isolated" ]]; then
+        docker volume rm -f "${cargo_volume}" "${rustup_volume}" "${cache_volume}" >/dev/null 2>&1 || true
+    fi
     mapfile -t devcontainer_ids < <(docker ps -aq --filter "label=devcontainer.local_folder=${repo_root}")
     if ((${#devcontainer_ids[@]} > 0)); then
         docker rm -f "${devcontainer_ids[@]}" >/dev/null 2>&1 || true
@@ -143,6 +173,11 @@ docker run --rm "${image_tag}" bash -lc '
     shellcheck --version >/dev/null
     sudo --version >/dev/null
 '
+
+if [[ "${volume_mode}" == "shared-ci" ]]; then
+    printf 'devcontainer validation: reset shared contributor volumes for CI reuse\n'
+    docker volume rm -f "${cargo_volume}" "${rustup_volume}" "${cache_volume}" >/dev/null 2>&1 || true
+fi
 
 docker volume create "${cargo_volume}" >/dev/null
 docker volume create "${rustup_volume}" >/dev/null
