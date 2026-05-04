@@ -5,6 +5,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Path-gated the `contributor-devcontainer` CI job so it fires only when devcontainer-relevant files actually change (`.devcontainer/`, the devcontainer lifecycle scripts, or `check.sh`); non-devcontainer PRs now skip the full Docker build-and-run cycle entirely, reducing typical PR wall-clock time significantly.
+- Added a `devcontainer-changes` detection job that computes a git diff of the PR's changed files against the devcontainer trigger paths before the gate is evaluated; the aggregate `Check` required-status job now uses `if: always()` with explicit `${{ toJSON(needs.*.result) }}` failure detection so a correctly skipped `contributor-devcontainer` gate does not prevent `Check` from being reported or block merge — only a failed or cancelled gate prevents success.
+- Raised the cross-platform Rust gate timeout budget to `150` minutes for Windows and `30` minutes for macOS so the Windows required-check lane can finish a cold `cargo nextest` build, dependency-policy check, and semver verification without expiring mid-run.
+- Added a Windows Defender exclusion for the Cargo `target/` directory in `cross-platform-rust-gate` before any Cargo operations begin, eliminating antivirus scan overhead that otherwise scans every file write during compilation.
+- Added a per-platform cache key (`cross-platform-${{ matrix.id }}`) to `Swatinem/rust-cache` in `cross-platform-rust-gate` so macOS and Windows build caches do not collide.
+- Added `workflow_dispatch:` to the CI trigger so maintainers can manually rerun the aggregate `Check` against a branch when GitHub fails to attach the `pull_request` workflow on the initial PR open.
+- Fixed Bash-4-only `mapfile` usage in `scripts/validate-devcontainer.sh` so the devcontainer validator runs correctly under stock macOS `/bin/bash` as well as GNU Bash installs.
+
+### Changed
+- Promoted the workspace to `8.0.0` because this slice intentionally breaks public `htmlcut-core`
+  contracts: `ContractValueError` gains an explicit whitespace-rejection variant and
+  `SchemaStability::Frozen` is removed from the live schema surface.
+- The interop v1 result contract now publishes `htmlcut.result@3`, and every selected match always
+  carries concrete `inner_html` and `outer_html` fields instead of nullable placeholders.
+- The schema and operation registries now use static slice inventories instead of heap-backed lazy
+  vectors, and `cargo xtask check` runs its preflight Rust test subsets through `cargo nextest`
+  instead of mixing test runners inside one workspace gate.
+
+### Fixed
+- URL HEAD-first preflight no longer retries GET after a hard connection failure, now accepts
+  `text/xhtml+xml` as HTML, and the docs/help surfaces describe the narrower fallback behavior
+  accurately.
+- Slice markup warnings now use a quote-aware markup scanner instead of raw character backtracking,
+  selector validation preserves parser error details, whitespace-padded attribute names fail
+  validation up front, and stream size limits stop at the configured byte cap.
+- CLI output/request-file/bundle flows now preserve diagnostics when file writes fail, bundle
+  reports resolve fresh artifact paths to canonical absolute locations, and request-file writes no
+  longer duplicate an incomplete second overwrite-policy check at the write site.
+- Interop fallback errors now produce self-validating digests, `meta refresh` URL rewriting no
+  longer reformats separators, and source-load failure metadata no longer pays an unnecessary heap
+  allocation hop.
+
 ## [7.0.0] - 2026-05-01
 
 ### Changed

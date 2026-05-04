@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,8 +37,47 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+  devcontainer-changes:
+    name: Detect devcontainer changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.filter.outputs.changed }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect devcontainer-relevant changes
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [[ -z "$base" || "$base" == "0000000000000000000000000000000000000000" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" "${{ github.sha }}" -- \
+            '.devcontainer' \
+            'scripts/validate-devcontainer.sh' \
+            'scripts/devcontainer-check.sh' \
+            'scripts/devcontainer-prepare-user-home.sh' \
+            'scripts/devcontainer-bootstrap.sh' \
+            'scripts/devcontainer-cli-helper.Dockerfile' \
+            'scripts/common.sh' \
+            'check.sh')
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   contributor-devcontainer:
     name: Contributor devcontainer gate
+    needs: [devcontainer-changes]
+    if: needs.devcontainer-changes.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -58,15 +98,17 @@ jobs:
   cross-platform-rust-gate:
     name: Cross-platform Rust gate (${{ matrix.id }})
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - id: macos-arm64
             runs_on: macos-15
+            timeout_minutes: 30
           - id: windows-x64
             runs_on: windows-2022
+            timeout_minutes: 150
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -106,6 +148,13 @@ jobs:
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: cross-platform-${{ matrix.id }}
+
+      - name: Exclude build directory from Windows Defender
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\target"
 
       - name: Check formatting
         shell: bash
@@ -199,7 +248,9 @@ jobs:
 
   check:
     name: Check
+    if: always()
     needs:
+      - devcontainer-changes
       - contributor-devcontainer
       - cross-platform-rust-gate
       - release-target-smoke
@@ -209,6 +260,16 @@ jobs:
     steps:
       - name: Confirm aggregate gate success
         shell: bash
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
         run: |
           set -euo pipefail
-          echo "Contributor devcontainer gate, cross-platform Rust gate, and release target smoke matrix passed."
+          if echo "$RESULTS" | grep -q '"failure"'; then
+            echo "A required job failed."
+            exit 1
+          fi
+          if echo "$RESULTS" | grep -q '"cancelled"'; then
+            echo "A required job was cancelled."
+            exit 1
+          fi
+          echo "All required jobs passed or were skipped."

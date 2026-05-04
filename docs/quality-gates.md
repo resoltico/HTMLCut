@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: QUALITY
-updated: "2026-05-01"
+updated: "2026-05-04"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?"]
@@ -171,6 +171,36 @@ GitHub CI keeps the fresh-volume and devcontainer-client proof but sets
 `./scripts/devcontainer-check.sh`, which provides the stronger raw-image repo-command proof without
 paying for duplicate help-surface compiles inside the validator.
 
+**Path-based devcontainer gate theory.** The devcontainer gate validates the contributor
+*environment*, not application code. Application code changes are already proven by the
+cross-platform Rust gate. Running the full devcontainer gate on every PR regardless of what changed
+wastes 40-50 minutes per run proving the same environment twice. The gate therefore fires only when
+the environment itself changes — specifically when any of these paths are touched:
+
+- `.devcontainer/` — the Dockerfile and `devcontainer.json`
+- `scripts/validate-devcontainer.sh`
+- `scripts/devcontainer-check.sh`
+- `scripts/devcontainer-prepare-user-home.sh`
+- `scripts/devcontainer-bootstrap.sh`
+- `scripts/devcontainer-cli-helper.Dockerfile`
+- `scripts/common.sh`
+- `check.sh` — the script the gate runs inside the container
+
+A `devcontainer-changes` detection job computes a git diff of the PR's changed files against those
+paths before the gate is evaluated. When no relevant files changed, `contributor-devcontainer` is
+skipped. The aggregate `Check` required-status job uses `if: always()` and explicit failure
+detection so that a skipped devcontainer gate does not block merge; only a *failed* or *cancelled*
+gate prevents `Check` from succeeding. A skipped result is a correct, intended outcome, not a
+coverage gap.
+
+The cross-platform Rust gate assigns separate timeout budgets per runner — `30` minutes for macOS
+arm64 and `150` minutes for Windows x64 — so the Windows lane can finish a cold `cargo nextest`
+build plus dependency-policy and semver verification without expiring mid-run. The Windows runner
+also excludes its `target/` build directory from Windows Defender before any Cargo operations
+begin, removing the antivirus overhead that otherwise scans every file write during compilation.
+Both runners use `Swatinem/rust-cache` with a per-platform key to persist the Cargo registry and
+incremental build artifacts across runs.
+
 GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
 the built release packages, checking that the packaged README stays package-specific, and
 executing one real extraction-plus-request-replay flow before the aggregate required check reports
@@ -178,4 +208,7 @@ success.
 
 GitHub CI runs the Linux maintainer gate through the committed contributor devcontainer, alongside
 the separate cross-platform Rust jobs and the release-target smoke matrix, before the aggregate
-required `Check` result reports success.
+required `Check` result reports success. `Check` uses `if: always()` with explicit
+`${{ toJSON(needs.*.result) }}` inspection so a skipped `contributor-devcontainer` gate — the
+correct outcome when no devcontainer-relevant files changed — does not prevent `Check` from being
+reported or block merge.

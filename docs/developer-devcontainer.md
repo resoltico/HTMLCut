@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: SETUP
-updated: "2026-05-01"
+updated: "2026-05-04"
 route:
   keywords: [devcontainer, contributor container, ubuntu 26.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check]
   questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
@@ -186,6 +186,41 @@ The host-side `./scripts/devcontainer-check.sh` wrapper then replays the same co
 named volume contract, lifecycle scripts, and `./check.sh` entrypoint to run the full maintainer
 gate without requiring devcontainer-client orchestration for the long-running step. Use both host
 commands when you are changing the contributor-container surface itself.
+
+## CI Gate Behavior
+
+The `contributor-devcontainer` CI job fires only when devcontainer-relevant files change. The path
+set that triggers it:
+
+- `.devcontainer/` — the Dockerfile and `devcontainer.json`
+- `scripts/validate-devcontainer.sh`
+- `scripts/devcontainer-check.sh`
+- `scripts/devcontainer-prepare-user-home.sh`
+- `scripts/devcontainer-bootstrap.sh`
+- `scripts/devcontainer-cli-helper.Dockerfile`
+- `scripts/common.sh`
+- `check.sh` — the script the gate runs inside the container
+
+PRs that touch only application code, documentation, or tests do not trigger the devcontainer gate.
+The cross-platform Rust gate already proves the code builds and tests pass; the devcontainer gate
+proves the contributor environment. Rebuilding and re-running the entire gate for a change that
+cannot affect the environment wastes 40-50 minutes per run.
+
+When the gate is skipped, the aggregate `Check` required-status job still succeeds — a skipped
+devcontainer gate is a correct, intended outcome, not a coverage gap. Only a *failed* or
+*cancelled* gate prevents merge.
+
+When the gate fires, CI runs the full two-step proof: `validate-devcontainer.sh` for the raw
+image contract and the real Dev Container client path, then `devcontainer-check.sh` for the
+complete `./check.sh` pass inside the contributor container.
+
+If you change any of the files in the trigger path above, run both validator scripts from the host
+before pushing:
+
+```bash
+./scripts/validate-devcontainer.sh
+./scripts/devcontainer-check.sh
+```
 
 ## Troubleshooting
 

@@ -148,15 +148,12 @@ cache_volume="$(
 readonly cache_volume
 
 cleanup() {
-    local devcontainer_ids=()
-
     if [[ "${volume_mode}" == "isolated" ]]; then
         docker volume rm -f "${cargo_volume}" "${rustup_volume}" "${cache_volume}" >/dev/null 2>&1 || true
     fi
-    mapfile -t devcontainer_ids < <(docker ps -aq --filter "label=devcontainer.local_folder=${repo_root}")
-    if ((${#devcontainer_ids[@]} > 0)); then
-        docker rm -f "${devcontainer_ids[@]}" >/dev/null 2>&1 || true
-    fi
+    while IFS= read -r container_id; do
+        docker rm -f "${container_id}" >/dev/null 2>&1 || true
+    done < <(docker ps -aq --filter "label=devcontainer.local_folder=${repo_root}")
 }
 trap cleanup EXIT
 
