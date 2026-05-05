@@ -3,7 +3,7 @@ use serde_json::json;
 use crate::contracts::{Diagnostic, SelectionSpec};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic, warning_diagnostic};
 
-use super::super::SelectedCandidate;
+use super::SelectedCandidate;
 
 pub(crate) fn select_candidates<T: Clone>(
     candidates: &[T],

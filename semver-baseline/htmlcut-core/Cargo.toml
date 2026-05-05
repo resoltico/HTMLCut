@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.95.0"
 name = "htmlcut-core"
-version = "7.0.0"
+version = "8.0.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -70,7 +70,7 @@ version = "0.11.0"
 version = "1.12.3"
 
 [dependencies.schemars]
-version = "1.0.4"
+version = "1.2.1"
 features = ["url2"]
 
 [dependencies.scraper]
@@ -95,7 +95,6 @@ version = "2.0.18"
 version = "3.3.0"
 features = [
     "gzip",
-    "platform-verifier",
     "rustls",
 ]
 optional = true

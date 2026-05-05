@@ -9,11 +9,11 @@ pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
 /// Schema name for the extraction error.
 pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
-pub const PLAN_SCHEMA_VERSION: u32 = 2;
+pub const PLAN_SCHEMA_VERSION: u32 = 4;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 2;
+pub const RESULT_SCHEMA_VERSION: u32 = 5;
 /// Schema version for the extraction error.
-pub const ERROR_SCHEMA_VERSION: u32 = 1;
+pub const ERROR_SCHEMA_VERSION: u32 = 2;
 
 /// Error returned when interop contract values or schema identities are invalid.
 #[derive(Debug, Error)]
@@ -62,6 +62,26 @@ pub enum ContractError {
     /// A delimiter-pair plan tried to use regex flags in literal mode.
     #[error("delimiter_pair flags are only valid when mode is regex")]
     LiteralDelimiterFlags,
+    /// One interop selector value was blank.
+    #[error("css selector must not be empty")]
+    EmptyCssSelector,
+    /// One delimiter boundary value was blank.
+    #[error("delimiter boundary must not be empty")]
+    EmptyDelimiterBoundary,
+    /// One attribute name was blank.
+    #[error("attribute name must not be empty")]
+    EmptyAttributeName,
+    /// One attribute name contained whitespace.
+    #[error("attribute name must not contain whitespace")]
+    AttributeNameContainsWhitespace,
+    /// The requested output kind does not belong to the selected strategy.
+    #[error("output kind {output_kind:?} is not valid for strategy kind {strategy_kind:?}")]
+    UnsupportedOutputForStrategy {
+        /// Strategy kind declared by the plan or result.
+        strategy_kind: super::plan::StrategyKind,
+        /// Output kind declared by the plan or result.
+        output_kind: super::plan::OutputKind,
+    },
     /// A successful result claimed to select zero candidates.
     #[error("successful extraction results must report at least one candidate")]
     ZeroCandidateCount,
@@ -85,6 +105,23 @@ pub enum ContractError {
     /// A successful result carried error-level diagnostics.
     #[error("successful extraction results must not contain error-level diagnostics")]
     ErrorDiagnosticsInSuccess,
+    /// One selected match carried a non-string exact output where a string output kind was requested.
+    #[error(
+        "selected matches for output kind {output_kind:?} must carry string output_value values"
+    )]
+    NonStringOutputValue {
+        /// Output kind requested by the result.
+        output_kind: super::plan::OutputKind,
+    },
+    /// One structured-output result carried a non-object exact output value.
+    #[error("selected matches for structured output must carry object output_value values")]
+    NonObjectStructuredOutputValue,
+    /// A selector result unexpectedly carried a selected-html alternate output.
+    #[error("css_selector selected matches must not carry selected_html_output")]
+    UnexpectedSelectedHtmlOutput,
+    /// A delimiter-pair result omitted its selected-html alternate output.
+    #[error("delimiter_pair selected matches must carry selected_html_output")]
+    MissingSelectedHtmlOutput,
     /// Result metadata did not describe the same strategy kind as the top-level result.
     #[error(
         "selected match metadata kind {metadata_kind:?} does not match result strategy kind {strategy_kind:?}"

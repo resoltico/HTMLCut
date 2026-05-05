@@ -4,7 +4,10 @@ use serde_json::Value;
 
 use crate::{Diagnostic, DiagnosticCode};
 
-use super::super::{ContractError, ErrorCode, InteropError, Plan, StrategyKind};
+use super::super::{
+    ContractError, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropError, Plan,
+    StrategyKind,
+};
 
 const ZERO_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -52,7 +55,7 @@ pub(super) fn core_execution_error(
             Some(plan.strategy.kind()),
             "execution failed without an error diagnostic",
             BTreeMap::new(),
-            diagnostics.to_vec(),
+            diagnostics,
         );
     };
 
@@ -62,12 +65,13 @@ pub(super) fn core_execution_error(
         | DiagnosticCode::InvalidSlicePattern => ErrorCode::PlanInvalid,
         DiagnosticCode::NoMatch | DiagnosticCode::MatchIndexOutOfRange => ErrorCode::NoMatch,
         DiagnosticCode::AmbiguousMatch => ErrorCode::AmbiguousMatch,
+        DiagnosticCode::MissingAttribute => ErrorCode::MissingAttribute,
         _ => ErrorCode::InternalError,
     };
     let mut details = BTreeMap::new();
     details.insert(
         "core_diagnostic_code".to_owned(),
-        Value::from(primary.code.as_str()),
+        Value::from(InteropDiagnosticCode::from(primary.code).as_str()),
     );
     if let Some(core_details) = &primary.details {
         details.insert("core_details".to_owned(), core_details.clone());
@@ -79,7 +83,7 @@ pub(super) fn core_execution_error(
         primary.message.clone(),
         Some(plan.strategy.kind()),
         details,
-        diagnostics.to_vec(),
+        diagnostics.iter().map(InteropDiagnostic::from).collect(),
     ))
 }
 
@@ -88,7 +92,7 @@ pub(super) fn internal_adapter_error(
     strategy_kind: Option<StrategyKind>,
     message: impl Into<String>,
     details: BTreeMap<String, Value>,
-    diagnostics: Vec<Diagnostic>,
+    diagnostics: &[Diagnostic],
 ) -> InteropError {
     finalize_error(InteropError::new(
         plan_digest_sha256.to_owned(),
@@ -96,7 +100,7 @@ pub(super) fn internal_adapter_error(
         message,
         strategy_kind,
         details,
-        diagnostics,
+        diagnostics.iter().map(InteropDiagnostic::from).collect(),
     ))
 }
 
@@ -115,7 +119,7 @@ pub(super) fn finalize_error(error: InteropError) -> InteropError {
             );
 
             let fallback = InteropError::new(
-                plan_digest_sha256,
+                sanitized_plan_digest_sha256(&plan_digest_sha256),
                 ErrorCode::InternalError,
                 "HTMLCut could not finalize its interop error payload.",
                 strategy_kind,
@@ -123,13 +127,17 @@ pub(super) fn finalize_error(error: InteropError) -> InteropError {
                 diagnostics,
             );
 
-            match fallback.clone().with_computed_digest() {
-                Ok(fallback) => fallback,
-                Err(_) => InteropError {
-                    error_digest_sha256: ZERO_SHA256.to_owned(),
-                    ..fallback
-                },
-            }
+            fallback
+                .with_computed_digest()
+                .expect("sanitized fallback interop error payload must digest")
         }
+    }
+}
+
+fn sanitized_plan_digest_sha256(value: &str) -> String {
+    if value.len() == ZERO_SHA256.len() && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        value.to_owned()
+    } else {
+        ZERO_SHA256.to_owned()
     }
 }

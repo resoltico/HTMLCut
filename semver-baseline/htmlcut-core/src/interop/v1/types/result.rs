@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::num::NonZeroUsize;
 
 use schemars::JsonSchema;
@@ -6,14 +7,187 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::{Diagnostic, DiagnosticLevel, result::Range};
-
 use super::super::stable_json::digest_stable_json_omitting_field;
-use super::plan::{OutputKind, SelectionMode, StrategyKind};
+use super::plan::{Output, OutputKind, SelectionMode, StrategyKind};
 use super::shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
     RESULT_SCHEMA_VERSION, validate_schema_identity, validate_sha256_hex,
 };
+
+macro_rules! interop_diagnostic_codes {
+    (
+        $(
+            $(#[$meta:meta])*
+            $variant:ident => $code:literal,
+        )+
+    ) => {
+        /// Stable diagnostic-code identifiers published by `htmlcut-v1`.
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Serialize,
+            Deserialize,
+            JsonSchema,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+        )]
+        pub enum InteropDiagnosticCode {
+            $(
+                $(#[$meta])*
+                #[serde(rename = $code)]
+                $variant,
+            )+
+        }
+
+        impl InteropDiagnosticCode {
+            /// Returns the complete stable diagnostic-code inventory.
+            pub const ALL: &'static [Self] = &[
+                $(
+                    Self::$variant,
+                )+
+            ];
+
+            /// Returns the stable string form of this diagnostic code.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant => $code,
+                    )+
+                }
+            }
+        }
+
+        impl fmt::Display for InteropDiagnosticCode {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for InteropDiagnosticCode {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<InteropDiagnosticCode> for &str {
+            fn eq(&self, other: &InteropDiagnosticCode) -> bool {
+                *self == other.as_str()
+            }
+        }
+    };
+}
+
+interop_diagnostic_codes! {
+    /// The source could not be loaded or decoded.
+    SourceLoadFailed => "SOURCE_LOAD_FAILED",
+    /// The request spec version is unsupported.
+    UnsupportedSpecVersion => "UNSUPPORTED_SPEC_VERSION",
+    /// The CSS selector is invalid.
+    InvalidSelector => "INVALID_SELECTOR",
+    /// The slice pattern or regex flags are invalid.
+    InvalidSlicePattern => "INVALID_SLICE_PATTERN",
+    /// No candidates matched the request.
+    NoMatch => "NO_MATCH",
+    /// Exact-one selection found multiple candidates.
+    AmbiguousMatch => "AMBIGUOUS_MATCH",
+    /// The requested match index is outside the candidate set.
+    MatchIndexOutOfRange => "MATCH_INDEX_OUT_OF_RANGE",
+    /// The selected HTML is missing the requested attribute.
+    MissingAttribute => "MISSING_ATTRIBUTE",
+    /// More than one candidate matched while first-match mode was active.
+    MultipleMatches => "MULTIPLE_MATCHES",
+    /// URL rewriting depended on an unresolved effective base URL.
+    EffectiveBaseUrlUnresolved => "EFFECTIVE_BASE_URL_UNRESOLVED",
+    /// Slice selection appears to start or end inside HTML markup.
+    SliceSplitsMarkup => "SLICE_SPLITS_MARKUP",
+}
+
+impl From<crate::DiagnosticCode> for InteropDiagnosticCode {
+    fn from(value: crate::DiagnosticCode) -> Self {
+        match value {
+            crate::DiagnosticCode::SourceLoadFailed => Self::SourceLoadFailed,
+            crate::DiagnosticCode::UnsupportedSpecVersion => Self::UnsupportedSpecVersion,
+            crate::DiagnosticCode::InvalidSelector => Self::InvalidSelector,
+            crate::DiagnosticCode::InvalidSlicePattern => Self::InvalidSlicePattern,
+            crate::DiagnosticCode::NoMatch => Self::NoMatch,
+            crate::DiagnosticCode::AmbiguousMatch => Self::AmbiguousMatch,
+            crate::DiagnosticCode::MatchIndexOutOfRange => Self::MatchIndexOutOfRange,
+            crate::DiagnosticCode::MissingAttribute => Self::MissingAttribute,
+            crate::DiagnosticCode::MultipleMatches => Self::MultipleMatches,
+            crate::DiagnosticCode::EffectiveBaseUrlUnresolved => Self::EffectiveBaseUrlUnresolved,
+            crate::DiagnosticCode::SliceSplitsMarkup => Self::SliceSplitsMarkup,
+        }
+    }
+}
+
+/// Severity level for published interop diagnostics.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InteropDiagnosticLevel {
+    /// The operation failed.
+    Error,
+    /// The operation succeeded but with a risk or fallback.
+    Warning,
+    /// Supplemental informational context.
+    Info,
+}
+
+impl From<crate::DiagnosticLevel> for InteropDiagnosticLevel {
+    fn from(value: crate::DiagnosticLevel) -> Self {
+        match value {
+            crate::DiagnosticLevel::Error => Self::Error,
+            crate::DiagnosticLevel::Warning => Self::Warning,
+            crate::DiagnosticLevel::Info => Self::Info,
+        }
+    }
+}
+
+/// Machine-readable diagnostic published by htmlcut-v1.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct InteropDiagnostic {
+    /// Severity level for the diagnostic.
+    pub level: InteropDiagnosticLevel,
+    /// Stable interop diagnostic code.
+    pub code: InteropDiagnosticCode,
+    /// Human-readable diagnostic message.
+    pub message: String,
+    /// Optional structured details for automation and debugging.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+}
+
+impl From<&crate::Diagnostic> for InteropDiagnostic {
+    fn from(value: &crate::Diagnostic) -> Self {
+        Self {
+            level: value.level.into(),
+            code: value.code.into(),
+            message: value.message.clone(),
+            details: value.details.clone(),
+        }
+    }
+}
+
+/// Half-open source range using byte offsets.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ByteRange {
+    /// Inclusive start byte offset.
+    pub start: usize,
+    /// Exclusive end byte offset.
+    pub end: usize,
+}
+
+impl From<&crate::result::Range> for ByteRange {
+    fn from(value: &crate::result::Range) -> Self {
+        Self {
+            start: value.start,
+            end: value.end,
+        }
+    }
+}
 
 /// Source summary carried in one successful extraction result.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -38,6 +212,8 @@ pub struct ResultExecution {
     pub strategy_kind: StrategyKind,
     /// Executed selection mode.
     pub selection_mode: SelectionMode,
+    /// Executed output contract.
+    pub output: Output,
     /// Total candidate count before selection.
     pub candidate_count: usize,
 }
@@ -48,12 +224,14 @@ impl ResultExecution {
         plan_digest_sha256: impl Into<String>,
         strategy_kind: StrategyKind,
         selection_mode: SelectionMode,
+        output: Output,
         candidate_count: usize,
     ) -> Self {
         Self {
             plan_digest_sha256: plan_digest_sha256.into(),
             strategy_kind,
             selection_mode,
+            output,
             candidate_count,
         }
     }
@@ -73,6 +251,8 @@ pub enum SelectedMatchMetadata {
         path: String,
         /// Matched tag name.
         tag_name: String,
+        /// Matched element attributes after optional URL rewriting.
+        attributes: BTreeMap<String, String>,
     },
     /// Delimiter-pair selected match metadata.
     DelimiterPair {
@@ -81,15 +261,19 @@ pub enum SelectedMatchMetadata {
         /// Selected 1-based candidate ordinal.
         candidate_index: NonZeroUsize,
         /// Selected byte range after applying the include-start/include-end policy.
-        selected_range: Range,
+        selected_range: ByteRange,
         /// Inner byte range between the two matched boundaries.
-        inner_range: Range,
+        inner_range: ByteRange,
         /// Outer byte range including both matched boundaries.
-        outer_range: Range,
+        outer_range: ByteRange,
         /// Whether the selected payload includes the matched start boundary.
         include_start: bool,
         /// Whether the selected payload includes the matched end boundary.
         include_end: bool,
+        /// Exact matched start boundary text.
+        matched_start: String,
+        /// Exact matched end boundary text.
+        matched_end: String,
     },
 }
 
@@ -126,22 +310,21 @@ impl SelectedMatchMetadata {
 }
 
 /// One selected match returned on successful extraction.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SelectedMatch {
     /// Selected 1-based candidate ordinal within all discovered candidates.
     pub candidate_index: NonZeroUsize,
-    /// Exact output payload kind requested.
-    pub value_kind: OutputKind,
     /// Exact output payload returned for the selected candidate.
-    pub value: String,
-    /// Text handed into compare-time canonicalization.
-    pub comparison_input_text: String,
-    /// Inner HTML for the selected match when available.
+    pub output_value: Value,
+    /// Text HTMLCut would return for text output.
+    pub text_output: String,
+    /// Exact selected HTML fragment when the strategy supports it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub inner_html: Option<String>,
-    /// Outer HTML for the selected match when available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub outer_html: Option<String>,
+    pub selected_html_output: Option<String>,
+    /// True inner HTML for the selected candidate.
+    pub inner_html_output: String,
+    /// Outer HTML for the selected candidate.
+    pub outer_html_output: String,
     /// Stable typed metadata for the selected match.
     pub metadata: SelectedMatchMetadata,
 }
@@ -163,6 +346,8 @@ pub struct InteropResult {
     pub strategy_kind: StrategyKind,
     /// Executed selection mode.
     pub selection_mode: SelectionMode,
+    /// Executed output contract.
+    pub output: Output,
     /// Total candidate count before selection.
     pub candidate_count: usize,
     /// Source summary.
@@ -170,7 +355,7 @@ pub struct InteropResult {
     /// One or more selected matches.
     pub selected_matches: Vec<SelectedMatch>,
     /// Warning and informational diagnostics emitted during extraction.
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<InteropDiagnostic>,
     /// Reserved extension object ignored by v1 consumers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<BTreeMap<String, Value>>,
@@ -182,7 +367,7 @@ impl InteropResult {
         execution: ResultExecution,
         source: ResultSource,
         selected_matches: Vec<SelectedMatch>,
-        diagnostics: Vec<Diagnostic>,
+        diagnostics: Vec<InteropDiagnostic>,
     ) -> Self {
         Self {
             schema_name: RESULT_SCHEMA_NAME.to_owned(),
@@ -192,6 +377,7 @@ impl InteropResult {
             result_digest_sha256: String::new(),
             strategy_kind: execution.strategy_kind,
             selection_mode: execution.selection_mode,
+            output: execution.output,
             candidate_count: execution.candidate_count,
             source,
             selected_matches,
@@ -210,6 +396,7 @@ impl InteropResult {
             INTEROP_V1_PROFILE,
         )?;
         validate_sha256_hex("plan_digest_sha256", &self.plan_digest_sha256)?;
+        self.output.validate_for_strategy(self.strategy_kind)?;
 
         if self.candidate_count == 0 {
             return Err(ContractError::ZeroCandidateCount);
@@ -232,6 +419,7 @@ impl InteropResult {
             });
         }
 
+        let output_kind = self.output.kind();
         let mut seen_candidates = BTreeSet::new();
         for selected_match in &self.selected_matches {
             let selected = selected_match.candidate_index.get();
@@ -261,12 +449,38 @@ impl InteropResult {
                     candidate_count: self.candidate_count,
                 });
             }
+
+            match self.strategy_kind {
+                StrategyKind::CssSelector => {
+                    if selected_match.selected_html_output.is_some() {
+                        return Err(ContractError::UnexpectedSelectedHtmlOutput);
+                    }
+                }
+                StrategyKind::DelimiterPair => {
+                    if selected_match.selected_html_output.is_none() {
+                        return Err(ContractError::MissingSelectedHtmlOutput);
+                    }
+                }
+            }
+
+            match output_kind {
+                OutputKind::Structured => {
+                    if !selected_match.output_value.is_object() {
+                        return Err(ContractError::NonObjectStructuredOutputValue);
+                    }
+                }
+                _ => {
+                    if !selected_match.output_value.is_string() {
+                        return Err(ContractError::NonStringOutputValue { output_kind });
+                    }
+                }
+            }
         }
 
         if self
             .diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
+            .any(|diagnostic| diagnostic.level == InteropDiagnosticLevel::Error)
         {
             return Err(ContractError::ErrorDiagnosticsInSuccess);
         }
@@ -320,6 +534,8 @@ pub enum ErrorCode {
     NoMatch,
     /// Exact-one selection saw multiple candidates.
     AmbiguousMatch,
+    /// The selected candidate did not carry the requested attribute.
+    MissingAttribute,
     /// An internal failure occurred inside HTMLCut.
     InternalError,
 }
@@ -347,7 +563,7 @@ pub struct InteropError {
     /// Machine-readable detail object.
     pub details: BTreeMap<String, Value>,
     /// Underlying HTMLCut diagnostics that produced this error.
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<InteropDiagnostic>,
     /// Reserved extension object ignored by v1 consumers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<BTreeMap<String, Value>>,
@@ -361,7 +577,7 @@ impl InteropError {
         message: impl Into<String>,
         strategy_kind: Option<StrategyKind>,
         details: BTreeMap<String, Value>,
-        diagnostics: Vec<Diagnostic>,
+        diagnostics: Vec<InteropDiagnostic>,
     ) -> Self {
         Self {
             schema_name: ERROR_SCHEMA_NAME.to_owned(),

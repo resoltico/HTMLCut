@@ -139,14 +139,14 @@ pub(crate) fn read_limited_to_string(
             break;
         }
 
-        buffer.extend_from_slice(&chunk[..read]);
-        if buffer.len() > max_bytes {
+        if buffer.len() + read > max_bytes {
             return Err(error_diagnostic(
                 DiagnosticCode::SourceLoadFailed,
                 format!("{label} exceeds {} limit.", format_byte_size(max_bytes)),
                 None,
             ));
         }
+        buffer.extend_from_slice(&chunk[..read]);
     }
 
     String::from_utf8(buffer).map_err(|error| {

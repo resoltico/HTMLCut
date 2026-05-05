@@ -13,9 +13,9 @@ use super::super::{
 };
 use super::{FetchPreflightMode, WhitespaceMode};
 
-/// Output normalization rules applied after raw value extraction.
+/// Rendering policy applied after raw value extraction.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct NormalizationOptions {
+pub struct RenderingOptions {
     #[serde(default)]
     /// Whitespace treatment for text-like outputs.
     pub whitespace: WhitespaceMode,
@@ -24,7 +24,7 @@ pub struct NormalizationOptions {
     pub rewrite_urls: bool,
 }
 
-impl Default for NormalizationOptions {
+impl Default for RenderingOptions {
     fn default() -> Self {
         Self {
             whitespace: WhitespaceMode::Preserve,
@@ -33,9 +33,12 @@ impl Default for NormalizationOptions {
     }
 }
 
-/// Structured-report toggles for extraction and preview flows.
+/// Structured-report toggles and rendering policy for extraction and preview flows.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct OutputOptions {
+    #[serde(default)]
+    /// Rendering policy for extracted values.
+    pub rendering: RenderingOptions,
     #[serde(default)]
     /// Include the full input source text in structured output.
     pub include_source_text: bool,
@@ -53,6 +56,7 @@ pub struct OutputOptions {
 impl Default for OutputOptions {
     fn default() -> Self {
         Self {
+            rendering: RenderingOptions::default(),
             include_source_text: false,
             include_html: true,
             include_text: true,
@@ -96,7 +100,7 @@ pub struct InspectionOptions {
     /// Include the full source text in the inspection result.
     pub include_source_text: bool,
     #[serde(default = "default_inspection_sample_limit")]
-    /// Maximum number of sampled headings, links, tags, and classes.
+    /// Maximum number of sampled headings, links, tags, classes, and content candidates.
     pub sample_limit: usize,
 }
 

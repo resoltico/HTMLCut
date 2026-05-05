@@ -215,9 +215,7 @@ pub(crate) fn read_url_source(
 
 #[cfg(feature = "http-client")]
 pub(crate) fn build_http_agent(runtime: &RuntimeOptions) -> ureq::Agent {
-    let tls_config = TlsConfig::builder()
-        .root_certs(RootCerts::PlatformVerifier)
-        .build();
+    let tls_config = TlsConfig::builder().root_certs(RootCerts::WebPki).build();
 
     ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -298,7 +296,7 @@ fn validate_url_response(
 #[cfg(feature = "http-client")]
 fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
     match error {
-        ureq::Error::Protocol(_) | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Protocol(_) => true,
         ureq::Error::Io(io_error) => matches!(
             io_error.kind(),
             io::ErrorKind::ConnectionAborted
@@ -319,7 +317,10 @@ fn content_type_is_obviously_non_html(content_type: &str) -> bool {
         .trim()
         .to_ascii_lowercase();
 
-    !(normalized.is_empty() || normalized == "text/html" || normalized == "application/xhtml+xml")
+    !(normalized.is_empty()
+        || normalized == "text/html"
+        || normalized == "application/xhtml+xml"
+        || normalized == "text/xhtml+xml")
 }
 
 #[cfg(all(test, feature = "http-client"))]

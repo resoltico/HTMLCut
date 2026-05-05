@@ -13,8 +13,7 @@ use crate::document::{
 };
 use crate::source::LoadedSource;
 
-use super::ExtractionRun;
-use super::slice::select_candidates;
+use super::{ExtractionRun, select_candidates};
 
 #[cfg(test)]
 pub(crate) fn run_selector_extraction(
@@ -57,7 +56,7 @@ pub(crate) fn run_validated_selector_extraction(
 ) -> ExtractionRun {
     let document = parse_document_node(&source.text);
     let effective_base_url = resolve_document_base_url(&document, source.input_base_url.as_deref());
-    let mut diagnostics = if request.normalization.rewrite_urls && effective_base_url.is_none() {
+    let mut diagnostics = if request.output.rendering.rewrite_urls && effective_base_url.is_none() {
         vec![unresolved_effective_base_diagnostic(
             document_base_href(&document).as_deref(),
             true,
@@ -69,7 +68,7 @@ pub(crate) fn run_validated_selector_extraction(
 
     let candidates: Vec<ElementRef<'_>> = document.select(parsed_selector).collect();
     let mut rewritten_document = None;
-    let rewritten_candidates = if request.normalization.rewrite_urls {
+    let rewritten_candidates = if request.output.rendering.rewrite_urls {
         effective_base_url.as_deref().map(|base_url| {
             let mut rewritten = document.clone();
             rewrite_urls_in_document(&mut rewritten, base_url);
@@ -121,11 +120,14 @@ pub(crate) fn run_validated_selector_extraction(
 }
 
 pub(crate) fn validate_selector_query(selector: &SelectorQuery) -> Result<Selector, Diagnostic> {
-    Selector::parse(selector.as_str()).map_err(|_| {
+    Selector::parse(selector.as_str()).map_err(|error| {
         error_diagnostic(
             DiagnosticCode::InvalidSelector,
-            format!("Invalid selector: {selector}"),
-            Some(json!({ "selector": selector.as_str() })),
+            format!("Invalid selector: {selector}: {error}"),
+            Some(json!({
+                "selector": selector.as_str(),
+                "parseError": error.to_string(),
+            })),
         )
     })
 }
@@ -144,7 +146,8 @@ pub(crate) fn build_selector_match(
     let attributes = element_attributes(node, None, false);
     let needs_text = matches!(value_spec, ValueSpec::Text | ValueSpec::Structured)
         || request.output.include_text;
-    let text = needs_text.then(|| render_element_as_text(node, request.normalization.whitespace));
+    let text =
+        needs_text.then(|| render_element_as_text(node, request.output.rendering.whitespace));
     let needs_inner_html = matches!(value_spec, ValueSpec::InnerHtml | ValueSpec::Structured);
     let rewritten_inner_html = needs_inner_html.then(|| serialize_children(node));
     let needs_outer_html = matches!(value_spec, ValueSpec::OuterHtml | ValueSpec::Structured)
@@ -152,7 +155,7 @@ pub(crate) fn build_selector_match(
     let rewritten_outer_html = needs_outer_html.then(|| serialize_element(node));
     let text_value = || {
         text.clone()
-            .unwrap_or_else(|| render_element_as_text(node, request.normalization.whitespace))
+            .unwrap_or_else(|| render_element_as_text(node, request.output.rendering.whitespace))
     };
     let inner_html_value = || {
         rewritten_inner_html
@@ -182,7 +185,7 @@ pub(crate) fn build_selector_match(
 
             Value::String(apply_whitespace_mode(
                 value,
-                request.normalization.whitespace,
+                request.output.rendering.whitespace,
             ))
         }
         ValueSpec::Structured => json!({
@@ -192,9 +195,9 @@ pub(crate) fn build_selector_match(
             "candidateCount": candidate_count,
             "tagName": tag_name.clone(),
             "path": path.clone(),
-            "text": text_value(),
-            "html": inner_html_value(),
-            "outerHtml": outer_html_value(),
+            "textOutput": text_value(),
+            "innerHtmlOutput": inner_html_value(),
+            "outerHtmlOutput": outer_html_value(),
             "attributes": attributes.clone(),
         }),
     };

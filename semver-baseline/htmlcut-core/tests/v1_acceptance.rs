@@ -27,6 +27,24 @@ const ACCEPTANCE_CASES: &[AcceptanceCase] = &[
         expected_kind: ExpectedDocumentKind::Result,
     },
     AcceptanceCase {
+        name: "css_selector_inner_html_ok",
+        label: "target-story",
+        input_base_url: Some("https://example.com/docs/start.html"),
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_attribute_ok",
+        label: "target-story",
+        input_base_url: Some("https://example.com/docs/start.html"),
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_structured_ok",
+        label: "target-story",
+        input_base_url: Some("https://example.com/docs/start.html"),
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
         name: "delimiter_pair_literal_ok",
         label: "target-fragment",
         input_base_url: None,
@@ -34,6 +52,18 @@ const ACCEPTANCE_CASES: &[AcceptanceCase] = &[
     },
     AcceptanceCase {
         name: "delimiter_pair_regex_ok",
+        label: "target-article",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "delimiter_pair_attribute_ok",
+        label: "target-article",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "delimiter_pair_structured_ok",
         label: "target-article",
         input_base_url: None,
         expected_kind: ExpectedDocumentKind::Result,
@@ -48,6 +78,12 @@ const ACCEPTANCE_CASES: &[AcceptanceCase] = &[
         name: "no_match_error",
         label: "target-empty",
         input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Error,
+    },
+    AcceptanceCase {
+        name: "css_selector_missing_attribute_error",
+        label: "target-story",
+        input_base_url: Some("https://example.com/docs/start.html"),
         expected_kind: ExpectedDocumentKind::Error,
     },
     AcceptanceCase {

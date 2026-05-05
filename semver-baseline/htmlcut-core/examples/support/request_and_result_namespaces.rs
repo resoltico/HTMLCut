@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use htmlcut_core::{
     extract,
     request::{
-        AttributeName, ExtractionRequest, ExtractionSpec, NormalizationOptions, SelectionSpec,
+        AttributeName, ExtractionRequest, ExtractionSpec, RenderingOptions, SelectionSpec,
         SelectorQuery, SourceRequest, ValueSpec,
     },
     result::ExtractionMatchMetadata,
@@ -18,8 +18,11 @@ pub fn write_request_and_result_namespace_summary<W: Write>(writer: &mut W) -> i
     )
     .with_base_url(Url::parse("https://example.com/docs/start.html").map_err(io::Error::other)?);
     let request = ExtractionRequest {
-        normalization: NormalizationOptions {
-            rewrite_urls: true,
+        output: htmlcut_core::OutputOptions {
+            rendering: RenderingOptions {
+                rewrite_urls: true,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..ExtractionRequest::new(

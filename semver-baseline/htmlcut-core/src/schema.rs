@@ -1,11 +1,9 @@
 #[cfg(test)]
 use std::collections::BTreeSet;
-use std::sync::LazyLock;
 
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::any::type_name;
 use thiserror::Error;
 
 use crate::contracts::{
@@ -34,7 +32,7 @@ pub const EXTRACTION_DEFINITION_SCHEMA_NAME: &str = "htmlcut.extraction_definiti
 /// Schema version for request-side core contracts.
 pub const CORE_REQUEST_SCHEMA_VERSION: u32 = CORE_SPEC_VERSION;
 /// Schema version for reusable extraction definitions.
-pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 1;
+pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 2;
 
 /// Stable reference to one versioned schema document.
 #[derive(
@@ -76,8 +74,6 @@ mod tests {
 pub enum SchemaStability {
     /// Generic HTMLCut contract that is versioned and may hard-break by version.
     Versioned,
-    /// Frozen interop contract that must not mutate in place.
-    Frozen,
 }
 
 /// Runtime descriptor for one exported schema document.
@@ -133,74 +129,72 @@ const INTEROP_RESULT_SCHEMA_REF: SchemaRef =
     SchemaRef::new(RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION);
 const INTEROP_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION);
 
-static SCHEMA_CATALOG: LazyLock<Vec<SchemaDescriptor>> = LazyLock::new(|| {
-    vec![
-        schema_descriptor_entry::<SourceRequest>(
-            SOURCE_REQUEST_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            source_request_schema,
-        ),
-        schema_descriptor_entry::<RuntimeOptions>(
-            RUNTIME_OPTIONS_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            runtime_options_schema,
-        ),
-        schema_descriptor_entry::<InspectionOptions>(
-            INSPECTION_OPTIONS_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            inspection_options_schema,
-        ),
-        schema_descriptor_entry::<ExtractionRequest>(
-            EXTRACTION_REQUEST_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            extraction_request_schema,
-        ),
-        schema_descriptor_entry::<ExtractionDefinition>(
-            EXTRACTION_DEFINITION_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            extraction_definition_schema,
-        ),
-        schema_descriptor_entry::<ExtractionResult>(
-            EXTRACTION_RESULT_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            extraction_result_schema,
-        ),
-        schema_descriptor_entry::<SourceInspectionResult>(
-            SOURCE_INSPECTION_RESULT_SCHEMA_REF,
-            "htmlcut-core",
-            SchemaStability::Versioned,
-            source_inspection_result_schema,
-        ),
-        schema_descriptor_entry::<Plan>(
-            INTEROP_PLAN_SCHEMA_REF,
-            "htmlcut_core::interop::v1",
-            SchemaStability::Versioned,
-            interop_plan_schema,
-        ),
-        schema_descriptor_entry::<InteropResult>(
-            INTEROP_RESULT_SCHEMA_REF,
-            "htmlcut_core::interop::v1",
-            SchemaStability::Versioned,
-            interop_result_schema,
-        ),
-        schema_descriptor_entry::<InteropError>(
-            INTEROP_ERROR_SCHEMA_REF,
-            "htmlcut_core::interop::v1",
-            SchemaStability::Versioned,
-            interop_error_schema,
-        ),
-    ]
-});
+const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
+    catalog_schema_descriptor(
+        SOURCE_REQUEST_SCHEMA_REF,
+        "htmlcut-core",
+        "SourceRequest",
+        source_request_schema,
+    ),
+    catalog_schema_descriptor(
+        RUNTIME_OPTIONS_SCHEMA_REF,
+        "htmlcut-core",
+        "RuntimeOptions",
+        runtime_options_schema,
+    ),
+    catalog_schema_descriptor(
+        INSPECTION_OPTIONS_SCHEMA_REF,
+        "htmlcut-core",
+        "InspectionOptions",
+        inspection_options_schema,
+    ),
+    catalog_schema_descriptor(
+        EXTRACTION_REQUEST_SCHEMA_REF,
+        "htmlcut-core",
+        "ExtractionRequest",
+        extraction_request_schema,
+    ),
+    catalog_schema_descriptor(
+        EXTRACTION_DEFINITION_SCHEMA_REF,
+        "htmlcut-core",
+        "ExtractionDefinition",
+        extraction_definition_schema,
+    ),
+    catalog_schema_descriptor(
+        EXTRACTION_RESULT_SCHEMA_REF,
+        "htmlcut-core",
+        "ExtractionResult",
+        extraction_result_schema,
+    ),
+    catalog_schema_descriptor(
+        SOURCE_INSPECTION_RESULT_SCHEMA_REF,
+        "htmlcut-core",
+        "SourceInspectionResult",
+        source_inspection_result_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_PLAN_SCHEMA_REF,
+        "htmlcut_core::interop::v1",
+        "Plan",
+        interop_plan_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_RESULT_SCHEMA_REF,
+        "htmlcut_core::interop::v1",
+        "InteropResult",
+        interop_result_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_ERROR_SCHEMA_REF,
+        "htmlcut_core::interop::v1",
+        "InteropError",
+        interop_error_schema,
+    ),
+];
 
 /// Returns the exported core-side schema catalog.
 pub fn schema_catalog() -> &'static [SchemaDescriptor] {
-    SCHEMA_CATALOG.as_slice()
+    SCHEMA_CATALOG
 }
 
 /// Returns one exported schema descriptor by exact name and version.
@@ -356,24 +350,27 @@ fn schema_catalog_contract_string_errors(catalog: &[SchemaDescriptor]) -> Vec<St
 
     errors
 }
-fn schema_descriptor_entry<T>(
+const fn catalog_schema_descriptor(
     schema_ref: SchemaRef,
     owner_surface: &'static str,
-    stability: SchemaStability,
+    rust_shape: &'static str,
     json_schema: fn() -> Result<Value, SchemaExportError>,
 ) -> SchemaDescriptor {
     SchemaDescriptor {
         schema_ref,
         owner_surface,
-        rust_shape: short_type_name::<T>(),
-        stability,
+        rust_shape,
+        stability: SchemaStability::Versioned,
         json_schema,
     }
 }
 
-fn short_type_name<T>() -> &'static str {
-    type_name::<T>()
-        .rsplit("::")
-        .next()
-        .unwrap_or(type_name::<T>())
+#[cfg(test)]
+pub(crate) fn catalog_schema_descriptor_for_tests(
+    schema_ref: SchemaRef,
+    owner_surface: &'static str,
+    rust_shape: &'static str,
+    json_schema: fn() -> Result<Value, SchemaExportError>,
+) -> SchemaDescriptor {
+    catalog_schema_descriptor(schema_ref, owner_surface, rust_shape, json_schema)
 }

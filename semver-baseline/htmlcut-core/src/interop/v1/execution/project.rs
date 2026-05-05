@@ -10,18 +10,20 @@ use crate::{
 };
 
 use super::super::{
-    HtmlInput, InteropError, InteropResult, OutputKind, Plan, ResultExecution, ResultSource,
-    SelectedMatch, SelectedMatchMetadata, StrategyKind,
+    ByteRange, ErrorCode, HtmlInput, InteropDiagnostic, InteropError, InteropResult, Output, Plan,
+    ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, StrategyKind,
 };
 use super::errors::internal_adapter_error;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ProjectedStructuredMatch {
     candidate_index: NonZeroUsize,
-    selected_html: String,
-    comparison_input_text: String,
-    inner_html: String,
-    outer_html: String,
+    structured_output: Value,
+    text_output: String,
+    selected_html_output: Option<String>,
+    inner_html_output: String,
+    outer_html_output: String,
+    attribute_values: BTreeMap<String, String>,
     metadata: SelectedMatchMetadata,
 }
 
@@ -43,7 +45,7 @@ pub(super) fn adapt_successful_extraction(
             Some(strategy_kind),
             "successful extraction did not produce a selected match",
             details,
-            extraction.diagnostics,
+            &extraction.diagnostics,
         )));
     }
 
@@ -59,7 +61,6 @@ pub(super) fn adapt_successful_extraction(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let diagnostics = extraction.diagnostics.clone();
     let source_summary = ResultSource {
         input_base_url: source.input_base_url.clone(),
         effective_base_url: parse_optional_url(
@@ -73,24 +74,30 @@ pub(super) fn adapt_successful_extraction(
     };
     let selected_matches = projected_matches
         .into_iter()
-        .map(|projected| SelectedMatch {
-            candidate_index: projected.candidate_index,
-            value_kind: plan.output.kind,
-            value: match plan.output.kind {
-                OutputKind::Text => projected.comparison_input_text.clone(),
-                OutputKind::InnerHtml => projected.selected_html.clone(),
-                OutputKind::OuterHtml => projected.outer_html.clone(),
-            },
-            comparison_input_text: projected.comparison_input_text,
-            inner_html: Some(projected.inner_html),
-            outer_html: Some(projected.outer_html),
-            metadata: projected.metadata,
+        .map(|projected| {
+            let output_value = project_output_value(
+                &plan.output,
+                &projected,
+                &plan_digest_sha256,
+                strategy_kind,
+                &extraction.diagnostics,
+            )?;
+            Ok(SelectedMatch {
+                candidate_index: projected.candidate_index,
+                output_value,
+                text_output: projected.text_output,
+                selected_html_output: projected.selected_html_output,
+                inner_html_output: projected.inner_html_output,
+                outer_html_output: projected.outer_html_output,
+                metadata: projected.metadata,
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, Box<InteropError>>>()?;
     let execution = ResultExecution::new(
         plan_digest_sha256.clone(),
         strategy_kind,
         plan.selection.mode(),
+        plan.output.clone(),
         extraction.stats.candidate_count,
     );
 
@@ -99,11 +106,15 @@ pub(super) fn adapt_successful_extraction(
             execution,
             source_summary,
             selected_matches,
-            extraction.diagnostics,
+            extraction
+                .diagnostics
+                .iter()
+                .map(InteropDiagnostic::from)
+                .collect(),
         ),
         &plan_digest_sha256,
         strategy_kind,
-        diagnostics,
+        &extraction.diagnostics,
     )
 }
 
@@ -121,7 +132,7 @@ pub(super) fn project_structured_match(
             Some(strategy_kind),
             "execution expected a structured core match payload",
             details,
-            diagnostics.to_vec(),
+            diagnostics,
         ))
     })?;
 
@@ -133,36 +144,38 @@ pub(super) fn project_structured_match(
                 strategy_kind,
                 diagnostics,
             )?;
-            let selected_html = required_string_field(
-                structured,
-                "html",
-                plan_digest_sha256,
-                strategy_kind,
-                diagnostics,
-            )?;
             Ok(ProjectedStructuredMatch {
                 candidate_index,
-                selected_html: selected_html.clone(),
-                comparison_input_text: required_string_field(
+                structured_output: matched.value.clone(),
+                text_output: required_string_field(
                     structured,
-                    "text",
+                    "textOutput",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
                 )?,
-                inner_html: selected_html,
-                outer_html: required_string_field(
+                selected_html_output: None,
+                inner_html_output: required_string_field(
                     structured,
-                    "outerHtml",
+                    "innerHtmlOutput",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
                 )?,
+                outer_html_output: required_string_field(
+                    structured,
+                    "outerHtmlOutput",
+                    plan_digest_sha256,
+                    strategy_kind,
+                    diagnostics,
+                )?,
+                attribute_values: metadata.attributes.clone(),
                 metadata: SelectedMatchMetadata::CssSelector {
                     candidate_count: metadata.candidate_count,
                     candidate_index,
                     path: metadata.path.clone(),
                     tag_name: metadata.tag_name.clone(),
+                    attributes: metadata.attributes.clone(),
                 },
             })
         }
@@ -175,30 +188,38 @@ pub(super) fn project_structured_match(
             )?;
             Ok(ProjectedStructuredMatch {
                 candidate_index,
-                selected_html: required_string_field(
+                structured_output: matched.value.clone(),
+                text_output: required_string_field(
                     structured,
-                    "html",
+                    "textOutput",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
                 )?,
-                comparison_input_text: required_string_field(
+                selected_html_output: Some(required_string_field(
                     structured,
-                    "text",
+                    "selectedHtmlOutput",
+                    plan_digest_sha256,
+                    strategy_kind,
+                    diagnostics,
+                )?),
+                inner_html_output: required_string_field(
+                    structured,
+                    "innerHtmlOutput",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
                 )?,
-                inner_html: required_string_field(
+                outer_html_output: required_string_field(
                     structured,
-                    "innerHtml",
+                    "outerHtmlOutput",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
                 )?,
-                outer_html: required_string_field(
+                attribute_values: required_string_map_field(
                     structured,
-                    "outerHtml",
+                    "attributes",
                     plan_digest_sha256,
                     strategy_kind,
                     diagnostics,
@@ -206,14 +227,69 @@ pub(super) fn project_structured_match(
                 metadata: SelectedMatchMetadata::DelimiterPair {
                     candidate_count: metadata.candidate_count,
                     candidate_index,
-                    selected_range: metadata.selected_range.clone(),
-                    inner_range: metadata.inner_range.clone(),
-                    outer_range: metadata.outer_range.clone(),
+                    selected_range: ByteRange::from(&metadata.selected_range),
+                    inner_range: ByteRange::from(&metadata.inner_range),
+                    outer_range: ByteRange::from(&metadata.outer_range),
                     include_start: metadata.include_start,
                     include_end: metadata.include_end,
+                    matched_start: metadata.matched_start.clone(),
+                    matched_end: metadata.matched_end.clone(),
                 },
             })
         }
+    }
+}
+
+fn project_output_value(
+    output: &Output,
+    projected: &ProjectedStructuredMatch,
+    plan_digest_sha256: &str,
+    strategy_kind: StrategyKind,
+    diagnostics: &[Diagnostic],
+) -> Result<Value, Box<InteropError>> {
+    match output {
+        Output::Text => Ok(Value::String(projected.text_output.clone())),
+        Output::InnerHtml => Ok(Value::String(projected.inner_html_output.clone())),
+        Output::OuterHtml => Ok(Value::String(projected.outer_html_output.clone())),
+        Output::SelectedHtml => projected
+            .selected_html_output
+            .as_ref()
+            .map(|value| Value::String(value.clone()))
+            .ok_or_else(|| {
+                let mut details = BTreeMap::new();
+                details.insert(
+                    "output_kind".to_owned(),
+                    Value::from(output.kind().to_string()),
+                );
+                Box::new(internal_adapter_error(
+                    plan_digest_sha256,
+                    Some(strategy_kind),
+                    "execution could not project selected_html for this strategy",
+                    details,
+                    diagnostics,
+                ))
+            }),
+        Output::Attribute { name } => projected
+            .attribute_values
+            .get(name.as_str())
+            .map(|value| Value::String(value.clone()))
+            .ok_or_else(|| {
+                let mut details = BTreeMap::new();
+                details.insert("attribute".to_owned(), Value::from(name.as_str()));
+                Box::new(
+                    InteropError::new(
+                        plan_digest_sha256.to_owned(),
+                        ErrorCode::MissingAttribute,
+                        format!("Selected candidate is missing attribute \"{name}\"."),
+                        Some(strategy_kind),
+                        details,
+                        diagnostics.iter().map(InteropDiagnostic::from).collect(),
+                    )
+                    .with_computed_digest()
+                    .expect("missing-attribute interop error payload must digest"),
+                )
+            }),
+        Output::Structured => Ok(projected.structured_output.clone()),
     }
 }
 
@@ -236,9 +312,52 @@ fn required_string_field(
                 Some(strategy_kind),
                 format!("execution could not project structured field {field:?}"),
                 details,
-                diagnostics.to_vec(),
+                diagnostics,
             ))
         })
+}
+
+fn required_string_map_field(
+    structured: &serde_json::Map<String, Value>,
+    field: &'static str,
+    plan_digest_sha256: &str,
+    strategy_kind: StrategyKind,
+    diagnostics: &[Diagnostic],
+) -> Result<BTreeMap<String, String>, Box<InteropError>> {
+    let Some(Value::Object(entries)) = structured.get(field) else {
+        let mut details = BTreeMap::new();
+        details.insert("field".to_owned(), Value::from(field));
+        return Err(Box::new(internal_adapter_error(
+            plan_digest_sha256,
+            Some(strategy_kind),
+            format!("execution could not project structured field {field:?}"),
+            details,
+            diagnostics,
+        )));
+    };
+
+    entries
+        .iter()
+        .map(|(key, value)| {
+            value
+                .as_str()
+                .map(|text| (key.clone(), text.to_owned()))
+                .ok_or_else(|| {
+                    let mut details = BTreeMap::new();
+                    details.insert("field".to_owned(), Value::from(field));
+                    details.insert("attribute".to_owned(), Value::from(key.as_str()));
+                    Box::new(internal_adapter_error(
+                        plan_digest_sha256,
+                        Some(strategy_kind),
+                        format!(
+                            "execution produced a non-string attribute value in structured field {field:?}"
+                        ),
+                        details,
+                        diagnostics,
+                    ))
+                })
+        })
+        .collect()
 }
 
 fn non_zero_candidate_index(
@@ -258,7 +377,7 @@ fn non_zero_candidate_index(
             Some(strategy_kind),
             "execution received an invalid zero candidate index from core metadata",
             details,
-            diagnostics.to_vec(),
+            diagnostics,
         ))
     })
 }
@@ -281,7 +400,7 @@ pub(super) fn parse_optional_url(
                     Some(strategy_kind),
                     format!("execution produced an invalid URL in {field}"),
                     details,
-                    diagnostics.to_vec(),
+                    diagnostics,
                 ))
             })
         })
@@ -292,7 +411,7 @@ fn finalize_result(
     result: InteropResult,
     plan_digest_sha256: &str,
     strategy_kind: StrategyKind,
-    diagnostics: Vec<Diagnostic>,
+    diagnostics: &[Diagnostic],
 ) -> Result<InteropResult, Box<InteropError>> {
     result.with_computed_digest().map_err(|error| {
         let mut details = BTreeMap::new();

@@ -12,12 +12,12 @@ use crate::document::{
     extract_document_title, first_body_child_element, parse_document_node, parse_wrapped_fragment,
     render_document_body_as_text, resolve_document_base_url, rewrite_html_urls,
 };
+use crate::extract::select_candidates;
 use crate::source::LoadedSource;
 
 use super::super::{ExtractionRun, SliceCandidate};
 use super::markup::slice_markup_diagnostics;
 use super::patterns::{CompiledSlicePatterns, extract_compiled_slice_candidates};
-use super::selection::select_candidates;
 
 #[cfg(test)]
 pub(crate) fn run_slice_extraction(
@@ -62,7 +62,7 @@ pub(crate) fn run_validated_slice_extraction(
     let document = parse_document_node(&source.text);
     let document_title = extract_document_title(&document);
     let effective_base_url = resolve_document_base_url(&document, source.input_base_url.as_deref());
-    let mut diagnostics = if request.normalization.rewrite_urls && effective_base_url.is_none() {
+    let mut diagnostics = if request.output.rendering.rewrite_urls && effective_base_url.is_none() {
         vec![unresolved_effective_base_diagnostic(
             document_base_href(&document).as_deref(),
             true,
@@ -135,8 +135,8 @@ pub(crate) fn build_slice_match(
             None,
         ));
     };
-    let rewrite_urls = request.normalization.rewrite_urls;
-    let whitespace = request.normalization.whitespace;
+    let rewrite_urls = request.output.rendering.rewrite_urls;
+    let whitespace = request.output.rendering.whitespace;
     let selected_html = OnceCell::new();
     let selected_html_value = || {
         selected_html
@@ -178,6 +178,16 @@ pub(crate) fn build_slice_match(
             attribute_name,
         )
     };
+    let attribute_map = OnceCell::new();
+    let attribute_map_value = || {
+        attribute_map
+            .get_or_init(|| {
+                first_body_child_element(selected_document_value())
+                    .map(|element| element_attributes(&element, None, false))
+                    .unwrap_or_default()
+            })
+            .clone()
+    };
     let value = match value_spec {
         ValueSpec::Text => Value::String(text_value()),
         ValueSpec::InnerHtml => Value::String(selected_html_value()),
@@ -188,10 +198,11 @@ pub(crate) fn build_slice_match(
             "matchCount": match_count,
             "candidateIndex": candidate_index,
             "candidateCount": candidate_count,
-            "text": text_value(),
-            "html": selected_html_value(),
-            "innerHtml": inner_html_value(),
-            "outerHtml": outer_html_value(),
+            "textOutput": text_value(),
+            "selectedHtmlOutput": selected_html_value(),
+            "innerHtmlOutput": inner_html_value(),
+            "outerHtmlOutput": outer_html_value(),
+            "attributes": attribute_map_value(),
             "selectedRange": candidate.selected_range.clone(),
             "innerRange": candidate.inner_range.clone(),
             "outerRange": candidate.outer_range.clone(),
@@ -265,7 +276,7 @@ fn build_attribute_value(
 
     Ok(Value::String(apply_whitespace_mode(
         value,
-        request.normalization.whitespace,
+        request.output.rendering.whitespace,
     )))
 }
 

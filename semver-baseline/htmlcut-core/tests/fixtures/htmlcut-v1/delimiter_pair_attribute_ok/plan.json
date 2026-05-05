@@ -1,0 +1,1 @@
+{"interop_profile":"htmlcut-v1","output":{"kind":"attribute","name":"data-id"},"rendering":{"rewrite_urls":false,"whitespace":"normalize"},"schema_name":"htmlcut.plan","schema_version":4,"selection":{"mode":"single"},"strategy":{"end":"</article>","flags":["case_insensitive"],"include_end":true,"include_start":true,"kind":"delimiter_pair","mode":"regex","start":"<article[^>]*>"}}

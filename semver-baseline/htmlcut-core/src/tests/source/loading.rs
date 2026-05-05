@@ -34,12 +34,12 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
             let body = "<html><body>Hello</body></html>";
             let response = if method == "HEAD" {
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
                     body.len()
                 )
             } else {
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
                     body.len(),
                     body
                 )
@@ -62,7 +62,7 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
     let agent = build_http_agent(&RuntimeOptions::default());
     assert!(matches!(
         agent.config().tls_config().root_certs(),
-        RootCerts::PlatformVerifier
+        RootCerts::WebPki
     ));
     assert_eq!(
         agent.config().timeouts().connect,
@@ -208,6 +208,12 @@ fn url_loading_accepts_headerless_and_xhtml_success_responses() {
     ));
     assert!(!content_type_is_obviously_non_html_for_tests(
         "application/xhtml+xml; charset=utf-8"
+    ));
+    assert!(!content_type_is_obviously_non_html_for_tests(
+        "text/xhtml+xml"
+    ));
+    assert!(!content_type_is_obviously_non_html_for_tests(
+        "text/xhtml+xml; charset=utf-8"
     ));
     assert!(content_type_is_obviously_non_html_for_tests("text/plain"));
     assert!(content_type_is_obviously_non_html_for_tests(

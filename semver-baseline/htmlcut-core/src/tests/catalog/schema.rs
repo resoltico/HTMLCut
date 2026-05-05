@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn schema_catalog_is_unique_and_covers_core_and_interop_contracts() {
+fn contract_lint_schema_catalog_is_unique_and_covers_core_and_interop_contracts() {
     let identities = schema_catalog()
         .iter()
         .map(|descriptor| {
@@ -52,7 +52,7 @@ fn schema_catalog_is_unique_and_covers_core_and_interop_contracts() {
     assert_eq!(interop_result_schema.stability, SchemaStability::Versioned);
 }
 #[test]
-fn schemas_cover_inner_html_and_structured_metadata_variants() {
+fn contract_lint_schemas_cover_inner_html_and_structured_metadata_variants() {
     let extraction_request_schema =
         (schema_descriptor(EXTRACTION_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION)
             .expect("extraction request schema")
