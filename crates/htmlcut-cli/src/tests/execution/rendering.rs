@@ -143,7 +143,7 @@ fn canonical_bundle_dir_covers_fallback_edges() {
     );
     assert_eq!(
         canonical_bundle_dir_for_tests(Path::new("missing/..")),
-        entered_dir.join("missing/..")
+        entered_dir
     );
 
     #[cfg(unix)]
@@ -152,6 +152,34 @@ fn canonical_bundle_dir_covers_fallback_edges() {
         assert_eq!(
             canonical_bundle_dir_for_tests(Path::new("")),
             std::path::PathBuf::from("/")
+        );
+    }
+}
+
+#[test]
+fn lexical_path_normalization_covers_relative_and_empty_edges() {
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new("./nested/../report")),
+        Path::new("report")
+    );
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new("../nested/../../report")),
+        Path::new("../../report")
+    );
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new(".")),
+        Path::new(".")
+    );
+
+    #[cfg(unix)]
+    {
+        assert_eq!(
+            lexical_normalize_path_for_tests(Path::new("/")),
+            Path::new("/")
+        );
+        assert_eq!(
+            lexical_normalize_path_for_tests(Path::new("/../")),
+            Path::new("/")
         );
     }
 }

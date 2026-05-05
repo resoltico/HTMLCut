@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "8.0.0"
 domain: RELEASE
-updated: "2026-05-02"
+updated: "2026-05-05"
 route:
   keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
   questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]
@@ -32,6 +32,9 @@ Release choreography lives in this document set. Contract-versioning policy live
 - Release commits happen on a `release/X.Y.Z` branch, not directly on `main`.
 - If dirty unpublished release-candidate work must be captured first, that capture happens on
   `release-prep/X.Y.Z`, but the public PR, merge, and tag still flow through `release/X.Y.Z`.
+- If CI exposes a release-only defect after `release/X.Y.Z` is cut, fix it on that branch and
+  rerun the full local maintainer gate from the release worktree before pushing the follow-up
+  commit.
 - Tag publication is authoritative for release automation. PR merge alone does not publish.
 - The GitHub release object and its asset inventory are the authoritative publication record.
 - The checked-in semver baseline is refreshed only after the corresponding release is published.

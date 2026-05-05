@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cargo xtask check` now fans the full Rust test gate out by package and discovered CLI test
   targets instead of invoking one workspace-wide `cargo nextest` inventory pass that can stall
   late in the maintainer gate on macOS.
+- The maintainer release protocol now requires rerunning the full local gate from the
+  `release/X.Y.Z` worktree before pushing any release-only follow-up fix discovered by CI, so the
+  shipped release branch is revalidated on the exact branch payload instead of only on the
+  original prep checkout.
 
 ### Changed
 - Promoted the workspace to `8.0.0` because this slice intentionally breaks public `htmlcut-core`
@@ -90,7 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation up front, and stream size limits stop at the configured byte cap.
 - CLI output/request-file/bundle flows now preserve diagnostics when file writes fail, bundle
   reports resolve fresh artifact paths to canonical absolute locations, and request-file writes no
-  longer duplicate an incomplete second overwrite-policy check at the write site.
+  longer duplicate an incomplete second overwrite-policy check at the write site. Bundle-path
+  fallback resolution now also normalizes `.` and `..` segments consistently across platforms,
+  including Windows temp directories.
 - Interop fallback errors now produce self-validating digests, `meta refresh` URL rewriting no
   longer reformats separators, and source-load failure metadata no longer pays an unnecessary heap
   allocation hop.

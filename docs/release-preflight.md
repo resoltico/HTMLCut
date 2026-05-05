@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "8.0.0"
 domain: RELEASE
-updated: "2026-05-02"
+updated: "2026-05-05"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -217,6 +217,17 @@ git commit -m "release: bump version to X.Y.Z"
 git push origin release/X.Y.Z
 ```
 
+If CI later exposes a release-only defect after the first push, fix it on `release/X.Y.Z`, rerun
+the full local maintainer gate from that same release worktree, and only then push the follow-up
+commit:
+
+```bash
+./check.sh
+git add <every intended release file>
+git commit -m "release: fix X.Y.Z branch gate"
+git push origin release/X.Y.Z
+```
+
 Before pushing or committing:
 
 - if Step 1 already produced the full release candidate, `git status --short` must be empty and
@@ -225,6 +236,8 @@ Before pushing or committing:
   release file left unstaged before the commit
 - if you are making an additional release-only commit, `git diff --cached --name-status` must show
   the exact incremental release-only file set
+- if you are making an additional release-only commit, rerun `./check.sh` from the
+  `release/X.Y.Z` worktree after the fix and before the push
 - if you are making an additional release-only commit, `git diff --cached --stat` may be limited
   to versioning, changelog, docs, workflow, and release-script updates, but the overall PR may
   legitimately be broader when `release/X.Y.Z` was cut from a prepared dirty-candidate capture

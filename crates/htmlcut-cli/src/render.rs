@@ -260,12 +260,101 @@ fn canonical_bundle_dir(dir: &Path) -> std::path::PathBuf {
         return absolute;
     };
     let Some(name) = absolute.file_name() else {
-        return absolute;
+        return lexical_normalize_path(absolute);
     };
 
-    match parent.canonicalize() {
+    lexical_normalize_path(match parent.canonicalize() {
         Ok(canonical_parent) => canonical_parent.join(name),
         Err(_) => absolute,
+    })
+}
+
+#[cfg(windows)]
+fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let is_absolute = path.is_absolute();
+    let mut prefix = None;
+    let mut has_root = false;
+    let mut segments = Vec::new();
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(value) => prefix = Some(value.as_os_str().to_owned()),
+            Component::RootDir => has_root = true,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let can_pop_normal = segments
+                    .last()
+                    .map(|segment: &std::ffi::OsString| segment != "..")
+                    .unwrap_or(false);
+                if can_pop_normal {
+                    segments.pop();
+                } else if !is_absolute {
+                    segments.push("..".into());
+                }
+            }
+            Component::Normal(part) => segments.push(part.to_owned()),
+        }
+    }
+
+    let mut normalized = std::path::PathBuf::new();
+    if let Some(prefix) = prefix {
+        normalized.push(prefix);
+    }
+    if has_root {
+        normalized.push(std::path::MAIN_SEPARATOR.to_string());
+    }
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    if normalized.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        normalized
+    }
+}
+
+#[cfg(not(windows))]
+fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let is_absolute = path.is_absolute();
+    let mut segments = Vec::new();
+
+    for segment in path.as_os_str().as_bytes().split(|byte| *byte == b'/') {
+        match segment {
+            b"" | b"." => {}
+            b".." => {
+                let can_pop_normal = segments
+                    .last()
+                    .map(|existing: &std::ffi::OsString| existing != "..")
+                    .unwrap_or(false);
+                if can_pop_normal {
+                    segments.pop();
+                } else if !is_absolute {
+                    segments.push("..".into());
+                }
+            }
+            part => segments.push(OsStr::from_bytes(part).to_owned()),
+        }
+    }
+
+    let mut normalized = if is_absolute {
+        std::path::PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+    } else {
+        std::path::PathBuf::new()
+    };
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    if normalized.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        normalized
     }
 }
 
@@ -315,6 +404,11 @@ fn lang_from_selector(document: &Html, selector: &Selector) -> Option<String> {
 #[cfg(test)]
 pub(crate) fn canonical_bundle_dir_for_tests(dir: &Path) -> std::path::PathBuf {
     canonical_bundle_dir(dir)
+}
+
+#[cfg(test)]
+pub(crate) fn lexical_normalize_path_for_tests(path: &Path) -> std::path::PathBuf {
+    lexical_normalize_path(path.to_path_buf())
 }
 
 #[cfg(test)]
