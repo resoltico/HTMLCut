@@ -2,7 +2,7 @@ mod compile;
 mod errors;
 mod project;
 
-use compile::{compile_request, exact_plan_digest_sha256, runtime_options};
+use compile::{compile_request, default_runtime_options, exact_plan_digest_sha256};
 use errors::{core_execution_error, plan_digest_error, plan_invalid_error};
 use project::adapt_successful_extraction;
 
@@ -52,7 +52,7 @@ pub fn execute_validated_plan(
     validated_plan: &ValidatedPlan,
 ) -> Result<InteropResult, Box<InteropError>> {
     let request = compile_request(source, validated_plan.plan());
-    let runtime = runtime_options(source);
+    let runtime = default_runtime_options();
     let extraction = extract(&request, &runtime);
 
     if !extraction.ok {
@@ -135,7 +135,7 @@ pub(crate) fn internal_adapter_error_for_tests(
         Some(super::StrategyKind::CssSelector),
         message,
         details,
-        diagnostics,
+        &diagnostics,
     )
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn internal_adapter_error_with_plan_digest_for_tests(
         Some(super::StrategyKind::CssSelector),
         message,
         details,
-        diagnostics,
+        &diagnostics,
     )
 }
 

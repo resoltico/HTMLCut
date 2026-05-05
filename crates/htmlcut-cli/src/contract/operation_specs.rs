@@ -227,14 +227,15 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             notes: &[
                 "Use this command to inspect document shape, headings, links, classes, and effective base-URL behavior before choosing selectors or slice boundaries.",
                 "--include-source-text stores the full source in JSON output and prints a bounded source preview in text mode.",
-                "--sample-limit bounds the sampled headings, links, tags, and classes in the summary.",
+                "--sample-limit bounds the sampled extraction candidates, reading candidates, headings, links, tags, and classes in the summary.",
+                "inspect source now separates narrower extraction selectors from broader reading selectors. Use inspect select to compare the candidates before committing to a final output shape.",
             ],
             examples: &[
                 "htmlcut inspect source ./page.html",
                 "htmlcut inspect source ./page.html --output text --include-source-text --preview-chars 200",
             ],
             help_overview: &[
-                "This command summarizes title, counts, headings, link previews, top tags, top classes, document base behavior, and optional source text. It is designed to help you choose selectors or confirm how URL rewriting will behave before extracting data.",
+                "This command summarizes title, counts, extraction selectors, reading selectors, headings, link previews, top tags, top classes, document base behavior, and optional source text. It is designed to help you choose selectors or confirm how URL rewriting will behave before extracting data.",
             ],
         }),
     },
@@ -354,7 +355,9 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             build_constraints: extract_constraints,
             notes: &[
                 "Structured extraction only supports --output json or --output none.",
+                "--output none suppresses stdout and therefore requires --bundle.",
                 "--output html is only valid with --value inner-html or --value outer-html.",
+                "HTML output preserves the selected fragment apart from optional URL rewriting; it does not sanitize widgets, scripts, or related blocks.",
                 "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.",
                 "Use --emit-request-file to capture the canonical extraction definition while you iterate on inline flags.",
             ],
@@ -362,8 +365,8 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
                 "htmlcut select ./page.html --css article --match single",
                 "htmlcut select ./page.html --css '.card' --match all --value outer-html",
                 "htmlcut select ./page.html --css 'article a.more' --value attribute --attribute href --rewrite-urls",
-                "htmlcut select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-links.json",
-                "htmlcut select --request-file ./article-links.json --output-file ./links.json",
+                "htmlcut select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-link.request.json",
+                "htmlcut select --request-file ./article-link.request.json --output-file ./article-link.txt",
             ],
             help_overview: &[
                 "Use inspect source first when you need to learn the document shape, then inspect select to preview matches before emitting the final payload.",
@@ -401,7 +404,9 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
                 "Literal boundaries are raw substring matching, not tag-aware; `<a` also matches `<article>`.",
                 "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely.",
                 "Structured extraction only supports --output json or --output none.",
+                "--output none suppresses stdout and therefore requires --bundle.",
                 "--output html is only valid with --value inner-html or --value outer-html.",
+                "HTML output preserves the selected fragment apart from optional URL rewriting; it does not sanitize widgets, scripts, or related blocks.",
                 "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.",
                 "Use --emit-request-file to capture the canonical extraction definition while you iterate on inline flags.",
             ],

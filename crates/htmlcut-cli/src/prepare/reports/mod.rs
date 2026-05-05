@@ -10,6 +10,6 @@ pub(crate) use self::schema::build_schema_report;
 #[cfg(test)]
 pub(crate) use self::schema::{
     assert_cli_schema_catalog_for_tests, cli_schema_catalog_for_tests,
-    cli_schema_catalog_validation_errors_for_tests, schema_export_error_for_tests,
-    schema_export_serialize_error_for_tests,
+    cli_schema_catalog_validation_errors_for_tests, cli_schema_descriptor_for_tests,
+    schema_export_error_for_tests, schema_export_serialize_error_for_tests,
 };

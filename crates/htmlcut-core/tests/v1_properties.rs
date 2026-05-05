@@ -2,12 +2,11 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use htmlcut_core::interop::v1::{
-    DelimiterMode, ErrorCode, InteropError, InteropResult, Normalization, Output, OutputKind, Plan,
-    PlanStrategy, RegexFlag, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata,
-    Selection, SelectionMode, StrategyKind, TextWhitespace, stable_json_v1,
-};
-use htmlcut_core::{
-    Diagnostic, DiagnosticCode, DiagnosticLevel, SelectorQuery, SliceBoundary, result::Range,
+    ByteRange, CssSelectorText, DelimiterBoundaryText, DelimiterMode, ErrorCode, InteropDiagnostic,
+    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output,
+    OutputAttributeName, Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource,
+    SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
+    stable_json_v1,
 };
 use serde_json::{Map, Value};
 use url::Url;
@@ -125,11 +124,29 @@ impl CaseGenerator {
         flags
     }
 
-    fn output_kind(&mut self) -> OutputKind {
-        match self.bounded(3) {
-            0 => OutputKind::Text,
-            1 => OutputKind::InnerHtml,
-            _ => OutputKind::OuterHtml,
+    fn output(&mut self, strategy_kind: StrategyKind) -> Output {
+        match strategy_kind {
+            StrategyKind::CssSelector => match self.bounded(5) {
+                0 => Output::text(),
+                1 => Output::inner_html(),
+                2 => Output::outer_html(),
+                3 => Output::attribute(
+                    OutputAttributeName::new(self.non_empty_text(8).replace(' ', "_"))
+                        .expect("attribute"),
+                ),
+                _ => Output::structured(),
+            },
+            StrategyKind::DelimiterPair => match self.bounded(6) {
+                0 => Output::text(),
+                1 => Output::inner_html(),
+                2 => Output::outer_html(),
+                3 => Output::selected_html(),
+                4 => Output::attribute(
+                    OutputAttributeName::new(self.non_empty_text(8).replace(' ', "_"))
+                        .expect("attribute"),
+                ),
+                _ => Output::structured(),
+            },
         }
     }
 
@@ -159,9 +176,9 @@ impl CaseGenerator {
         }
     }
 
-    fn range(&mut self) -> Range {
+    fn range(&mut self) -> ByteRange {
         let start = self.bounded(64);
-        Range {
+        ByteRange {
             start,
             end: start + self.bounded(16),
         }
@@ -200,7 +217,7 @@ impl CaseGenerator {
     fn plan(&mut self) -> Plan {
         let strategy = if self.next_bool() {
             PlanStrategy::css_selector(
-                SelectorQuery::new(self.selector_text()).expect("generated selector"),
+                CssSelectorText::new(self.selector_text()).expect("generated selector"),
             )
         } else {
             let mode = if self.next_bool() {
@@ -214,20 +231,21 @@ impl CaseGenerator {
                 Vec::new()
             };
             PlanStrategy::delimiter_pair(
-                SliceBoundary::new(self.non_empty_text(12)).expect("non-empty boundary"),
-                SliceBoundary::new(self.non_empty_text(12)).expect("non-empty boundary"),
+                DelimiterBoundaryText::new(self.non_empty_text(12)).expect("non-empty boundary"),
+                DelimiterBoundaryText::new(self.non_empty_text(12)).expect("non-empty boundary"),
                 mode,
                 self.next_bool(),
                 self.next_bool(),
                 flags,
             )
         };
+        let strategy_kind = strategy.kind();
 
         let mut plan = Plan::new(
             strategy,
             self.selection(),
-            Output::new(self.output_kind()),
-            Normalization::new(self.text_whitespace(), self.next_bool()),
+            self.output(strategy_kind),
+            Rendering::new(self.text_whitespace(), self.next_bool()),
         );
         plan.extensions = self.extensions();
         plan
@@ -241,28 +259,28 @@ impl CaseGenerator {
         }
     }
 
-    fn diagnostic(&mut self, allow_error: bool) -> Diagnostic {
+    fn diagnostic(&mut self, allow_error: bool) -> InteropDiagnostic {
         let level = if allow_error {
             match self.bounded(3) {
-                0 => DiagnosticLevel::Info,
-                1 => DiagnosticLevel::Warning,
-                _ => DiagnosticLevel::Error,
+                0 => InteropDiagnosticLevel::Info,
+                1 => InteropDiagnosticLevel::Warning,
+                _ => InteropDiagnosticLevel::Error,
             }
         } else if self.next_bool() {
-            DiagnosticLevel::Info
+            InteropDiagnosticLevel::Info
         } else {
-            DiagnosticLevel::Warning
+            InteropDiagnosticLevel::Warning
         };
 
-        Diagnostic {
+        InteropDiagnostic {
             level,
-            code: DiagnosticCode::ALL[self.bounded(DiagnosticCode::ALL.len())],
+            code: InteropDiagnosticCode::ALL[self.bounded(InteropDiagnosticCode::ALL.len())],
             message: self.text(24, true),
             details: self.next_bool().then(|| self.json_value_non_null(2)),
         }
     }
 
-    fn diagnostics(&mut self, allow_error: bool) -> Vec<Diagnostic> {
+    fn diagnostics(&mut self, allow_error: bool) -> Vec<InteropDiagnostic> {
         (0..self.bounded(4))
             .map(|_| self.diagnostic(allow_error))
             .collect()
@@ -271,15 +289,25 @@ impl CaseGenerator {
     fn selected_match(
         &mut self,
         strategy_kind: StrategyKind,
+        output: &Output,
         candidate_count: usize,
         candidate_index: NonZeroUsize,
     ) -> SelectedMatch {
+        let selector_attributes = BTreeMap::from([
+            ("href".to_owned(), self.text(24, true)),
+            ("data-id".to_owned(), self.text(24, true)),
+        ]);
+        let delimiter_attributes = BTreeMap::from([
+            ("href".to_owned(), self.text(24, true)),
+            ("data-id".to_owned(), self.text(24, true)),
+        ]);
         let metadata = match strategy_kind {
             StrategyKind::CssSelector => SelectedMatchMetadata::CssSelector {
                 candidate_count,
                 candidate_index,
                 path: self.text(24, true),
                 tag_name: self.non_empty_text(10),
+                attributes: selector_attributes.clone(),
             },
             StrategyKind::DelimiterPair => SelectedMatchMetadata::DelimiterPair {
                 candidate_count,
@@ -289,16 +317,49 @@ impl CaseGenerator {
                 outer_range: self.range(),
                 include_start: self.next_bool(),
                 include_end: self.next_bool(),
+                matched_start: self.non_empty_text(10),
+                matched_end: self.non_empty_text(10),
             },
+        };
+        let text_output = self.text(24, true);
+        let selected_html_output =
+            matches!(strategy_kind, StrategyKind::DelimiterPair).then(|| self.text(24, true));
+        let inner_html_output = self.text(24, true);
+        let outer_html_output = self.text(24, true);
+        let output_value = match output {
+            Output::Text => Value::String(text_output.clone()),
+            Output::InnerHtml => Value::String(inner_html_output.clone()),
+            Output::OuterHtml => Value::String(outer_html_output.clone()),
+            Output::SelectedHtml => Value::String(
+                selected_html_output
+                    .clone()
+                    .expect("delimiter selected html"),
+            ),
+            Output::Attribute { name } => {
+                let attributes = match strategy_kind {
+                    StrategyKind::CssSelector => &selector_attributes,
+                    StrategyKind::DelimiterPair => &delimiter_attributes,
+                };
+                Value::String(
+                    attributes
+                        .get(name.as_str())
+                        .cloned()
+                        .unwrap_or_else(|| self.text(24, true)),
+                )
+            }
+            Output::Structured => Value::Object(Map::from_iter([(
+                "example".to_owned(),
+                Value::String(self.text(24, true)),
+            )])),
         };
 
         SelectedMatch {
             candidate_index,
-            value_kind: self.output_kind(),
-            value: self.text(24, true),
-            comparison_input_text: self.text(24, true),
-            inner_html: self.next_bool().then(|| self.text(24, true)),
-            outer_html: self.next_bool().then(|| self.text(24, true)),
+            output_value,
+            text_output,
+            selected_html_output,
+            inner_html_output,
+            outer_html_output,
             metadata,
         }
     }
@@ -306,24 +367,27 @@ impl CaseGenerator {
     fn selected_matches(
         &mut self,
         strategy_kind: StrategyKind,
+        output: &Output,
         candidate_count: usize,
         selection_mode: SelectionMode,
     ) -> Vec<SelectedMatch> {
         match selection_mode {
             SelectionMode::Single | SelectionMode::First => vec![self.selected_match(
                 strategy_kind,
+                output,
                 candidate_count,
                 NonZeroUsize::new(1).expect("non-zero index"),
             )],
             SelectionMode::Nth => {
                 let candidate_index =
                     NonZeroUsize::new(self.bounded(candidate_count) + 1).expect("non-zero index");
-                vec![self.selected_match(strategy_kind, candidate_count, candidate_index)]
+                vec![self.selected_match(strategy_kind, output, candidate_count, candidate_index)]
             }
             SelectionMode::All => (1..=candidate_count)
                 .map(|index| {
                     self.selected_match(
                         strategy_kind,
+                        output,
                         candidate_count,
                         NonZeroUsize::new(index).expect("non-zero index"),
                     )
@@ -340,16 +404,18 @@ impl CaseGenerator {
         };
         let candidate_count = self.bounded(4) + 1;
         let selection_mode = self.selection_mode();
+        let output = self.output(strategy_kind);
         let execution = ResultExecution::new(
             TEST_PLAN_DIGEST_SHA256,
             strategy_kind,
             selection_mode,
+            output.clone(),
             candidate_count,
         );
         let mut result = InteropResult::new(
             execution,
             self.result_source(),
-            self.selected_matches(strategy_kind, candidate_count, selection_mode),
+            self.selected_matches(strategy_kind, &output, candidate_count, selection_mode),
             self.diagnostics(false),
         );
         result.extensions = self.extensions();
@@ -357,10 +423,11 @@ impl CaseGenerator {
     }
 
     fn interop_error(&mut self) -> InteropError {
-        let error_code = match self.bounded(4) {
+        let error_code = match self.bounded(5) {
             0 => ErrorCode::PlanInvalid,
             1 => ErrorCode::NoMatch,
             2 => ErrorCode::AmbiguousMatch,
+            3 => ErrorCode::MissingAttribute,
             _ => ErrorCode::InternalError,
         };
         let mut details = BTreeMap::new();

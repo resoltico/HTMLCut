@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: INTEROP
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?"]
@@ -36,7 +36,9 @@ The downstream consumer owns:
 HTMLCut owns:
 
 - plan validation for `htmlcut-v1`
+- the published selector, delimiter, output, diagnostic, and result vocabulary for `htmlcut-v1`
 - extraction execution
+- translation from the interop language into core extraction requests
 - typed result and error documents
 - stable JSON serialization
 - deterministic digests
@@ -56,12 +58,17 @@ Main types:
 - `ValidatedPlan`
 - `InteropResult`
 - `InteropError`
+- `CssSelectorText`
+- `DelimiterBoundaryText`
+- `Output`
+- `InteropDiagnostic`
+- `ByteRange`
 
 Validator discovery:
 
-- `htmlcut schema --name htmlcut.plan --schema-version 2 --output json`
-- `htmlcut schema --name htmlcut.result --schema-version 2 --output json`
-- `htmlcut schema --name htmlcut.error --schema-version 1 --output json`
+- `htmlcut schema --name htmlcut.plan --schema-version 4 --output json`
+- `htmlcut schema --name htmlcut.result --schema-version 5 --output json`
+- `htmlcut schema --name htmlcut.error --schema-version 2 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
 
@@ -75,9 +82,8 @@ Deterministic JSON and digest helpers:
 ## Minimal Embedding Example
 
 ```rust
-use htmlcut_core::SelectorQuery;
 use htmlcut_core::interop::v1::{
-    HtmlInput, Normalization, Output, OutputKind, Plan, PlanStrategy, Selection,
+    CssSelectorText, HtmlInput, Output, Plan, PlanStrategy, Rendering, Selection,
     TextWhitespace, execute_validated_plan, prepare_plan,
 };
 use url::Url;
@@ -90,21 +96,37 @@ let source = HtmlInput::new(
 .with_input_base_url(Url::parse("https://example.com/news/").unwrap());
 
 let plan = Plan::new(
-    PlanStrategy::css_selector(SelectorQuery::new("article h1").unwrap()),
+    PlanStrategy::css_selector(CssSelectorText::new("article h1").unwrap()),
     Selection::single(),
-    Output::new(OutputKind::Text),
-    Normalization::new(TextWhitespace::Normalize, false),
+    Output::text(),
+    Rendering::new(TextWhitespace::Normalize, false),
 );
 
 let prepared = prepare_plan(&plan).unwrap();
 let result = execute_validated_plan(&source, &prepared).unwrap();
 
-assert_eq!(result.selected_matches[0].comparison_input_text, "Headline");
+assert_eq!(result.output.kind().as_str(), "text");
+assert_eq!(result.selected_matches[0].text_output, "# Headline");
 ```
 
 For one-shot callers, `execute_plan(...)` still performs validation internally. Use
 `prepare_plan(...)` plus `execute_validated_plan(...)` when you want explicit preflight validation
 and a reusable validated artifact instead of a one-shot call.
+
+## Published Language Boundary
+
+`htmlcut-v1` is not a JSON alias for `htmlcut-core` request/result types.
+
+It owns its own published language:
+
+- selector text: `CssSelectorText`
+- delimiter boundary text: `DelimiterBoundaryText`
+- output contract: `Output`
+- diagnostics: `InteropDiagnostic`
+- byte ranges: `ByteRange`
+
+That boundary lets `htmlcut-core` evolve its internal request/result vocabulary without forcing
+downstream consumers to deserialize core-only types or internal structured payloads directly.
 
 ## Supported v1 Capability
 
@@ -122,9 +144,22 @@ Selection modes:
 
 Output kinds:
 
-- `text`
-- `inner_html`
-- `outer_html`
+- CSS selector: `text`, `inner_html`, `outer_html`, `attribute`, `structured`
+- delimiter pair: `text`, `inner_html`, `outer_html`, `selected_html`, `attribute`, `structured`
+
+When `Output::attribute { name }` is selected and the chosen candidate does not expose that
+attribute, the error contract uses `error_code = "missing_attribute"`.
+
+Every successful `htmlcut.result` carries one top-level `output` object that records the requested
+published output contract. Every `SelectedMatch` then carries:
+
+- `output_value` for the exact requested output payload
+- `text_output`
+- `selected_html_output` when the strategy is `delimiter_pair`
+- `inner_html_output`, which for `delimiter_pair` means the HTML between the two matched
+  boundaries
+- `outer_html_output`
+- typed `metadata`
 
 ## Determinism Rules
 
@@ -151,9 +186,6 @@ These are intentionally not part of `htmlcut-v1`:
 - text-anchor extraction
 - HTMLCut-owned fetch orchestration
 - browser automation inside HTMLCut
-- attribute extraction
-
-Because attribute extraction is out of scope, `missing_attribute` is not part of the v1 error vocabulary.
 
 `htmlcut.result` also intentionally excludes runtime timing fields so result JSON and result digests stay deterministic across runs.
 

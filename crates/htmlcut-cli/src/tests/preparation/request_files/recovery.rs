@@ -73,7 +73,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-slice-shape.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 1,
+  "schema_version": 2,
   "request": {
     "source": { "input": { "type": "stdin" } },
     "extraction": {
@@ -104,7 +104,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-selector-array.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 1,
+  "schema_version": 2,
   "request": {
     "source": { "input": { "type": "stdin" } },
     "extraction": {
@@ -133,7 +133,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-slice-array.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 1,
+  "schema_version": 2,
   "request": {
     "source": { "input": { "type": "stdin" } },
     "extraction": {

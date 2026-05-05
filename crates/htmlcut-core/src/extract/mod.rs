@@ -1,4 +1,5 @@
 mod engine;
+mod selection;
 mod selector;
 mod slice;
 
@@ -10,6 +11,7 @@ pub(crate) use engine::ExtractionRun;
 #[cfg(test)]
 pub(crate) use engine::validate_request;
 pub use engine::{extract, inspect_source, parse_document, preview_extraction};
+pub(crate) use selection::select_candidates;
 #[cfg(test)]
 pub(crate) use selector::build_selector_match;
 #[cfg(test)]
@@ -21,7 +23,7 @@ pub(crate) use slice::run_validated_slice_extraction;
 #[cfg(test)]
 pub(crate) use slice::{
     build_finder, build_regex, build_slice_match, extract_slice_candidates,
-    position_inside_markup_for_tests, select_candidates,
+    position_inside_markup_for_tests,
 };
 
 #[derive(Clone, Debug)]

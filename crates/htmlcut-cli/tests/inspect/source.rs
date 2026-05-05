@@ -83,6 +83,9 @@ fn inspect_source_text_surfaces_base_behavior_and_source_preview() {
         .stdout(predicate::str::contains(
             "Document <base href>: ../content/",
         ))
+        .stdout(predicate::str::contains(
+            "Suggested selectors for extraction and reading:",
+        ))
         .stdout(predicate::str::contains("Source text preview:"));
 }
 #[test]
@@ -108,4 +111,78 @@ fn inspect_source_text_reports_unresolved_effective_base() {
         .stdout(predicate::str::contains(
             "warning EFFECTIVE_BASE_URL_UNRESOLVED",
         ));
+}
+
+#[test]
+fn inspect_source_text_suggests_content_selector_and_skips_placeholder_links() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "inspect-scope.html",
+        "<html><body><nav><h2>Navigation</h2><a href=\"#\">Comments</a></nav><main id=\"content\"><article><h1>Article Title</h1><p>Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.</p><a href=\"/guide\">Guide</a><a href=\"javascript:void(0)\">Share</a></article></main></body></html>",
+    );
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["inspect", "source"])
+        .arg(&input_path)
+        .args([
+            "--base-url",
+            "https://example.com/start",
+            "--output",
+            "text",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Suggested selectors for extraction:",
+        ))
+        .stdout(predicate::str::contains(
+            "Suggested selectors for rendered text review:",
+        ))
+        .stdout(predicate::str::contains("- article ["))
+        .stdout(predicate::str::contains("#content"))
+        .stdout(predicate::str::contains("- h1 Article Title"))
+        .stdout(predicate::str::contains(
+            "Guide [/guide -> https://example.com/guide]",
+        ))
+        .stdout(predicate::str::contains("Comments [#]").not())
+        .stdout(predicate::str::contains("javascript:void(0)").not());
+}
+
+#[test]
+fn inspect_source_text_prefers_inner_content_candidate_over_outer_wrapper() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture(
+        tempdir.path(),
+        "inspect-inner-content.html",
+        "<html><body><main id=\"content\"><nav class=\"page-tools\"><a href=\"/edit\">Edit</a></nav><div id=\"mw-content-text\"><article class=\"article-body\"><h1>Article Title</h1><p>Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.</p><a href=\"/guide\">Guide</a></article></div><aside class=\"related-topics\"><h2>Related Topics</h2><a href=\"/other\">Other</a></aside></main></body></html>",
+    );
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["inspect", "source"])
+        .arg(&input_path)
+        .args([
+            "--base-url",
+            "https://example.com/start",
+            "--output",
+            "text",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Suggested selectors for extraction:",
+        ))
+        .stdout(predicate::str::contains(
+            "Suggested selectors for rendered text review:",
+        ))
+        .stdout(predicate::str::contains("article.article-body"))
+        .stdout(predicate::str::contains("- h1 Article Title"))
+        .stdout(predicate::str::contains(
+            "Guide [/guide -> https://example.com/guide]",
+        ))
+        .stdout(predicate::str::contains("Edit [/edit").not())
+        .stdout(predicate::str::contains("Related Topics").not())
+        .stdout(predicate::str::contains("Other [/other").not());
 }

@@ -21,10 +21,48 @@ pub(crate) fn command_name_from_raw_args(raw_args: &[String]) -> String {
 
 pub(crate) fn clap_error_message(error: &clap::Error) -> String {
     let rendered = error.to_string();
-    rendered
+    if !rendered.trim_start().starts_with("error:") {
+        return rendered.trim().to_owned();
+    }
+    let suggests_help = rendered
         .lines()
-        .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
-        .unwrap_or_else(|| rendered.trim().to_owned())
+        .any(|line| line.trim_start().starts_with("For more information, try"));
+    let mut lines = rendered
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let primary_line = lines.next().unwrap_or("error:");
+    let primary = primary_line
+        .strip_prefix("error: ")
+        .or_else(|| primary_line.strip_prefix("error:"))
+        .unwrap_or(primary_line)
+        .trim()
+        .to_owned();
+
+    let mut detail_lines = Vec::new();
+    for line in lines {
+        if line.starts_with("Usage: ") {
+            break;
+        }
+        detail_lines.push(line.to_owned());
+    }
+
+    let mut message = primary;
+    if !detail_lines.is_empty() {
+        if !message.ends_with(':') {
+            message.push(':');
+        }
+        message.push(' ');
+        message.push_str(&detail_lines.join(", "));
+    }
+    if suggests_help {
+        if !message.ends_with('.') {
+            message.push('.');
+        }
+        message.push_str(" Use `--help` for usage.");
+    }
+
+    message
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

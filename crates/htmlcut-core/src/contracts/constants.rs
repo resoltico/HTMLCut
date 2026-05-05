@@ -1,13 +1,15 @@
+use super::request::FetchPreflightMode;
+
 /// Current version of the embeddable extraction request contract.
-pub const CORE_SPEC_VERSION: u32 = 4;
+pub const CORE_SPEC_VERSION: u32 = 5;
 /// Frozen schema name for [`crate::ExtractionResult`].
 pub const CORE_RESULT_SCHEMA_NAME: &str = "htmlcut.extraction_result";
 /// Current schema version for [`crate::ExtractionResult`].
-pub const CORE_RESULT_SCHEMA_VERSION: u32 = 5;
+pub const CORE_RESULT_SCHEMA_VERSION: u32 = 6;
 /// Frozen schema name for [`crate::SourceInspectionResult`].
 pub const CORE_SOURCE_INSPECTION_SCHEMA_NAME: &str = "htmlcut.source_inspection_result";
 /// Current schema version for [`crate::SourceInspectionResult`].
-pub const CORE_SOURCE_INSPECTION_SCHEMA_VERSION: u32 = 3;
+pub const CORE_SOURCE_INSPECTION_SCHEMA_VERSION: u32 = 5;
 /// Default preview length captured in structured reports.
 pub const DEFAULT_PREVIEW_CHARS: usize = 160;
 /// Default maximum source size accepted by loaders.
@@ -17,8 +19,8 @@ pub const DEFAULT_FETCH_TIMEOUT_MS: u64 = 15_000;
 /// Default timeout for establishing one HTTP connection.
 pub const DEFAULT_FETCH_CONNECT_TIMEOUT_MS: u64 = 5_000;
 /// Default fetch preflight policy for URL source loading.
-pub const DEFAULT_FETCH_PREFLIGHT_MODE: &str = "head-first";
-/// Default limit for sampled inspection headings, links, tags, and classes.
+pub const DEFAULT_FETCH_PREFLIGHT_MODE: FetchPreflightMode = FetchPreflightMode::HeadFirst;
+/// Default limit for sampled inspection headings, links, tags, classes, and content candidates.
 pub const DEFAULT_INSPECTION_SAMPLE_LIMIT: usize = 8;
 
 pub(crate) const fn default_spec_version() -> u32 {

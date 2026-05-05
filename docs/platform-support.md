@@ -1,10 +1,10 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: PLATFORM
-updated: "2026-05-01"
+updated: "2026-05-02"
 route:
-  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 26.04]
+  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 24.04]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]
 ---
 
@@ -18,7 +18,7 @@ Local maintainer work has two maintained shapes:
 
 - host-native on the current maintainer machine shape:
   - `aarch64-apple-darwin`
-- contributor-container workflow through the committed Ubuntu `26.04` devcontainer:
+- contributor-container workflow through the committed Ubuntu `24.04` devcontainer:
   - [developer-devcontainer.md](developer-devcontainer.md)
 
 Neither local shape is expected to produce every public release artifact. Cross-platform public

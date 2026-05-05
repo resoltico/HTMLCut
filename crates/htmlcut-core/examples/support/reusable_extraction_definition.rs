@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use htmlcut_core::{
     ExtractionDefinition, extract,
     request::{
-        AttributeName, ExtractionRequest, ExtractionSpec, NormalizationOptions, RuntimeOptions,
+        AttributeName, ExtractionRequest, ExtractionSpec, RenderingOptions, RuntimeOptions,
         SelectionSpec, SelectorQuery, SourceRequest, ValueSpec,
     },
 };
@@ -24,7 +24,7 @@ pub fn write_reusable_extraction_definition<W: Write>(writer: &mut W) -> io::Res
                 name: AttributeName::new("href").map_err(io::Error::other)?,
             }),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         rewrite_urls: true,
         ..Default::default()
     };

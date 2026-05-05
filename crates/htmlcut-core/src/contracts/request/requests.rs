@@ -6,7 +6,7 @@ use url::Url;
 
 use super::super::constants::CORE_SPEC_VERSION;
 use super::super::default_spec_version;
-use super::{ExtractionSpec, NormalizationOptions, OutputOptions, RuntimeOptions, SourceKind};
+use super::{ExtractionSpec, OutputOptions, RuntimeOptions, SourceKind};
 
 /// Source locator for the HTML being loaded.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -120,21 +120,17 @@ pub struct ExtractionRequest {
     /// Extraction family and value-shaping configuration.
     pub extraction: ExtractionSpec,
     #[serde(default)]
-    /// Post-extraction normalization rules.
-    pub normalization: NormalizationOptions,
-    #[serde(default)]
-    /// Structured-output toggles.
+    /// Rendering policy and structured-output toggles.
     pub output: OutputOptions,
 }
 
 impl ExtractionRequest {
-    /// Creates a new extraction request with default normalization and output behavior.
+    /// Creates a new extraction request with default output behavior.
     pub fn new(source: SourceRequest, extraction: ExtractionSpec) -> Self {
         Self {
             spec_version: CORE_SPEC_VERSION,
             source,
             extraction,
-            normalization: NormalizationOptions::default(),
             output: OutputOptions::default(),
         }
     }

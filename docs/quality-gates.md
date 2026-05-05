@@ -21,7 +21,7 @@ Use [developer-setup.md](developer-setup.md) as the canonical machine bootstrap 
 exact install commands for `rustup`, the cargo QA tools, `shellcheck`, and the macOS
 compiler-override safeguard for native crate builds.
 Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred contributor-container
-workflow on Ubuntu `26.04`.
+workflow on Ubuntu `24.04`.
 
 Rust `1.95.0` is the pinned HTMLCut repository toolchain. Nightly is installed alongside it for
 the coverage gate and for live `cargo-fuzz` campaigns because `cargo +nightly llvm-cov --branch`
@@ -104,6 +104,11 @@ required `clippy`/`rustfmt` components are absent, or if those binaries are stil
 despite rustup claiming the components are installed, the gate stops immediately with the exact
 `rustup` repair command instead of failing later inside `cargo clippy` or `cargo fmt`.
 
+The same preflight also refuses to run semver checks against a dirty
+`semver-baseline/htmlcut-core` tree. That baseline is the frozen last-published API snapshot, so
+the maintainer gate stops before command planning if the worktree has edited it instead of
+comparing against a moved target.
+
 The coverage command fails before any coverage build starts if the nightly toolchain or
 `llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean
 `cargo llvm-cov` scratch tree, runs coverage against the maintained `htmlcut-core`,
@@ -159,7 +164,7 @@ The repo-root `./check.sh` wrapper is shell-linted alongside the `scripts/` dire
 documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
 
 Contributor-container validation is a separate companion gate on purpose. It builds the committed
-Ubuntu `26.04` contributor image, validates the committed devcontainer JSON contract, repairs and
+Ubuntu `24.04` contributor image, validates the committed devcontainer JSON contract, repairs and
 bootstraps the named Rust/Cargo cache volumes, proves the repo commands start from inside that raw
 container surface, and then proves a real devcontainer client can materialize the committed spec
 plus run `devcontainer exec`. Use `./scripts/devcontainer-check.sh` when you want the full

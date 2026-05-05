@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: RELEASE
-updated: "2026-04-29"
+updated: "2026-05-02"
 route:
   keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
   questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]

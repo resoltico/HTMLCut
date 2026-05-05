@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn defaults_cover_public_default_contracts() {
+fn contract_lint_defaults_cover_public_default_contracts() {
     assert_eq!(WhitespaceMode::default(), WhitespaceMode::Preserve);
     assert_eq!(SelectionSpec::default(), SelectionSpec::First);
     assert_eq!(ValueSpec::default().value_type(), ValueType::Text);
@@ -14,7 +14,7 @@ fn defaults_cover_public_default_contracts() {
         ExtractionSpec::selector(selector_query("article")).strategy(),
         ExtractionStrategy::Selector
     );
-    assert!(!NormalizationOptions::default().rewrite_urls);
+    assert!(!RenderingOptions::default().rewrite_urls);
     assert_eq!(
         OutputOptions::default().preview_chars,
         NonZeroUsize::new(DEFAULT_PREVIEW_CHARS).expect("preview chars")
@@ -47,7 +47,7 @@ fn defaults_cover_public_default_contracts() {
     assert_eq!(format_byte_size(1536), "1.5 KiB");
 }
 #[test]
-fn operation_catalog_is_unique_and_complete() {
+fn contract_lint_operation_catalog_is_unique_and_complete() {
     let ids = operation_catalog()
         .iter()
         .map(|descriptor| descriptor.id)

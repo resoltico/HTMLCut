@@ -9,8 +9,12 @@ use crate::error::CliError;
 pub(crate) const ROOT_HELP_TEMPLATE: &str = "\
 {before-help}{usage-heading} {usage}
 
-{all-args}{about-section}{after-help}\
+{all-args}
+{about-section}{after-help}\
 ";
+
+const AUTO_HELP_ABOUT: &str = "Print this message or the help of the given subcommand(s)";
+const CANONICAL_HELP_ABOUT: &str = "Print this message or the help of the given subcommand(s).";
 
 pub(crate) fn catalog_about() -> &'static str {
     cache::catalog_about()
@@ -116,6 +120,10 @@ pub(crate) fn inspect_slice_after_help() -> &'static str {
     cache::inspect_slice_after_help()
 }
 
+pub(crate) fn normalize_help_copy(text: &str) -> String {
+    text.replace(AUTO_HELP_ABOUT, CANONICAL_HELP_ABOUT)
+}
+
 #[cfg(test)]
 pub(crate) fn render_help_section_for_tests(section: &CliHelpSection) -> String {
     render::render_help_section(section)
@@ -137,6 +145,11 @@ pub(crate) fn build_operation_long_about_from_parts_for_tests(
 #[cfg(test)]
 pub(crate) fn resolve_cached_help_text_for_tests(result: Result<String, CliError>) -> String {
     cache::resolve_cached_help_text_for_tests(result)
+}
+
+#[cfg(test)]
+pub(crate) fn normalize_help_copy_for_tests(text: &str) -> String {
+    normalize_help_copy(text)
 }
 
 #[cfg(test)]

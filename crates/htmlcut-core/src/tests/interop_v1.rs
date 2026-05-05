@@ -1,9 +1,10 @@
 use super::*;
 use crate::interop::v1::{
-    self, ContractError, DelimiterMode, ErrorCode, HtmlInput, InteropError, InteropResult,
-    Normalization, Output, OutputKind, Plan, PlanStrategy, RegexFlag, ResultExecution,
-    ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind,
-    TextWhitespace,
+    self, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryText, DelimiterMode,
+    ErrorCode, HtmlInput, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError,
+    InteropResult, Output, OutputAttributeName, OutputKind, Plan, PlanStrategy, RegexFlag,
+    Rendering, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection,
+    SelectionMode, StrategyKind, TextWhitespace,
 };
 use crate::result::{
     DelimiterPairMatchMetadata, ExtractionMatch, ExtractionStats, Range, SelectorMatchMetadata,
@@ -15,18 +16,18 @@ const TEST_PLAN_DIGEST_SHA256: &str =
 
 fn selector_plan() -> Plan {
     Plan::new(
-        PlanStrategy::css_selector(selector_query("article")),
+        PlanStrategy::css_selector(css_selector("article")),
         Selection::single(),
-        Output::new(OutputKind::Text),
-        Normalization::new(TextWhitespace::Normalize, false),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
     )
 }
 
 fn delimiter_plan() -> Plan {
     Plan::new(
         PlanStrategy::delimiter_pair(
-            slice_boundary("<article>"),
-            slice_boundary("</article>"),
+            delimiter_boundary("<article>"),
+            delimiter_boundary("</article>"),
             DelimiterMode::Regex,
             true,
             false,
@@ -39,25 +40,38 @@ fn delimiter_plan() -> Plan {
             ],
         ),
         Selection::nth(NonZeroUsize::new(2).expect("index")),
-        Output::new(OutputKind::OuterHtml),
-        Normalization::new(TextWhitespace::Preserve, true),
+        Output::outer_html(),
+        Rendering::new(TextWhitespace::Preserve, true),
     )
+}
+
+fn css_selector(selector: &str) -> CssSelectorText {
+    CssSelectorText::new(selector).expect("css selector")
+}
+
+fn delimiter_boundary(boundary: &str) -> DelimiterBoundaryText {
+    DelimiterBoundaryText::new(boundary).expect("delimiter boundary")
+}
+
+fn output_attribute_name(name: &str) -> OutputAttributeName {
+    OutputAttributeName::new(name).expect("output attribute name")
 }
 
 fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) -> SelectedMatch {
     let candidate_index = NonZeroUsize::new(candidate_index).expect("candidate index");
     SelectedMatch {
         candidate_index,
-        value_kind: OutputKind::Text,
-        value: "Hello".to_owned(),
-        comparison_input_text: "Hello".to_owned(),
-        inner_html: Some("Hello".to_owned()),
-        outer_html: Some("<article>Hello</article>".to_owned()),
+        output_value: Value::String("Hello".to_owned()),
+        text_output: "Hello".to_owned(),
+        selected_html_output: None,
+        inner_html_output: "Hello".to_owned(),
+        outer_html_output: "<article>Hello</article>".to_owned(),
         metadata: SelectedMatchMetadata::CssSelector {
             candidate_count,
             candidate_index,
             path: "html:nth-of-type(1) > body:nth-of-type(1) > article:nth-of-type(1)".to_owned(),
             tag_name: "article".to_owned(),
+            attributes: BTreeMap::new(),
         },
     }
 }
@@ -70,6 +84,29 @@ fn selector_selected_matches() -> Vec<SelectedMatch> {
     vec![selector_selected_match()]
 }
 
+fn delimiter_selected_match_with(candidate_count: usize, candidate_index: usize) -> SelectedMatch {
+    let candidate_index = NonZeroUsize::new(candidate_index).expect("candidate index");
+    SelectedMatch {
+        candidate_index,
+        output_value: Value::String("<article>Hello</article>".to_owned()),
+        text_output: "Hello".to_owned(),
+        selected_html_output: Some("<article>Hello</article>".to_owned()),
+        inner_html_output: "Hello".to_owned(),
+        outer_html_output: "<article>Hello</article>".to_owned(),
+        metadata: SelectedMatchMetadata::DelimiterPair {
+            candidate_count,
+            candidate_index,
+            selected_range: ByteRange { start: 0, end: 22 },
+            inner_range: ByteRange { start: 9, end: 14 },
+            outer_range: ByteRange { start: 0, end: 22 },
+            include_start: true,
+            include_end: true,
+            matched_start: "<article>".to_owned(),
+            matched_end: "</article>".to_owned(),
+        },
+    }
+}
+
 fn selector_core_match(
     index: usize,
     candidate_index: usize,
@@ -80,9 +117,9 @@ fn selector_core_match(
         path: Some(format!("article:nth-of-type({index})")),
         value_type: ValueType::Structured,
         value: json!({
-            "html": format!("<article data-index=\"{index}\">Hello</article>"),
-            "text": "Hello",
-            "outerHtml": format!("<article data-index=\"{index}\">Hello</article>")
+            "textOutput": "Hello",
+            "innerHtmlOutput": "Hello",
+            "outerHtmlOutput": format!("<article data-index=\"{index}\">Hello</article>")
         }),
         html: Some(format!("<article data-index=\"{index}\">Hello</article>")),
         text: Some("Hello".to_owned()),

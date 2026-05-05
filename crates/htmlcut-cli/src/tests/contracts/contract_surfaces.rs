@@ -226,7 +226,7 @@ fn contract_lint_help_and_catalog_examples_reference_registered_contracts() {
 
 #[test]
 fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
-    let command = Cli::command();
+    let command = crate::command();
     assert_command_path_registered(&command, &["catalog"]);
     assert_command_path_registered(&command, &["schema"]);
 

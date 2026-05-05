@@ -5,7 +5,7 @@ use htmlcut_core::{
 };
 
 use crate::request_common::{
-    FuzzNormalization, FuzzSelection, FuzzValueKind, runtime_for_html, sample_base_url,
+    FuzzRendering, FuzzSelection, FuzzValueKind, runtime_for_html, sample_base_url,
 };
 
 #[derive(Arbitrary, Debug)]
@@ -19,7 +19,7 @@ pub struct SliceInput {
     include_end: bool,
     value_kind: FuzzValueKind,
     selection: FuzzSelection,
-    normalization: FuzzNormalization,
+    rendering: FuzzRendering,
 }
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
@@ -55,7 +55,7 @@ pub fn drive(input: SliceInput) {
         .clone()
         .with_selection(input.selection.to_selection_spec())
         .with_value(input.value_kind.to_value_spec());
-    input.normalization.apply_to_request(&mut request);
+    input.rendering.apply_to_request(&mut request);
 
     let runtime = runtime_for_html(&input.html);
     let _ = preview_extraction(&request, &runtime);

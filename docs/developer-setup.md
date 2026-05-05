@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: SETUP
-updated: "2026-05-01"
+updated: "2026-05-02"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
@@ -15,7 +15,7 @@ route:
 
 ## Overview
 
-HTMLCut's preferred contributor path is the committed devcontainer on Ubuntu `26.04`.
+HTMLCut's preferred contributor path is the committed devcontainer on Ubuntu `24.04`.
 If you use that path, the host needs only Docker plus a devcontainer-spec-aware client.
 Use [developer-devcontainer.md](developer-devcontainer.md) for that workflow.
 

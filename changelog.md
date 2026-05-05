@@ -5,24 +5,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.0.0] - 2026-05-05
+
 ### Fixed
-- Path-gated the `contributor-devcontainer` CI job so it fires only when devcontainer-relevant files actually change (`.devcontainer/`, the devcontainer lifecycle scripts, or `check.sh`); non-devcontainer PRs now skip the full Docker build-and-run cycle entirely, reducing typical PR wall-clock time significantly.
-- Added a `devcontainer-changes` detection job that computes a git diff of the PR's changed files against the devcontainer trigger paths before the gate is evaluated; the aggregate `Check` required-status job now uses `if: always()` with explicit `${{ toJSON(needs.*.result) }}` failure detection so a correctly skipped `contributor-devcontainer` gate does not prevent `Check` from being reported or block merge — only a failed or cancelled gate prevents success.
-- Raised the cross-platform Rust gate timeout budget to `150` minutes for Windows and `30` minutes for macOS so the Windows required-check lane can finish a cold `cargo nextest` build, dependency-policy check, and semver verification without expiring mid-run.
-- Added a Windows Defender exclusion for the Cargo `target/` directory in `cross-platform-rust-gate` before any Cargo operations begin, eliminating antivirus scan overhead that otherwise scans every file write during compilation.
-- Added a per-platform cache key (`cross-platform-${{ matrix.id }}`) to `Swatinem/rust-cache` in `cross-platform-rust-gate` so macOS and Windows build caches do not collide.
-- Added `workflow_dispatch:` to the CI trigger so maintainers can manually rerun the aggregate `Check` against a branch when GitHub fails to attach the `pull_request` workflow on the initial PR open.
-- Fixed Bash-4-only `mapfile` usage in `scripts/validate-devcontainer.sh` so the devcontainer validator runs correctly under stock macOS `/bin/bash` as well as GNU Bash installs.
+- `inspect source` now reports truthful body-text character counts, samples headings and link
+  previews across the ranked content-root candidates instead of relying on one candidate rank, and
+  no longer lets `data-*` metadata or editability markers suppress real headings in rendered text.
+- Bundled `selection.html` wrappers now inherit a discovered source language instead of hardcoding
+  `lang="en"`, the maintainer gate now fails fast if `semver-baseline/htmlcut-core` is dirty, and
+  the saved-request examples now distinguish request contracts from replayed output filenames so
+  the CLI help/docs stop implying a mismatched `links.json` flow.
+- CLI parse errors now preserve the actionable clap detail instead of truncating required-argument
+  failures down to a pathless headline, `inspect select --output text` and `inspect slice --output text`
+  now keep multiline preview structure so heading/list noise is visible before extraction, and the
+  help/docs surfaces now teach that HTML output preserves the selected fragment rather than
+  sanitizing it.
+- Plain-text rendering now keeps table captions with their tables and drops more auxiliary footer
+  chrome such as print-footers and support-bridge prompts from saved text output.
+- `--output text`, `--output-file`, and bundled `selection.txt` artifacts now render HTML-valued
+  extractions into readable plain text instead of dumping raw markup, so one extraction can produce
+  both a faithful saved HTML fragment and a usable human text companion.
+- Path-gated the `contributor-devcontainer` CI job so it fires only when devcontainer-relevant
+  files actually change (`.devcontainer/`, the devcontainer lifecycle scripts, or `check.sh`);
+  non-devcontainer PRs now skip the full Docker build-and-run cycle entirely, reducing typical
+  PR wall-clock time significantly.
+- Added a `devcontainer-changes` detection job that computes a git diff of the PR's changed
+  files against the devcontainer trigger paths before the gate is evaluated; the aggregate
+  `Check` required-status job now uses `if: always()` with explicit `${{ toJSON(needs.*.result) }}`
+  failure detection so a correctly skipped `contributor-devcontainer` gate does not prevent `Check`
+  from being reported or block merge — only a failed or cancelled gate prevents success.
+- Raised the cross-platform Rust gate timeout budget to `150` minutes for Windows and `30` minutes
+  for macOS so the Windows required-check lane can finish a cold `cargo nextest` build,
+  dependency-policy check, and semver verification without expiring mid-run.
+- Added a Windows Defender exclusion for the Cargo `target/` directory in `cross-platform-rust-gate`
+  before any Cargo operations begin, eliminating antivirus scan overhead that otherwise scans every
+  file write during compilation.
+- Added a per-platform cache key (`cross-platform-${{ matrix.id }}`) to `Swatinem/rust-cache` in
+  `cross-platform-rust-gate` so macOS and Windows build caches do not collide.
+- Added `workflow_dispatch:` to the CI trigger so maintainers can manually rerun the aggregate
+  `Check` against a branch when GitHub fails to attach the `pull_request` workflow on the
+  initial PR open.
+- Fixed Bash-4-only `mapfile` usage in `scripts/validate-devcontainer.sh` so the devcontainer
+  validator runs correctly under stock macOS `/bin/bash` as well as GNU Bash installs.
+- `cargo xtask check` now fans the full Rust test gate out by package and discovered CLI test
+  targets instead of invoking one workspace-wide `cargo nextest` inventory pass that can stall
+  late in the maintainer gate on macOS.
 
 ### Changed
 - Promoted the workspace to `8.0.0` because this slice intentionally breaks public `htmlcut-core`
   contracts: `ContractValueError` gains an explicit whitespace-rejection variant and
   `SchemaStability::Frozen` is removed from the live schema surface.
-- The interop v1 result contract now publishes `htmlcut.result@3`, and every selected match always
-  carries concrete `inner_html` and `outer_html` fields instead of nullable placeholders.
+- The generic extraction contract now treats rendering as an output concern rather than a request
+  sidecar: `ExtractionRequest` carries `output.rendering`, reusable extraction-definition files are
+  now `htmlcut.extraction_definition@2`, and the generic request/result/report families advance to
+  `htmlcut.extraction_request@5`, `htmlcut.extraction_result@6`, and
+  `htmlcut.extraction_report@6`.
+- `inspect source` now publishes two selector families instead of one ambiguous `content_candidates`
+  list: `extraction_candidates` for cleaner saved fragments and `reading_candidates` for
+  title-preserving review. The source-inspection schema families advance to
+  `htmlcut.source_inspection_result@5` and `htmlcut.source_inspection_report@5`.
+- The interop v1 published language is now owned cleanly inside `htmlcut_core::interop::v1`
+  instead of borrowing core request/result types directly: selector text, delimiter boundaries,
+  output selection, diagnostics, and byte ranges are now explicit interop-owned contracts.
+- The interop v1 schema families now publish `htmlcut.plan@4`, `htmlcut.result@5`, and
+  `htmlcut.error@2`; successful result documents now carry a top-level `output` contract plus
+  per-match `output_value`, `text_output`, `selected_html_output`, `inner_html_output`, and
+  `outer_html_output` fields, and the v1 output surface now includes `attribute`,
+  `structured`, and `selected_html`.
 - The schema and operation registries now use static slice inventories instead of heap-backed lazy
   vectors, and `cargo xtask check` runs its preflight Rust test subsets through `cargo nextest`
   instead of mixing test runners inside one workspace gate.
+- Raised the declared workspace dependency floors to `clap 4.6.1` and `schemars 1.2.1`, matching
+  the maintained lockfile and the versions exercised by the current gate.
+- HTMLCut-owned HTTPS loading now uses the bundled `webpki-roots` trust set instead of the
+  `platform-verifier` stack, removing a transitive dependency split that the maintained dependency
+  policy rejects.
 
 ### Fixed
 - URL HEAD-first preflight no longer retries GET after a hard connection failure, now accepts
@@ -37,6 +94,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interop fallback errors now produce self-validating digests, `meta refresh` URL rewriting no
   longer reformats separators, and source-load failure metadata no longer pays an unnecessary heap
   allocation hop.
+- The frozen `htmlcut-v1` acceptance corpus now covers selector and delimiter attribute output plus
+  structured output, so the expanded interop contract is fixture-backed across more than the
+  legacy text and HTML paths.
+- Plain-text HTML rendering now preserves heading delineation, inline link targets, and nested-list
+  indentation, and opt-in URL rewriting keeps empty self-links unchanged instead of forcing them to
+  resolve against the page URL. Inspection now ignores empty headings while preserving accordion or
+  button-backed heading titles, and structured text output renders table rows plus compact
+  label-value rows as readable plain text instead of flattening them into loose paragraphs.
+- `inspect source` now suggests likely content-root selectors, prioritizes sampled headings and
+  link previews from the strongest content candidate on noisy pages, hides placeholder `#` and
+  `javascript:` anchors from plain-text output, and the CLI help surface now teaches that
+  `--output none` requires `--bundle`.
+- Content-candidate ranking now prefers stable structural selectors over brittle exact-path
+  fallbacks, recognizes title-bearing wrappers without regressing inner-article pages, and plain
+  text rendering drops more utility chrome on noisy pages while preserving nested heading wrappers
+  such as `<h1><div><div>…`.
 
 ## [7.0.0] - 2026-05-01
 
@@ -47,7 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `htmlcut-core` now owns only the generic operation catalog and execution contracts; `htmlcut-cli`
   owns the CLI command/help contract registry, packaged release README generation, and the release
   smoke flow that exercises one real extraction-plus-request replay from the shipped archive.
-- Added a first-class contributor devcontainer on Ubuntu `26.04`, with committed lifecycle
+- Added a first-class contributor devcontainer on Ubuntu `24.04`, with committed lifecycle
   scripts that repair named Rust/Cargo cache volumes, bootstrap the pinned Rust toolchains and
   maintainer QA commands on first create, validate the real devcontainer-client path, and
   document the container workflow as the preferred contributor path.
@@ -87,7 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   targets unless `--overwrite` is explicit, while keeping parent-directory creation automatic for
   fresh paths.
 - Contributor-container validation no longer depends on Docker access from inside the contributor
-  shell, so the Ubuntu `26.04` devcontainer now follows a cleaner host-Docker/container-Rust split
+  shell, so the Ubuntu `24.04` devcontainer now follows a cleaner host-Docker/container-Rust split
   without mounted-socket permission failures.
 - Contributor cargo-tool bootstrap now reads Cargo install metadata before probing binaries, so
   already-correct QA tool installs are reused on later devcontainer starts instead of being

@@ -13,7 +13,7 @@ fn slice_match_builder_covers_value_modes() {
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
             .with_value(ValueSpec::InnerHtml),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: true,
     };
@@ -144,8 +144,21 @@ fn slice_match_builder_covers_value_modes() {
     assert_eq!(structured.value["candidateIndex"], 1);
     assert_eq!(structured.value["candidateCount"], 1);
     assert_eq!(
-        structured.value["outerHtml"],
+        structured.value["textOutput"],
+        "Hello [https://example.com/x]"
+    );
+    assert_eq!(
+        structured.value["selectedHtmlOutput"],
         "<a href=\"https://example.com/x\">Hello</a>"
+    );
+    assert_eq!(structured.value["innerHtmlOutput"], " href=\"/x\"&gt;Hello");
+    assert_eq!(
+        structured.value["outerHtmlOutput"],
+        "<a href=\"https://example.com/x\">Hello</a>"
+    );
+    assert_eq!(
+        structured.value["attributes"]["href"],
+        "https://example.com/x"
     );
     assert_eq!(structured.value["includeStart"], true);
     assert_eq!(structured.value["includeEnd"], true);
@@ -170,7 +183,7 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
             .with_value(ValueSpec::Text),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: true,
     };
@@ -196,7 +209,10 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
         1,
     )
     .expect("text");
-    assert_eq!(text_match.value.as_str(), Some("Hello"));
+    assert_eq!(
+        text_match.value.as_str(),
+        Some("Hello [https://example.com/x]")
+    );
 
     request.extraction = request.extraction.clone().with_value(ValueSpec::OuterHtml);
     request.output.include_html = false;
@@ -232,7 +248,7 @@ fn slice_match_builder_covers_inner_html_without_text_projection() {
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
             .with_value(ValueSpec::InnerHtml),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: true,
     };
@@ -318,6 +334,32 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
     assert!(!position_inside_markup_for_tests("plain text only", 0));
     assert!(!position_inside_markup_for_tests("plain text only", 5));
     assert!(!position_inside_markup_for_tests("plain text only", 99));
+
+    let script_text = r#"<script>if (x < y && y > 0) { alert("ok"); }</script><p>done</p>"#;
+    let script_text_position = script_text.find("y &&").expect("script text position");
+    assert!(!position_inside_markup_for_tests(
+        script_text,
+        script_text_position
+    ));
+
+    let attribute_text = r#"<div data-label="a > b">done</div>"#;
+    let content_position = attribute_text.find("done").expect("content position");
+    assert!(!position_inside_markup_for_tests(
+        attribute_text,
+        content_position
+    ));
+
+    let comment_text = "<!-- alpha < beta -->done";
+    let comment_position = comment_text.find("alpha").expect("comment position");
+    assert!(position_inside_markup_for_tests(
+        comment_text,
+        comment_position
+    ));
+    let after_comment_position = comment_text.find("done").expect("after comment position");
+    assert!(!position_inside_markup_for_tests(
+        comment_text,
+        after_comment_position
+    ));
 }
 
 #[test]
@@ -354,7 +396,7 @@ fn slice_runtime_reports_unresolved_base_when_rewrite_is_requested() {
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
             .with_value(ValueSpec::OuterHtml),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: true,
     };
@@ -407,7 +449,7 @@ fn slice_runtime_skips_unresolved_base_warning_when_base_resolves() {
         ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
             .with_value(ValueSpec::OuterHtml),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: true,
     };

@@ -6,7 +6,7 @@ mod help_surfaces;
 mod raw_args;
 
 fn command_for_path(command_path: &[&str]) -> clap::Command {
-    let mut command = Cli::command();
+    let mut command = crate::command();
     for segment in command_path {
         let next = {
             command

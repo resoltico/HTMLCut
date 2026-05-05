@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION;
+
 #[path = "../examples/support/request_and_result_namespaces.rs"]
 mod request_and_result_namespaces;
 #[path = "../examples/support/reusable_extraction_definition.rs"]
@@ -31,7 +33,10 @@ fn reusable_extraction_definition_example_emits_a_reusable_definition() {
     let value: Value = serde_json::from_slice(&output).expect("parse example json");
 
     assert_eq!(value["schema_name"], "htmlcut.extraction_definition");
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(
+        value["schema_version"],
+        EXTRACTION_DEFINITION_SCHEMA_VERSION
+    );
     assert_eq!(value["request"]["extraction"]["kind"], "selector");
     assert_eq!(value["request"]["extraction"]["selector"], "article a");
     assert_eq!(value["runtime"]["fetch_preflight"], "head-first");

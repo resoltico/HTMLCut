@@ -1,7 +1,5 @@
-use std::any::type_name;
 #[cfg(test)]
 use std::collections::BTreeSet;
-use std::sync::LazyLock;
 
 use schemars::schema_for;
 use serde_json::Value;
@@ -76,58 +74,71 @@ pub(crate) fn build_schema_report(
     })
 }
 
-static CLI_SCHEMA_CATALOG: LazyLock<Vec<htmlcut_core::SchemaDescriptor>> = LazyLock::new(|| {
-    vec![
-        cli_schema_descriptor::<ExtractionCommandReport>(
-            htmlcut_core::SchemaRef::new(
-                EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
-                EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
-            ),
-            extraction_command_report_schema,
+const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(
+            EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
+            EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        cli_schema_descriptor::<SourceInspectionCommandReport>(
-            htmlcut_core::SchemaRef::new(
-                SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
-                SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
-            ),
-            source_inspection_command_report_schema,
+        "ExtractionCommandReport",
+        extraction_command_report_schema,
+    ),
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(
+            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
+            SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        cli_schema_descriptor::<CatalogCommandReport>(
-            htmlcut_core::SchemaRef::new(CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION),
-            catalog_command_report_schema,
+        "SourceInspectionCommandReport",
+        source_inspection_command_report_schema,
+    ),
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION),
+        "CatalogCommandReport",
+        catalog_command_report_schema,
+    ),
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(
+            ERROR_COMMAND_REPORT_SCHEMA_NAME,
+            ERROR_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        cli_schema_descriptor::<ErrorCommandReport>(
-            htmlcut_core::SchemaRef::new(
-                ERROR_COMMAND_REPORT_SCHEMA_NAME,
-                ERROR_COMMAND_REPORT_SCHEMA_VERSION,
-            ),
-            error_command_report_schema,
+        "ErrorCommandReport",
+        error_command_report_schema,
+    ),
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(
+            SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
+            SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        cli_schema_descriptor::<SchemaCommandReport>(
-            htmlcut_core::SchemaRef::new(
-                SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
-                SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
-            ),
-            schema_command_report_schema,
-        ),
-    ]
-});
+        "SchemaCommandReport",
+        schema_command_report_schema,
+    ),
+];
 
 fn cli_schema_catalog() -> &'static [htmlcut_core::SchemaDescriptor] {
-    CLI_SCHEMA_CATALOG.as_slice()
+    CLI_SCHEMA_CATALOG
 }
 
-fn cli_schema_descriptor<T>(
+const fn cli_schema_descriptor(
     schema_ref: htmlcut_core::SchemaRef,
+    rust_shape: &'static str,
     json_schema: fn() -> Result<Value, htmlcut_core::SchemaExportError>,
 ) -> htmlcut_core::SchemaDescriptor {
     htmlcut_core::SchemaDescriptor {
         schema_ref,
         owner_surface: "htmlcut-cli",
-        rust_shape: short_type_name::<T>(),
+        rust_shape,
         stability: htmlcut_core::SchemaStability::Versioned,
         json_schema,
     }
+}
+
+#[cfg(test)]
+pub(crate) fn cli_schema_descriptor_for_tests(
+    schema_ref: htmlcut_core::SchemaRef,
+    rust_shape: &'static str,
+    json_schema: fn() -> Result<Value, htmlcut_core::SchemaExportError>,
+) -> htmlcut_core::SchemaDescriptor {
+    cli_schema_descriptor(schema_ref, rust_shape, json_schema)
 }
 
 fn build_schema_document_report(
@@ -299,10 +310,4 @@ fn cli_schema_catalog_validation_errors(catalog: &[htmlcut_core::SchemaDescripto
     }
 
     errors
-}
-fn short_type_name<T>() -> &'static str {
-    type_name::<T>()
-        .rsplit("::")
-        .next()
-        .unwrap_or(type_name::<T>())
 }

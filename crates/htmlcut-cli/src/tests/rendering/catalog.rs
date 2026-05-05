@@ -44,10 +44,10 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("core: extract(ExtractionRequest{kind=slice}, RuntimeOptions)"));
     assert!(stdout.contains("request: ExtractionRequest + RuntimeOptions"));
     assert!(
-        stdout.contains("request schemas: htmlcut.extraction_request@4, htmlcut.runtime_options@4")
+        stdout.contains("request schemas: htmlcut.extraction_request@5, htmlcut.runtime_options@5")
     );
     assert!(stdout.contains("result: ExtractionResult"));
-    assert!(stdout.contains("result schemas: htmlcut.extraction_result@5"));
+    assert!(stdout.contains("result schemas: htmlcut.extraction_result@6"));
     assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"));
     assert!(stdout.contains("default output: text"));
     assert!(stdout.contains("default output overrides:"));
@@ -259,7 +259,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(
         fragment_signal_slice_preview_lines
             .iter()
-            .any(|line| line == "   text: ")
+            .all(|line| !line.starts_with("   text:"))
     );
 
     let sparse_slice_preview_lines = render_preview_match_lines(

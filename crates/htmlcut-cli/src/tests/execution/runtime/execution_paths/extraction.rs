@@ -255,3 +255,73 @@ fn run_overwrite_replaces_existing_outputs_when_requested() {
     assert!(bundle_dir.join("report.json").is_file());
     assert!(bundle_dir.join("selection.html").is_file());
 }
+
+#[test]
+fn run_renders_human_text_for_html_valued_extractions_and_bundles() {
+    let tempdir = tempdir().expect("tempdir");
+    let input_path = write_fixture_file(
+        tempdir.path(),
+        "input.html",
+        "<article><h2>Heading</h2><ul><li><a href=\"/guide\">Guide</a></li></ul></article>",
+    );
+    let input = input_path.to_string_lossy().into_owned();
+
+    let output_file = tempdir.path().join("selection.txt");
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        input.clone(),
+        "--css".to_owned(),
+        "article".to_owned(),
+        "--value".to_owned(),
+        "outer-html".to_owned(),
+        "--output".to_owned(),
+        "text".to_owned(),
+        "--base-url".to_owned(),
+        "https://example.com/page".to_owned(),
+        "--rewrite-urls".to_owned(),
+        "--output-file".to_owned(),
+        output_file.to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(exit_code, 0);
+    assert!(stdout.is_empty());
+    assert!(stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(&output_file).expect("text output file"),
+        "## Heading\n- Guide [https://example.com/guide]\n"
+    );
+
+    let bundle_dir = tempdir.path().join("bundle");
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "slice".to_owned(),
+        input,
+        "--from".to_owned(),
+        "<article>".to_owned(),
+        "--to".to_owned(),
+        "</article>".to_owned(),
+        "--include-start".to_owned(),
+        "--include-end".to_owned(),
+        "--value".to_owned(),
+        "outer-html".to_owned(),
+        "--output".to_owned(),
+        "none".to_owned(),
+        "--base-url".to_owned(),
+        "https://example.com/page".to_owned(),
+        "--rewrite-urls".to_owned(),
+        "--bundle".to_owned(),
+        bundle_dir.to_string_lossy().into_owned(),
+    ]);
+    assert_eq!(exit_code, 0);
+    assert!(stdout.is_empty());
+    assert!(stderr.is_empty());
+    assert_eq!(
+        fs::read_to_string(bundle_dir.join("selection.txt")).expect("bundle text"),
+        "## Heading\n- Guide [https://example.com/guide]"
+    );
+    assert!(
+        fs::read_to_string(bundle_dir.join("selection.html"))
+            .expect("bundle html")
+            .contains("<article><h2>Heading</h2><ul><li><a href=\"https://example.com/guide\">Guide</a></li></ul></article>")
+    );
+}

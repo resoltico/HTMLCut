@@ -105,6 +105,8 @@ pub(crate) struct ExtractOutputArgs {
     pub(crate) rewrite_urls: bool,
 
     /// How stdout should be rendered after extraction.
+    ///
+    /// `--output none` suppresses stdout and therefore requires `--bundle`.
     #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
     pub(crate) output: Option<CliOutputMode>,
 

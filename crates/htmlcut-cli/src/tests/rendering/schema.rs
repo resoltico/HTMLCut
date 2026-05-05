@@ -269,13 +269,13 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             schema_version: 7,
             owner_surface: "tests".to_owned(),
             rust_shape: "Synthetic".to_owned(),
-            stability: htmlcut_core::SchemaStability::Frozen,
+            stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: Value::String("not an object".to_owned()),
         }],
     };
     let rendered_single_schema = render_schema_text(&single_schema);
     assert!(rendered_single_schema.contains("Schema:"));
-    assert!(rendered_single_schema.contains("synthetic.single@7 | tests | frozen"));
+    assert!(rendered_single_schema.contains("synthetic.single@7 | tests | versioned"));
     assert!(rendered_single_schema.contains("json schema keys: (not-an-object)"));
 
     let multi_schema = SchemaCommandReport {
@@ -293,7 +293,7 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
                 schema_version: 2,
                 owner_surface: "tests".to_owned(),
                 rust_shape: "B".to_owned(),
-                stability: htmlcut_core::SchemaStability::Frozen,
+                stability: htmlcut_core::SchemaStability::Versioned,
                 json_schema: serde_json::json!({ "type": "object" }),
             },
         ],
@@ -302,7 +302,7 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
     let rendered_multi_schema = render_schema_text(&multi_schema);
     assert!(rendered_multi_schema.contains("Schemas:"));
     assert!(rendered_multi_schema.contains("synthetic.a@1 | tests | versioned"));
-    assert!(rendered_multi_schema.contains("synthetic.b@2 | tests | frozen"));
+    assert!(rendered_multi_schema.contains("synthetic.b@2 | tests | versioned"));
     assert!(!rendered_multi_schema.contains("json schema keys:"));
 }
 #[test]
@@ -326,8 +326,8 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             output: CliSchemaOutputMode::Text,
             output_file: None,
             file_write: default_file_write_args(),
-            name: Some("htmlcut.result".to_owned()),
-            schema_version: Some(2),
+            name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+            schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
         },
         0,
         false,
@@ -427,10 +427,13 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .is_empty()
     );
     assert_eq!(
-        build_schema_report(Some("htmlcut.result"), Some(2))
-            .expect("filtered schema")
-            .schemas
-            .len(),
+        build_schema_report(
+            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME),
+            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+        )
+        .expect("filtered schema")
+        .schemas
+        .len(),
         1
     );
     assert_eq!(
@@ -540,6 +543,33 @@ fn cli_schema_catalog_guards_reject_drift() {
 }
 
 #[test]
+fn cli_schema_descriptor_constructor_preserves_fields() {
+    fn synthetic_schema() -> Result<Value, htmlcut_core::SchemaExportError> {
+        Ok(serde_json::json!({ "type": "object" }))
+    }
+
+    let descriptor = cli_schema_descriptor_for_tests(
+        htmlcut_core::SchemaRef::new("htmlcut.synthetic_cli_report", 1),
+        "SyntheticCliReport",
+        synthetic_schema,
+    );
+    assert_eq!(
+        descriptor.schema_ref,
+        htmlcut_core::SchemaRef::new("htmlcut.synthetic_cli_report", 1)
+    );
+    assert_eq!(descriptor.owner_surface, "htmlcut-cli");
+    assert_eq!(descriptor.rust_shape, "SyntheticCliReport");
+    assert_eq!(
+        descriptor.stability,
+        htmlcut_core::SchemaStability::Versioned
+    );
+    assert_eq!(
+        (descriptor.json_schema)().expect("synthetic schema")["type"],
+        "object"
+    );
+}
+
+#[test]
 fn schema_export_errors_map_to_typed_cli_internal_errors() {
     let schema_ref = htmlcut_core::SchemaRef::new("htmlcut.synthetic_report", 7);
     let export_error = schema_export_serialize_error_for_tests(schema_ref);
@@ -596,8 +626,8 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
                 output: CliSchemaOutputMode::Json,
                 output_file: None,
                 file_write: default_file_write_args(),
-                name: Some("htmlcut.result".to_owned()),
-                schema_version: Some(2),
+                name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+                schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
             },
             0,
             false,

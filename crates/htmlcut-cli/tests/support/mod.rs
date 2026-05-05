@@ -24,7 +24,7 @@ pub(crate) use htmlcut_cli::{
 };
 pub(crate) use htmlcut_core::{
     AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
-    NormalizationOptions, OutputOptions, PatternMode, RuntimeOptions, SelectionSpec, SelectorQuery,
+    OutputOptions, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
     SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
     preview_extraction, result::ExtractionMatchMetadata,
 };
@@ -65,10 +65,8 @@ pub(crate) fn runtime_options() -> RuntimeOptions {
 
 pub(crate) fn extraction_output() -> OutputOptions {
     OutputOptions {
-        include_source_text: false,
-        include_html: true,
-        include_text: true,
         preview_chars: NonZeroUsize::new(DEFAULT_PREVIEW_CHARS).expect("preview chars"),
+        ..OutputOptions::default()
     }
 }
 

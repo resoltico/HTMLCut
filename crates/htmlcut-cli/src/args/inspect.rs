@@ -51,7 +51,7 @@ pub(crate) struct InspectSourceArgs {
     #[command(flatten)]
     pub(crate) source: SourceArgs,
 
-    /// Maximum number of headings, links, tags, and classes to sample in the summary.
+    /// Maximum number of content candidates, headings, links, tags, and classes to sample in the summary.
     #[arg(long, default_value_t = DEFAULT_INSPECTION_SAMPLE_LIMIT)]
     pub(crate) sample_limit: usize,
 

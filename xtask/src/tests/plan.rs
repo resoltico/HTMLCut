@@ -164,12 +164,13 @@ fn check_plan_includes_all_strict_gates() {
     );
     assert!(
         plan.iter()
-            .any(|spec| { spec.args == ["test", "-p", "xtask", "--lib", "--locked"] })
+            .any(|spec| { spec.args == ["nextest", "run", "-p", "xtask", "--tests", "--locked"] })
     );
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "test",
+                "nextest",
+                "run",
                 "-p",
                 "htmlcut-core",
                 "--lib",
@@ -180,7 +181,8 @@ fn check_plan_includes_all_strict_gates() {
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "test",
+                "nextest",
+                "run",
                 "-p",
                 "htmlcut-cli",
                 "--lib",
@@ -229,9 +231,60 @@ fn check_plan_includes_all_strict_gates() {
             == [
                 "nextest",
                 "run",
-                "--workspace",
+                "-p",
+                "htmlcut-tempdir",
                 "--lib",
                 "--tests",
+                "--locked",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--tests",
+                "--all-features",
+                "--locked",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--lib",
+                "--all-features",
+                "--locked",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--test",
+                "discovery",
+                "--all-features",
+                "--locked",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--test",
+                "transport",
                 "--all-features",
                 "--locked",
             ]
@@ -266,6 +319,64 @@ fn check_plan_includes_all_strict_gates() {
             false
         )
     );
+}
+
+#[test]
+fn check_plan_rejects_dirty_semver_baseline() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let error = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == std::path::Path::new("git")
+                && spec.args
+                    == [
+                        "status",
+                        "--porcelain=1",
+                        "--untracked-files=all",
+                        "--",
+                        "semver-baseline/htmlcut-core",
+                    ])
+            .then(|| Ok(b" M semver-baseline/htmlcut-core/src/contracts/results.rs\n".to_vec()))
+        },
+        || check_plan(repo_root.path()).expect_err("dirty baseline should fail"),
+    );
+
+    let message = error.to_string();
+    assert!(message.contains("semver baseline semver-baseline/htmlcut-core is dirty"));
+    assert!(message.contains("src/contracts/results.rs"));
+}
+
+#[test]
+fn check_plan_accepts_a_clean_semver_baseline() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let plan = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args
+                == [
+                    "status",
+                    "--porcelain=1",
+                    "--untracked-files=all",
+                    "--",
+                    "semver-baseline/htmlcut-core",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            Some(Ok(b"check.sh\0scripts/release-targets.sh\0".to_vec()))
+        },
+        || check_plan(repo_root.path()),
+    )
+    .expect("clean baseline should pass");
+
+    assert!(!plan.is_empty());
 }
 
 #[test]
@@ -310,6 +421,39 @@ fn check_plan_lints_the_canonical_release_script_even_without_extra_shell_files(
         plan[2],
         CommandSpec::new("cargo", ["fmt", "--check"], false, false)
     );
+}
+
+#[test]
+fn check_plan_keeps_the_cli_lib_gate_when_cli_test_targets_are_missing() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+    fs::remove_dir_all(
+        repo_root
+            .path()
+            .join("crates")
+            .join("htmlcut-cli")
+            .join("tests"),
+    )
+    .expect("remove htmlcut-cli tests dir");
+
+    let plan = check_plan(repo_root.path()).expect("check plan");
+
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--lib",
+                "--all-features",
+                "--locked",
+            ]
+    }));
+    assert!(!plan.iter().any(|spec| {
+        spec.args.first().map(String::as_str) == Some("nextest")
+            && spec.args.iter().any(|arg| arg == "--test")
+    }));
 }
 
 #[test]

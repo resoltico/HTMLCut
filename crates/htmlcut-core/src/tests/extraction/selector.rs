@@ -23,7 +23,7 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
         .extraction
         .clone()
         .with_value(attribute_value("data-id"));
-    request.normalization.whitespace = WhitespaceMode::Normalize;
+    request.output.rendering.whitespace = WhitespaceMode::Normalize;
     let attribute_match =
         build_selector_match(&request, &node, 1, 1, 1, 1).expect("attribute match");
     assert_eq!(attribute_match.value.as_str(), Some("7"));
@@ -47,6 +47,13 @@ fn selector_match_builder_covers_value_modes_and_output_toggles() {
     assert_eq!(structured_match.value["matchCount"], 1);
     assert_eq!(structured_match.value["candidateIndex"], 1);
     assert_eq!(structured_match.value["candidateCount"], 2);
+    assert_eq!(structured_match.value["textOutput"], "Hello");
+    assert_eq!(structured_match.value["innerHtmlOutput"], "<p>Hello</p>");
+    assert!(
+        structured_match.value["outerHtmlOutput"]
+            .as_str()
+            .is_some_and(|html| html.contains("article"))
+    );
     assert_eq!(structured_match.metadata.candidate_index(), 1);
     assert_eq!(structured_match.metadata.candidate_count(), 2);
 }
@@ -114,6 +121,34 @@ fn selector_runtime_reports_misrouted_and_per_match_builder_errors() {
         "MISSING_ATTRIBUTE"
     );
 }
+
+#[test]
+fn selector_validation_preserves_parser_details() {
+    let invalid_request = ExtractionRequest::new(
+        memory_source("inline", "<article>Hello</article>"),
+        ExtractionSpec::selector(SelectorQuery::new("[").expect("selector query")),
+    );
+    let loaded = load_source(&invalid_request.source, &RuntimeOptions::default()).expect("loaded");
+    let invalid_run = run_selector_extraction(&invalid_request, &loaded);
+
+    assert_eq!(invalid_run.candidate_count, 0);
+    assert!(invalid_run.matches.is_empty());
+    assert_eq!(invalid_run.diagnostics[0].code, "INVALID_SELECTOR");
+    assert!(
+        invalid_run.diagnostics[0]
+            .message
+            .contains("Invalid selector: [")
+    );
+    assert!(
+        invalid_run.diagnostics[0]
+            .details
+            .as_ref()
+            .and_then(|details| details.get("parseError"))
+            .and_then(Value::as_str)
+            .is_some()
+    );
+}
+
 #[test]
 fn select_candidates_and_source_helpers_cover_remaining_branches() {
     let (selected, diagnostics) = select_candidates::<i32>(&[], &SelectionSpec::default());

@@ -44,12 +44,12 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
     CliHelpDocument {
         sections: vec![
             CliHelpSection {
-                title: "Start here".to_owned(),
+                title: "Workflow".to_owned(),
                 style: CliHelpSectionStyle::Numbered,
                 lines: start_here_lines,
             },
             CliHelpSection {
-                title: "Reusable requests".to_owned(),
+                title: "Request files".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "--emit-request-file writes the normalized extraction definition for the current run."
@@ -73,12 +73,18 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 ],
             },
             CliHelpSection {
-                title: "Output model".to_owned(),
+                title: "Output".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "--value chooses what each extracted match should produce before stdout formatting."
                         .to_owned(),
                     "--output chooses how stdout is emitted.".to_owned(),
+                    "When the extracted value is HTML, --output text renders that fragment into readable plain text with heading, list, table, and link structure preserved."
+                        .to_owned(),
+                    "HTML output preserves the selected fragment apart from optional URL rewriting, so compare alternate selectors when you want a cleaner saved fragment."
+                        .to_owned(),
+                    "--output none suppresses stdout and therefore requires --bundle."
+                        .to_owned(),
                     "inspect defaults to JSON so agents and scripts can reason about the source or preview report."
                         .to_owned(),
                     "Use --output text for a compact human summary.".to_owned(),
@@ -97,7 +103,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 ],
             },
             CliHelpSection {
-                title: "Failure model".to_owned(),
+                title: "Errors".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "Human output modes print the primary failure to stderr.".to_owned(),

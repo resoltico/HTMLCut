@@ -13,8 +13,8 @@
 # - day-to-day repository work inside the contributor shell is Rust-, Cargo-, and shell-tooling
 #   focused rather than Docker-driven;
 # - keeping Docker out of the contributor shell avoids mounted-socket permission drift and keeps
-#   this Ubuntu 26.04 contract close to the simpler GridGrind contributor-container shape.
-FROM ubuntu:26.04@sha256:5e275723f82c67e387ba9e3c24baa0abdcb268917f276a0561c97bef9450d0b4
+#   this Ubuntu 24.04 contract close to the simpler GridGrind contributor-container shape.
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

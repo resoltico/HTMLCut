@@ -3,18 +3,18 @@ use std::panic::catch_unwind;
 
 #[test]
 fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands() {
-    let mut command = Cli::command();
+    let mut command = crate::command();
     let rendered_help = render_long_help(&mut command);
-    let subcommands = Cli::command()
+    let subcommands = crate::command()
         .get_subcommands()
         .map(|subcommand| {
-            (
-                subcommand.get_name().to_owned(),
-                subcommand
+            let about = crate::help::normalize_help_copy_for_tests(
+                &subcommand
                     .get_about()
                     .expect("top-level subcommand about")
                     .to_string(),
-            )
+            );
+            (subcommand.get_name().to_owned(), about)
         })
         .collect::<Vec<_>>();
 
@@ -27,19 +27,24 @@ fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands(
     let usage_index = rendered_help
         .find("Usage: htmlcut [OPTIONS] <COMMAND>")
         .expect("root help usage");
-    let start_here_index = rendered_help.find("Start here:").expect("root help flow");
+    let guide_index = rendered_help.find("Guide:").expect("root help guide");
     assert!(
-        usage_index < start_here_index,
+        usage_index < guide_index,
         "root help should present usage before workflow detail: {rendered_help}"
     );
     assert!(
-        crate::help::root_long_about().contains("Start here:"),
-        "root help lost the workflow opener: {}",
+        crate::help::root_long_about().contains("Guide:"),
+        "root help lost the guide heading: {}",
         crate::help::root_long_about()
     );
     assert!(
-        crate::help::root_long_about().contains("Reusable requests:"),
-        "root help lost reusable request guidance: {}",
+        crate::help::root_long_about().contains("Workflow:"),
+        "root help lost the workflow section: {}",
+        crate::help::root_long_about()
+    );
+    assert!(
+        crate::help::root_long_about().contains("Request files:"),
+        "root help lost request-file guidance: {}",
         crate::help::root_long_about()
     );
 
@@ -57,7 +62,7 @@ fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands(
 
 #[test]
 fn contract_lint_clap_help_summaries_match_core_help_contracts() {
-    let command = Cli::command();
+    let command = crate::command();
     let catalog = command
         .get_subcommands()
         .find(|subcommand| subcommand.get_name() == "catalog")
@@ -136,11 +141,14 @@ fn contract_lint_rendered_help_catalog_and_error_surfaces_reference_registered_c
         &unsupported_schema_path,
         r#"{
   "schema_name": "not_a_schema",
-  "schema_version": 1,
+  "schema_version": 2,
   "request": {
-    "spec_version": 4,
-    "source": {"input": "-"},
-    "extraction": {"selector": "a"}
+    "spec_version": 5,
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "selector",
+      "selector": "a"
+    }
   },
   "runtime": {}
 }"#,
@@ -156,7 +164,7 @@ fn contract_lint_rendered_help_catalog_and_error_surfaces_reference_registered_c
     let surfaces = vec![
         (
             "root help".to_owned(),
-            render_long_help(&mut Cli::command()),
+            render_long_help(&mut crate::command()),
         ),
         (
             "catalog help".to_owned(),

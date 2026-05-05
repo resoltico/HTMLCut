@@ -28,10 +28,10 @@ htmlcut select ./page.html \
   --css 'article a.more' \
   --value attribute \
   --attribute href \
-  --emit-request-file ./article-links.json \
+  --emit-request-file ./article-link.request.json \
   --overwrite
 
-htmlcut select --request-file ./article-links.json
+htmlcut select --request-file ./article-link.request.json
 ```
 
 The first command captures the extraction while the page is still warm. The second pours the same

@@ -7,8 +7,8 @@ use crate::execute::*;
 use crate::metadata::*;
 use crate::prepare::*;
 use crate::render::*;
+use clap::Parser;
 use clap::builder::TypedValueParser;
-use clap::{CommandFactory, Parser};
 use htmlcut_core::{
     AttributeName, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticCode, DiagnosticLevel, ExtractionDefinition,
@@ -16,9 +16,9 @@ use htmlcut_core::{
     PatternMode, SelectionSpec, SelectorQuery, SourceKind, SourceLoadAction, SourceLoadOutcome,
     SourceLoadStep, SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
     result::{
-        DelimiterPairMatchMetadata, DocumentInspection, ExtractionMatch, ExtractionMatchMetadata,
-        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
-        SelectorMatchMetadata,
+        ContentCandidateInspection, DelimiterPairMatchMetadata, DocumentInspection,
+        ExtractionMatch, ExtractionMatchMetadata, ExtractionStats, HeadingInspection,
+        InspectionCount, LinkInspection, Range, SelectorMatchMetadata,
     },
 };
 use htmlcut_tempdir::tempdir;
@@ -182,7 +182,7 @@ fn render_long_help(command: &mut clap::Command) -> String {
     command
         .write_long_help(&mut buffer)
         .expect("render long help");
-    String::from_utf8(buffer).expect("help utf8")
+    crate::help::normalize_help_copy_for_tests(&String::from_utf8(buffer).expect("help utf8"))
 }
 
 fn parameter_allowed_values(
@@ -428,6 +428,22 @@ fn fixture_inspection() -> SourceInspectionCommandReport {
             top_classes: vec![InspectionCount {
                 name: "card".to_owned(),
                 count: 2,
+            }],
+            extraction_candidates: vec![ContentCandidateInspection {
+                selector: "article.story.card".to_owned(),
+                path: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > article:nth-of-type(1)".to_owned(),
+                tag_name: "article".to_owned(),
+                text_char_count: 24,
+                heading_count: 1,
+                link_count: 1,
+            }],
+            reading_candidates: vec![ContentCandidateInspection {
+                selector: "main.content".to_owned(),
+                path: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1)".to_owned(),
+                tag_name: "main".to_owned(),
+                text_char_count: 24,
+                heading_count: 1,
+                link_count: 2,
             }],
             headings: vec![HeadingInspection {
                 level: 1,

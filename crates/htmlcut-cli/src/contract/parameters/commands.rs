@@ -23,7 +23,7 @@ pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
         "SAMPLE_LIMIT",
         Some(CliValue::Usize(DEFAULT_INSPECTION_SAMPLE_LIMIT)),
         Vec::new(),
-        "Maximum number of headings, links, tags, and classes to sample in the summary.",
+        "Maximum number of extraction candidates, reading candidates, headings, links, tags, and classes to sample in the summary.",
     ));
     parameters.push(param_option(
         CliParameterSection::Source,

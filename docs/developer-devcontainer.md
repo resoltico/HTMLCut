@@ -4,7 +4,7 @@ version: "8.0.0"
 domain: SETUP
 updated: "2026-05-04"
 route:
-  keywords: [devcontainer, contributor container, ubuntu 26.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check]
+  keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check]
   questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
 ---
 
@@ -28,7 +28,7 @@ HTMLCut's preferred contributor path is the committed devcontainer:
 - keep editor language tooling inside the container workspace host instead of the host process tree
 
 This contributor container is not a published runtime artifact. It exists to give maintainers one
-repeatable Ubuntu `26.04` development surface that can run the repo's pinned Rust toolchains,
+repeatable Ubuntu `24.04` development surface that can run the repo's pinned Rust toolchains,
 Cargo QA tools, and maintainer gates without requiring a host-native Rust install.
 
 The committed owner files are:
@@ -75,7 +75,7 @@ That boundary is intentional:
 - the validator proves both surfaces without requiring the contributor shell to inherit the host
   Docker socket
 
-This keeps the Ubuntu `26.04` contributor contract close to GridGrind's simpler shape and avoids
+This keeps the Ubuntu `24.04` contributor contract close to GridGrind's simpler shape and avoids
 mounted-socket permission drift inside already-running editor sessions.
 
 ## First Open In VS Code
@@ -154,7 +154,7 @@ If you do not want the contributor container, use [developer-setup.md](developer
 That guide owns the host-native Rust bootstrap.
 
 The container workflow is preferred because it keeps the verified Rust and Cargo QA toolchain
-inside one Ubuntu `26.04` surface. The host-native path remains available when you explicitly want
+inside one Ubuntu `24.04` surface. The host-native path remains available when you explicitly want
 local-shell Rust instead.
 
 ## Validation Boundary
@@ -175,7 +175,7 @@ Run the full maintainer gate through the committed contributor container from th
 That validator:
 
 - checks the committed devcontainer JSON contract
-- builds the Ubuntu `26.04` contributor image
+- builds the Ubuntu `24.04` contributor image
 - verifies the required system tools are present
 - proves the user-home repair script can recover root-owned cache and toolchain volumes
 - runs the Rust bootstrap against fresh named volumes

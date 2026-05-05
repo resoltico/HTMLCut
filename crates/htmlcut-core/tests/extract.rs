@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use htmlcut_core::{
-    AttributeName, ExtractionRequest, ExtractionSpec, NormalizationOptions, OutputOptions,
+    AttributeName, ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions,
     RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest,
     ValueSpec, WhitespaceMode, extract, format_byte_size, parse_document, preview_extraction,
 };
@@ -27,7 +27,7 @@ fn selector_request(html: &str, selector: &str) -> ExtractionRequest {
         SourceRequest::memory("inline", html),
         ExtractionSpec::selector(SelectorQuery::new(selector).expect("selector")),
     );
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: false,
     };
@@ -98,7 +98,7 @@ fn selector_attribute_extraction_rewrites_relative_urls() {
         .source
         .clone()
         .with_base_url(Url::parse("https://example.com/docs/start.html").expect("base url"));
-    request.normalization.rewrite_urls = true;
+    request.output.rendering.rewrite_urls = true;
     request.extraction = request.extraction.clone().with_value(ValueSpec::Attribute {
         name: AttributeName::new("href").expect("attribute name"),
     });
@@ -117,7 +117,7 @@ fn selector_attribute_extraction_honors_document_base_href() {
         "<html><head><base href=\"https://fixture.example/base/\"></head><body><article><a href=\"guide.html\">Guide</a></article></body></html>",
         "article a",
     );
-    request.normalization.rewrite_urls = true;
+    request.output.rendering.rewrite_urls = true;
     request.extraction = request.extraction.clone().with_value(ValueSpec::Attribute {
         name: AttributeName::new("href").expect("attribute name"),
     });
@@ -152,7 +152,7 @@ fn slice_attribute_extraction_rewrites_relative_urls_with_input_base() {
     })
     .with_selection(request.extraction.selection().clone())
     .with_value(request.extraction.value().clone());
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: true,
     };
@@ -186,7 +186,7 @@ fn slice_text_preserves_ordered_list_numbers_and_image_alt_text() {
             .with_boundary_inclusion(true, true),
     )
     .with_value(ValueSpec::Text);
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
         rewrite_urls: false,
     };
@@ -217,7 +217,7 @@ fn slice_inner_html_preserves_relative_urls_until_rewrite_is_requested() {
             .with_boundary_inclusion(true, true),
     )
     .with_value(ValueSpec::InnerHtml);
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
@@ -229,7 +229,7 @@ fn slice_inner_html_preserves_relative_urls_until_rewrite_is_requested() {
         Some("<a href=\"guide.html\">Guide</a>")
     );
 
-    request.normalization.rewrite_urls = true;
+    request.output.rendering.rewrite_urls = true;
     let rewritten = extract(&request, &RuntimeOptions::default());
     assert!(rewritten.ok);
     assert_eq!(
@@ -307,7 +307,7 @@ fn slice_literal_outer_html_returns_all_matches() {
     })
     .with_selection(SelectionSpec::All)
     .with_value(ValueSpec::OuterHtml);
-    request.normalization = NormalizationOptions {
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
@@ -414,45 +414,53 @@ fn source_url_loading_works() {
         while Instant::now() < deadline {
             match listener.accept() {
                 Ok((mut stream, _)) => {
-                    let mut request_buffer = [0u8; 512];
-                    let read = loop {
-                        match stream.read(&mut request_buffer) {
-                            Ok(read) => break read,
-                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                                thread::sleep(Duration::from_millis(10));
-                            }
-                            Err(error) => panic!("read request: {error}"),
-                        }
-                    };
-                    let request = String::from_utf8_lossy(&request_buffer[..read]);
-                    let method = request
-                        .lines()
-                        .next()
-                        .expect("request line")
-                        .split_whitespace()
-                        .next()
-                        .expect("request method");
-                    methods.push(method.to_owned());
-
-                    let body = "<article>Hello</article>";
-                    let response = if method == "HEAD" {
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
-                            body.len()
-                        )
-                    } else {
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-                            body.len(),
-                            body
-                        )
-                    };
                     stream
-                        .write_all(response.as_bytes())
-                        .expect("write response");
+                        .set_nonblocking(true)
+                        .expect("make stream nonblocking");
+                    while Instant::now() < deadline {
+                        let mut request_buffer = [0u8; 512];
+                        let read = loop {
+                            match stream.read(&mut request_buffer) {
+                                Ok(0) => {
+                                    thread::sleep(Duration::from_millis(10));
+                                }
+                                Ok(read) => break read,
+                                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                                    thread::sleep(Duration::from_millis(10));
+                                }
+                                Err(error) => panic!("read request: {error}"),
+                            }
+                        };
+                        let request = String::from_utf8_lossy(&request_buffer[..read]);
+                        let method = request
+                            .lines()
+                            .next()
+                            .expect("request line")
+                            .split_whitespace()
+                            .next()
+                            .expect("request method");
+                        methods.push(method.to_owned());
 
-                    if method == "GET" {
-                        return methods;
+                        let body = "<article>Hello</article>";
+                        let response = if method == "HEAD" {
+                            format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                                body.len()
+                            )
+                        } else {
+                            format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                                body.len(),
+                                body
+                            )
+                        };
+                        stream
+                            .write_all(response.as_bytes())
+                            .expect("write response");
+
+                        if method == "GET" {
+                            return methods;
+                        }
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {

@@ -141,6 +141,33 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
             .expect("stderr")
             .contains("Could not write")
     );
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit_code = write_outcome(
+        ExecutionOutcome {
+            stdout: Some("Hello".to_owned()),
+            output_file: Some(fixture.tempdir.path().to_path_buf()),
+            write_mode: create_fresh_write_mode(),
+            post_write_stderr: vec!["htmlcut: wrote output file to ignored.txt".to_owned()],
+            stderr: vec![
+                "htmlcut: request normalized".to_owned(),
+                "htmlcut: preview complete".to_owned(),
+            ],
+            exit_code: 0,
+        },
+        &mut stdout,
+        &mut stderr,
+    )
+    .expect("write outcome");
+    assert_eq!(exit_code, EXIT_CODE_OUTPUT);
+    assert!(stdout.is_empty());
+    let stderr = String::from_utf8(stderr).expect("stderr");
+    assert!(stderr.starts_with("htmlcut: request normalized\nhtmlcut: preview complete\n"));
+    assert!(stderr.contains(&format!(
+        "htmlcut: Could not write {}:",
+        fixture.tempdir.path().display()
+    )));
 }
 
 #[test]

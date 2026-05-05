@@ -6,8 +6,9 @@ use htmlcut_core::{
 use crate::model::ExtractionCommandReport;
 
 use super::shared::{
-    compact_inline_preview, format_range_summary, render_attribute_summary, render_diagnostic_line,
-    render_fragment_preview, render_source_kind, render_source_load_trace_lines,
+    block_text_preview, compact_inline_preview, format_range_summary, render_attribute_summary,
+    render_diagnostic_line, render_fragment_preview, render_source_kind,
+    render_source_load_trace_lines,
 };
 
 pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
@@ -64,10 +65,7 @@ pub(crate) fn render_preview_match_lines(
                 }
             }
             if let Some(text) = matched.text.as_deref() {
-                lines.push(format!(
-                    "   text: {}",
-                    compact_inline_preview(text, DEFAULT_PREVIEW_CHARS)
-                ));
+                push_text_preview_lines(&mut lines, text);
             } else {
                 lines.push(format!("   preview: {}", matched.preview));
             }
@@ -108,8 +106,8 @@ pub(crate) fn render_preview_match_lines(
             {
                 lines.push(format!("   fragment: {fragment}"));
             }
-            if let Some(text) = text_preview {
-                lines.push(format!("   text: {text}"));
+            if let Some(text) = matched.text.as_deref() {
+                push_text_preview_lines(&mut lines, text);
             } else {
                 lines.push(format!("   preview: {}", matched.preview));
             }
@@ -120,6 +118,21 @@ pub(crate) fn render_preview_match_lines(
     }
 
     lines
+}
+
+fn push_text_preview_lines(lines: &mut Vec<String>, text: &str) {
+    let preview_lines = block_text_preview(text, DEFAULT_PREVIEW_CHARS, 6);
+    if preview_lines.is_empty() {
+        return;
+    }
+
+    if preview_lines.len() == 1 {
+        lines.push(format!("   text: {}", preview_lines[0]));
+        return;
+    }
+
+    lines.push("   text:".to_owned());
+    lines.extend(preview_lines.into_iter().map(|line| format!("     {line}")));
 }
 
 pub(crate) fn render_preview_location(
