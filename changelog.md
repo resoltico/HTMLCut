@@ -48,8 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Bash-4-only `mapfile` usage in `scripts/validate-devcontainer.sh` so the devcontainer
   validator runs correctly under stock macOS `/bin/bash` as well as GNU Bash installs.
 - `./scripts/devcontainer-check.sh` now routes Cargo build artifacts into the contributor cache
-  mount before running `./check.sh`, so the non-root contributor container can complete the full
-  maintainer gate in CI instead of failing on a read-only `/workspaces/htmlcut/target*` path.
+  mount, mounts Git worktree metadata into release worktrees, and marks `/workspaces/htmlcut` as a
+  safe Git directory before running `./check.sh`, so the non-root contributor container can
+  complete the full maintainer gate in CI instead of failing on read-only target paths or Git
+  ownership checks.
 - `cargo xtask check` now fans the full Rust test gate out by package and discovered CLI test
   targets instead of invoking one workspace-wide `cargo nextest` inventory pass that can stall
   late in the maintainer gate on macOS.

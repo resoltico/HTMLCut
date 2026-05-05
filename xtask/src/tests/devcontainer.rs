@@ -10,6 +10,7 @@ fn devcontainer_check_routes_cargo_target_into_the_writable_cache_mount() {
         .expect("read devcontainer-check.sh");
 
     assert!(script.contains("export CARGO_TARGET_DIR=/home/vscode/.cache/htmlcut-target"));
+    assert!(script.contains("git config --global --add safe.directory /workspaces/htmlcut"));
     assert!(script.contains("./scripts/devcontainer-prepare-user-home.sh"));
     assert!(script.contains("./check.sh"));
 }

@@ -76,6 +76,7 @@ docker run "${docker_run_args[@]}" \
         set -euo pipefail
         ./scripts/devcontainer-prepare-user-home.sh
         export CARGO_TARGET_DIR=/home/vscode/.cache/htmlcut-target
+        git config --global --add safe.directory /workspaces/htmlcut
         ./scripts/devcontainer-bootstrap.sh
         ./check.sh
     '
