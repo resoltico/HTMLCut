@@ -34,6 +34,28 @@ fn preview_and_manifest_helpers_cover_remaining_branches() {
     assert!(rendered.contains("Input base URL: https://example.com/docs/start.html"));
     assert!(!rendered.contains("Effective base URL: https://example.com/docs/start.html"));
 }
+
+#[test]
+fn preview_text_mode_preserves_multiline_structure_for_text_matches() {
+    let lines = render_preview_match_lines(
+        htmlcut_core::OperationId::SelectPreview,
+        &ExtractionMatch {
+            index: 1,
+            path: Some("article".to_owned()),
+            value_type: ValueType::Structured,
+            value: serde_json::json!({}),
+            html: None,
+            text: Some("# Heading\n\n- One\n- Two".to_owned()),
+            preview: "unused".to_owned(),
+            metadata: selector_metadata(1, 1, "article", "article", &[]),
+        },
+    );
+    assert_eq!(lines[0], "1. article");
+    assert!(lines.iter().any(|line| line == "   text:"));
+    assert!(lines.iter().any(|line| line == "     # Heading"));
+    assert!(lines.iter().any(|line| line == "     - One"));
+    assert!(lines.iter().any(|line| line == "     - Two"));
+}
 #[test]
 fn preview_helpers_cover_metadata_mismatches_and_empty_reports() {
     let empty_preview = build_extraction_report(

@@ -1,5 +1,5 @@
 use htmlcut_core::{
-    ExtractionRequest, ExtractionSpec, NormalizationOptions, OutputOptions, SelectorQuery,
+    ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions, SelectorQuery,
     SliceBoundary, SlicePatternSpec, SliceSpec,
 };
 
@@ -58,11 +58,11 @@ pub(crate) fn build_extraction_request(
     .with_value(options.value);
 
     let mut request = ExtractionRequest::new(source, extraction);
-    request.normalization = NormalizationOptions {
-        whitespace: options.whitespace,
-        rewrite_urls: options.rewrite_urls,
-    };
     request.output = OutputOptions {
+        rendering: RenderingOptions {
+            whitespace: options.whitespace,
+            rewrite_urls: options.rewrite_urls,
+        },
         include_source_text: options.include_source_text,
         include_html: true,
         include_text: true,

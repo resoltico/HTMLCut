@@ -1,10 +1,10 @@
 use arbitrary::Arbitrary;
 use htmlcut_core::interop::v1::{
-    DelimiterMode, HtmlInput, Output, Plan, PlanStrategy, RegexFlag, execute_plan,
+    CssSelectorText, DelimiterBoundaryText, DelimiterMode, HtmlInput, Plan, PlanStrategy,
+    RegexFlag, execute_plan,
 };
-use htmlcut_core::{SelectorQuery, SliceBoundary};
 
-use crate::interop_common::{FuzzNormalization, FuzzSelection, FuzzValueKind, sample_base_url};
+use crate::interop_common::{FuzzRendering, FuzzSelection, FuzzValueKind, sample_base_url};
 
 #[derive(Arbitrary, Debug)]
 pub struct InteropInput {
@@ -12,7 +12,7 @@ pub struct InteropInput {
     strategy: FuzzInteropStrategy,
     value_kind: FuzzValueKind,
     selection: FuzzSelection,
-    normalization: FuzzNormalization,
+    rendering: FuzzRendering,
 }
 
 pub fn drive(input: InteropInput) {
@@ -25,12 +25,13 @@ pub fn drive(input: InteropInput) {
     let Some(strategy) = input.strategy.to_plan_strategy() else {
         return;
     };
+    let strategy_kind = strategy.kind();
 
     let plan = Plan::new(
         strategy,
         input.selection.to_interop_selection(),
-        Output::new(input.value_kind.to_output_kind()),
-        input.normalization.to_interop_normalization(),
+        input.value_kind.to_output(strategy_kind),
+        input.rendering.to_interop_rendering(),
     );
 
     let _ = plan.stable_json();
@@ -86,7 +87,7 @@ impl FuzzRegexFlags {
 impl FuzzInteropStrategy {
     fn to_plan_strategy(&self) -> Option<PlanStrategy> {
         match self {
-            Self::Selector { selector } => SelectorQuery::new(selector.clone())
+            Self::Selector { selector } => CssSelectorText::new(selector.clone())
                 .ok()
                 .map(PlanStrategy::css_selector),
             Self::DelimiterPair {
@@ -97,8 +98,8 @@ impl FuzzInteropStrategy {
                 include_end,
                 flags,
             } => {
-                let start = SliceBoundary::new(start.clone()).ok()?;
-                let end = SliceBoundary::new(end.clone()).ok()?;
+                let start = DelimiterBoundaryText::new(start.clone()).ok()?;
+                let end = DelimiterBoundaryText::new(end.clone()).ok()?;
                 let mode = if *regex_mode {
                     DelimiterMode::Regex
                 } else {

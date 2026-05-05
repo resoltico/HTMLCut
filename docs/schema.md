@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: SCHEMA
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -24,7 +24,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 2 --output json
+htmlcut schema --name htmlcut.result --schema-version 5 --output json
 ```
 
 Rust:
@@ -86,6 +86,10 @@ Interop v1 contracts:
 Use `htmlcut schema --output json` when you need the current integer schema versions for those
 families. The registry output is the authoritative version inventory.
 
+The interop families are their own published language, not schema aliases for generic core
+request/result types. Their selector text, delimiter boundaries, output contract, diagnostics, and
+byte ranges are owned by `htmlcut_core::interop::v1`.
+
 ## Catalog Relationship
 
 `htmlcut catalog` and `htmlcut schema` are separate on purpose.
@@ -138,12 +142,22 @@ The structured `value` payload also carries collection context:
 - `candidateIndex`
 - `candidateCount`
 
+For slice structured payloads, the HTML fields are intentionally distinct:
+
+- `selectedHtmlOutput` is the fragment after applying `include_start` / `include_end`
+- `innerHtmlOutput` is the HTML between the two matched boundaries
+- `outerHtmlOutput` includes both matched boundaries
+
 That lets downstream callers reason about `--match all` result sets without reconstructing context
 from outer report fields alone.
 
 Successful source loads expose `SourceMetadata.load_steps`, a structured trace of the load actions
 HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded, was
 skipped, fell back, or failed before the final `GET`.
+
+`htmlcut.source_inspection_result` now includes `document.extraction_candidates` and
+`document.reading_candidates`, first-class lists of suggested selectors with DOM paths and subtree
+counts. That split is part of the public inspection contract, not formatter-only CLI sugar.
 
 `htmlcut.error_report` reuses that same `SourceLoadStep` shape as `source_load_steps` when a
 JSON-mode CLI failure already reached the traced source-loading path before aborting.

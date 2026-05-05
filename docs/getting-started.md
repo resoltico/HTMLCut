@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: SETUP
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, request file]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction request?"]
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=7.0.0
+VERSION=8.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "7.0.0"
+$Version = "8.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -130,6 +130,9 @@ Extract readable text from the first article:
 htmlcut select ./page.html --css article
 ```
 
+That text output keeps heading structure and inline link targets, so this demo renders the article
+title as a heading and the link as `Read more [../guide.html]`.
+
 Require exactly one match:
 
 ```bash
@@ -182,6 +185,9 @@ Inspect a source before choosing selectors:
 htmlcut inspect source ./page.html --output text
 ```
 
+That inspection view now suggests likely content-root selectors in addition to headings, links,
+counts, and base-URL behavior, which makes noisy pages much easier to navigate from the CLI alone.
+
 Preview selector matches before final extraction:
 
 ```bash
@@ -203,15 +209,15 @@ htmlcut select ./page.html \
   --css 'article a.more' \
   --value attribute \
   --attribute href \
-  --emit-request-file ./article-links.json
+  --emit-request-file ./article-link.request.json
 ```
 
-If `./article-links.json` already exists, rerun with `--overwrite` or choose a fresh path.
+If `./article-link.request.json` already exists, rerun with `--overwrite` or choose a fresh path.
 
 Run that saved request again:
 
 ```bash
-htmlcut select --request-file ./article-links.json
+htmlcut select --request-file ./article-link.request.json
 ```
 
 Write only the stdout payload to one file:

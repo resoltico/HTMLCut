@@ -187,11 +187,11 @@ fn select_json_report_has_core_parity_for_structured_extraction() {
             .with_selection(SelectionSpec::First)
             .with_value(ValueSpec::Structured),
     );
-    request.normalization = NormalizationOptions {
+    request.output = extraction_output();
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
-    request.output = extraction_output();
     let expected = extract(&request, &runtime_options());
     assert!(expected.ok);
 
@@ -294,11 +294,11 @@ fn select_attribute_rewrite_has_core_parity() {
                 name: AttributeName::new("href").expect("attribute name"),
             }),
     );
-    request.normalization = NormalizationOptions {
+    request.output = extraction_output();
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: true,
     };
-    request.output = extraction_output();
     let expected = extract(&request, &runtime_options());
     assert!(expected.ok);
 

@@ -8,8 +8,8 @@ pub(super) use htmlcut_cli::{
     SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SourceInspectionCommandReport, run,
 };
 pub(super) use htmlcut_core::{
-    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionRequest, ExtractionSpec, NormalizationOptions,
-    OutputOptions, PatternMode, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
+    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionRequest, ExtractionSpec, OutputOptions,
+    PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
     SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
     preview_extraction,
 };
@@ -36,9 +36,8 @@ pub(super) fn runtime_options() -> RuntimeOptions {
 pub(super) fn extraction_output(include_source_text: bool, preview_chars: usize) -> OutputOptions {
     OutputOptions {
         include_source_text,
-        include_html: true,
-        include_text: true,
         preview_chars: NonZeroUsize::new(preview_chars).expect("preview chars"),
+        ..OutputOptions::default()
     }
 }
 

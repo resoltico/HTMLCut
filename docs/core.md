@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: CORE
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -71,7 +71,8 @@ Important invariants:
   plus `RuntimeOptions`
 - URL loading is optional and requires the `htmlcut-core/http-client` feature
 - when URL loading is enabled, `FetchPreflightMode::HeadFirst` treats successful HEAD responses as
-  advisory preflight and falls back to GET whenever HEAD fails or returns a non-success status
+  advisory preflight and falls back to GET only when the HEAD response rejects the method or the
+  HEAD exchange fails in a way that indicates HEAD intolerance
 - structured extraction metadata is typed, not loose JSON
 
 ## Result Model
@@ -81,6 +82,12 @@ Core execution returns:
 - `ParseDocumentResult`
 - `SourceInspectionResult`
 - `ExtractionResult`
+
+`SourceInspectionResult.document` includes both raw document-wide counts and guidance for follow-up
+work: sampled headings, sampled meaningful links, narrower extraction candidates, and broader
+reading candidates that can be fed directly into `inspect select` or `select`.
+Extraction candidates bias toward cleaner saved HTML roots, while reading candidates bias toward
+title-preserving wrappers instead of forcing one ranking to serve both jobs.
 
 Diagnostics are first-class and machine-readable through:
 
@@ -158,8 +165,8 @@ generic schema from Rust.
 use htmlcut_core::{
     extract, operation_catalog,
     request::{
-        AttributeName, ExtractionRequest, ExtractionSpec, NormalizationOptions, SelectorQuery,
-        SelectionSpec, SourceRequest, ValueSpec,
+        AttributeName, ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions,
+        SelectorQuery, SelectionSpec, SourceRequest, ValueSpec,
     },
     result::ExtractionMatchMetadata,
 };
@@ -172,8 +179,11 @@ let source = SourceRequest::memory(
 .with_base_url(Url::parse("https://example.com/docs/start.html").unwrap());
 
 let request = ExtractionRequest {
-    normalization: NormalizationOptions {
-        rewrite_urls: true,
+    output: OutputOptions {
+        rendering: RenderingOptions {
+            rewrite_urls: true,
+            ..Default::default()
+        },
         ..Default::default()
     },
     ..ExtractionRequest::new(
@@ -207,6 +217,8 @@ assert!(!operation_catalog().is_empty());
 - the published `htmlcut` CLI enables `http-client` automatically
 - embedders that already own fetch, retries, and auth should usually keep the feature disabled and
   pass HTML through `SourceRequest::memory(...)`, `SourceRequest::file(...)`, or stdin instead
+- when `http-client` is enabled, HTMLCut trusts the bundled `webpki-roots` set rather than the
+  host platform certificate store
 
 Use `SourceRequest::memory(...)` when HTML is already loaded by the embedding application. Reserve
 `SourceRequest::url(...)` for builds that explicitly enable `http-client` and genuinely want
@@ -227,16 +239,17 @@ For interop deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md
 
 - source loading for generic CLI/core workflows, including optional URL loading when
   `http-client` is enabled
-- HEAD-first URL preflight policy, where non-success HEAD responses fall back to GET and successful
-  HEAD responses still enforce obvious content-type and size rejection before the full body read
+- HEAD-first URL preflight policy, where method rejection or HEAD-intolerance failures fall back to
+  GET and successful HEAD responses still enforce obvious content-type and size rejection before
+  the full body read
 - document parsing
 - inspection
 - selector extraction
 - slice extraction
 - relative-URL rewriting for standard URL-bearing HTML attributes such as `srcset`, `poster`,
   `action`, `ping`, and `meta refresh`
-- plain-text rendering for document-shaped HTML including `pre`, inline `code`, blockquotes, and
-  definition lists
+- plain-text rendering for document-shaped HTML including headings, anchors, nested lists, `pre`,
+  inline `code`, blockquotes, definition lists, table rows, and compact label-value rows
 - diagnostics
 - operation catalog
 

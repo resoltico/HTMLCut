@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: MAINTAINER
-updated: "2026-04-29"
+updated: "2026-05-02"
 route:
   keywords: [versioning policy, interop profile, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -74,6 +74,9 @@ Current profile:
 
 Interop profiles keep stable module paths and profile strings, but their JSON documents still use
 explicit integer `schema_version` values.
+
+The interop profile is its own published language. It does not promise JSON identity with generic
+core request/result types.
 
 When an interop plan/result/error contract changes:
 
@@ -162,4 +165,5 @@ Rules:
 - treat it as the comparison target for future semver checks, not as a staging area during feature work
 
 The baseline exists to keep published compatibility accounting honest. It must not drift ahead of
-what users can actually depend on.
+what users can actually depend on. `cargo xtask check` enforces that discipline by failing fast
+when `semver-baseline/htmlcut-core` is dirty in the worktree.

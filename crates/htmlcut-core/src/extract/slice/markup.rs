@@ -57,15 +57,86 @@ fn position_inside_markup(source_text: &str, position: usize) -> bool {
         return false;
     }
 
-    let prefix = &source_text[..position];
-    match (prefix.rfind('<'), prefix.rfind('>')) {
-        (Some(open), Some(close)) => open > close,
-        (Some(_), None) => true,
-        _ => false,
+    let bytes = source_text.as_bytes();
+    let mut cursor = 0usize;
+    let mut state = MarkupState::Text;
+
+    while cursor < position {
+        state = match state {
+            MarkupState::Text => {
+                if starts_markup(bytes, cursor) {
+                    if bytes[cursor..].starts_with(b"<!--") {
+                        cursor += 4;
+                        MarkupState::Comment
+                    } else {
+                        cursor += 1;
+                        MarkupState::Tag { quote: None }
+                    }
+                } else {
+                    cursor += 1;
+                    MarkupState::Text
+                }
+            }
+            MarkupState::Tag { quote: Some(quote) } => {
+                if bytes[cursor] == quote {
+                    cursor += 1;
+                    MarkupState::Tag { quote: None }
+                } else {
+                    cursor += 1;
+                    MarkupState::Tag { quote: Some(quote) }
+                }
+            }
+            MarkupState::Tag { quote: None } => match bytes[cursor] {
+                b'\'' | b'"' => {
+                    let quote = bytes[cursor];
+                    cursor += 1;
+                    MarkupState::Tag { quote: Some(quote) }
+                }
+                b'>' => {
+                    cursor += 1;
+                    MarkupState::Text
+                }
+                _ => {
+                    cursor += 1;
+                    MarkupState::Tag { quote: None }
+                }
+            },
+            MarkupState::Comment => {
+                if bytes[cursor..].starts_with(b"-->") {
+                    cursor += 3;
+                    MarkupState::Text
+                } else {
+                    cursor += 1;
+                    MarkupState::Comment
+                }
+            }
+        };
     }
+
+    !matches!(state, MarkupState::Text)
 }
 
 #[cfg(test)]
 pub(crate) fn position_inside_markup_for_tests(source_text: &str, position: usize) -> bool {
     position_inside_markup(source_text, position)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MarkupState {
+    Text,
+    Tag { quote: Option<u8> },
+    Comment,
+}
+
+fn starts_markup(bytes: &[u8], cursor: usize) -> bool {
+    if bytes.get(cursor) != Some(&b'<') {
+        return false;
+    }
+
+    matches!(
+        bytes.get(cursor + 1),
+        Some(next)
+            if next.is_ascii_alphabetic()
+                || matches!(next, b'/' | b'!' | b'?')
+    )
 }

@@ -156,6 +156,8 @@ cli_error_codes! {
     BundleReportWriteFailed => "CLI_BUNDLE_REPORT_WRITE_FAILED",
     /// Writing the bundle text artifact failed.
     BundleTextWriteFailed => "CLI_BUNDLE_TEXT_WRITE_FAILED",
+    /// The CLI asked core for rendered text but the text projection was absent.
+    TextProjectionMissing => "CLI_TEXT_PROJECTION_MISSING",
 }
 
 /// Stable typed error-code surface for CLI reports.

@@ -1,5 +1,7 @@
 use arbitrary::Arbitrary;
-use htmlcut_core::interop::v1::{Normalization, OutputKind, Selection, TextWhitespace};
+use htmlcut_core::interop::v1::{
+    Output, OutputAttributeName, Rendering, Selection, StrategyKind, TextWhitespace,
+};
 use url::Url;
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
@@ -12,11 +14,19 @@ pub enum FuzzValueKind {
 }
 
 impl FuzzValueKind {
-    pub fn to_output_kind(self) -> OutputKind {
+    pub fn to_output(self, strategy_kind: StrategyKind) -> Output {
         match self {
-            Self::Text | Self::Structured | Self::AttributeHref => OutputKind::Text,
-            Self::InnerHtml => OutputKind::InnerHtml,
-            Self::OuterHtml => OutputKind::OuterHtml,
+            Self::Text => Output::text(),
+            Self::InnerHtml => Output::inner_html(),
+            Self::OuterHtml => Output::outer_html(),
+            Self::Structured => Output::structured(),
+            Self::AttributeHref => Output::attribute(
+                OutputAttributeName::new(match strategy_kind {
+                    StrategyKind::CssSelector => "href",
+                    StrategyKind::DelimiterPair => "data-id",
+                })
+                .expect("static attribute name"),
+            ),
         }
     }
 }
@@ -34,24 +44,21 @@ impl FuzzSelection {
         match self {
             Self::First => Selection::first(),
             Self::Single => Selection::single(),
-            Self::All | Self::Nth(_) => Selection::nth(non_zero_index(match self {
-                Self::Nth(raw) => raw,
-                Self::All => 1,
-                Self::First | Self::Single => 1,
-            })),
+            Self::All => Selection::all(),
+            Self::Nth(raw) => Selection::nth(non_zero_index(raw)),
         }
     }
 }
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
-pub struct FuzzNormalization {
+pub struct FuzzRendering {
     rewrite_urls: bool,
     normalize_whitespace: bool,
 }
 
-impl FuzzNormalization {
-    pub fn to_interop_normalization(self) -> Normalization {
-        Normalization::new(
+impl FuzzRendering {
+    pub fn to_interop_rendering(self) -> Rendering {
+        Rendering::new(
             if self.normalize_whitespace {
                 TextWhitespace::Normalize
             } else {

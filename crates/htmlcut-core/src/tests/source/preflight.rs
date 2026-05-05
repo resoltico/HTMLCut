@@ -237,9 +237,77 @@ fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
     assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
     assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
 }
+
+#[test]
+fn head_preflight_falls_back_to_get_when_head_response_is_malformed() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind malformed-head server");
+    let address = listener.local_addr().expect("malformed-head server addr");
+    let methods = Arc::new(Mutex::new(Vec::new()));
+    let methods_for_server = Arc::clone(&methods);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method")
+                .to_owned();
+            methods_for_server
+                .lock()
+                .expect("lock methods")
+                .push(method.clone());
+
+            if method == "HEAD" {
+                stream
+                    .write_all(b"THIS IS NOT HTTP\r\n\r\n")
+                    .expect("write malformed response");
+                continue;
+            }
+
+            let body = "<html><body>Recovered</body></html>";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        }
+    });
+
+    let url = format!("http://{address}");
+    let loaded = read_url_source(
+        &url_source(&url),
+        &RuntimeOptions {
+            fetch_timeout_ms: 250,
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("fallback source after malformed head response");
+
+    server.join().expect("join server");
+    assert_eq!(
+        methods.lock().expect("lock methods").as_slice(),
+        ["HEAD", "GET"]
+    );
+    assert_eq!(loaded.text, "<html><body>Recovered</body></html>");
+    assert_eq!(loaded.load_steps.len(), 2);
+    assert_eq!(loaded.load_steps[0].action, SourceLoadAction::HeadPreflight);
+    assert_eq!(loaded.load_steps[0].outcome, SourceLoadOutcome::Fallback);
+    assert!(loaded.load_steps[0].message.contains("fell back to GET"));
+    assert_eq!(loaded.load_steps[1].action, SourceLoadAction::Get);
+    assert_eq!(loaded.load_steps[1].outcome, SourceLoadOutcome::Succeeded);
+}
 #[test]
 fn head_preflight_fallback_classifier_accepts_only_head_intolerance_errors() {
-    assert!(head_error_allows_get_fallback_for_tests(
+    assert!(!head_error_allows_get_fallback_for_tests(
         &ureq::Error::ConnectionFailed
     ));
     assert!(head_error_allows_get_fallback_for_tests(&ureq::Error::Io(

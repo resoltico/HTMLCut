@@ -16,11 +16,13 @@ pub(crate) use execution::{
 pub(crate) use stable_json::digest_stable_json_omitting_field_for_tests;
 pub use stable_json::stable_json_v1;
 pub use types::{
-    ContractError, DelimiterMode, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, ErrorCode, HtmlInput,
-    INTEROP_V1_PROFILE, InteropError, InteropResult, Normalization, Output, OutputKind,
-    PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION, Plan, PlanStrategy, RESULT_SCHEMA_NAME,
-    RESULT_SCHEMA_VERSION, RegexFlag, ResultExecution, ResultSource, SelectedMatch,
-    SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
+    ByteRange, ContractError, CssSelectorText, DelimiterBoundaryText, DelimiterMode,
+    ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, ErrorCode, HtmlInput, INTEROP_V1_PROFILE,
+    InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult,
+    Output, OutputAttributeName, OutputKind, PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION, Plan,
+    PlanStrategy, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION, RegexFlag, Rendering, ResultExecution,
+    ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind,
+    TextWhitespace,
 };
 
 #[cfg(test)]

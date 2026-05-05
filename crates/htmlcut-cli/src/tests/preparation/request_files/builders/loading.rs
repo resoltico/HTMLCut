@@ -44,7 +44,7 @@ fn request_file_loading_reports_read_shape_and_schema_failures() {
         "invalid-shape.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 1,
+  "schema_version": 2,
   "request": {
     "source": { "input": { "type": "stdin" } },
     "extraction": {

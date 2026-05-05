@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: CLI
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -47,13 +47,16 @@ Every extraction and inspection command accepts one input:
 
 `--base-url` sets the input base explicitly. For URL inputs, the request URL is the input base
 automatically. If the document contains `<base href>`, HTMLCut resolves it against the input base to
-produce the effective base URL used by `--rewrite-urls`.
+produce the effective base URL used by `--rewrite-urls`. When HTML-valued extraction is later
+rendered as plain text, those rewritten destinations flow through the rendered link targets and
+bundled `selection.txt` output as well.
 
 For URL inputs, HTMLCut uses HEAD-first fetch preflight by default:
 
 - `head-first` treats successful HEAD responses as advisory preflight for status,
   `Content-Length`, and obvious non-HTML `Content-Type` values, and it automatically falls back to
-  GET whenever HEAD fails or returns a non-success status
+  GET only when the HEAD response rejects the method or the HEAD exchange fails in a way that
+  indicates HEAD intolerance
 - `get-only` skips the HEAD probe for servers that still mishandle HEAD badly
 
 The CLI exposes that policy through `--fetch-preflight head-first|get-only`.
@@ -125,15 +128,22 @@ The registry includes:
 
 `inspect` is the pre-extraction workflow:
 
-- `inspect source` summarizes document structure and base-URL behavior
+- `inspect source` summarizes document structure, suggests extraction and reading selectors, and reports
+  base-URL behavior
 - `inspect select` previews selector matches in structured form
 - `inspect slice` previews slice matches in structured form
 
 `inspect` defaults to JSON. Text mode is for compact human review.
 
+Suggested selectors are heuristics, not a promise that one selector is universally best for every
+output goal. `inspect source` now separates narrower extraction selectors from broader reading
+selectors so HTML saving and rendered-text review do not have to share one compromise list. Use
+`inspect select` to compare the top candidates before you commit to `outer-html` or `inner-html`.
+
 `inspect source` carries source-analysis-specific controls:
 
-- `--sample-limit` bounds the sampled headings, links, tags, and classes
+- `--sample-limit` bounds the sampled extraction candidates, reading candidates, headings, links,
+  tags, and classes
 - `--include-source-text` includes the full source in JSON output and enables a bounded source
   preview in text output
 - `--preview-chars` bounds that source preview in text mode
@@ -155,6 +165,11 @@ contract-free guidance.
 Successful URL-backed inspection and extraction reports carry a structured load trace in the report
 metadata. `inspect source --output text` prints that trace directly, and verbose stderr output for
 inspection and extraction commands replays the same successful load steps for operators.
+
+When the page is noisy, `inspect source` samples headings and link previews across the ranked
+reading candidates instead of blindly sampling the first headings and anchors in DOM order or
+depending on one candidate rank to be perfect. Extraction candidates bias toward cleaner saved HTML
+roots, while reading candidates bias toward broader title-preserving wrappers.
 
 CLI JSON reports carry a normalized `command` label. The maintained labels are:
 
@@ -211,8 +226,18 @@ Value modes:
 - `structured`
 
 `--value text` uses HTML-aware text rendering rather than raw descendant concatenation. That means
-ordered-list numbering, image `alt` text, and preformatted whitespace on the selected node are
-preserved in the extracted value.
+heading boundaries, ordered-list numbering, nested-list indentation, image `alt` text, link
+targets, table captions and rows, compact label-value rows, and preformatted whitespace on the
+selected node are preserved in the extracted value.
+
+`--value inner-html` and `--value outer-html` keep the selected fragment as HTML. Apart from
+optional `--rewrite-urls`, HTMLCut does not sanitize or editorialize that fragment. If the chosen
+selector includes widgets, scripts, related-topic blocks, or footer chrome, those remain part of
+the saved HTML output by design.
+
+When you pair either HTML value mode with `--output text`, HTMLCut renders that HTML fragment into
+readable plain text instead of echoing raw markup. The same rule applies to bundled `selection.txt`
+artifacts.
 
 ### `slice`
 
@@ -266,6 +291,8 @@ That works for text, HTML, JSON, and inspection text/JSON outputs. It is intenti
 `--output none` because there is no stdout payload to write.
 
 `--output html` is only valid with `--value inner-html` or `--value outer-html`.
+When `--value inner-html` or `--value outer-html` is paired with `--output text`, the CLI renders
+the extracted fragment through HTMLCut's plain-text renderer instead of emitting raw markup.
 
 When `--bundle`, `--output-file`, or `--emit-request-file` points into a directory tree that does
 not exist yet, the CLI creates the parent directories automatically.
@@ -286,7 +313,8 @@ With `--verbose`, successful `catalog`, `schema`, extraction, and inspection run
 - `report.json`
 
 `selection.html` is a wrapped review artifact, not a byte-for-byte replay of the source document.
-`report.json` is the structured execution report.
+`selection.txt` is the rendered plain-text view of the same extracted matches, including when the
+underlying extracted value is HTML. `report.json` is the structured execution report.
 
 If `<dir>` already exists, rerun with `--overwrite` only when you intend to replace the managed
 bundle artifacts in place.

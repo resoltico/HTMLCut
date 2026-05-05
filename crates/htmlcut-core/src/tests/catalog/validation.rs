@@ -11,7 +11,7 @@ fn panic_message(panic: Box<dyn std::any::Any + Send>) -> String {
 }
 
 #[test]
-fn diagnostic_codes_reject_unknown_strings_with_a_stable_error() {
+fn contract_lint_diagnostic_codes_reject_unknown_strings_with_a_stable_error() {
     for code in DiagnosticCode::ALL {
         assert_eq!(
             DiagnosticCode::from_str(code.as_str()).expect("round-trip parse"),
@@ -25,7 +25,7 @@ fn diagnostic_codes_reject_unknown_strings_with_a_stable_error() {
 }
 
 #[test]
-fn cli_choice_and_non_empty_contract_values_reject_drift_and_blank_inputs() {
+fn contract_lint_cli_choice_and_non_empty_contract_values_reject_drift_and_blank_inputs() {
     assert_eq!(
         <ValueType as crate::CliChoice>::parse_cli_str("inner-html"),
         Some(ValueType::InnerHtml)
@@ -56,10 +56,26 @@ fn cli_choice_and_non_empty_contract_values_reject_drift_and_blank_inputs() {
             field: "attribute name"
         }
     );
+    let whitespace = AttributeName::new("href ").expect_err("whitespace attribute");
+    assert_eq!(
+        whitespace,
+        crate::contracts::ContractValueError::ContainsWhitespace {
+            field: "attribute name"
+        }
+    );
+    let blank_selector = SelectorQuery::new("   ").expect_err("blank selector");
+    assert_eq!(
+        blank_selector,
+        crate::contracts::ContractValueError::Empty { field: "selector" }
+    );
+    assert_eq!(
+        crate::DEFAULT_FETCH_PREFLIGHT_MODE,
+        FetchPreflightMode::HeadFirst
+    );
 }
 
 #[test]
-fn catalog_and_schema_contract_strings_stay_canonical() {
+fn contract_lint_catalog_and_schema_contract_strings_stay_canonical() {
     assert!(!crate::catalog::operation_catalog().is_empty());
     assert!(
         crate::catalog::operation_catalog_contract_string_errors_for_tests().is_empty(),
@@ -179,5 +195,30 @@ fn catalog_and_schema_contract_string_guards_reject_drift() {
         unknown_schema_errors
             .iter()
             .any(|error| error.contains("is not part of the maintained schema inventory"))
+    );
+}
+
+#[test]
+fn schema_descriptor_constructor_preserves_fields() {
+    fn synthetic_schema() -> Result<serde_json::Value, crate::SchemaExportError> {
+        Ok(serde_json::json!({ "type": "string" }))
+    }
+
+    let descriptor = crate::schema::catalog_schema_descriptor_for_tests(
+        crate::SchemaRef::new("htmlcut.synthetic_core_schema", 1),
+        "htmlcut-core",
+        "SyntheticCoreSchema",
+        synthetic_schema,
+    );
+    assert_eq!(
+        descriptor.schema_ref,
+        crate::SchemaRef::new("htmlcut.synthetic_core_schema", 1)
+    );
+    assert_eq!(descriptor.owner_surface, "htmlcut-core");
+    assert_eq!(descriptor.rust_shape, "SyntheticCoreSchema");
+    assert_eq!(descriptor.stability, crate::SchemaStability::Versioned);
+    assert_eq!(
+        (descriptor.json_schema)().expect("synthetic schema")["type"],
+        "string"
     );
 }

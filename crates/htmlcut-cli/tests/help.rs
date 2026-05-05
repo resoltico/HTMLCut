@@ -13,8 +13,10 @@ fn help_prints_the_new_workflows_and_contract_language() {
             expected_version(),
             env!("CARGO_PKG_DESCRIPTION")
         )))
-        .stdout(predicate::str::contains("Start here:"))
-        .stdout(predicate::str::contains("Reusable requests:"))
+        .stdout(predicate::str::contains("help     Print this message or the help of the given subcommand(s)."))
+        .stdout(predicate::str::contains("\n\nGuide:\n"))
+        .stdout(predicate::str::contains("Workflow:"))
+        .stdout(predicate::str::contains("Request files:"))
         .stdout(predicate::str::contains("catalog"))
         .stdout(predicate::str::contains("schema"))
         .stdout(predicate::str::contains("select"))
@@ -24,6 +26,9 @@ fn help_prints_the_new_workflows_and_contract_language() {
         .stdout(predicate::str::contains("--value"))
         .stdout(predicate::str::contains("--output"))
         .stdout(predicate::str::contains("--verbose"))
+        .stdout(predicate::str::contains(
+            "--output none suppresses stdout and therefore requires --bundle.",
+        ))
         .stdout(predicate::str::contains(
             "--emit-request-file writes the normalized extraction definition for the current run.",
         ))
@@ -37,7 +42,7 @@ fn help_prints_the_new_workflows_and_contract_language() {
             "--request-file reruns a saved definition instead of spelling the source and strategy inline.",
         ))
         .stdout(predicate::str::contains(
-            "htmlcut select --request-file ./article-links.json --output-file ./links.json",
+            "htmlcut select --request-file ./article-link.request.json --output-file ./article-link.txt",
         ));
 }
 
@@ -56,6 +61,9 @@ fn select_help_stays_select_specific() {
         ))
         .stdout(predicate::str::contains(
             "Output default override: json when --value is structured.",
+        ))
+        .stdout(predicate::str::contains(
+            "--output none suppresses stdout and therefore requires --bundle.",
         ))
         .stdout(predicate::str::contains(
             "Attribute name to extract when `--value attribute` is used",
@@ -79,6 +87,9 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
         ))
         .stdout(predicate::str::contains(
             "Structured extraction only supports --output json or --output none.",
+        ))
+        .stdout(predicate::str::contains(
+            "--output none suppresses stdout and therefore requires --bundle.",
         ))
         .stdout(predicate::str::contains(
             "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",
@@ -158,11 +169,11 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
             .with_selection(SelectionSpec::single())
             .with_value(ValueSpec::Text),
     );
-    request.normalization = NormalizationOptions {
+    request.output = extraction_output();
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
-    request.output = extraction_output();
 
     let definition = ExtractionDefinition::new(request);
     fs::write(

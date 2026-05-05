@@ -1,7 +1,6 @@
 mod markup;
 mod matches;
 mod patterns;
-mod selection;
 
 #[cfg(test)]
 pub(crate) use markup::position_inside_markup_for_tests;
@@ -13,4 +12,3 @@ pub(crate) use matches::run_validated_slice_extraction;
 pub(crate) use patterns::CompiledSlicePatterns;
 #[cfg(test)]
 pub(crate) use patterns::{build_finder, build_regex, extract_slice_candidates};
-pub(crate) use selection::select_candidates;

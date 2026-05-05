@@ -20,6 +20,9 @@ where
     if let Some(stdout_payload) = outcome.stdout.as_ref() {
         if let Some(path) = outcome.output_file.as_deref() {
             if let Err(error) = write_stdout_payload(path, stdout_payload, outcome.write_mode) {
+                for line in &outcome.stderr {
+                    writeln!(stderr, "{line}")?;
+                }
                 writeln!(
                     stderr,
                     "htmlcut: Could not write {}: {error}",
@@ -61,16 +64,6 @@ pub(crate) fn write_request_definition(
             request_definition_output.path.display()
         ),
     )?;
-
-    if matches!(write_mode, FileWriteMode::CreateFresh) && request_definition_output.path.exists() {
-        return Err(crate::error::output_error(
-            CliErrorCode::RequestFileExists,
-            format!(
-                "Refusing to overwrite existing request file {}. Remove it, choose a fresh path, or pass --overwrite.",
-                request_definition_output.path.display(),
-            ),
-        ));
-    }
 
     write_text_file(
         &request_definition_output.path,

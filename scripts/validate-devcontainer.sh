@@ -168,7 +168,7 @@ docker run --rm "${image_tag}" bash -lc '
     set -euo pipefail
     . /etc/os-release
     [[ "${ID}" == "ubuntu" ]]
-    [[ "${VERSION_ID}" == "26.04" ]]
+    [[ "${VERSION_ID}" == "24.04" ]]
     clang --version >/dev/null
     curl --version >/dev/null
     gh --version >/dev/null

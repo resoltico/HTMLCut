@@ -44,7 +44,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
             .stdout
             .as_deref()
             .expect("json error payload")
-            .contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\"")
+            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
     );
     assert!(extraction_failure.stderr.is_empty());
 
@@ -92,7 +92,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
             .stdout
             .as_deref()
             .expect("json error payload")
-            .contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\"")
+            .contains("\"code\": \"CLI_REQUEST_FILE_WRITE_FAILED\"")
     );
 
     let preview_request_path = tempdir
@@ -172,9 +172,9 @@ fn catalog_and_schema_output_files_report_verbose_success() {
         "--verbose".to_owned(),
         "schema".to_owned(),
         "--name".to_owned(),
-        "htmlcut.result".to_owned(),
+        htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned(),
         "--schema-version".to_owned(),
-        "2".to_owned(),
+        htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION.to_string(),
         "--output".to_owned(),
         "json".to_owned(),
         "--output-file".to_owned(),

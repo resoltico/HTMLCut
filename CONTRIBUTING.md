@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "7.0.0"
+  version: "8.0.0"
   domain: MAINTAINER
-  updated: "2026-05-01"
+  updated: "2026-05-05"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
@@ -17,7 +17,7 @@ surfaces may change when the architecture needs to improve; frozen interop profi
 
 ## Setup
 
-The preferred contributor environment is the committed devcontainer on Ubuntu `26.04`.
+The preferred contributor environment is the committed devcontainer on Ubuntu `24.04`.
 Use [docs/developer-devcontainer.md](docs/developer-devcontainer.md) for that path.
 Use [docs/developer-setup.md](docs/developer-setup.md) when you explicitly want the host-native
 Rust workflow instead.

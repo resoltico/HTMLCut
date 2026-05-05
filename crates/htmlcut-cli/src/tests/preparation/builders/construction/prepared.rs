@@ -109,7 +109,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
     })
     .expect("preview builder");
     assert_eq!(
-        preview.request.normalization.whitespace,
+        preview.request.output.rendering.whitespace,
         WhitespaceMode::Normalize
     );
 

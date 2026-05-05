@@ -9,12 +9,13 @@ use crate::metadata::identity_banner;
 
 use super::render::{
     build_operation_long_about, operation_examples_after_help, render_help_examples,
-    render_help_sections,
+    render_help_sections, render_root_guide_sections,
 };
 
 static ROOT_BEFORE_HELP: LazyLock<String> = LazyLock::new(identity_banner);
-static ROOT_LONG_ABOUT: LazyLock<String> =
-    LazyLock::new(|| render_help_sections(&crate::contract::cli_root_help_document().sections));
+static ROOT_LONG_ABOUT: LazyLock<String> = LazyLock::new(|| {
+    render_root_guide_sections(&crate::contract::cli_root_help_document().sections)
+});
 static ROOT_AFTER_HELP: LazyLock<String> =
     LazyLock::new(|| render_help_examples(&crate::contract::cli_root_help_document()));
 

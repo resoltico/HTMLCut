@@ -209,7 +209,7 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
         param_flag(
             CliParameterSection::Extraction,
             CliParameterId::RewriteUrls,
-            "Rewrite relative URLs in extracted HTML and attributes with the effective base URL.",
+            "Rewrite relative URLs in extracted HTML and attributes with the effective base URL. When text is rendered from HTML-valued extraction, the rewritten destinations flow through that plain-text output and bundled selection.txt artifacts too.",
         ),
         param_option(
             CliParameterSection::Extraction,
@@ -218,7 +218,7 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
             "OUTPUT",
             None,
             output_mode_values(&output_modes),
-            "How stdout should be rendered after extraction.",
+            "How stdout should be rendered after extraction. When the extracted value is HTML, `text` renders that fragment into readable plain text. When OUTPUT is `none`, `--bundle` is required because no stdout payload is produced.",
         ),
         param_option(
             CliParameterSection::Extraction,
@@ -227,7 +227,7 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
             "BUNDLE",
             None,
             Vec::new(),
-            "Write report.json, selection.html, and selection.txt to this directory.",
+            "Write report.json, selection.html, and selection.txt to this directory. selection.txt always contains rendered plain text, even when the extracted value is HTML.",
         ),
         param_option(
             CliParameterSection::Extraction,

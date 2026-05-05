@@ -121,6 +121,9 @@ fn catalog_json_surfaces_operation_catalog() {
     assert!(command_contract.notes.iter().any(|note| {
         note.contains("Structured extraction only supports --output json or --output none.")
     }));
+    assert!(command_contract.notes.iter().any(|note| {
+        note.contains("--output none suppresses stdout and therefore requires --bundle.")
+    }));
 }
 
 #[test]

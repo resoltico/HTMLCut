@@ -8,11 +8,11 @@ use super::ErrorReportCode;
 /// Frozen schema name for extraction and preview CLI reports.
 pub const EXTRACTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.extraction_report";
 /// Schema version for extraction and preview CLI reports.
-pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 5;
+pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 6;
 /// Frozen schema name for `htmlcut inspect source` reports.
 pub const SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.source_inspection_report";
 /// Schema version for `htmlcut inspect source` reports.
-pub const SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 3;
+pub const SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 5;
 /// Frozen schema name for structured CLI error reports.
 pub const ERROR_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.error_report";
 /// Schema version for structured CLI error reports.

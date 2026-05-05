@@ -1,13 +1,35 @@
 use super::*;
+use clap::CommandFactory;
 
 #[test]
-fn clap_error_message_prefers_the_primary_error_line() {
+fn clap_error_message_preserves_actionable_error_details() {
     let error =
         Cli::try_parse_from(["htmlcut", "select", "page.html"]).expect_err("parse error expected");
     assert!(clap_error_message(&error).contains("required arguments"));
+    assert!(clap_error_message(&error).contains("--css <CSS>"));
+    assert!(clap_error_message(&error).contains("Use `--help` for usage."));
 
     let help = Cli::try_parse_from(["htmlcut", "--help"]).expect_err("help expected");
     assert!(clap_error_message(&help).contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+}
+
+#[test]
+fn clap_error_message_handles_raw_errors_and_invalid_values() {
+    let raw = clap::Error::raw(clap::error::ErrorKind::InvalidValue, "bad value");
+    assert_eq!(clap_error_message(&raw), "bad value");
+
+    let invalid_output = Cli::try_parse_from(["htmlcut", "catalog", "--output", "yaml"])
+        .expect_err("invalid output should fail");
+    let message = clap_error_message(&invalid_output);
+    assert!(message.contains("invalid value"));
+    assert!(message.contains("possible values"));
+    assert!(!message.contains("Use `--help` for usage."));
+
+    let hinted = Cli::command().error(clap::error::ErrorKind::InvalidValue, "bad value.");
+    assert_eq!(
+        clap_error_message(&hinted),
+        "bad value. Use `--help` for usage."
+    );
 }
 
 #[test]
@@ -66,7 +88,7 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Start here:").expect("flow")
+            < stdout.find("Guide:").expect("guide")
     );
     assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
     assert!(stderr.is_empty());
@@ -80,14 +102,14 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Start here:").expect("flow")
+            < stdout.find("Guide:").expect("guide")
     );
     assert!(stdout.contains("inspect"));
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "-h".to_owned()]);
     assert_eq!(exit_code, 0);
     assert_eq!(stdout.matches(HTMLCUT_DESCRIPTION).count(), 1);
-    assert!(!stdout.contains("Start here:"));
+    assert!(!stdout.contains("Guide:"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "help".to_owned()]);
@@ -170,6 +192,17 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         "htmlcut".to_owned(),
         "select".to_owned(),
         "page.html".to_owned(),
+    ]);
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("required arguments"));
+    assert!(stderr.contains("--css <CSS>"));
+    assert!(stderr.contains("Use `--help` for usage."));
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
         "--output".to_owned(),
         "json".to_owned(),
         "--bogus".to_owned(),
@@ -191,6 +224,14 @@ fn run_propagates_stdout_write_failures_for_help_and_command_output() {
     .expect_err("help write should fail");
     assert_eq!(help_error.kind(), std::io::ErrorKind::BrokenPipe);
     assert!(stderr.is_empty());
+
+    let display_help_error = run(
+        vec!["htmlcut".to_owned(), "--help".to_owned()],
+        &mut BrokenPipeWriter,
+        &mut Vec::new(),
+    )
+    .expect_err("display-help write should fail");
+    assert_eq!(display_help_error.kind(), std::io::ErrorKind::BrokenPipe);
 
     let command_error = run(
         vec!["htmlcut".to_owned(), "catalog".to_owned()],

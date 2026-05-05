@@ -9,6 +9,7 @@ mod diagnostics;
 mod doctests;
 mod document;
 mod extract;
+mod fmt;
 mod inspect;
 pub mod interop;
 mod schema;
@@ -20,8 +21,8 @@ mod tests;
 pub mod request {
     pub use crate::contracts::{
         AttributeName, ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
-        ExtractionStrategy, FetchPreflightMode, InspectionOptions, NormalizationOptions,
-        OutputOptions, PatternMode, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
+        ExtractionStrategy, FetchPreflightMode, InspectionOptions, OutputOptions, PatternMode,
+        RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
         SlicePatternSpec, SliceSpec, SourceInput, SourceKind, SourceRequest, ValueSpec, ValueType,
         WhitespaceMode,
     };
@@ -30,11 +31,11 @@ pub mod request {
 /// Typed result-side contracts for embeddable HTMLCut callers.
 pub mod result {
     pub use crate::contracts::{
-        DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel, DocumentInspection,
-        ExtractionMatch, ExtractionMatchMetadata, ExtractionResult, ExtractionStats,
-        HeadingInspection, InspectionCount, LinkInspection, ParseDocumentResult, ParsedDocument,
-        Range, SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction, SourceLoadOutcome,
-        SourceLoadStep, SourceMetadata,
+        ContentCandidateInspection, DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel,
+        DocumentInspection, ExtractionMatch, ExtractionMatchMetadata, ExtractionResult,
+        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, ParseDocumentResult,
+        ParsedDocument, Range, SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction,
+        SourceLoadOutcome, SourceLoadStep, SourceMetadata,
     };
 }
 
@@ -50,10 +51,10 @@ pub use contracts::{
     DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel, ExtractionDefinition, ExtractionRequest,
     ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode, InspectionOptions,
-    NormalizationOptions, OutputOptions, ParseDocumentResult, PatternMode, RuntimeOptions,
+    OutputOptions, ParseDocumentResult, PatternMode, RenderingOptions, RuntimeOptions,
     SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
     SourceInspectionResult, SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep,
-    SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode, format_byte_size,
+    SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
 };
 pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};
 #[cfg(test)]
@@ -61,6 +62,7 @@ pub(crate) use document::{
     render_document_body_as_text, rewrite_urls_in_document_with_node_ids_for_tests,
 };
 pub use extract::{extract, inspect_source, parse_document, preview_extraction};
+pub use fmt::format_byte_size;
 pub use schema::{
     CORE_REQUEST_SCHEMA_VERSION, EXTRACTION_DEFINITION_SCHEMA_NAME,
     EXTRACTION_DEFINITION_SCHEMA_VERSION, EXTRACTION_REQUEST_SCHEMA_NAME,
@@ -68,3 +70,8 @@ pub use schema::{
     SOURCE_REQUEST_SCHEMA_NAME, SchemaDescriptor, SchemaExportError, SchemaRef, SchemaStability,
     schema_catalog, schema_descriptor,
 };
+
+/// Returns whether one HTML string already looks like a full document.
+pub fn looks_like_html_document(fragment: &str) -> bool {
+    document::looks_like_full_document(fragment)
+}

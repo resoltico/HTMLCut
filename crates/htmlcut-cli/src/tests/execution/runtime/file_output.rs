@@ -1,21 +1,5 @@
 use super::*;
 
-struct CurrentDirGuard(PathBuf);
-
-impl CurrentDirGuard {
-    fn enter(path: &Path) -> Self {
-        let previous = std::env::current_dir().expect("current dir");
-        std::env::set_current_dir(path).expect("set current dir");
-        Self(previous)
-    }
-}
-
-impl Drop for CurrentDirGuard {
-    fn drop(&mut self) {
-        std::env::set_current_dir(&self.0).expect("restore current dir");
-    }
-}
-
 #[test]
 fn file_output_helpers_reject_blocked_parents_and_non_directory_targets() {
     let tempdir = tempdir().expect("tempdir");

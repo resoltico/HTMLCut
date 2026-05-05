@@ -41,11 +41,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         ))
                         .with_value(ValueSpec::Text),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Normalize,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request
             },
             runtime: runtime_options(),
@@ -78,11 +78,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                             name: AttributeName::new("href").expect("attribute name"),
                         }),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: true,
                 };
-                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request
             },
             runtime: runtime_options(),
@@ -108,11 +108,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         .with_selection(SelectionSpec::single())
                         .with_value(ValueSpec::Text),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request
             },
             runtime: runtime_options(),
@@ -144,11 +144,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         .with_selection(SelectionSpec::All)
                         .with_value(ValueSpec::Text),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request
             },
             runtime: runtime_options(),
@@ -181,11 +181,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         ))
                         .with_value(ValueSpec::Text),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request
             },
             runtime: runtime_options(),
@@ -216,11 +216,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         .with_selection(SelectionSpec::All)
                         .with_value(ValueSpec::Structured),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(true, 48);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: true,
                 };
-                request.output = extraction_output(true, 48);
                 request
             },
             runtime: runtime_options(),
@@ -255,11 +255,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         ))
                         .with_value(ValueSpec::Structured),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(true, 48);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(true, 48);
                 request
             },
             runtime: runtime_options(),
@@ -293,11 +293,11 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                         .with_selection(SelectionSpec::All)
                         .with_value(ValueSpec::Structured),
                 );
-                request.normalization = NormalizationOptions {
+                request.output = extraction_output(true, 48);
+                request.output.rendering = RenderingOptions {
                     whitespace: WhitespaceMode::Preserve,
                     rewrite_urls: false,
                 };
-                request.output = extraction_output(true, 48);
                 request
             },
             runtime: runtime_options(),

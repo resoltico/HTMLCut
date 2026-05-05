@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: ARCHITECTURE
-updated: "2026-04-29"
+updated: "2026-05-05"
 route:
   keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
   questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
@@ -56,6 +56,7 @@ broader `htmlcut-core` API, and not a CLI command.
 `htmlcut-core` owns:
 
 - source loading for generic HTMLCut workflows
+- the bundled trust-root policy used by HTMLCut-owned HTTPS loading when `http-client` is enabled
 - HTML parsing
 - selector extraction
 - slice extraction
@@ -79,6 +80,7 @@ broader `htmlcut-core` API, and not a CLI command.
 `htmlcut_core::interop::v1` owns:
 
 - downstream plan validation for `htmlcut-v1`
+- the published selector, delimiter, output, diagnostic, and range language for `htmlcut-v1`
 - plan-to-core-request compilation for `htmlcut-v1`
 - typed interop result and error documents
 - stable JSON and digest helpers for the interop profile

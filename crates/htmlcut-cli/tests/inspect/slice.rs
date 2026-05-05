@@ -11,11 +11,11 @@ fn slice_json_report_has_core_parity() {
             .with_selection(SelectionSpec::All)
             .with_value(ValueSpec::Text),
     );
-    request.normalization = NormalizationOptions {
+    request.output = extraction_output();
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
-    request.output = extraction_output();
     let expected = extract(&request, &runtime_options());
     assert!(expected.ok);
 
@@ -95,11 +95,11 @@ fn inspect_slice_json_has_core_preview_parity() {
             .with_selection(SelectionSpec::All)
             .with_value(ValueSpec::Structured),
     );
-    request.normalization = NormalizationOptions {
+    request.output = extraction_output();
+    request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Preserve,
         rewrite_urls: false,
     };
-    request.output = extraction_output();
     let expected = preview_extraction(&request, &runtime_options());
     assert!(expected.ok);
 

@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::command_exec::repo_worktree_files;
+use crate::command_exec::{capture_command_output, repo_worktree_files};
 use crate::model::{CommandSpec, DynResult};
 use crate::{deny_check_command, fuzz::FUZZ_PACKAGE_NAME};
 
@@ -11,6 +11,7 @@ use super::semver::semver_release_type;
 
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
+    ensure_clean_semver_baseline(repo_root)?;
     let scripts = shell_script_paths(repo_root)?;
     let semver_release_type = semver_release_type(repo_root)?;
     let mut plan = Vec::new();
@@ -33,14 +34,15 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new("cargo", ["fmt", "--check"], false, false));
     plan.push(CommandSpec::new(
         "cargo",
-        ["test", "-p", "xtask", "--lib", "--locked"],
+        ["nextest", "run", "-p", "xtask", "--tests", "--locked"],
         false,
         false,
     ));
     plan.push(CommandSpec::new(
         "cargo",
         [
-            "test",
+            "nextest",
+            "run",
             "-p",
             "htmlcut-core",
             "--lib",
@@ -82,7 +84,8 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     plan.push(CommandSpec::new(
         "cargo",
         [
-            "test",
+            "nextest",
+            "run",
             "-p",
             "htmlcut-cli",
             "--lib",
@@ -155,20 +158,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
         false,
         true,
     ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "--workspace",
-            "--lib",
-            "--tests",
-            "--all-features",
-            "--locked",
-        ],
-        false,
-        true,
-    ));
+    plan.extend(full_suite_nextest_specs(repo_root)?);
     plan.push(CommandSpec::new(
         "cargo",
         ["test", "--workspace", "--doc", "--all-features", "--locked"],
@@ -244,6 +234,50 @@ pub fn is_semver_check_spec(spec: &CommandSpec) -> bool {
         && matches!(spec.args.first().map(String::as_str), Some("semver-checks"))
 }
 
+fn ensure_clean_semver_baseline(repo_root: &Path) -> DynResult<()> {
+    if !repo_root.join(".git").exists() {
+        return Ok(());
+    }
+
+    let baseline_path = semver_baseline_path(repo_root);
+    let baseline_arg = baseline_path
+        .strip_prefix(repo_root)
+        .unwrap_or(baseline_path.as_path())
+        .to_string_lossy()
+        .into_owned();
+    let status_spec = CommandSpec::new(
+        "git",
+        [
+            "status",
+            "--porcelain=1",
+            "--untracked-files=all",
+            "--",
+            baseline_arg.as_str(),
+        ],
+        true,
+        false,
+    );
+    let output = capture_command_output(repo_root, &status_spec)?;
+    if output.is_empty() {
+        return Ok(());
+    }
+
+    let mut dirty_entries = String::from_utf8(output)?
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    dirty_entries.sort();
+
+    Err(format!(
+        "semver baseline {} is dirty. Restore it to the last published snapshot before running `cargo xtask check`.\n{}",
+        baseline_arg,
+        dirty_entries.join("\n")
+    )
+    .into())
+}
+
 fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
     paths.iter().map(|path| path.to_string_lossy().into_owned())
 }
@@ -256,6 +290,97 @@ fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
     relative == Path::new("check.sh")
         || (relative.parent() == Some(Path::new("scripts"))
             && relative.extension() == Some(OsStr::new("sh")))
+}
+
+fn full_suite_nextest_specs(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
+    let mut specs = vec![
+        CommandSpec::new(
+            "cargo",
+            [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-tempdir",
+                "--lib",
+                "--tests",
+                "--locked",
+            ],
+            false,
+            true,
+        ),
+        CommandSpec::new(
+            "cargo",
+            [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--tests",
+                "--all-features",
+                "--locked",
+            ],
+            false,
+            true,
+        ),
+    ];
+    specs.extend(htmlcut_cli_nextest_specs(repo_root)?);
+    Ok(specs)
+}
+
+fn htmlcut_cli_nextest_specs(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
+    let cli_root = repo_root.join("crates").join("htmlcut-cli");
+    let mut specs = vec![CommandSpec::new(
+        "cargo",
+        [
+            "nextest",
+            "run",
+            "-p",
+            "htmlcut-cli",
+            "--lib",
+            "--all-features",
+            "--locked",
+        ],
+        false,
+        true,
+    )];
+
+    let tests_dir = cli_root.join("tests");
+    if !tests_dir.is_dir() {
+        return Ok(specs);
+    }
+
+    let mut test_targets = fs::read_dir(&tests_dir)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .filter_map(|path| {
+            path.file_stem()
+                .and_then(OsStr::to_str)
+                .map(ToOwned::to_owned)
+        })
+        .collect::<Vec<_>>();
+    test_targets.sort();
+
+    specs.extend(test_targets.into_iter().map(|target| {
+        CommandSpec::new(
+            "cargo",
+            [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--test",
+                target.as_str(),
+                "--all-features",
+                "--locked",
+            ],
+            false,
+            true,
+        )
+    }));
+
+    Ok(specs)
 }
 
 #[cfg(test)]

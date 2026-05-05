@@ -6,6 +6,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
         TEST_PLAN_DIGEST_SHA256,
         StrategyKind::CssSelector,
         SelectionMode::Single,
+        Output::text(),
         1,
     );
     let source = ResultSource {
@@ -19,6 +20,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
+            Output::text(),
             0,
         ),
         source.clone(),
@@ -33,6 +35,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
+            Output::text(),
             1,
         ),
         source.clone(),
@@ -99,6 +102,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
+            Output::text(),
             1,
         ),
         ResultSource {
@@ -128,6 +132,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::All,
+            Output::text(),
             2,
         ),
         ResultSource {
@@ -154,6 +159,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
+            Output::text(),
             1,
         ),
         ResultSource {
@@ -190,6 +196,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::All,
+            Output::text(),
             2,
         ),
         ResultSource {
@@ -218,6 +225,7 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
             TEST_PLAN_DIGEST_SHA256,
             StrategyKind::CssSelector,
             SelectionMode::Single,
+            Output::text(),
             1,
         ),
         ResultSource {
@@ -271,6 +279,7 @@ fn interop_validation_rejects_invalid_and_mismatched_digests_for_results_and_err
         TEST_PLAN_DIGEST_SHA256,
         StrategyKind::CssSelector,
         SelectionMode::Single,
+        Output::text(),
         1,
     );
 
@@ -369,6 +378,108 @@ fn interop_validation_rejects_invalid_and_mismatched_digests_for_results_and_err
         ContractError::InvalidIdentity {
             field: "interop_profile",
             ..
+        }
+    ));
+}
+
+#[test]
+fn interop_result_validation_covers_strategy_specific_payload_invariants() {
+    let source = ResultSource {
+        input_base_url: None,
+        effective_base_url: None,
+        document_title: None,
+    };
+
+    let mut selector_with_selected_html = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        source.clone(),
+        selector_selected_matches(),
+        Vec::new(),
+    )
+    .with_computed_digest()
+    .expect("digest");
+    selector_with_selected_html.selected_matches[0].selected_html_output =
+        Some("<article>Hello</article>".to_owned());
+    let selector_selected_html_error = selector_with_selected_html
+        .validate()
+        .expect_err("selector matches must not publish selected_html_output");
+    assert!(matches!(
+        selector_selected_html_error,
+        ContractError::UnexpectedSelectedHtmlOutput
+    ));
+
+    let mut delimiter_without_selected_html = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::DelimiterPair,
+            SelectionMode::Single,
+            Output::selected_html(),
+            1,
+        ),
+        source.clone(),
+        vec![delimiter_selected_match_with(1, 1)],
+        Vec::new(),
+    )
+    .with_computed_digest()
+    .expect("digest");
+    delimiter_without_selected_html.selected_matches[0].selected_html_output = None;
+    let delimiter_selected_html_error = delimiter_without_selected_html
+        .validate()
+        .expect_err("delimiter matches require selected_html_output");
+    assert!(matches!(
+        delimiter_selected_html_error,
+        ContractError::MissingSelectedHtmlOutput
+    ));
+
+    let mut non_object_structured = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::structured(),
+            1,
+        ),
+        source.clone(),
+        selector_selected_matches(),
+        Vec::new(),
+    );
+    non_object_structured.selected_matches[0].output_value = json!("not an object");
+    let structured_error = non_object_structured
+        .validate()
+        .expect_err("structured output must stay object-shaped");
+    assert!(matches!(
+        structured_error,
+        ContractError::NonObjectStructuredOutputValue
+    ));
+
+    let mut non_string_text = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        source,
+        selector_selected_matches(),
+        Vec::new(),
+    )
+    .with_computed_digest()
+    .expect("digest");
+    non_string_text.selected_matches[0].output_value = json!({"text": "Hello"});
+    let non_string_error = non_string_text
+        .validate()
+        .expect_err("non-structured output must stay string-shaped");
+    assert!(matches!(
+        non_string_error,
+        ContractError::NonStringOutputValue {
+            output_kind: OutputKind::Text
         }
     ));
 }

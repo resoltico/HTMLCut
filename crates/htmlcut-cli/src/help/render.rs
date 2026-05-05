@@ -73,25 +73,50 @@ pub(super) fn render_help_sections(sections: &[CliHelpSection]) -> String {
         .join("\n\n")
 }
 
+pub(super) fn render_root_guide_sections(sections: &[CliHelpSection]) -> String {
+    let rendered_sections = sections
+        .iter()
+        .filter(|section| !section.lines.is_empty())
+        .map(render_root_guide_section)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    format!("Guide:\n\n{rendered_sections}")
+}
+
 pub(super) fn render_help_section(section: &CliHelpSection) -> String {
-    let body = match section.style {
-        CliHelpSectionStyle::Plain => section.lines.join("\n"),
+    let body = render_section_body(section, "");
+
+    format!("{}:\n{}", section.title, body)
+}
+
+fn render_root_guide_section(section: &CliHelpSection) -> String {
+    let body = render_section_body(section, "    ");
+    format!("  {}:\n{}", section.title, body)
+}
+
+fn render_section_body(section: &CliHelpSection, indent: &str) -> String {
+    match section.style {
+        CliHelpSectionStyle::Plain => section
+            .lines
+            .iter()
+            .map(|line| format!("{indent}{line}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
         CliHelpSectionStyle::Bullets => section
             .lines
             .iter()
-            .map(|line| format!("- {line}"))
+            .map(|line| format!("{indent}- {line}"))
             .collect::<Vec<_>>()
             .join("\n"),
         CliHelpSectionStyle::Numbered => section
             .lines
             .iter()
             .enumerate()
-            .map(|(index, line)| format!("{}. {line}", index + 1))
+            .map(|(index, line)| format!("{indent}{}. {line}", index + 1))
             .collect::<Vec<_>>()
             .join("\n"),
-    };
-
-    format!("{}:\n{}", section.title, body)
+    }
 }
 
 pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> String {

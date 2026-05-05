@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "7.0.0"
+version: "8.0.0"
 domain: RELEASE
-updated: "2026-04-29"
+updated: "2026-05-02"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -183,10 +183,10 @@ gh release download vX.Y.Z \
   ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
   "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^HTMLCut X.Y.Z$"
   printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-links.json)"
-  [ -f ./article-links.json ]
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-link.request.json)"
+  [ -f ./article-link.request.json ]
   [ "${FIRST_OUTPUT}" = "../guide.html" ]
-  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select --request-file ./article-links.json)"
+  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select --request-file ./article-link.request.json)"
   [ "${REPLAY_OUTPUT}" = "${FIRST_OUTPUT}" ]
 )
 

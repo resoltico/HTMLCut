@@ -32,8 +32,9 @@ pub(crate) use self::inspection::source_inspection_report_command_for_tests;
 #[cfg(test)]
 pub(crate) use self::reports::{
     assert_cli_schema_catalog_for_tests, cli_schema_catalog_for_tests,
-    cli_schema_catalog_validation_errors_for_tests, render_condition_expression_for_tests,
-    schema_export_error_for_tests, schema_export_serialize_error_for_tests,
+    cli_schema_catalog_validation_errors_for_tests, cli_schema_descriptor_for_tests,
+    render_condition_expression_for_tests, schema_export_error_for_tests,
+    schema_export_serialize_error_for_tests,
 };
 pub(crate) use self::reports::{
     build_catalog_report, build_extraction_report, build_schema_report,

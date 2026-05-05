@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::num::NonZeroUsize;
 
 use schemars::JsonSchema;
@@ -6,13 +7,119 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::{SelectorQuery, SliceBoundary, SourceRequest};
-
 use super::super::stable_json::digest_stable_json;
 use super::shared::{
     ContractError, INTEROP_V1_PROFILE, PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION,
     validate_schema_identity,
 };
+
+macro_rules! non_empty_string_type {
+    ($name:ident, $error_variant:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(
+            Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
+        )]
+        #[serde(try_from = "String")]
+        #[schemars(with = "String")]
+        pub struct $name(String);
+
+        impl $name {
+            /// Validates and stores one non-empty value.
+            pub fn new(value: impl Into<String>) -> Result<Self, ContractError> {
+                let value = value.into();
+                if value.trim().is_empty() {
+                    return Err(ContractError::$error_variant);
+                }
+
+                Ok(Self(value))
+            }
+
+            /// Returns the stored text.
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = ContractError;
+
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                Self::new(value)
+            }
+        }
+    };
+}
+
+non_empty_string_type!(
+    CssSelectorText,
+    EmptyCssSelector,
+    "Validated CSS selector text owned by htmlcut-v1."
+);
+non_empty_string_type!(
+    DelimiterBoundaryText,
+    EmptyDelimiterBoundary,
+    "Validated delimiter boundary text owned by htmlcut-v1."
+);
+
+/// Validated attribute name owned by htmlcut-v1.
+#[derive(
+    Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+#[serde(try_from = "String")]
+#[schemars(with = "String")]
+pub struct OutputAttributeName(String);
+
+impl OutputAttributeName {
+    /// Validates and stores one attribute name.
+    pub fn new(value: impl Into<String>) -> Result<Self, ContractError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            return Err(ContractError::EmptyAttributeName);
+        }
+        if value.chars().any(char::is_whitespace) {
+            return Err(ContractError::AttributeNameContainsWhitespace);
+        }
+
+        Ok(Self(value))
+    }
+
+    /// Returns the stored attribute name.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for OutputAttributeName {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for OutputAttributeName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl TryFrom<String> for OutputAttributeName {
+    type Error = ContractError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
 
 /// Strategy family available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -59,14 +166,14 @@ pub enum PlanStrategy {
     /// Select candidates with a CSS selector.
     CssSelector {
         /// Non-empty CSS selector text.
-        selector: SelectorQuery,
+        selector: CssSelectorText,
     },
     /// Slice raw source text between two explicit boundaries.
     DelimiterPair {
         /// Non-empty start boundary.
-        start: SliceBoundary,
+        start: DelimiterBoundaryText,
         /// Non-empty end boundary.
-        end: SliceBoundary,
+        end: DelimiterBoundaryText,
         /// Literal or regex boundary semantics.
         mode: DelimiterMode,
         /// Whether the selected payload includes the matched start boundary.
@@ -81,14 +188,14 @@ pub enum PlanStrategy {
 
 impl PlanStrategy {
     /// Builds a CSS-selector plan strategy.
-    pub fn css_selector(selector: SelectorQuery) -> Self {
+    pub fn css_selector(selector: CssSelectorText) -> Self {
         Self::CssSelector { selector }
     }
 
     /// Builds a delimiter-pair plan strategy.
     pub fn delimiter_pair(
-        start: SliceBoundary,
-        end: SliceBoundary,
+        start: DelimiterBoundaryText,
+        end: DelimiterBoundaryText,
         mode: DelimiterMode,
         include_start: bool,
         include_end: bool,
@@ -196,27 +303,121 @@ impl Selection {
 pub enum OutputKind {
     /// Extract normalized or preserved text.
     Text,
-    /// Extract inner HTML.
+    /// Extract true inner HTML.
     InnerHtml,
     /// Extract outer HTML.
     OuterHtml,
+    /// Extract the exact selected slice fragment.
+    SelectedHtml,
+    /// Extract one named attribute.
+    Attribute,
+    /// Extract the full structured HTMLCut payload.
+    Structured,
+}
+
+impl OutputKind {
+    /// Returns the stable string form of this output kind.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::InnerHtml => "inner_html",
+            Self::OuterHtml => "outer_html",
+            Self::SelectedHtml => "selected_html",
+            Self::Attribute => "attribute",
+            Self::Structured => "structured",
+        }
+    }
+}
+
+impl fmt::Display for OutputKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }
 
 /// v1 output selection object.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct Output {
-    /// Requested output payload kind.
-    pub kind: OutputKind,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Output {
+    /// Extract normalized or preserved text.
+    Text,
+    /// Extract true inner HTML.
+    InnerHtml,
+    /// Extract outer HTML.
+    OuterHtml,
+    /// Extract the exact selected slice fragment.
+    SelectedHtml,
+    /// Extract one named attribute.
+    Attribute {
+        /// Attribute name to recover from the selected element or fragment root.
+        name: OutputAttributeName,
+    },
+    /// Extract the full structured HTMLCut payload.
+    Structured,
 }
 
 impl Output {
-    /// Builds one output selection.
-    pub const fn new(kind: OutputKind) -> Self {
-        Self { kind }
+    /// Builds a text output selection.
+    pub const fn text() -> Self {
+        Self::Text
+    }
+
+    /// Builds an inner-HTML output selection.
+    pub const fn inner_html() -> Self {
+        Self::InnerHtml
+    }
+
+    /// Builds an outer-HTML output selection.
+    pub const fn outer_html() -> Self {
+        Self::OuterHtml
+    }
+
+    /// Builds a selected-slice-HTML output selection.
+    pub const fn selected_html() -> Self {
+        Self::SelectedHtml
+    }
+
+    /// Builds an attribute output selection.
+    pub const fn attribute(name: OutputAttributeName) -> Self {
+        Self::Attribute { name }
+    }
+
+    /// Builds a structured output selection.
+    pub const fn structured() -> Self {
+        Self::Structured
+    }
+
+    /// Returns the stable output kind for this output contract.
+    pub const fn kind(&self) -> OutputKind {
+        match self {
+            Self::Text => OutputKind::Text,
+            Self::InnerHtml => OutputKind::InnerHtml,
+            Self::OuterHtml => OutputKind::OuterHtml,
+            Self::SelectedHtml => OutputKind::SelectedHtml,
+            Self::Attribute { .. } => OutputKind::Attribute,
+            Self::Structured => OutputKind::Structured,
+        }
+    }
+
+    pub(super) fn validate_for_strategy(
+        &self,
+        strategy_kind: StrategyKind,
+    ) -> Result<(), ContractError> {
+        if matches!(
+            (strategy_kind, self),
+            (StrategyKind::CssSelector, Self::SelectedHtml)
+        ) {
+            return Err(ContractError::UnsupportedOutputForStrategy {
+                strategy_kind,
+                output_kind: self.kind(),
+            });
+        }
+
+        Ok(())
     }
 }
 
-/// Whitespace normalization mode available in v1.
+/// Text-whitespace mode available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TextWhitespace {
@@ -226,17 +427,17 @@ pub enum TextWhitespace {
     Normalize,
 }
 
-/// v1 extraction-time normalization contract.
+/// v1 rendering contract.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct Normalization {
+pub struct Rendering {
     /// Whitespace handling for text generation.
     pub whitespace: TextWhitespace,
     /// Whether relative URLs should be rewritten against the effective base URL.
     pub rewrite_urls: bool,
 }
 
-impl Normalization {
-    /// Builds one normalization contract.
+impl Rendering {
+    /// Builds one rendering contract.
     pub const fn new(whitespace: TextWhitespace, rewrite_urls: bool) -> Self {
         Self {
             whitespace,
@@ -260,8 +461,8 @@ pub struct Plan {
     pub selection: Selection,
     /// Requested output payload.
     pub output: Output,
-    /// Extraction-time normalization.
-    pub normalization: Normalization,
+    /// Rendering policy for extracted values.
+    pub rendering: Rendering,
     /// Reserved extension object ignored by v1 consumers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<BTreeMap<String, Value>>,
@@ -273,7 +474,7 @@ impl Plan {
         strategy: PlanStrategy,
         selection: Selection,
         output: Output,
-        normalization: Normalization,
+        rendering: Rendering,
     ) -> Self {
         Self {
             schema_name: PLAN_SCHEMA_NAME.to_owned(),
@@ -282,7 +483,7 @@ impl Plan {
             strategy,
             selection,
             output,
-            normalization,
+            rendering,
             extensions: None,
         }
     }
@@ -297,7 +498,8 @@ impl Plan {
             &self.interop_profile,
             INTEROP_V1_PROFILE,
         )?;
-        self.strategy.validate()
+        self.strategy.validate()?;
+        self.output.validate_for_strategy(self.strategy.kind())
     }
 
     /// Serializes this plan with the stable JSON profile.
@@ -343,25 +545,5 @@ impl HtmlInput {
     pub fn with_input_base_url(mut self, input_base_url: Url) -> Self {
         self.input_base_url = Some(input_base_url);
         self
-    }
-
-    /// Builds the existing generic HTMLCut source request for this HTML input.
-    pub fn to_source_request(&self) -> SourceRequest {
-        let mut source = SourceRequest::memory(self.label.clone(), self.html.clone());
-        if let Some(base_url) = &self.input_base_url {
-            source = source.with_base_url(base_url.clone());
-        }
-
-        source
-    }
-
-    /// Consumes this HTML input and produces the generic HTMLCut source request.
-    pub fn into_source_request(self) -> SourceRequest {
-        let mut source = SourceRequest::memory(self.label, self.html);
-        if let Some(base_url) = self.input_base_url {
-            source = source.with_base_url(base_url);
-        }
-
-        source
     }
 }

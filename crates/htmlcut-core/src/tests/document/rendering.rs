@@ -59,6 +59,13 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         element_attributes(&meta, Some("https://example.com/base/"), true).get("content"),
         Some(&"0; url=next.html".to_owned())
     );
+    let disguised_refresh_meta =
+        parse_document_node("<meta data-http-equiv=\"refresh\" content=\"0; url=next.html\">");
+    let disguised_meta = select_first(&disguised_refresh_meta, "meta").expect("meta");
+    assert_eq!(
+        element_attributes(&disguised_meta, Some("https://example.com/base/"), true).get("content"),
+        Some(&"0; url=next.html".to_owned())
+    );
 
     let mut detached_document = parse_document_node("<article><p>Hello</p></article>");
     let detached_id = {
@@ -93,6 +100,207 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     assert!(semantic_rendered.contains("1. First"));
     assert!(semantic_rendered.contains("2. Hero"));
+    let heading_and_link_rendered = render_html_as_text(
+        "<article><h2>Coverage</h2><p><a href=\"https://example.com/guide\">Guide</a></p></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(
+        heading_and_link_rendered,
+        "## Coverage\n\nGuide [https://example.com/guide]"
+    );
+    let nested_list_rendered = render_html_as_text(
+        "<article><ol><li>Primary<ul><li>Nested</li></ul></li><li>Second</li></ol></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(nested_list_rendered, "1. Primary\n    - Nested\n2. Second");
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"https://example.com/guide\"></a></p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        ""
+    );
+    assert!(
+        render_html_as_text(
+            "<article><p><a></a></p></article>",
+            WhitespaceMode::Preserve
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"https://example.com/guide\">https://example.com/guide</a></p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "https://example.com/guide"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"#\">Comments</a></p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Comments"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"javascript:void(0)\">Share</a></p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Share"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"#history\">History</a></p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "History [#history]"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<main>\
+                <nav class=\"page-tools\"><a href=\"/edit\">Edit</a></nav>\
+                <div class=\"live-story-filter-tags\"><button>All</button><button>catch up</button></div>\
+                <div class=\"live-story__post-count\"><span>7 Posts</span></div>\
+                <div class=\"social-share_compact\">\
+                    <a class=\"social-share_compact__share\" href=\"mailto:?subject=Hello&amp;body=World\"><svg></svg></a>\
+                    <div class=\"social-share_compact__copied\">Link Copied!</div>\
+                </div>\
+                <div class=\"featured-video\" data-video-id=\"123\"><div class=\"video-player\"><a href=\"https://example.com/video\">Watch</a></div><div class=\"caption\"><h4>Video title</h4><p>Video caption.</p></div></div>\
+                <div class=\"mw-editsection-bracket\">[</div><div class=\"mw-editsection-bracket\">]</div>\
+                <article><h2>Story</h2><p>Body <a href=\"https://example.com/guide\">Guide</a></p></article>\
+                <section class=\"related-topics\"><h3>Related Topics</h3><a href=\"/other\">Other</a></section>\
+                <footer><h3>More from here</h3><a href=\"/other\">Other</a></footer>\
+             </main>",
+            WhitespaceMode::Preserve,
+        ),
+        "## Story\n\nBody Guide [https://example.com/guide]"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article>\
+                <header class=\"article-header\">\
+                    <div class=\"eyebrow\"><a href=\"/category\">Updates</a></div>\
+                    <h1>Primary Title</h1>\
+                    <div class=\"author-byline\">By Reporter</div>\
+                </header>\
+                <div class=\"notice\"><span class=\"flag\">NEW</span> playback available</div>\
+                <p>Body paragraph.</p>\
+                <p><a href=\"/background\"><strong>BACKGROUND READING FOR THIS TOPIC</strong></a></p>\
+                <div class=\"author-bio\"><p>Reporter bio.</p></div>\
+                <div class=\"catlinks\"><a href=\"/category\">Category</a></div>\
+            </article>",
+            WhitespaceMode::Preserve,
+        ),
+        "# Primary Title\n\nBody paragraph."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p><a href=\"/promo\"><strong>READ THE FULL TRANSCRIPT HERE</strong></a></p><p>Body paragraph.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Body paragraph."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><pre><a href=\"https://example.com/guide\">\nhttps://example.com/guide\n</a></pre></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "https://example.com/guide"
+    );
+    assert!(
+        render_html_as_text("<article><h2>   </h2></article>", WhitespaceMode::Preserve).is_empty()
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h2>Heading <span class=\"mw-editsection-bracket\">[</span><span class=\"mw-editsection-bracket\">]</span></h2></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "## Heading"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h2 class=\"editable-heading\">Heading</h2><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "## Heading\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h2 data-editable=\"headline\">Heading</h2><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "## Heading\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h1><div><div>Host Liability Insurance Program Summary</div></div></h1><div class=\"notice\"><span class=\"flag\">NEW</span> playback available</div><p>Body paragraph.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "# Host Liability Insurance Program Summary\n\nBody paragraph."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><div><div><p>Release Date:</p></div><div><p><b>4/14/2026</b></p></div></div><div><div><p>Version:</p></div><div><p><b>OS Build 20348.5020</b></p></div></div></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Release Date: 4/14/2026\n\nVersion: OS Build 20348.5020"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><table><tr><td><p><b>Change date</b></p></td><td><p><b>Change description</b></p></td></tr><tr><td><p>May 1, 2026</p></td><td><ul><li><p>Improvement added: <b>[Vulnerable driver blocklist]</b></p></li></ul></td></tr><tr><td><p>April 27, 2026</p></td><td><p>Corrected the known issue.</p></td></tr></table></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Change date    | Change description\nMay 1, 2026    | - Improvement added: [Vulnerable driver blocklist]\nApril 27, 2026 | Corrected the known issue."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><table><caption>Windows builds</caption><tr><th>Date</th><th>Build</th></tr><tr><td>April 14, 2026</td><td>20348.5020</td></tr></table></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Windows builds\nDate           | Build\nApril 14, 2026 | 20348.5020"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h3><button type=\"button\"><div aria-hidden=\"true\">Chevron</div><div>Windows Secure Boot certificate expiration</div></button></h3><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "### Windows Secure Boot certificate expiration\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><h3><button type=\"button\"><div>Windows Secure Boot certificate expiration</div></button></h3><p><b>Windows Secure Boot certificate expiration</b></p><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "### Windows Secure Boot certificate expiration\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><div class=\"image-ct inline\"><div class=\"m\"><img alt=\"Rudy Giuliani attending ceremony\" src=\"hero.jpg\"></div><div class=\"info\"><div class=\"caption\"><p>Photo caption.</p></div></div></div><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Body."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><div class=\"side-box plainlinks\"><div class=\"side-box-image\"><a href=\"https://example.com/file\"><img alt=\"Wiktionary logo\" src=\"logo.png\"></a></div><div class=\"side-box-text\">Look up <a href=\"https://example.com/help\">help</a> in the dictionary.</div></div><p>Body.</p></article>",
+            WhitespaceMode::Preserve,
+        ),
+        "Body."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<main><h1>Help</h1><p>Body.</p><div class=\"printfooter\" data-nosnippet=\"\">Retrieved from <a href=\"https://example.com/oldid\">old revision</a></div></main>",
+            WhitespaceMode::Preserve,
+        ),
+        "# Help\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<main><h1>April 14, 2026—KB5082142</h1><p>Body.</p><div class=\"ocArticleFooterSection articleFooterBridge\"><h3>Need more help?</h3><a href=\"https://example.com/support\">Contact support</a></div></main>",
+            WhitespaceMode::Preserve,
+        ),
+        "# April 14, 2026—KB5082142\n\nBody."
+    );
     assert_eq!(
         render_html_as_text(
             "<article><ol start=\"5\"><li>Five</li><li>Six</li></ol></article>",
@@ -131,6 +339,11 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(richer_rendered.contains("> Quote"));
     assert!(richer_rendered.contains("Term\n: Definition"));
     assert!(richer_rendered.contains("`cargo test`"));
+    let block_definition_rendered = render_html_as_text(
+        "<dl><dt>Term</dt><dd><p>Definition</p></dd></dl>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(block_definition_rendered, "Term\n: Definition");
     let collapsed_blockquote = render_html_as_text(
         "<blockquote><p>First</p><p></p><p></p><p>Second</p></blockquote>",
         WhitespaceMode::Preserve,
@@ -157,7 +370,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
 
     assert_eq!(
         apply_whitespace_mode(" Hello \n\n World ", WhitespaceMode::Normalize),
-        "Hello\n\nWorld"
+        " Hello\n\n World"
     );
     assert_eq!(
         apply_whitespace_mode("A\n\nB", WhitespaceMode::Normalize),
@@ -177,6 +390,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         resolve_url("https://openai.com", Some("https://example.com")),
         "https://openai.com"
     );
+    assert_eq!(resolve_url("   ", Some("https://example.com")), "   ");
     assert_eq!(resolve_url("guide.html", None), "guide.html");
     assert_eq!(resolve_url("guide.html", Some("not a url")), "guide.html");
     assert_eq!(
@@ -353,6 +567,48 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     assert!(
         rewritten_url_attributes.contains("content=\"0; url=https://example.com/docs/next.html\"")
+    );
+    let nested_only_list_rendered = render_html_as_text(
+        "<article><ul><li><ul><li>Nested</li></ul></li></ul></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(nested_only_list_rendered, "-\n    - Nested");
+    let multiline_list_rendered = render_html_as_text(
+        "<article><ul><li><p>First</p><p>Second</p></li></ul></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(multiline_list_rendered, "- First\n\n  Second");
+    let inline_semantics_list_rendered = render_html_as_text(
+        "<article><ul><li><strong>Accommodation:</strong> Accommodation requires consent to the <a href=\"https://www.airbnb.com/terms\">Airbnb Terms of Service</a>.</li></ul></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(
+        inline_semantics_list_rendered,
+        "- Accommodation: Accommodation requires consent to the Airbnb Terms of Service [https://www.airbnb.com/terms]."
+    );
+    let inline_link_list_rendered = render_html_as_text(
+        "<article><ul><li>By email: <a href=\"mailto:Central.Complaints@aon.co.uk\">Central.Complaints@aon.co.uk</a></li></ul></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(
+        inline_link_list_rendered,
+        "- By email: Central.Complaints@aon.co.uk [mailto:Central.Complaints@aon.co.uk]"
+    );
+    let inline_then_nested_list_rendered = render_html_as_text(
+        "<article><ul><li><strong>Recording:</strong> damages that arise from:<ol><li>One</li><li>Two</li></ol></li></ul></article>",
+        WhitespaceMode::Preserve,
+    );
+    assert_eq!(
+        inline_then_nested_list_rendered,
+        "- Recording: damages that arise from:\n    1. One\n    2. Two"
+    );
+    let rewritten_compact_refresh = rewrite_html_urls(
+        "<meta http-equiv=\"refresh\" content=\"0;url=next.html\">",
+        Some("https://example.com/docs/"),
+        false,
+    );
+    assert!(
+        rewritten_compact_refresh.contains("content=\"0;url=https://example.com/docs/next.html\"")
     );
     let rewritten_single_srcset = rewrite_html_urls(
         "<img srcset=\"plain.png\">",

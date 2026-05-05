@@ -3,11 +3,13 @@ mod result;
 mod shared;
 
 pub use plan::{
-    DelimiterMode, HtmlInput, Normalization, Output, OutputKind, Plan, PlanStrategy, RegexFlag,
-    Selection, SelectionMode, StrategyKind, TextWhitespace,
+    CssSelectorText, DelimiterBoundaryText, DelimiterMode, HtmlInput, Output, OutputAttributeName,
+    OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection, SelectionMode, StrategyKind,
+    TextWhitespace,
 };
 pub use result::{
-    ErrorCode, InteropError, InteropResult, ResultExecution, ResultSource, SelectedMatch,
+    ByteRange, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel,
+    InteropError, InteropResult, ResultExecution, ResultSource, SelectedMatch,
     SelectedMatchMetadata,
 };
 pub use shared::{

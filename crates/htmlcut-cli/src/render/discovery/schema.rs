@@ -58,7 +58,6 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
 fn render_schema_stability(stability: SchemaStability) -> &'static str {
     match stability {
         SchemaStability::Versioned => "versioned",
-        SchemaStability::Frozen => "frozen",
     }
 }
 

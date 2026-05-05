@@ -18,6 +18,25 @@ fn write_repo_scaffold(repo_root: &Path) {
         "[package]\nname = \"htmlcut-core\"\nversion = \"2.0.0\"\n",
     )
     .expect("write baseline Cargo.toml");
+    let cli_src_dir = repo_root.join("crates").join("htmlcut-cli").join("src");
+    let cli_tests_dir = repo_root.join("crates").join("htmlcut-cli").join("tests");
+    fs::create_dir_all(&cli_src_dir).expect("create htmlcut-cli src dir");
+    fs::create_dir_all(&cli_tests_dir).expect("create htmlcut-cli tests dir");
+    fs::write(cli_src_dir.join("main.rs"), "fn main() {}\n").expect("write htmlcut-cli main.rs");
+    for test_target in [
+        "discovery",
+        "help",
+        "inspect",
+        "parity",
+        "select",
+        "transport",
+    ] {
+        fs::write(
+            cli_tests_dir.join(format!("{test_target}.rs")),
+            "#[test]\nfn placeholder() {}\n",
+        )
+        .expect("write htmlcut-cli test target");
+    }
     write_empty_release_targets_script(repo_root);
 }
 
@@ -71,6 +90,7 @@ esac
 mod app;
 mod command_exec;
 mod coverage;
+mod devcontainer;
 mod docs;
 mod fuzz;
 mod host_tools;

@@ -1,6 +1,5 @@
 #[cfg(test)]
 use std::collections::BTreeSet;
-use std::sync::LazyLock;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -136,7 +135,8 @@ const SOURCE_INSPECTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
     CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
 )];
 
-const OPERATION_DESCRIPTORS: &[OperationDescriptor] = &[
+/// Canonical catalog of every stable HTMLCut operation ID.
+pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::DocumentParse,
         cli_surface: None,
@@ -223,10 +223,6 @@ const OPERATION_DESCRIPTORS: &[OperationDescriptor] = &[
     },
 ];
 
-/// Canonical catalog of every stable HTMLCut operation ID.
-pub static OPERATION_CATALOG: LazyLock<Vec<OperationDescriptor>> =
-    LazyLock::new(|| OPERATION_DESCRIPTORS.to_vec());
-
 impl std::fmt::Display for OperationId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
@@ -243,7 +239,7 @@ impl std::error::Error for OperationIdParseError {}
 
 /// Returns the canonical catalog of HTMLCut operations.
 pub fn operation_catalog() -> &'static [OperationDescriptor] {
-    OPERATION_CATALOG.as_slice()
+    OPERATION_CATALOG
 }
 
 /// Returns the descriptor for one canonical operation ID.

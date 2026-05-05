@@ -300,6 +300,23 @@ pub struct LinkInspection {
     pub path: String,
 }
 
+/// One suggested selector candidate for a likely content root.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ContentCandidateInspection {
+    /// Copy-pasteable CSS selector for this candidate.
+    pub selector: String,
+    /// Exact DOM path to the candidate element.
+    pub path: String,
+    /// Tag name for the candidate root.
+    pub tag_name: String,
+    /// Character count of normalized text inside the candidate subtree.
+    pub text_char_count: usize,
+    /// Number of headings inside the candidate subtree.
+    pub heading_count: usize,
+    /// Number of links inside the candidate subtree.
+    pub link_count: usize,
+}
+
 /// Document-level summary produced by `inspect source`.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct DocumentInspection {
@@ -310,7 +327,7 @@ pub struct DocumentInspection {
     pub root_tag: String,
     /// Number of parsed elements.
     pub element_count: usize,
-    /// Character count of normalized body text.
+    /// Character count of normalized document body text before content-root heuristics are applied.
     pub text_char_count: usize,
     /// Number of anchor elements.
     pub link_count: usize,
@@ -331,6 +348,10 @@ pub struct DocumentInspection {
     pub top_tags: Vec<InspectionCount>,
     /// Most frequent CSS classes.
     pub top_classes: Vec<InspectionCount>,
+    /// Suggested selectors for narrower extraction roots that minimize wrapper chrome.
+    pub extraction_candidates: Vec<ContentCandidateInspection>,
+    /// Suggested selectors for broader reading roots that preserve title and page context.
+    pub reading_candidates: Vec<ContentCandidateInspection>,
     /// Sampled headings up to the configured limit.
     pub headings: Vec<HeadingInspection>,
     /// Sampled links up to the configured limit.

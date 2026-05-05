@@ -2,8 +2,7 @@ mod support;
 use support::*;
 
 const README_FIXTURE_HTML: &str = "<html><head><title>HTMLCut README Fixture</title></head><body><main><article><h1>Guide</h1><div class=\"card\">Card alpha</div><div class=\"card\">Card beta</div><p><a class=\"more\" href=\"../guide.html\">Read more</a></p><pre>START::Regex slice payload::END</pre></article></main></body></html>";
-const README_TEXT_OUTPUT: &str =
-    "Guide\n\nCard alpha\n\nCard beta\n\nRead more\n\nSTART::Regex slice payload::END\n";
+const README_TEXT_OUTPUT: &str = "# Guide\n\nCard alpha\n\nCard beta\n\nRead more [../guide.html]\n\nSTART::Regex slice payload::END\n";
 
 #[test]
 fn getting_started_quick_start_commands_run_on_the_demo_page() {

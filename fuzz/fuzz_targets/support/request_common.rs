@@ -47,15 +47,15 @@ impl FuzzSelection {
 }
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
-pub struct FuzzNormalization {
+pub struct FuzzRendering {
     rewrite_urls: bool,
     normalize_whitespace: bool,
 }
 
-impl FuzzNormalization {
+impl FuzzRendering {
     pub fn apply_to_request(self, request: &mut ExtractionRequest) {
-        request.normalization.rewrite_urls = self.rewrite_urls;
-        request.normalization.whitespace = if self.normalize_whitespace {
+        request.output.rendering.rewrite_urls = self.rewrite_urls;
+        request.output.rendering.whitespace = if self.normalize_whitespace {
             WhitespaceMode::Normalize
         } else {
             WhitespaceMode::Preserve

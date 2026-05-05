@@ -10,17 +10,17 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         ExtractionStrategy::Selector
     );
     assert_eq!(
-        selector_request.normalization.whitespace,
+        selector_request.output.rendering.whitespace,
         WhitespaceMode::Normalize
     );
-    assert!(!selector_request.normalization.rewrite_urls);
+    assert!(!selector_request.output.rendering.rewrite_urls);
     let first_request = v1::compile_request_for_tests(
         &selector_source,
         &Plan::new(
-            PlanStrategy::css_selector(selector_query("article")),
+            PlanStrategy::css_selector(css_selector("article")),
             Selection::first(),
-            Output::new(OutputKind::Text),
-            Normalization::new(TextWhitespace::Normalize, false),
+            Output::text(),
+            Rendering::new(TextWhitespace::Normalize, false),
         ),
     );
     assert!(matches!(
@@ -36,10 +36,10 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         ExtractionStrategy::Slice
     );
     assert_eq!(
-        delimiter_request.normalization.whitespace,
+        delimiter_request.output.rendering.whitespace,
         WhitespaceMode::Preserve
     );
-    assert!(delimiter_request.normalization.rewrite_urls);
+    assert!(delimiter_request.output.rendering.rewrite_urls);
     assert_eq!(
         v1::compile_regex_flags_for_tests(&[
             RegexFlag::CaseInsensitive,
@@ -56,9 +56,9 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         path: Some("article:nth-of-type(1)".to_owned()),
         value_type: ValueType::Structured,
         value: json!({
-            "html": "<article>Hello</article>",
-            "text": "Hello",
-            "outerHtml": "<article>Hello</article>"
+            "textOutput": "Hello",
+            "innerHtmlOutput": "Hello",
+            "outerHtmlOutput": "<article>Hello</article>"
         }),
         html: Some("<article>Hello</article>".to_owned()),
         text: Some("Hello".to_owned()),
@@ -81,10 +81,11 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         path: None,
         value_type: ValueType::Structured,
         value: json!({
-            "html": "<article>Hello</article>",
-            "text": "Hello",
-            "innerHtml": "Hello",
-            "outerHtml": "<article>Hello</article>"
+            "textOutput": "Hello",
+            "selectedHtmlOutput": "<article>Hello</article>",
+            "innerHtmlOutput": "Hello",
+            "outerHtmlOutput": "<article>Hello</article>",
+            "attributes": {}
         }),
         html: Some("<article>Hello</article>".to_owned()),
         text: Some("Hello".to_owned()),
@@ -119,11 +120,11 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     )
     .expect("adapted text result");
     assert_eq!(adapted_text.selected_matches.len(), 1);
+    assert_eq!(adapted_text.output.kind(), OutputKind::Text);
     assert_eq!(
-        adapted_text.selected_matches[0].value_kind,
-        OutputKind::Text
+        adapted_text.selected_matches[0].output_value,
+        Value::String("Hello".to_owned())
     );
-    assert_eq!(adapted_text.selected_matches[0].value, "Hello");
     assert_eq!(
         adapted_text
             .source
@@ -136,36 +137,44 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     let adapted_inner = v1::adapt_successful_extraction_for_tests(
         &selector_source,
         &Plan::new(
-            PlanStrategy::css_selector(selector_query("article")),
+            PlanStrategy::css_selector(css_selector("article")),
             Selection::single(),
-            Output::new(OutputKind::InnerHtml),
-            Normalization::new(TextWhitespace::Normalize, false),
+            Output::inner_html(),
+            Rendering::new(TextWhitespace::Normalize, false),
         ),
         successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
     )
     .expect("adapted inner-html result");
-    assert!(adapted_inner.selected_matches[0].value.contains("<article"));
+    assert_eq!(
+        adapted_inner.selected_matches[0].output_value,
+        Value::String("Hello".to_owned())
+    );
 
     let adapted_outer = v1::adapt_successful_extraction_for_tests(
         &selector_source,
         &Plan::new(
-            PlanStrategy::css_selector(selector_query("article")),
+            PlanStrategy::css_selector(css_selector("article")),
             Selection::single(),
-            Output::new(OutputKind::OuterHtml),
-            Normalization::new(TextWhitespace::Normalize, false),
+            Output::outer_html(),
+            Rendering::new(TextWhitespace::Normalize, false),
         ),
         successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
     )
     .expect("adapted outer-html result");
-    assert!(adapted_outer.selected_matches[0].value.contains("<article"));
+    assert!(
+        adapted_outer.selected_matches[0]
+            .output_value
+            .as_str()
+            .is_some_and(|html| html.contains("<article"))
+    );
 
     let adapted_all = v1::adapt_successful_extraction_for_tests(
         &selector_source,
         &Plan::new(
-            PlanStrategy::css_selector(selector_query("article")),
+            PlanStrategy::css_selector(css_selector("article")),
             Selection::all(),
-            Output::new(OutputKind::Text),
-            Normalization::new(TextWhitespace::Normalize, false),
+            Output::text(),
+            Rendering::new(TextWhitespace::Normalize, false),
         ),
         successful_selector_extraction(
             vec![selector_core_match(1, 1, 2), selector_core_match(2, 2, 2)],
@@ -184,7 +193,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         &selector_plan(),
         successful_selector_extraction(
             vec![ExtractionMatch {
-                value: json!({"text": "Hello", "outerHtml": "<article>Hello</article>"}),
+                value: json!({"textOutput": "Hello", "outerHtmlOutput": "<article>Hello</article>"}),
                 ..selector_core_match(1, 1, 1)
             }],
             1,
@@ -196,7 +205,11 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         adapted_projection_error.error_code,
         ErrorCode::InternalError
     );
-    assert!(adapted_projection_error.message.contains("\"html\""));
+    assert!(
+        adapted_projection_error
+            .message
+            .contains("\"innerHtmlOutput\"")
+    );
 
     let adapted_url_error = v1::adapt_successful_extraction_for_tests(
         &selector_source,
@@ -258,15 +271,15 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
 
     let missing_field_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
-            value: json!({"html": "<article>Hello</article>", "text": "Hello"}),
+            value: json!({"textOutput": "Hello", "innerHtmlOutput": "Hello"}),
             ..selector_match.clone()
         },
         StrategyKind::CssSelector,
         &[],
     )
-    .expect_err("missing outerHtml");
+    .expect_err("missing outerHtmlOutput");
     assert_eq!(missing_field_error.error_code, ErrorCode::InternalError);
-    assert!(missing_field_error.message.contains("\"outerHtml\""));
+    assert!(missing_field_error.message.contains("\"outerHtmlOutput\""));
 
     let selector_zero_index_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
@@ -296,8 +309,8 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     let selector_missing_text_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
             value: json!({
-                "html": "<article>Hello</article>",
-                "outerHtml": "<article>Hello</article>"
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>"
             }),
             ..selector_match.clone()
         },
@@ -309,33 +322,43 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         selector_missing_text_error.error_code,
         ErrorCode::InternalError
     );
-    assert!(selector_missing_text_error.message.contains("\"text\""));
+    assert!(
+        selector_missing_text_error
+            .message
+            .contains("\"textOutput\"")
+    );
 
-    let delimiter_missing_html_error = v1::project_structured_match_for_tests(
+    let delimiter_missing_selected_html_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
             value: json!({
-                "text": "Hello",
-                "innerHtml": "Hello",
-                "outerHtml": "<article>Hello</article>"
+                "textOutput": "Hello",
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>",
+                "attributes": {}
             }),
             ..delimiter_match.clone()
         },
         StrategyKind::DelimiterPair,
         &[],
     )
-    .expect_err("missing delimiter html");
+    .expect_err("missing delimiter selectedHtmlOutput");
     assert_eq!(
-        delimiter_missing_html_error.error_code,
+        delimiter_missing_selected_html_error.error_code,
         ErrorCode::InternalError
     );
-    assert!(delimiter_missing_html_error.message.contains("\"html\""));
+    assert!(
+        delimiter_missing_selected_html_error
+            .message
+            .contains("\"selectedHtmlOutput\"")
+    );
 
     let delimiter_missing_text_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
             value: json!({
-                "html": "<article>Hello</article>",
-                "innerHtml": "Hello",
-                "outerHtml": "<article>Hello</article>"
+                "selectedHtmlOutput": "<article>Hello</article>",
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>",
+                "attributes": {}
             }),
             ..delimiter_match.clone()
         },
@@ -347,21 +370,26 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         delimiter_missing_text_error.error_code,
         ErrorCode::InternalError
     );
-    assert!(delimiter_missing_text_error.message.contains("\"text\""));
+    assert!(
+        delimiter_missing_text_error
+            .message
+            .contains("\"textOutput\"")
+    );
 
     let delimiter_missing_inner_html_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
             value: json!({
-                "html": "<article>Hello</article>",
-                "text": "Hello",
-                "outerHtml": "<article>Hello</article>"
+                "selectedHtmlOutput": "<article>Hello</article>",
+                "textOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>",
+                "attributes": {}
             }),
             ..delimiter_match.clone()
         },
         StrategyKind::DelimiterPair,
         &[],
     )
-    .expect_err("missing delimiter innerHtml");
+    .expect_err("missing delimiter innerHtmlOutput");
     assert_eq!(
         delimiter_missing_inner_html_error.error_code,
         ErrorCode::InternalError
@@ -369,22 +397,23 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     assert!(
         delimiter_missing_inner_html_error
             .message
-            .contains("\"innerHtml\"")
+            .contains("\"innerHtmlOutput\"")
     );
 
     let delimiter_missing_outer_html_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
             value: json!({
-                "html": "<article>Hello</article>",
-                "text": "Hello",
-                "innerHtml": "Hello"
+                "selectedHtmlOutput": "<article>Hello</article>",
+                "textOutput": "Hello",
+                "innerHtmlOutput": "Hello",
+                "attributes": {}
             }),
             ..delimiter_match.clone()
         },
         StrategyKind::DelimiterPair,
         &[],
     )
-    .expect_err("missing delimiter outerHtml");
+    .expect_err("missing delimiter outerHtmlOutput");
     assert_eq!(
         delimiter_missing_outer_html_error.error_code,
         ErrorCode::InternalError
@@ -392,7 +421,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     assert!(
         delimiter_missing_outer_html_error
             .message
-            .contains("\"outerHtml\"")
+            .contains("\"outerHtmlOutput\"")
     );
 
     let zero_index_error = v1::project_structured_match_for_tests(
@@ -458,6 +487,25 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     assert_eq!(ambiguous_error.error_code, ErrorCode::AmbiguousMatch);
     assert!(ambiguous_error.details.contains_key("core_details"));
 
+    let missing_attribute_core_error = v1::core_execution_error_for_tests(
+        &Plan::new(
+            PlanStrategy::css_selector(css_selector("article")),
+            Selection::single(),
+            Output::attribute(output_attribute_name("href")),
+            Rendering::new(TextWhitespace::Normalize, false),
+        ),
+        &[Diagnostic {
+            level: DiagnosticLevel::Error,
+            code: DiagnosticCode::MissingAttribute,
+            message: "missing attribute".to_owned(),
+            details: None,
+        }],
+    );
+    assert_eq!(
+        missing_attribute_core_error.error_code,
+        ErrorCode::MissingAttribute
+    );
+
     let invalid_request_error = v1::core_execution_error_for_tests(
         &selector_plan(),
         &[Diagnostic {
@@ -496,14 +544,16 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     );
     assert_eq!(fallback_error.error_code, ErrorCode::InternalError);
     assert_eq!(
-        fallback_error.error_digest_sha256,
+        fallback_error.plan_digest_sha256,
         "0000000000000000000000000000000000000000000000000000000000000000"
     );
+    assert_eq!(fallback_error.error_digest_sha256.len(), 64);
     assert!(
         fallback_error
             .message
             .contains("could not finalize its interop error payload")
     );
+    assert!(fallback_error.validate().is_ok());
 
     let plan_digest_error = v1::plan_digest_error_for_tests(
         &selector_plan(),
@@ -537,6 +587,109 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     assert_eq!(recoverable_error.schema_name, v1::ERROR_SCHEMA_NAME);
     assert_eq!(recoverable_error.error_code, ErrorCode::InternalError);
     assert_eq!(recoverable_error.error_digest_sha256.len(), 64);
+    assert!(recoverable_error.validate().is_ok());
+
+    let non_hex_digest_error = v1::internal_adapter_error_with_plan_digest_for_tests(
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "adapter failure",
+        BTreeMap::from([("field".to_owned(), Value::from("effective_base_url"))]),
+        Vec::new(),
+    );
+    assert_eq!(
+        non_hex_digest_error.plan_digest_sha256,
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    );
+
+    let delimiter_missing_attributes_error = v1::project_structured_match_for_tests(
+        &ExtractionMatch {
+            value: json!({
+                "selectedHtmlOutput": "<article>Hello</article>",
+                "textOutput": "Hello",
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>"
+            }),
+            ..delimiter_match.clone()
+        },
+        StrategyKind::DelimiterPair,
+        &[],
+    )
+    .expect_err("missing delimiter attributes");
+    assert_eq!(
+        delimiter_missing_attributes_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        delimiter_missing_attributes_error
+            .message
+            .contains("\"attributes\"")
+    );
+
+    let delimiter_non_string_attribute_error = v1::project_structured_match_for_tests(
+        &ExtractionMatch {
+            value: json!({
+                "selectedHtmlOutput": "<article>Hello</article>",
+                "textOutput": "Hello",
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>",
+                "attributes": {"data-id": 7}
+            }),
+            ..delimiter_match.clone()
+        },
+        StrategyKind::DelimiterPair,
+        &[],
+    )
+    .expect_err("non-string delimiter attribute");
+    assert_eq!(
+        delimiter_non_string_attribute_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        delimiter_non_string_attribute_error
+            .message
+            .contains("non-string attribute value")
+    );
+
+    let selected_html_projection_error = v1::adapt_successful_extraction_for_tests(
+        &selector_source,
+        &Plan::new(
+            PlanStrategy::css_selector(css_selector("article")),
+            Selection::single(),
+            Output::selected_html(),
+            Rendering::new(TextWhitespace::Normalize, false),
+        ),
+        successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
+    )
+    .expect_err("selector selected_html projection should fail");
+    assert_eq!(
+        selected_html_projection_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        selected_html_projection_error
+            .message
+            .contains("selected_html")
+    );
+
+    let missing_attribute_error = v1::adapt_successful_extraction_for_tests(
+        &selector_source,
+        &Plan::new(
+            PlanStrategy::css_selector(css_selector("article")),
+            Selection::single(),
+            Output::attribute(output_attribute_name("href")),
+            Rendering::new(TextWhitespace::Normalize, false),
+        ),
+        successful_selector_extraction(vec![selector_core_match(1, 1, 1)], 1, None),
+    )
+    .expect_err("missing selector attribute should map to an interop error");
+    assert_eq!(
+        missing_attribute_error.error_code,
+        ErrorCode::MissingAttribute
+    );
+    assert!(
+        missing_attribute_error
+            .message
+            .contains("missing attribute")
+    );
 
     let _typed: Box<InteropError> = Box::new(adapter_error);
 }

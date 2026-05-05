@@ -150,6 +150,14 @@ fn command_name_from_raw_args_recognizes_nested_commands() {
         "select"
     );
     assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "catalog".to_owned()]),
+        "catalog"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&["htmlcut".to_owned(), "schema".to_owned()]),
+        "schema"
+    );
+    assert_eq!(
         command_name_from_raw_args(&["htmlcut".to_owned(), "slice".to_owned()]),
         "slice"
     );

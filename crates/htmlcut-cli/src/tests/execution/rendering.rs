@@ -1,4 +1,40 @@
 use super::*;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+
+fn comparable_path_identity(path: &Path) -> (PathBuf, Vec<OsString>) {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().expect("current dir").join(path)
+    };
+
+    let mut existing_prefix = absolute.as_path();
+    let mut tail = Vec::new();
+    while !existing_prefix.exists() {
+        let component = existing_prefix
+            .file_name()
+            .expect("path without existing prefix should keep a file name")
+            .to_owned();
+        tail.push(component);
+        existing_prefix = existing_prefix
+            .parent()
+            .expect("absolute path should retain an existing ancestor");
+    }
+    tail.reverse();
+
+    let canonical_prefix = existing_prefix
+        .canonicalize()
+        .expect("canonical existing prefix");
+    (canonical_prefix, tail)
+}
+
+fn assert_same_path_identity(actual: &Path, expected: &Path) {
+    assert_eq!(
+        comparable_path_identity(actual),
+        comparable_path_identity(expected)
+    );
+}
 
 #[test]
 fn bundle_document_title_prefers_core_and_then_falls_back() {
@@ -69,6 +105,27 @@ fn render_output_helpers_cover_text_html_json_and_none() {
             .expect("stdout payload")
             .contains("<p>Hello</p>")
     );
+    assert_eq!(
+        render_extraction_output(&html_report, CliOutputMode::Text)
+            .expect("html rendered as text")
+            .expect("stdout payload"),
+        "Hello"
+    );
+    let mut broken_html_report = build_extraction_report(
+        "select",
+        fixture_result(
+            Value::String("<p>Hello</p>".to_owned()),
+            ValueType::OuterHtml,
+        ),
+        None,
+    );
+    broken_html_report.matches[0].text = None;
+    assert_eq!(
+        render_extraction_output(&broken_html_report, CliOutputMode::Text)
+            .expect_err("missing text projection should fail")
+            .code,
+        "CLI_TEXT_PROJECTION_MISSING"
+    );
     assert!(
         render_extraction_output(&text_report, CliOutputMode::Json)
             .expect("json output")
@@ -80,6 +137,76 @@ fn render_output_helpers_cover_text_html_json_and_none() {
             .expect("none output")
             .is_none()
     );
+
+    let tempdir = tempdir().expect("tempdir");
+    let existing_parent = tempdir.path().join("existing-parent");
+    fs::create_dir(&existing_parent).expect("existing parent");
+    let bundle = get_bundle_paths(&existing_parent.join("..").join("fresh bundle"));
+    let expected_bundle_dir = tempdir
+        .path()
+        .canonicalize()
+        .expect("canonical tempdir")
+        .join("fresh bundle");
+    assert_eq!(bundle.dir, expected_bundle_dir.display().to_string());
+    assert_eq!(
+        bundle.html,
+        expected_bundle_dir
+            .join("selection.html")
+            .display()
+            .to_string()
+    );
+}
+
+#[test]
+fn canonical_bundle_dir_covers_fallback_edges() {
+    let tempdir = tempdir().expect("tempdir");
+    let _guard = CurrentDirGuard::enter(tempdir.path());
+    let entered_dir = std::env::current_dir().expect("entered current dir");
+    assert_same_path_identity(
+        &canonical_bundle_dir_for_tests(Path::new("missing/child")),
+        &entered_dir.join("missing/child"),
+    );
+    assert_same_path_identity(
+        &canonical_bundle_dir_for_tests(Path::new("missing/..")),
+        &entered_dir,
+    );
+
+    #[cfg(unix)]
+    {
+        std::env::set_current_dir(Path::new("/")).expect("enter root");
+        assert_eq!(
+            canonical_bundle_dir_for_tests(Path::new("")),
+            std::path::PathBuf::from("/")
+        );
+    }
+}
+
+#[test]
+fn lexical_path_normalization_covers_relative_and_empty_edges() {
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new("./nested/../report")),
+        Path::new("report")
+    );
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new("../nested/../../report")),
+        Path::new("../../report")
+    );
+    assert_eq!(
+        lexical_normalize_path_for_tests(Path::new(".")),
+        Path::new(".")
+    );
+
+    #[cfg(unix)]
+    {
+        assert_eq!(
+            lexical_normalize_path_for_tests(Path::new("/")),
+            Path::new("/")
+        );
+        assert_eq!(
+            lexical_normalize_path_for_tests(Path::new("/../")),
+            Path::new("/")
+        );
+    }
 }
 
 #[test]
@@ -137,11 +264,38 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     ];
     let inspection_text = render_source_inspection_text(&inspection, DEFAULT_PREVIEW_CHARS);
     assert!(inspection_text.contains("Top tags: a (2)"));
+    assert!(inspection_text.contains("Suggested selectors for extraction:"));
+    assert!(inspection_text.contains("Suggested selectors for rendered text review:"));
     assert!(inspection_text.contains("Link previews:"));
     assert!(inspection_text.contains("Document <base href>: ../content/"));
     assert!(inspection_text.contains("Load trace:"));
     assert!(inspection_text.contains("head preflight fallback (405)"));
     assert!(inspection_text.contains("get succeeded (200)"));
+
+    let mut extraction_only = fixture_inspection();
+    extraction_only
+        .document
+        .as_mut()
+        .expect("document")
+        .reading_candidates
+        .clear();
+    let extraction_only_text =
+        render_source_inspection_text(&extraction_only, DEFAULT_PREVIEW_CHARS);
+    assert!(extraction_only_text.contains("Suggested selectors for extraction:"));
+    assert!(!extraction_only_text.contains("Suggested selectors for extraction and reading:"));
+    assert!(!extraction_only_text.contains("Suggested selectors for rendered text review:"));
+
+    let mut reading_only = fixture_inspection();
+    reading_only
+        .document
+        .as_mut()
+        .expect("document")
+        .extraction_candidates
+        .clear();
+    let reading_only_text = render_source_inspection_text(&reading_only, DEFAULT_PREVIEW_CHARS);
+    assert!(!reading_only_text.contains("Suggested selectors for extraction and reading:"));
+    assert!(!reading_only_text.contains("Suggested selectors for extraction:"));
+    assert!(reading_only_text.contains("Suggested selectors for rendered text review:"));
 
     let mut untitled = fixture_inspection();
     untitled.source.input_base_url = None;
@@ -151,6 +305,8 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     document.document_base_href = None;
     document.top_tags.clear();
     document.top_classes.clear();
+    document.extraction_candidates.clear();
+    document.reading_candidates.clear();
     document.headings.clear();
     document.links.clear();
     let untitled_text = render_source_inspection_text(&untitled, DEFAULT_PREVIEW_CHARS);
@@ -160,6 +316,8 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     assert!(!untitled_text.contains("Document <base href>:"));
     assert!(!untitled_text.contains("Top tags:"));
     assert!(!untitled_text.contains("Top classes:"));
+    assert!(!untitled_text.contains("Suggested selectors for extraction:"));
+    assert!(!untitled_text.contains("Suggested selectors for rendered text review:"));
     assert!(!untitled_text.contains("Headings:"));
     assert!(!untitled_text.contains("Link previews:"));
 }
@@ -229,6 +387,34 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
             .expect("wrapped html fragment")
             .contains("<section data-match-index=\"1\">")
     );
+    assert!(
+        !wrap_html_document(&wrapped)
+            .expect("wrapped html fragment")
+            .contains("<html lang=")
+    );
+    let mut language_tagged = build_extraction_report(
+        "select",
+        fixture_result(
+            Value::String("<p>Sveiki</p>".to_owned()),
+            ValueType::InnerHtml,
+        ),
+        None,
+    );
+    language_tagged.matches[0].html =
+        Some("<article lang=\"lv\"><p>Sveiki</p></article>".to_owned());
+    assert!(
+        wrap_html_document(&language_tagged)
+            .expect("language-aware wrapped html fragment")
+            .contains("<html lang=\"lv\">")
+    );
+    let structured_outer_html = build_extraction_report(
+        "select",
+        fixture_result(serde_json::json!({"kind":"html"}), ValueType::OuterHtml),
+        None,
+    );
+    let structured_outer_html_wrapped =
+        wrap_html_document(&structured_outer_html).expect("wrapped html document");
+    assert!(!structured_outer_html_wrapped.contains(" lang=\""));
     assert!(!looks_like_document("<section>Hello</section>"));
 }
 
@@ -550,7 +736,7 @@ fn typed_error_codes_render_and_compare_as_stable_strings() {
     assert_eq!(CliErrorCode::ALL.first(), Some(&CliErrorCode::ParseError));
     assert_eq!(
         CliErrorCode::ALL.last(),
-        Some(&CliErrorCode::BundleTextWriteFailed)
+        Some(&CliErrorCode::TextProjectionMissing)
     );
     assert_eq!(CliErrorCode::ParseError.as_str(), "CLI_PARSE_ERROR");
     assert_eq!(format!("{}", CliErrorCode::ParseError), "CLI_PARSE_ERROR");

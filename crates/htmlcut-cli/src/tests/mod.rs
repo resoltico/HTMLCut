@@ -7,8 +7,8 @@ use crate::execute::*;
 use crate::metadata::*;
 use crate::prepare::*;
 use crate::render::*;
+use clap::Parser;
 use clap::builder::TypedValueParser;
-use clap::{CommandFactory, Parser};
 use htmlcut_core::{
     AttributeName, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticCode, DiagnosticLevel, ExtractionDefinition,
@@ -16,9 +16,9 @@ use htmlcut_core::{
     PatternMode, SelectionSpec, SelectorQuery, SourceKind, SourceLoadAction, SourceLoadOutcome,
     SourceLoadStep, SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
     result::{
-        DelimiterPairMatchMetadata, DocumentInspection, ExtractionMatch, ExtractionMatchMetadata,
-        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
-        SelectorMatchMetadata,
+        ContentCandidateInspection, DelimiterPairMatchMetadata, DocumentInspection,
+        ExtractionMatch, ExtractionMatchMetadata, ExtractionStats, HeadingInspection,
+        InspectionCount, LinkInspection, Range, SelectorMatchMetadata,
     },
 };
 use htmlcut_tempdir::tempdir;
@@ -28,6 +28,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 fn run_vec(args: Vec<String>) -> (i32, String, String) {
     let mut stdout = Vec::new();
@@ -110,6 +111,34 @@ fn write_stdout_payload_for_tests(path: &Path, stdout_payload: &str) -> std::io:
     crate::execute::write_stdout_payload_for_tests(path, stdout_payload, create_fresh_write_mode())
 }
 
+fn cwd_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct CurrentDirGuard {
+    previous: PathBuf,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl CurrentDirGuard {
+    fn enter(path: &Path) -> Self {
+        let lock = cwd_lock().lock().expect("current dir lock");
+        let previous = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(path).expect("set current dir");
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        std::env::set_current_dir(&self.previous).expect("restore current dir");
+    }
+}
+
 #[derive(Default)]
 struct BrokenPipeWriter;
 
@@ -182,7 +211,7 @@ fn render_long_help(command: &mut clap::Command) -> String {
     command
         .write_long_help(&mut buffer)
         .expect("render long help");
-    String::from_utf8(buffer).expect("help utf8")
+    crate::help::normalize_help_copy_for_tests(&String::from_utf8(buffer).expect("help utf8"))
 }
 
 fn parameter_allowed_values(
@@ -428,6 +457,22 @@ fn fixture_inspection() -> SourceInspectionCommandReport {
             top_classes: vec![InspectionCount {
                 name: "card".to_owned(),
                 count: 2,
+            }],
+            extraction_candidates: vec![ContentCandidateInspection {
+                selector: "article.story.card".to_owned(),
+                path: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > article:nth-of-type(1)".to_owned(),
+                tag_name: "article".to_owned(),
+                text_char_count: 24,
+                heading_count: 1,
+                link_count: 1,
+            }],
+            reading_candidates: vec![ContentCandidateInspection {
+                selector: "main.content".to_owned(),
+                path: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1)".to_owned(),
+                tag_name: "main".to_owned(),
+                text_char_count: 24,
+                heading_count: 1,
+                link_count: 2,
             }],
             headings: vec![HeadingInspection {
                 level: 1,

@@ -5,7 +5,7 @@ mod commands;
 mod outcomes;
 mod raw_args;
 
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use clap::{Parser, error::ErrorKind};
 
 pub(crate) use self::cli_io::{output_file_notice, write_outcome, write_request_definition};
 #[cfg(test)]
@@ -48,9 +48,11 @@ where
 {
     let raw_args: Vec<String> = args.into_iter().collect();
     if raw_args.len() <= 1 {
-        let mut command = Cli::command();
-        command.write_long_help(stdout)?;
-        writeln!(stdout)?;
+        let mut command = crate::command();
+        let mut buffer = Vec::new();
+        command.write_long_help(&mut buffer)?;
+        let rendered = String::from_utf8(buffer).expect("clap help must remain UTF-8");
+        writeln!(stdout, "{}", crate::help::normalize_help_copy(&rendered))?;
         return Ok(0);
     }
 
@@ -64,7 +66,11 @@ where
         Ok(args) => args,
         Err(error) => {
             if error.kind() == ErrorKind::DisplayHelp {
-                write!(stdout, "{error}")?;
+                write!(
+                    stdout,
+                    "{}",
+                    crate::help::normalize_help_copy(&error.to_string())
+                )?;
                 return Ok(0);
             }
 

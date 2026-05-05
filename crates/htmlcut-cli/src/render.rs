@@ -1,11 +1,13 @@
 #[cfg(test)]
 use std::cell::Cell;
 use std::path::Path;
+use std::sync::LazyLock;
 
 mod discovery;
 mod inspection;
 
 use htmlcut_core::{ValueType, result::ExtractionMatch};
+use scraper::{Html, Selector};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -18,6 +20,13 @@ use crate::model::{BundlePaths, CliErrorCode, ExtractionCommandReport};
 thread_local! {
     static JSON_RENDER_FAILURE_OVERRIDE: Cell<bool> = const { Cell::new(false) };
 }
+
+static HTML_LANG_SELECTOR: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse("html[lang]").expect("html lang selector"));
+static BODY_CHILD_LANG_SELECTOR: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse("body > [lang]").expect("body child lang selector"));
+static ANY_LANG_SELECTOR: LazyLock<Selector> =
+    LazyLock::new(|| Selector::parse("[lang]").expect("lang selector"));
 
 #[cfg(test)]
 pub(crate) use self::discovery::render_catalog_surface;
@@ -35,7 +44,7 @@ pub(crate) use self::inspection::{
 };
 
 pub(crate) fn get_bundle_paths(dir: &Path) -> BundlePaths {
-    let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let dir = canonical_bundle_dir(dir);
     BundlePaths {
         dir: dir.to_string_lossy().into_owned(),
         html: dir.join("selection.html").to_string_lossy().into_owned(),
@@ -122,6 +131,18 @@ pub(crate) fn render_html_payload(report: &ExtractionCommandReport) -> Result<St
 }
 
 pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> Result<String, CliError> {
+    if matched.value_type == ValueType::InnerHtml || matched.value_type == ValueType::OuterHtml {
+        return matched.text.clone().ok_or_else(|| {
+            internal_error(
+                CliErrorCode::TextProjectionMissing,
+                format!(
+                    "HTML-valued match {} is missing its rendered text projection.",
+                    matched.index
+                ),
+            )
+        });
+    }
+
     if let Value::String(text) = &matched.value {
         return Ok(text.clone());
     }
@@ -166,17 +187,17 @@ pub(crate) fn wrap_html_document(report: &ExtractionCommandReport) -> Result<Str
         })
         .collect::<Result<Vec<_>, _>>()?
         .join("\n\n");
+    let lang_attribute = bundle_html_lang_attribute(report);
 
     Ok(format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>{}</title>\n  <style>\n    body {{ font-family: ui-serif, Georgia, serif; margin: 2rem auto; max-width: 72rem; padding: 0 1.25rem 3rem; line-height: 1.6; }}\n    section + section {{ border-top: 1px solid #d6d6d6; margin-top: 2rem; padding-top: 2rem; }}\n  </style>\n</head>\n<body>\n{}\n</body>\n</html>\n",
+        "<!DOCTYPE html>\n<html{lang_attribute}>\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>{}</title>\n  <style>\n    body {{ font-family: ui-serif, Georgia, serif; margin: 2rem auto; max-width: 72rem; padding: 0 1.25rem 3rem; line-height: 1.6; }}\n    section + section {{ border-top: 1px solid #d6d6d6; margin-top: 2rem; padding-top: 2rem; }}\n  </style>\n</head>\n<body>\n{}\n</body>\n</html>\n",
         escape_html(&bundle_document_title(report)),
         body
     ))
 }
 
 pub(crate) fn looks_like_document(fragment: &str) -> bool {
-    let trimmed = fragment.trim_start().to_ascii_lowercase();
-    trimmed.starts_with("<!doctype") || trimmed.starts_with("<html")
+    htmlcut_core::looks_like_html_document(fragment)
 }
 
 pub(crate) fn escape_html(text: &str) -> String {
@@ -221,6 +242,173 @@ fn render_pretty_json<T: Serialize>(value: &T) -> Result<String, serde_json::Err
     }
 
     serde_json::to_string_pretty(value)
+}
+
+fn canonical_bundle_dir(dir: &Path) -> std::path::PathBuf {
+    if let Ok(canonical) = dir.canonicalize() {
+        return canonical;
+    }
+
+    let absolute = if dir.is_absolute() {
+        dir.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join(dir)
+    };
+    let Some(parent) = absolute.parent() else {
+        return absolute;
+    };
+    let Some(name) = absolute.file_name() else {
+        return lexical_normalize_path(absolute);
+    };
+
+    lexical_normalize_path(match parent.canonicalize() {
+        Ok(canonical_parent) => canonical_parent.join(name),
+        Err(_) => absolute,
+    })
+}
+
+#[cfg(windows)]
+fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let is_absolute = path.is_absolute();
+    let mut prefix = None;
+    let mut has_root = false;
+    let mut segments = Vec::new();
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(value) => prefix = Some(value.as_os_str().to_owned()),
+            Component::RootDir => has_root = true,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let can_pop_normal = segments
+                    .last()
+                    .map(|segment: &std::ffi::OsString| segment != "..")
+                    .unwrap_or(false);
+                if can_pop_normal {
+                    segments.pop();
+                } else if !is_absolute {
+                    segments.push("..".into());
+                }
+            }
+            Component::Normal(part) => segments.push(part.to_owned()),
+        }
+    }
+
+    let mut normalized = std::path::PathBuf::new();
+    if let Some(prefix) = prefix {
+        normalized.push(prefix);
+    }
+    if has_root {
+        normalized.push(std::path::MAIN_SEPARATOR.to_string());
+    }
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    if normalized.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        normalized
+    }
+}
+
+#[cfg(not(windows))]
+fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let is_absolute = path.is_absolute();
+    let mut segments = Vec::new();
+
+    for segment in path.as_os_str().as_bytes().split(|byte| *byte == b'/') {
+        match segment {
+            b"" | b"." => {}
+            b".." => {
+                let can_pop_normal = segments
+                    .last()
+                    .map(|existing: &std::ffi::OsString| existing != "..")
+                    .unwrap_or(false);
+                if can_pop_normal {
+                    segments.pop();
+                } else if !is_absolute {
+                    segments.push("..".into());
+                }
+            }
+            part => segments.push(OsStr::from_bytes(part).to_owned()),
+        }
+    }
+
+    let mut normalized = if is_absolute {
+        std::path::PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+    } else {
+        std::path::PathBuf::new()
+    };
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    if normalized.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        normalized
+    }
+}
+
+fn bundle_html_lang_attribute(report: &ExtractionCommandReport) -> String {
+    detect_bundle_language(report)
+        .map(|language| format!(" lang=\"{}\"", escape_html(&language)))
+        .unwrap_or_default()
+}
+
+fn detect_bundle_language(report: &ExtractionCommandReport) -> Option<String> {
+    report.matches.iter().find_map(match_language)
+}
+
+fn match_language(matched: &ExtractionMatch) -> Option<String> {
+    matched
+        .html
+        .as_deref()
+        .and_then(detect_html_language)
+        .or_else(|| {
+            (matched.value_type == ValueType::InnerHtml
+                || matched.value_type == ValueType::OuterHtml)
+                .then(|| match &matched.value {
+                    Value::String(fragment) => detect_html_language(fragment),
+                    _ => None,
+                })
+                .flatten()
+        })
+}
+
+fn detect_html_language(fragment: &str) -> Option<String> {
+    let document = Html::parse_document(fragment);
+
+    lang_from_selector(&document, &HTML_LANG_SELECTOR)
+        .or_else(|| lang_from_selector(&document, &BODY_CHILD_LANG_SELECTOR))
+        .or_else(|| lang_from_selector(&document, &ANY_LANG_SELECTOR))
+}
+
+fn lang_from_selector(document: &Html, selector: &Selector) -> Option<String> {
+    document
+        .select(selector)
+        .find_map(|element| element.value().attr("lang"))
+        .map(str::trim)
+        .filter(|language| !language.is_empty())
+        .map(str::to_owned)
+}
+
+#[cfg(test)]
+pub(crate) fn canonical_bundle_dir_for_tests(dir: &Path) -> std::path::PathBuf {
+    canonical_bundle_dir(dir)
+}
+
+#[cfg(test)]
+pub(crate) fn lexical_normalize_path_for_tests(path: &Path) -> std::path::PathBuf {
+    lexical_normalize_path(path.to_path_buf())
 }
 
 #[cfg(test)]

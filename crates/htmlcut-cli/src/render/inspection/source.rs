@@ -66,7 +66,7 @@ pub(crate) fn render_source_inspection_text(
         }
     }
     lines.push(format!(
-        "Elements: {} | Text chars: {} | Links: {} | Images: {} | Forms: {} | Tables: {}",
+        "Elements: {} | Body text chars: {} | Links: {} | Images: {} | Forms: {} | Tables: {}",
         document.element_count,
         document.text_char_count,
         document.link_count,
@@ -85,6 +85,48 @@ pub(crate) fn render_source_inspection_text(
             "Top classes: {}",
             render_count_list(&document.top_classes)
         ));
+    }
+    if document.extraction_candidates == document.reading_candidates {
+        if !document.extraction_candidates.is_empty() {
+            lines.push("Suggested selectors for extraction and reading:".to_owned());
+            lines.extend(document.extraction_candidates.iter().map(|candidate| {
+                format!(
+                    "- {} [{}] | {} chars | {} headings | {} links",
+                    candidate.selector,
+                    candidate.path,
+                    candidate.text_char_count,
+                    candidate.heading_count,
+                    candidate.link_count
+                )
+            }));
+        }
+    } else {
+        if !document.extraction_candidates.is_empty() {
+            lines.push("Suggested selectors for extraction:".to_owned());
+            lines.extend(document.extraction_candidates.iter().map(|candidate| {
+                format!(
+                    "- {} [{}] | {} chars | {} headings | {} links",
+                    candidate.selector,
+                    candidate.path,
+                    candidate.text_char_count,
+                    candidate.heading_count,
+                    candidate.link_count
+                )
+            }));
+        }
+        if !document.reading_candidates.is_empty() {
+            lines.push("Suggested selectors for rendered text review:".to_owned());
+            lines.extend(document.reading_candidates.iter().map(|candidate| {
+                format!(
+                    "- {} [{}] | {} chars | {} headings | {} links",
+                    candidate.selector,
+                    candidate.path,
+                    candidate.text_char_count,
+                    candidate.heading_count,
+                    candidate.link_count
+                )
+            }));
+        }
     }
     if !document.headings.is_empty() {
         lines.push("Headings:".to_owned());
