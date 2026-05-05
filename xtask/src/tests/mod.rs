@@ -90,6 +90,7 @@ esac
 mod app;
 mod command_exec;
 mod coverage;
+mod devcontainer;
 mod docs;
 mod fuzz;
 mod host_tools;
