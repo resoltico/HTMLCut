@@ -331,6 +331,7 @@ fn check_plan_rejects_dirty_semver_baseline() {
         .expect("baseline relative to repo root")
         .to_string_lossy()
         .into_owned();
+    let expected_message = format!("semver baseline {} is dirty", baseline_arg);
 
     let error = crate::command_exec::with_capture_command_output_override(
         move |_, spec| {
@@ -349,7 +350,7 @@ fn check_plan_rejects_dirty_semver_baseline() {
     );
 
     let message = error.to_string();
-    assert!(message.contains("semver baseline semver-baseline/htmlcut-core is dirty"));
+    assert!(message.contains(&expected_message));
     assert!(message.contains("src/contracts/results.rs"));
 }
 
