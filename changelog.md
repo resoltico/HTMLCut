@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   safe Git directory before running `./check.sh`, so the non-root contributor container can
   complete the full maintainer gate in CI instead of failing on read-only target paths or Git
   ownership checks.
+- CLI tests that exercise parentless output paths and bundle-path canonicalization now serialize
+  working-directory changes through one shared guard and stage those writes inside tempdirs, so
+  the contributor devcontainer gate no longer depends on the repository root being writable.
 - `cargo xtask check` now fans the full Rust test gate out by package and discovered CLI test
   targets instead of invoking one workspace-wide `cargo nextest` inventory pass that can stall
   late in the maintainer gate on macOS.

@@ -28,6 +28,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 fn run_vec(args: Vec<String>) -> (i32, String, String) {
     let mut stdout = Vec::new();
@@ -108,6 +109,34 @@ fn write_request_definition(
 
 fn write_stdout_payload_for_tests(path: &Path, stdout_payload: &str) -> std::io::Result<()> {
     crate::execute::write_stdout_payload_for_tests(path, stdout_payload, create_fresh_write_mode())
+}
+
+fn cwd_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct CurrentDirGuard {
+    previous: PathBuf,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl CurrentDirGuard {
+    fn enter(path: &Path) -> Self {
+        let lock = cwd_lock().lock().expect("current dir lock");
+        let previous = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(path).expect("set current dir");
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        std::env::set_current_dir(&self.previous).expect("restore current dir");
+    }
 }
 
 #[derive(Default)]

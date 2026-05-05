@@ -159,19 +159,8 @@ fn render_output_helpers_cover_text_html_json_and_none() {
 
 #[test]
 fn canonical_bundle_dir_covers_fallback_edges() {
-    struct CurrentDirGuard(std::path::PathBuf);
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            std::env::set_current_dir(&self.0).expect("restore current dir");
-        }
-    }
-
-    let original_dir = std::env::current_dir().expect("current dir");
-    let _guard = CurrentDirGuard(original_dir);
-
     let tempdir = tempdir().expect("tempdir");
-    std::env::set_current_dir(tempdir.path()).expect("enter tempdir");
+    let _guard = CurrentDirGuard::enter(tempdir.path());
     let entered_dir = std::env::current_dir().expect("entered current dir");
     assert_same_path_identity(
         &canonical_bundle_dir_for_tests(Path::new("missing/child")),

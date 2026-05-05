@@ -93,6 +93,7 @@ fn request_file_output_helpers_cover_direct_and_failing_writes() {
 "
     );
 
+    let _guard = CurrentDirGuard::enter(fixture.tempdir.path());
     let relative_output =
         PathBuf::from(format!(".htmlcut-write-payload-{}.txt", std::process::id()));
     write_stdout_payload_for_tests(&relative_output, "Hello")
