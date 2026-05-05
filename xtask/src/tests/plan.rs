@@ -326,9 +326,14 @@ fn check_plan_rejects_dirty_semver_baseline() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());
     fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    let baseline_arg = semver_baseline_path(repo_root.path())
+        .strip_prefix(repo_root.path())
+        .expect("baseline relative to repo root")
+        .to_string_lossy()
+        .into_owned();
 
     let error = crate::command_exec::with_capture_command_output_override(
-        |_, spec| {
+        move |_, spec| {
             (spec.program == std::path::Path::new("git")
                 && spec.args
                     == [
@@ -336,7 +341,7 @@ fn check_plan_rejects_dirty_semver_baseline() {
                         "--porcelain=1",
                         "--untracked-files=all",
                         "--",
-                        "semver-baseline/htmlcut-core",
+                        baseline_arg.as_str(),
                     ])
             .then(|| Ok(b" M semver-baseline/htmlcut-core/src/contracts/results.rs\n".to_vec()))
         },
@@ -353,9 +358,14 @@ fn check_plan_accepts_a_clean_semver_baseline() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());
     fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    let baseline_arg = semver_baseline_path(repo_root.path())
+        .strip_prefix(repo_root.path())
+        .expect("baseline relative to repo root")
+        .to_string_lossy()
+        .into_owned();
 
     let plan = crate::command_exec::with_capture_command_output_override(
-        |_, spec| {
+        move |_, spec| {
             if spec.program != std::path::Path::new("git") {
                 return None;
             }
@@ -365,7 +375,7 @@ fn check_plan_accepts_a_clean_semver_baseline() {
                     "--porcelain=1",
                     "--untracked-files=all",
                     "--",
-                    "semver-baseline/htmlcut-core",
+                    baseline_arg.as_str(),
                 ]
             {
                 return Some(Ok(Vec::new()));
