@@ -68,6 +68,11 @@ gh pr close <N> --comment "Superseded or intentionally rejected during release h
   change on `main` and then land or replace the Dependabot PR. Do not leave a green but
   unattended Dependabot PR parked indefinitely just because the release itself already shipped.
 
+- If multiple open Dependabot PRs overlap the same write set and merging one would immediately put
+  the others behind, prefer one maintainer-owned consolidation on `main` that absorbs the wanted
+  updates together. After that change lands, close each superseded Dependabot PR explicitly and
+  delete its branch with a comment that names the replacing `main` commit or change path.
+
 - Never retag, amend, or move the just-published release tag to absorb a Dependabot change. The
   published release remains immutable. Dependabot resolution is post-release `main` hygiene.
 
