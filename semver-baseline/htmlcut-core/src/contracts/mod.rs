@@ -17,11 +17,11 @@ pub(crate) use constants::{
     default_max_bytes, default_spec_version, default_true,
 };
 pub use request::{
-    AttributeName, ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
-    ExtractionStrategy, FetchPreflightMode, InspectionOptions, OutputOptions, PatternMode,
-    RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-    SlicePatternSpec, SliceSpec, SourceInput, SourceKind, SourceRequest, ValueSpec, ValueType,
-    WhitespaceMode,
+    AttributeName, BoundaryRetention, ContractValueError, ExtractionDefinition, ExtractionRequest,
+    ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs,
+    HttpUrl, InspectionOptions, MaxBytes, OutputOptions, PatternMode, RenderingOptions,
+    RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec,
+    SourceInput, SourceKind, SourceRequest, TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
 };
 pub use results::{
     ContentCandidateInspection, DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel,

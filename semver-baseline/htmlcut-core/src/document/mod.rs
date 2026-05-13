@@ -27,7 +27,7 @@ pub(crate) use signals::{
 pub(crate) use summary::{build_preview, extract_document_title, heading_level, summarize_counts};
 #[cfg(test)]
 pub(crate) use urls::{
-    attribute_supports_url_rewrite, rewrite_srcset_for_tests,
+    attribute_supports_url_rewrite, rewrite_css_urls_for_tests, rewrite_srcset_for_tests,
     rewrite_urls_in_document_with_node_ids_for_tests,
 };
 pub(crate) use urls::{

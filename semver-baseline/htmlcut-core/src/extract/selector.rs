@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use scraper::{ElementRef, Selector};
 use serde_json::{Value, json};
 
@@ -68,21 +70,19 @@ pub(crate) fn run_validated_selector_extraction(
 
     let candidates: Vec<ElementRef<'_>> = document.select(parsed_selector).collect();
     let mut rewritten_document = None;
-    let rewritten_candidates = if request.output.rendering.rewrite_urls {
-        effective_base_url.as_deref().map(|base_url| {
-            let mut rewritten = document.clone();
-            rewrite_urls_in_document(&mut rewritten, base_url);
-            rewritten_document = Some(rewritten);
-            let rewritten_candidates = rewritten_document
-                .as_ref()
-                .map(|rewritten| rewritten.select(parsed_selector).collect::<Vec<_>>())
-                .unwrap_or_default();
-            debug_assert_eq!(rewritten_candidates.len(), candidates.len());
-            rewritten_candidates
-        })
-    } else {
-        None
-    };
+    if request.output.rendering.rewrite_urls
+        && let Some(base_url) = effective_base_url.as_deref()
+    {
+        let mut rewritten = document.clone();
+        rewrite_urls_in_document(&mut rewritten, base_url);
+        rewritten_document = Some(rewritten);
+    }
+    let mut text_projection_document = None;
+    if let Some(base_url) = effective_base_url.as_deref() {
+        let mut text_projection = document.clone();
+        rewrite_urls_in_document(&mut text_projection, base_url);
+        text_projection_document = Some(text_projection);
+    }
     let candidate_count = candidates.len();
     let (selected, selection_diagnostics) =
         select_candidates(&candidates, request.extraction.selection());
@@ -91,13 +91,20 @@ pub(crate) fn run_validated_selector_extraction(
     let match_count = selected.len();
 
     for (position, selected_candidate) in selected.iter().enumerate() {
-        let rendered_candidate = rewritten_candidates
+        let rendered_candidate = rewritten_document
             .as_ref()
-            .and_then(|rewritten| rewritten.get(selected_candidate.candidate_index - 1))
-            .unwrap_or(&selected_candidate.candidate);
+            .and_then(|rewritten| rewritten.tree.get(selected_candidate.candidate.id()))
+            .and_then(ElementRef::wrap)
+            .unwrap_or(selected_candidate.candidate);
+        let text_projection_candidate = text_projection_document
+            .as_ref()
+            .and_then(|rewritten| rewritten.tree.get(selected_candidate.candidate.id()))
+            .and_then(ElementRef::wrap)
+            .unwrap_or(rendered_candidate);
         let built_match = build_selector_match(
             request,
-            rendered_candidate,
+            &rendered_candidate,
+            &text_projection_candidate,
             position + 1,
             match_count,
             selected_candidate.candidate_index,
@@ -135,6 +142,7 @@ pub(crate) fn validate_selector_query(selector: &SelectorQuery) -> Result<Select
 pub(crate) fn build_selector_match(
     request: &ExtractionRequest,
     node: &ElementRef<'_>,
+    text_node: &ElementRef<'_>,
     match_index: usize,
     match_count: usize,
     candidate_index: usize,
@@ -143,35 +151,38 @@ pub(crate) fn build_selector_match(
     let value_spec = request.extraction.value();
     let path = build_node_path(node);
     let tag_name = node.value().name().to_owned();
-    let attributes = element_attributes(node, None, false);
-    let needs_text = matches!(value_spec, ValueSpec::Text | ValueSpec::Structured)
-        || request.output.include_text;
-    let text =
-        needs_text.then(|| render_element_as_text(node, request.output.rendering.whitespace));
-    let needs_inner_html = matches!(value_spec, ValueSpec::InnerHtml | ValueSpec::Structured);
-    let rewritten_inner_html = needs_inner_html.then(|| serialize_children(node));
-    let needs_outer_html = matches!(value_spec, ValueSpec::OuterHtml | ValueSpec::Structured)
-        || request.output.include_html;
-    let rewritten_outer_html = needs_outer_html.then(|| serialize_element(node));
+    let attributes = OnceCell::new();
+    let attributes_value = || {
+        attributes
+            .get_or_init(|| element_attributes(node, None, false))
+            .clone()
+    };
+    let text = OnceCell::new();
     let text_value = || {
-        text.clone()
-            .unwrap_or_else(|| render_element_as_text(node, request.output.rendering.whitespace))
-    };
-    let inner_html_value = || {
-        rewritten_inner_html
+        text.get_or_init(|| render_element_as_text(text_node, request.output.rendering.whitespace))
             .clone()
-            .unwrap_or_else(|| serialize_children(node))
     };
-    let outer_html_value = || {
-        rewritten_outer_html
-            .clone()
-            .unwrap_or_else(|| serialize_element(node))
-    };
+    let inner_html = OnceCell::new();
+    let inner_html_value = || inner_html.get_or_init(|| serialize_children(node)).clone();
+    let outer_html = OnceCell::new();
+    let outer_html_value = || outer_html.get_or_init(|| serialize_element(node)).clone();
     let value = match value_spec {
         ValueSpec::Text => Value::String(text_value()),
+        ValueSpec::SelectedHtml => {
+            return Err(error_diagnostic(
+                DiagnosticCode::UnsupportedValueType,
+                "selected-html is only valid for slice extraction.",
+                Some(json!({
+                    "strategy": "selector",
+                    "value": "selected-html",
+                    "path": path,
+                })),
+            ));
+        }
         ValueSpec::InnerHtml => Value::String(inner_html_value()),
         ValueSpec::OuterHtml => Value::String(outer_html_value()),
         ValueSpec::Attribute { name } => {
+            let attributes = attributes_value();
             let Some(value) = attributes.get(name.as_str()) else {
                 return Err(error_diagnostic(
                     DiagnosticCode::MissingAttribute,
@@ -198,7 +209,7 @@ pub(crate) fn build_selector_match(
             "textOutput": text_value(),
             "innerHtmlOutput": inner_html_value(),
             "outerHtmlOutput": outer_html_value(),
-            "attributes": attributes.clone(),
+            "attributes": attributes_value(),
         }),
     };
 
@@ -223,7 +234,7 @@ pub(crate) fn build_selector_match(
             candidate_index,
             path,
             tag_name,
-            attributes,
+            attributes: attributes_value(),
         }),
     })
 }

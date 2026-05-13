@@ -8,13 +8,16 @@ use thiserror::Error;
 
 use crate::contracts::{
     CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, ExtractionDefinition,
-    ExtractionRequest, ExtractionResult, InspectionOptions, RuntimeOptions, SourceInspectionResult,
-    SourceRequest,
+    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION,
 };
 use crate::interop::v1::{
     ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, InteropError, InteropResult, PLAN_SCHEMA_NAME,
     PLAN_SCHEMA_VERSION, Plan, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION,
+};
+use crate::wire::v1::{
+    ExtractionDefinitionDocument, ExtractionRequestDocument, ExtractionResultDocument,
+    InspectionOptionsDocument, RuntimeOptionsDocument, SourceInspectionResultDocument,
+    SourceRequestDocument,
 };
 
 /// Versioned schema-registry profile exported by HTMLCut.
@@ -81,10 +84,10 @@ pub enum SchemaStability {
 pub struct SchemaDescriptor {
     /// Stable schema identity.
     pub schema_ref: SchemaRef,
-    /// Surface that owns the contract.
-    pub owner_surface: &'static str,
-    /// Rust type or type composition that maps to this schema.
-    pub rust_shape: &'static str,
+    /// Public owner label for the contract family.
+    pub owner: &'static str,
+    /// Public contract family name exposed to operators and embedders.
+    pub contract_family: &'static str,
     /// Stability class for the schema.
     pub stability: SchemaStability,
     /// Lazy builder for the JSON Schema document.
@@ -132,62 +135,62 @@ const INTEROP_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(ERROR_SCHEMA_NAME, ER
 const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
     catalog_schema_descriptor(
         SOURCE_REQUEST_SCHEMA_REF,
-        "htmlcut-core",
-        "SourceRequest",
+        "core",
+        "source request",
         source_request_schema,
     ),
     catalog_schema_descriptor(
         RUNTIME_OPTIONS_SCHEMA_REF,
-        "htmlcut-core",
-        "RuntimeOptions",
+        "core",
+        "runtime options",
         runtime_options_schema,
     ),
     catalog_schema_descriptor(
         INSPECTION_OPTIONS_SCHEMA_REF,
-        "htmlcut-core",
-        "InspectionOptions",
+        "core",
+        "inspection options",
         inspection_options_schema,
     ),
     catalog_schema_descriptor(
         EXTRACTION_REQUEST_SCHEMA_REF,
-        "htmlcut-core",
-        "ExtractionRequest",
+        "core",
+        "extraction request",
         extraction_request_schema,
     ),
     catalog_schema_descriptor(
         EXTRACTION_DEFINITION_SCHEMA_REF,
-        "htmlcut-core",
-        "ExtractionDefinition",
+        "core",
+        "extraction definition",
         extraction_definition_schema,
     ),
     catalog_schema_descriptor(
         EXTRACTION_RESULT_SCHEMA_REF,
-        "htmlcut-core",
-        "ExtractionResult",
+        "core",
+        "extraction result",
         extraction_result_schema,
     ),
     catalog_schema_descriptor(
         SOURCE_INSPECTION_RESULT_SCHEMA_REF,
-        "htmlcut-core",
-        "SourceInspectionResult",
+        "core",
+        "source inspection result",
         source_inspection_result_schema,
     ),
     catalog_schema_descriptor(
         INTEROP_PLAN_SCHEMA_REF,
-        "htmlcut_core::interop::v1",
-        "Plan",
+        "interop-v1",
+        "execution plan",
         interop_plan_schema,
     ),
     catalog_schema_descriptor(
         INTEROP_RESULT_SCHEMA_REF,
-        "htmlcut_core::interop::v1",
-        "InteropResult",
+        "interop-v1",
+        "execution result",
         interop_result_schema,
     ),
     catalog_schema_descriptor(
         INTEROP_ERROR_SCHEMA_REF,
-        "htmlcut_core::interop::v1",
-        "InteropError",
+        "interop-v1",
+        "execution error",
         interop_error_schema,
     ),
 ];
@@ -235,31 +238,31 @@ pub(crate) fn schema_export_serialize_error_for_tests(schema_ref: SchemaRef) -> 
 }
 
 fn source_request_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<SourceRequest>(SOURCE_REQUEST_SCHEMA_REF)
+    schema_json_for::<SourceRequestDocument>(SOURCE_REQUEST_SCHEMA_REF)
 }
 
 fn runtime_options_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<RuntimeOptions>(RUNTIME_OPTIONS_SCHEMA_REF)
+    schema_json_for::<RuntimeOptionsDocument>(RUNTIME_OPTIONS_SCHEMA_REF)
 }
 
 fn inspection_options_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<InspectionOptions>(INSPECTION_OPTIONS_SCHEMA_REF)
+    schema_json_for::<InspectionOptionsDocument>(INSPECTION_OPTIONS_SCHEMA_REF)
 }
 
 fn extraction_request_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<ExtractionRequest>(EXTRACTION_REQUEST_SCHEMA_REF)
+    schema_json_for::<ExtractionRequestDocument>(EXTRACTION_REQUEST_SCHEMA_REF)
 }
 
 fn extraction_definition_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<ExtractionDefinition>(EXTRACTION_DEFINITION_SCHEMA_REF)
+    schema_json_for::<ExtractionDefinitionDocument>(EXTRACTION_DEFINITION_SCHEMA_REF)
 }
 
 fn extraction_result_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<ExtractionResult>(EXTRACTION_RESULT_SCHEMA_REF)
+    schema_json_for::<ExtractionResultDocument>(EXTRACTION_RESULT_SCHEMA_REF)
 }
 
 fn source_inspection_result_schema() -> Result<Value, SchemaExportError> {
-    schema_json_for::<SourceInspectionResult>(SOURCE_INSPECTION_RESULT_SCHEMA_REF)
+    schema_json_for::<SourceInspectionResultDocument>(SOURCE_INSPECTION_RESULT_SCHEMA_REF)
 }
 
 fn interop_plan_schema() -> Result<Value, SchemaExportError> {
@@ -297,11 +300,13 @@ pub(crate) fn assert_schema_catalog_contract_strings_for_tests(catalog: &[Schema
 }
 
 #[cfg(test)]
-pub(crate) fn expected_schema_rust_shape_for_tests(schema_ref: SchemaRef) -> Option<&'static str> {
+pub(crate) fn expected_schema_contract_family_for_tests(
+    schema_ref: SchemaRef,
+) -> Option<&'static str> {
     schema_catalog()
         .iter()
         .find(|descriptor| descriptor.schema_ref == schema_ref)
-        .map(|descriptor| descriptor.rust_shape)
+        .map(|descriptor| descriptor.contract_family)
 }
 
 #[cfg(test)]
@@ -352,14 +357,14 @@ fn schema_catalog_contract_string_errors(catalog: &[SchemaDescriptor]) -> Vec<St
 }
 const fn catalog_schema_descriptor(
     schema_ref: SchemaRef,
-    owner_surface: &'static str,
-    rust_shape: &'static str,
+    owner: &'static str,
+    contract_family: &'static str,
     json_schema: fn() -> Result<Value, SchemaExportError>,
 ) -> SchemaDescriptor {
     SchemaDescriptor {
         schema_ref,
-        owner_surface,
-        rust_shape,
+        owner,
+        contract_family,
         stability: SchemaStability::Versioned,
         json_schema,
     }
@@ -368,9 +373,9 @@ const fn catalog_schema_descriptor(
 #[cfg(test)]
 pub(crate) fn catalog_schema_descriptor_for_tests(
     schema_ref: SchemaRef,
-    owner_surface: &'static str,
-    rust_shape: &'static str,
+    owner: &'static str,
+    contract_family: &'static str,
     json_schema: fn() -> Result<Value, SchemaExportError>,
 ) -> SchemaDescriptor {
-    catalog_schema_descriptor(schema_ref, owner_surface, rust_shape, json_schema)
+    catalog_schema_descriptor(schema_ref, owner, contract_family, json_schema)
 }

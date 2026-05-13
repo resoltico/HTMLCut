@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.95"
 name = "htmlcut-core"
-version = "8.0.0"
+version = "9.0.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -42,26 +42,6 @@ path = "examples/request_and_result_namespaces.rs"
 [[example]]
 name = "reusable_extraction_definition"
 path = "examples/reusable_extraction_definition.rs"
-
-[[test]]
-name = "examples"
-path = "tests/examples.rs"
-
-[[test]]
-name = "extract"
-path = "tests/extract.rs"
-
-[[test]]
-name = "v1"
-path = "tests/v1.rs"
-
-[[test]]
-name = "v1_acceptance"
-path = "tests/v1_acceptance.rs"
-
-[[test]]
-name = "v1_properties"
-path = "tests/v1_properties.rs"
 
 [dependencies.ego-tree]
 version = "0.11.0"
@@ -96,6 +76,7 @@ version = "3.3.0"
 features = [
     "gzip",
     "rustls",
+    "platform-verifier",
 ]
 optional = true
 default-features = false
@@ -108,7 +89,7 @@ features = ["serde"]
 all = "warn"
 
 [lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
 

@@ -3,18 +3,19 @@ use std::io::{self, Write};
 use htmlcut_core::{
     ExtractionDefinition, extract,
     request::{
-        AttributeName, ExtractionRequest, ExtractionSpec, RenderingOptions, RuntimeOptions,
-        SelectionSpec, SelectorQuery, SourceRequest, ValueSpec,
+        AttributeName, ExtractionRequest, ExtractionSpec, HttpUrl, RenderingOptions,
+        RuntimeOptions, SelectionSpec, SelectorQuery, SourceRequest, ValueSpec,
     },
 };
-use url::Url;
 
 pub fn write_reusable_extraction_definition<W: Write>(writer: &mut W) -> io::Result<()> {
     let source = SourceRequest::memory(
         "inline",
         "<article><a href=\"../guide.html\">Guide</a></article>",
     )
-    .with_base_url(Url::parse("https://example.com/docs/start.html").map_err(io::Error::other)?);
+    .with_base_url(
+        HttpUrl::parse("https://example.com/docs/start.html").map_err(io::Error::other)?,
+    );
 
     let mut request = ExtractionRequest::new(
         source,

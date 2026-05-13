@@ -1,11 +1,11 @@
-use std::fs;
+use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
 use serde_json::json;
 
 use crate::contracts::{Diagnostic, RuntimeOptions, SourceKind, SourceLoadStep, SourceRequest};
-#[cfg(any(test, feature = "http-client"))]
+#[cfg(feature = "http-client")]
 use crate::contracts::{SourceLoadAction, SourceLoadOutcome};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 use crate::format_byte_size;
@@ -19,21 +19,7 @@ pub(crate) fn read_file_source(
     runtime: &RuntimeOptions,
 ) -> Result<LoadedSource, SourceLoadFailure> {
     let source_value = path.to_string_lossy().into_owned();
-    let metadata = fs::metadata(path).map_err(|error| {
-        source_load_failure(
-            source,
-            SourceKind::File,
-            source_value.clone(),
-            Vec::new(),
-            error_diagnostic(
-                DiagnosticCode::SourceLoadFailed,
-                format!("Could not access file {source_value}: {error}"),
-                Some(json!({ "source": source_value })),
-            ),
-        )
-    })?;
-
-    if metadata.is_dir() {
+    if path.is_dir() {
         return Err(source_load_failure(
             source,
             SourceKind::File,
@@ -47,24 +33,7 @@ pub(crate) fn read_file_source(
         ));
     }
 
-    if metadata.len() as usize > runtime.max_bytes {
-        return Err(source_load_failure(
-            source,
-            SourceKind::File,
-            source_value.clone(),
-            Vec::new(),
-            error_diagnostic(
-                DiagnosticCode::SourceLoadFailed,
-                format!(
-                    "File exceeds {} limit.",
-                    format_byte_size(runtime.max_bytes)
-                ),
-                Some(json!({ "source": source_value })),
-            ),
-        ));
-    }
-
-    let bytes = fs::read(path).map_err(|error| {
+    let mut file = File::open(path).map_err(|error| {
         source_load_failure(
             source,
             SourceKind::File,
@@ -72,28 +41,23 @@ pub(crate) fn read_file_source(
             Vec::new(),
             error_diagnostic(
                 DiagnosticCode::SourceLoadFailed,
-                format!("Could not read file {source_value}: {error}"),
+                format!("Could not access file {source_value}: {error}"),
                 Some(json!({ "source": source_value })),
             ),
         )
     })?;
 
-    let text = String::from_utf8(bytes).map_err(|error| {
-        source_load_failure(
-            source,
-            SourceKind::File,
-            source_value.clone(),
-            Vec::new(),
-            error_diagnostic(
-                DiagnosticCode::SourceLoadFailed,
-                format!("File is not valid UTF-8: {source_value}"),
-                Some(json!({
-                    "source": source_value,
-                    "utf8_error": error.to_string(),
-                })),
-            ),
-        )
-    })?;
+    let text = read_limited_to_string(&mut file, runtime.max_bytes.get(), "File").map_err(
+        |diagnostic| {
+            source_load_failure(
+                source,
+                SourceKind::File,
+                source_value.clone(),
+                Vec::new(),
+                diagnostic,
+            )
+        },
+    )?;
 
     let resolved_path = path
         .canonicalize()
@@ -105,7 +69,10 @@ pub(crate) fn read_file_source(
         value: resolved_path,
         bytes_read: text.len(),
         text,
-        input_base_url: source.base_url.as_ref().map(ToString::to_string),
+        input_base_url: source
+            .base_url
+            .as_ref()
+            .map(|base_url| base_url.to_string()),
         load_steps: Vec::new(),
     })
 }
@@ -158,7 +125,7 @@ pub(crate) fn read_limited_to_string(
     })
 }
 
-#[cfg(any(test, feature = "http-client"))]
+#[cfg(feature = "http-client")]
 pub(super) fn finish_url_source_from_reader(
     source: &SourceRequest,
     runtime: &RuntimeOptions,
@@ -168,8 +135,8 @@ pub(super) fn finish_url_source_from_reader(
     load_steps: Vec<SourceLoadStep>,
     reader: &mut impl Read,
 ) -> Result<LoadedSource, SourceLoadFailure> {
-    let text =
-        read_limited_to_string(reader, runtime.max_bytes, "Response").map_err(|diagnostic| {
+    let text = read_limited_to_string(reader, runtime.max_bytes.get(), "Response").map_err(
+        |diagnostic| {
             let mut failed_steps = load_steps.clone();
             failed_steps.push(SourceLoadStep {
                 action: SourceLoadAction::Get,
@@ -184,7 +151,8 @@ pub(super) fn finish_url_source_from_reader(
                 failed_steps,
                 diagnostic,
             )
-        })?;
+        },
+    )?;
 
     Ok(loaded_source(
         SourceKind::Url,
@@ -201,7 +169,7 @@ fn read_stdin_source_from_reader(
     reader: &mut impl Read,
 ) -> Result<LoadedSource, SourceLoadFailure> {
     let text =
-        read_limited_to_string(reader, runtime.max_bytes, "Stdin").map_err(|diagnostic| {
+        read_limited_to_string(reader, runtime.max_bytes.get(), "Stdin").map_err(|diagnostic| {
             source_load_failure(
                 source,
                 SourceKind::Stdin,
@@ -215,7 +183,10 @@ fn read_stdin_source_from_reader(
         SourceKind::Stdin,
         "-".to_owned(),
         text,
-        source.base_url.as_ref().map(ToString::to_string),
+        source
+            .base_url
+            .as_ref()
+            .map(|base_url| base_url.to_string()),
         Vec::new(),
     ))
 }
@@ -237,7 +208,7 @@ fn loaded_source(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http-client"))]
 pub(crate) fn finish_url_source_from_reader_for_tests(
     source: &SourceRequest,
     runtime: &RuntimeOptions,

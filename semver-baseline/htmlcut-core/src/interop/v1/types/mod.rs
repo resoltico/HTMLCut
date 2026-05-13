@@ -3,9 +3,9 @@ mod result;
 mod shared;
 
 pub use plan::{
-    CssSelectorText, DelimiterBoundaryText, DelimiterMode, HtmlInput, Output, OutputAttributeName,
-    OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection, SelectionMode, StrategyKind,
-    TextWhitespace,
+    CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode, HtmlInput,
+    Output, OutputAttributeName, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection,
+    SelectionMode, StrategyKind, TextWhitespace,
 };
 pub use result::{
     ByteRange, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel,

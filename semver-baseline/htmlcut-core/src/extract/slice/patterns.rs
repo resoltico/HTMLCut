@@ -90,12 +90,12 @@ pub(crate) fn extract_compiled_slice_candidates(
             end: end.end,
         };
         let selected_range = Range {
-            start: if slice.include_start {
+            start: if slice.includes_start() {
                 start.start
             } else {
                 start.end
             },
-            end: if slice.include_end {
+            end: if slice.includes_end() {
                 end.end
             } else {
                 end.start

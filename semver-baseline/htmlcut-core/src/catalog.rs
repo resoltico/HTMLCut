@@ -89,8 +89,8 @@ pub struct OperationIdParseError;
 /// Structured contract surface for one operation input or output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OperationContract {
-    /// Rust type or type composition used in-process.
-    pub rust_shape: &'static str,
+    /// Public contract family name exposed to operators and embedders.
+    pub family: &'static str,
     /// JSON schema references when the contract has an exported JSON form.
     pub schema_refs: &'static [SchemaRef],
 }
@@ -102,8 +102,8 @@ pub struct OperationDescriptor {
     pub id: OperationId,
     /// The CLI command surface when the operation is directly user-invokable from the CLI.
     pub cli_surface: Option<&'static str>,
-    /// The embeddable core entrypoint and request mode that expose the operation.
-    pub core_surface: &'static str,
+    /// Public name for the embeddable core API capability behind this operation.
+    pub core_api: &'static str,
     /// The public request contract for the operation.
     pub request_contract: OperationContract,
     /// The public result contract for the operation.
@@ -140,13 +140,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::DocumentParse,
         cli_surface: None,
-        core_surface: "parse_document(SourceRequest, RuntimeOptions)",
+        core_api: "parse document",
         request_contract: OperationContract {
-            rust_shape: "SourceRequest + RuntimeOptions",
+            family: "source request + runtime options",
             schema_refs: SOURCE_RUNTIME_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "ParseDocumentResult",
+            family: "parsed document result",
             schema_refs: NO_SCHEMA_REFS,
         },
         description: "Load and parse HTML into a document tree for in-process callers.",
@@ -154,13 +154,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::SourceInspect,
         cli_surface: Some("inspect source"),
-        core_surface: "inspect_source(SourceRequest, RuntimeOptions, InspectionOptions)",
+        core_api: "inspect source",
         request_contract: OperationContract {
-            rust_shape: "SourceRequest + RuntimeOptions + InspectionOptions",
+            family: "source request + runtime options + inspection options",
             schema_refs: SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "SourceInspectionResult",
+            family: "source inspection result",
             schema_refs: SOURCE_INSPECTION_RESULT_SCHEMA_REFS,
         },
         description: "Inspect the parsed document and summarize structure, samples, and base-URL behavior.",
@@ -168,13 +168,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::SelectPreview,
         cli_surface: Some("inspect select"),
-        core_surface: "preview_extraction(ExtractionRequest{kind=selector}, RuntimeOptions)",
+        core_api: "preview selector extraction",
         request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
+            family: "extraction request + runtime options",
             schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
+            family: "extraction result",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
         description: "Preview selector matches without committing to a final extraction payload.",
@@ -182,13 +182,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::SlicePreview,
         cli_surface: Some("inspect slice"),
-        core_surface: "preview_extraction(ExtractionRequest{kind=slice}, RuntimeOptions)",
+        core_api: "preview slice extraction",
         request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
+            family: "extraction request + runtime options",
             schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
+            family: "extraction result",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
         description: "Preview literal or regex slices without committing to a final extraction payload.",
@@ -196,13 +196,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::SelectExtract,
         cli_surface: Some("select"),
-        core_surface: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)",
+        core_api: "extract selector values",
         request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
+            family: "extraction request + runtime options",
             schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
+            family: "extraction result",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
         description: "Extract final values from CSS selector matches.",
@@ -210,13 +210,13 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
     OperationDescriptor {
         id: OperationId::SliceExtract,
         cli_surface: Some("slice"),
-        core_surface: "extract(ExtractionRequest{kind=slice}, RuntimeOptions)",
+        core_api: "extract slice values",
         request_contract: OperationContract {
-            rust_shape: "ExtractionRequest + RuntimeOptions",
+            family: "extraction request + runtime options",
             schema_refs: EXTRACTION_RUNTIME_SCHEMA_REFS,
         },
         result_contract: OperationContract {
-            rust_shape: "ExtractionResult",
+            family: "extraction result",
             schema_refs: EXTRACTION_RESULT_SCHEMA_REFS,
         },
         description: "Extract final values between literal or regex boundaries in raw source text.",
@@ -284,14 +284,14 @@ fn operation_catalog_contract_string_errors(catalog: &[OperationDescriptor]) -> 
             ));
         }
 
-        if descriptor.core_surface.trim().is_empty() {
-            errors.push(format!("{} has an empty core_surface", descriptor.id));
+        if descriptor.core_api.trim().is_empty() {
+            errors.push(format!("{} has an empty core_api", descriptor.id));
         }
-        if descriptor.request_contract.rust_shape.trim().is_empty() {
-            errors.push(format!("{} has an empty request rust_shape", descriptor.id));
+        if descriptor.request_contract.family.trim().is_empty() {
+            errors.push(format!("{} has an empty request family", descriptor.id));
         }
-        if descriptor.result_contract.rust_shape.trim().is_empty() {
-            errors.push(format!("{} has an empty result rust_shape", descriptor.id));
+        if descriptor.result_contract.family.trim().is_empty() {
+            errors.push(format!("{} has an empty result family", descriptor.id));
         }
     }
 

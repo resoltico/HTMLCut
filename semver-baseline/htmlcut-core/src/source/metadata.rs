@@ -30,15 +30,15 @@ pub(super) fn source_load_failure(
     let input_base_url = source
         .base_url
         .as_ref()
-        .map(ToString::to_string)
+        .map(|base_url| base_url.to_string())
         .or_else(|| matches!(kind, SourceKind::Url).then(|| value.clone()));
 
     SourceLoadFailure {
         metadata: Box::new(SourceMetadata {
             kind,
             value,
-            input_base_url: input_base_url.clone(),
-            effective_base_url: input_base_url,
+            input_base_url,
+            effective_base_url: None,
             bytes_read: 0,
             load_steps,
             text: None,
@@ -53,13 +53,13 @@ pub(crate) fn empty_source_metadata(source: &SourceRequest) -> SourceMetadata {
     let input_base_url = source
         .base_url
         .as_ref()
-        .map(ToString::to_string)
-        .or_else(|| matches!(source.input, SourceInput::Url { .. }).then(|| value.clone()));
+        .map(|base_url| base_url.to_string())
+        .or_else(|| matches!(kind, SourceKind::Url).then(|| value.clone()));
     SourceMetadata {
         kind,
         value,
-        input_base_url: input_base_url.clone(),
-        effective_base_url: input_base_url,
+        input_base_url,
+        effective_base_url: None,
         bytes_read: 0,
         load_steps: Vec::new(),
         text: None,
@@ -68,6 +68,7 @@ pub(crate) fn empty_source_metadata(source: &SourceRequest) -> SourceMetadata {
 
 fn source_locator_value(input: &SourceInput) -> String {
     match input {
+        #[cfg(feature = "http-client")]
         SourceInput::Url { href } => href.to_string(),
         SourceInput::File { path } => path.to_string_lossy().into_owned(),
         SourceInput::Stdin => "-".to_owned(),

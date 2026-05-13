@@ -1,4 +1,5 @@
 use super::*;
+use url::Url;
 
 #[test]
 fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {
@@ -116,6 +117,11 @@ fn interop_owned_value_objects_and_diagnostic_helpers_cover_public_surface() {
         DelimiterBoundaryText::new("   "),
         Err(ContractError::EmptyDelimiterBoundary)
     ));
+
+    assert_eq!(
+        InteropDiagnosticCode::from(DiagnosticCode::UnsupportedValueType),
+        InteropDiagnosticCode::UnsupportedValueType
+    );
 
     let attribute = OutputAttributeName::new("href").expect("attribute");
     assert_eq!(attribute.as_str(), "href");
