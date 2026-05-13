@@ -18,6 +18,7 @@ const DIRECT_URL_ATTRIBUTE_NAMES: [&str; 7] = [
 ];
 const SRCSET_ATTRIBUTE_NAMES: [&str; 2] = ["imagesrcset", "srcset"];
 const SPACE_SEPARATED_URL_ATTRIBUTE_NAMES: [&str; 1] = ["ping"];
+const CSS_URL_ATTRIBUTE_NAMES: [&str; 1] = ["style"];
 
 pub(crate) fn document_base_href(document: &Html) -> Option<String> {
     select_first(document, "base[href]")
@@ -99,21 +100,36 @@ fn rewrite_urls_in_document_with_node_ids(
         let Some(mut node) = document.tree.get_mut(node_id) else {
             continue;
         };
-        if let Node::Element(element) = node.value() {
-            let tag_name = element.name().to_owned();
-            let is_meta_refresh = raw_element_is_meta_refresh(element);
-            for (name, value) in &mut element.attrs {
-                let rewritten = rewrite_attribute_value(
-                    &tag_name,
-                    name.local.as_ref(),
-                    value,
-                    Some(base_url),
-                    is_meta_refresh,
-                );
-                if rewritten != value.as_ref() {
-                    *value = StrTendril::from(rewritten);
+        let mut rewrite_style_children = false;
+        {
+            if let Node::Element(element) = node.value() {
+                let tag_name = element.name().to_owned();
+                let is_meta_refresh = raw_element_is_meta_refresh(element);
+                for (name, value) in &mut element.attrs {
+                    let rewritten = rewrite_attribute_value(
+                        &tag_name,
+                        name.local.as_ref(),
+                        value,
+                        Some(base_url),
+                        is_meta_refresh,
+                    );
+                    if rewritten != value.as_ref() {
+                        *value = StrTendril::from(rewritten);
+                    }
                 }
+                rewrite_style_children = tag_name == "style";
             }
+        }
+
+        if rewrite_style_children {
+            node.for_each_child(|child| {
+                if let Node::Text(text) = child.value() {
+                    let rewritten = rewrite_css_urls(text, Some(base_url));
+                    if rewritten != text.as_ref() {
+                        text.text = StrTendril::from(rewritten);
+                    }
+                }
+            });
         }
     }
 }
@@ -133,6 +149,7 @@ pub(crate) fn attribute_supports_url_rewrite(name: &str) -> bool {
     DIRECT_URL_ATTRIBUTE_NAMES.contains(&name)
         || SRCSET_ATTRIBUTE_NAMES.contains(&name)
         || SPACE_SEPARATED_URL_ATTRIBUTE_NAMES.contains(&name)
+        || CSS_URL_ATTRIBUTE_NAMES.contains(&name)
 }
 
 pub(crate) fn resolve_url(value: &str, base_url: Option<&str>) -> String {
@@ -184,6 +201,10 @@ pub(super) fn rewrite_attribute_value(
 
     if SPACE_SEPARATED_URL_ATTRIBUTE_NAMES.contains(&name) {
         return rewrite_space_separated_urls(value, base_url);
+    }
+
+    if CSS_URL_ATTRIBUTE_NAMES.contains(&name) {
+        return rewrite_css_urls(value, base_url);
     }
 
     if name == "content" && tag_name == "meta" && is_meta_refresh {
@@ -266,6 +287,239 @@ fn rewrite_meta_refresh_content(value: &str, base_url: Option<&str>) -> String {
         .join(";")
 }
 
+fn rewrite_css_urls(value: &str, base_url: Option<&str>) -> String {
+    let Some(base_url) = base_url else {
+        return value.to_owned();
+    };
+
+    let mut rewritten = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        if let Some(end) = css_comment_end(value, cursor) {
+            rewritten.push_str(&value[cursor..end]);
+            cursor = end;
+            continue;
+        }
+
+        if let Some((replacement, next)) = rewrite_css_url_function_at(value, cursor, base_url) {
+            rewritten.push_str(&replacement);
+            cursor = next;
+            continue;
+        }
+
+        if let Some((replacement, next)) = rewrite_css_import_string_at(value, cursor, base_url) {
+            rewritten.push_str(&replacement);
+            cursor = next;
+            continue;
+        }
+
+        let next = next_char_boundary(value, cursor);
+        rewritten.push_str(&value[cursor..next]);
+        cursor = next;
+    }
+
+    rewritten
+}
+
+fn css_comment_end(value: &str, cursor: usize) -> Option<usize> {
+    if !value[cursor..].starts_with("/*") {
+        return None;
+    }
+
+    Some(
+        value[cursor + 2..]
+            .find("*/")
+            .map(|offset| cursor + 2 + offset + 2)
+            .unwrap_or(value.len()),
+    )
+}
+
+fn rewrite_css_import_string_at(
+    value: &str,
+    cursor: usize,
+    base_url: &str,
+) -> Option<(String, usize)> {
+    if !value[cursor..].starts_with('@') || !starts_with_css_keyword(value, cursor + 1, "import") {
+        return None;
+    }
+
+    let mut index = cursor + 1 + "import".len();
+    index = skip_css_ignorable(value, index);
+    let quote = value[index..].chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+
+    let content_start = index + quote.len_utf8();
+    let content_end = find_css_string_end(value, index)?;
+    let resolved = resolve_url(&value[content_start..content_end], Some(base_url));
+    let next = content_end + quote.len_utf8();
+
+    Some((
+        format!(
+            "{}{}{}",
+            &value[cursor..content_start],
+            resolved,
+            &value[content_end..next]
+        ),
+        next,
+    ))
+}
+
+fn rewrite_css_url_function_at(
+    value: &str,
+    cursor: usize,
+    base_url: &str,
+) -> Option<(String, usize)> {
+    if !starts_with_css_keyword(value, cursor, "url") {
+        return None;
+    }
+    if cursor > 0
+        && value[..cursor]
+            .chars()
+            .next_back()
+            .is_some_and(is_css_identifier_char)
+    {
+        return None;
+    }
+
+    let mut index = cursor + "url".len();
+    index = skip_ascii_whitespace(value, index);
+    if !value[index..].starts_with('(') {
+        return None;
+    }
+
+    let mut content_start = skip_ascii_whitespace(value, index + 1);
+    let quote = value[content_start..].chars().next()?;
+    if quote == '"' || quote == '\'' {
+        let raw_start = content_start + quote.len_utf8();
+        let raw_end = find_css_string_end(value, content_start)?;
+        let after_quote = skip_ascii_whitespace(value, raw_end + quote.len_utf8());
+        if !value[after_quote..].starts_with(')') {
+            return None;
+        }
+        let resolved = resolve_url(&value[raw_start..raw_end], Some(base_url));
+        let next = after_quote + 1;
+        return Some((
+            format!(
+                "{}{}{}",
+                &value[cursor..raw_start],
+                resolved,
+                &value[raw_end..next]
+            ),
+            next,
+        ));
+    }
+
+    let raw_start = content_start;
+    while content_start < value.len() {
+        let ch = value[content_start..].chars().next()?;
+        if ch == ')' {
+            break;
+        }
+        content_start = next_char_boundary(value, content_start);
+    }
+    if content_start >= value.len() {
+        return None;
+    }
+    debug_assert!(value[content_start..].starts_with(')'));
+
+    let mut raw_end = content_start;
+    while raw_end > raw_start
+        && value[..raw_end]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    {
+        raw_end = previous_char_boundary(value, raw_end);
+    }
+    if raw_end == raw_start {
+        return None;
+    }
+
+    let resolved = resolve_url(&value[raw_start..raw_end], Some(base_url));
+    let next = content_start + 1;
+    Some((
+        format!(
+            "{}{}{}",
+            &value[cursor..raw_start],
+            resolved,
+            &value[raw_end..next]
+        ),
+        next,
+    ))
+}
+
+fn skip_css_ignorable(value: &str, mut cursor: usize) -> usize {
+    loop {
+        let next = skip_ascii_whitespace(value, cursor);
+        if let Some(end) = css_comment_end(value, next) {
+            cursor = end;
+            continue;
+        }
+        return next;
+    }
+}
+
+fn skip_ascii_whitespace(value: &str, mut cursor: usize) -> usize {
+    while cursor < value.len() {
+        let ch = value[cursor..].chars().next().expect("char boundary");
+        if !ch.is_ascii_whitespace() {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+    cursor
+}
+
+fn starts_with_css_keyword(value: &str, cursor: usize, keyword: &str) -> bool {
+    let end = cursor + keyword.len();
+    value
+        .get(cursor..end)
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(keyword))
+}
+
+fn find_css_string_end(value: &str, quote_index: usize) -> Option<usize> {
+    let quote = value[quote_index..].chars().next()?;
+    let mut cursor = quote_index + quote.len_utf8();
+    while cursor < value.len() {
+        let ch = value[cursor..].chars().next()?;
+        if ch == '\\' {
+            cursor = next_char_boundary(value, cursor);
+            if cursor < value.len() {
+                cursor = next_char_boundary(value, cursor);
+            }
+            continue;
+        }
+        if ch == quote {
+            return Some(cursor);
+        }
+        cursor = next_char_boundary(value, cursor);
+    }
+    None
+}
+
+fn next_char_boundary(value: &str, cursor: usize) -> usize {
+    cursor
+        + value[cursor..]
+            .chars()
+            .next()
+            .expect("char boundary")
+            .len_utf8()
+}
+
+fn previous_char_boundary(value: &str, cursor: usize) -> usize {
+    value[..cursor]
+        .char_indices()
+        .last()
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+fn is_css_identifier_char(ch: char) -> bool {
+    ch == '-' || ch == '_' || ch.is_alphanumeric()
+}
+
 fn rewrite_meta_refresh_segment<'a>(base_url: Option<&'a str>) -> impl Fn(&str) -> String + 'a {
     move |segment| {
         let trimmed_start = segment.trim_start();
@@ -308,6 +562,11 @@ fn rewrite_meta_refresh_segment<'a>(base_url: Option<&'a str>) -> impl Fn(&str) 
     }
 }
 
+#[cfg(test)]
+pub(crate) fn rewrite_css_urls_for_tests(value: &str, base_url: Option<&str>) -> String {
+    rewrite_css_urls(value, base_url)
+}
+
 fn raw_element_is_meta_refresh(element: &scraper::node::Element) -> bool {
     if element.name() != "meta" {
         return false;
@@ -328,6 +587,7 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
 mod tests {
     use super::*;
     use crate::document::{parse_document_node, select_first};
+    use scraper::node::Comment;
 
     #[test]
     fn meta_refresh_helper_detects_exact_attribute_names_and_values() {
@@ -471,5 +731,141 @@ mod tests {
 
         assert!(starts_with_ignore_ascii_case("<HTML", "<html"));
         assert!(!starts_with_ignore_ascii_case("ht", "<html"));
+    }
+
+    #[test]
+    fn css_rewrite_helpers_cover_comments_escapes_and_invalid_forms() {
+        assert_eq!(rewrite_css_urls("url(hero.png)", None), "url(hero.png)");
+        assert_eq!(
+            rewrite_css_urls(
+                "/* keep url(old.png) */ url(\"hero.png\")",
+                Some("https://example.test/assets/")
+            ),
+            "/* keep url(old.png) */ url(\"https://example.test/assets/hero.png\")"
+        );
+        assert_eq!(
+            rewrite_css_urls(
+                "@import /* note */ 'theme.css' screen; body { background: url( hero.png  ) }",
+                Some("https://example.test/assets/")
+            ),
+            "@import /* note */ 'https://example.test/assets/theme.css' screen; body { background: url( https://example.test/assets/hero.png  ) }"
+        );
+        assert_eq!(
+            rewrite_css_urls(
+                "background: myurl(icon.png); list-style: url( \"icon\\\"2.png\" )",
+                Some("https://example.test/assets/")
+            ),
+            "background: myurl(icon.png); list-style: url( \"https://example.test/assets/icon/%222.png\" )"
+        );
+        assert_eq!(
+            rewrite_css_urls(
+                "@import url(theme.css); background: url(\"unterminated.png\";",
+                Some("https://example.test/assets/")
+            ),
+            "@import url(https://example.test/assets/theme.css); background: url(\"unterminated.png\";"
+        );
+        assert_eq!(
+            rewrite_css_urls("background: url(   )", Some("https://example.test/assets/")),
+            "background: url(   )"
+        );
+        assert_eq!(
+            rewrite_css_urls(
+                "background: url hero.png); color: red;",
+                Some("https://example.test/assets/")
+            ),
+            "background: url hero.png); color: red;"
+        );
+        assert_eq!(
+            rewrite_css_urls(
+                "background: url(hero.png",
+                Some("https://example.test/assets/")
+            ),
+            "background: url(hero.png"
+        );
+        assert_eq!(find_css_string_end("\"a\\\"b\"", 0), Some("\"a\\\"b".len()));
+        assert_eq!(find_css_string_end("\"escape-at-end\\", 0), None);
+        assert_eq!(find_css_string_end("\"unterminated", 0), None);
+        assert_eq!(
+            css_comment_end("/* unterminated", 0),
+            Some("/* unterminated".len())
+        );
+        assert_eq!(
+            rewrite_css_url_function_at("url hero.png)", 0, "https://example.test/assets/"),
+            None
+        );
+        assert_eq!(
+            rewrite_css_url_function_at("url(hero.png", 0, "https://example.test/assets/"),
+            None
+        );
+        assert_eq!(
+            rewrite_css_import_string_at("@media screen", 0, "https://example.test/assets/"),
+            None
+        );
+        assert_eq!(skip_ascii_whitespace("x", 1), 1);
+        assert!(is_css_identifier_char('-'));
+        assert!(is_css_identifier_char('_'));
+
+        let mut document = parse_document_node(
+            "<style>/* keep */ @import \"theme.css\"; .hero { background: url('../img/card.png') }</style>",
+        );
+        let style_id = select_first(&document, "style").expect("style").id();
+        rewrite_urls_in_document_with_node_ids_for_tests(
+            &mut document,
+            "https://example.test/docs/articles/",
+            vec![style_id],
+        );
+        let serialized = crate::document::serialize_document(&document);
+        assert!(serialized.contains("@import \"https://example.test/docs/articles/theme.css\""));
+        assert!(serialized.contains("url('https://example.test/docs/img/card.png')"));
+
+        let mut style_document =
+            parse_document_node("<style>.hero { background: url(hero.png) }</style>");
+        let style_id = select_first(&style_document, "style").expect("style").id();
+        rewrite_urls_in_document_with_node_ids_for_tests(
+            &mut style_document,
+            "https://example.test/assets/",
+            vec![style_id],
+        );
+        assert!(
+            crate::document::serialize_document(&style_document)
+                .contains("url(https://example.test/assets/hero.png)")
+        );
+
+        let mut unchanged_style_document =
+            parse_document_node("<style>.hero { color: red }</style>");
+        let style_id = select_first(&unchanged_style_document, "style")
+            .expect("style")
+            .id();
+        rewrite_urls_in_document_with_node_ids_for_tests(
+            &mut unchanged_style_document,
+            "https://example.test/assets/",
+            vec![style_id],
+        );
+        assert!(
+            crate::document::serialize_document(&unchanged_style_document)
+                .contains(".hero { color: red }")
+        );
+
+        let mut style_with_comment =
+            parse_document_node("<style>.hero { background: url(hero.png) }</style>");
+        let style_id = select_first(&style_with_comment, "style")
+            .expect("style")
+            .id();
+        style_with_comment
+            .tree
+            .get_mut(style_id)
+            .expect("style node")
+            .append(Node::Comment(Comment {
+                comment: StrTendril::from("kept"),
+            }));
+        rewrite_urls_in_document_with_node_ids_for_tests(
+            &mut style_with_comment,
+            "https://example.test/assets/",
+            vec![style_id],
+        );
+        assert!(
+            crate::document::serialize_document(&style_with_comment)
+                .contains("https://example.test/assets/hero.png")
+        );
     }
 }

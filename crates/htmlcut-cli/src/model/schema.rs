@@ -16,17 +16,17 @@ pub struct SchemaRefReport {
     pub schema_version: u32,
 }
 
-/// One exported JSON-schema document.
+/// One exported JSON-schema document plus its public contract identity.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SchemaDocumentReport {
     /// Stable schema name.
     pub schema_name: String,
     /// Stable schema version.
     pub schema_version: u32,
-    /// Surface that owns the contract.
-    pub owner_surface: String,
-    /// Rust type or type composition that maps to this schema.
-    pub rust_shape: String,
+    /// Public owner label for this contract family.
+    pub owner: String,
+    /// Public contract family name exposed to operators and embedders.
+    pub contract_family: String,
     /// Stability class for this schema.
     pub stability: htmlcut_core::SchemaStability,
     /// Validator-grade JSON Schema document.

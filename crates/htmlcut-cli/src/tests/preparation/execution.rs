@@ -14,14 +14,14 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         validate_base_url(Some("https://example.com/docs"))
             .expect("valid base url")
             .as_ref()
-            .map(|url| url.as_str()),
+            .map(|url| url.as_fetch_str()),
         Some("https://example.com/docs")
     );
     assert_eq!(
         validate_base_url(Some("http://example.com/docs"))
             .expect("valid http base url")
             .as_ref()
-            .map(|url| url.as_str()),
+            .map(|url| url.as_fetch_str()),
         Some("http://example.com/docs")
     );
     assert_eq!(parse_byte_size("512").expect("plain bytes"), 512);
@@ -65,6 +65,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             output: CliInspectOutputMode::Text,
@@ -89,6 +91,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             output: CliInspectOutputMode::Json,
@@ -121,6 +125,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("[".to_owned()),
@@ -128,7 +134,9 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 r#match: CliMatchMode::First,
                 index: None,
             },
-            whitespace: CliWhitespaceMode::Preserve,
+            value: CliValueMode::Structured,
+            attribute: None,
+            whitespace: CliWhitespaceMode::Rendered,
             rewrite_urls: false,
             output: InspectOutputArgs {
                 output: CliInspectOutputMode::Text,
@@ -156,6 +164,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("[".to_owned()),
@@ -163,7 +173,9 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 r#match: CliMatchMode::First,
                 index: None,
             },
-            whitespace: CliWhitespaceMode::Preserve,
+            value: CliValueMode::Structured,
+            attribute: None,
+            whitespace: CliWhitespaceMode::Rendered,
             rewrite_urls: false,
             output: InspectOutputArgs {
                 output: CliInspectOutputMode::Json,
@@ -195,6 +207,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("article".to_owned()),
@@ -202,7 +216,9 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 r#match: CliMatchMode::First,
                 index: None,
             },
-            whitespace: CliWhitespaceMode::Preserve,
+            value: CliValueMode::Structured,
+            attribute: None,
+            whitespace: CliWhitespaceMode::Rendered,
             rewrite_urls: false,
             output: InspectOutputArgs {
                 output: CliInspectOutputMode::Json,
@@ -234,6 +250,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("[".to_owned()),
@@ -244,7 +262,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output: ExtractOutputArgs {
                 value: CliValueMode::Text,
                 attribute: None,
-                whitespace: CliWhitespaceMode::Preserve,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: Some(CliOutputMode::Text),
                 bundle: None,
@@ -274,6 +292,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("article".to_owned()),
@@ -284,7 +304,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 output: ExtractOutputArgs {
                     value: CliValueMode::Text,
                     attribute: None,
-                    whitespace: CliWhitespaceMode::Preserve,
+                    whitespace: CliWhitespaceMode::Rendered,
                     rewrite_urls: false,
                     output: Some(CliOutputMode::Text),
                     bundle: Some(bundle_dir.clone()),
@@ -320,6 +340,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("article".to_owned()),
@@ -330,7 +352,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output: ExtractOutputArgs {
                 value: CliValueMode::Text,
                 attribute: None,
-                whitespace: CliWhitespaceMode::Preserve,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: Some(CliOutputMode::Text),
                 bundle: None,
@@ -358,6 +380,8 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("article".to_owned()),
@@ -368,7 +392,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 output: ExtractOutputArgs {
                     value: CliValueMode::Text,
                     attribute: None,
-                    whitespace: CliWhitespaceMode::Preserve,
+                    whitespace: CliWhitespaceMode::Rendered,
                     rewrite_urls: false,
                     output: Some(CliOutputMode::Text),
                     bundle: None,
@@ -384,7 +408,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         .expect("extract builder"),
     );
     assert_eq!(extract_success_verbose_no_bundle.exit_code, 0);
-    assert_eq!(extract_success_verbose_no_bundle.stderr.len(), 1);
+    assert!(extract_success_verbose_no_bundle.stderr.len() >= 3);
 
     assert!(
         PreparedExtraction::from_slice(SliceArgs {
@@ -398,22 +422,23 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             from: Some("<article>".to_owned()),
             to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Literal,
             regex_flags: None,
-            include_start: false,
-            include_end: false,
+            boundary_retention: crate::args::CliBoundaryRetentionMode::ExcludeBoth,
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
             },
-            output: ExtractOutputArgs {
-                value: CliValueMode::Text,
+            output: SliceExtractOutputArgs {
+                value: CliSliceValueMode::Text,
                 attribute: None,
-                whitespace: CliWhitespaceMode::Preserve,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: Some(CliOutputMode::None),
                 bundle: None,
@@ -536,6 +561,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 output: CliInspectOutputMode::Json,
@@ -567,6 +594,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 output: CliInspectOutputMode::Json,
@@ -596,6 +625,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("[".to_owned()),
@@ -603,7 +634,9 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     r#match: CliMatchMode::First,
                     index: None,
                 },
-                whitespace: CliWhitespaceMode::Preserve,
+                value: CliValueMode::Structured,
+                attribute: None,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: InspectOutputArgs {
                     output: CliInspectOutputMode::Json,
@@ -632,6 +665,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("article".to_owned()),
@@ -639,7 +674,9 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     r#match: CliMatchMode::First,
                     index: None,
                 },
-                whitespace: CliWhitespaceMode::Preserve,
+                value: CliValueMode::Structured,
+                attribute: None,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: InspectOutputArgs {
                     output: CliInspectOutputMode::Json,
@@ -668,6 +705,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("[".to_owned()),
@@ -678,7 +717,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output: ExtractOutputArgs {
                     value: CliValueMode::Structured,
                     attribute: None,
-                    whitespace: CliWhitespaceMode::Preserve,
+                    whitespace: CliWhitespaceMode::Rendered,
                     rewrite_urls: false,
                     output: Some(CliOutputMode::Json),
                     bundle: None,
@@ -707,6 +746,8 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("article".to_owned()),
@@ -717,7 +758,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output: ExtractOutputArgs {
                     value: CliValueMode::Structured,
                     attribute: None,
-                    whitespace: CliWhitespaceMode::Preserve,
+                    whitespace: CliWhitespaceMode::Rendered,
                     rewrite_urls: false,
                     output: Some(CliOutputMode::Json),
                     bundle: None,

@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::path::Path;
 
+use htmlcut_core::wire::v1::ExtractionDefinitionDocument;
+
 use crate::EXIT_CODE_OUTPUT;
 use crate::error::CliError;
 use crate::file_output::{FileWriteMode, write_text_file};
@@ -43,8 +45,8 @@ where
     Ok(outcome.exit_code)
 }
 
-pub(crate) fn output_file_notice(path: Option<&Path>, verbose: u8, quiet: bool) -> Vec<String> {
-    if quiet || verbose == 0 {
+pub(crate) fn output_file_notice(path: Option<&Path>, quiet: bool) -> Vec<String> {
+    if quiet {
         return Vec::new();
     }
 
@@ -57,8 +59,10 @@ pub(crate) fn write_request_definition(
     request_definition_output: &crate::prepare::PendingExtractionDefinitionWrite,
     write_mode: FileWriteMode,
 ) -> Result<(), CliError> {
+    let definition_document =
+        ExtractionDefinitionDocument::from(request_definition_output.definition.clone());
     let definition = crate::render::render_json_string(
-        &request_definition_output.definition,
+        &definition_document,
         &format!(
             "request definition {}",
             request_definition_output.path.display()

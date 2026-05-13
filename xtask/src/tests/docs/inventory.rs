@@ -138,3 +138,45 @@ fn inventory_errors_report_workspace_manifest_load_failures_for_workspace_layout
         vec!["docs/workspace-layout.md could not load workspace members from Cargo.toml: workspace members not found in Cargo.toml".to_owned()]
     );
 }
+
+#[test]
+fn markdown_contract_errors_report_missing_docs_from_docs_index() {
+    let repo_root = tempdir().expect("tempdir");
+    let docs_dir = repo_root.path().join("docs");
+    fs::create_dir_all(&docs_dir).expect("create docs dir");
+    let docs_index = "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: INDEX\nupdated: \"2026-04-20\"\nroute:\n  keywords: [docs index]\n  questions: [\"q\"]\n---\n\n# Documentation Index\n\n- [Schema](./schema.md)\n";
+    fs::write(docs_dir.join("README.md"), docs_index).expect("write docs index");
+    fs::write(
+        docs_dir.join("schema.md"),
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: SCHEMA\nupdated: \"2026-04-20\"\nroute:\n  keywords: [schema]\n  questions: [\"q\"]\n---\n\n# Schema\n",
+    )
+    .expect("write schema doc");
+    fs::write(
+        docs_dir.join("core.md"),
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: CORE\nupdated: \"2026-04-20\"\nroute:\n  keywords: [core]\n  questions: [\"q\"]\n---\n\n# Core\n",
+    )
+    .expect("write core doc");
+
+    let errors =
+        crate::docs::inventory_errors_for_tests(repo_root.path(), "docs/README.md", docs_index);
+
+    assert!(
+        errors.iter().any(|error| {
+            error == "docs/README.md is missing Markdown docs from docs/: core.md"
+        })
+    );
+}
+
+#[test]
+fn inventory_errors_report_docs_index_load_failures() {
+    let repo_root = tempdir().expect("tempdir");
+    let missing_root = repo_root.path().join("deleted-repo");
+
+    let errors =
+        crate::docs::inventory_errors_for_tests(&missing_root, "docs/README.md", "# Docs\n");
+
+    assert_eq!(
+        errors,
+        vec!["docs/README.md could not load Markdown docs from docs/: No such file or directory (os error 2)".to_owned()]
+    );
+}

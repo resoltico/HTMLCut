@@ -7,7 +7,14 @@ fn rendering_helpers_cover_minimal_verbose_and_inspection_states() {
         fixture_result(Value::String("Hello".to_owned()), ValueType::Text),
         None,
     );
-    assert_eq!(build_verbose_lines(&report, 1).len(), 1);
+    let verbose = build_verbose_lines(&report, 1);
+    assert!(verbose.len() >= 3);
+    assert!(
+        verbose
+            .iter()
+            .any(|line| line.contains("selected text => Hello"))
+    );
+    assert!(verbose.iter().any(|line| line.contains("effective base")));
 
     let mut minimal_inspection = fixture_inspection();
     let document = minimal_inspection.document.as_mut().expect("document");

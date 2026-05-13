@@ -68,12 +68,15 @@ pub(crate) fn clap_error_message(error: &clap::Error) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RawInvocation<'a> {
     command_tokens: Vec<&'a str>,
+    recognized_command: bool,
     explicit_output: Option<&'a str>,
     structured_value: bool,
 }
 
 impl<'a> RawInvocation<'a> {
     fn parse(raw_args: &'a [String]) -> Self {
+        let command_tokens = raw_command_tokens(raw_args);
+        let recognized_command = raw_command_tokens_are_known(&command_tokens);
         let mut explicit_output = None;
         let mut structured_value = false;
         let structured_value_mode = crate::args::CliValueMode::Structured.to_string();
@@ -82,16 +85,18 @@ impl<'a> RawInvocation<'a> {
             if arg == "--" {
                 break;
             }
-            if arg == "--value"
+            if recognized_command
+                && arg == "--value"
                 && raw_args
                     .get(index + 1)
                     .is_some_and(|value| value == structured_value_mode.as_str())
             {
                 structured_value = true;
             }
-            if arg
-                .strip_prefix("--value=")
-                .is_some_and(|value| value == structured_value_mode.as_str())
+            if recognized_command
+                && arg
+                    .strip_prefix("--value=")
+                    .is_some_and(|value| value == structured_value_mode.as_str())
             {
                 structured_value = true;
             }
@@ -106,7 +111,8 @@ impl<'a> RawInvocation<'a> {
         }
 
         Self {
-            command_tokens: raw_command_tokens(raw_args),
+            command_tokens,
+            recognized_command,
             explicit_output,
             structured_value,
         }
@@ -153,7 +159,7 @@ impl<'a> RawInvocation<'a> {
     }
 
     fn inspect_mode(&self) -> bool {
-        matches!(self.command_tokens.first(), Some(&"inspect"))
+        self.recognized_command && matches!(self.command_tokens.first(), Some(&"inspect"))
     }
 }
 
@@ -166,14 +172,18 @@ fn raw_option_tokens(raw_args: &[String]) -> impl Iterator<Item = &str> {
 }
 
 fn raw_command_tokens(raw_args: &[String]) -> Vec<&str> {
-    raw_args
+    let tokens = raw_args
         .iter()
         .skip(1)
         .take_while(|arg| arg.as_str() != "--")
         .map(String::as_str)
-        .skip_while(|arg| arg.starts_with('-'))
-        .take_while(|arg| !arg.starts_with('-'))
-        .collect()
+        .collect::<Vec<_>>();
+    let Some(command_start) = first_command_token_index(&tokens) else {
+        return Vec::new();
+    };
+    let remaining = &tokens[command_start..];
+
+    longest_known_command_path(remaining).unwrap_or_else(|| vec![remaining[0]])
 }
 
 fn root_option_tokens_are_known(raw_args: &[String]) -> bool {
@@ -181,11 +191,54 @@ fn root_option_tokens_are_known(raw_args: &[String]) -> bool {
         .iter()
         .skip(1)
         .take_while(|arg| arg.as_str() != "--")
-        .take_while(|arg| arg.starts_with('-'))
-        .all(|arg| {
-            matches!(arg.as_str(), "--help" | "--quiet" | "--version")
-                || short_flag_cluster_is_known(arg)
-        })
+        .map(String::as_str)
+        .all(root_option_token_is_known)
+}
+
+fn raw_command_tokens_are_known(command_tokens: &[&str]) -> bool {
+    if command_tokens.is_empty() {
+        return false;
+    }
+
+    longest_known_command_path(command_tokens).is_some()
+}
+
+fn first_command_token_index(tokens: &[&str]) -> Option<usize> {
+    let mut index = 0usize;
+    while let Some(token) = tokens.get(index) {
+        if !token.starts_with('-') {
+            return Some(index);
+        }
+        if !root_option_token_is_known(token) {
+            return None;
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn longest_known_command_path<'a>(tokens: &[&'a str]) -> Option<Vec<&'a str>> {
+    const KNOWN_COMMAND_PATHS: &[&[&str]] = &[
+        &["inspect", "source"],
+        &["inspect", "select"],
+        &["inspect", "slice"],
+        &["catalog"],
+        &["schema"],
+        &["select"],
+        &["slice"],
+        &["inspect"],
+    ];
+
+    KNOWN_COMMAND_PATHS
+        .iter()
+        .find(|path| tokens.starts_with(path))
+        .map(|path| path.to_vec())
+}
+
+fn root_option_token_is_known(arg: &str) -> bool {
+    matches!(arg, "--help" | "--quiet" | "--verbose" | "--version")
+        || short_flag_cluster_is_known(arg)
 }
 
 fn short_flag_cluster_is_known(arg: &str) -> bool {

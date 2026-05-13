@@ -30,13 +30,13 @@ fn direct_render_helpers_cover_empty_optional_branches() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Minimal".to_owned(),
-            core_surface: "BareCoreSurface".to_owned(),
+            core_api: "BareCoreSurface".to_owned(),
             request_contract: CatalogContractSurface {
-                rust_shape: "BareShape".to_owned(),
+                family: "BareShape".to_owned(),
                 schema_refs: Vec::new(),
             },
             result_contract: CatalogContractSurface {
-                rust_shape: "BareResult".to_owned(),
+                family: "BareResult".to_owned(),
                 schema_refs: Vec::new(),
             },
             command_contract: Some(minimal_contract),
@@ -57,13 +57,13 @@ fn direct_render_helpers_cover_empty_optional_branches() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Focused".to_owned(),
-            core_surface: "FocusedCoreSurface".to_owned(),
+            core_api: "FocusedCoreSurface".to_owned(),
             request_contract: CatalogContractSurface {
-                rust_shape: "FocusedRequest".to_owned(),
+                family: "FocusedRequest".to_owned(),
                 schema_refs: Vec::new(),
             },
             result_contract: CatalogContractSurface {
-                rust_shape: "FocusedResult".to_owned(),
+                family: "FocusedResult".to_owned(),
                 schema_refs: Vec::new(),
             },
             command_contract: Some(CatalogCommandContract {

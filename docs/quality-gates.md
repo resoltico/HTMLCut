@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: QUALITY
-updated: "2026-05-04"
+updated: "2026-05-13"
 route:
   keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?"]
@@ -23,10 +23,11 @@ compiler-override safeguard for native crate builds.
 Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred contributor-container
 workflow on Ubuntu `24.04`.
 
-Rust `1.95.0` is the pinned HTMLCut repository toolchain. Nightly is installed alongside it for
-the coverage gate and for live `cargo-fuzz` campaigns because `cargo +nightly llvm-cov --branch`
-and `cargo +nightly fuzz ...` both need nightly. The workspace manifest mirrors that compiler
-contract through `[workspace.package] rust-version`.
+`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
+Nightly is installed alongside it for the coverage gate and for live `cargo-fuzz` campaigns
+because `cargo +nightly llvm-cov --branch` and `cargo +nightly fuzz ...` both need nightly. The
+workspace manifest carries the published compatibility floor separately through
+`[workspace.package] rust-version = "1.95"`.
 
 The LLVM-backed `cargo xtask coverage` and `cargo xtask fuzz-smoke` commands both launch Cargo
 with `CC=clang CXX=clang++`. Keep `clang` and `clang++` available on `PATH` when you use those
@@ -44,6 +45,12 @@ The wrapper delegates to `cargo xtask check`. Running xtask directly is equivale
 
 ```bash
 cargo xtask check
+```
+
+Run the curated cross-platform CI Rust subset locally:
+
+```bash
+cargo xtask ci-rust-gate
 ```
 
 Run only coverage:
@@ -91,7 +98,12 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `scripts/release-targets.sh` registry for the target list plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
-- workspace library and integration tests through `cargo nextest`
+- the full `htmlcut-core` all-features library harness through `cargo test -p htmlcut-core
+  --lib --all-features --locked`, including public extraction examples, request/response contract
+  coverage, interop acceptance fixtures, and deterministic property tests without spawning
+  separate core test binaries
+- `htmlcut-cli` library/integration tests through deterministic package-level `cargo test`
+- `htmlcut-tempdir` library/integration tests through `cargo nextest`
 - workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v1.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
 - compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
 - distribution-profile CLI build-and-launch smoke
@@ -104,10 +116,15 @@ required `clippy`/`rustfmt` components are absent, or if those binaries are stil
 despite rustup claiming the components are installed, the gate stops immediately with the exact
 `rustup` repair command instead of failing later inside `cargo clippy` or `cargo fmt`.
 
+The cross-platform CI Rust lane uses `cargo xtask ci-rust-gate`, which is built from the same
+`xtask` command-plan module as the local gate instead of maintaining a second hard-coded command
+inventory in GitHub Actions.
+
 The same preflight also refuses to run semver checks against a dirty
 `semver-baseline/htmlcut-core` tree. That baseline is the frozen last-published API snapshot, so
 the maintainer gate stops before command planning if the worktree has edited it instead of
-comparing against a moved target.
+comparing against a moved target. The maintained refresh path records the source Git ref and crate
+version for that snapshot in `semver-baseline/htmlcut-core/BASELINE.toml`.
 
 The coverage command fails before any coverage build starts if the nightly toolchain or
 `llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean

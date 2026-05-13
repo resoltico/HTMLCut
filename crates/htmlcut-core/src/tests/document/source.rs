@@ -3,8 +3,7 @@ use super::*;
 #[test]
 fn source_helpers_cover_remaining_locator_paths() {
     let file_metadata = empty_source_metadata(
-        &file_source("fixtures/input.html")
-            .with_base_url(Url::parse("https://example.com/base/").expect("base")),
+        &file_source("fixtures/input.html").with_base_url(http_url("https://example.com/base/")),
     );
     assert_eq!(file_metadata.value, "fixtures/input.html");
     assert_eq!(
@@ -47,7 +46,7 @@ fn read_file_source_reports_unreadable_inputs() {
         .expect_err("unreadable input");
     assert_eq!(error.code, "SOURCE_LOAD_FAILED");
     #[cfg(unix)]
-    assert!(error.message.contains("Could not read file"));
+    assert!(error.message.contains("Could not access file"));
     #[cfg(not(unix))]
     assert!(
         error

@@ -15,6 +15,45 @@ export HOME="${HOME:-/home/$(id -un)}"
 export CARGO_HOME="${CARGO_HOME:-${HOME}/.cargo}"
 export PATH="${CARGO_HOME}/bin:${PATH}"
 
+ensure_native_prerequisites() {
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        return 0
+    fi
+
+    if ! command -v pkg-config >/dev/null 2>&1; then
+        cat >&2 <<'EOF'
+error: missing pkg-config on macOS
+install Homebrew pkgconf and openssl@3 first:
+  brew install pkgconf openssl@3
+EOF
+        return 1
+    fi
+
+    if pkg-config --exists openssl; then
+        return 0
+    fi
+
+    if command -v brew >/dev/null 2>&1; then
+        local openssl_prefix
+        openssl_prefix="$(brew --prefix openssl@3 2>/dev/null || true)"
+        if [[ -n "${openssl_prefix}" && -d "${openssl_prefix}/lib/pkgconfig" ]]; then
+            export PKG_CONFIG_PATH="${openssl_prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+        fi
+    fi
+
+    if pkg-config --exists openssl; then
+        return 0
+    fi
+
+    cat >&2 <<'EOF'
+error: OpenSSL development metadata is unavailable for cargo tool builds
+install Homebrew pkgconf and openssl@3 first:
+  brew install pkgconf openssl@3
+If they are already installed, export PKG_CONFIG_PATH to the openssl@3 pkgconfig directory and rerun.
+EOF
+    return 1
+}
+
 tool_current_version() {
     local crate_name="$1"
     local binary_name="$2"
@@ -85,6 +124,8 @@ install_tool_if_needed() {
     fi
     cargo install "${crate_name}" --locked --version "${version}" --force
 }
+
+ensure_native_prerequisites
 
 while read -r crate_name version binary_name; do
     install_tool_if_needed "${crate_name}" "${version}" "${binary_name}"

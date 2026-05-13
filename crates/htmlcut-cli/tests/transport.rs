@@ -140,7 +140,7 @@ fn output_file_writes_the_stdout_payload_without_emitting_stdout() {
         .assert()
         .success()
         .stdout("")
-        .stderr("");
+        .stderr(predicate::str::contains("wrote output file"));
 
     assert_eq!(
         fs::read_to_string(&output_path).expect("read output file"),

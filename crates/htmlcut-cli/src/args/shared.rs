@@ -7,8 +7,8 @@ use htmlcut_core::{
 };
 
 use super::{
-    CliFetchPreflightMode, CliInspectOutputMode, CliMatchMode, CliOutputMode, CliValueMode,
-    CliWhitespaceMode, cli_choice_parser,
+    CliFetchPreflightMode, CliInspectOutputMode, CliMatchMode, CliOutputMode, CliSliceValueMode,
+    CliTlsTrustMode, CliValueMode, CliWhitespaceMode, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -70,6 +70,14 @@ pub(crate) struct SourceArgs {
     /// or broken, or skip the HEAD preflight entirely.
     #[arg(long, value_parser = cli_choice_parser::<CliFetchPreflightMode>(), default_value_t = CliFetchPreflightMode::HeadFirst)]
     pub(crate) fetch_preflight: CliFetchPreflightMode,
+
+    /// TLS trust policy for HTTP fetches.
+    #[arg(long, value_parser = cli_choice_parser::<CliTlsTrustMode>(), default_value_t = CliTlsTrustMode::WebPki)]
+    pub(crate) tls_trust: CliTlsTrustMode,
+
+    /// PEM CA bundle path used when `--tls-trust custom-ca-bundle` is selected.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) tls_ca_bundle: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -96,8 +104,54 @@ pub(crate) struct ExtractOutputArgs {
     #[arg(long)]
     pub(crate) attribute: Option<String>,
 
-    /// Preserve source whitespace or normalize it for text-like values.
-    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Preserve)]
+    /// Preserve rendered whitespace or normalize it for text-like values.
+    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
+    pub(crate) whitespace: CliWhitespaceMode,
+
+    /// Rewrite relative URLs in extracted HTML and attributes with the effective base URL.
+    #[arg(long, default_value_t = false)]
+    pub(crate) rewrite_urls: bool,
+
+    /// How stdout should be rendered after extraction.
+    ///
+    /// `--output none` suppresses stdout and therefore requires `--bundle`.
+    #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
+    pub(crate) output: Option<CliOutputMode>,
+
+    /// Write `report.json`, `selection.html`, and `selection.txt` to this directory.
+    ///
+    /// Parent directories are created automatically. Existing bundle paths require `--overwrite`.
+    #[arg(long)]
+    pub(crate) bundle: Option<PathBuf>,
+
+    /// Write the stdout payload to exactly one file instead of stdout.
+    ///
+    /// Parent directories are created automatically. Existing files require `--overwrite`.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) output_file: Option<PathBuf>,
+
+    /// Maximum preview length stored in structured reports.
+    #[arg(long, default_value_t = DEFAULT_PREVIEW_CHARS)]
+    pub(crate) preview_chars: usize,
+
+    /// Include the full source text inside structured reports and bundles.
+    #[arg(long, default_value_t = false)]
+    pub(crate) include_source_text: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(next_help_heading = "Extraction")]
+pub(crate) struct SliceExtractOutputArgs {
+    /// What each selected match should produce before stdout formatting is applied.
+    #[arg(long, value_parser = cli_choice_parser::<CliSliceValueMode>(), default_value_t = CliSliceValueMode::Text)]
+    pub(crate) value: CliSliceValueMode,
+
+    /// Attribute name to extract when `--value attribute` is used.
+    #[arg(long)]
+    pub(crate) attribute: Option<String>,
+
+    /// Preserve rendered whitespace or normalize it for text-like values.
+    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in extracted HTML and attributes with the effective base URL.

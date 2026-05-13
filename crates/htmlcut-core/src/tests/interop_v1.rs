@@ -1,10 +1,10 @@
 use super::*;
 use crate::interop::v1::{
-    self, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryText, DelimiterMode,
-    ErrorCode, HtmlInput, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError,
-    InteropResult, Output, OutputAttributeName, OutputKind, Plan, PlanStrategy, RegexFlag,
-    Rendering, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection,
-    SelectionMode, StrategyKind, TextWhitespace,
+    self, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention,
+    DelimiterBoundaryText, DelimiterMode, ErrorCode, HtmlInput, InteropDiagnosticCode,
+    InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputAttributeName, OutputKind,
+    Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource, SelectedMatch,
+    SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
 };
 use crate::result::{
     DelimiterPairMatchMetadata, ExtractionMatch, ExtractionStats, Range, SelectorMatchMetadata,
@@ -29,8 +29,7 @@ fn delimiter_plan() -> Plan {
             delimiter_boundary("<article>"),
             delimiter_boundary("</article>"),
             DelimiterMode::Regex,
-            true,
-            false,
+            DelimiterBoundaryRetention::IncludeStart,
             vec![
                 RegexFlag::CaseInsensitive,
                 RegexFlag::MultiLine,
@@ -41,7 +40,7 @@ fn delimiter_plan() -> Plan {
         ),
         Selection::nth(NonZeroUsize::new(2).expect("index")),
         Output::outer_html(),
-        Rendering::new(TextWhitespace::Preserve, true),
+        Rendering::new(TextWhitespace::Rendered, true),
     )
 }
 
@@ -165,6 +164,9 @@ fn successful_selector_extraction(
     }
 }
 
+mod acceptance;
 mod execution;
+mod properties;
 mod schema;
+mod surface;
 mod validation;

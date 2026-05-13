@@ -61,6 +61,9 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                         .to_vec(),
                 ));
             }
+            if spec.program == Path::new("rustup") && args == ["run", "stable", "rustc", "-Vv"] {
+                return Some(Ok(b"rustc 1.95.0\n".to_vec()));
+            }
             if spec.program == Path::new("rustup")
                 && args == ["component", "list", "--toolchain", "stable", "--installed"]
             {
@@ -184,6 +187,45 @@ fn main_entry_with_runs_only_the_semver_step_for_semver_check() {
             "semver-check should run one command"
         );
         assert!(is_semver_check_spec(&calls.borrow()[0]));
+    });
+}
+
+#[test]
+fn main_entry_with_runs_the_ci_rust_gate_without_coverage() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let semver_scratch = semver_scratch_dir(repo_root.path());
+        fs::create_dir_all(semver_scratch.join("before")).expect("create initial semver scratch");
+
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_for_override = Rc::clone(&calls);
+
+        with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    calls_for_override.borrow_mut().push(spec.clone());
+                    if is_semver_check_spec(spec) {
+                        fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
+                            .expect("recreate semver scratch");
+                    }
+                    Some(Ok(()))
+                },
+                || main_entry_with(repo_root.path(), ["xtask", "ci-rust-gate"]),
+            )
+        })
+        .expect("xtask ci-rust-gate should pass");
+
+        assert!(!semver_scratch.exists(), "semver scratch should be cleaned");
+        assert!(calls.borrow().iter().any(is_semver_check_spec));
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .all(|spec| *spec != coverage_command(repo_root.path())),
+            "ci rust gate should not run coverage"
+        );
     });
 }
 
@@ -453,9 +495,19 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
 
     let refreshed_manifest = fs::read_to_string(baseline_dir.join("Cargo.toml"))
         .expect("read refreshed baseline manifest");
+    let refreshed_provenance = fs::read_to_string(baseline_dir.join("BASELINE.toml"))
+        .expect("read refreshed baseline provenance");
     assert!(refreshed_manifest.contains("version = \"4.2.0\""));
     assert!(!refreshed_manifest.contains("[dev-dependencies]"));
     assert!(refreshed_manifest.contains("\n[workspace]\n"));
+    assert!(refreshed_provenance.contains("schema = \"htmlcut.semver_baseline_provenance@1\""));
+    assert!(refreshed_provenance.contains("package = \"htmlcut-core\""));
+    assert!(refreshed_provenance.contains("package_version = \"4.2.0\""));
+    assert!(refreshed_provenance.contains("source_git_ref = \"v4.2.0\""));
+    assert!(
+        refreshed_provenance
+            .contains("refresh_command = \"cargo xtask refresh-semver-baseline --git-ref v4.2.0\"")
+    );
     assert!(
         !stale_extracted_dir.exists(),
         "stale extracted dir should be replaced"
@@ -551,6 +603,14 @@ fn refresh_semver_baseline_for_tests_bootstraps_missing_baseline_dirs() {
             .join("semver-baseline/htmlcut-core/Cargo.toml"),
     )
     .expect("read refreshed baseline manifest");
+    let refreshed_provenance = fs::read_to_string(
+        repo_root
+            .path()
+            .join("semver-baseline/htmlcut-core/BASELINE.toml"),
+    )
+    .expect("read refreshed baseline provenance");
     assert!(refreshed_manifest.contains("version = \"4.2.0\""));
     assert!(refreshed_manifest.contains("\n[workspace]\n"));
+    assert!(refreshed_provenance.contains("package_version = \"4.2.0\""));
+    assert!(refreshed_provenance.contains("source_git_ref = \"v4.2.0\""));
 }

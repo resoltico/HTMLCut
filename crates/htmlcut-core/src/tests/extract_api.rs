@@ -8,18 +8,30 @@ use std::thread;
 #[cfg(feature = "http-client")]
 use std::time::{Duration, Instant};
 
-use htmlcut_core::{
-    AttributeName, ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions,
-    RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest,
-    ValueSpec, WhitespaceMode, extract, format_byte_size, parse_document, preview_extraction,
+use crate::{
+    AttributeName, BoundaryRetention, ExtractionRequest, ExtractionSpec, FetchTimeoutMs, HttpUrl,
+    MaxBytes, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
+    SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, format_byte_size,
+    parse_document, preview_extraction,
 };
-use url::Url;
 
 fn output_options(preview_chars: usize) -> OutputOptions {
     OutputOptions {
         preview_chars: NonZeroUsize::new(preview_chars).expect("preview chars"),
         ..OutputOptions::default()
     }
+}
+
+fn http_url(value: &str) -> HttpUrl {
+    HttpUrl::parse(value).expect("http url")
+}
+
+fn max_bytes_limit(value: usize) -> MaxBytes {
+    MaxBytes::new(value).expect("max bytes limit")
+}
+
+fn fetch_timeout_limit(value: u64) -> FetchTimeoutMs {
+    FetchTimeoutMs::new(value).expect("fetch timeout")
 }
 
 fn selector_request(html: &str, selector: &str) -> ExtractionRequest {
@@ -97,7 +109,7 @@ fn selector_attribute_extraction_rewrites_relative_urls() {
     request.source = request
         .source
         .clone()
-        .with_base_url(Url::parse("https://example.com/docs/start.html").expect("base url"));
+        .with_base_url(http_url("https://example.com/docs/start.html"));
     request.output.rendering.rewrite_urls = true;
     request.extraction = request.extraction.clone().with_value(ValueSpec::Attribute {
         name: AttributeName::new("href").expect("attribute name"),
@@ -141,19 +153,18 @@ fn slice_attribute_extraction_rewrites_relative_urls_with_input_base() {
     request.source = request
         .source
         .clone()
-        .with_base_url(Url::parse("https://example.com/docs/start.html").expect("base url"));
+        .with_base_url(http_url("https://example.com/docs/start.html"));
     request.extraction = request.extraction.clone().with_value(ValueSpec::Attribute {
         name: AttributeName::new("href").expect("attribute name"),
     });
     request.extraction = ExtractionSpec::slice(SliceSpec {
-        include_start: true,
-        include_end: true,
+        boundary_retention: BoundaryRetention::IncludeBoth,
         ..request.extraction.slice_spec().expect("slice spec").clone()
     })
     .with_selection(request.extraction.selection().clone())
     .with_value(request.extraction.value().clone());
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: true,
     };
 
@@ -183,7 +194,7 @@ fn slice_text_preserves_ordered_list_numbers_and_image_alt_text() {
             .slice_spec()
             .expect("slice spec")
             .clone()
-            .with_boundary_inclusion(true, true),
+            .with_boundary_retention(BoundaryRetention::IncludeBoth),
     )
     .with_value(ValueSpec::Text);
     request.output.rendering = RenderingOptions {
@@ -197,28 +208,25 @@ fn slice_text_preserves_ordered_list_numbers_and_image_alt_text() {
 }
 
 #[test]
-fn slice_inner_html_preserves_relative_urls_until_rewrite_is_requested() {
+fn slice_selected_html_preserves_relative_urls_until_rewrite_is_requested() {
     let base_url = "https://example.com/docs/start.html";
     let mut request = slice_request(
         "<section><a href=\"guide.html\">Guide</a></section>",
         "<a ",
         "</a>",
     );
-    request.source = request
-        .source
-        .clone()
-        .with_base_url(Url::parse(base_url).expect("base url"));
+    request.source = request.source.clone().with_base_url(http_url(base_url));
     request.extraction = ExtractionSpec::slice(
         request
             .extraction
             .slice_spec()
             .expect("slice spec")
             .clone()
-            .with_boundary_inclusion(true, true),
+            .with_boundary_retention(BoundaryRetention::IncludeBoth),
     )
-    .with_value(ValueSpec::InnerHtml);
+    .with_value(ValueSpec::SelectedHtml);
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
 
@@ -301,14 +309,13 @@ fn selector_structured_mode_returns_metadata() {
 fn slice_literal_outer_html_returns_all_matches() {
     let mut request = slice_request("<p>One</p><p>Two</p>", "<p>", "</p>");
     request.extraction = ExtractionSpec::slice(SliceSpec {
-        include_start: true,
-        include_end: true,
+        boundary_retention: BoundaryRetention::IncludeBoth,
         ..request.extraction.slice_spec().expect("slice spec").clone()
     })
     .with_selection(SelectionSpec::All)
     .with_value(ValueSpec::OuterHtml);
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
 
@@ -328,9 +335,9 @@ fn slice_boundary_inclusion_supports_start_only_and_end_only() {
             .slice_spec()
             .expect("slice spec")
             .clone()
-            .with_boundary_inclusion(true, false),
+            .with_boundary_retention(BoundaryRetention::IncludeStart),
     )
-    .with_value(ValueSpec::InnerHtml);
+    .with_value(ValueSpec::SelectedHtml);
 
     let start_only = extract(&request, &RuntimeOptions::default());
     assert!(start_only.ok);
@@ -342,9 +349,9 @@ fn slice_boundary_inclusion_supports_start_only_and_end_only() {
             .slice_spec()
             .expect("slice spec")
             .clone()
-            .with_boundary_inclusion(false, true),
+            .with_boundary_retention(BoundaryRetention::IncludeEnd),
     )
-    .with_value(ValueSpec::InnerHtml);
+    .with_value(ValueSpec::SelectedHtml);
 
     let end_only = extract(&request, &RuntimeOptions::default());
     assert!(end_only.ok);
@@ -355,7 +362,7 @@ fn slice_boundary_inclusion_supports_start_only_and_end_only() {
 fn slice_regex_supports_flags() {
     let mut request = slice_request("<DIV>Caps</DIV>", "<div>", "</div>");
     let mut slice = request.extraction.slice_spec().expect("slice spec").clone();
-    slice.pattern = htmlcut_core::SlicePatternSpec::regex(
+    slice.pattern = crate::SlicePatternSpec::regex(
         SliceBoundary::new("<div>").expect("slice boundary"),
         SliceBoundary::new("</div>").expect("slice boundary"),
         "i",
@@ -371,7 +378,7 @@ fn slice_regex_supports_flags() {
 fn slice_reports_invalid_regex_flags() {
     let mut request = slice_request("<p>One</p>", "<p>", "</p>");
     let mut slice = request.extraction.slice_spec().expect("slice spec").clone();
-    slice.pattern = htmlcut_core::SlicePatternSpec::regex(
+    slice.pattern = crate::SlicePatternSpec::regex(
         SliceBoundary::new("<p>").expect("slice boundary"),
         SliceBoundary::new("</p>").expect("slice boundary"),
         "q",
@@ -474,7 +481,7 @@ fn source_url_loading_works() {
     });
 
     let mut request = selector_request("", "article");
-    request.source = SourceRequest::url(Url::parse(&url).expect("url"));
+    request.source = SourceRequest::url(http_url(&url));
 
     let result = extract(&request, &RuntimeOptions::default());
     let methods = handle.join().expect("server join");
@@ -497,8 +504,8 @@ fn source_size_limits_are_enforced() {
     request.source = SourceRequest::memory("memory", "<p>abcdefghij</p>");
 
     let runtime = RuntimeOptions {
-        max_bytes: 5,
-        fetch_timeout_ms: 1000,
+        max_bytes: max_bytes_limit(5),
+        fetch_timeout: fetch_timeout_limit(1000),
         ..RuntimeOptions::default()
     };
 

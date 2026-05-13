@@ -121,6 +121,8 @@ pub enum ValueSpec {
     /// Return normalized or preserved plain text.
     #[default]
     Text,
+    /// Return the exact selected HTML fragment.
+    SelectedHtml,
     /// Return inner HTML.
     InnerHtml,
     /// Return outer HTML.
@@ -139,6 +141,7 @@ impl ValueSpec {
     pub const fn value_type(&self) -> ValueType {
         match self {
             Self::Text => ValueType::Text,
+            Self::SelectedHtml => ValueType::SelectedHtml,
             Self::InnerHtml => ValueType::InnerHtml,
             Self::OuterHtml => ValueType::OuterHtml,
             Self::Attribute { .. } => ValueType::Attribute,
@@ -150,8 +153,49 @@ impl ValueSpec {
     pub fn attribute_name(&self) -> Option<&AttributeName> {
         match self {
             Self::Attribute { name } => Some(name),
-            Self::Text | Self::InnerHtml | Self::OuterHtml | Self::Structured => None,
+            Self::Text
+            | Self::SelectedHtml
+            | Self::InnerHtml
+            | Self::OuterHtml
+            | Self::Structured => None,
         }
+    }
+}
+
+/// Which slice boundaries become part of the selected fragment.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum BoundaryRetention {
+    /// Exclude both matched boundaries from the selected fragment.
+    #[default]
+    ExcludeBoth,
+    /// Include only the matched start boundary.
+    IncludeStart,
+    /// Include only the matched end boundary.
+    IncludeEnd,
+    /// Include both matched boundaries.
+    IncludeBoth,
+}
+
+impl BoundaryRetention {
+    /// Builds one retention mode from explicit start/end inclusion flags.
+    pub const fn from_flags(include_start: bool, include_end: bool) -> Self {
+        match (include_start, include_end) {
+            (false, false) => Self::ExcludeBoth,
+            (true, false) => Self::IncludeStart,
+            (false, true) => Self::IncludeEnd,
+            (true, true) => Self::IncludeBoth,
+        }
+    }
+
+    /// Returns whether the matched start boundary is retained.
+    pub const fn includes_start(self) -> bool {
+        matches!(self, Self::IncludeStart | Self::IncludeBoth)
+    }
+
+    /// Returns whether the matched end boundary is retained.
+    pub const fn includes_end(self) -> bool {
+        matches!(self, Self::IncludeEnd | Self::IncludeBoth)
     }
 }
 
@@ -161,12 +205,9 @@ pub struct SliceSpec {
     #[serde(flatten)]
     /// Literal or regex boundary pattern configuration.
     pub pattern: SlicePatternSpec,
-    /// Whether to include the matched start boundary in the selected fragment.
+    /// Which matched boundaries become part of the selected fragment.
     #[serde(default)]
-    pub include_start: bool,
-    /// Whether to include the matched end boundary in the selected fragment.
-    #[serde(default)]
-    pub include_end: bool,
+    pub boundary_retention: BoundaryRetention,
 }
 
 impl SliceSpec {
@@ -174,8 +215,7 @@ impl SliceSpec {
     pub fn new(from: SliceBoundary, to: SliceBoundary) -> Self {
         Self {
             pattern: SlicePatternSpec::literal(from, to),
-            include_start: false,
-            include_end: false,
+            boundary_retention: BoundaryRetention::ExcludeBoth,
         }
     }
 
@@ -183,15 +223,13 @@ impl SliceSpec {
     pub fn regex(from: SliceBoundary, to: SliceBoundary, flags: impl Into<String>) -> Self {
         Self {
             pattern: SlicePatternSpec::regex(from, to, flags),
-            include_start: false,
-            include_end: false,
+            boundary_retention: BoundaryRetention::ExcludeBoth,
         }
     }
 
-    /// Sets whether the selected fragment should include the matched boundaries.
-    pub fn with_boundary_inclusion(mut self, include_start: bool, include_end: bool) -> Self {
-        self.include_start = include_start;
-        self.include_end = include_end;
+    /// Sets which matched boundaries become part of the selected fragment.
+    pub fn with_boundary_retention(mut self, boundary_retention: BoundaryRetention) -> Self {
+        self.boundary_retention = boundary_retention;
         self
     }
 
@@ -213,6 +251,21 @@ impl SliceSpec {
     /// Returns regex flags when regex mode is used.
     pub fn flags(&self) -> Option<&str> {
         self.pattern.flags()
+    }
+
+    /// Returns the configured boundary-retention mode.
+    pub const fn boundary_retention(&self) -> BoundaryRetention {
+        self.boundary_retention
+    }
+
+    /// Returns whether the matched start boundary is retained.
+    pub const fn includes_start(&self) -> bool {
+        self.boundary_retention.includes_start()
+    }
+
+    /// Returns whether the matched end boundary is retained.
+    pub const fn includes_end(&self) -> bool {
+        self.boundary_retention.includes_end()
     }
 }
 

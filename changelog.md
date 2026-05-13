@@ -5,6 +5,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-05-13
+
+### Changed
+- Promoted the workspace and published contract surface to `9.0.0` because this release makes
+  intentional hard breaks across `htmlcut-core`, the CLI request/output vocabulary, and the
+  interop planning contracts in pursuit of a cleaner public model.
+- Hardened the core request/runtime contract around explicit validated boundary types: reusable
+  extraction-definition files and exported schemas now flow through a dedicated
+  `htmlcut_core::wire::v1` document layer, slice requests serialize named `boundary_retention`
+  modes, slice HTML outputs distinguish `selected-html` from true `inner-html`, and runtime
+  options now use validated non-zero byte/timeout wrappers plus an explicit TLS trust policy.
+- Consolidated repository toolchain ownership so `rust-toolchain.toml` owns the exact stable pin,
+  `[workspace.package] rust-version` carries the published compatibility floor, the contributor
+  bootstrap scripts expose that toolchain contract canonically, and cross-platform CI now runs a
+  shared `cargo xtask ci-rust-gate` plan instead of maintaining a second hard-coded Rust gate in
+  GitHub Actions.
+- Consolidated the full `htmlcut-core` example, extraction, interop acceptance, and interop
+  property suites into the crate's in-library all-features test harness and taught the maintained
+  Rust gates to verify that surface through `cargo test -p htmlcut-core --lib --all-features
+  --locked`, eliminating pathological macOS startup/discovery overhead from standalone core test
+  binaries.
+- Reworked the CLI help and discovery surfaces so grammar comes first and operator guidance comes
+  second: short `-h` output now stays concise, long `--help` output carries examples plus an
+  explicit operator guide, `inspect` previews share the same value-mode vocabulary as final
+  extraction, and `catalog` / `schema` text now use public contract-family labels instead of
+  leaking internal Rust type or module spellings.
+- Rewrote the root README in direct onboarding language, replaced metaphor-heavy reusable-request
+  wording with literal command guidance, linked the storefront README to the complete
+  `docs/README.md` documentation index, and tightened the docs contract so that index must keep
+  covering every maintained Markdown document under `docs/`.
+
+### Fixed
+- Core URL handling now rejects non-HTTP schemes and credential-bearing userinfo at the typed
+  boundary, redacts URL display values in diagnostics and serialized metadata, leaves
+  `effective_base_url` absent until document parsing actually resolves it, and enforces local-file
+  size limits on the same open handle that is read.
+- Selector extraction no longer re-runs selectors after URL rewriting, HTML/CSS URL rewriting now
+  covers supported HTML URL-bearing attributes plus CSS `url(...)` and quoted `@import`
+  references, attribute extraction canonicalizes HTML attribute names, CLI JSON parse failures no
+  longer guess the wrong command label from raw argv, and the rendered-whitespace contract is now
+  named and documented truthfully.
+- Maintainer tooling now parses workspace/toolchain TOML with typed deserializers, `xtask` uses a
+  typed error surface, crates that do not require unsafe code now forbid it explicitly, and the
+  contributor cargo-tool installer fails fast on missing macOS `pkgconf` / `openssl@3`
+  prerequisites instead of aborting deep inside a native dependency build. The semver-baseline
+  refresh path now also writes `semver-baseline/htmlcut-core/BASELINE.toml` so the checked-in API
+  snapshot records its published Git ref and packaged crate version.
+- The maintained Rust gate now runs the full `htmlcut-cli` package suite through package-level
+  `cargo test` instead of `cargo nextest`, eliminating nondeterministic macOS hangs in CLI test
+  enumeration while preserving the same strict package-level verification surface.
+- CLI success paths now confirm written artifacts instead of ending in silent file-only success,
+  `inspect source --output text` no longer drags DOM-path noise into selector and link previews,
+  request-file previews honor the saved value mode instead of silently forcing `structured`, and
+  preview parameter inventories now group value-shaping flags under extraction semantics instead of
+  mislabeling them as selection controls.
+- Plain-text rendering now resolves displayed link destinations to absolute URLs whenever an
+  effective base is known, strips inline citation/backreference noise, and replaces hidden MathML
+  fallback junk with cleaner reader text so live article extraction is more portable and readable.
+- `inspect source` now promotes precise reading descendants over broader wrappers when the outer
+  container mostly adds chrome links, which fixes real-world pages such as Wikipedia articles and
+  GitHub wiki layouts where narrower content roots were being buried under shell selectors.
+- Verbose stderr for successful extraction and inspection runs now includes selected-match context,
+  effective-base reporting, and source-load stage traces at the first verbose level instead of a
+  lone summary line.
+- Bundle `report.json` artifacts now omit duplicate per-match `html` and `text` sidecar payloads
+  because those bodies already live in `selection.html` and `selection.txt`, substantially
+  shrinking forensic bundles without dropping the canonical extracted value or match metadata.
+- Reader-text extraction now suppresses empty decorative list bullets and collapses immediately
+  repeated adjacent headings, which cleans up duplicated mobile/desktop promo shells and empty
+  marketing-card scaffolding on complex live product pages.
+
 ## [8.0.0] - 2026-05-05
 
 ### Fixed

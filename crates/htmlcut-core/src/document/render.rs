@@ -35,6 +35,31 @@ const BLOCK_TAGS: [&str; 21] = [
     "section",
 ];
 const SKIP_TAGS: [&str; 5] = ["head", "noscript", "script", "style", "template"];
+const READER_AUXILIARY_TOKENS: [&str; 12] = [
+    "backlink",
+    "bibliography",
+    "citation",
+    "citations",
+    "cite",
+    "editsection",
+    "footnote",
+    "footnotes",
+    "noteref",
+    "reflist",
+    "reference",
+    "references",
+];
+const CONTENT_HINT_TOKENS: [&str; 6] = ["article", "body", "content", "main", "story", "text"];
+const NOTE_FRAGMENT_PREFIXES: [&str; 8] = [
+    "#bib",
+    "#cite",
+    "#fn",
+    "#footnote",
+    "#note",
+    "#ref",
+    "#refs",
+    "#r",
+];
 
 pub(crate) fn render_html_as_text(fragment: &str, whitespace: WhitespaceMode) -> String {
     let document = parse_wrapped_fragment(fragment);
@@ -124,6 +149,22 @@ pub(crate) fn render_node(
             }
 
             let element = ElementRef::wrap(node).expect("element nodes must wrap as ElementRef");
+            if tag_name == "math" {
+                if let Some(rendered) = render_math_element(&element) {
+                    push_inline_text(output, &rendered);
+                }
+                return;
+            }
+
+            if let Some(rendered) = hidden_math_replacement(&element) {
+                push_inline_text(output, &rendered);
+                return;
+            }
+
+            if element_has_hidden_style(&element) || element_looks_like_reader_auxiliary(&element) {
+                return;
+            }
+
             if element_looks_like_utility_chrome(&element) {
                 return;
             }
@@ -356,6 +397,22 @@ fn render_heading_text_node(node: DomNodeRef<'_, Node>, output: &mut String, in_
             }
 
             let element = ElementRef::wrap(node).expect("element nodes must wrap as ElementRef");
+            if tag_name == "math" {
+                if let Some(rendered) = render_math_element(&element) {
+                    push_inline_text(output, &rendered);
+                }
+                return;
+            }
+
+            if let Some(rendered) = hidden_math_replacement(&element) {
+                push_inline_text(output, &rendered);
+                return;
+            }
+
+            if element_has_hidden_style(&element) || element_looks_like_reader_auxiliary(&element) {
+                return;
+            }
+
             if tag_name != "button" && element_looks_like_utility_chrome(&element) {
                 return;
             }
@@ -407,6 +464,294 @@ fn render_anchor(node: DomNodeRef<'_, Node>, in_pre: bool) -> String {
         (false, Some(href)) if label == href => label,
         (false, Some(href)) => format!("{label} [{href}]"),
         (false, None) => label,
+    }
+}
+
+fn push_inline_text(output: &mut String, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if needs_space(output, text) {
+        output.push(' ');
+    }
+    output.push_str(text);
+}
+
+fn hidden_math_replacement(element: &ElementRef<'_>) -> Option<String> {
+    if !element_has_hidden_style(element) {
+        return None;
+    }
+
+    element
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .find(|descendant| descendant.value().name() == "math")
+        .and_then(|math| render_math_element(&math))
+}
+
+fn element_has_hidden_style(element: &ElementRef<'_>) -> bool {
+    let Some(style) = element.value().attr("style") else {
+        return false;
+    };
+
+    style.split(';').any(|declaration| {
+        let Some((property, value)) = declaration.split_once(':') else {
+            return false;
+        };
+        let property = property.trim();
+        let value = value.trim().to_ascii_lowercase();
+        matches!(property, "display" | "visibility")
+            && (value.contains("none") || value.contains("hidden"))
+    })
+}
+
+fn element_looks_like_reader_auxiliary(element: &ElementRef<'_>) -> bool {
+    let tag_name = element.value().name();
+    let tokens = structural_signal_tokens(element);
+    let auxiliary_count = token_match_count(&tokens, &READER_AUXILIARY_TOKENS);
+    let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
+
+    if auxiliary_count == 0 && !looks_like_note_fragment_anchor(element) {
+        return false;
+    }
+
+    if matches!(tag_name, "a" | "sup" | "sub" | "span") && looks_like_note_fragment_anchor(element)
+    {
+        return true;
+    }
+
+    if matches!(tag_name, "span" | "div") && token_match_count(&tokens, &["cite", "backlink"]) > 0 {
+        return true;
+    }
+
+    auxiliary_count > content_count
+        && matches!(
+            tag_name,
+            "a" | "aside"
+                | "div"
+                | "li"
+                | "nav"
+                | "ol"
+                | "p"
+                | "section"
+                | "span"
+                | "sub"
+                | "sup"
+                | "ul"
+        )
+}
+
+fn looks_like_note_fragment_anchor(element: &ElementRef<'_>) -> bool {
+    if element
+        .value()
+        .attr("href")
+        .is_some_and(is_note_fragment_href)
+    {
+        return true;
+    }
+
+    element
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .filter(|descendant| descendant.id() != element.id())
+        .any(|descendant| {
+            descendant
+                .value()
+                .attr("href")
+                .is_some_and(is_note_fragment_href)
+        })
+}
+
+fn is_note_fragment_href(href: &str) -> bool {
+    let href = href.trim().to_ascii_lowercase();
+    NOTE_FRAGMENT_PREFIXES
+        .iter()
+        .any(|prefix| href.starts_with(prefix))
+}
+
+fn render_math_element(element: &ElementRef<'_>) -> Option<String> {
+    let mut rendered = String::new();
+    render_math_node(**element, &mut rendered);
+    let normalized = collapse_inline_whitespace(rendered.trim());
+    if !normalized.is_empty() {
+        return Some(normalized);
+    }
+
+    element
+        .value()
+        .attr("alttext")
+        .map(collapse_inline_whitespace)
+        .filter(|alt| !alt.is_empty())
+}
+
+fn render_math_node(node: DomNodeRef<'_, Node>, output: &mut String) {
+    match node.value() {
+        Node::Text(contents) => {
+            let text = collapse_inline_whitespace(contents);
+            if text.is_empty() {
+                return;
+            }
+            push_inline_text(output, &text);
+        }
+        Node::Element(data) => {
+            let tag_name = data.name();
+            if matches!(tag_name, "annotation" | "annotation-xml") {
+                return;
+            }
+
+            match tag_name {
+                "mfrac" => {
+                    if let Some(rendered) = render_math_fraction(node) {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                "msub" => {
+                    if let Some(rendered) = render_math_binary_operator(node, "_") {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                "msup" => {
+                    if let Some(rendered) = render_math_binary_operator(node, "^") {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                "msubsup" => {
+                    if let Some(rendered) = render_math_subsup(node) {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                "msqrt" => {
+                    if let Some(rendered) = render_math_wrapped(node, "sqrt(", ")") {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                "mroot" => {
+                    if let Some(rendered) = render_math_root(node) {
+                        push_inline_text(output, &rendered);
+                        return;
+                    }
+                }
+                _ => {}
+            }
+
+            for child in node.children() {
+                render_math_node(child, output);
+            }
+        }
+        _ => {
+            for child in node.children() {
+                render_math_node(child, output);
+            }
+        }
+    }
+}
+
+fn render_math_fraction(node: DomNodeRef<'_, Node>) -> Option<String> {
+    let children = direct_child_elements(node);
+    if children.len() < 2 {
+        return None;
+    }
+
+    let numerator = render_math_node_to_string(*children[0]);
+    let denominator = render_math_node_to_string(*children[1]);
+    if numerator.is_empty() || denominator.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "{}/{}",
+        wrap_math_operand(&numerator),
+        wrap_math_operand(&denominator)
+    ))
+}
+
+fn render_math_binary_operator(node: DomNodeRef<'_, Node>, operator: &str) -> Option<String> {
+    let children = direct_child_elements(node);
+    if children.len() < 2 {
+        return None;
+    }
+
+    let left = render_math_node_to_string(*children[0]);
+    let right = render_math_node_to_string(*children[1]);
+    if left.is_empty() || right.is_empty() {
+        return None;
+    }
+
+    Some(format!("{left}{operator}{}", wrap_math_operand(&right)))
+}
+
+fn render_math_subsup(node: DomNodeRef<'_, Node>) -> Option<String> {
+    let children = direct_child_elements(node);
+    if children.len() < 3 {
+        return None;
+    }
+
+    let base = render_math_node_to_string(*children[0]);
+    let sub = render_math_node_to_string(*children[1]);
+    let sup = render_math_node_to_string(*children[2]);
+    if base.is_empty() || sub.is_empty() || sup.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "{base}_{}^{}",
+        wrap_math_operand(&sub),
+        wrap_math_operand(&sup)
+    ))
+}
+
+fn render_math_wrapped(node: DomNodeRef<'_, Node>, prefix: &str, suffix: &str) -> Option<String> {
+    let rendered = render_math_children_to_string(node);
+    if rendered.is_empty() {
+        return None;
+    }
+
+    Some(format!("{prefix}{rendered}{suffix}"))
+}
+
+fn render_math_root(node: DomNodeRef<'_, Node>) -> Option<String> {
+    let children = direct_child_elements(node);
+    if children.len() < 2 {
+        return None;
+    }
+
+    let value = render_math_node_to_string(*children[0]);
+    let degree = render_math_node_to_string(*children[1]);
+    if value.is_empty() || degree.is_empty() {
+        return None;
+    }
+
+    Some(format!("root({value}, {degree})"))
+}
+
+fn render_math_children_to_string(node: DomNodeRef<'_, Node>) -> String {
+    let mut rendered = String::new();
+    for child in node.children() {
+        render_math_node(child, &mut rendered);
+    }
+    collapse_inline_whitespace(rendered.trim())
+}
+
+fn render_math_node_to_string(node: DomNodeRef<'_, Node>) -> String {
+    let mut rendered = String::new();
+    render_math_node(node, &mut rendered);
+    collapse_inline_whitespace(rendered.trim())
+}
+
+fn wrap_math_operand(operand: &str) -> String {
+    if operand.chars().any(|character| character.is_whitespace())
+        || operand.contains('/')
+        || operand.contains('^')
+        || operand.contains('_')
+    {
+        format!("({operand})")
+    } else {
+        operand.to_owned()
     }
 }
 
@@ -697,12 +1042,22 @@ fn render_list_item(node: DomNodeRef<'_, Node>, output: &mut String, in_pre: boo
     nested_lists.retain(|nested| !nested.is_empty());
     body_segments.retain(|rendered| !rendered.is_empty());
 
+    if body_segments.is_empty() && nested_lists.is_empty() {
+        return;
+    }
+
     push_newline(output, 1);
 
     let body = body_segments.join("\n\n");
     if body.is_empty() {
-        output.push_str(&indent);
-        output.push_str(&marker);
+        for (index, nested) in nested_lists.iter().enumerate() {
+            if index > 0 {
+                output.push('\n');
+            }
+            output.push_str(nested);
+        }
+        push_newline(output, 1);
+        return;
     } else {
         for (index, line) in body.lines().enumerate() {
             if index > 0 {
@@ -812,7 +1167,7 @@ pub(crate) fn push_newline(output: &mut String, count: usize) {
 
 pub(crate) fn apply_whitespace_mode(input: &str, whitespace: WhitespaceMode) -> String {
     match whitespace {
-        WhitespaceMode::Preserve => input.trim_matches('\n').to_owned(),
+        WhitespaceMode::Rendered => input.trim_matches('\n').to_owned(),
         WhitespaceMode::Normalize => {
             let mut lines = Vec::new();
             let mut blank_streak = 0usize;
@@ -907,15 +1262,31 @@ fn remove_immediate_heading_echoes(input: &str) -> String {
             .strip_prefix('#')
             .map(|_| current.trim_start_matches('#').trim())
             .filter(|heading_text| !heading_text.is_empty())
-            && lines.get(index + 1) == Some(&"")
-            && lines
-                .get(index + 2)
-                .is_some_and(|line| line.trim() == heading_text)
         {
-            index += 3;
-            index += usize::from(lines.get(index) == Some(&""));
-            output.push(String::new());
-            continue;
+            if lines.get(index + 1) == Some(&"")
+                && lines
+                    .get(index + 2)
+                    .is_some_and(|line| line.trim() == heading_text)
+            {
+                index += 3;
+                index += usize::from(lines.get(index) == Some(&""));
+                output.push(String::new());
+                continue;
+            }
+
+            let mut duplicate_index = index + 1;
+            while lines.get(duplicate_index) == Some(&"") {
+                duplicate_index += 1;
+            }
+            if lines
+                .get(duplicate_index)
+                .is_some_and(|line| line.trim() == current.trim())
+            {
+                index = duplicate_index + 1;
+                index += usize::from(lines.get(index) == Some(&""));
+                output.push(String::new());
+                continue;
+            }
         }
 
         index += 1;
@@ -940,33 +1311,33 @@ mod tests {
         assert_eq!(
             render_html_as_text(
                 "<script>ignore</script><style>.x{}</style><p>Body</p>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Body"
         );
         assert_eq!(
-            render_html_as_text("<p>Alpha<br>Beta</p>", WhitespaceMode::Preserve),
+            render_html_as_text("<p>Alpha<br>Beta</p>", WhitespaceMode::Rendered),
             "Alpha\nBeta"
         );
         assert_eq!(
-            render_html_as_text("<p>Alpha</p><hr><p>Beta</p>", WhitespaceMode::Preserve),
+            render_html_as_text("<p>Alpha</p><hr><p>Beta</p>", WhitespaceMode::Rendered),
             "Alpha\n\n---\n\nBeta"
         );
         assert_eq!(
             render_html_as_text(
                 "<p><a href=\"/empty\"><img alt=\"\" src=\"hero.png\"></a>After</p>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "After"
         );
         assert_eq!(
-            render_html_as_text("<h2>   </h2><p>Body</p>", WhitespaceMode::Preserve),
+            render_html_as_text("<h2>   </h2><p>Body</p>", WhitespaceMode::Rendered),
             "Body"
         );
         assert_eq!(
             render_html_as_text(
                 "<dl><dt>Term</dt><dd>Definition</dd></dl>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Term\n: Definition"
         );
@@ -1014,42 +1385,42 @@ mod tests {
         assert_eq!(
             render_html_as_text(
                 "<article><table><tr></tr></table><p>Body.</p></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Body."
         );
         assert_eq!(
             render_html_as_text(
                 "<article><table>\n<tr><td>Alpha</td></tr>\n</table></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Alpha"
         );
         assert_eq!(
             render_html_as_text(
                 "<article><table><caption>Windows builds</caption><tr><td>Alpha</td></tr></table></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Windows builds\nAlpha"
         );
         assert_eq!(
             render_html_as_text(
                 "<article><table><caption>Caption only</caption></table></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             "Caption only"
         );
         assert_eq!(
             render_html_as_text(
                 "<article><figure><img alt=\"Hero\" src=\"hero.jpg\"><figcaption>Caption</figcaption></figure><div class=\"caption-box\"><img alt=\"Hero Two\" src=\"hero2.jpg\"><div class=\"caption\">Caption</div></div></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             ""
         );
         assert_eq!(
             render_html_as_text(
                 "<article><div><img alt=\"Hero\" src=\"hero.jpg\"><figcaption>Caption</figcaption></div></article>",
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             ),
             ""
         );
@@ -1246,7 +1617,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut empty_item = String::new();
         render_list_item(*list_items[0], &mut empty_item, false);
-        assert_eq!(empty_item.trim(), "-");
+        assert!(empty_item.trim().is_empty());
 
         let mut inline_segment = "  Text  ".to_owned();
         let mut body_segments = Vec::new();
@@ -1300,7 +1671,7 @@ mod tests {
             "Alpha\n\nBeta"
         );
         assert_eq!(
-            apply_whitespace_mode("Alpha\n\nBeta\n", WhitespaceMode::Preserve),
+            apply_whitespace_mode("Alpha\n\nBeta\n", WhitespaceMode::Rendered),
             "Alpha\n\nBeta"
         );
         assert_eq!(normalize_structured_line("   "), "");
@@ -1312,5 +1683,360 @@ mod tests {
             remove_immediate_heading_echoes("# Heading\n\nHeading\nBody"),
             "# Heading\n\nBody"
         );
+    }
+
+    #[test]
+    fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
+        assert_eq!(
+            render_html_as_text(
+                "<article><p>Alpha <math><msup><mi>x</mi><mn>2</mn></msup></math> Beta</p></article>",
+                WhitespaceMode::Rendered,
+            ),
+            "Alpha x^2 Beta"
+        );
+        assert_eq!(
+            render_html_as_text(
+                "<article><span style=\"display:none\"><math><mi>x</mi></math></span><span style=\"visibility:hidden\">Hidden</span><a href=\"#cite_note-1\">[1]</a><span class=\"backlink\">Back</span><p>Body</p></article>",
+                WhitespaceMode::Rendered,
+            ),
+            "x\n\nBody"
+        );
+
+        let heading_math = parse_document_node(
+            "<h2><math><mfrac><mi>a</mi><mi>b</mi></mfrac></math><span class=\"reference\">[1]</span><img alt=\"Hero\"></h2>",
+        );
+        let heading = select_first(&heading_math, "h2").expect("heading");
+        assert_eq!(extract_heading_text(&heading).as_deref(), Some("a/b Hero"));
+        let mut heading_math_rendered = String::new();
+        render_heading_text_node(
+            *select_first(&heading_math, "math").expect("math"),
+            &mut heading_math_rendered,
+            false,
+        );
+        assert_eq!(heading_math_rendered, "a/b");
+        let hidden_heading_math = parse_document_node(
+            "<h2><span style=\"display:none\"><math><mi>x</mi></math></span></h2>",
+        );
+        let mut hidden_heading_rendered = String::new();
+        render_heading_text_node(
+            *select_first(&hidden_heading_math, "span").expect("span"),
+            &mut hidden_heading_rendered,
+            false,
+        );
+        assert_eq!(hidden_heading_rendered, "x");
+
+        let fallback_math_document = parse_document_node(
+            "<math alttext=\"x squared\"><annotation>ignored</annotation></math>",
+        );
+        let fallback_math = select_first(&fallback_math_document, "math").expect("math");
+        assert_eq!(
+            render_math_element(&fallback_math).as_deref(),
+            Some("x squared")
+        );
+
+        let hidden_with_math =
+            parse_document_node("<span style=\"display:none\"><math><mi>z</mi></math></span>");
+        let hidden_math = select_first(&hidden_with_math, "span").expect("hidden math");
+        assert_eq!(hidden_math_replacement(&hidden_math).as_deref(), Some("z"));
+
+        let hidden_style_false = parse_document_node("<span style=\"display\">Body</span>");
+        let hidden_style_false_element = select_first(&hidden_style_false, "span").expect("span");
+        assert!(!element_has_hidden_style(&hidden_style_false_element));
+
+        let note_anchor = parse_document_node("<sup><a href=\"#cite_note-1\">[1]</a></sup>");
+        let note_anchor_element = select_first(&note_anchor, "sup").expect("sup");
+        assert!(element_looks_like_reader_auxiliary(&note_anchor_element));
+        assert!(looks_like_note_fragment_anchor(&note_anchor_element));
+        assert!(is_note_fragment_href("#CITE_NOTE-1"));
+
+        let backlink = parse_document_node("<span class=\"backlink\">Back</span>");
+        let backlink_element = select_first(&backlink, "span").expect("span");
+        assert!(element_looks_like_reader_auxiliary(&backlink_element));
+        let reference_list = parse_document_node("<ul class=\"references\"><li>Ref</li></ul>");
+        let reference_list_element = select_first(&reference_list, "ul").expect("ul");
+        assert!(element_looks_like_reader_auxiliary(&reference_list_element));
+
+        let direct_math_root =
+            parse_document_node("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
+        let mut direct_math_root_rendered = String::new();
+        render_node(
+            *select_first(&direct_math_root, "math").expect("math"),
+            &mut direct_math_root_rendered,
+            false,
+            false,
+        );
+        assert_eq!(direct_math_root_rendered, "x^2");
+
+        let direct_math = parse_document_node(
+            "<math><msub><mi>x</mi><mi>i</mi></msub><msubsup><mi>y</mi><mi>i</mi><mn>2</mn></msubsup><msqrt><mi>z</mi></msqrt><mroot><mi>x</mi><mn>3</mn></mroot></math>",
+        );
+        let direct_math_element = select_first(&direct_math, "math").expect("math");
+        assert_eq!(
+            render_math_element(&direct_math_element).as_deref(),
+            Some("x_i y_i^2 sqrt(z) root(x, 3)")
+        );
+
+        let incomplete_fraction = parse_document_node("<mfrac><mi>a</mi></mfrac>");
+        assert_eq!(
+            render_math_fraction(*select_first(&incomplete_fraction, "mfrac").expect("mfrac")),
+            None
+        );
+        let incomplete_sub = parse_document_node("<msub><mi>a</mi></msub>");
+        assert_eq!(
+            render_math_binary_operator(*select_first(&incomplete_sub, "msub").expect("msub"), "_"),
+            None
+        );
+        let incomplete_subsup = parse_document_node("<msubsup><mi>a</mi><mi>b</mi></msubsup>");
+        assert_eq!(
+            render_math_subsup(*select_first(&incomplete_subsup, "msubsup").expect("msubsup")),
+            None
+        );
+        let empty_wrapped = parse_document_node("<msqrt><annotation>ignored</annotation></msqrt>");
+        assert_eq!(
+            render_math_wrapped(
+                *select_first(&empty_wrapped, "msqrt").expect("msqrt"),
+                "sqrt(",
+                ")"
+            ),
+            None
+        );
+        let incomplete_root = parse_document_node("<mroot><mi>a</mi></mroot>");
+        assert_eq!(
+            render_math_root(*select_first(&incomplete_root, "mroot").expect("mroot")),
+            None
+        );
+        let whitespace_math = parse_document_node("<math>   </math>");
+        assert_eq!(
+            render_math_children_to_string(*select_first(&whitespace_math, "math").expect("math")),
+            ""
+        );
+        let numerator_empty =
+            parse_document_node("<mfrac><annotation>ignored</annotation><mi>b</mi></mfrac>");
+        assert_eq!(
+            render_math_fraction(*select_first(&numerator_empty, "mfrac").expect("mfrac")),
+            None
+        );
+        let left_empty =
+            parse_document_node("<msub><annotation>ignored</annotation><mi>b</mi></msub>");
+        assert_eq!(
+            render_math_binary_operator(*select_first(&left_empty, "msub").expect("msub"), "_"),
+            None
+        );
+        let sub_empty = parse_document_node(
+            "<msubsup><mi>a</mi><annotation>ignored</annotation><mi>c</mi></msubsup>",
+        );
+        assert_eq!(
+            render_math_subsup(*select_first(&sub_empty, "msubsup").expect("msubsup")),
+            None
+        );
+        let root_value_empty =
+            parse_document_node("<mroot><annotation>ignored</annotation><mn>3</mn></mroot>");
+        assert_eq!(
+            render_math_root(*select_first(&root_value_empty, "mroot").expect("mroot")),
+            None
+        );
+        let rendered_fraction = parse_document_node("<mfrac><mi>a</mi><mi>b</mi></mfrac>");
+        let mut fraction_output = String::new();
+        render_math_node(
+            *select_first(&rendered_fraction, "mfrac").expect("mfrac"),
+            &mut fraction_output,
+        );
+        assert_eq!(fraction_output, "a/b");
+        let rendered_sub = parse_document_node("<msub><mi>x</mi><mi>i</mi></msub>");
+        let mut sub_output = String::new();
+        render_math_node(
+            *select_first(&rendered_sub, "msub").expect("msub"),
+            &mut sub_output,
+        );
+        assert_eq!(sub_output, "x_i");
+        let rendered_sup = parse_document_node("<msup><mi>x</mi><mn>2</mn></msup>");
+        let mut sup_output = String::new();
+        render_math_node(
+            *select_first(&rendered_sup, "msup").expect("msup"),
+            &mut sup_output,
+        );
+        assert_eq!(sup_output, "x^2");
+        let rendered_subsup =
+            parse_document_node("<msubsup><mi>y</mi><mi>i</mi><mn>2</mn></msubsup>");
+        let mut subsup_output = String::new();
+        render_math_node(
+            *select_first(&rendered_subsup, "msubsup").expect("msubsup"),
+            &mut subsup_output,
+        );
+        assert_eq!(subsup_output, "y_i^2");
+        let rendered_sqrt = parse_document_node("<msqrt><mi>z</mi></msqrt>");
+        let mut sqrt_output = String::new();
+        render_math_node(
+            *select_first(&rendered_sqrt, "msqrt").expect("msqrt"),
+            &mut sqrt_output,
+        );
+        assert_eq!(sqrt_output, "sqrt(z)");
+        let rendered_root = parse_document_node("<mroot><mi>x</mi><mn>3</mn></mroot>");
+        let mut root_output = String::new();
+        render_math_node(
+            *select_first(&rendered_root, "mroot").expect("mroot"),
+            &mut root_output,
+        );
+        assert_eq!(root_output, "root(x, 3)");
+        let mut root_node_output = String::new();
+        render_math_node(direct_math.tree.root(), &mut root_node_output);
+        assert!(root_node_output.contains("x_i"));
+        assert_eq!(wrap_math_operand("a/b"), "(a/b)");
+
+        let mut inline = String::new();
+        push_inline_text(&mut inline, "");
+        assert!(inline.is_empty());
+    }
+
+    #[test]
+    fn empty_list_items_do_not_emit_stray_bullet_markers() {
+        assert_eq!(
+            render_html_as_text(
+                "<ul><li> </li><li><span>Visible item</span></li></ul>",
+                WhitespaceMode::Rendered,
+            ),
+            "- Visible item"
+        );
+        let nested_only = render_html_as_text(
+            "<ul><li><ul><li>Nested item</li></ul></li></ul>",
+            WhitespaceMode::Rendered,
+        );
+        assert!(nested_only.trim_start().starts_with("- Nested item"));
+        assert!(!nested_only.contains("\n- \n"));
+        assert_eq!(
+            render_html_as_text(
+                "<ul><li><ul><li>Nested item</li></ul><ol><li>Second nested item</li></ol></li></ul>",
+                WhitespaceMode::Rendered,
+            ),
+            "    - Nested item\n    1. Second nested item"
+        );
+    }
+
+    #[test]
+    fn immediate_duplicate_headings_are_collapsed_in_reader_text() {
+        assert_eq!(
+            render_html_as_text(
+                "<section><h2>Why Apple is the best place to buy iPhone.</h2><h2>Why Apple is the best place to buy iPhone.</h2><p>Details.</p></section>",
+                WhitespaceMode::Rendered,
+            ),
+            "## Why Apple is the best place to buy iPhone.\n\nDetails."
+        );
+    }
+
+    #[test]
+    fn math_fallback_paths_cover_unrenderable_nodes_and_operand_guards() {
+        assert_eq!(
+            render_html_as_text(
+                "<article><math><annotation>ignored</annotation></math><p>Body</p></article>",
+                WhitespaceMode::Rendered,
+            ),
+            "Body"
+        );
+        assert_eq!(
+            render_html_as_text(
+                "<h2><math><annotation>ignored</annotation></math>Heading</h2>",
+                WhitespaceMode::Rendered,
+            ),
+            "## Heading"
+        );
+
+        let hidden_heading =
+            parse_document_node("<h2><span style=\"display:none\">Hidden</span>Visible</h2>");
+        let hidden_heading_element = select_first(&hidden_heading, "h2").expect("heading");
+        assert_eq!(
+            extract_heading_text(&hidden_heading_element).as_deref(),
+            Some("Visible")
+        );
+
+        let malformed_fraction =
+            parse_document_node("<mfrac><annotation>ignored</annotation><mi>b</mi></mfrac>");
+        let mut malformed_fraction_output = String::new();
+        render_math_node(
+            *select_first(&malformed_fraction, "mfrac").expect("mfrac"),
+            &mut malformed_fraction_output,
+        );
+        assert_eq!(malformed_fraction_output, "b");
+
+        let malformed_sub =
+            parse_document_node("<msub><mi>a</mi><annotation>ignored</annotation></msub>");
+        let mut malformed_sub_output = String::new();
+        render_math_node(
+            *select_first(&malformed_sub, "msub").expect("msub"),
+            &mut malformed_sub_output,
+        );
+        assert_eq!(malformed_sub_output, "a");
+
+        let malformed_sup =
+            parse_document_node("<msup><annotation>ignored</annotation><mn>2</mn></msup>");
+        let mut malformed_sup_output = String::new();
+        render_math_node(
+            *select_first(&malformed_sup, "msup").expect("msup"),
+            &mut malformed_sup_output,
+        );
+        assert_eq!(malformed_sup_output, "2");
+
+        let malformed_subsup = parse_document_node(
+            "<msubsup><annotation>ignored</annotation><mi>i</mi><mn>2</mn></msubsup>",
+        );
+        let mut malformed_subsup_output = String::new();
+        render_math_node(
+            *select_first(&malformed_subsup, "msubsup").expect("msubsup"),
+            &mut malformed_subsup_output,
+        );
+        assert_eq!(malformed_subsup_output, "i 2");
+
+        let malformed_sqrt = parse_document_node("<msqrt><annotation>ignored</annotation></msqrt>");
+        let mut malformed_sqrt_output = String::new();
+        render_math_node(
+            *select_first(&malformed_sqrt, "msqrt").expect("msqrt"),
+            &mut malformed_sqrt_output,
+        );
+        assert!(malformed_sqrt_output.is_empty());
+
+        let malformed_root =
+            parse_document_node("<mroot><mi>x</mi><annotation>ignored</annotation></mroot>");
+        let mut malformed_root_output = String::new();
+        render_math_node(
+            *select_first(&malformed_root, "mroot").expect("mroot"),
+            &mut malformed_root_output,
+        );
+        assert_eq!(malformed_root_output, "x");
+
+        let denominator_empty =
+            parse_document_node("<mfrac><mi>a</mi><annotation>ignored</annotation></mfrac>");
+        assert_eq!(
+            render_math_fraction(*select_first(&denominator_empty, "mfrac").expect("mfrac")),
+            None
+        );
+        let right_empty =
+            parse_document_node("<msub><mi>a</mi><annotation>ignored</annotation></msub>");
+        assert_eq!(
+            render_math_binary_operator(*select_first(&right_empty, "msub").expect("msub"), "_"),
+            None
+        );
+        let base_empty = parse_document_node(
+            "<msubsup><annotation>ignored</annotation><mi>b</mi><mi>c</mi></msubsup>",
+        );
+        assert_eq!(
+            render_math_subsup(*select_first(&base_empty, "msubsup").expect("msubsup")),
+            None
+        );
+        let sup_empty = parse_document_node(
+            "<msubsup><mi>a</mi><mi>b</mi><annotation>ignored</annotation></msubsup>",
+        );
+        assert_eq!(
+            render_math_subsup(*select_first(&sup_empty, "msubsup").expect("msubsup")),
+            None
+        );
+        let root_degree_empty =
+            parse_document_node("<mroot><mi>x</mi><annotation>ignored</annotation></mroot>");
+        assert_eq!(
+            render_math_root(*select_first(&root_degree_empty, "mroot").expect("mroot")),
+            None
+        );
+
+        assert_eq!(wrap_math_operand("a b"), "(a b)");
+        assert_eq!(wrap_math_operand("x^2"), "(x^2)");
+        assert_eq!(wrap_math_operand("x_i"), "(x_i)");
     }
 }

@@ -6,22 +6,24 @@
 
 # HTMLCut — repeatable HTML extraction from files, URLs, and stdin
 
-HTMLCut pulls the exact piece you need out of any web page or HTML file — a title, a price, a link,
-a block of text. Point it at the right element and it extracts like a clean shot: nothing you didn't
-ask for, nothing left behind.
+HTMLCut extracts a specific value or fragment from an HTML file, a web page, or stdin.
+Use a CSS selector when the content is in the parsed document, or use literal and regex boundaries
+when you need to cut raw source text.
 
-Every page you return to for the same fragment is a page you've been brewing from scratch. Save the
-extraction once; pour the same result whenever you need it.
+You can save an extraction definition as a request file and rerun it later without restating the
+selector, slice boundaries, or output settings.
 
-- Pull text, links, or any piece of a page a CSS selector can reach
-- Cut out a section between any two strings or patterns
-- Preview the pour before it runs
-- Save the extraction as a file; replay it unchanged, any time
-- Collect results into a folder when you're working through many pages
+- Extract text, links, attributes, HTML fragments, or structured match data
+- Cut raw source text between literal strings or regex boundaries
+- Preview a source or an extraction before committing to final output
+- Save reusable request files and replay them unchanged
+- Write outputs or forensic bundles to disk
 
-[Getting started](docs/getting-started.md) · [Command guide](docs/cli.md)
+[Download releases](https://github.com/resoltico/HTMLCut/releases) ·
+[Getting started](docs/getting-started.md) ·
+[Command guide](docs/cli.md)
 
-## Brew Once, Pour Again
+## Save and Reuse an Extraction
 
 ```bash
 htmlcut select ./page.html \
@@ -34,21 +36,17 @@ htmlcut select ./page.html \
 htmlcut select --request-file ./article-link.request.json
 ```
 
-The first command captures the extraction while the page is still warm. The second pours the same
-result — same selector, same options — without rebuilding a thing.
+The first command writes a reusable extraction definition. The second command reruns that saved
+definition, so you get the same selector and output settings without repeating the inline flags.
 
-## Where It Fits
+## Documentation Index
 
-The recurring page with something worth pulling: a price you track, a headline you monitor, a link
-you always need. Works on any HTML already in hand — a saved file, a live URL, or passed from
-another tool.
+The complete index of Markdown documentation under `docs/` lives in [docs/README.md](docs/README.md).
 
-## Get It
-
-[Download for macOS, Linux, or Windows →](https://github.com/resoltico/HTMLCut/releases)
-
-New here? [Getting started](docs/getting-started.md) walks you from install to first saved
-extraction. The full [command guide](docs/cli.md) covers everything after that.
+- [Getting Started](docs/getting-started.md)
+- [CLI Developer Guide](docs/cli.md)
+- [Core Developer Guide](docs/core.md)
+- [Release Protocol Overview](docs/release-protocol.md)
 
 ## Legal
 

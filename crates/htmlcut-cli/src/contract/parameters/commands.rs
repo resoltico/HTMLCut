@@ -1,16 +1,17 @@
+use crate::contract::CliBoundaryRetentionMode;
 use htmlcut_core::{
-    DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_PREVIEW_CHARS, PatternMode, WhitespaceMode,
+    DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_PREVIEW_CHARS, PatternMode, ValueType, WhitespaceMode,
 };
 
 use super::common::{
     common_definition_parameters, common_extract_parameters, common_filesystem_output_parameters,
     common_inspect_output_parameters, common_selection_parameters, common_source_parameters,
-    request_file_aware_source_parameters,
+    request_file_aware_source_parameters, select_extract_value_modes, slice_extract_value_modes,
 };
 use super::descriptors::{param_flag, param_option};
 use super::{
     CliParameterDescriptor, CliParameterId, CliParameterRequirement, CliParameterSection, CliValue,
-    pattern_values, whitespace_values,
+    boundary_retention_values, pattern_values, value_type_values, whitespace_values,
 };
 
 pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
@@ -75,18 +76,39 @@ pub(super) fn inspect_select_parameters() -> Vec<CliParameterDescriptor> {
     ));
     parameters.extend(common_selection_parameters());
     parameters.push(param_option(
-        CliParameterSection::Selection,
+        CliParameterSection::Extraction,
+        CliParameterId::Value,
+        CliParameterRequirement::Optional,
+        "VALUE",
+        Some(CliValue::ValueType(ValueType::Structured)),
+        value_type_values(&select_extract_value_modes()),
+        "What each previewed match should produce before the preview report is rendered.",
+    ));
+    parameters.push(param_option(
+        CliParameterSection::Extraction,
+        CliParameterId::Attribute,
+        CliParameterRequirement::RequiredWhen(super::condition(
+            CliParameterId::Value,
+            vec![CliValue::ValueType(ValueType::Attribute)],
+        )),
+        "ATTRIBUTE",
+        None,
+        Vec::new(),
+        "Attribute name to preview when --value attribute is used.",
+    ));
+    parameters.push(param_option(
+        CliParameterSection::Extraction,
         CliParameterId::Whitespace,
         CliParameterRequirement::Optional,
         "WHITESPACE",
-        Some(CliValue::WhitespaceMode(WhitespaceMode::Preserve)),
+        Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
         whitespace_values(),
-        "Preserve source whitespace or normalize preview text.",
+        "Preserve rendered whitespace after HTML-aware text rendering, or normalize preview text.",
     ));
     parameters.push(param_flag(
-        CliParameterSection::Selection,
+        CliParameterSection::Extraction,
         CliParameterId::RewriteUrls,
-        "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
+        "Rewrite supported relative URLs in preview HTML with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references.",
     ));
     parameters.extend(common_inspect_output_parameters());
     parameters.extend(common_filesystem_output_parameters());
@@ -99,18 +121,39 @@ pub(super) fn inspect_slice_parameters() -> Vec<CliParameterDescriptor> {
     parameters.extend(slice_strategy_parameters(CliParameterSection::Source));
     parameters.extend(common_selection_parameters());
     parameters.push(param_option(
-        CliParameterSection::Selection,
+        CliParameterSection::Extraction,
+        CliParameterId::Value,
+        CliParameterRequirement::Optional,
+        "VALUE",
+        Some(CliValue::ValueType(ValueType::Structured)),
+        value_type_values(&slice_extract_value_modes()),
+        "What each previewed slice should produce before the preview report is rendered.",
+    ));
+    parameters.push(param_option(
+        CliParameterSection::Extraction,
+        CliParameterId::Attribute,
+        CliParameterRequirement::RequiredWhen(super::condition(
+            CliParameterId::Value,
+            vec![CliValue::ValueType(ValueType::Attribute)],
+        )),
+        "ATTRIBUTE",
+        None,
+        Vec::new(),
+        "Attribute name to preview when --value attribute is used.",
+    ));
+    parameters.push(param_option(
+        CliParameterSection::Extraction,
         CliParameterId::Whitespace,
         CliParameterRequirement::Optional,
         "WHITESPACE",
-        Some(CliValue::WhitespaceMode(WhitespaceMode::Preserve)),
+        Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
         whitespace_values(),
-        "Preserve source whitespace or normalize preview text.",
+        "Preserve rendered whitespace after HTML-aware text rendering, or normalize preview text.",
     ));
     parameters.push(param_flag(
-        CliParameterSection::Selection,
+        CliParameterSection::Extraction,
         CliParameterId::RewriteUrls,
-        "Rewrite relative URLs in preview HTML and attribute data with the effective base URL.",
+        "Rewrite supported relative URLs in preview HTML with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references.",
     ));
     parameters.extend(common_inspect_output_parameters());
     parameters.extend(common_filesystem_output_parameters());
@@ -130,7 +173,7 @@ pub(super) fn select_extract_parameters() -> Vec<CliParameterDescriptor> {
         "CSS selector that chooses the candidate nodes to extract.",
     ));
     parameters.extend(common_selection_parameters());
-    parameters.extend(common_extract_parameters());
+    parameters.extend(common_extract_parameters(&select_extract_value_modes()));
     parameters.extend(common_filesystem_output_parameters());
     parameters
 }
@@ -140,7 +183,7 @@ pub(super) fn slice_extract_parameters() -> Vec<CliParameterDescriptor> {
     parameters.extend(request_file_aware_source_parameters());
     parameters.extend(slice_strategy_parameters(CliParameterSection::Source));
     parameters.extend(common_selection_parameters());
-    parameters.extend(common_extract_parameters());
+    parameters.extend(common_extract_parameters(&slice_extract_value_modes()));
     parameters.extend(common_filesystem_output_parameters());
     parameters
 }
@@ -186,15 +229,16 @@ fn slice_strategy_parameters(section: CliParameterSection) -> Vec<CliParameterDe
             Vec::new(),
             "Regex flags for --pattern regex. Accepts i, m, s, U, and x.",
         ),
-        param_flag(
+        param_option(
             section,
-            CliParameterId::IncludeStart,
-            "Include the matched --from boundary in the selected fragment.",
-        ),
-        param_flag(
-            section,
-            CliParameterId::IncludeEnd,
-            "Include the matched --to boundary in the selected fragment.",
+            CliParameterId::BoundaryRetention,
+            CliParameterRequirement::Optional,
+            "BOUNDARY_RETENTION",
+            Some(CliValue::BoundaryRetentionMode(
+                CliBoundaryRetentionMode::ExcludeBoth,
+            )),
+            boundary_retention_values(),
+            "Which matched boundaries become part of the selected fragment.",
         ),
     ]
 }

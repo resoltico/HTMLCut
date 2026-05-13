@@ -28,8 +28,8 @@ fn source_reading_helpers_cover_error_paths() {
     let file_error = read_file_source(
         &file_source(&large_path),
         &RuntimeOptions {
-            max_bytes: 3,
-            fetch_timeout_ms: 1000,
+            max_bytes: max_bytes_limit(3),
+            fetch_timeout: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
@@ -75,8 +75,8 @@ fn url_source_reading_helpers_cover_error_paths() {
     let fetch_error = read_url_source(
         &url_source(&format!("http://{closed_address}")),
         &RuntimeOptions {
-            max_bytes: 1024,
-            fetch_timeout_ms: 250,
+            max_bytes: max_bytes_limit(1024),
+            fetch_timeout: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )
@@ -98,8 +98,8 @@ fn url_source_reading_helpers_cover_error_paths() {
     let oversized_response = read_url_source(
         &url_source(&format!("http://{address}")),
         &RuntimeOptions {
-            max_bytes: 4,
-            fetch_timeout_ms: 1000,
+            max_bytes: max_bytes_limit(4),
+            fetch_timeout: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
@@ -112,15 +112,13 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
     let oversized_memory = load_source(
         &memory_source("inline", "12345"),
         &RuntimeOptions {
-            max_bytes: 3,
-            fetch_timeout_ms: 1000,
+            max_bytes: max_bytes_limit(3),
+            fetch_timeout: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
     .expect_err("oversized memory source");
     assert_eq!(oversized_memory.code, "SOURCE_LOAD_FAILED");
-
-    assert_eq!(url_source("http://example.com").kind(), SourceKind::Url);
 
     let extract_result = extract(
         &ExtractionRequest::new(
@@ -128,19 +126,27 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
             selector_request("<article>Hello</article>").extraction,
         ),
         &RuntimeOptions {
-            max_bytes: 3,
-            fetch_timeout_ms: 1000,
+            max_bytes: max_bytes_limit(3),
+            fetch_timeout: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     );
     assert!(!extract_result.ok);
     assert_eq!(extract_result.diagnostics[0].code, "SOURCE_LOAD_FAILED");
 }
+
+#[cfg(feature = "http-client")]
 #[test]
-fn stream_source_helpers_preserve_failure_metadata() {
+fn url_source_requests_keep_the_url_source_kind() {
+    assert_eq!(url_source("http://example.com").kind(), SourceKind::Url);
+}
+
+#[cfg(feature = "http-client")]
+#[test]
+fn url_stream_source_helpers_preserve_failure_metadata() {
     let runtime = RuntimeOptions {
-        max_bytes: 3,
-        fetch_timeout_ms: 1000,
+        max_bytes: max_bytes_limit(3),
+        fetch_timeout: fetch_timeout_limit(1000),
         ..RuntimeOptions::default()
     };
     let source_value = "https://example.com/page";
@@ -204,9 +210,16 @@ fn stream_source_helpers_preserve_failure_metadata() {
             .message
             .contains("GET body read failed after status 200")
     );
+}
 
-    let stdin_request =
-        SourceRequest::stdin().with_base_url(Url::parse("https://example.com/base/").expect("url"));
+#[test]
+fn stdin_stream_source_helpers_preserve_failure_metadata() {
+    let runtime = RuntimeOptions {
+        max_bytes: max_bytes_limit(3),
+        fetch_timeout: fetch_timeout_limit(1000),
+        ..RuntimeOptions::default()
+    };
+    let stdin_request = SourceRequest::stdin().with_base_url(http_url("https://example.com/base/"));
     let mut oversized_stdin = Cursor::new(b"hello".to_vec());
     let stdin_failure =
         read_stdin_source_from_reader_for_tests(&stdin_request, &runtime, &mut oversized_stdin)

@@ -1,7 +1,7 @@
 use arbitrary::Arbitrary;
 use htmlcut_core::interop::v1::{
-    CssSelectorText, DelimiterBoundaryText, DelimiterMode, HtmlInput, Plan, PlanStrategy,
-    RegexFlag, execute_plan,
+    CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode, HtmlInput,
+    Plan, PlanStrategy, RegexFlag, execute_plan,
 };
 
 use crate::interop_common::{FuzzRendering, FuzzSelection, FuzzValueKind, sample_base_url};
@@ -115,8 +115,7 @@ impl FuzzInteropStrategy {
                     start,
                     end,
                     mode,
-                    *include_start,
-                    *include_end,
+                    DelimiterBoundaryRetention::from_flags(*include_start, *include_end),
                     flags,
                 ))
             }

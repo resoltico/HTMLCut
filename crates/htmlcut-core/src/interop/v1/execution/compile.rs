@@ -1,7 +1,8 @@
 use crate::{
     DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
-    ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions, RuntimeOptions,
-    SelectionSpec, SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode,
+    ExtractionRequest, ExtractionSpec, FetchConnectTimeoutMs, FetchTimeoutMs, MaxBytes,
+    OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec, SlicePatternSpec, SliceSpec,
+    SourceRequest, ValueSpec, WhitespaceMode,
 };
 
 use super::super::stable_json::digest_stable_json;
@@ -16,10 +17,13 @@ pub(super) fn exact_plan_digest_sha256(plan: &Plan) -> Result<String, ContractEr
 
 pub(super) fn default_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
-        max_bytes: DEFAULT_MAX_BYTES,
-        fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
-        fetch_connect_timeout_ms: DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        max_bytes: MaxBytes::new(DEFAULT_MAX_BYTES).expect("default max bytes"),
+        fetch_timeout: FetchTimeoutMs::new(DEFAULT_FETCH_TIMEOUT_MS)
+            .expect("default fetch timeout"),
+        fetch_connect_timeout: FetchConnectTimeoutMs::new(DEFAULT_FETCH_CONNECT_TIMEOUT_MS)
+            .expect("default connect timeout"),
         fetch_preflight: crate::FetchPreflightMode::HeadFirst,
+        tls_trust: crate::TlsTrustPolicy::WebPki,
     }
 }
 
@@ -33,8 +37,7 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
             start,
             end,
             mode,
-            include_start,
-            include_end,
+            boundary_retention,
             flags,
         } => ExtractionSpec::slice(SliceSpec {
             pattern: match mode {
@@ -56,8 +59,10 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
                     compile_regex_flags(flags),
                 ),
             },
-            include_start: *include_start,
-            include_end: *include_end,
+            boundary_retention: crate::BoundaryRetention::from_flags(
+                boundary_retention.includes_start(),
+                boundary_retention.includes_end(),
+            ),
         }),
     }
     .with_selection(compile_selection(&plan.selection))
@@ -67,7 +72,7 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
     request.output = OutputOptions {
         rendering: RenderingOptions {
             whitespace: match plan.rendering.whitespace {
-                TextWhitespace::Preserve => WhitespaceMode::Preserve,
+                TextWhitespace::Rendered => WhitespaceMode::Rendered,
                 TextWhitespace::Normalize => WhitespaceMode::Normalize,
             },
             rewrite_urls: plan.rendering.rewrite_urls,
@@ -83,7 +88,12 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
 fn compile_source_request(source: &HtmlInput) -> SourceRequest {
     let mut compiled = SourceRequest::memory(source.label.clone(), source.html.clone());
     if let Some(base_url) = &source.input_base_url {
-        compiled = compiled.with_base_url(base_url.clone());
+        compiled = compiled.with_base_url(
+            base_url
+                .clone()
+                .try_into()
+                .expect("validated interop base URL must compile into a core HTTP URL"),
+        );
     }
 
     compiled

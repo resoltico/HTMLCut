@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    COVERAGE_TOOLCHAIN, COVERAGE_TOOLCHAIN_NAME, CommandSpec, CoveragePreflightFailure, DynResult,
+    COVERAGE_TOOLCHAIN, COVERAGE_TOOLCHAIN_NAME, CommandSpec, CommandStdout, CommandToolchainEnv,
+    CoveragePreflightFailure, DynResult,
 };
 use crate::plan::cargo_target_dir;
 
@@ -35,7 +36,12 @@ pub fn coverage_command(repo_root: &Path) -> CommandSpec {
             .into_owned(),
     );
 
-    CommandSpec::new("cargo", args, false, true)
+    CommandSpec::new(
+        "cargo",
+        args,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
 }
 
 /// Builds the cleanup command that clears stale `llvm-cov` state before measurement.
@@ -43,8 +49,8 @@ pub fn coverage_clean_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
         [COVERAGE_TOOLCHAIN, "llvm-cov", "clean", "--workspace"],
-        false,
-        false,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
     )
 }
 

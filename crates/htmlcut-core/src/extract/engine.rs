@@ -9,7 +9,7 @@ use crate::contracts::{
     CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, Diagnostic, ExtractionRequest,
     ExtractionResult, ExtractionSpec, ExtractionStats, ExtractionStrategy, InspectionOptions,
     ParseDocumentResult, ParsedDocument, RuntimeOptions, SliceSpec, SourceInspectionResult,
-    SourceRequest,
+    SourceRequest, ValueSpec,
 };
 use crate::diagnostics::{
     DiagnosticCode, error_diagnostic, has_errors, unresolved_effective_base_diagnostic,
@@ -247,6 +247,20 @@ pub(crate) fn validate_request(
             })
         }
     };
+
+    if matches!(
+        (&request.extraction, request.extraction.value()),
+        (ExtractionSpec::Selector { .. }, ValueSpec::SelectedHtml)
+    ) {
+        diagnostics.push(error_diagnostic(
+            DiagnosticCode::UnsupportedValueType,
+            "selected-html is only valid for slice extraction.",
+            Some(json!({
+                "strategy": "selector",
+                "value": "selected-html",
+            })),
+        ));
+    }
 
     match prepared {
         Ok(prepared) if !has_errors(&diagnostics) => Ok(prepared),

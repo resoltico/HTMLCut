@@ -21,6 +21,12 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
         "page.html".to_owned(),
         "--value=structured".to_owned(),
     ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output=json".to_owned(),
+    ]));
     assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),
         "inspect".to_owned(),
@@ -28,6 +34,14 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
         "page.html".to_owned(),
         "--output".to_owned(),
         "text".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "page.html".to_owned(),
+        "--output".to_owned(),
+        "none".to_owned(),
     ]));
     assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),
@@ -88,6 +102,12 @@ fn raw_arg_helpers_detect_help_anywhere_but_only_root_version_requests() {
     assert!(!raw_args_requests_version(&[
         "htmlcut".to_owned(),
         "--".to_owned(),
+        "--version".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "--quiet".to_owned(),
+        "select".to_owned(),
         "--version".to_owned(),
     ]));
 }
@@ -158,12 +178,29 @@ fn command_name_from_raw_args_recognizes_nested_commands() {
         "schema"
     );
     assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "--quiet".to_owned(),
+            "schema".to_owned(),
+        ]),
+        "schema"
+    );
+    assert_eq!(
         command_name_from_raw_args(&["htmlcut".to_owned(), "slice".to_owned()]),
         "slice"
     );
     assert_eq!(
         command_name_from_raw_args(&["htmlcut".to_owned(), "mystery".to_owned()]),
         "mystery"
+    );
+    assert_eq!(
+        command_name_from_raw_args(&[
+            "htmlcut".to_owned(),
+            "--output".to_owned(),
+            "json".to_owned(),
+            "bad".to_owned(),
+        ]),
+        "htmlcut"
     );
 
     let multi_value_condition = crate::contract::CliCondition {

@@ -5,7 +5,7 @@ use super::OperationCliContract;
 use super::{
     CliCondition, CliConditionalDefault, CliConstraint, CliInputForm, CliOutputMode,
     CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
-    CliParameterSection, CliSelectionMode, CliValue,
+    CliParameterSection, CliSelectionMode, CliTlsTrustMode, CliValue,
 };
 
 mod commands;
@@ -28,8 +28,12 @@ pub(super) fn extract_output_modes() -> Vec<CliOutputMode> {
     common::extract_output_modes()
 }
 
-pub(super) fn extract_value_modes() -> Vec<ValueType> {
-    common::extract_value_modes()
+pub(super) fn select_extract_value_modes() -> Vec<ValueType> {
+    common::select_extract_value_modes()
+}
+
+pub(super) fn slice_extract_value_modes() -> Vec<ValueType> {
+    common::slice_extract_value_modes()
 }
 
 pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
@@ -66,7 +70,7 @@ pub(super) fn value_type_values(modes: &[ValueType]) -> Vec<CliValue> {
 
 fn whitespace_values() -> Vec<CliValue> {
     vec![
-        CliValue::WhitespaceMode(WhitespaceMode::Preserve),
+        CliValue::WhitespaceMode(WhitespaceMode::Rendered),
         CliValue::WhitespaceMode(WhitespaceMode::Normalize),
     ]
 }
@@ -78,10 +82,27 @@ fn fetch_preflight_values() -> Vec<CliValue> {
     ]
 }
 
+fn tls_trust_values() -> Vec<CliValue> {
+    vec![
+        CliValue::TlsTrustMode(CliTlsTrustMode::WebPki),
+        CliValue::TlsTrustMode(CliTlsTrustMode::Platform),
+        CliValue::TlsTrustMode(CliTlsTrustMode::CustomCaBundle),
+    ]
+}
+
 fn pattern_values() -> Vec<CliValue> {
     vec![
         CliValue::PatternMode(PatternMode::Literal),
         CliValue::PatternMode(PatternMode::Regex),
+    ]
+}
+
+fn boundary_retention_values() -> Vec<CliValue> {
+    vec![
+        CliValue::BoundaryRetentionMode(super::CliBoundaryRetentionMode::ExcludeBoth),
+        CliValue::BoundaryRetentionMode(super::CliBoundaryRetentionMode::IncludeStart),
+        CliValue::BoundaryRetentionMode(super::CliBoundaryRetentionMode::IncludeEnd),
+        CliValue::BoundaryRetentionMode(super::CliBoundaryRetentionMode::IncludeBoth),
     ]
 }
 

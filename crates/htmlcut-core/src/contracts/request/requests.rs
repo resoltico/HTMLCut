@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 use super::super::constants::CORE_SPEC_VERSION;
 use super::super::default_spec_version;
-use super::{ExtractionSpec, OutputOptions, RuntimeOptions, SourceKind};
+use super::{ExtractionSpec, HttpUrl, OutputOptions, RuntimeOptions, SourceKind};
 
 /// Source locator for the HTML being loaded.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -15,15 +14,16 @@ pub struct SourceRequest {
     pub input: SourceInput,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Optional input base URL used for relative-link resolution.
-    pub base_url: Option<Url>,
+    pub base_url: Option<HttpUrl>,
 }
 
 impl SourceRequest {
     /// Creates a request for an HTTP or HTTPS source.
     ///
-    /// URL loading requires the `htmlcut-core/http-client` feature when the request is executed by
-    /// [`crate::extract`], [`crate::inspect_source`], or [`crate::parse_document`].
-    pub fn url(href: Url) -> Self {
+    /// This constructor exists only in builds that enable the `htmlcut-core/http-client`
+    /// capability.
+    #[cfg(feature = "http-client")]
+    pub fn url(href: HttpUrl) -> Self {
         Self {
             input: SourceInput::Url { href },
             base_url: None,
@@ -58,7 +58,7 @@ impl SourceRequest {
     }
 
     /// Sets the input base URL used for relative-link resolution.
-    pub fn with_base_url(mut self, base_url: Url) -> Self {
+    pub fn with_base_url(mut self, base_url: HttpUrl) -> Self {
         self.base_url = Some(base_url);
         self
     }
@@ -75,11 +75,12 @@ impl SourceRequest {
 pub enum SourceInput {
     /// Load HTML from an HTTP or HTTPS URL.
     ///
-    /// This source kind is available only when the executing `htmlcut-core` build enables the
-    /// `http-client` feature.
+    /// This source kind exists only when the executing `htmlcut-core` build enables the
+    /// `http-client` capability.
+    #[cfg(feature = "http-client")]
     Url {
         /// Absolute HTTP or HTTPS URL to fetch.
-        href: Url,
+        href: HttpUrl,
     },
     /// Load HTML from a local file path.
     File {
@@ -101,6 +102,7 @@ impl SourceInput {
     /// Returns the concrete source kind for this input.
     pub const fn kind(&self) -> SourceKind {
         match self {
+            #[cfg(feature = "http-client")]
             Self::Url { .. } => SourceKind::Url,
             Self::File { .. } => SourceKind::File,
             Self::Stdin => SourceKind::Stdin,

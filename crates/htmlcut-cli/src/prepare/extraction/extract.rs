@@ -32,7 +32,8 @@ impl PreparedExtraction {
             ExtractionStrategy::Selector,
             htmlcut_core::OperationId::SelectExtract,
             || {
-                let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
+                let value =
+                    resolve_value_spec(args.output.value.into(), args.output.attribute.clone())?;
                 let preview_chars = validate_preview_chars(args.output.preview_chars)?;
                 let strategy_args = StrategyArgs::Select {
                     css: required_cli_value(args.css, "--css")?,
@@ -96,15 +97,15 @@ impl PreparedExtraction {
             ExtractionStrategy::Slice,
             htmlcut_core::OperationId::SliceExtract,
             || {
-                let value = resolve_value_spec(args.output.value, args.output.attribute.clone())?;
+                let value =
+                    resolve_value_spec(args.output.value.into(), args.output.attribute.clone())?;
                 let preview_chars = validate_preview_chars(args.output.preview_chars)?;
                 let strategy_args = StrategyArgs::Slice {
                     from: required_cli_value(args.from, "--from")?,
                     to: required_cli_value(args.to, "--to")?,
                     pattern: args.pattern,
                     regex_flags: args.regex_flags,
-                    include_start: args.include_start,
-                    include_end: args.include_end,
+                    boundary_retention: args.boundary_retention.into(),
                 };
                 let options = RequestBuildOptions {
                     value,

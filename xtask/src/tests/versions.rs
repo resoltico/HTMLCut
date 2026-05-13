@@ -81,18 +81,22 @@ fn package_version_from_manifest_requires_a_version_line() {
 }
 
 #[test]
-fn manifest_version_parsers_skip_malformed_headers_and_assignments() {
-    let workspace_version = workspace_version_from_manifest(
+fn manifest_version_parsers_reject_malformed_headers_and_assignments() {
+    let workspace_error = workspace_version_from_manifest(
         "[workspace.package\nversion = \"0.1.0\"\n[workspace.package]\nversion = 3.1.4\nversion = \"3.1.4\nversion = \"3.1.4\"\n",
     )
-    .expect("workspace version");
-    let package_version = package_version_from_manifest(
+    .expect_err("workspace manifest should fail");
+    let package_error = package_version_from_manifest(
         "[package\nversion = \"0.1.0\"\n[package]\nversion = 2.7.0\nversion = \"2.7.0\nversion = \"2.7.0\"\n",
     )
-    .expect("package version");
+    .expect_err("package manifest should fail");
 
-    assert_eq!(workspace_version, "3.1.4");
-    assert_eq!(package_version, "2.7.0");
+    assert!(
+        workspace_error
+            .to_string()
+            .starts_with("invalid Cargo.toml:")
+    );
+    assert!(package_error.to_string().starts_with("invalid Cargo.toml:"));
 }
 
 #[test]
@@ -148,8 +152,8 @@ members = ["crates/htmlcut-core", "xtask"]
 }
 
 #[test]
-fn workspace_members_from_manifest_ignores_malformed_section_headers_before_workspace() {
-    let members = crate::manifest::workspace_members_from_manifest(
+fn workspace_members_from_manifest_rejects_malformed_section_headers_before_workspace() {
+    let error = crate::manifest::workspace_members_from_manifest(
         r#"[workspace
 members = ["crates/not-real"]
 
@@ -157,17 +161,14 @@ members = ["crates/not-real"]
 members = ["crates/htmlcut-core", "xtask"]
 "#,
     )
-    .expect("workspace members");
+    .expect_err("workspace members should fail");
 
-    assert_eq!(
-        members,
-        vec!["crates/htmlcut-core".to_owned(), "xtask".to_owned(),]
-    );
+    assert!(error.to_string().starts_with("invalid Cargo.toml:"));
 }
 
 #[test]
-fn workspace_members_from_manifest_ignores_malformed_member_assignments_before_the_real_list() {
-    let members = crate::manifest::workspace_members_from_manifest(
+fn workspace_members_from_manifest_rejects_malformed_member_assignments() {
+    let error = crate::manifest::workspace_members_from_manifest(
         r#"[workspace]
 members "crates/not-real"
 members = "still-not-a-list"
@@ -177,17 +178,14 @@ members = [
 ]
 "#,
     )
-    .expect("workspace members");
+    .expect_err("workspace members should fail");
 
-    assert_eq!(
-        members,
-        vec!["crates/htmlcut-core".to_owned(), "fuzz".to_owned(),]
-    );
+    assert!(error.to_string().starts_with("invalid Cargo.toml:"));
 }
 
 #[test]
-fn workspace_members_from_manifest_ignores_duplicate_and_unterminated_member_entries() {
-    let members = crate::manifest::workspace_members_from_manifest(
+fn workspace_members_from_manifest_rejects_unterminated_member_entries() {
+    let error = crate::manifest::workspace_members_from_manifest(
         r#"[workspace]
 members = [
     "crates/htmlcut-core",
@@ -197,12 +195,9 @@ members = [
 ]
 "#,
     )
-    .expect("workspace members");
+    .expect_err("workspace members should fail");
 
-    assert_eq!(
-        members,
-        vec!["crates/htmlcut-core".to_owned(), "fuzz".to_owned(),]
-    );
+    assert!(error.to_string().starts_with("invalid Cargo.toml:"));
 }
 
 #[test]
@@ -265,7 +260,7 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
 
     assert_eq!(
         workspace_rust_version_from_manifest(&workspace_manifest).expect("workspace rust-version"),
-        "1.95.0"
+        "1.95"
     );
     assert_eq!(repo_toolchain.channel, "1.95.0");
     assert_eq!(repo_toolchain.components, vec!["clippy", "rustfmt"]);

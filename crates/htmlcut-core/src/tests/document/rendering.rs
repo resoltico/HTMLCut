@@ -40,7 +40,15 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(attribute_supports_url_rewrite("href"));
     assert!(attribute_supports_url_rewrite("srcset"));
     assert!(attribute_supports_url_rewrite("ping"));
+    assert!(attribute_supports_url_rewrite("style"));
     assert!(!attribute_supports_url_rewrite("class"));
+    assert_eq!(
+        rewrite_css_urls_for_tests(
+            "background-image: url('../img/hero.png'); @import \"theme.css\";",
+            Some("https://example.com/docs/articles/")
+        ),
+        "background-image: url('https://example.com/docs/img/hero.png'); @import \"https://example.com/docs/articles/theme.css\";"
+    );
     assert!(first_fragment_attributes("plain text", None, false).is_empty());
     assert_eq!(
         first_fragment_attributes(
@@ -88,7 +96,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
 
     let rendered = render_html_as_text(
         "<article><p>Hello</p><ul><li>One</li></ul><hr><pre>  keep\n  spacing</pre></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert!(rendered.contains("Hello"));
     assert!(rendered.contains("- One"));
@@ -96,13 +104,13 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(rendered.contains("  keep"));
     let semantic_rendered = render_html_as_text(
         "<article><ol><li>First</li><li><img src=\"hero.png\" alt=\"Hero\"></li></ol></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert!(semantic_rendered.contains("1. First"));
     assert!(semantic_rendered.contains("2. Hero"));
     let heading_and_link_rendered = render_html_as_text(
         "<article><h2>Coverage</h2><p><a href=\"https://example.com/guide\">Guide</a></p></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(
         heading_and_link_rendered,
@@ -110,50 +118,67 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     let nested_list_rendered = render_html_as_text(
         "<article><ol><li>Primary<ul><li>Nested</li></ul></li><li>Second</li></ol></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(nested_list_rendered, "1. Primary\n    - Nested\n2. Second");
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"https://example.com/guide\"></a></p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         ""
     );
     assert!(
         render_html_as_text(
             "<article><p><a></a></p></article>",
-            WhitespaceMode::Preserve
+            WhitespaceMode::Rendered
         )
         .is_empty()
     );
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"https://example.com/guide\">https://example.com/guide</a></p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "https://example.com/guide"
     );
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"#\">Comments</a></p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Comments"
     );
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"javascript:void(0)\">Share</a></p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Share"
     );
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"#history\">History</a></p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "History [#history]"
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article>\
+                <p>Value <span class=\"mwe-math-element\"><span class=\"mwe-math-mathml-inline\" style=\"display: none;\"><math><mrow><mo>(</mo><mi>N</mi><mo>)</mo></mrow></math></span><img aria-hidden=\"true\" alt=\"{\\\\displaystyle (\\\\mathbb {N})}\" src=\"math.svg\"></span> end<sup class=\"reference\"><a href=\"#cite_note-1\"><span class=\"cite-bracket\">[</span>1<span class=\"cite-bracket\">]</span></a></sup>.</p>\
+                <section class=\"references\"><ol><li id=\"cite_note-1\">Footnote text.</li></ol></section>\
+             </article>",
+            WhitespaceMode::Rendered,
+        ),
+        "Value (N) end."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><p>Ratio <span style=\"display:none\"><math><mfrac><mn>3</mn><mn>2</mn></mfrac></math></span><img aria-hidden=\"true\" alt=\"{\\\\textstyle {\\\\frac {3}{2}}}\" src=\"math.svg\"></p></article>",
+            WhitespaceMode::Rendered,
+        ),
+        "Ratio 3/2"
     );
     assert_eq!(
         render_html_as_text(
@@ -171,7 +196,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
                 <section class=\"related-topics\"><h3>Related Topics</h3><a href=\"/other\">Other</a></section>\
                 <footer><h3>More from here</h3><a href=\"/other\">Other</a></footer>\
              </main>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "## Story\n\nBody Guide [https://example.com/guide]"
     );
@@ -189,168 +214,168 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
                 <div class=\"author-bio\"><p>Reporter bio.</p></div>\
                 <div class=\"catlinks\"><a href=\"/category\">Category</a></div>\
             </article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "# Primary Title\n\nBody paragraph."
     );
     assert_eq!(
         render_html_as_text(
             "<article><p><a href=\"/promo\"><strong>READ THE FULL TRANSCRIPT HERE</strong></a></p><p>Body paragraph.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Body paragraph."
     );
     assert_eq!(
         render_html_as_text(
             "<article><pre><a href=\"https://example.com/guide\">\nhttps://example.com/guide\n</a></pre></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "https://example.com/guide"
     );
     assert!(
-        render_html_as_text("<article><h2>   </h2></article>", WhitespaceMode::Preserve).is_empty()
+        render_html_as_text("<article><h2>   </h2></article>", WhitespaceMode::Rendered).is_empty()
     );
     assert_eq!(
         render_html_as_text(
             "<article><h2>Heading <span class=\"mw-editsection-bracket\">[</span><span class=\"mw-editsection-bracket\">]</span></h2></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "## Heading"
     );
     assert_eq!(
         render_html_as_text(
             "<article><h2 class=\"editable-heading\">Heading</h2><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "## Heading\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<article><h2 data-editable=\"headline\">Heading</h2><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "## Heading\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<article><h1><div><div>Host Liability Insurance Program Summary</div></div></h1><div class=\"notice\"><span class=\"flag\">NEW</span> playback available</div><p>Body paragraph.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "# Host Liability Insurance Program Summary\n\nBody paragraph."
     );
     assert_eq!(
         render_html_as_text(
             "<article><div><div><p>Release Date:</p></div><div><p><b>4/14/2026</b></p></div></div><div><div><p>Version:</p></div><div><p><b>OS Build 20348.5020</b></p></div></div></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Release Date: 4/14/2026\n\nVersion: OS Build 20348.5020"
     );
     assert_eq!(
         render_html_as_text(
             "<article><table><tr><td><p><b>Change date</b></p></td><td><p><b>Change description</b></p></td></tr><tr><td><p>May 1, 2026</p></td><td><ul><li><p>Improvement added: <b>[Vulnerable driver blocklist]</b></p></li></ul></td></tr><tr><td><p>April 27, 2026</p></td><td><p>Corrected the known issue.</p></td></tr></table></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Change date    | Change description\nMay 1, 2026    | - Improvement added: [Vulnerable driver blocklist]\nApril 27, 2026 | Corrected the known issue."
     );
     assert_eq!(
         render_html_as_text(
             "<article><table><caption>Windows builds</caption><tr><th>Date</th><th>Build</th></tr><tr><td>April 14, 2026</td><td>20348.5020</td></tr></table></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Windows builds\nDate           | Build\nApril 14, 2026 | 20348.5020"
     );
     assert_eq!(
         render_html_as_text(
             "<article><h3><button type=\"button\"><div aria-hidden=\"true\">Chevron</div><div>Windows Secure Boot certificate expiration</div></button></h3><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "### Windows Secure Boot certificate expiration\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<article><h3><button type=\"button\"><div>Windows Secure Boot certificate expiration</div></button></h3><p><b>Windows Secure Boot certificate expiration</b></p><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "### Windows Secure Boot certificate expiration\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<article><div class=\"image-ct inline\"><div class=\"m\"><img alt=\"Rudy Giuliani attending ceremony\" src=\"hero.jpg\"></div><div class=\"info\"><div class=\"caption\"><p>Photo caption.</p></div></div></div><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Body."
     );
     assert_eq!(
         render_html_as_text(
             "<article><div class=\"side-box plainlinks\"><div class=\"side-box-image\"><a href=\"https://example.com/file\"><img alt=\"Wiktionary logo\" src=\"logo.png\"></a></div><div class=\"side-box-text\">Look up <a href=\"https://example.com/help\">help</a> in the dictionary.</div></div><p>Body.</p></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "Body."
     );
     assert_eq!(
         render_html_as_text(
             "<main><h1>Help</h1><p>Body.</p><div class=\"printfooter\" data-nosnippet=\"\">Retrieved from <a href=\"https://example.com/oldid\">old revision</a></div></main>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "# Help\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<main><h1>April 14, 2026—KB5082142</h1><p>Body.</p><div class=\"ocArticleFooterSection articleFooterBridge\"><h3>Need more help?</h3><a href=\"https://example.com/support\">Contact support</a></div></main>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "# April 14, 2026—KB5082142\n\nBody."
     );
     assert_eq!(
         render_html_as_text(
             "<article><ol start=\"5\"><li>Five</li><li>Six</li></ol></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "5. Five\n6. Six"
     );
     assert_eq!(
         render_html_as_text(
             "<article><ol reversed><li>Two</li><li>One</li></ol></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "2. Two\n1. One"
     );
     assert_eq!(
         render_html_as_text(
             "<article><ol><li value=\"7\">Seven</li><li>Eight</li></ol></article>",
-            WhitespaceMode::Preserve,
+            WhitespaceMode::Rendered,
         ),
         "7. Seven\n8. Eight"
     );
     let pre_image_rendered = render_html_as_text(
         "<pre><img src=\"hero.png\" alt=\"  Hero  \"></pre>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(pre_image_rendered, "Hero");
     let empty_alt_rendered = render_html_as_text(
         "<p><img src=\"hero.png\" alt=\"   \"></p>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert!(empty_alt_rendered.is_empty());
     let richer_rendered = render_html_as_text(
         "<blockquote><p>Quote</p></blockquote><dl><dt>Term</dt><dd>Definition</dd></dl><p>Use <code>cargo test</code></p>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert!(richer_rendered.contains("> Quote"));
     assert!(richer_rendered.contains("Term\n: Definition"));
     assert!(richer_rendered.contains("`cargo test`"));
     let block_definition_rendered = render_html_as_text(
         "<dl><dt>Term</dt><dd><p>Definition</p></dd></dl>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(block_definition_rendered, "Term\n: Definition");
     let collapsed_blockquote = render_html_as_text(
         "<blockquote><p>First</p><p></p><p></p><p>Second</p></blockquote>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(collapsed_blockquote, "> First\n>\n> Second");
     let empty_blockquote =
-        render_html_as_text("<blockquote>   </blockquote>", WhitespaceMode::Preserve);
+        render_html_as_text("<blockquote>   </blockquote>", WhitespaceMode::Rendered);
     assert!(empty_blockquote.is_empty());
 
     assert_eq!(
@@ -399,7 +424,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     let fragment_without_body = Html::parse_fragment("<p>Fragment only</p>");
     assert_eq!(
-        render_document_body_as_text(&fragment_without_body, WhitespaceMode::Preserve),
+        render_document_body_as_text(&fragment_without_body, WhitespaceMode::Rendered),
         "Fragment only"
     );
     assert!(!looks_like_full_document("<body>Hello</body>"));
@@ -512,11 +537,11 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     let selected_image = select_first(&selected_semantics_document, "img").expect("img");
     let selected_pre = select_first(&selected_semantics_document, "pre").expect("pre");
     assert_eq!(
-        render_element_as_text(&selected_image, WhitespaceMode::Preserve),
+        render_element_as_text(&selected_image, WhitespaceMode::Rendered),
         "Hero"
     );
     assert_eq!(
-        render_element_as_text(&selected_pre, WhitespaceMode::Preserve),
+        render_element_as_text(&selected_pre, WhitespaceMode::Rendered),
         "line 1\n  line 2"
     );
     let pre_document = parse_wrapped_fragment("<pre>  keep   spacing</pre>");
@@ -551,7 +576,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     assert!(forced_document.contains("https://example.com/docs/asset.png"));
     let rewritten_url_attributes = rewrite_html_urls(
-        "<img srcset=\"small.png 1x, large.png 2x\"><form action=\"submit\"><button formaction=\"override\"></button></form><video poster=\"poster.png\"></video><a ping=\"/hit-one /hit-two\">Track</a><meta http-equiv=\"refresh\" content=\"0; url=next.html\">",
+        "<img srcset=\"small.png 1x, large.png 2x\"><form action=\"submit\"><button formaction=\"override\"></button></form><video poster=\"poster.png\"></video><a ping=\"/hit-one /hit-two\">Track</a><meta http-equiv=\"refresh\" content=\"0; url=next.html\"><div style=\"background-image:url('../img/hero.png')\"></div><style>@import \"theme.css\"; .hero { background: url(\"../img/card.png\") }</style>",
         Some("https://example.com/docs/"),
         false,
     );
@@ -568,19 +593,26 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     assert!(
         rewritten_url_attributes.contains("content=\"0; url=https://example.com/docs/next.html\"")
     );
+    assert!(
+        rewritten_url_attributes
+            .contains("style=\"background-image:url('https://example.com/img/hero.png')\"")
+    );
+    assert!(rewritten_url_attributes.contains(
+        "@import \"https://example.com/docs/theme.css\"; .hero { background: url(\"https://example.com/img/card.png\") }"
+    ));
     let nested_only_list_rendered = render_html_as_text(
         "<article><ul><li><ul><li>Nested</li></ul></li></ul></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
-    assert_eq!(nested_only_list_rendered, "-\n    - Nested");
+    assert_eq!(nested_only_list_rendered, "    - Nested");
     let multiline_list_rendered = render_html_as_text(
         "<article><ul><li><p>First</p><p>Second</p></li></ul></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(multiline_list_rendered, "- First\n\n  Second");
     let inline_semantics_list_rendered = render_html_as_text(
         "<article><ul><li><strong>Accommodation:</strong> Accommodation requires consent to the <a href=\"https://www.airbnb.com/terms\">Airbnb Terms of Service</a>.</li></ul></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(
         inline_semantics_list_rendered,
@@ -588,7 +620,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     let inline_link_list_rendered = render_html_as_text(
         "<article><ul><li>By email: <a href=\"mailto:Central.Complaints@aon.co.uk\">Central.Complaints@aon.co.uk</a></li></ul></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(
         inline_link_list_rendered,
@@ -596,7 +628,7 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     let inline_then_nested_list_rendered = render_html_as_text(
         "<article><ul><li><strong>Recording:</strong> damages that arise from:<ol><li>One</li><li>Two</li></ol></li></ul></article>",
-        WhitespaceMode::Preserve,
+        WhitespaceMode::Rendered,
     );
     assert_eq!(
         inline_then_nested_list_rendered,

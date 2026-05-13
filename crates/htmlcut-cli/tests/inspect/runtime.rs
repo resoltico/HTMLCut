@@ -21,8 +21,7 @@ fn stdin_bundle_flow_and_verbose_levels_work() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"command\": \"select\""))
-        .stderr(predicate::str::contains("selected 1 match"))
-        .stderr(predicate::str::contains("scanned 1 candidates"))
+        .stderr(predicate::str::contains("1 candidates, 1 selected"))
         .stderr(predicate::str::contains("wrote bundle"));
 
     assert!(bundle_dir.join("selection.html").exists());
@@ -39,8 +38,7 @@ fn global_verbose_before_subcommand_also_works() {
         .assert()
         .success()
         .stdout("Hello\n")
-        .stderr(predicate::str::contains("selected 1 match"))
-        .stderr(predicate::str::contains("scanned 1 candidates"));
+        .stderr(predicate::str::contains("1 candidates, 1 selected"));
 }
 #[test]
 fn human_select_warns_when_rewrite_is_requested_without_an_effective_base() {

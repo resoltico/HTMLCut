@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: SETUP
-updated: "2026-05-05"
+updated: "2026-05-13"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, request file]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction request?"]
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=8.0.0
+VERSION=9.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "8.0.0"
+$Version = "9.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -73,17 +73,19 @@ Each prebuilt package contains the platform binary plus `README.md`, `LICENSE`, 
 
 ## Install From This Repository
 
-Build from source with the repo-pinned Rust `1.95.0` toolchain:
+Build from source with the exact stable toolchain pin from `rust-toolchain.toml`:
 
 ```bash
-rustup toolchain install 1.95.0 --profile minimal
 source "$HOME/.cargo/env"
+source ./scripts/contributor-rust-tools.sh
+rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
 cargo build --locked -p htmlcut-cli --bin htmlcut
 cargo run -- --help
 ```
 
-`rust-toolchain.toml` is the canonical exact repo toolchain pin, and `Cargo.toml`
-`[workspace.package] rust-version` mirrors the published compiler requirement.
+`rust-toolchain.toml` is the canonical exact repo toolchain pin. Right now that resolves to
+`1.95.0`. `Cargo.toml` `[workspace.package] rust-version = "1.95"` carries the published
+compatibility floor separately.
 
 Install into Cargo's bin directory from this repository root:
 

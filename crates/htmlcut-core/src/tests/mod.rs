@@ -10,8 +10,9 @@ use crate::document::{
     element_name, first_body, first_body_child_element, first_fragment_attributes,
     looks_like_full_document, needs_space, parse_document_node, parse_wrapped_fragment,
     push_newline, render_element_as_text, render_html_as_text, render_node,
-    resolve_document_base_url, resolve_url, rewrite_html_urls, rewrite_srcset_for_tests,
-    rewrite_urls_in_document, select_first, serialize_children, serialize_document,
+    resolve_document_base_url, resolve_url, rewrite_css_urls_for_tests, rewrite_html_urls,
+    rewrite_srcset_for_tests, rewrite_urls_in_document, select_first, serialize_children,
+    serialize_document,
 };
 use crate::extract::{
     build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,
@@ -19,6 +20,8 @@ use crate::extract::{
     select_candidates, validate_request,
 };
 use crate::result::ExtractionMatchMetadata;
+#[cfg(not(feature = "http-client"))]
+use crate::source::read_stdin_source_from_reader_for_tests;
 #[cfg(feature = "http-client")]
 use crate::source::read_url_source_from_href;
 use crate::source::{
@@ -29,10 +32,6 @@ use crate::source::{
     build_http_agent, content_type_is_obviously_non_html_for_tests,
     finish_url_source_from_reader_for_tests, head_error_allows_get_fallback_for_tests,
     read_stdin_source_from_reader_for_tests,
-};
-#[cfg(not(feature = "http-client"))]
-use crate::source::{
-    finish_url_source_from_reader_for_tests, read_stdin_source_from_reader_for_tests,
 };
 use scraper::ElementRef;
 use serde_json::{Value, json};
@@ -52,7 +51,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 #[cfg(feature = "http-client")]
 use ureq::tls::RootCerts;
-use url::Url;
 
 use crate::source::empty_source_metadata;
 
@@ -100,16 +98,29 @@ fn memory_source(label: &str, text: impl Into<String>) -> SourceRequest {
     SourceRequest::memory(label, text)
 }
 
+fn http_url(value: &str) -> HttpUrl {
+    HttpUrl::parse(value).expect("http url")
+}
+
+fn max_bytes_limit(value: usize) -> MaxBytes {
+    MaxBytes::new(value).expect("max bytes limit")
+}
+
+fn fetch_timeout_limit(value: u64) -> FetchTimeoutMs {
+    FetchTimeoutMs::new(value).expect("fetch timeout")
+}
+
 fn memory_source_with_base(label: &str, text: impl Into<String>, base_url: &str) -> SourceRequest {
-    SourceRequest::memory(label, text).with_base_url(Url::parse(base_url).expect("base url"))
+    SourceRequest::memory(label, text).with_base_url(http_url(base_url))
 }
 
 fn file_source(path: impl AsRef<Path>) -> SourceRequest {
     SourceRequest::file(path.as_ref())
 }
 
+#[cfg(feature = "http-client")]
 fn url_source(url: &str) -> SourceRequest {
-    SourceRequest::url(Url::parse(url).expect("url"))
+    SourceRequest::url(http_url(url))
 }
 
 fn read_file_source(
@@ -135,7 +146,11 @@ fn read_url_source(
 
 mod catalog;
 mod document;
+mod examples_api;
+mod extract_api;
 mod extraction;
 mod inspection;
 mod interop_v1;
+mod request_contracts;
 mod source;
+mod wire;

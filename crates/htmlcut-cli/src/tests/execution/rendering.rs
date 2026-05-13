@@ -158,6 +158,33 @@ fn render_output_helpers_cover_text_html_json_and_none() {
 }
 
 #[test]
+fn bundle_report_omits_sidecar_payload_duplicates() {
+    let report = build_extraction_report(
+        "select",
+        fixture_result(
+            Value::String("<article><a href=\"guide.html\">Guide</a></article>".to_owned()),
+            ValueType::OuterHtml,
+        ),
+        None,
+    );
+    let tempdir = tempdir().expect("tempdir");
+    let bundle = get_bundle_paths(&tempdir.path().join("bundle"));
+
+    write_bundle(&report, &bundle).expect("bundle write");
+
+    let bundled_report: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&bundle.report).expect("bundle report"))
+            .expect("json");
+
+    assert_eq!(
+        bundled_report["matches"][0]["value"],
+        Value::String("<article><a href=\"guide.html\">Guide</a></article>".to_owned())
+    );
+    assert!(bundled_report["matches"][0].get("html").is_none());
+    assert!(bundled_report["matches"][0].get("text").is_none());
+}
+
+#[test]
 fn canonical_bundle_dir_covers_fallback_edges() {
     let tempdir = tempdir().expect("tempdir");
     let _guard = CurrentDirGuard::enter(tempdir.path());
@@ -446,22 +473,52 @@ fn verbose_and_diagnostic_renderers_cover_branching_paths() {
         }),
     );
     let verbose = build_verbose_lines(&report, 2);
-    assert!(verbose[0].contains("selected 1 match"));
-    assert!(verbose[1].contains("scanned 2 candidates"));
-    assert!(verbose[2].contains("head preflight fallback (405)"));
-    assert!(verbose[3].contains("get succeeded (200)"));
+    assert!(verbose[0].contains("2 candidates"));
+    assert!(verbose[0].contains("1 selected"));
+    assert!(verbose.iter().any(|line| line.contains("match 1 =>")));
+    assert!(
+        verbose
+            .iter()
+            .any(|line| { line.contains("source load head preflight fallback (405)") })
+    );
+    assert!(
+        verbose
+            .iter()
+            .any(|line| line.contains("source load get succeeded (200)"))
+    );
     assert!(build_verbose_lines(&report, 0).is_empty());
-    assert_eq!(build_verbose_lines(&report, 1).len(), 1);
+    let concise_verbose = build_verbose_lines(&report, 1);
+    assert!(concise_verbose.len() >= 4);
+    assert!(
+        concise_verbose
+            .iter()
+            .any(|line| line.contains("selected text => Hello"))
+    );
+    assert!(
+        concise_verbose
+            .iter()
+            .any(|line| line.contains("effective base"))
+    );
     let mut inspection = fixture_inspection();
     inspection.source.load_steps = report.source.load_steps.clone();
     let inspection_verbose = build_source_inspection_verbose_lines(&inspection, 2);
     assert!(inspection_verbose[0].contains("inspected 123 bytes"));
-    assert!(inspection_verbose[1].contains("head preflight fallback (405)"));
-    assert!(inspection_verbose[2].contains("get succeeded (200)"));
-    assert_eq!(
-        build_source_inspection_verbose_lines(&inspection, 1).len(),
-        1
+    assert!(
+        inspection_verbose
+            .iter()
+            .any(|line| line.contains("extraction top"))
     );
+    assert!(
+        inspection_verbose
+            .iter()
+            .any(|line| line.contains("head preflight fallback (405)"))
+    );
+    assert!(
+        inspection_verbose
+            .iter()
+            .any(|line| line.contains("get succeeded (200)"))
+    );
+    assert!(build_source_inspection_verbose_lines(&inspection, 1).len() >= 4);
     let warning_stderr = build_human_diagnostic_stderr_lines(&[Diagnostic {
         level: DiagnosticLevel::Warning,
         code: DiagnosticCode::EffectiveBaseUrlUnresolved,
@@ -498,10 +555,9 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
     let mut inspection = fixture_inspection();
     inspection.source.load_steps = preview.source.load_steps.clone();
     let inspection_verbose = build_source_inspection_verbose_lines(&inspection, 2);
-    assert!(
-        inspection_verbose[1]
-            .contains("htmlcut: source load head preflight skipped: Skipped the HEAD preflight")
-    );
+    assert!(inspection_verbose.iter().any(|line| {
+        line.contains("htmlcut: source load head preflight skipped: Skipped the HEAD preflight")
+    }));
 
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture_file(
@@ -519,6 +575,8 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             output: CliInspectOutputMode::Text,
@@ -553,6 +611,8 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 css: Some("article".to_owned()),
@@ -560,7 +620,9 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
                     r#match: CliMatchMode::First,
                     index: None,
                 },
-                whitespace: CliWhitespaceMode::Preserve,
+                value: CliValueMode::Structured,
+                attribute: None,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: InspectOutputArgs {
                     output: CliInspectOutputMode::Text,

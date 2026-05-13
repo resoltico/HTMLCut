@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use regex::Regex;
 
@@ -130,6 +130,27 @@ pub(super) fn inventory_errors(
         }
     }
 
+    if display_path == "docs/README.md" {
+        match documented_docs_index_entries(repo_root) {
+            Ok(expected) => {
+                let documented = documented_docs_index_paths(text);
+                let missing = expected
+                    .difference(&documented)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !missing.is_empty() {
+                    errors.push(format!(
+                        "docs/README.md is missing Markdown docs from docs/: {}",
+                        missing.join(", ")
+                    ));
+                }
+            }
+            Err(error) => errors.push(format!(
+                "docs/README.md could not load Markdown docs from docs/: {error}"
+            )),
+        }
+    }
+
     errors
 }
 
@@ -160,6 +181,43 @@ fn documented_workspace_members(text: &str) -> BTreeSet<String> {
         .captures_iter(text)
         .filter_map(|captures| captures.get(1).map(|matched| matched.as_str().to_owned()))
         .collect()
+}
+
+fn documented_docs_index_paths(text: &str) -> BTreeSet<String> {
+    let pattern =
+        Regex::new(r"\[[^\]]+\]\(([^)#]+\.md)\)").expect("valid docs index markdown link regex");
+    pattern
+        .captures_iter(text)
+        .filter_map(|captures| captures.get(1).map(|matched| matched.as_str()))
+        .filter_map(normalize_docs_index_target)
+        .collect()
+}
+
+fn normalize_docs_index_target(target: &str) -> Option<String> {
+    let mut normalized = PathBuf::new();
+    for component in Path::new(target).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir => return None,
+        }
+    }
+
+    (!normalized.as_os_str().is_empty()).then(|| normalized.to_string_lossy().replace('\\', "/"))
+}
+
+fn documented_docs_index_entries(repo_root: &Path) -> crate::model::DynResult<BTreeSet<String>> {
+    Ok(super::markdown_doc_paths(repo_root)?
+        .into_iter()
+        .filter_map(|path| path.strip_prefix(repo_root).ok().map(Path::to_path_buf))
+        .filter_map(|relative| {
+            let display = relative.to_string_lossy().replace('\\', "/");
+            display
+                .strip_prefix("docs/")
+                .filter(|path| *path != "README.md")
+                .map(ToOwned::to_owned)
+        })
+        .collect())
 }
 
 pub(super) fn known_schema_names() -> BTreeSet<&'static str> {

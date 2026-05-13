@@ -80,7 +80,7 @@ const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
             EXTRACTION_COMMAND_REPORT_SCHEMA_NAME,
             EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        "ExtractionCommandReport",
+        "extraction report",
         extraction_command_report_schema,
     ),
     cli_schema_descriptor(
@@ -88,12 +88,12 @@ const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
             SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
             SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        "SourceInspectionCommandReport",
+        "source inspection report",
         source_inspection_command_report_schema,
     ),
     cli_schema_descriptor(
         htmlcut_core::SchemaRef::new(CATALOG_REPORT_SCHEMA_NAME, CATALOG_SCHEMA_VERSION),
-        "CatalogCommandReport",
+        "catalog report",
         catalog_command_report_schema,
     ),
     cli_schema_descriptor(
@@ -101,7 +101,7 @@ const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
             ERROR_COMMAND_REPORT_SCHEMA_NAME,
             ERROR_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        "ErrorCommandReport",
+        "error report",
         error_command_report_schema,
     ),
     cli_schema_descriptor(
@@ -109,7 +109,7 @@ const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
             SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
             SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        "SchemaCommandReport",
+        "schema report",
         schema_command_report_schema,
     ),
 ];
@@ -120,13 +120,13 @@ fn cli_schema_catalog() -> &'static [htmlcut_core::SchemaDescriptor] {
 
 const fn cli_schema_descriptor(
     schema_ref: htmlcut_core::SchemaRef,
-    rust_shape: &'static str,
+    contract_family: &'static str,
     json_schema: fn() -> Result<Value, htmlcut_core::SchemaExportError>,
 ) -> htmlcut_core::SchemaDescriptor {
     htmlcut_core::SchemaDescriptor {
         schema_ref,
-        owner_surface: "htmlcut-cli",
-        rust_shape,
+        owner: "cli",
+        contract_family,
         stability: htmlcut_core::SchemaStability::Versioned,
         json_schema,
     }
@@ -135,10 +135,10 @@ const fn cli_schema_descriptor(
 #[cfg(test)]
 pub(crate) fn cli_schema_descriptor_for_tests(
     schema_ref: htmlcut_core::SchemaRef,
-    rust_shape: &'static str,
+    contract_family: &'static str,
     json_schema: fn() -> Result<Value, htmlcut_core::SchemaExportError>,
 ) -> htmlcut_core::SchemaDescriptor {
-    cli_schema_descriptor(schema_ref, rust_shape, json_schema)
+    cli_schema_descriptor(schema_ref, contract_family, json_schema)
 }
 
 fn build_schema_document_report(
@@ -147,8 +147,8 @@ fn build_schema_document_report(
     Ok(SchemaDocumentReport {
         schema_name: descriptor.schema_ref.schema_name.to_owned(),
         schema_version: descriptor.schema_ref.schema_version,
-        owner_surface: descriptor.owner_surface.to_owned(),
-        rust_shape: descriptor.rust_shape.to_owned(),
+        owner: descriptor.owner.to_owned(),
+        contract_family: descriptor.contract_family.to_owned(),
         stability: descriptor.stability,
         json_schema: (descriptor.json_schema)().map_err(schema_export_error)?,
     })
@@ -283,12 +283,12 @@ fn cli_schema_catalog_validation_errors(catalog: &[htmlcut_core::SchemaDescripto
                 descriptor.schema_ref.schema_name, descriptor.schema_ref.schema_version
             ));
         }
-        if descriptor.owner_surface != "htmlcut-cli" {
+        if descriptor.owner != "cli" {
             errors.push(format!(
-                "{}@{} owner_surface drifted: expected \"htmlcut-cli\", found {:?}",
+                "{}@{} owner drifted: expected \"cli\", found {:?}",
                 descriptor.schema_ref.schema_name,
                 descriptor.schema_ref.schema_version,
-                descriptor.owner_surface
+                descriptor.owner
             ));
         }
 

@@ -11,8 +11,9 @@ use crate::model::{
 };
 use crate::prepare::{PreparedExtraction, PreparedPreview, build_extraction_report};
 use crate::render::{
-    build_human_diagnostic_stderr_lines, build_source_load_error_lines, build_verbose_lines,
-    get_bundle_paths, render_extraction_output, render_preview_text, to_pretty_json, write_bundle,
+    build_human_diagnostic_stderr_lines, build_human_followup_lines, build_source_load_error_lines,
+    build_verbose_lines, get_bundle_paths, render_extraction_output, render_preview_text,
+    to_pretty_json, write_bundle,
 };
 use htmlcut_core::{extract, preview_extraction};
 
@@ -70,44 +71,42 @@ pub(crate) fn execute_extraction(
         );
     }
 
-    let mut stderr = if prepared.quiet {
-        Vec::new()
-    } else {
-        build_verbose_lines(&report, prepared.verbose)
-    };
-    if !prepared.quiet && prepared.output != CliOutputMode::Json {
-        stderr.extend(build_human_diagnostic_stderr_lines(&report.diagnostics));
-    }
-    if !prepared.quiet
-        && prepared.verbose > 0
-        && let Some(bundle) = report.bundle.as_ref()
-    {
-        stderr.push(format!("htmlcut: wrote bundle to {}", bundle.dir));
-    }
-    if !prepared.quiet
-        && prepared.verbose > 0
-        && let Some(request_definition_output) = prepared.request_definition_output.as_ref()
-    {
-        stderr.push(format!(
-            "htmlcut: wrote request file to {}",
-            request_definition_output.path.display()
-        ));
-    }
-
-    let post_write_stderr = output_file_notice(
-        prepared.output_file.as_deref(),
-        prepared.verbose,
-        prepared.quiet,
-    );
     match render_extraction_output(&report, prepared.output) {
-        Ok(stdout) => ExecutionOutcome {
-            stdout,
-            output_file: prepared.output_file,
-            write_mode,
-            post_write_stderr,
-            stderr,
-            exit_code: 0,
-        },
+        Ok(stdout) => {
+            let mut stderr = if prepared.quiet {
+                Vec::new()
+            } else {
+                build_verbose_lines(&report, prepared.verbose)
+            };
+            if !prepared.quiet && prepared.output != CliOutputMode::Json {
+                stderr.extend(build_human_diagnostic_stderr_lines(&report.diagnostics));
+                stderr.extend(build_human_followup_lines(&report, stdout.as_deref()));
+            }
+            if !prepared.quiet
+                && let Some(bundle) = report.bundle.as_ref()
+            {
+                stderr.push(format!("htmlcut: wrote bundle to {}", bundle.dir));
+            }
+            if !prepared.quiet
+                && let Some(request_definition_output) = prepared.request_definition_output.as_ref()
+            {
+                stderr.push(format!(
+                    "htmlcut: wrote request file to {}",
+                    request_definition_output.path.display()
+                ));
+            }
+
+            let post_write_stderr =
+                output_file_notice(prepared.output_file.as_deref(), prepared.quiet);
+            ExecutionOutcome {
+                stdout,
+                output_file: prepared.output_file,
+                write_mode,
+                post_write_stderr,
+                stderr,
+                exit_code: 0,
+            }
+        }
         Err(error) => human_error_outcome(error),
     }
 }
@@ -153,11 +152,7 @@ pub(crate) fn execute_preview(
         return error_outcome(prepared.command.clone(), false, None, write_mode, error);
     }
 
-    let post_write_stderr = output_file_notice(
-        prepared.output_file.as_deref(),
-        prepared.verbose,
-        prepared.quiet,
-    );
+    let post_write_stderr = output_file_notice(prepared.output_file.as_deref(), prepared.quiet);
     let stdout = match prepared.output {
         CliInspectOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
@@ -175,9 +170,7 @@ pub(crate) fn execute_preview(
             Vec::new()
         } else {
             let mut stderr = build_verbose_lines(&report, prepared.verbose);
-            if prepared.verbose > 0
-                && let Some(request_definition_output) = prepared.request_definition_output.as_ref()
-            {
+            if let Some(request_definition_output) = prepared.request_definition_output.as_ref() {
                 stderr.push(format!(
                     "htmlcut: wrote request file to {}",
                     request_definition_output.path.display()

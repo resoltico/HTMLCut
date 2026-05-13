@@ -1,4 +1,5 @@
 //! Small internal temporary-directory helper shared across the HTMLCut workspace.
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 use std::env;

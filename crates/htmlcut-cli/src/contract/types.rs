@@ -4,7 +4,9 @@ use htmlcut_core::CliChoice;
 use serde::Serialize;
 
 use super::render_cli_value;
-use htmlcut_core::{FetchPreflightMode, OperationId, PatternMode, ValueType, WhitespaceMode};
+use htmlcut_core::{
+    BoundaryRetention, FetchPreflightMode, OperationId, PatternMode, ValueType, WhitespaceMode,
+};
 
 macro_rules! impl_cli_choice {
     ($ty:ty { $($variant:path => $name:literal),+ $(,)? }) => {
@@ -110,6 +112,56 @@ impl_cli_choice!(CliTextJsonOutputMode {
     CliTextJsonOutputMode::Json => "json",
 });
 
+/// Canonical TLS trust modes exposed by HTMLCut CLI commands.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum CliTlsTrustMode {
+    /// Use Mozilla's bundled WebPKI root store.
+    WebPki,
+    /// Use the host platform verifier and trust roots.
+    Platform,
+    /// Use one explicit PEM CA bundle.
+    CustomCaBundle,
+}
+
+impl_cli_choice!(CliTlsTrustMode {
+    CliTlsTrustMode::WebPki => "web-pki",
+    CliTlsTrustMode::Platform => "platform",
+    CliTlsTrustMode::CustomCaBundle => "custom-ca-bundle",
+});
+
+/// Canonical boundary-retention modes exposed by HTMLCut slice commands.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum CliBoundaryRetentionMode {
+    /// Exclude both matched boundaries from the selected fragment.
+    ExcludeBoth,
+    /// Include only the matched start boundary.
+    IncludeStart,
+    /// Include only the matched end boundary.
+    IncludeEnd,
+    /// Include both matched boundaries.
+    IncludeBoth,
+}
+
+impl_cli_choice!(CliBoundaryRetentionMode {
+    CliBoundaryRetentionMode::ExcludeBoth => "exclude-both",
+    CliBoundaryRetentionMode::IncludeStart => "include-start",
+    CliBoundaryRetentionMode::IncludeEnd => "include-end",
+    CliBoundaryRetentionMode::IncludeBoth => "include-both",
+});
+
+impl From<CliBoundaryRetentionMode> for BoundaryRetention {
+    fn from(value: CliBoundaryRetentionMode) -> Self {
+        match value {
+            CliBoundaryRetentionMode::ExcludeBoth => Self::ExcludeBoth,
+            CliBoundaryRetentionMode::IncludeStart => Self::IncludeStart,
+            CliBoundaryRetentionMode::IncludeEnd => Self::IncludeEnd,
+            CliBoundaryRetentionMode::IncludeBoth => Self::IncludeBoth,
+        }
+    }
+}
+
 impl CliTextJsonOutputMode {
     /// Returns the corresponding general CLI output mode.
     pub const fn as_output_mode(self) -> CliOutputMode {
@@ -182,6 +234,10 @@ pub enum CliParameterId {
     FetchConnectTimeoutMs,
     /// URL preflight policy.
     FetchPreflight,
+    /// TLS trust policy for HTTP fetching.
+    TlsTrust,
+    /// PEM CA bundle path for custom trust mode.
+    TlsCaBundle,
     /// Inspection sample-limit option.
     SampleLimit,
     /// CSS selector option.
@@ -218,10 +274,8 @@ pub enum CliParameterId {
     Pattern,
     /// Regex flags for slice mode.
     RegexFlags,
-    /// Include-start boundary flag.
-    IncludeStart,
-    /// Include-end boundary flag.
-    IncludeEnd,
+    /// Slice boundary-retention mode.
+    BoundaryRetention,
 }
 
 impl CliParameterId {
@@ -236,6 +290,8 @@ impl CliParameterId {
             Self::FetchTimeoutMs => "--fetch-timeout-ms",
             Self::FetchConnectTimeoutMs => "--fetch-connect-timeout-ms",
             Self::FetchPreflight => "--fetch-preflight",
+            Self::TlsTrust => "--tls-trust",
+            Self::TlsCaBundle => "--tls-ca-bundle",
             Self::SampleLimit => "--sample-limit",
             Self::Css => "--css",
             Self::Match => "--match",
@@ -254,8 +310,7 @@ impl CliParameterId {
             Self::To => "--to",
             Self::Pattern => "--pattern",
             Self::RegexFlags => "--regex-flags",
-            Self::IncludeStart => "--include-start",
-            Self::IncludeEnd => "--include-end",
+            Self::BoundaryRetention => "--boundary-retention",
         }
     }
 }
@@ -292,6 +347,10 @@ pub enum CliValue {
     PatternMode(PatternMode),
     /// One fetch preflight policy.
     FetchPreflightMode(FetchPreflightMode),
+    /// One TLS trust mode.
+    TlsTrustMode(CliTlsTrustMode),
+    /// One slice boundary-retention mode.
+    BoundaryRetentionMode(CliBoundaryRetentionMode),
     /// One boolean literal.
     Boolean(bool),
     /// One usize literal.
@@ -335,6 +394,26 @@ mod tests {
 
         assert_eq!(selection.to_string(), render_cli_value(selection));
         assert_eq!(boolean.to_string(), render_cli_value(boolean));
+    }
+
+    #[test]
+    fn cli_boundary_retention_modes_map_to_domain_values() {
+        assert_eq!(
+            BoundaryRetention::from(CliBoundaryRetentionMode::ExcludeBoth),
+            BoundaryRetention::ExcludeBoth
+        );
+        assert_eq!(
+            BoundaryRetention::from(CliBoundaryRetentionMode::IncludeStart),
+            BoundaryRetention::IncludeStart
+        );
+        assert_eq!(
+            BoundaryRetention::from(CliBoundaryRetentionMode::IncludeEnd),
+            BoundaryRetention::IncludeEnd
+        );
+        assert_eq!(
+            BoundaryRetention::from(CliBoundaryRetentionMode::IncludeBoth),
+            BoundaryRetention::IncludeBoth
+        );
     }
 }
 

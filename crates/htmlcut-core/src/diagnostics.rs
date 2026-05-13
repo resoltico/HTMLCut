@@ -107,6 +107,8 @@ diagnostic_codes! {
     InvalidSelector => "INVALID_SELECTOR",
     /// The slice pattern or regex flags are invalid.
     InvalidSlicePattern => "INVALID_SLICE_PATTERN",
+    /// The requested value type is not valid for the chosen extraction strategy.
+    UnsupportedValueType => "UNSUPPORTED_VALUE_TYPE",
     /// No candidates matched the request.
     NoMatch => "NO_MATCH",
     /// Exact-one selection found multiple candidates.

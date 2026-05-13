@@ -4,9 +4,9 @@ use htmlcut_core::{
 };
 
 use crate::args::{
-    CliFetchPreflightMode, CliMatchMode, CliPatternMode, CliValueMode, CliWhitespaceMode,
-    ExtractOutputArgs, InspectOutputArgs, InspectSelectArgs, InspectSliceArgs, SelectArgs,
-    SelectionArgs, SliceArgs, SourceArgs,
+    CliFetchPreflightMode, CliMatchMode, CliPatternMode, CliSliceValueMode, CliTlsTrustMode,
+    CliValueMode, CliWhitespaceMode, ExtractOutputArgs, InspectOutputArgs, InspectSelectArgs,
+    InspectSliceArgs, SelectArgs, SelectionArgs, SliceArgs, SliceExtractOutputArgs, SourceArgs,
 };
 use crate::error::{CliError, usage_error};
 use crate::model::CliErrorCode;
@@ -33,8 +33,11 @@ pub(in crate::prepare) fn ensure_inline_slice_request_is_default(
         "--pattern",
     );
     push_conflict(&mut conflicts, args.regex_flags.is_some(), "--regex-flags");
-    push_conflict(&mut conflicts, args.include_start, "--include-start");
-    push_conflict(&mut conflicts, args.include_end, "--include-end");
+    push_conflict(
+        &mut conflicts,
+        args.boundary_retention != crate::args::CliBoundaryRetentionMode::ExcludeBoth,
+        "--boundary-retention",
+    );
     extend_selection_request_file_conflicts(&mut conflicts, &args.selection);
     extend_extract_request_file_conflicts(&mut conflicts, &args.output);
     reject_request_file_conflicts(conflicts)
@@ -47,10 +50,16 @@ pub(in crate::prepare) fn ensure_inline_inspect_select_request_is_default(
     push_conflict(&mut conflicts, args.css.is_some(), "--css");
     extend_selection_request_file_conflicts(&mut conflicts, &args.selection);
     extend_inspect_request_file_conflicts(&mut conflicts, &args.output);
+    push_conflict(
+        &mut conflicts,
+        args.value != CliValueMode::Structured,
+        "--value",
+    );
+    push_conflict(&mut conflicts, args.attribute.is_some(), "--attribute");
     push_conflict(&mut conflicts, args.rewrite_urls, "--rewrite-urls");
     push_conflict(
         &mut conflicts,
-        args.whitespace != CliWhitespaceMode::Preserve,
+        args.whitespace != CliWhitespaceMode::Rendered,
         "--whitespace",
     );
     reject_request_file_conflicts(conflicts)
@@ -68,14 +77,23 @@ pub(in crate::prepare) fn ensure_inline_inspect_slice_request_is_default(
         "--pattern",
     );
     push_conflict(&mut conflicts, args.regex_flags.is_some(), "--regex-flags");
-    push_conflict(&mut conflicts, args.include_start, "--include-start");
-    push_conflict(&mut conflicts, args.include_end, "--include-end");
+    push_conflict(
+        &mut conflicts,
+        args.boundary_retention != crate::args::CliBoundaryRetentionMode::ExcludeBoth,
+        "--boundary-retention",
+    );
     extend_selection_request_file_conflicts(&mut conflicts, &args.selection);
     extend_inspect_request_file_conflicts(&mut conflicts, &args.output);
+    push_conflict(
+        &mut conflicts,
+        args.value != CliSliceValueMode::Structured,
+        "--value",
+    );
+    push_conflict(&mut conflicts, args.attribute.is_some(), "--attribute");
     push_conflict(&mut conflicts, args.rewrite_urls, "--rewrite-urls");
     push_conflict(
         &mut conflicts,
-        args.whitespace != CliWhitespaceMode::Preserve,
+        args.whitespace != CliWhitespaceMode::Rendered,
         "--whitespace",
     );
     reject_request_file_conflicts(conflicts)
@@ -105,6 +123,16 @@ fn collect_source_request_file_conflicts(source: &SourceArgs) -> Vec<&'static st
         source.fetch_preflight != CliFetchPreflightMode::HeadFirst,
         "--fetch-preflight",
     );
+    push_conflict(
+        &mut conflicts,
+        source.tls_trust != CliTlsTrustMode::WebPki,
+        "--tls-trust",
+    );
+    push_conflict(
+        &mut conflicts,
+        source.tls_ca_bundle.is_some(),
+        "--tls-ca-bundle",
+    );
     conflicts
 }
 
@@ -120,26 +148,87 @@ fn extend_selection_request_file_conflicts(
     push_conflict(conflicts, selection.index.is_some(), "--index");
 }
 
-fn extend_extract_request_file_conflicts(
-    conflicts: &mut Vec<&'static str>,
-    output: &ExtractOutputArgs,
-) {
-    push_conflict(conflicts, output.value != CliValueMode::Text, "--value");
-    push_conflict(conflicts, output.attribute.is_some(), "--attribute");
+trait ExtractOutputConflictArgs {
+    fn value_is_non_default(&self) -> bool;
+    fn has_attribute(&self) -> bool;
+    fn whitespace(&self) -> CliWhitespaceMode;
+    fn rewrite_urls(&self) -> bool;
+    fn preview_chars(&self) -> usize;
+    fn include_source_text(&self) -> bool;
+}
+
+impl ExtractOutputConflictArgs for ExtractOutputArgs {
+    fn value_is_non_default(&self) -> bool {
+        self.value != CliValueMode::Text
+    }
+
+    fn has_attribute(&self) -> bool {
+        self.attribute.is_some()
+    }
+
+    fn whitespace(&self) -> CliWhitespaceMode {
+        self.whitespace
+    }
+
+    fn rewrite_urls(&self) -> bool {
+        self.rewrite_urls
+    }
+
+    fn preview_chars(&self) -> usize {
+        self.preview_chars
+    }
+
+    fn include_source_text(&self) -> bool {
+        self.include_source_text
+    }
+}
+
+impl ExtractOutputConflictArgs for SliceExtractOutputArgs {
+    fn value_is_non_default(&self) -> bool {
+        self.value != CliSliceValueMode::Text
+    }
+
+    fn has_attribute(&self) -> bool {
+        self.attribute.is_some()
+    }
+
+    fn whitespace(&self) -> CliWhitespaceMode {
+        self.whitespace
+    }
+
+    fn rewrite_urls(&self) -> bool {
+        self.rewrite_urls
+    }
+
+    fn preview_chars(&self) -> usize {
+        self.preview_chars
+    }
+
+    fn include_source_text(&self) -> bool {
+        self.include_source_text
+    }
+}
+
+fn extend_extract_request_file_conflicts<T>(conflicts: &mut Vec<&'static str>, output: &T)
+where
+    T: ExtractOutputConflictArgs,
+{
+    push_conflict(conflicts, output.value_is_non_default(), "--value");
+    push_conflict(conflicts, output.has_attribute(), "--attribute");
     push_conflict(
         conflicts,
-        output.whitespace != CliWhitespaceMode::Preserve,
+        output.whitespace() != CliWhitespaceMode::Rendered,
         "--whitespace",
     );
-    push_conflict(conflicts, output.rewrite_urls, "--rewrite-urls");
+    push_conflict(conflicts, output.rewrite_urls(), "--rewrite-urls");
     push_conflict(
         conflicts,
-        output.preview_chars != DEFAULT_PREVIEW_CHARS,
+        output.preview_chars() != DEFAULT_PREVIEW_CHARS,
         "--preview-chars",
     );
     push_conflict(
         conflicts,
-        output.include_source_text,
+        output.include_source_text(),
         "--include-source-text",
     );
 }

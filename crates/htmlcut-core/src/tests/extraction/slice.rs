@@ -10,8 +10,10 @@ fn slice_match_builder_covers_value_modes() {
             "<a href=\"/x\">Hello</a>",
             "https://example.com/base/",
         ),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::InnerHtml),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(ValueSpec::SelectedHtml),
     );
     request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
@@ -90,8 +92,7 @@ fn slice_match_builder_covers_value_modes() {
     let mut inner_capture_request = request.clone();
     inner_capture_request.extraction = ExtractionSpec::slice(SliceSpec {
         pattern: SlicePatternSpec::literal(slice_boundary("<a "), slice_boundary("</a>")),
-        include_start: false,
-        include_end: false,
+        boundary_retention: BoundaryRetention::ExcludeBoth,
     })
     .with_value(attribute_value("href"));
     let inner_candidate = extract_slice_candidates(
@@ -114,14 +115,18 @@ fn slice_match_builder_covers_value_modes() {
     )
     .expect_err("inner capture should drop opening-tag attributes");
     assert_eq!(hinted_missing.code, "MISSING_ATTRIBUTE");
-    assert!(hinted_missing.message.contains("use --include-start"));
+    assert!(
+        hinted_missing
+            .message
+            .contains("use --boundary-retention include-start")
+    );
     assert_eq!(
         hinted_missing
             .details
             .as_ref()
             .and_then(|details| details.get("hint"))
             .and_then(Value::as_str),
-        Some("use --include-start")
+        Some("use --boundary-retention include-start")
     );
 
     let mut structured_request = request.clone();
@@ -180,8 +185,10 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
             "<div><a href=\"/x\"> Hello </a></div>",
             "https://example.com/base/",
         ),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::Text),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(ValueSpec::Text),
     );
     request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
@@ -245,8 +252,10 @@ fn slice_match_builder_covers_inner_html_without_text_projection() {
             "<div><a href=\"/x\"> Hello </a></div>",
             "https://example.com/base/",
         ),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::InnerHtml),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(ValueSpec::InnerHtml),
     );
     request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
@@ -278,7 +287,7 @@ fn slice_match_builder_covers_inner_html_without_text_projection() {
     .expect("inner html");
     assert_eq!(
         inner_html_match.value.as_str(),
-        Some("<a href=\"https://example.com/x\"> Hello </a>")
+        Some(" href=\"/x\"&gt; Hello ")
     );
     assert!(inner_html_match.html.is_none());
     assert!(inner_html_match.text.is_none());
@@ -306,7 +315,7 @@ fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
 
     let zero_width = extract_slice_candidates(
         "abc",
-        &regex_slice_spec(r"\b", r"\b").with_boundary_inclusion(true, true),
+        &regex_slice_spec(r"\b", r"\b").with_boundary_retention(BoundaryRetention::IncludeBoth),
     )
     .expect("zero width candidates");
     assert_eq!(zero_width.len(), 2);
@@ -393,8 +402,10 @@ fn slice_runtime_reports_misrouted_requests_and_missing_boundaries() {
 fn slice_runtime_reports_unresolved_base_when_rewrite_is_requested() {
     let mut request = ExtractionRequest::new(
         memory_source("inline", "<a href=\"guide.html\">Guide</a>"),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::OuterHtml),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(ValueSpec::OuterHtml),
     );
     request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,
@@ -425,8 +436,7 @@ fn slice_runtime_reports_invalid_regex_patterns_during_runtime_wrapper_compilati
                 to: slice_boundary("</article>"),
                 flags: String::new(),
             },
-            include_start: false,
-            include_end: false,
+            boundary_retention: BoundaryRetention::ExcludeBoth,
         }),
     );
     let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
@@ -446,8 +456,10 @@ fn slice_runtime_skips_unresolved_base_warning_when_base_resolves() {
             "<a href=\"guide.html\">Guide</a>",
             "https://example.com/docs/",
         ),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(ValueSpec::OuterHtml),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(ValueSpec::OuterHtml),
     );
     request.output.rendering = RenderingOptions {
         whitespace: WhitespaceMode::Normalize,

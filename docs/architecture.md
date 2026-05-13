@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: ARCHITECTURE
 updated: "2026-05-05"
 route:

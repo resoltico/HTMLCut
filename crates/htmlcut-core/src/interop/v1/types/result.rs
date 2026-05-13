@@ -90,6 +90,8 @@ interop_diagnostic_codes! {
     InvalidSelector => "INVALID_SELECTOR",
     /// The slice pattern or regex flags are invalid.
     InvalidSlicePattern => "INVALID_SLICE_PATTERN",
+    /// The requested value type is not valid for the chosen extraction strategy.
+    UnsupportedValueType => "UNSUPPORTED_VALUE_TYPE",
     /// No candidates matched the request.
     NoMatch => "NO_MATCH",
     /// Exact-one selection found multiple candidates.
@@ -113,6 +115,7 @@ impl From<crate::DiagnosticCode> for InteropDiagnosticCode {
             crate::DiagnosticCode::UnsupportedSpecVersion => Self::UnsupportedSpecVersion,
             crate::DiagnosticCode::InvalidSelector => Self::InvalidSelector,
             crate::DiagnosticCode::InvalidSlicePattern => Self::InvalidSlicePattern,
+            crate::DiagnosticCode::UnsupportedValueType => Self::UnsupportedValueType,
             crate::DiagnosticCode::NoMatch => Self::NoMatch,
             crate::DiagnosticCode::AmbiguousMatch => Self::AmbiguousMatch,
             crate::DiagnosticCode::MatchIndexOutOfRange => Self::MatchIndexOutOfRange,
@@ -260,7 +263,7 @@ pub enum SelectedMatchMetadata {
         candidate_count: usize,
         /// Selected 1-based candidate ordinal.
         candidate_index: NonZeroUsize,
-        /// Selected byte range after applying the include-start/include-end policy.
+        /// Selected byte range after applying the boundary-retention policy.
         selected_range: ByteRange,
         /// Inner byte range between the two matched boundaries.
         inner_range: ByteRange,

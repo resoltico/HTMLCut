@@ -5,6 +5,7 @@ mod paths;
 mod semver;
 
 use crate::model::{CommandSpec, DynResult};
+pub use check::ci_rust_gate_plan;
 
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {

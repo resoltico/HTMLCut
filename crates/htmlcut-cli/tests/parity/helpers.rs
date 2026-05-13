@@ -8,13 +8,12 @@ pub(super) use htmlcut_cli::{
     SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SourceInspectionCommandReport, run,
 };
 pub(super) use htmlcut_core::{
-    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionRequest, ExtractionSpec, OutputOptions,
-    PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-    SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
-    preview_extraction,
+    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, ExtractionRequest, ExtractionSpec,
+    HttpUrl, OutputOptions, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec,
+    SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
+    inspect_source, preview_extraction,
 };
 pub(super) use htmlcut_tempdir::tempdir;
-pub(super) use url::Url;
 
 pub(super) fn write_fixture(tempdir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = tempdir.join(name);
@@ -25,12 +24,16 @@ pub(super) fn write_fixture(tempdir: &Path, name: &str, contents: &str) -> PathB
 pub(super) fn source_request(path: &Path, base_url: Option<&str>) -> SourceRequest {
     let source = SourceRequest::file(path);
     base_url.map_or(source.clone(), |base_url| {
-        source.with_base_url(Url::parse(base_url).expect("base url"))
+        source.with_base_url(http_url(base_url))
     })
 }
 
 pub(super) fn runtime_options() -> RuntimeOptions {
     RuntimeOptions::default()
+}
+
+pub(super) fn http_url(value: &str) -> HttpUrl {
+    HttpUrl::parse(value).expect("http url")
 }
 
 pub(super) fn extraction_output(include_source_text: bool, preview_chars: usize) -> OutputOptions {
@@ -58,7 +61,7 @@ pub(super) fn slice_extraction(
         PatternMode::Literal => SliceSpec::new(from, to),
         PatternMode::Regex => SliceSpec::regex(from, to, ""),
     }
-    .with_boundary_inclusion(include_start, include_end);
+    .with_boundary_retention(BoundaryRetention::from_flags(include_start, include_end));
     ExtractionSpec::slice(slice)
 }
 

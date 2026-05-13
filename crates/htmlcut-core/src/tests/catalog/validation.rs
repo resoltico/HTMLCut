@@ -96,13 +96,13 @@ fn contract_lint_catalog_and_schema_contract_strings_stay_canonical() {
 fn catalog_and_schema_contract_string_guards_reject_drift() {
     let canonical_operation = crate::catalog::operation_catalog()[0];
     let drifted_operation = crate::catalog::OperationDescriptor {
-        core_surface: "",
+        core_api: "",
         request_contract: crate::catalog::OperationContract {
-            rust_shape: "",
+            family: "",
             ..canonical_operation.request_contract
         },
         result_contract: crate::catalog::OperationContract {
-            rust_shape: "",
+            family: "",
             ..canonical_operation.result_contract
         },
         ..canonical_operation
@@ -114,17 +114,17 @@ fn catalog_and_schema_contract_string_guards_reject_drift() {
     assert!(
         operation_errors
             .iter()
-            .any(|error| error.contains("empty core_surface"))
+            .any(|error| error.contains("empty core_api"))
     );
     assert!(
         operation_errors
             .iter()
-            .any(|error| error.contains("empty request rust_shape"))
+            .any(|error| error.contains("empty request family"))
     );
     assert!(
         operation_errors
             .iter()
-            .any(|error| error.contains("empty result rust_shape"))
+            .any(|error| error.contains("empty result family"))
     );
     let duplicate_operation_errors =
         crate::catalog::operation_catalog_contract_string_errors_for_tests_with(&[
@@ -175,7 +175,7 @@ fn catalog_and_schema_contract_string_guards_reject_drift() {
     assert!(panic_text.contains("schema catalog contract strings drifted"));
 
     assert_eq!(
-        crate::schema::expected_schema_rust_shape_for_tests(crate::SchemaRef::new(
+        crate::schema::expected_schema_contract_family_for_tests(crate::SchemaRef::new(
             "htmlcut.unknown",
             99,
         )),
@@ -185,8 +185,8 @@ fn catalog_and_schema_contract_string_guards_reject_drift() {
         crate::schema::schema_catalog_contract_string_errors_for_tests_with(&[
             crate::schema::SchemaDescriptor {
                 schema_ref: crate::SchemaRef::new("htmlcut.unknown", 99),
-                owner_surface: "htmlcut-core",
-                rust_shape: "Unknown",
+                owner: "core",
+                contract_family: "unknown",
                 stability: crate::SchemaStability::Versioned,
                 json_schema: || Ok(serde_json::json!({})),
             },
@@ -206,16 +206,16 @@ fn schema_descriptor_constructor_preserves_fields() {
 
     let descriptor = crate::schema::catalog_schema_descriptor_for_tests(
         crate::SchemaRef::new("htmlcut.synthetic_core_schema", 1),
-        "htmlcut-core",
-        "SyntheticCoreSchema",
+        "core",
+        "synthetic core schema",
         synthetic_schema,
     );
     assert_eq!(
         descriptor.schema_ref,
         crate::SchemaRef::new("htmlcut.synthetic_core_schema", 1)
     );
-    assert_eq!(descriptor.owner_surface, "htmlcut-core");
-    assert_eq!(descriptor.rust_shape, "SyntheticCoreSchema");
+    assert_eq!(descriptor.owner, "core");
+    assert_eq!(descriptor.contract_family, "synthetic core schema");
     assert_eq!(descriptor.stability, crate::SchemaStability::Versioned);
     assert_eq!(
         (descriptor.json_schema)().expect("synthetic schema")["type"],

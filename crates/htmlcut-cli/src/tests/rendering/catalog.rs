@@ -41,12 +41,12 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("Operation:"));
-    assert!(stdout.contains("core: extract(ExtractionRequest{kind=slice}, RuntimeOptions)"));
-    assert!(stdout.contains("request: ExtractionRequest + RuntimeOptions"));
+    assert!(stdout.contains("core api: extract slice values"));
+    assert!(stdout.contains("request: extraction request + runtime options"));
     assert!(
         stdout.contains("request schemas: htmlcut.extraction_request@5, htmlcut.runtime_options@5")
     );
-    assert!(stdout.contains("result: ExtractionResult"));
+    assert!(stdout.contains("result: extraction result"));
     assert!(stdout.contains("result schemas: htmlcut.extraction_result@6"));
     assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"));
     assert!(stdout.contains("default output: text"));
@@ -70,7 +70,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("option --regex-flags <REGEX_FLAGS> | conditional (allowed only when --pattern regex is used)"));
     assert!(stdout.contains("option --output-file <PATH> | optional"));
     assert!(stdout.contains(
-        "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely."
+        "The selected fragment excludes both matched boundaries by default; --boundary-retention controls that selected fragment precisely."
     ));
     assert!(stderr.is_empty());
 

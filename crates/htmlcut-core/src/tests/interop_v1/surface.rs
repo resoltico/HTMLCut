@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use htmlcut_core::DEFAULT_MAX_BYTES;
-use htmlcut_core::interop::v1::{
-    ByteRange, ContractError, CssSelectorText, DelimiterBoundaryText, DelimiterMode,
-    ERROR_SCHEMA_NAME, ErrorCode, HtmlInput, InteropDiagnostic, InteropDiagnosticCode,
-    InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputKind, PLAN_SCHEMA_NAME,
-    Plan, PlanStrategy, RESULT_SCHEMA_NAME, RegexFlag, Rendering, ResultExecution, ResultSource,
-    SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
-    execute_plan, execute_validated_plan, prepare_plan, stable_json_v1,
+use crate::DEFAULT_MAX_BYTES;
+use crate::interop::v1::{
+    ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText,
+    DelimiterMode, ERROR_SCHEMA_NAME, ErrorCode, HtmlInput, InteropDiagnostic,
+    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputKind,
+    PLAN_SCHEMA_NAME, Plan, PlanStrategy, RESULT_SCHEMA_NAME, RegexFlag, Rendering,
+    ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode,
+    StrategyKind, TextWhitespace, execute_plan, execute_validated_plan, prepare_plan,
+    stable_json_v1,
 };
 use serde_json::json;
 use url::Url;
@@ -103,8 +104,7 @@ fn plan_validates_literal_regex_flag_conflicts() {
             delimiter_boundary("<article>"),
             delimiter_boundary("</article>"),
             DelimiterMode::Literal,
-            false,
-            false,
+            DelimiterBoundaryRetention::ExcludeBoth,
             vec![RegexFlag::CaseInsensitive],
         ),
         Selection::single(),
@@ -271,8 +271,7 @@ fn prepare_plan_returns_typed_plan_invalid_error() {
             delimiter_boundary("<article>"),
             delimiter_boundary("</article>"),
             DelimiterMode::Literal,
-            false,
-            false,
+            DelimiterBoundaryRetention::ExcludeBoth,
             vec![RegexFlag::CaseInsensitive],
         ),
         Selection::single(),
@@ -399,8 +398,7 @@ fn execute_plan_executes_regex_delimiter_pair() {
             delimiter_boundary(r"<article[^>]*>"),
             delimiter_boundary(r"</article>"),
             DelimiterMode::Regex,
-            true,
-            true,
+            DelimiterBoundaryRetention::IncludeBoth,
             vec![RegexFlag::CaseInsensitive],
         ),
         Selection::single(),

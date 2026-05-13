@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: SCHEMA
-updated: "2026-05-05"
+updated: "2026-05-13"
 route:
   keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, schema inventory]
   questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?"]
@@ -39,7 +39,7 @@ assert!(!registry.is_empty());
 
 let extraction_result =
     schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION).unwrap();
-assert_eq!(extraction_result.owner_surface, "htmlcut-core");
+assert_eq!(extraction_result.owner, "core");
 
 let schema_json = (extraction_result.json_schema)().unwrap();
 assert!(schema_json.is_object());
@@ -113,14 +113,23 @@ For slice extraction, the request/result family is mode-correct:
 
 - literal slices carry `mode`, `from`, and `to` with no regex `flags`
 - regex slices carry `mode`, `from`, `to`, and `flags`
+- request-side slice documents serialize boundary retention as one named
+  `boundary_retention` enum, not as paired boolean mode flags
 
-The request/result value enums serialize the inner-fragment mode explicitly as
-`inner-html`.
+The request-side value enums serialize HTML fragment modes explicitly:
+
+- selector extraction uses `inner-html` and `outer-html`
+- slice extraction distinguishes `selected-html`, `inner-html`, and `outer-html`
 
 The request-side schema family also covers:
 
-- `fetch_preflight` in `RuntimeOptions`
+- non-zero `max_bytes`, `fetch_timeout`, and `fetch_connect_timeout` values in `RuntimeOptions`
+- `fetch_preflight` and `tls_trust` in `RuntimeOptions`
 - reusable serialized CLI/core requests through `ExtractionDefinition`
+
+Those exported request/result schema roots are owned by the explicit
+`htmlcut_core::wire::v1::*Document` DTO layer. The schema registry does not derive its top-level
+wire contract directly from the in-process domain structs.
 
 ## Structured Match Metadata
 
@@ -144,12 +153,18 @@ The structured `value` payload also carries collection context:
 
 For slice structured payloads, the HTML fields are intentionally distinct:
 
-- `selectedHtmlOutput` is the fragment after applying `include_start` / `include_end`
+- `selectedHtmlOutput` is the exact selected fragment
 - `innerHtmlOutput` is the HTML between the two matched boundaries
 - `outerHtmlOutput` includes both matched boundaries
 
 That lets downstream callers reason about `--match all` result sets without reconstructing context
 from outer report fields alone.
+
+For URL-backed source metadata:
+
+- `value` is a safe display form and never includes URL userinfo
+- `effective_base_url` appears only after document parsing and base resolution succeed
+- load or pre-parse failures can carry `input_base_url` without claiming an effective base
 
 Successful source loads expose `SourceMetadata.load_steps`, a structured trace of the load actions
 HTMLCut took. URL-backed reports use that to record whether `HEAD` preflight succeeded, was

@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use htmlcut_core::wire::v1::ExtractionDefinitionDocument;
 use htmlcut_core::{ExtractionDefinition, ExtractionRequest, ExtractionStrategy, RuntimeOptions};
 use serde_json::Value;
 
@@ -72,8 +73,8 @@ fn load_extraction_definition(
         )
     })?;
     let shape_hint = request_file_shape_hint(&value, expected_strategy);
-    let definition: ExtractionDefinition =
-        serde_path_to_error::deserialize(value).map_err(|error| {
+    let definition_document: ExtractionDefinitionDocument = serde_path_to_error::deserialize(value)
+        .map_err(|error| {
             let json_path = render_json_error_path(&error);
             usage_error(
                 CliErrorCode::RequestFileInvalid,
@@ -92,6 +93,7 @@ fn load_extraction_definition(
                 ),
             )
         })?;
+    let definition: ExtractionDefinition = definition_document.into();
 
     if definition.schema_name != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME
         || definition.schema_version != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION

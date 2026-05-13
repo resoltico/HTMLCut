@@ -16,22 +16,23 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             from: None,
             to: None,
             pattern: CliPatternMode::Literal,
             regex_flags: None,
-            include_start: false,
-            include_end: false,
+            boundary_retention: crate::args::CliBoundaryRetentionMode::ExcludeBoth,
             selection: SelectionArgs {
                 r#match: CliMatchMode::First,
                 index: None,
             },
-            output: ExtractOutputArgs {
-                value: CliValueMode::Text,
+            output: SliceExtractOutputArgs {
+                value: CliSliceValueMode::Text,
                 attribute: None,
-                whitespace: CliWhitespaceMode::Preserve,
+                whitespace: CliWhitespaceMode::Rendered,
                 rewrite_urls: false,
                 output: None,
                 bundle: None,
@@ -66,6 +67,8 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
             fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+            tls_trust: CliTlsTrustMode::WebPki,
+            tls_ca_bundle: None,
             fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
         css: None,
@@ -73,7 +76,9 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             r#match: CliMatchMode::First,
             index: None,
         },
-        whitespace: CliWhitespaceMode::Preserve,
+        value: CliValueMode::Structured,
+        attribute: None,
+        whitespace: CliWhitespaceMode::Rendered,
         rewrite_urls: false,
         output: InspectOutputArgs {
             output: CliInspectOutputMode::Json,
@@ -84,10 +89,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
         file_write: default_file_write_args(),
     })
     .expect("inspect select request file");
-    assert_eq!(
-        preview_select.request.extraction.value(),
-        &ValueSpec::Structured
-    );
+    assert_eq!(preview_select.request.extraction.value(), &ValueSpec::Text);
     assert!(preview_select.request_definition_output.is_none());
 
     let preview_slice = PreparedPreview::from_slice(InspectSliceArgs {
@@ -101,19 +103,22 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
             fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+            tls_trust: CliTlsTrustMode::WebPki,
+            tls_ca_bundle: None,
             fetch_preflight: CliFetchPreflightMode::HeadFirst,
         },
         from: None,
         to: None,
         pattern: CliPatternMode::Literal,
         regex_flags: None,
-        include_start: false,
-        include_end: false,
+        boundary_retention: crate::args::CliBoundaryRetentionMode::ExcludeBoth,
         selection: SelectionArgs {
             r#match: CliMatchMode::First,
             index: None,
         },
-        whitespace: CliWhitespaceMode::Preserve,
+        value: CliSliceValueMode::Structured,
+        attribute: None,
+        whitespace: CliWhitespaceMode::Rendered,
         rewrite_urls: false,
         output: InspectOutputArgs {
             output: CliInspectOutputMode::Json,
@@ -124,10 +129,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
         file_write: default_file_write_args(),
     })
     .expect("inspect slice request file");
-    assert_eq!(
-        preview_slice.request.extraction.value(),
-        &ValueSpec::Structured
-    );
+    assert_eq!(preview_slice.request.extraction.value(), &ValueSpec::Text);
     assert!(preview_slice.request_definition_output.is_none());
 }
 
@@ -148,20 +150,21 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                     fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
                     fetch_preflight: CliFetchPreflightMode::HeadFirst,
                 },
                 from: Some("<article>".to_owned()),
                 to: Some("</article>".to_owned()),
                 pattern: CliPatternMode::Regex,
                 regex_flags: Some("i".to_owned()),
-                include_start: true,
-                include_end: true,
+                boundary_retention: crate::args::CliBoundaryRetentionMode::IncludeBoth,
                 selection: SelectionArgs {
                     r#match: CliMatchMode::Nth,
                     index: Some(2),
                 },
-                output: ExtractOutputArgs {
-                    value: CliValueMode::Structured,
+                output: SliceExtractOutputArgs {
+                    value: CliSliceValueMode::Structured,
                     attribute: None,
                     whitespace: CliWhitespaceMode::Normalize,
                     rewrite_urls: true,
@@ -199,6 +202,8 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             css: Some("article".to_owned()),
@@ -206,6 +211,8 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 r#match: CliMatchMode::Nth,
                 index: Some(2),
             },
+            value: CliValueMode::Structured,
+            attribute: None,
             whitespace: CliWhitespaceMode::Normalize,
             rewrite_urls: true,
             output: InspectOutputArgs {
@@ -234,18 +241,21 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
                 fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                tls_trust: CliTlsTrustMode::WebPki,
+                tls_ca_bundle: None,
                 fetch_preflight: CliFetchPreflightMode::HeadFirst,
             },
             from: Some("<article>".to_owned()),
             to: Some("</article>".to_owned()),
             pattern: CliPatternMode::Regex,
             regex_flags: Some("i".to_owned()),
-            include_start: true,
-            include_end: true,
+            boundary_retention: crate::args::CliBoundaryRetentionMode::IncludeBoth,
             selection: SelectionArgs {
                 r#match: CliMatchMode::Nth,
                 index: Some(2),
             },
+            value: CliSliceValueMode::Structured,
+            attribute: None,
             whitespace: CliWhitespaceMode::Normalize,
             rewrite_urls: true,
             output: InspectOutputArgs {
@@ -259,7 +269,11 @@ fn prepared_request_file_builders_report_cli_conflicts() {
         "inspect slice request file conflict",
     );
     assert_eq!(inspect_slice_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
-    assert!(inspect_slice_conflict.message.contains("--include-start"));
+    assert!(
+        inspect_slice_conflict
+            .message
+            .contains("--boundary-retention")
+    );
     assert!(
         inspect_slice_conflict
             .message

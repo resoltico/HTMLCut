@@ -8,11 +8,11 @@ pub const CATALOG_REPORT_SCHEMA_NAME: &str = "htmlcut.catalog_report";
 /// Schema version for the machine-readable `htmlcut catalog` report.
 pub const CATALOG_SCHEMA_VERSION: u32 = 4;
 
-/// Rust and JSON-schema contract surface for one operation input or output.
+/// Public contract family and JSON-schema surface for one operation input or output.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct CatalogContractSurface {
-    /// Rust type or type composition used in-process.
-    pub rust_shape: String,
+    /// Public contract family name exposed to operators and embedders.
+    pub family: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     /// Exported JSON schema references for this contract.
     pub schema_refs: Vec<SchemaRefReport>,
@@ -183,8 +183,8 @@ pub struct CatalogOperationReport {
     pub availability: CatalogAvailability,
     /// A concise summary of what the operation does.
     pub summary: String,
-    /// The embeddable core surface that exposes this operation.
-    pub core_surface: String,
+    /// The public embeddable core API capability behind this operation.
+    pub core_api: String,
     /// The public request contract for this operation.
     pub request_contract: CatalogContractSurface,
     /// The public result contract for this operation.

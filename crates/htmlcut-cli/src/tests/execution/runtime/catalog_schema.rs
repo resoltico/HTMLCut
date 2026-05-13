@@ -34,12 +34,12 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
         htmlcut_core::OperationId::SelectPreview
     );
     assert_eq!(
-        filtered.operations[0].core_surface,
-        "preview_extraction(ExtractionRequest{kind=selector}, RuntimeOptions)"
+        filtered.operations[0].core_api,
+        "preview selector extraction"
     );
     assert_eq!(
-        filtered.operations[0].request_contract.rust_shape,
-        "ExtractionRequest + RuntimeOptions"
+        filtered.operations[0].request_contract.family,
+        "extraction request + runtime options"
     );
     assert_eq!(
         filtered.operations[0].request_contract.schema_refs,
@@ -55,8 +55,8 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
         ]
     );
     assert_eq!(
-        filtered.operations[0].result_contract.rust_shape,
-        "ExtractionResult"
+        filtered.operations[0].result_contract.family,
+        "extraction result"
     );
     assert_eq!(
         filtered.operations[0].result_contract.schema_refs,
@@ -119,20 +119,20 @@ fn schema_report_surfaces_core_cli_and_interop_contracts() {
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == htmlcut_core::EXTRACTION_REQUEST_SCHEMA_NAME
             && schema.schema_version == htmlcut_core::CORE_REQUEST_SCHEMA_VERSION
-            && schema.owner_surface == "htmlcut-core"
+            && schema.owner == "core"
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == htmlcut_core::interop::v1::PLAN_SCHEMA_NAME
-            && schema.owner_surface == "htmlcut_core::interop::v1"
+            && schema.owner == "interop-v1"
             && schema.stability == htmlcut_core::SchemaStability::Versioned
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner_surface == "htmlcut-cli"
+        schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner == "cli"
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == ERROR_COMMAND_REPORT_SCHEMA_NAME
             && schema.schema_version == ERROR_COMMAND_REPORT_SCHEMA_VERSION
-            && schema.owner_surface == "htmlcut-cli"
+            && schema.owner == "cli"
     }));
 
     let filtered = build_schema_report(

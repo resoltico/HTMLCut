@@ -117,6 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
           retry() {
             local attempts="$1"
             local delay_seconds="$2"
@@ -130,8 +131,8 @@ jobs:
               attempt=$((attempt + 1))
             done
           }
-          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
-          retry 3 5 rustup component add clippy rustfmt --toolchain 1.95.0
+          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          retry 3 5 rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
 
       - name: Export contributor Rust QA tool inventory
         id: rust_qa_tools
@@ -156,33 +157,9 @@ jobs:
         shell: powershell
         run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\target"
 
-      - name: Check formatting
+      - name: Run cross-platform Rust gate
         shell: bash
-        run: cargo fmt --check
-
-      - name: Run Clippy
-        shell: bash
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-
-      - name: Run workspace tests
-        shell: bash
-        run: cargo nextest run --workspace --lib --tests --all-features --locked
-
-      - name: Check dependency freshness
-        shell: bash
-        run: cargo outdated --workspace --root-deps-only --exit-code 1
-
-      - name: Check advisories
-        shell: bash
-        run: cargo audit -D warnings
-
-      - name: Check dependency policy
-        shell: bash
-        run: cargo deny check -D warnings advisories bans licenses sources
-
-      - name: Run semver gate
-        shell: bash
-        run: cargo xtask semver-check
+        run: cargo xtask ci-rust-gate
 
   release-target-smoke:
     name: Release target smoke ${{ matrix.id }}
@@ -209,6 +186,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
           retry() {
             local attempts="$1"
             local delay_seconds="$2"
@@ -222,8 +200,8 @@ jobs:
               attempt=$((attempt + 1))
             done
           }
-          retry 3 5 rustup toolchain install 1.95.0 --profile minimal
-          retry 3 5 rustup target add --toolchain 1.95.0 "${{ matrix.target_triple }}"
+          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          retry 3 5 rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1

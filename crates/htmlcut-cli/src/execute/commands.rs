@@ -22,7 +22,7 @@ use crate::render::{
     render_source_inspection_text, to_pretty_json,
 };
 
-pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
+pub(crate) fn run_catalog(args: CatalogArgs, _verbose: u8, quiet: bool) -> ExecutionOutcome {
     let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     if let Some(path) = args.output_file.as_deref()
         && let Err(error) = validate_output_file_target(path, write_mode)
@@ -49,7 +49,7 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
         }
     };
 
-    let post_write_stderr = output_file_notice(args.output_file.as_deref(), verbose, quiet);
+    let post_write_stderr = output_file_notice(args.output_file.as_deref(), quiet);
     let stdout = match args.output {
         CliCatalogOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
@@ -69,7 +69,7 @@ pub(crate) fn run_catalog(args: CatalogArgs, verbose: u8, quiet: bool) -> Execut
     }
 }
 
-pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> ExecutionOutcome {
+pub(crate) fn run_schema(args: SchemaArgs, _verbose: u8, quiet: bool) -> ExecutionOutcome {
     let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     if let Some(path) = args.output_file.as_deref()
         && let Err(error) = validate_output_file_target(path, write_mode)
@@ -96,7 +96,7 @@ pub(crate) fn run_schema(args: SchemaArgs, verbose: u8, quiet: bool) -> Executio
         }
     };
 
-    let post_write_stderr = output_file_notice(args.output_file.as_deref(), verbose, quiet);
+    let post_write_stderr = output_file_notice(args.output_file.as_deref(), quiet);
     let stdout = match args.output {
         CliSchemaOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
@@ -282,11 +282,7 @@ pub(crate) fn run_inspect_source(
         return error_outcome(prepared.command.clone(), false, None, write_mode, error);
     }
 
-    let post_write_stderr = output_file_notice(
-        prepared.output_file.as_deref(),
-        prepared.verbose,
-        prepared.quiet,
-    );
+    let post_write_stderr = output_file_notice(prepared.output_file.as_deref(), prepared.quiet);
     let stdout = match prepared.output {
         CliInspectOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,

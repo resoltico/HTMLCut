@@ -1,7 +1,22 @@
 use std::fs;
 use std::path::Path;
 
-use crate::model::{CommandSpec, DynResult};
+use serde::Deserialize;
+
+use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult, XtaskError};
+
+#[derive(Debug, Deserialize)]
+struct ToolchainManifest {
+    toolchain: ToolchainSection,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolchainSection {
+    #[serde(default)]
+    channel: String,
+    #[serde(default)]
+    components: Vec<String>,
+}
 
 /// The repository-owned stable toolchain contract from `rust-toolchain.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,28 +45,28 @@ pub fn repo_toolchain(repo_root: &Path) -> DynResult<RepoToolchain> {
 
 /// Extracts the pinned toolchain channel and required components from `rust-toolchain.toml`.
 pub fn repo_toolchain_from_manifest(manifest: &str) -> DynResult<RepoToolchain> {
-    let channel = toolchain_string_field(manifest, "channel")
-        .ok_or_else(|| "toolchain channel not found in rust-toolchain.toml".to_owned())?;
-    let components = toolchain_array_field(manifest, "components")
-        .ok_or_else(|| "toolchain components not found in rust-toolchain.toml".to_owned())?;
+    let parsed: ToolchainManifest = toml::from_str(manifest)
+        .map_err(|source| XtaskError::invalid_toml("rust-toolchain.toml", source))?;
+    if parsed.toolchain.channel.trim().is_empty() {
+        return Err("toolchain channel not found in rust-toolchain.toml".into());
+    }
+    if parsed.toolchain.components.is_empty() {
+        return Err("toolchain components not found in rust-toolchain.toml".into());
+    }
 
     Ok(RepoToolchain {
-        channel,
-        components,
+        channel: parsed.toolchain.channel,
+        components: parsed.toolchain.components,
     })
 }
 
 /// Returns missing prerequisites for the pinned stable toolchain gate.
 pub fn repo_toolchain_preflight_failures(
-    toolchains_output: &str,
+    toolchain_installed: bool,
     installed_components_output: &str,
     toolchain: &RepoToolchain,
 ) -> Vec<RepoToolchainPreflightFailure> {
-    let has_toolchain = toolchains_output
-        .lines()
-        .map(str::trim)
-        .any(|line| line.starts_with(toolchain.channel.as_str()));
-    if !has_toolchain {
+    if !toolchain_installed {
         return vec![RepoToolchainPreflightFailure::MissingToolchain];
     }
 
@@ -59,10 +74,7 @@ pub fn repo_toolchain_preflight_failures(
         .components
         .iter()
         .filter(|component| {
-            !installed_components_output
-                .lines()
-                .map(str::trim)
-                .any(|line| line.starts_with(component.as_str()))
+            !installed_component_present(installed_components_output, component.as_str())
         })
         .cloned()
         .map(RepoToolchainPreflightFailure::MissingComponent)
@@ -78,19 +90,29 @@ pub fn repo_toolchain_component_probe_command(
         "clippy" => CommandSpec::new(
             "rustup",
             ["run", toolchain.channel.as_str(), "cargo-clippy", "-V"],
-            true,
-            false,
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
         ),
         "rustfmt" => CommandSpec::new(
             "rustup",
             ["run", toolchain.channel.as_str(), "rustfmt", "--version"],
-            true,
-            false,
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
         ),
         _ => return None,
     };
 
     Some(command)
+}
+
+/// Builds the direct toolchain probe used to verify that rustup can run the pinned compiler.
+pub fn repo_toolchain_probe_command(toolchain: &RepoToolchain) -> CommandSpec {
+    CommandSpec::new(
+        "rustup",
+        ["run", toolchain.channel.as_str(), "rustc", "-Vv"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    )
 }
 
 /// Formats the actionable preflight error shown before the main Rust gate starts.
@@ -152,80 +174,16 @@ pub fn repo_toolchain_preflight_message(
     message
 }
 
-fn toolchain_string_field(manifest: &str, field_name: &str) -> Option<String> {
-    let mut in_section = false;
-
-    for line in manifest.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_section = trimmed == "[toolchain]";
-            continue;
-        }
-
-        if !in_section {
-            continue;
-        }
-
-        if let Some(value) = string_assignment_value(trimmed, field_name) {
-            return Some(value);
-        }
-    }
-
-    None
-}
-
-fn toolchain_array_field(manifest: &str, field_name: &str) -> Option<Vec<String>> {
-    let mut in_section = false;
-
-    for line in manifest.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_section = trimmed == "[toolchain]";
-            continue;
-        }
-
-        if !in_section {
-            continue;
-        }
-
-        if let Some(value) = array_assignment_values(trimmed, field_name) {
-            return Some(value);
-        }
-    }
-
-    None
-}
-
-fn string_assignment_value(line: &str, field_name: &str) -> Option<String> {
-    let remainder = line.strip_prefix(field_name)?.trim_start();
-    let remainder = remainder.strip_prefix('=')?.trim_start();
-    let remainder = remainder.strip_prefix('"')?;
-    let closing_quote = remainder.find('"')?;
-    Some(remainder[..closing_quote].to_owned())
-}
-
-fn array_assignment_values(line: &str, field_name: &str) -> Option<Vec<String>> {
-    let remainder = line.strip_prefix(field_name)?.trim_start();
-    let remainder = remainder.strip_prefix('=')?.trim_start();
-    let remainder = remainder.strip_prefix('[')?.strip_suffix(']')?;
-
-    remainder
-        .split(',')
+fn installed_component_present(output: &str, expected_component: &str) -> bool {
+    output
+        .lines()
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| {
-            value
-                .strip_prefix('"')?
-                .strip_suffix('"')
-                .map(str::to_owned)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| line.split_whitespace().next())
+        .any(|component| {
+            component == expected_component
+                || component
+                    .strip_prefix(expected_component)
+                    .is_some_and(|suffix| suffix.starts_with('-'))
         })
-        .collect::<Option<Vec<_>>>()
 }

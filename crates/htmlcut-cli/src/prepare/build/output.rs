@@ -2,28 +2,60 @@ use std::path::Path;
 
 use htmlcut_core::{AttributeName, ValueSpec, ValueType};
 
-use crate::args::{CliOutputMode, CliPatternMode, CliValueMode, ExtractOutputArgs};
+use crate::args::{
+    CliOutputMode, CliPatternMode, CliSliceValueMode, CliValueMode, ExtractOutputArgs,
+    SliceExtractOutputArgs,
+};
 use crate::error::{CliError, usage_error};
 use crate::model::CliErrorCode;
 
+pub(crate) trait ExtractOutputLike {
+    fn requested_output(&self) -> Option<CliOutputMode>;
+    fn default_value_type(&self) -> ValueType;
+}
+
+impl ExtractOutputLike for ExtractOutputArgs {
+    fn requested_output(&self) -> Option<CliOutputMode> {
+        self.output
+    }
+
+    fn default_value_type(&self) -> ValueType {
+        ValueType::from(CliValueMode::Structured)
+    }
+}
+
+impl ExtractOutputLike for SliceExtractOutputArgs {
+    fn requested_output(&self) -> Option<CliOutputMode> {
+        self.output
+    }
+
+    fn default_value_type(&self) -> ValueType {
+        ValueType::from(CliSliceValueMode::Structured)
+    }
+}
+
 pub(crate) fn resolve_value_spec(
-    value_mode: CliValueMode,
+    value_mode: ValueType,
     attribute: Option<String>,
 ) -> Result<ValueSpec, CliError> {
     match value_mode {
-        CliValueMode::Text => {
+        ValueType::Text => {
             reject_attribute_conflict(attribute)?;
             Ok(ValueSpec::Text)
         }
-        CliValueMode::InnerHtml => {
+        ValueType::SelectedHtml => {
+            reject_attribute_conflict(attribute)?;
+            Ok(ValueSpec::SelectedHtml)
+        }
+        ValueType::InnerHtml => {
             reject_attribute_conflict(attribute)?;
             Ok(ValueSpec::InnerHtml)
         }
-        CliValueMode::OuterHtml => {
+        ValueType::OuterHtml => {
             reject_attribute_conflict(attribute)?;
             Ok(ValueSpec::OuterHtml)
         }
-        CliValueMode::Attribute => {
+        ValueType::Attribute => {
             let Some(attribute) = attribute else {
                 return Err(usage_error(
                     CliErrorCode::AttributeRequired,
@@ -36,7 +68,7 @@ pub(crate) fn resolve_value_spec(
                 })?,
             })
         }
-        CliValueMode::Structured => {
+        ValueType::Structured => {
             reject_attribute_conflict(attribute)?;
             Ok(ValueSpec::Structured)
         }
@@ -75,11 +107,11 @@ pub(crate) fn resolve_extract_output_mode_with_output_file(
 
     if output == CliOutputMode::Html {
         match value_type {
-            ValueType::InnerHtml | ValueType::OuterHtml => {}
+            ValueType::SelectedHtml | ValueType::InnerHtml | ValueType::OuterHtml => {}
             _ => {
                 return Err(usage_error(
                     CliErrorCode::OutputHtmlInvalid,
-                    "--output html can only be used with --value inner-html or --value outer-html.",
+                    "--output html can only be used with --value selected-html, --value inner-html, or --value outer-html.",
                 ));
             }
         }
@@ -120,15 +152,20 @@ pub(crate) fn resolve_regex_flags(
 
 pub(crate) fn default_output_for_value(value_type: &ValueType) -> CliOutputMode {
     match value_type {
-        ValueType::InnerHtml | ValueType::OuterHtml => CliOutputMode::Html,
+        ValueType::SelectedHtml | ValueType::InnerHtml | ValueType::OuterHtml => {
+            CliOutputMode::Html
+        }
         ValueType::Structured => CliOutputMode::Json,
         _ => CliOutputMode::Text,
     }
 }
 
-pub(crate) fn extract_prefers_json(args: &ExtractOutputArgs) -> bool {
-    args.output == Some(CliOutputMode::Json)
-        || (args.output.is_none() && args.value == CliValueMode::Structured)
+pub(crate) fn extract_prefers_json<T>(args: &T) -> bool
+where
+    T: ExtractOutputLike,
+{
+    args.requested_output() == Some(CliOutputMode::Json)
+        || (args.requested_output().is_none() && args.default_value_type() == ValueType::Structured)
 }
 
 fn reject_attribute_conflict(attribute: Option<String>) -> Result<(), CliError> {

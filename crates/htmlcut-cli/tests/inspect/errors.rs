@@ -40,7 +40,9 @@ fn slice_attribute_error_hints_when_excluded_start_boundary_drops_the_opening_ta
         .assert()
         .failure()
         .code(4)
-        .stderr(predicate::str::contains("use --include-start"));
+        .stderr(predicate::str::contains(
+            "use --boundary-retention include-start",
+        ));
 }
 #[test]
 fn output_none_requires_bundle() {

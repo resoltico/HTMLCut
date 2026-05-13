@@ -1,13 +1,15 @@
 use std::path::Path;
 
 use crate::command_exec::capture_command_output;
-use crate::model::{CommandSpec, CoveragePreflightFailure, DynResult};
+use crate::model::{
+    CommandSpec, CommandStdout, CommandToolchainEnv, CoveragePreflightFailure, DynResult,
+};
 use crate::{
     FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, cargo_fuzz_probe_command,
     coverage_preflight_failures, coverage_preflight_message, host_tool_preflight_failures,
     host_tool_preflight_message, host_tool_probe_command, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
-    repo_toolchain_preflight_message,
+    repo_toolchain_preflight_message, repo_toolchain_probe_command,
 };
 
 /// Validates the pinned repository toolchain before the main maintainer gate starts.
@@ -15,12 +17,8 @@ pub fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
     let toolchain = repo_toolchain(repo_root).map_err(|error| {
         format!("toolchain preflight could not read rust-toolchain.toml: {error}")
     })?;
-    let toolchains = capture_utf8(
-        repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
-        "toolchain preflight could not query rustup toolchains",
-        "toolchain preflight received invalid rustup output",
-    )?;
+    let toolchain_installed =
+        capture_command_output(repo_root, &repo_toolchain_probe_command(&toolchain)).is_ok();
     let components = capture_utf8(
         repo_root,
         &CommandSpec::new(
@@ -32,8 +30,8 @@ pub fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
                 toolchain.channel.as_str(),
                 "--installed",
             ],
-            false,
-            false,
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
         ),
         format!(
             "toolchain preflight could not query `{}` components",
@@ -43,7 +41,7 @@ pub fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
     )?;
 
     if let Some(message) =
-        repo_toolchain_preflight_error(&toolchain, &toolchains, &components, |spec| {
+        repo_toolchain_preflight_error(&toolchain, toolchain_installed, &components, |spec| {
             capture_command_output(repo_root, spec).is_ok()
         })
     {
@@ -57,7 +55,12 @@ pub fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
 pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
     let toolchains = capture_utf8(
         repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
+        &CommandSpec::new(
+            "rustup",
+            ["toolchain", "list"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
+        ),
         "coverage preflight could not query rustup toolchains",
         "coverage preflight received invalid rustup output",
     )?;
@@ -66,8 +69,8 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
         &CommandSpec::new(
             "rustup",
             ["component", "list", "--toolchain", "nightly", "--installed"],
-            false,
-            false,
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
         ),
         "coverage preflight could not query nightly components",
         "coverage preflight received invalid component output",
@@ -86,7 +89,12 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
 pub fn ensure_fuzz_smoke_prerequisites(repo_root: &Path) -> DynResult<()> {
     let toolchains = capture_utf8(
         repo_root,
-        &CommandSpec::new("rustup", ["toolchain", "list"], false, false),
+        &CommandSpec::new(
+            "rustup",
+            ["toolchain", "list"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
+        ),
         "fuzz-smoke preflight could not query rustup toolchains",
         "fuzz-smoke preflight received invalid rustup output",
     )?;
@@ -115,15 +123,15 @@ fn capture_utf8(
 
 fn repo_toolchain_preflight_error<F>(
     toolchain: &crate::RepoToolchain,
-    toolchains_output: &str,
+    toolchain_installed: bool,
     installed_components_output: &str,
     mut command_succeeds: F,
 ) -> Option<String>
 where
     F: FnMut(&CommandSpec) -> bool,
 {
-    let toolchain_failures = repo_toolchain_preflight_failures(toolchains_output, "", toolchain);
-    if toolchain_failures.contains(&RepoToolchainPreflightFailure::MissingToolchain) {
+    if !toolchain_installed {
+        let toolchain_failures = vec![RepoToolchainPreflightFailure::MissingToolchain];
         return Some(repo_toolchain_preflight_message(
             &toolchain_failures,
             toolchain,
@@ -131,7 +139,7 @@ where
     }
 
     let failures = repo_toolchain_preflight_failures(
-        toolchains_output,
+        toolchain_installed,
         installed_components_output,
         toolchain,
     );
@@ -203,7 +211,7 @@ where
 #[cfg(test)]
 pub(crate) fn repo_toolchain_preflight_error_for_tests<F>(
     toolchain: &crate::RepoToolchain,
-    toolchains_output: &str,
+    toolchain_installed: bool,
     installed_components_output: &str,
     command_succeeds: F,
 ) -> Option<String>
@@ -212,7 +220,7 @@ where
 {
     repo_toolchain_preflight_error(
         toolchain,
-        toolchains_output,
+        toolchain_installed,
         installed_components_output,
         command_succeeds,
     )

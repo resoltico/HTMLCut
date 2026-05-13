@@ -3,8 +3,8 @@ use std::cell::OnceCell;
 use serde_json::{Value, json};
 
 use crate::contracts::{
-    DelimiterPairMatchMetadata, Diagnostic, ExtractionMatch, ExtractionMatchMetadata,
-    ExtractionRequest, SliceSpec, ValueSpec,
+    BoundaryRetention, DelimiterPairMatchMetadata, Diagnostic, ExtractionMatch,
+    ExtractionMatchMetadata, ExtractionRequest, SliceSpec, ValueSpec,
 };
 use crate::diagnostics::{DiagnosticCode, error_diagnostic, unresolved_effective_base_diagnostic};
 use crate::document::{
@@ -164,9 +164,20 @@ pub(crate) fn build_slice_match(
             })
             .clone()
     };
+    let text_html = OnceCell::new();
+    let text_html_value = || {
+        text_html
+            .get_or_init(|| {
+                normalized_fragment_html(&candidate.selected_html, effective_base_url, true)
+            })
+            .clone()
+    };
+    let text_document = OnceCell::new();
+    let text_document_value =
+        || text_document.get_or_init(|| parse_wrapped_fragment(&text_html_value()));
     let text = OnceCell::new();
     let text_value = || {
-        text.get_or_init(|| render_document_body_as_text(selected_document_value(), whitespace))
+        text.get_or_init(|| render_document_body_as_text(text_document_value(), whitespace))
             .clone()
     };
     let attribute_value = |attribute_name: &str| -> Result<Value, Diagnostic> {
@@ -190,7 +201,8 @@ pub(crate) fn build_slice_match(
     };
     let value = match value_spec {
         ValueSpec::Text => Value::String(text_value()),
-        ValueSpec::InnerHtml => Value::String(selected_html_value()),
+        ValueSpec::SelectedHtml => Value::String(selected_html_value()),
+        ValueSpec::InnerHtml => Value::String(inner_html_value()),
         ValueSpec::OuterHtml => Value::String(outer_html_value()),
         ValueSpec::Attribute { name } => attribute_value(name.as_str())?,
         ValueSpec::Structured => json!({
@@ -206,8 +218,8 @@ pub(crate) fn build_slice_match(
             "selectedRange": candidate.selected_range.clone(),
             "innerRange": candidate.inner_range.clone(),
             "outerRange": candidate.outer_range.clone(),
-            "includeStart": slice.include_start,
-            "includeEnd": slice.include_end,
+            "includeStart": slice.includes_start(),
+            "includeEnd": slice.includes_end(),
             "matchedStart": candidate.matched_start.clone(),
             "matchedEnd": candidate.matched_end.clone(),
         }),
@@ -235,8 +247,8 @@ pub(crate) fn build_slice_match(
             selected_range: candidate.selected_range.clone(),
             inner_range: candidate.inner_range.clone(),
             outer_range: candidate.outer_range.clone(),
-            include_start: slice.include_start,
-            include_end: slice.include_end,
+            include_start: slice.includes_start(),
+            include_end: slice.includes_end(),
             matched_start: candidate.matched_start.clone(),
             matched_end: candidate.matched_end.clone(),
         }),
@@ -254,11 +266,14 @@ fn build_attribute_value(
         .map(|element| element_attributes(&element, None, false))
         .unwrap_or_default();
     let Some(value) = attributes.get(attribute_name) else {
-        let hint_include_start =
-            !slice.include_start && candidate.selected_range.start != candidate.outer_range.start;
+        let hint_include_start = !slice.includes_start()
+            && candidate.selected_range.start != candidate.outer_range.start;
+        let boundary_retention_hint = hint_include_start
+            .then(|| suggested_boundary_retention_with_start(slice.boundary_retention));
         let message = if hint_include_start {
             format!(
-                "Extracted fragment is missing attribute \"{attribute_name}\". If the attribute lives on the opening tag, use --include-start so the fragment keeps that tag."
+                "Extracted fragment is missing attribute \"{attribute_name}\". If the attribute lives on the opening tag, use --boundary-retention {} so the fragment keeps that tag.",
+                boundary_retention_hint.expect("start-boundary hint should exist"),
             )
         } else {
             format!("Extracted fragment is missing attribute \"{attribute_name}\".")
@@ -269,7 +284,8 @@ fn build_attribute_value(
             Some(json!({
                 "attribute": attribute_name,
                 "selectedRange": candidate.selected_range,
-                "hint": hint_include_start.then_some("use --include-start"),
+                "hint": boundary_retention_hint
+                    .map(|mode| format!("use --boundary-retention {mode}")),
             })),
         ));
     };
@@ -289,5 +305,40 @@ fn normalized_fragment_html(
         rewrite_html_urls(fragment, effective_base_url, false)
     } else {
         fragment.to_owned()
+    }
+}
+
+fn suggested_boundary_retention_with_start(retention: BoundaryRetention) -> &'static str {
+    match retention {
+        BoundaryRetention::ExcludeBoth => "include-start",
+        BoundaryRetention::IncludeEnd => "include-both",
+        BoundaryRetention::IncludeStart | BoundaryRetention::IncludeBoth => {
+            unreachable!("start-boundary hint is only used when the start boundary is excluded")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_boundary_retention_hints_cover_both_excluded_and_end_only_modes() {
+        assert_eq!(
+            suggested_boundary_retention_with_start(BoundaryRetention::ExcludeBoth),
+            "include-start"
+        );
+        assert_eq!(
+            suggested_boundary_retention_with_start(BoundaryRetention::IncludeEnd),
+            "include-both"
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "start-boundary hint is only used when the start boundary is excluded"
+    )]
+    fn start_boundary_retention_hints_reject_included_start_modes() {
+        let _ = suggested_boundary_retention_with_start(BoundaryRetention::IncludeStart);
     }
 }

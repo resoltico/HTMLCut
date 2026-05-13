@@ -88,7 +88,7 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Guide:").expect("guide")
+            < stdout.find("Operator Guide:").expect("guide")
     );
     assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
     assert!(stderr.is_empty());
@@ -102,14 +102,14 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Guide:").expect("guide")
+            < stdout.find("Operator Guide:").expect("guide")
     );
     assert!(stdout.contains("inspect"));
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "-h".to_owned()]);
     assert_eq!(exit_code, 0);
     assert_eq!(stdout.matches(HTMLCUT_DESCRIPTION).count(), 1);
-    assert!(!stdout.contains("Guide:"));
+    assert!(!stdout.contains("Operator Guide:"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "help".to_owned()]);

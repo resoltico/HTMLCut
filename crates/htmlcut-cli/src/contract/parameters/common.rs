@@ -7,7 +7,8 @@ use super::descriptors::{param_flag, param_option, param_positional};
 use super::{
     CliInputForm, CliOutputMode, CliParameterDescriptor, CliParameterId, CliParameterRequirement,
     CliParameterSection, CliSelectionMode, CliValue, condition, fetch_preflight_values,
-    output_mode_values, selection_mode_values, value_type_values, whitespace_values,
+    output_mode_values, selection_mode_values, tls_trust_values, value_type_values,
+    whitespace_values,
 };
 
 pub(super) fn common_input_forms() -> Vec<CliInputForm> {
@@ -40,9 +41,20 @@ pub(super) fn extract_output_modes() -> Vec<CliOutputMode> {
     ]
 }
 
-pub(super) fn extract_value_modes() -> Vec<ValueType> {
+pub(super) fn select_extract_value_modes() -> Vec<ValueType> {
     vec![
         ValueType::Text,
+        ValueType::InnerHtml,
+        ValueType::OuterHtml,
+        ValueType::Attribute,
+        ValueType::Structured,
+    ]
+}
+
+pub(super) fn slice_extract_value_modes() -> Vec<ValueType> {
+    vec![
+        ValueType::Text,
+        ValueType::SelectedHtml,
         ValueType::InnerHtml,
         ValueType::OuterHtml,
         ValueType::Attribute,
@@ -98,6 +110,24 @@ pub(super) fn common_source_parameters(
             Some(CliValue::FetchPreflightMode(FetchPreflightMode::HeadFirst)),
             fetch_preflight_values(),
             "Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected or broken, or skip the HEAD preflight entirely.",
+        ),
+        param_option(
+            CliParameterSection::Source,
+            CliParameterId::TlsTrust,
+            CliParameterRequirement::Optional,
+            "TLS_TRUST",
+            Some(CliValue::TlsTrustMode(super::CliTlsTrustMode::WebPki)),
+            tls_trust_values(),
+            "Choose the trust-root policy for built-in HTTP fetching: bundled WebPKI roots, the host platform verifier, or one explicit PEM CA bundle.",
+        ),
+        param_option(
+            CliParameterSection::Source,
+            CliParameterId::TlsCaBundle,
+            CliParameterRequirement::Optional,
+            "PATH",
+            None,
+            Vec::new(),
+            "PEM CA bundle path used when --tls-trust custom-ca-bundle is selected.",
         ),
         param_positional(
             CliParameterSection::Source,
@@ -172,8 +202,7 @@ pub(super) fn common_selection_parameters() -> Vec<CliParameterDescriptor> {
     ]
 }
 
-pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
-    let value_modes = extract_value_modes();
+pub(super) fn common_extract_parameters(value_modes: &[ValueType]) -> Vec<CliParameterDescriptor> {
     let output_modes = extract_output_modes();
     vec![
         param_option(
@@ -182,7 +211,7 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
             CliParameterRequirement::Optional,
             "VALUE",
             Some(CliValue::ValueType(ValueType::Text)),
-            value_type_values(&value_modes),
+            value_type_values(value_modes),
             "What each selected match should produce before stdout formatting is applied.",
         ),
         param_option(
@@ -202,14 +231,14 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
             CliParameterId::Whitespace,
             CliParameterRequirement::Optional,
             "WHITESPACE",
-            Some(CliValue::WhitespaceMode(WhitespaceMode::Preserve)),
+            Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
             whitespace_values(),
-            "Preserve source whitespace or normalize it for text-like values.",
+            "Preserve rendered whitespace or normalize it for text-like values.",
         ),
         param_flag(
             CliParameterSection::Extraction,
             CliParameterId::RewriteUrls,
-            "Rewrite relative URLs in extracted HTML and attributes with the effective base URL. When text is rendered from HTML-valued extraction, the rewritten destinations flow through that plain-text output and bundled selection.txt artifacts too.",
+            "Rewrite supported relative URLs in extracted HTML with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references. Plain-text rendering resolves displayed link destinations against the effective base whenever one is known, and --rewrite-urls controls the saved HTML fragment itself.",
         ),
         param_option(
             CliParameterSection::Extraction,
@@ -227,7 +256,7 @@ pub(super) fn common_extract_parameters() -> Vec<CliParameterDescriptor> {
             "BUNDLE",
             None,
             Vec::new(),
-            "Write report.json, selection.html, and selection.txt to this directory. selection.txt always contains rendered plain text, even when the extracted value is HTML.",
+            "Write report.json, selection.html, and selection.txt to this directory. selection.txt always contains rendered plain text, even when the extracted value is HTML. report.json keeps the canonical extracted value and metadata but omits duplicate html/text sidecar payloads that already live in the bundle files.",
         ),
         param_option(
             CliParameterSection::Extraction,

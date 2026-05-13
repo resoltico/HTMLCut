@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: SETUP
-updated: "2026-05-02"
+updated: "2026-05-13"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
@@ -21,12 +21,13 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for that workflow.
 
 The rest of this document is the host-native Rust path.
 
-HTMLCut pins Rust `1.95.0` as the default repository toolchain and installs nightly for the
+HTMLCut pins one exact stable toolchain through `rust-toolchain.toml` and installs nightly for the
 branch-coverage gate plus live `cargo-fuzz` campaigns. The maintainer workflow also depends on
 Rust-native QA commands plus `shellcheck` for shell-script checks.
 
-The workspace manifest mirrors that compiler contract through `[workspace.package] rust-version`,
-so the published crates and the pinned repository toolchain do not silently drift apart.
+The workspace manifest carries the published compatibility floor through
+`[workspace.package] rust-version = "1.95"`, while `rust-toolchain.toml` owns the exact
+day-to-day repository pin (currently `1.95.0`).
 
 Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit control over
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
@@ -45,15 +46,20 @@ Then install Rust and the HTMLCut toolchains:
 ```bash
 curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 source "$HOME/.cargo/env"
-rustup toolchain install 1.95.0 --profile minimal
-rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-rustup component add clippy rustfmt --toolchain 1.95.0
+source ./scripts/contributor-rust-tools.sh
+rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" --profile minimal --component llvm-tools-preview
+rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
 ```
 
 Why this shape:
 
-- `1.95.0` is the exact toolchain pinned by `rust-toolchain.toml` for day-to-day repository work.
-- the workspace manifest mirrors that compiler contract through `[workspace.package] rust-version`.
+- `./scripts/contributor-rust-tools.sh` is the canonical owner for the exact stable/nightly
+  bootstrap values shared by docs, bootstrap scripts, and CI.
+- `rust-toolchain.toml` owns the exact stable repository pin for day-to-day work. Right now that
+  resolves to `1.95.0`.
+- the workspace manifest carries the published compatibility floor separately through
+  `[workspace.package] rust-version = "1.95"`.
 - `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
   coverage gate, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
@@ -66,6 +72,7 @@ explicitly:
 
 ```bash
 source "$HOME/.cargo/env"
+brew install pkgconf openssl@3
 CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh
 ```
 
@@ -75,11 +82,17 @@ Why this shape:
   inventory instead of whichever helper versions crates.io happens to serve on that day.
 - The script uses each tool's checked-in lockfile and keeps the QA commands in the same
   Rust-managed toolchain path as `cargo` itself.
+- `pkgconf` plus `openssl@3` provide the native metadata needed by the pinned cargo-tool graph on
+  the maintained macOS path, especially `cargo-outdated`.
 - `CC=clang CXX=clang++` protects fresh macOS machines from stale shell overrides that point at a
   removed Homebrew LLVM install.
 - `cargo-fuzz` is not part of the default maintainer gate, but HTMLCut keeps checked-in fuzz
   targets and seed corpora, so contributors should have the runner available for local smoke
   campaigns and incident reproduction.
+
+The installer also preflights those macOS native prerequisites now. If `pkg-config` cannot see
+OpenSSL metadata, it stops immediately with the exact Homebrew repair command instead of failing
+midway through a long `cargo install`.
 
 If you are not on macOS, keep the same tool list but omit the `CC=clang CXX=clang++` override and
 use the platform's normal C toolchain instead:
@@ -166,17 +179,19 @@ Then run one maintained gate entrypoint:
 ```
 
 `cargo xtask check` is the equivalent direct invocation if you want to bypass the shell wrapper.
+The curated cross-platform CI Rust lane runs `cargo xtask ci-rust-gate`, which comes from the
+same `xtask` plan instead of duplicating a second command inventory in GitHub Actions.
 For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
 `cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,
 then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
 prerequisites fail fast with one actionable message and broad default Cargo test loops stay
 finite.
-The main `cargo xtask check` gate likewise preflights the exact pinned `1.95.0` toolchain and its
-required `clippy`/`rustfmt` components before the Rust gate starts, including direct probes that
-verify the tool binaries are actually runnable.
+The main `cargo xtask check` gate likewise preflights the exact stable pin from
+`rust-toolchain.toml` and its required `clippy`/`rustfmt` components before the Rust gate starts,
+including direct probes that verify the tool binaries are actually runnable.
 
-Rust `1.95.0` should remain the pinned repository toolchain. If the gate fails, treat the first
-real failure as the next missing prerequisite and fix that root cause before rerunning.
+If the gate fails, treat the first real failure as the next missing prerequisite and fix that root
+cause before rerunning.
 
 If you are using the committed devcontainer instead of host-native Rust, use
 [developer-devcontainer.md](developer-devcontainer.md) and verify the host-side container path with

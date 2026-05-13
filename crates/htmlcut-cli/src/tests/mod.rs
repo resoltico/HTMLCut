@@ -14,7 +14,8 @@ use htmlcut_core::{
     DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticCode, DiagnosticLevel, ExtractionDefinition,
     ExtractionRequest, ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode,
     PatternMode, SelectionSpec, SelectorQuery, SourceKind, SourceLoadAction, SourceLoadOutcome,
-    SourceLoadStep, SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
+    SourceLoadStep, SourceMetadata, SourceRequest, TlsTrustPolicy, ValueSpec, ValueType,
+    WhitespaceMode,
     result::{
         ContentCandidateInspection, DelimiterPairMatchMetadata, DocumentInspection,
         ExtractionMatch, ExtractionMatchMetadata, ExtractionStats, HeadingInspection,
@@ -320,6 +321,7 @@ fn workspace_array_field(manifest: &str, field: &str) -> Option<Vec<String>> {
 fn fixture_result(value: Value, value_type: ValueType) -> ExtractionResult {
     let value_spec = match value_type {
         ValueType::Text => ValueSpec::Text,
+        ValueType::SelectedHtml => ValueSpec::SelectedHtml,
         ValueType::InnerHtml => ValueSpec::InnerHtml,
         ValueType::OuterHtml => ValueSpec::OuterHtml,
         ValueType::Attribute => ValueSpec::Attribute {

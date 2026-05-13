@@ -7,13 +7,13 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         command: None,
         availability: CatalogAvailability::CoreOnly,
         summary: "Core-only parse".to_owned(),
-        core_surface: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
+        core_api: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
         request_contract: CatalogContractSurface {
-            rust_shape: "SourceRequest + RuntimeOptions".to_owned(),
+            family: "SourceRequest + RuntimeOptions".to_owned(),
             schema_refs: Vec::new(),
         },
         result_contract: CatalogContractSurface {
-            rust_shape: "ParseDocumentResult".to_owned(),
+            family: "ParseDocumentResult".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.parse_document_result".to_owned(),
                 schema_version: 1,
@@ -26,16 +26,16 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         command: Some("select".to_owned()),
         availability: CatalogAvailability::Cli,
         summary: "Synthetic contract".to_owned(),
-        core_surface: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
+        core_api: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
         request_contract: CatalogContractSurface {
-            rust_shape: "ExtractionRequest + RuntimeOptions".to_owned(),
+            family: "ExtractionRequest + RuntimeOptions".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.extraction_request".to_owned(),
                 schema_version: 2,
             }],
         },
         result_contract: CatalogContractSurface {
-            rust_shape: "ExtractionResult".to_owned(),
+            family: "ExtractionResult".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.extraction_result".to_owned(),
                 schema_version: 3,
@@ -140,16 +140,16 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Synthetic contract".to_owned(),
-            core_surface: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
+            core_api: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
             request_contract: CatalogContractSurface {
-                rust_shape: "ExtractionRequest + RuntimeOptions".to_owned(),
+                family: "ExtractionRequest + RuntimeOptions".to_owned(),
                 schema_refs: vec![SchemaRefReport {
                     schema_name: "htmlcut.extraction_request".to_owned(),
                     schema_version: 2,
                 }],
             },
             result_contract: CatalogContractSurface {
-                rust_shape: "ExtractionResult".to_owned(),
+                family: "ExtractionResult".to_owned(),
                 schema_refs: vec![SchemaRefReport {
                     schema_name: "htmlcut.extraction_result".to_owned(),
                     schema_version: 3,
@@ -267,15 +267,15 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         schemas: vec![SchemaDocumentReport {
             schema_name: "synthetic.single".to_owned(),
             schema_version: 7,
-            owner_surface: "tests".to_owned(),
-            rust_shape: "Synthetic".to_owned(),
+            owner: "tests".to_owned(),
+            contract_family: "Synthetic".to_owned(),
             stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: Value::String("not an object".to_owned()),
         }],
     };
     let rendered_single_schema = render_schema_text(&single_schema);
     assert!(rendered_single_schema.contains("Schema:"));
-    assert!(rendered_single_schema.contains("synthetic.single@7 | tests | versioned"));
+    assert!(rendered_single_schema.contains("synthetic.single@7 | tests | Synthetic | versioned"));
     assert!(rendered_single_schema.contains("json schema keys: (not-an-object)"));
 
     let multi_schema = SchemaCommandReport {
@@ -283,16 +283,16 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             SchemaDocumentReport {
                 schema_name: "synthetic.a".to_owned(),
                 schema_version: 1,
-                owner_surface: "tests".to_owned(),
-                rust_shape: "A".to_owned(),
+                owner: "tests".to_owned(),
+                contract_family: "A".to_owned(),
                 stability: htmlcut_core::SchemaStability::Versioned,
                 json_schema: serde_json::json!({ "type": "object" }),
             },
             SchemaDocumentReport {
                 schema_name: "synthetic.b".to_owned(),
                 schema_version: 2,
-                owner_surface: "tests".to_owned(),
-                rust_shape: "B".to_owned(),
+                owner: "tests".to_owned(),
+                contract_family: "B".to_owned(),
                 stability: htmlcut_core::SchemaStability::Versioned,
                 json_schema: serde_json::json!({ "type": "object" }),
             },
@@ -301,8 +301,8 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
     };
     let rendered_multi_schema = render_schema_text(&multi_schema);
     assert!(rendered_multi_schema.contains("Schemas:"));
-    assert!(rendered_multi_schema.contains("synthetic.a@1 | tests | versioned"));
-    assert!(rendered_multi_schema.contains("synthetic.b@2 | tests | versioned"));
+    assert!(rendered_multi_schema.contains("synthetic.a@1 | tests | A | versioned"));
+    assert!(rendered_multi_schema.contains("synthetic.b@2 | tests | B | versioned"));
     assert!(!rendered_multi_schema.contains("json schema keys:"));
 }
 #[test]
@@ -384,6 +384,8 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
         fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        tls_trust: CliTlsTrustMode::WebPki,
+        tls_ca_bundle: None,
         fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect("url source request");
@@ -401,6 +403,8 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
         fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        tls_trust: CliTlsTrustMode::WebPki,
+        tls_ca_bundle: None,
         fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect("http url source request");
@@ -415,6 +419,8 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
         fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        tls_trust: CliTlsTrustMode::WebPki,
+        tls_ca_bundle: None,
         fetch_preflight: CliFetchPreflightMode::HeadFirst,
     })
     .expect_err("invalid base url");
@@ -494,18 +500,14 @@ fn cli_schema_catalog_guards_reject_drift() {
             ERROR_COMMAND_REPORT_SCHEMA_NAME,
             ERROR_COMMAND_REPORT_SCHEMA_VERSION,
         ),
-        owner_surface: "wrong-owner",
-        rust_shape: "WrongShape",
+        owner: "wrong-owner",
+        contract_family: "wrong-shape",
         stability: htmlcut_core::SchemaStability::Versioned,
         json_schema: || Ok(serde_json::json!({})),
     }];
 
     let errors = cli_schema_catalog_validation_errors_for_tests(&malformed);
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.contains("owner_surface drifted"))
-    );
+    assert!(errors.iter().any(|error| error.contains("owner drifted")));
     let duplicate_errors =
         cli_schema_catalog_validation_errors_for_tests(&[malformed[0], malformed[0]]);
     assert!(
@@ -530,8 +532,8 @@ fn cli_schema_catalog_guards_reject_drift() {
     let unknown_errors =
         cli_schema_catalog_validation_errors_for_tests(&[htmlcut_core::SchemaDescriptor {
             schema_ref: htmlcut_core::SchemaRef::new("htmlcut.unknown_report", 99),
-            owner_surface: "htmlcut-cli",
-            rust_shape: "UnknownReport",
+            owner: "cli",
+            contract_family: "unknown report",
             stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: malformed[0].json_schema,
         }]);
@@ -550,15 +552,15 @@ fn cli_schema_descriptor_constructor_preserves_fields() {
 
     let descriptor = cli_schema_descriptor_for_tests(
         htmlcut_core::SchemaRef::new("htmlcut.synthetic_cli_report", 1),
-        "SyntheticCliReport",
+        "synthetic cli report",
         synthetic_schema,
     );
     assert_eq!(
         descriptor.schema_ref,
         htmlcut_core::SchemaRef::new("htmlcut.synthetic_cli_report", 1)
     );
-    assert_eq!(descriptor.owner_surface, "htmlcut-cli");
-    assert_eq!(descriptor.rust_shape, "SyntheticCliReport");
+    assert_eq!(descriptor.owner, "cli");
+    assert_eq!(descriptor.contract_family, "synthetic cli report");
     assert_eq!(
         descriptor.stability,
         htmlcut_core::SchemaStability::Versioned

@@ -2,13 +2,14 @@ use super::*;
 
 #[test]
 fn contract_lint_defaults_cover_public_default_contracts() {
-    assert_eq!(WhitespaceMode::default(), WhitespaceMode::Preserve);
+    assert_eq!(WhitespaceMode::default(), WhitespaceMode::Rendered);
     assert_eq!(SelectionSpec::default(), SelectionSpec::First);
     assert_eq!(ValueSpec::default().value_type(), ValueType::Text);
     let slice = slice_spec("<p>", "</p>");
     assert_eq!(slice.mode(), PatternMode::Literal);
-    assert!(!slice.include_start);
-    assert!(!slice.include_end);
+    assert_eq!(slice.boundary_retention(), BoundaryRetention::ExcludeBoth);
+    assert!(!slice.includes_start());
+    assert!(!slice.includes_end());
     assert_eq!(slice.flags(), None);
     assert_eq!(
         ExtractionSpec::selector(selector_query("article")).strategy(),
@@ -24,7 +25,10 @@ fn contract_lint_defaults_cover_public_default_contracts() {
         selector_request("<article />").spec_version,
         CORE_SPEC_VERSION
     );
-    assert_eq!(RuntimeOptions::default().max_bytes, DEFAULT_MAX_BYTES);
+    assert_eq!(
+        RuntimeOptions::default().max_bytes,
+        max_bytes_limit(DEFAULT_MAX_BYTES)
+    );
     assert_eq!(default_spec_version(), CORE_SPEC_VERSION);
     assert_eq!(default_preview_chars(), DEFAULT_PREVIEW_CHARS);
     assert_eq!(
@@ -85,9 +89,9 @@ fn contract_lint_operation_catalog_is_unique_and_complete() {
 
     assert_eq!(document_parse.cli_surface, None);
     assert_eq!(select_extract.cli_surface, Some("select"));
-    assert!(select_extract.core_surface.contains("extract"));
+    assert!(select_extract.core_api.contains("extract"));
     assert_eq!(select_preview.cli_surface, Some("inspect select"));
-    assert!(select_preview.core_surface.contains("preview_extraction"));
+    assert!(select_preview.core_api.contains("preview"));
     assert_eq!(OperationId::DocumentParse.to_string(), "document.parse");
     assert_eq!(
         "slice.extract"

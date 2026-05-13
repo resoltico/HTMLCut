@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use htmlcut_core::interop::v1::{
-    ByteRange, CssSelectorText, DelimiterBoundaryText, DelimiterMode, ErrorCode, InteropDiagnostic,
-    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output,
-    OutputAttributeName, Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource,
-    SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
-    stable_json_v1,
+use crate::interop::v1::{
+    ByteRange, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode,
+    ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError,
+    InteropResult, Output, OutputAttributeName, Plan, PlanStrategy, RegexFlag, Rendering,
+    ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode,
+    StrategyKind, TextWhitespace, stable_json_v1,
 };
 use serde_json::{Map, Value};
 use url::Url;
@@ -172,7 +172,7 @@ impl CaseGenerator {
         if self.next_bool() {
             TextWhitespace::Normalize
         } else {
-            TextWhitespace::Preserve
+            TextWhitespace::Rendered
         }
     }
 
@@ -234,8 +234,7 @@ impl CaseGenerator {
                 DelimiterBoundaryText::new(self.non_empty_text(12)).expect("non-empty boundary"),
                 DelimiterBoundaryText::new(self.non_empty_text(12)).expect("non-empty boundary"),
                 mode,
-                self.next_bool(),
-                self.next_bool(),
+                DelimiterBoundaryRetention::from_flags(self.next_bool(), self.next_bool()),
                 flags,
             )
         };

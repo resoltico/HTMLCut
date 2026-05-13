@@ -24,13 +24,13 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
         .is_err()
     );
     assert_eq!(
-        resolve_value_spec(CliValueMode::InnerHtml, None)
+        resolve_value_spec(ValueType::InnerHtml, None)
             .expect("html value")
             .value_type(),
         ValueType::InnerHtml
     );
     assert_eq!(
-        resolve_value_spec(CliValueMode::OuterHtml, None)
+        resolve_value_spec(ValueType::OuterHtml, None)
             .expect("outer html value")
             .value_type(),
         ValueType::OuterHtml
@@ -84,8 +84,9 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
         },
     ];
     let link_text = render_source_inspection_text(&link_variants, DEFAULT_PREVIEW_CHARS);
-    assert!(link_text.contains("- Docs [https://example.com/docs] [a:nth-of-type(1)]"));
-    assert!(link_text.contains("- Bare [a:nth-of-type(2)]"));
+    assert!(link_text.contains("- Docs [https://example.com/docs]"));
+    assert!(link_text.contains("- Bare"));
+    assert!(!link_text.contains("a:nth-of-type"));
 
     let mut plural_report = build_extraction_report(
         "select",
@@ -94,7 +95,7 @@ fn helper_branches_cover_remaining_rendering_validation_and_error_paths() {
     );
     plural_report.stats.match_count = 2;
     let verbose = build_verbose_lines(&plural_report, 2);
-    assert!(verbose[0].contains("selected 2 matches"));
+    assert!(verbose[0].contains("2 selected"));
     assert_eq!(render_diagnostic_level(DiagnosticLevel::Error), "error");
     assert_eq!(render_diagnostic_level(DiagnosticLevel::Info), "info");
     assert_eq!(render_source_kind(&SourceKind::File), "file");

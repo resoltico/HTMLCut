@@ -62,7 +62,7 @@ impl FuzzRendering {
             if self.normalize_whitespace {
                 TextWhitespace::Normalize
             } else {
-                TextWhitespace::Preserve
+                TextWhitespace::Rendered
             },
             self.rewrite_urls,
         )

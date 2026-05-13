@@ -1,12 +1,13 @@
 use arbitrary::Arbitrary;
 use htmlcut_core::{
-    AttributeName, ExtractionRequest, RuntimeOptions, SelectionSpec, ValueSpec, WhitespaceMode,
+    AttributeName, ExtractionRequest, HttpUrl, MaxBytes, RuntimeOptions, SelectionSpec, ValueSpec,
+    WhitespaceMode,
 };
-use url::Url;
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
 pub enum FuzzValueKind {
     Text,
+    SelectedHtml,
     InnerHtml,
     OuterHtml,
     Structured,
@@ -17,6 +18,7 @@ impl FuzzValueKind {
     pub fn to_value_spec(self) -> ValueSpec {
         match self {
             Self::Text => ValueSpec::Text,
+            Self::SelectedHtml => ValueSpec::SelectedHtml,
             Self::InnerHtml => ValueSpec::InnerHtml,
             Self::OuterHtml => ValueSpec::OuterHtml,
             Self::Structured => ValueSpec::Structured,
@@ -58,20 +60,20 @@ impl FuzzRendering {
         request.output.rendering.whitespace = if self.normalize_whitespace {
             WhitespaceMode::Normalize
         } else {
-            WhitespaceMode::Preserve
+            WhitespaceMode::Rendered
         };
     }
 }
 
 pub fn runtime_for_html(html: &str) -> RuntimeOptions {
     RuntimeOptions {
-        max_bytes: html.len().max(1),
+        max_bytes: MaxBytes::new(html.len().max(1)).expect("non-zero fuzz byte limit"),
         ..RuntimeOptions::default()
     }
 }
 
-pub fn sample_base_url() -> Url {
-    Url::parse("https://example.com/fuzz/index.html").expect("static URL")
+pub fn sample_base_url() -> HttpUrl {
+    HttpUrl::parse("https://example.com/fuzz/index.html").expect("static URL")
 }
 
 fn non_zero_index(raw: u8) -> std::num::NonZeroUsize {

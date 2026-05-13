@@ -26,7 +26,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
     assert!(stdout.contains("Invalid selector"));
     assert!(stderr.is_empty());
 
-    let (exit_code, _, stderr) = run_vec(vec![
+    let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
         "slice".to_owned(),
         input.clone(),
@@ -38,7 +38,9 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
         "i".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stderr.contains("--regex-flags can only be used with --pattern regex."));
+    assert!(stdout.contains("\"code\": \"CLI_REGEX_FLAGS_CONFLICT\""));
+    assert!(stdout.contains("--regex-flags can only be used with --pattern regex."));
+    assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -199,7 +201,7 @@ fn run_overwrite_replaces_existing_outputs_when_requested() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.is_empty());
-    assert!(stderr.is_empty());
+    assert!(stderr.contains("wrote output file"));
     assert!(
         fs::read_to_string(&output_file)
             .expect("overwritten output file")
@@ -222,11 +224,13 @@ fn run_overwrite_replaces_existing_outputs_when_requested() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("\"ok\": true"));
-    assert!(stderr.is_empty());
-    assert!(
-        fs::read_to_string(&request_file)
-            .expect("overwritten request file")
-            .contains("\"schema_name\": \"htmlcut.extraction_definition\"")
+    assert!(stderr.contains("wrote request file"));
+    let emitted_definition: htmlcut_core::ExtractionDefinition =
+        serde_json::from_str(&fs::read_to_string(&request_file).expect("overwritten request file"))
+            .expect("parse overwritten request file");
+    assert_eq!(
+        emitted_definition.schema_name,
+        htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME
     );
 
     let bundle_dir = tempdir.path().join("bundle");
@@ -246,7 +250,7 @@ fn run_overwrite_replaces_existing_outputs_when_requested() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("\"ok\": true"));
-    assert!(stderr.is_empty());
+    assert!(stderr.contains("wrote bundle"));
     assert!(
         fs::read_to_string(bundle_dir.join("selection.txt"))
             .expect("overwritten bundle text")
@@ -285,7 +289,7 @@ fn run_renders_human_text_for_html_valued_extractions_and_bundles() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.is_empty());
-    assert!(stderr.is_empty());
+    assert!(stderr.contains("wrote output file"));
     assert_eq!(
         fs::read_to_string(&output_file).expect("text output file"),
         "## Heading\n- Guide [https://example.com/guide]\n"
@@ -300,8 +304,8 @@ fn run_renders_human_text_for_html_valued_extractions_and_bundles() {
         "<article>".to_owned(),
         "--to".to_owned(),
         "</article>".to_owned(),
-        "--include-start".to_owned(),
-        "--include-end".to_owned(),
+        "--boundary-retention".to_owned(),
+        "include-both".to_owned(),
         "--value".to_owned(),
         "outer-html".to_owned(),
         "--output".to_owned(),
@@ -314,7 +318,7 @@ fn run_renders_human_text_for_html_valued_extractions_and_bundles() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.is_empty());
-    assert!(stderr.is_empty());
+    assert!(stderr.contains("wrote bundle"));
     assert_eq!(
         fs::read_to_string(bundle_dir.join("selection.txt")).expect("bundle text"),
         "## Heading\n- Guide [https://example.com/guide]"

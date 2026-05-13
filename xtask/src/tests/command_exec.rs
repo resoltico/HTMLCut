@@ -8,17 +8,17 @@ fn run_spec_executes_successfully_with_and_without_clang_override() {
 
     run_spec(
         repo_root,
-        &CommandSpec::new("cargo", ["--version"], true, false),
+        &test_command_spec("cargo", ["--version"], true, false),
     )
     .expect("plain command");
     run_spec(
         repo_root,
-        &CommandSpec::new("cargo", ["--version"], true, true),
+        &test_command_spec("cargo", ["--version"], true, true),
     )
     .expect("clang-forced command");
     run_spec(
         repo_root,
-        &CommandSpec::new("cargo", ["--version"], false, false),
+        &test_command_spec("cargo", ["--version"], false, false),
     )
     .expect("stdout inherited command");
 }
@@ -30,7 +30,7 @@ fn run_spec_reports_non_zero_status() {
         .expect("workspace root");
     let error = run_spec(
         repo_root,
-        &CommandSpec::new(
+        &test_command_spec(
             "cargo",
             ["__definitely_not_a_real_subcommand__"],
             true,
@@ -50,14 +50,14 @@ fn capture_command_output_returns_stdout_and_reports_failure() {
 
     let output = capture_command_output(
         repo_root,
-        &CommandSpec::new("cargo", ["--version"], false, true),
+        &test_command_spec("cargo", ["--version"], false, true),
     )
     .expect("stdout");
     assert!(String::from_utf8(output).expect("utf8").contains("cargo"));
 
     let error = capture_command_output(
         repo_root,
-        &CommandSpec::new(
+        &test_command_spec(
             "cargo",
             ["__definitely_not_a_real_subcommand__"],
             false,

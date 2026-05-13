@@ -64,6 +64,17 @@ pub(super) fn render_help_examples(document: &CliHelpDocument) -> String {
     format!("Examples:\n  {}", document.examples.join("\n  "))
 }
 
+pub(super) fn render_examples_then_operator_guide(document: &CliHelpDocument) -> String {
+    let mut sections = Vec::new();
+    if !document.examples.is_empty() {
+        sections.push(render_help_examples(document));
+    }
+    if !document.sections.is_empty() {
+        sections.push(render_operator_guide_sections(&document.sections));
+    }
+    sections.join("\n\n")
+}
+
 pub(super) fn render_help_sections(sections: &[CliHelpSection]) -> String {
     sections
         .iter()
@@ -73,7 +84,7 @@ pub(super) fn render_help_sections(sections: &[CliHelpSection]) -> String {
         .join("\n\n")
 }
 
-pub(super) fn render_root_guide_sections(sections: &[CliHelpSection]) -> String {
+pub(super) fn render_operator_guide_sections(sections: &[CliHelpSection]) -> String {
     let rendered_sections = sections
         .iter()
         .filter(|section| !section.lines.is_empty())
@@ -81,7 +92,11 @@ pub(super) fn render_root_guide_sections(sections: &[CliHelpSection]) -> String 
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    format!("Guide:\n\n{rendered_sections}")
+    if rendered_sections.is_empty() {
+        String::new()
+    } else {
+        format!("Operator Guide:\n\n{rendered_sections}")
+    }
 }
 
 pub(super) fn render_help_section(section: &CliHelpSection) -> String {
@@ -226,4 +241,41 @@ pub(crate) fn operation_examples_after_help_from_document_for_tests(
     document: Result<CliHelpDocument, CliError>,
 ) -> Result<String, CliError> {
     operation_examples_after_help_from_document(document)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_examples_then_operator_guide_handles_empty_sections_and_examples() {
+        let empty = CliHelpDocument {
+            sections: Vec::new(),
+            examples: Vec::new(),
+        };
+        assert!(render_examples_then_operator_guide(&empty).is_empty());
+        assert!(render_operator_guide_sections(&[]).is_empty());
+
+        let examples_only = CliHelpDocument {
+            sections: Vec::new(),
+            examples: vec!["htmlcut select README.md --css article".to_owned()],
+        };
+        assert_eq!(
+            render_examples_then_operator_guide(&examples_only),
+            "Examples:\n  htmlcut select README.md --css article"
+        );
+
+        let guide_only = CliHelpDocument {
+            sections: vec![CliHelpSection {
+                title: "Workflow".to_owned(),
+                style: CliHelpSectionStyle::Plain,
+                lines: vec!["Inspect first.".to_owned()],
+            }],
+            examples: Vec::new(),
+        };
+        assert_eq!(
+            render_examples_then_operator_guide(&guide_only),
+            "Operator Guide:\n\n  Workflow:\n    Inspect first."
+        );
+    }
 }

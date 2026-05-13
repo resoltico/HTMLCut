@@ -9,18 +9,14 @@ fn repo_toolchain_preflight_error_covers_missing_toolchain_and_broken_component(
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
 
-    let missing_toolchain = crate::preflight::repo_toolchain_preflight_error_for_tests(
-        &toolchain,
-        "stable-x86_64-unknown-linux-gnu\n",
-        "",
-        |_| true,
-    )
-    .expect("missing toolchain message");
+    let missing_toolchain =
+        crate::preflight::repo_toolchain_preflight_error_for_tests(&toolchain, false, "", |_| true)
+            .expect("missing toolchain message");
     assert!(missing_toolchain.contains("Install the pinned toolchain first"));
 
     let broken_component = crate::preflight::repo_toolchain_preflight_error_for_tests(
         &toolchain,
-        "1.95.0-x86_64-unknown-linux-gnu\n",
+        true,
         "clippy-x86_64-unknown-linux-gnu (installed)\nrustfmt-x86_64-unknown-linux-gnu (installed)\n",
         |spec| !spec.args.contains(&"cargo-clippy".to_owned()),
     )
@@ -107,7 +103,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
     );
 
     crate::command_exec::with_capture_command_output_override(
-        capture_override_fixture(toolchain, String::new(), component_list),
+        missing_toolchain_capture_override_fixture(toolchain, component_list),
         || {
             let error =
                 ensure_repo_toolchain_prerequisites(repo_root).expect_err("repo toolchain failure");
@@ -135,16 +131,12 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
         .parent()
         .expect("workspace root");
     let toolchain = repo_toolchain(repo_root).expect("repo toolchain");
+    let probe_toolchain = toolchain.clone();
 
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             (command_signature(spec)
-                == command_signature(&CommandSpec::new(
-                    "rustup",
-                    ["toolchain", "list"],
-                    false,
-                    false,
-                )))
+                == command_signature(&repo_toolchain_probe_command(&probe_toolchain)))
             .then(|| Err("boom".into()))
         },
         || {
@@ -153,16 +145,22 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             assert!(
                 error
                     .to_string()
-                    .contains("toolchain preflight could not query rustup toolchains")
+                    .contains("Install the pinned toolchain first")
             );
         },
     );
 
     let toolchain_list = format!("{}-x86_64-apple-darwin\n", toolchain.channel);
+    let decode_probe_toolchain = toolchain.clone();
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             if command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&repo_toolchain_probe_command(&decode_probe_toolchain))
+            {
+                return Some(Ok(b"rustc 1.95.0\n".to_vec()));
+            }
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -172,7 +170,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                 return Some(Ok(toolchain_list.as_bytes().to_vec()));
             }
             (command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     [
                         "component",
@@ -200,7 +198,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             if command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -210,7 +208,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                 return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["component", "list", "--toolchain", "nightly", "--installed"],
                     false,
@@ -231,7 +229,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             (command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -253,7 +251,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             if command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -263,7 +261,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                 return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["component", "list", "--toolchain", "nightly", "--installed"],
                     false,
@@ -285,7 +283,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             if command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -311,7 +309,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
             (command_signature(spec)
-                == command_signature(&CommandSpec::new(
+                == command_signature(&test_command_spec(
                     "rustup",
                     ["toolchain", "list"],
                     false,
@@ -340,7 +338,7 @@ fn repo_toolchain_preflight_error_reports_missing_components() {
 
     let message = crate::preflight::repo_toolchain_preflight_error_for_tests(
         &toolchain,
-        "1.95.0-x86_64-unknown-linux-gnu\n",
+        true,
         "clippy-x86_64-unknown-linux-gnu (installed)\n",
         |_| true,
     )
@@ -355,7 +353,7 @@ fn capture_override_fixture(
 ) -> impl FnMut(&Path, &CommandSpec) -> Option<DynResult<Vec<u8>>> {
     let mut outputs: BTreeMap<(String, Vec<String>), Result<Vec<u8>, String>> = BTreeMap::new();
     outputs.insert(
-        command_signature(&CommandSpec::new(
+        command_signature(&test_command_spec(
             "rustup",
             ["toolchain", "list"],
             false,
@@ -364,7 +362,16 @@ fn capture_override_fixture(
         Ok(toolchain_list.into_bytes()),
     );
     outputs.insert(
-        command_signature(&CommandSpec::new(
+        command_signature(&test_command_spec(
+            "rustup",
+            ["run", toolchain.channel.as_str(), "rustc", "-Vv"],
+            false,
+            false,
+        )),
+        Ok(b"rustc 1.95.0\n".to_vec()),
+    );
+    outputs.insert(
+        command_signature(&test_command_spec(
             "rustup",
             [
                 "component",
@@ -379,7 +386,7 @@ fn capture_override_fixture(
         Ok(component_list.into_bytes()),
     );
     outputs.insert(
-        command_signature(&CommandSpec::new(
+        command_signature(&test_command_spec(
             "rustup",
             ["component", "list", "--toolchain", "nightly", "--installed"],
             false,
@@ -407,6 +414,26 @@ fn capture_override_fixture(
                 Ok(bytes) => Ok(bytes.clone()),
                 Err(message) => Err(message.clone().into()),
             })
+    }
+}
+
+fn missing_toolchain_capture_override_fixture(
+    toolchain: RepoToolchain,
+    component_list: String,
+) -> impl FnMut(&Path, &CommandSpec) -> Option<DynResult<Vec<u8>>> {
+    let mut outputs = capture_override_fixture(toolchain.clone(), String::new(), component_list);
+    move |repo_root, spec| {
+        if command_signature(spec)
+            == command_signature(&test_command_spec(
+                "rustup",
+                ["run", toolchain.channel.as_str(), "rustc", "-Vv"],
+                false,
+                false,
+            ))
+        {
+            return Some(Err("missing pinned toolchain".into()));
+        }
+        outputs(repo_root, spec)
     }
 }
 

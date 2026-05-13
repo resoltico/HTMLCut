@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: CORE
-updated: "2026-05-05"
+updated: "2026-05-13"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -65,7 +65,8 @@ Key request types:
 Important invariants:
 
 - selector exact-one behavior uses `SelectionSpec::single()`
-- slice capture is modeled with `include_start` and `include_end`, not coarse inner/outer capture
+- slice capture is modeled with named `BoundaryRetention` states, not positional boolean mode
+  flags
 - slice requests are mode-correct: literal slices do not carry regex flags, regex slices do
 - reusable extraction-definition files serialize `ExtractionDefinition`, which owns the full `ExtractionRequest`
   plus `RuntimeOptions`
@@ -157,7 +158,9 @@ That registry covers:
 
 It does not cover CLI-only report documents. Those are added by `htmlcut-cli` on the CLI side.
 Use the exported schema constants instead of hard-coded version integers when you want one exact
-generic schema from Rust.
+generic schema from Rust. The exported core schema roots are owned by the explicit
+`htmlcut_core::wire::v1::*Document` DTO layer rather than by the in-process domain structs
+directly.
 
 ## Minimal Embedding Example
 
@@ -165,18 +168,17 @@ generic schema from Rust.
 use htmlcut_core::{
     extract, operation_catalog,
     request::{
-        AttributeName, ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions,
-        SelectorQuery, SelectionSpec, SourceRequest, ValueSpec,
+        AttributeName, ExtractionRequest, ExtractionSpec, HttpUrl, OutputOptions,
+        RenderingOptions, SelectorQuery, SelectionSpec, SourceRequest, ValueSpec,
     },
     result::ExtractionMatchMetadata,
 };
-use url::Url;
 
 let source = SourceRequest::memory(
     "inline",
     "<article><a href=\"../guide.html\">Guide</a></article>",
 )
-.with_base_url(Url::parse("https://example.com/docs/start.html").unwrap());
+.with_base_url(HttpUrl::parse("https://example.com/docs/start.html").unwrap());
 
 let request = ExtractionRequest {
     output: OutputOptions {
@@ -217,8 +219,8 @@ assert!(!operation_catalog().is_empty());
 - the published `htmlcut` CLI enables `http-client` automatically
 - embedders that already own fetch, retries, and auth should usually keep the feature disabled and
   pass HTML through `SourceRequest::memory(...)`, `SourceRequest::file(...)`, or stdin instead
-- when `http-client` is enabled, HTMLCut trusts the bundled `webpki-roots` set rather than the
-  host platform certificate store
+- when `http-client` is enabled, `RuntimeOptions.tls_trust` chooses between bundled WebPKI roots,
+  the host platform verifier, or one explicit PEM CA bundle
 
 Use `SourceRequest::memory(...)` when HTML is already loaded by the embedding application. Reserve
 `SourceRequest::url(...)` for builds that explicitly enable `http-client` and genuinely want
@@ -247,7 +249,8 @@ For interop deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md
 - selector extraction
 - slice extraction
 - relative-URL rewriting for standard URL-bearing HTML attributes such as `srcset`, `poster`,
-  `action`, `ping`, and `meta refresh`
+  `action`, `ping`, and `meta refresh`, plus CSS `url(...)` and quoted `@import` references in
+  `style` attributes and `<style>` blocks
 - plain-text rendering for document-shaped HTML including headings, anchors, nested lists, `pre`,
   inline `code`, blockquotes, definition lists, table rows, and compact label-value rows
 - diagnostics
