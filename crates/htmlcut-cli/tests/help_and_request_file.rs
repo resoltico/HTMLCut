@@ -194,19 +194,23 @@ fn missing_request_file_points_back_to_schema_and_catalog_contracts() {
         .assert()
         .failure()
         .code(2)
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
+            "\"code\": \"CLI_REQUEST_FILE_READ_FAILED\"",
+        ))
+        .stdout(predicate::str::contains(
             "Could not read extraction definition",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
-        ));
+        ))
+        .stderr("");
 }
 
 #[test]
-fn unsupported_request_file_schema_still_carries_recovery_guidance() {
+fn unsupported_request_file_schema_carries_recovery_guidance() {
     let tempdir = tempdir().expect("tempdir");
     let request_path = write_json_file(
         tempdir.path(),
@@ -228,16 +232,20 @@ fn unsupported_request_file_schema_still_carries_recovery_guidance() {
         .assert()
         .failure()
         .code(2)
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
+            "\"code\": \"CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED\"",
+        ))
+        .stdout(predicate::str::contains(
             "Unsupported extraction definition schema",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
         ))
-        .stderr(predicate::str::contains("--emit-request-file <PATH>"));
+        .stdout(predicate::str::contains("--emit-request-file <PATH>"))
+        .stderr("");
 }
 
 #[test]
@@ -263,18 +271,22 @@ fn strategy_mismatch_request_file_points_back_to_the_matching_contract() {
         .assert()
         .failure()
         .code(2)
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
+            "\"code\": \"CLI_REQUEST_FILE_STRATEGY_MISMATCH\"",
+        ))
+        .stdout(predicate::str::contains(
             "select cannot execute a slice extraction definition",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "only accepts selector extraction definitions",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
-        ));
+        ))
+        .stderr("");
 }
 
 #[test]

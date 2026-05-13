@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: MAINTAINER
 updated: "2026-05-02"
 route:
@@ -161,6 +161,8 @@ Rules:
 
 - refresh it only after the corresponding release is actually published
 - refresh it from an explicit published Git ref with `cargo xtask refresh-semver-baseline --git-ref vX.Y.Z`
+- let that command rewrite `semver-baseline/htmlcut-core/BASELINE.toml` so the checked-in
+  snapshot records the published Git ref and packaged crate version it came from
 - never regenerate it from unreleased local worktree state
 - treat it as the comparison target for future semver checks, not as a staging area during feature work
 

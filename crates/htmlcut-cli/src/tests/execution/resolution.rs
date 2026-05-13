@@ -62,30 +62,40 @@ fn restricted_output_modes_only_expose_text_and_json() {
         CliOutputMode::from(CliInspectOutputMode::Text),
         CliOutputMode::Text
     );
+    assert_eq!(
+        ValueType::from(CliSliceValueMode::SelectedHtml),
+        ValueType::SelectedHtml
+    );
 }
 
 #[test]
 fn resolve_value_spec_validates_attribute_usage() {
-    assert!(resolve_value_spec(CliValueMode::Attribute, None).is_err());
-    assert!(resolve_value_spec(CliValueMode::Text, Some("href".to_owned())).is_err());
-    let invalid_attribute = resolve_value_spec(CliValueMode::Attribute, Some("   ".to_owned()))
+    assert!(resolve_value_spec(ValueType::Attribute, None).is_err());
+    assert!(resolve_value_spec(ValueType::Text, Some("href".to_owned())).is_err());
+    let invalid_attribute = resolve_value_spec(ValueType::Attribute, Some("   ".to_owned()))
         .expect_err("invalid attribute");
     assert_eq!(invalid_attribute.code, "CLI_ATTRIBUTE_INVALID");
     assert_eq!(
-        resolve_value_spec(CliValueMode::Attribute, Some("href".to_owned()))
+        resolve_value_spec(ValueType::Attribute, Some("href".to_owned()))
             .expect("attribute value")
             .attribute_name()
             .map(|name| name.as_str()),
         Some("href")
     );
     assert_eq!(
-        resolve_value_spec(CliValueMode::Text, None)
+        resolve_value_spec(ValueType::Text, None)
             .expect("text value")
             .value_type(),
         ValueType::Text
     );
     assert_eq!(
-        resolve_value_spec(CliValueMode::Structured, None)
+        resolve_value_spec(ValueType::SelectedHtml, None)
+            .expect("selected html value")
+            .value_type(),
+        ValueType::SelectedHtml
+    );
+    assert_eq!(
+        resolve_value_spec(ValueType::Structured, None)
             .expect("value")
             .value_type(),
         ValueType::Structured
@@ -171,7 +181,7 @@ fn extract_prefers_json_matches_default_structured_behavior() {
     assert!(extract_prefers_json(&ExtractOutputArgs {
         value: CliValueMode::Structured,
         attribute: None,
-        whitespace: CliWhitespaceMode::Preserve,
+        whitespace: CliWhitespaceMode::Rendered,
         rewrite_urls: false,
         output: None,
         bundle: None,
@@ -182,7 +192,7 @@ fn extract_prefers_json_matches_default_structured_behavior() {
     assert!(!extract_prefers_json(&ExtractOutputArgs {
         value: CliValueMode::Text,
         attribute: None,
-        whitespace: CliWhitespaceMode::Preserve,
+        whitespace: CliWhitespaceMode::Rendered,
         rewrite_urls: false,
         output: Some(CliOutputMode::Text),
         bundle: None,

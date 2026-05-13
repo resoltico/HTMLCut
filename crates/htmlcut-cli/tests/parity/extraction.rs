@@ -80,7 +80,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: true,
                 };
                 request
@@ -110,7 +110,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: false,
                 };
                 request
@@ -129,8 +129,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "::END".to_owned(),
                 "--pattern".to_owned(),
                 "regex".to_owned(),
-                "--include-start".to_owned(),
-                "--include-end".to_owned(),
+                "--boundary-retention".to_owned(),
+                "include-both".to_owned(),
                 "--match".to_owned(),
                 "all".to_owned(),
                 "--output".to_owned(),
@@ -146,7 +146,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: false,
                 };
                 request
@@ -163,7 +163,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "START::".to_owned(),
                 "--to".to_owned(),
                 "::END".to_owned(),
-                "--include-start".to_owned(),
+                "--boundary-retention".to_owned(),
+                "include-start".to_owned(),
                 "--match".to_owned(),
                 "nth".to_owned(),
                 "--index".to_owned(),
@@ -183,7 +184,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(false, DEFAULT_PREVIEW_CHARS);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: false,
                 };
                 request
@@ -218,7 +219,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(true, 48);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: true,
                 };
                 request
@@ -236,7 +237,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "START::".to_owned(),
                 "--to".to_owned(),
                 "::END".to_owned(),
-                "--include-start".to_owned(),
+                "--boundary-retention".to_owned(),
+                "include-start".to_owned(),
                 "--match".to_owned(),
                 "nth".to_owned(),
                 "--index".to_owned(),
@@ -257,7 +259,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(true, 48);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: false,
                 };
                 request
@@ -277,8 +279,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "::END".to_owned(),
                 "--pattern".to_owned(),
                 "regex".to_owned(),
-                "--include-start".to_owned(),
-                "--include-end".to_owned(),
+                "--boundary-retention".to_owned(),
+                "include-both".to_owned(),
                 "--match".to_owned(),
                 "all".to_owned(),
                 "--preview-chars".to_owned(),
@@ -295,7 +297,7 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 );
                 request.output = extraction_output(true, 48);
                 request.output.rendering = RenderingOptions {
-                    whitespace: WhitespaceMode::Preserve,
+                    whitespace: WhitespaceMode::Rendered,
                     rewrite_urls: false,
                 };
                 request

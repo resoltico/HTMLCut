@@ -1,4 +1,4 @@
-use crate::model::CommandSpec;
+use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv};
 
 /// One actionable prerequisite that a host-tool-dependent maintainer flow checks before launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,7 +9,12 @@ pub enum HostToolPreflightFailure {
 
 /// Builds the direct `--version` probe used to detect one required host tool.
 pub fn host_tool_probe_command(tool: &str) -> CommandSpec {
-    CommandSpec::new(tool, ["--version"], true, false)
+    CommandSpec::new(
+        tool,
+        ["--version"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    )
 }
 
 /// Returns missing host tools for one maintained command.

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: RELEASE
-updated: "2026-05-05"
+updated: "2026-05-13"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
@@ -93,9 +93,9 @@ Install the local maintainer toolchain if it is not already available by followi
 [developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
-Rust `1.95.0` is the pinned HTMLCut repository toolchain. Nightly is installed alongside it for
-the coverage gate and for live `cargo-fuzz` campaigns, because `cargo +nightly llvm-cov --branch`
-and `cargo +nightly fuzz ...` both need nightly.
+`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
+Nightly is installed alongside it for the coverage gate and for live `cargo-fuzz` campaigns,
+because `cargo +nightly llvm-cov --branch` and `cargo +nightly fuzz ...` both need nightly.
 
 Run the single local quality gate first:
 
@@ -129,14 +129,17 @@ Then verify:
   - the concrete release-version literals in `docs/getting-started.md` install snippets
   - the local path-package entries in `Cargo.lock`, so the subsequent locked gate reflects the
     release version truthfully
-- `Cargo.toml` `[workspace.package] rust-version` still matches the pinned repository compiler
-  contract, and the workspace crates still inherit it through
-  `rust-version.workspace = true`.
+- `Cargo.toml` `[workspace.package] rust-version` still carries the published compatibility floor
+  (`1.95` today), while `rust-toolchain.toml` continues to own the exact repository pin, and the
+  workspace crates still inherit that floor through `rust-version.workspace = true`.
 - `Cargo.toml` `[workspace.package] description` still reflects the current product in task-facing
   language. `htmlcut-cli` inherits it for CLI help and for the second line of `htmlcut --version`.
 - `docs/operations.md` still reflects the current canonical operation catalog exposed by
   `htmlcut-core`.
 - `changelog.md` has a `## [X.Y.Z] - YYYY-MM-DD` section with at least one entry.
+- release-bound `changelog.md` entries have been moved out of `## [Unreleased]` and into the
+  `## [X.Y.Z] - YYYY-MM-DD` section, so the tagged tree does not describe the shipping release as
+  merely unreleased work in progress
 - `README.md` still works as the short product-facing front window and still points at the quick
   start and full docs.
 - any local assets referenced by `README.md` such as `images/HTMLCut.png` are committed in the

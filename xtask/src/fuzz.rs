@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::model::{CommandSpec, DynResult};
+use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
 
 const FUZZ_SMOKE_TARGETS: [&str; 5] = [
     "parse_document_bytes",
@@ -116,7 +116,12 @@ pub fn fuzz_smoke_preflight_message(failures: &[FuzzSmokePreflightFailure]) -> S
 
 /// Builds the `cargo fuzz --help` probe used by fuzz-smoke preflight.
 pub fn cargo_fuzz_probe_command() -> CommandSpec {
-    CommandSpec::new("cargo", ["fuzz", "--help"], true, false)
+    CommandSpec::new(
+        "cargo",
+        ["fuzz", "--help"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    )
 }
 
 /// Builds the non-mutating `cargo fuzz run` command used by the smoke workflow.
@@ -138,8 +143,8 @@ pub fn fuzz_smoke_command(target: &str, staged_corpus: &Path, runs: u32) -> DynR
             "--".to_owned(),
             format!("-runs={runs}"),
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ))
 }
 

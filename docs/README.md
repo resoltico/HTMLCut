@@ -1,18 +1,19 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: INDEX
-updated: "2026-05-02"
+updated: "2026-05-13"
 route:
-  keywords: [docs index, getting started, developer setup, devcontainer, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, tempdir helper]
-  questions: ["where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the htmlcut_tempdir helper documented?", "where is the HTMLCut devcontainer workflow documented?"]
+  keywords: [docs index, documentation index, getting started, developer setup, devcontainer, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, tempdir helper]
+  questions: ["where is the HTMLCut documentation index?", "where is the complete list of Markdown docs under docs/?", "where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the htmlcut_tempdir helper documented?", "where is the HTMLCut devcontainer workflow documented?"]
 ---
 
-# Docs
+# Documentation Index
 
-HTMLCut keeps its maintained developer-facing and maintainer-facing documentation under `docs/`.
+This file is the complete index of every maintained Markdown document under `docs/`.
 
-Use these documents as a system, not as isolated reference pages.
+HTMLCut keeps its maintained developer-facing and maintainer-facing documentation there. Use this
+page as the directory, then follow the linked guides for the detailed contract or workflow.
 
 The maintainer docs contract walks the maintained public Markdown set recursively, excluding
 `changelog.md`, skipping every hidden directory, and also skipping generated/internal trees such as

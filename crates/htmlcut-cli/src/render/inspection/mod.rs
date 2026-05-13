@@ -14,6 +14,7 @@ pub(crate) use self::shared::{
 #[cfg(test)]
 pub(crate) use self::source::render_text_preview;
 pub(crate) use self::source::{
-    build_source_inspection_verbose_lines, build_source_load_error_lines, build_verbose_lines,
-    fallback_document_title, render_source_inspection_text,
+    build_human_followup_lines, build_source_inspection_verbose_lines,
+    build_source_load_error_lines, build_verbose_lines, fallback_document_title,
+    render_source_inspection_text,
 };

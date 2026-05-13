@@ -86,8 +86,10 @@ fn unresolved_effective_base_is_reported_for_inspection_and_rewrite_requests() {
 
     let mut slice_request = ExtractionRequest::new(
         source,
-        ExtractionSpec::slice(slice_spec("<a ", "</a>").with_boundary_inclusion(true, true))
-            .with_value(attribute_value("href")),
+        ExtractionSpec::slice(
+            slice_spec("<a ", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(attribute_value("href")),
     );
     slice_request.output.rendering.rewrite_urls = true;
     let slice_result = extract(&slice_request, &RuntimeOptions::default());
@@ -354,6 +356,89 @@ fn inspect_source_prefers_inner_candidate_over_outer_chrome_wrapper() {
 }
 
 #[test]
+fn inspect_source_keeps_markdown_body_candidates_inside_mixed_layout_shells() {
+    let repo_heading_chrome = (1..=48)
+        .map(|index| format!("<h3>Repository Section {index}</h3>"))
+        .collect::<String>();
+    let repo_link_chrome = (1..=240)
+        .map(|index| format!("<a href=\"/repo-link-{index}\">Repository Link {index}</a>"))
+        .collect::<String>();
+    let html = format!(
+        "<html><body><main id=\"js-repo-pjax-container\"><div id=\"wiki-wrapper\" class=\"page\"><nav class=\"gh-header repo-nav\"><h1>Jackson Release 3.1</h1><a href=\"#wiki-pages-box\">Jump to bottom</a><span>Tatu Saloranta edited this page</span><a href=\"/_history\">152 revisions</a>{repo_heading_chrome}{repo_link_chrome}</nav><div id=\"wiki-content\"><div class=\"Layout Layout--sidebarPosition-end\"><div class=\"Layout-main\"><div id=\"wiki-body\" class=\"gollum-markdown-content\"><div class=\"markdown-body\"><p><a href=\"Jackson-Releases\">Jackson Version</a> 3.1 is a Major New version.</p><p>This wiki page gives a list of links to all changes.</p><div class=\"markdown-heading\"><h2>Status</h2><a class=\"anchor\" href=\"#status\">#</a></div><p>Branch is open for patch releases.</p><div class=\"markdown-heading\"><h3>Patches</h3><a class=\"anchor\" href=\"#patches\">#</a></div><ul><li><a href=\"Jackson-Release-3.1.1\">3.1.1</a></li><li><a href=\"Jackson-Release-3.1.2\">3.1.2</a></li></ul></div></div><aside class=\"Layout-sidebar related-topics\"><h2>Related Topics</h2><a href=\"/other\">Other</a></aside></div></div></div></main></body></html>"
+    );
+    let source = memory_source_with_base(
+        "fixture.html",
+        &html,
+        "https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1",
+    );
+
+    let inspection = inspect_source(
+        &source,
+        &RuntimeOptions::default(),
+        &InspectionOptions {
+            include_source_text: false,
+            sample_limit: 5,
+        },
+    );
+
+    assert!(inspection.ok);
+    let document = inspection.document.expect("document inspection");
+    assert!(matches!(
+        document.extraction_candidates[0].selector.as_str(),
+        "#wiki-content" | "div.Layout-main" | "#wiki-body" | "div.markdown-body"
+    ));
+    assert!(matches!(
+        document.reading_candidates[0].selector.as_str(),
+        "#wiki-content" | "div.Layout-main" | "#wiki-body" | "div.markdown-body"
+    ));
+    assert_eq!(document.headings[0].text, "Status");
+    assert!(
+        document
+            .links
+            .iter()
+            .any(|link| link.href.as_deref() == Some("Jackson-Releases"))
+    );
+    assert!(
+        document
+            .links
+            .iter()
+            .all(|link| link.href.as_deref() != Some("/other"))
+    );
+}
+
+#[test]
+fn inspect_source_ignores_document_root_feature_shells() {
+    let source = memory_source(
+        "fixture.html",
+        "<html class=\"vector-feature-language-in-main-menu-disabled vector-feature-toc-pinned-clientpref-1\"><body><div class=\"mw-page-container\"><main id=\"content\" class=\"mw-body\"><header class=\"mw-body-header\"><nav class=\"vector-toc-landmark\"><a href=\"#bodyContent\">Jump to content</a></nav><h1 id=\"firstHeading\">Mathematics</h1></header><div id=\"bodyContent\" class=\"vector-body\"><div id=\"mw-content-text\" class=\"mw-body-content\"><div class=\"mw-content-ltr mw-parser-output\"><div role=\"note\" class=\"hatnote navigation-not-searchable\">For other uses, see <a href=\"/wiki/Mathematics_(disambiguation)\">Mathematics (disambiguation)</a>.</div><p>Mathematics includes the study of quantity, structure, space, and change.</p><h2>Areas of mathematics</h2><p>Number theory and geometry are classical branches.</p></div></div></div></main></div></body></html>",
+    );
+
+    let inspection = inspect_source(
+        &source,
+        &RuntimeOptions::default(),
+        &InspectionOptions {
+            include_source_text: false,
+            sample_limit: 4,
+        },
+    );
+
+    assert!(inspection.ok);
+    let document = inspection.document.expect("document inspection");
+    assert!(!document.extraction_candidates.is_empty());
+    assert!(!document.reading_candidates.is_empty());
+    assert!(matches!(
+        document.extraction_candidates[0].selector.as_str(),
+        "#content" | "#mw-content-text" | "div.mw-content-ltr.mw-parser-output"
+    ));
+    assert!(matches!(
+        document.reading_candidates[0].selector.as_str(),
+        "#content" | "#mw-content-text" | "div.mw-content-ltr.mw-parser-output"
+    ));
+    assert_eq!(document.headings[0].text, "Mathematics");
+    assert_eq!(document.headings[1].text, "Areas of mathematics");
+}
+
+#[test]
 fn inspect_source_rejects_outer_wrapper_when_extra_headings_are_recommendation_chrome() {
     let source = memory_source_with_base(
         "fixture.html",
@@ -385,6 +470,35 @@ fn inspect_source_rejects_outer_wrapper_when_extra_headings_are_recommendation_c
             .collect::<Vec<_>>(),
         vec!["Article Title", "Article Subtitle"]
     );
+}
+
+#[test]
+fn inspect_source_prefers_precise_descendant_when_outer_wrapper_only_adds_chrome_links() {
+    let source = memory_source_with_base(
+        "fixture.html",
+        "<html><body><main id=\"content\"><div id=\"bodyContent\"><div class=\"header-tools\"><a href=\"#jump\">Jump to content</a><a href=\"/edit\">Edit</a><a href=\"/history\">History</a><a href=\"/talk\">Talk</a></div><div id=\"mw-content-text\" class=\"mw-body-content\"><div class=\"mw-content-ltr mw-parser-output\"><p>Mathematics includes the study of quantity, structure, space, and change.</p><h2>Areas of mathematics</h2><p>Number theory and geometry are classical branches.</p></div></div></div></main></body></html>",
+        "https://example.test/wiki/Mathematics",
+    );
+
+    let inspection = inspect_source(
+        &source,
+        &RuntimeOptions::default(),
+        &InspectionOptions {
+            include_source_text: false,
+            sample_limit: 4,
+        },
+    );
+
+    assert!(inspection.ok);
+    let document = inspection.document.expect("document inspection");
+    assert!(matches!(
+        document.extraction_candidates[0].selector.as_str(),
+        "#mw-content-text" | "div.mw-content-ltr.mw-parser-output"
+    ));
+    assert!(matches!(
+        document.reading_candidates[0].selector.as_str(),
+        "#mw-content-text" | "div.mw-content-ltr.mw-parser-output"
+    ));
 }
 
 #[test]
@@ -559,6 +673,19 @@ fn validate_request_reports_unsupported_versions_and_invalid_selectors() {
             .iter()
             .any(|item| item.code == "INVALID_SELECTOR")
     );
+
+    let mut selected_html_request = selector_request("<article>Hello</article>");
+    selected_html_request.extraction = selected_html_request
+        .extraction
+        .clone()
+        .with_value(ValueSpec::SelectedHtml);
+    let diagnostics = validate_request(&selected_html_request)
+        .expect_err("selected html on selector should fail");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|item| item.code == "UNSUPPORTED_VALUE_TYPE")
+    );
 }
 
 #[test]
@@ -576,8 +703,7 @@ fn validate_request_accepts_current_requests() {
             slice_boundary("<section"),
             slice_boundary("</section>"),
         ),
-        include_start: true,
-        include_end: true,
+        boundary_retention: BoundaryRetention::IncludeBoth,
     })
     .with_selection(nth_selection(1))
     .with_value(attribute_value("data-id"));

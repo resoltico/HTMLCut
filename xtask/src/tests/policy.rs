@@ -8,7 +8,7 @@ fn deny_check_command_denies_warnings() {
 
     assert_eq!(
         deny_check_command(repo_root).expect("deny command"),
-        CommandSpec::new(
+        test_command_spec(
             "cargo",
             [
                 "deny",

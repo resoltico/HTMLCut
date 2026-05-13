@@ -36,45 +36,52 @@ main() {
     repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
     manifest_path="${1:-${repo_root}/Cargo.toml}"
 
-    awk '
-BEGIN {
-    in_workspace_package = 0
-    found = 0
-}
-/^[[:space:]]*\[workspace\.package\][[:space:]]*$/ {
-    in_workspace_package = 1
-    next
-}
-/^[[:space:]]*\[/ {
-    if (in_workspace_package) {
-        exit
-    }
-    next
-}
-/^[[:space:]]*#/ {
-    next
-}
-{
-    if (!in_workspace_package) {
-        next
-    }
+    python3 - <<'PY' "${manifest_path}"
+import pathlib
+import re
+import sys
 
-    line = $0
-    if (line ~ /^[[:space:]]*version[[:space:]]*=[[:space:]]*"/) {
-        sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*"/, "", line)
-        sub(/".*$/, "", line)
-        print line
-        found = 1
-        exit
-    }
-}
-END {
-    if (!found) {
-        print "error: [workspace.package] version not found in " FILENAME > "/dev/stderr"
-        exit 1
-    }
-}
-' "${manifest_path}"
+manifest_path = pathlib.Path(sys.argv[1])
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
+
+if tomllib is not None:
+    with manifest_path.open("rb") as handle:
+        manifest = tomllib.load(handle)
+    workspace = manifest.get("workspace", {})
+    workspace_package = workspace.get("package", {})
+    version = workspace_package.get("version")
+    if not version:
+        print(
+            f"error: [workspace.package] version not found in {manifest_path}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    print(version)
+    raise SystemExit(0)
+
+workspace_package_section = False
+version_pattern = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$')
+for raw_line in manifest_path.read_text(encoding="utf-8").splitlines():
+    stripped = raw_line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        workspace_package_section = stripped == "[workspace.package]"
+        continue
+    if not workspace_package_section or not stripped or stripped.startswith("#"):
+        continue
+    match = version_pattern.match(raw_line)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+
+print(
+    f"error: [workspace.package] version not found in {manifest_path}",
+    file=sys.stderr,
+)
+raise SystemExit(1)
+PY
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

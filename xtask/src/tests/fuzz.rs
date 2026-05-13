@@ -55,8 +55,8 @@ fn fuzz_smoke_command_uses_the_staged_corpus_and_runs_budget() {
             "-runs=77",
         ]
     );
-    assert!(!command.quiet_stdout);
-    assert!(command.force_clang);
+    assert!(!command_is_quiet(&command));
+    assert!(command_forces_clang(&command));
 }
 
 #[test]
@@ -109,8 +109,8 @@ fn cargo_fuzz_probe_command_stays_quiet_and_does_not_force_clang() {
 
     assert_eq!(command.program, PathBuf::from("cargo"));
     assert_eq!(command.args, vec!["fuzz", "--help"]);
-    assert!(command.quiet_stdout);
-    assert!(!command.force_clang);
+    assert!(command_is_quiet(&command));
+    assert!(!command_forces_clang(&command));
 }
 
 #[test]

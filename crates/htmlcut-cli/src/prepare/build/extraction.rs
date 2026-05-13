@@ -1,6 +1,6 @@
 use htmlcut_core::{
-    ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions, SelectorQuery,
-    SliceBoundary, SlicePatternSpec, SliceSpec,
+    BoundaryRetention, ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions,
+    SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec,
 };
 
 use crate::args::{CliPatternMode, SelectionArgs, SourceArgs};
@@ -21,8 +21,7 @@ pub(crate) enum StrategyArgs {
         to: String,
         pattern: CliPatternMode,
         regex_flags: Option<String>,
-        include_start: bool,
-        include_end: bool,
+        boundary_retention: BoundaryRetention,
     },
 }
 
@@ -41,16 +40,14 @@ pub(crate) fn build_extraction_request(
             to,
             pattern,
             regex_flags,
-            include_start,
-            include_end,
+            boundary_retention,
         } => {
             let from = parse_slice_boundary(from)?;
             let to = parse_slice_boundary(to)?;
             let pattern = build_slice_pattern(pattern, regex_flags, from, to)?;
             ExtractionSpec::slice(SliceSpec {
                 pattern,
-                include_start,
-                include_end,
+                boundary_retention,
             })
         }
     }

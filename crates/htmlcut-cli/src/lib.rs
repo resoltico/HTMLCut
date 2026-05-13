@@ -1,4 +1,5 @@
 //! Command-line workflows for HTMLCut's extraction and inspection engine.
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 /// Exit code for internal CLI failures.

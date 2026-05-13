@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::model::{CommandSpec, DynResult};
+use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
 
 #[cfg(test)]
 use std::cell::RefCell;
@@ -30,7 +30,7 @@ pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     command.current_dir(repo_root);
     command.args(&spec.args);
     command.stdin(Stdio::inherit());
-    if spec.quiet_stdout {
+    if spec.stdout == CommandStdout::Quiet {
         command.stdout(Stdio::null());
     } else {
         command.stdout(Stdio::inherit());
@@ -86,8 +86,8 @@ pub(crate) fn repo_worktree_files(repo_root: &Path) -> DynResult<Option<Vec<Path
                 "--exclude-standard",
                 "-z",
             ],
-            true,
-            false,
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
         ),
     )?;
     Ok(Some(parse_repo_worktree_files(repo_root, &output)?))
@@ -125,7 +125,7 @@ fn parse_repo_worktree_files(repo_root: &Path, output: &[u8]) -> DynResult<Vec<P
 }
 
 fn apply_clang_override(command: &mut Command, spec: &CommandSpec) {
-    if spec.force_clang {
+    if spec.toolchain_env == CommandToolchainEnv::ForceClang {
         command.env("CC", "clang");
         command.env("CXX", "clang++");
     }

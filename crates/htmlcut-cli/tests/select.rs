@@ -189,7 +189,7 @@ fn select_json_report_has_core_parity_for_structured_extraction() {
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
     let expected = extract(&request, &runtime_options());
@@ -296,7 +296,7 @@ fn select_attribute_rewrite_has_core_parity() {
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: true,
     };
     let expected = extract(&request, &runtime_options());

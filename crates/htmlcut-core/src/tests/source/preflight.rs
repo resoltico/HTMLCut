@@ -218,7 +218,7 @@ fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
     let loaded = read_url_source(
         &url_source(&url),
         &RuntimeOptions {
-            fetch_timeout_ms: 250,
+            fetch_timeout: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )
@@ -286,7 +286,7 @@ fn head_preflight_falls_back_to_get_when_head_response_is_malformed() {
     let loaded = read_url_source(
         &url_source(&url),
         &RuntimeOptions {
-            fetch_timeout_ms: 250,
+            fetch_timeout: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )

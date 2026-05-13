@@ -1,11 +1,77 @@
 use std::collections::BTreeMap;
-use std::error::Error;
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use thiserror::Error;
+
+/// Typed error surface used across the repository-maintenance helpers.
+#[derive(Debug, Error)]
+pub enum XtaskError {
+    /// One human-authored maintenance failure message.
+    #[error("{0}")]
+    Message(String),
+    /// Filesystem or process I/O failed.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// UTF-8 decoding of owned bytes failed.
+    #[error(transparent)]
+    FromUtf8(#[from] std::string::FromUtf8Error),
+    /// UTF-8 decoding of borrowed bytes failed.
+    #[error(transparent)]
+    Utf8(#[from] std::str::Utf8Error),
+    /// JSON parsing or serialization failed.
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    /// One repository-owned TOML document failed to parse.
+    #[error("invalid {document_name}: {source}")]
+    TomlDocument {
+        /// Repository-owned document name shown in diagnostics.
+        document_name: &'static str,
+        /// Underlying TOML parser error.
+        #[source]
+        source: toml::de::Error,
+    },
+    /// One path-prefix operation failed.
+    #[error(transparent)]
+    StripPrefix(#[from] std::path::StripPrefixError),
+    /// One integer parse failed.
+    #[error(transparent)]
+    ParseInt(#[from] std::num::ParseIntError),
+    /// One regex parse failed.
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
+    /// One shell-words parse failed.
+    #[error(transparent)]
+    ShellWords(#[from] shell_words::ParseError),
+    /// Clap rejected a maintainer CLI invocation.
+    #[error(transparent)]
+    Clap(#[from] clap::Error),
+}
+
+impl From<String> for XtaskError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
+
+impl From<&str> for XtaskError {
+    fn from(value: &str) -> Self {
+        Self::Message(value.to_owned())
+    }
+}
+
+impl XtaskError {
+    /// Wraps one TOML parser failure in a repository-owned document label.
+    pub fn invalid_toml(document_name: &'static str, source: toml::de::Error) -> Self {
+        Self::TomlDocument {
+            document_name,
+            source,
+        }
+    }
+}
 
 /// Convenience result type used across the repository-maintenance helpers.
-pub type DynResult<T> = Result<T, Box<dyn Error>>;
+pub type DynResult<T> = Result<T, XtaskError>;
 pub(crate) type BranchSpan = (u64, u64, u64, u64);
 pub(crate) type BranchCounts = (u64, u64);
 pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, BranchCounts>>;
@@ -42,7 +108,9 @@ pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
     "crates/htmlcut-core/src/extract/mod.rs",
     "crates/htmlcut-core/src/extract/slice/mod.rs",
     "crates/htmlcut-core/src/interop/mod.rs",
+    "crates/htmlcut-core/src/source/http.rs",
     "crates/htmlcut-core/src/lib.rs",
+    "crates/htmlcut-core/src/wire/mod.rs",
     "xtask/src/lib.rs",
 ];
 // HTMLCut stays on stable for normal development. Coverage is the one place we
@@ -59,6 +127,24 @@ pub enum CoveragePreflightFailure {
     MissingNightlyLlvmTools,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Stdout handling for one external maintainer command.
+pub enum CommandStdout {
+    /// Stream stdout directly to the terminal.
+    Inherit,
+    /// Suppress stdout unless the command fails.
+    Quiet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Environment policy for one external maintainer command.
+pub enum CommandToolchainEnv {
+    /// Run with the ambient process environment.
+    Inherit,
+    /// Force the documented clang `CC`/`CXX` toolchain environment.
+    ForceClang,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One external command that `cargo xtask` should execute as part of a gate.
 pub struct CommandSpec {
@@ -66,10 +152,10 @@ pub struct CommandSpec {
     pub program: PathBuf,
     /// Command-line arguments passed to [`Self::program`].
     pub args: Vec<String>,
-    /// Whether stdout should be suppressed unless the command fails.
-    pub quiet_stdout: bool,
-    /// Whether the command should force the documented clang `CC`/`CXX` toolchain environment.
-    pub force_clang: bool,
+    /// Stdout handling for the command.
+    pub stdout: CommandStdout,
+    /// Environment policy for the command.
+    pub toolchain_env: CommandToolchainEnv,
 }
 
 impl CommandSpec {
@@ -77,8 +163,8 @@ impl CommandSpec {
     pub fn new<I, S>(
         program: impl Into<PathBuf>,
         args: I,
-        quiet_stdout: bool,
-        force_clang: bool,
+        stdout: CommandStdout,
+        toolchain_env: CommandToolchainEnv,
     ) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -87,8 +173,8 @@ impl CommandSpec {
         Self {
             program: program.into(),
             args: args.into_iter().map(Into::into).collect(),
-            quiet_stdout,
-            force_clang,
+            stdout,
+            toolchain_env,
         }
     }
 }

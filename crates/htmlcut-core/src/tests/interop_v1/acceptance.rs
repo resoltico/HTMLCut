@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use htmlcut_core::interop::v1::{
+use crate::interop::v1::{
     HtmlInput, INTEROP_V1_PROFILE, InteropError, InteropResult, PLAN_SCHEMA_NAME,
     PLAN_SCHEMA_VERSION, Plan, execute_plan,
 };
@@ -170,6 +170,28 @@ fn update_fixtures() {
         plan_value["schema_version"] =
             serde_json::Value::Number(serde_json::Number::from(PLAN_SCHEMA_VERSION));
         plan_value["interop_profile"] = serde_json::Value::String(INTEROP_V1_PROFILE.to_owned());
+        if let Some(strategy) = plan_value["strategy"].as_object_mut() {
+            let include_start = strategy
+                .remove("include_start")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            let include_end = strategy
+                .remove("include_end")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            if !strategy.contains_key("boundary_retention") {
+                let boundary_retention = match (include_start, include_end) {
+                    (false, false) => "exclude_both",
+                    (true, false) => "include_start",
+                    (false, true) => "include_end",
+                    (true, true) => "include_both",
+                };
+                strategy.insert(
+                    "boundary_retention".to_owned(),
+                    serde_json::Value::String(boundary_retention.to_owned()),
+                );
+            }
+        }
         let plan: Plan = serde_json::from_value(plan_value).expect("plan from patched value");
         let new_plan_json = plan.stable_json().expect("plan stable json");
         fs::write(&plan_path, format!("{new_plan_json}\n")).expect("write plan");

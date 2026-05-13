@@ -74,8 +74,8 @@ fn command_preflights_reject_existing_paths_before_preparation_runs() {
         existing_slice_output.to_string_lossy().into_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_OUTPUT);
-    assert!(stdout.is_empty());
-    assert!(stderr.contains("Refusing to overwrite existing output file"));
+    assert!(stdout.contains("\"code\": \"CLI_OUTPUT_FILE_EXISTS\""));
+    assert!(stderr.is_empty());
 
     let existing_bundle = tempdir.path().join("bundle");
     fs::create_dir(&existing_bundle).expect("bundle dir");

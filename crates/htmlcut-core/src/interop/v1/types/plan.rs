@@ -159,6 +159,42 @@ pub enum RegexFlag {
     IgnoreWhitespace,
 }
 
+/// Which matched boundaries become part of the selected delimiter-pair fragment.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DelimiterBoundaryRetention {
+    /// Exclude both matched boundaries from the selected fragment.
+    ExcludeBoth,
+    /// Include only the matched start boundary.
+    IncludeStart,
+    /// Include only the matched end boundary.
+    IncludeEnd,
+    /// Include both matched boundaries.
+    IncludeBoth,
+}
+
+impl DelimiterBoundaryRetention {
+    /// Builds one retention mode from explicit start/end inclusion flags.
+    pub const fn from_flags(include_start: bool, include_end: bool) -> Self {
+        match (include_start, include_end) {
+            (false, false) => Self::ExcludeBoth,
+            (true, false) => Self::IncludeStart,
+            (false, true) => Self::IncludeEnd,
+            (true, true) => Self::IncludeBoth,
+        }
+    }
+
+    /// Returns whether the matched start boundary is retained.
+    pub const fn includes_start(self) -> bool {
+        matches!(self, Self::IncludeStart | Self::IncludeBoth)
+    }
+
+    /// Returns whether the matched end boundary is retained.
+    pub const fn includes_end(self) -> bool {
+        matches!(self, Self::IncludeEnd | Self::IncludeBoth)
+    }
+}
+
 /// v1 strategy union.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -176,10 +212,8 @@ pub enum PlanStrategy {
         end: DelimiterBoundaryText,
         /// Literal or regex boundary semantics.
         mode: DelimiterMode,
-        /// Whether the selected payload includes the matched start boundary.
-        include_start: bool,
-        /// Whether the selected payload includes the matched end boundary.
-        include_end: bool,
+        /// Which matched boundaries become part of the selected payload.
+        boundary_retention: DelimiterBoundaryRetention,
         /// Regex flags when `mode = "regex"`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         flags: Vec<RegexFlag>,
@@ -197,16 +231,14 @@ impl PlanStrategy {
         start: DelimiterBoundaryText,
         end: DelimiterBoundaryText,
         mode: DelimiterMode,
-        include_start: bool,
-        include_end: bool,
+        boundary_retention: DelimiterBoundaryRetention,
         flags: Vec<RegexFlag>,
     ) -> Self {
         Self::DelimiterPair {
             start,
             end,
             mode,
-            include_start,
-            include_end,
+            boundary_retention,
             flags,
         }
     }
@@ -421,8 +453,8 @@ impl Output {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TextWhitespace {
-    /// Preserve source whitespace.
-    Preserve,
+    /// Preserve the rendered text layout after HTML-aware rendering.
+    Rendered,
     /// Normalize whitespace for human-readable text.
     Normalize,
 }

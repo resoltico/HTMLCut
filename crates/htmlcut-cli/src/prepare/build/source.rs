@@ -1,10 +1,12 @@
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use htmlcut_core::{RuntimeOptions, SourceInput, SourceRequest};
-use url::Url;
+use htmlcut_core::{
+    ContractValueError, FetchConnectTimeoutMs, FetchTimeoutMs, HttpUrl, MaxBytes, RuntimeOptions,
+    SourceInput, SourceRequest, TlsTrustPolicy,
+};
 
-use crate::args::SourceArgs;
+use crate::args::{CliTlsTrustMode, SourceArgs};
 use crate::error::{CliError, usage_error};
 use crate::model::CliErrorCode;
 
@@ -38,14 +40,19 @@ pub(crate) fn build_source_request(args: &SourceArgs) -> Result<SourceRequest, C
 
 pub(crate) fn build_runtime(args: &SourceArgs) -> Result<RuntimeOptions, CliError> {
     Ok(RuntimeOptions {
-        max_bytes: parse_byte_size(&args.max_bytes)?,
-        fetch_timeout_ms: args.fetch_timeout_ms,
-        fetch_connect_timeout_ms: args.fetch_connect_timeout_ms,
+        max_bytes: MaxBytes::new(parse_byte_size(&args.max_bytes)?)
+            .map_err(|error| usage_error(CliErrorCode::ByteSizeInvalid, error.to_string()))?,
+        fetch_timeout: FetchTimeoutMs::new(args.fetch_timeout_ms)
+            .map_err(|error| usage_error(CliErrorCode::FetchTimeoutInvalid, error.to_string()))?,
+        fetch_connect_timeout: FetchConnectTimeoutMs::new(args.fetch_connect_timeout_ms).map_err(
+            |error| usage_error(CliErrorCode::FetchConnectTimeoutInvalid, error.to_string()),
+        )?,
         fetch_preflight: args.fetch_preflight,
+        tls_trust: build_tls_trust_policy(args)?,
     })
 }
 
-pub(crate) fn validate_base_url(base_url: Option<&str>) -> Result<Option<Url>, CliError> {
+pub(crate) fn validate_base_url(base_url: Option<&str>) -> Result<Option<HttpUrl>, CliError> {
     let Some(value) = base_url else {
         return Ok(None);
     };
@@ -156,7 +163,7 @@ fn too_large_byte_size(value: &str) -> CliError {
     )
 }
 
-fn validate_input_url(value: &str) -> Result<Url, CliError> {
+fn validate_input_url(value: &str) -> Result<HttpUrl, CliError> {
     validate_http_url(
         value,
         CliErrorCode::SourceUrlInvalid,
@@ -168,15 +175,96 @@ fn validate_http_url(
     value: &str,
     invalid_code: CliErrorCode,
     invalid_scheme_code: CliErrorCode,
-) -> Result<Url, CliError> {
-    let parsed = Url::parse(value)
-        .map_err(|_| usage_error(invalid_code, format!("Invalid URL: {value}")))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(usage_error(
-            invalid_scheme_code,
-            "URLs must use http or https.",
-        ));
-    }
+) -> Result<HttpUrl, CliError> {
+    HttpUrl::parse(value)
+        .map_err(|error| map_http_url_error(error, value, invalid_code, invalid_scheme_code))
+}
 
-    Ok(parsed)
+fn map_http_url_error(
+    error: ContractValueError,
+    value: &str,
+    invalid_code: CliErrorCode,
+    invalid_scheme_code: CliErrorCode,
+) -> CliError {
+    match error {
+        ContractValueError::UnsupportedUrlScheme { .. } => {
+            usage_error(invalid_scheme_code, "URLs must use http or https.")
+        }
+        ContractValueError::UrlUserInfoUnsupported { .. } => {
+            usage_error(invalid_code, "URLs must not include URL userinfo.")
+        }
+        ContractValueError::InvalidUrl { .. } => {
+            usage_error(invalid_code, format!("Invalid URL: {value}"))
+        }
+        ContractValueError::NonPositive { .. }
+        | ContractValueError::Empty { .. }
+        | ContractValueError::ContainsWhitespace { .. } => {
+            usage_error(invalid_code, error.to_string())
+        }
+    }
+}
+
+fn build_tls_trust_policy(args: &SourceArgs) -> Result<TlsTrustPolicy, CliError> {
+    match args.tls_trust {
+        CliTlsTrustMode::WebPki => {
+            if args.tls_ca_bundle.is_some() {
+                return Err(usage_error(
+                    CliErrorCode::TlsCaBundleConflict,
+                    "--tls-ca-bundle can only be used with --tls-trust custom-ca-bundle.",
+                ));
+            }
+
+            Ok(TlsTrustPolicy::WebPki)
+        }
+        CliTlsTrustMode::Platform => {
+            if args.tls_ca_bundle.is_some() {
+                return Err(usage_error(
+                    CliErrorCode::TlsCaBundleConflict,
+                    "--tls-ca-bundle can only be used with --tls-trust custom-ca-bundle.",
+                ));
+            }
+
+            Ok(TlsTrustPolicy::Platform)
+        }
+        CliTlsTrustMode::CustomCaBundle => {
+            let Some(path) = args.tls_ca_bundle.clone() else {
+                return Err(usage_error(
+                    CliErrorCode::TlsCaBundleRequired,
+                    "--tls-ca-bundle is required with --tls-trust custom-ca-bundle.",
+                ));
+            };
+
+            Ok(TlsTrustPolicy::CustomCaBundle { path })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helper_builders_cover_fallback_contract_errors_and_webpki_bundle_conflicts() {
+        let empty_error = map_http_url_error(
+            ContractValueError::Empty { field: "URL" },
+            "",
+            CliErrorCode::BaseUrlInvalid,
+            CliErrorCode::BaseUrlSchemeInvalid,
+        );
+        assert_eq!(empty_error.code, "CLI_BASE_URL_INVALID");
+        assert!(empty_error.message.contains("must not be empty"));
+
+        let bundle_conflict = build_runtime(&SourceArgs {
+            input: Some("https://example.com/input.html".to_owned()),
+            base_url: None,
+            max_bytes: "64mib".to_owned(),
+            fetch_timeout_ms: htmlcut_core::DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+            tls_trust: CliTlsTrustMode::WebPki,
+            tls_ca_bundle: Some(PathBuf::from("certs/custom.pem")),
+            fetch_preflight: crate::args::CliFetchPreflightMode::HeadFirst,
+        })
+        .expect_err("webpki bundle conflict");
+        assert_eq!(bundle_conflict.code, "CLI_TLS_CA_BUNDLE_CONFLICT");
+    }
 }

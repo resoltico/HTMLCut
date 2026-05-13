@@ -1,8 +1,8 @@
 use clap::Args;
 
 use super::{
-    CliPatternMode, DefinitionArgs, ExtractOutputArgs, FileWriteArgs, SelectionArgs, SourceArgs,
-    cli_choice_parser,
+    CliBoundaryRetentionMode, CliPatternMode, DefinitionArgs, ExtractOutputArgs, FileWriteArgs,
+    SelectionArgs, SliceExtractOutputArgs, SourceArgs, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -51,19 +51,15 @@ pub(crate) struct SliceArgs {
     #[arg(long)]
     pub(crate) regex_flags: Option<String>,
 
-    /// Include the matched `--from` boundary in the selected fragment.
-    #[arg(long, default_value_t = false)]
-    pub(crate) include_start: bool,
-
-    /// Include the matched `--to` boundary in the selected fragment.
-    #[arg(long, default_value_t = false)]
-    pub(crate) include_end: bool,
+    /// Which matched boundaries become part of the selected fragment.
+    #[arg(long, value_parser = cli_choice_parser::<CliBoundaryRetentionMode>(), default_value_t = CliBoundaryRetentionMode::ExcludeBoth)]
+    pub(crate) boundary_retention: CliBoundaryRetentionMode,
 
     #[command(flatten)]
     pub(crate) selection: SelectionArgs,
 
     #[command(flatten)]
-    pub(crate) output: ExtractOutputArgs,
+    pub(crate) output: SliceExtractOutputArgs,
 
     #[command(flatten)]
     pub(crate) file_write: FileWriteArgs,

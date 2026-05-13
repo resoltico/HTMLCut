@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: CLI
-updated: "2026-05-05"
+updated: "2026-05-13"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -48,8 +48,9 @@ Every extraction and inspection command accepts one input:
 `--base-url` sets the input base explicitly. For URL inputs, the request URL is the input base
 automatically. If the document contains `<base href>`, HTMLCut resolves it against the input base to
 produce the effective base URL used by `--rewrite-urls`. When HTML-valued extraction is later
-rendered as plain text, those rewritten destinations flow through the rendered link targets and
-bundled `selection.txt` output as well.
+rendered as plain text, HTMLCut resolves displayed link destinations against that effective base,
+including bundled `selection.txt` output, even when `--rewrite-urls` is off. `--rewrite-urls`
+controls the saved HTML fragment itself.
 
 For URL inputs, HTMLCut uses HEAD-first fetch preflight by default:
 
@@ -65,6 +66,12 @@ Timeout controls are explicit:
 
 - `--fetch-connect-timeout-ms` bounds the TCP connect phase for URL inputs
 - `--fetch-timeout-ms` bounds the overall HTTP exchange for URL inputs
+
+TLS trust policy is explicit too:
+
+- `--tls-trust web-pki` uses the bundled Mozilla root set
+- `--tls-trust platform` uses the host verifier and root store
+- `--tls-trust custom-ca-bundle --tls-ca-bundle <PATH>` uses one explicit PEM CA bundle
 
 ## Command Model
 
@@ -130,8 +137,8 @@ The registry includes:
 
 - `inspect source` summarizes document structure, suggests extraction and reading selectors, and reports
   base-URL behavior
-- `inspect select` previews selector matches in structured form
-- `inspect slice` previews slice matches in structured form
+- `inspect select` previews selector matches with the same value modes as final selector extraction
+- `inspect slice` previews slice matches with the same value modes as final slice extraction
 
 `inspect` defaults to JSON. Text mode is for compact human review.
 
@@ -229,15 +236,19 @@ Value modes:
 heading boundaries, ordered-list numbering, nested-list indentation, image `alt` text, link
 targets, table captions and rows, compact label-value rows, and preformatted whitespace on the
 selected node are preserved in the extracted value.
+The default `--whitespace rendered` preserves that rendered layout after HTML-aware rendering; it
+does not promise byte-for-byte source whitespace preservation.
 
 `--value inner-html` and `--value outer-html` keep the selected fragment as HTML. Apart from
-optional `--rewrite-urls`, HTMLCut does not sanitize or editorialize that fragment. If the chosen
-selector includes widgets, scripts, related-topic blocks, or footer chrome, those remain part of
-the saved HTML output by design.
+optional `--rewrite-urls`, HTMLCut does not sanitize or editorialize that fragment. URL rewriting
+covers supported HTML URL-bearing attributes plus CSS `url(...)` and quoted `@import` references.
+If the chosen selector includes widgets, scripts, related-topic blocks, or footer chrome, those
+remain part of the saved HTML output by design.
 
 When you pair either HTML value mode with `--output text`, HTMLCut renders that HTML fragment into
 readable plain text instead of echoing raw markup. The same rule applies to bundled `selection.txt`
-artifacts.
+artifacts. When an effective base URL is known, rendered link destinations are resolved to
+standalone absolute URLs so the text artifact remains portable outside the original document.
 
 ### `slice`
 
@@ -252,11 +263,15 @@ Boundary semantics are exact:
 - regex boundaries are consumed exactly as matched
 - regex flags accept `i`, `m`, `s`, `U`, and `x`
 - default selection excludes both matched boundaries
-- `--include-start` and `--include-end` control boundary inclusion independently
-- `--value inner-html` returns the selected fragment as HTML
+- `--boundary-retention` chooses one named boundary-retention mode
+- `--value selected-html` returns the exact selected fragment after applying boundary retention
+- `--value inner-html` returns the HTML between the two matched boundaries
 - `--value outer-html` returns the full outer matched range including both boundaries
 
-`inner-html` is the CLI spelling for the core-side `InnerHtml` value kind.
+`selected-html` is the CLI spelling for the core-side `SelectedHtml` value kind.
+Reusable extraction-definition JSON serializes that boundary policy under
+`boundary_retention` with one of `exclude-both`, `include-start`, `include-end`, or
+`include-both`.
 
 Use `inspect slice` before committing to extraction whenever the boundary pattern may consume more
 than you intended.
@@ -279,7 +294,9 @@ Stdout modes:
 Default stdout behavior:
 
 - `--value text` and `--value attribute` default to `text`
-- `--value inner-html` and `--value outer-html` default to `html`
+- `select --value inner-html` and `select --value outer-html` default to `html`
+- `slice --value selected-html`, `slice --value inner-html`, and `slice --value outer-html`
+  default to `html`
 - `--value structured` defaults to `json`
 - `inspect` defaults to `json`
 - `--max-bytes` accepts raw bytes or KiB/MiB/GiB values only when they resolve to a whole positive byte count after unit scaling
@@ -290,9 +307,11 @@ Default stdout behavior:
 That works for text, HTML, JSON, and inspection text/JSON outputs. It is intentionally invalid with
 `--output none` because there is no stdout payload to write.
 
-`--output html` is only valid with `--value inner-html` or `--value outer-html`.
-When `--value inner-html` or `--value outer-html` is paired with `--output text`, the CLI renders
-the extracted fragment through HTMLCut's plain-text renderer instead of emitting raw markup.
+`select --output html` is only valid with `--value inner-html` or `--value outer-html`.
+`slice --output html` is valid with `--value selected-html`, `--value inner-html`, or
+`--value outer-html`.
+When an HTML value mode is paired with `--output text`, the CLI renders the extracted fragment
+through HTMLCut's plain-text renderer instead of emitting raw markup.
 
 When `--bundle`, `--output-file`, or `--emit-request-file` points into a directory tree that does
 not exist yet, the CLI creates the parent directories automatically.
@@ -314,7 +333,9 @@ With `--verbose`, successful `catalog`, `schema`, extraction, and inspection run
 
 `selection.html` is a wrapped review artifact, not a byte-for-byte replay of the source document.
 `selection.txt` is the rendered plain-text view of the same extracted matches, including when the
-underlying extracted value is HTML. `report.json` is the structured execution report.
+underlying extracted value is HTML. `report.json` is the structured execution report; it keeps the
+canonical extracted value plus metadata, but omits duplicate `html` and `text` sidecar payloads
+because those already exist as `selection.html` and `selection.txt`.
 
 If `<dir>` already exists, rerun with `--overwrite` only when you intend to replace the managed
 bundle artifacts in place.

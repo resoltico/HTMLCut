@@ -41,6 +41,13 @@ fn repo_toolchain_from_manifest_requires_channel_and_components() {
         missing_components.to_string(),
         "toolchain components not found in rust-toolchain.toml"
     );
+    let blank_channel =
+        repo_toolchain_from_manifest("[toolchain]\nchannel = \"   \"\ncomponents = [\"clippy\"]\n")
+            .expect_err("blank channel should fail");
+    assert_eq!(
+        blank_channel.to_string(),
+        "toolchain channel not found in rust-toolchain.toml"
+    );
 }
 
 #[test]
@@ -50,21 +57,25 @@ fn repo_toolchain_from_manifest_rejects_malformed_component_arrays() {
     )
     .expect_err("malformed components should fail");
 
-    assert_eq!(
-        error.to_string(),
-        "toolchain components not found in rust-toolchain.toml"
+    assert!(
+        error
+            .to_string()
+            .starts_with("invalid rust-toolchain.toml:")
     );
 }
 
 #[test]
-fn repo_toolchain_from_manifest_skips_malformed_headers_before_valid_toolchain_data() {
-    let toolchain = repo_toolchain_from_manifest(
+fn repo_toolchain_from_manifest_rejects_malformed_headers_before_valid_toolchain_data() {
+    let error = repo_toolchain_from_manifest(
         "[toolchain\nchannel = \"0.0.0\"\ncomponents = [\"broken\"]\n[toolchain]\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
     )
-    .expect("repo toolchain");
+    .expect_err("malformed header should fail");
 
-    assert_eq!(toolchain.channel, "1.95.0");
-    assert_eq!(toolchain.components, vec!["clippy", "rustfmt"]);
+    assert!(
+        error
+            .to_string()
+            .starts_with("invalid rust-toolchain.toml:")
+    );
 }
 
 #[test]
@@ -73,8 +84,7 @@ fn repo_toolchain_preflight_requires_the_pinned_toolchain_first() {
         channel: "1.95.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
-    let failures =
-        repo_toolchain_preflight_failures("stable-x86_64-apple-darwin (default)\n", "", &toolchain);
+    let failures = repo_toolchain_preflight_failures(false, "", &toolchain);
 
     assert_eq!(
         failures,
@@ -92,11 +102,8 @@ fn repo_toolchain_preflight_requires_missing_components() {
         channel: "1.95.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
-    let failures = repo_toolchain_preflight_failures(
-        "1.95.0-aarch64-apple-darwin (default)\n",
-        "clippy-aarch64-apple-darwin\n",
-        &toolchain,
-    );
+    let failures =
+        repo_toolchain_preflight_failures(true, "clippy-aarch64-apple-darwin\n", &toolchain);
 
     assert_eq!(
         failures,
@@ -158,7 +165,7 @@ fn repo_toolchain_preflight_passes_when_the_pinned_toolchain_is_ready() {
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let failures = repo_toolchain_preflight_failures(
-        "stable-x86_64-apple-darwin\n1.95.0-aarch64-apple-darwin (default)\n",
+        true,
         "clippy-aarch64-apple-darwin\nrustfmt-aarch64-apple-darwin\n",
         &toolchain,
     );
@@ -168,6 +175,22 @@ fn repo_toolchain_preflight_passes_when_the_pinned_toolchain_is_ready() {
     assert!(message.contains("Rust toolchain preflight failed."));
     assert!(!message.contains("rustup toolchain install"));
     assert!(!message.contains("rustup component add"));
+
+    let exact_and_suffixed = repo_toolchain_preflight_failures(
+        true,
+        "clippy\nrustfmt-aarch64-apple-darwin\n",
+        &toolchain,
+    );
+    assert!(exact_and_suffixed.is_empty());
+
+    let prefixed_but_wrong =
+        repo_toolchain_preflight_failures(true, "clippy_preview\nrustfmt\n", &toolchain);
+    assert_eq!(
+        prefixed_but_wrong,
+        vec![RepoToolchainPreflightFailure::MissingComponent(
+            "clippy".to_owned()
+        )]
+    );
 }
 
 #[test]

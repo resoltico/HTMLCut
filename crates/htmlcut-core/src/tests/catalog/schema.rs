@@ -37,18 +37,18 @@ fn contract_lint_schema_catalog_is_unique_and_covers_core_and_interop_contracts(
     let extraction_result_schema =
         schema_descriptor(CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION)
             .expect("extraction result schema");
-    assert_eq!(extraction_result_schema.owner_surface, "htmlcut-core");
-    assert_eq!(extraction_result_schema.rust_shape, "ExtractionResult");
+    assert_eq!(extraction_result_schema.owner, "core");
+    assert_eq!(
+        extraction_result_schema.contract_family,
+        "extraction result"
+    );
 
     let interop_result_schema = schema_descriptor(
         interop::v1::RESULT_SCHEMA_NAME,
         interop::v1::RESULT_SCHEMA_VERSION,
     )
     .expect("interop result schema");
-    assert_eq!(
-        interop_result_schema.owner_surface,
-        "htmlcut_core::interop::v1"
-    );
+    assert_eq!(interop_result_schema.owner, "interop-v1");
     assert_eq!(interop_result_schema.stability, SchemaStability::Versioned);
 }
 #[test]
@@ -58,7 +58,7 @@ fn contract_lint_schemas_cover_inner_html_and_structured_metadata_variants() {
             .expect("extraction request schema")
             .json_schema)()
         .expect("request schema json");
-    let value_spec_variants = extraction_request_schema["$defs"]["ValueSpec"]["oneOf"]
+    let value_spec_variants = extraction_request_schema["$defs"]["ValueSpecDocument"]["oneOf"]
         .as_array()
         .expect("value spec variants");
     let serialized_value_modes = value_spec_variants
@@ -74,9 +74,10 @@ fn contract_lint_schemas_cover_inner_html_and_structured_metadata_variants() {
             .expect("extraction result schema")
             .json_schema)()
         .expect("result schema json");
-    let metadata_variants = extraction_result_schema["$defs"]["ExtractionMatchMetadata"]["oneOf"]
-        .as_array()
-        .expect("metadata variants");
+    let metadata_variants =
+        extraction_result_schema["$defs"]["ExtractionMatchMetadataDocument"]["oneOf"]
+            .as_array()
+            .expect("metadata variants");
     let metadata_kinds = metadata_variants
         .iter()
         .filter_map(|variant| variant.pointer("/properties/kind/const"))

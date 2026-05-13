@@ -18,9 +18,10 @@ pub use help::{
     cli_aux_command_help_document, cli_operation_help_document, cli_root_help_document,
 };
 pub use types::{
-    CliCondition, CliConditionalDefault, CliConstraint, CliInputForm, CliOutputMode,
-    CliParameterDescriptor, CliParameterId, CliParameterKind, CliParameterRequirement,
-    CliParameterSection, CliSelectionMode, CliTextJsonOutputMode, CliValue, OperationCliContract,
+    CliBoundaryRetentionMode, CliCondition, CliConditionalDefault, CliConstraint, CliInputForm,
+    CliOutputMode, CliParameterDescriptor, CliParameterId, CliParameterKind,
+    CliParameterRequirement, CliParameterSection, CliSelectionMode, CliTextJsonOutputMode,
+    CliTlsTrustMode, CliValue, OperationCliContract,
 };
 
 static CLI_OPERATION_CATALOG: LazyLock<Vec<OperationCliContract>> =
@@ -66,6 +67,8 @@ pub fn render_cli_value(value: CliValue) -> String {
         CliValue::WhitespaceMode(mode) => render_choice_name(mode),
         CliValue::PatternMode(mode) => render_choice_name(mode),
         CliValue::FetchPreflightMode(mode) => render_choice_name(mode),
+        CliValue::TlsTrustMode(mode) => render_choice_name(mode),
+        CliValue::BoundaryRetentionMode(mode) => render_choice_name(mode),
         CliValue::Boolean(value) => value.to_string(),
         CliValue::Usize(value) => value.to_string(),
         CliValue::U64(value) => value.to_string(),

@@ -1,4 +1,5 @@
 //! Shared maintenance primitives behind HTMLCut's `cargo xtask` workflows.
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod app;
@@ -38,13 +39,13 @@ pub use manifest::{
     workspace_version, workspace_version_from_manifest,
 };
 pub use model::{
-    CommandSpec, CoverageBranchRecord, CoverageCounter, CoverageDataSet, CoverageFailure,
-    CoverageFile, CoverageFileSummary, CoveragePreflightFailure, CoverageReport, CoverageSummary,
-    DynResult,
+    CommandSpec, CommandStdout, CommandToolchainEnv, CoverageBranchRecord, CoverageCounter,
+    CoverageDataSet, CoverageFailure, CoverageFile, CoverageFileSummary, CoveragePreflightFailure,
+    CoverageReport, CoverageSummary, DynResult, XtaskError,
 };
 pub use plan::{
-    binary_name, check_plan, core_manifest_path, is_semver_check_spec, normalize_path,
-    release_binary_path, semver_baseline_path, semver_release_type,
+    binary_name, check_plan, ci_rust_gate_plan, core_manifest_path, is_semver_check_spec,
+    normalize_path, release_binary_path, semver_baseline_path, semver_release_type,
     semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
     strip_dev_dependency_tables, with_workspace_stub,
 };
@@ -61,16 +62,15 @@ pub use toolchain::{
     RepoToolchain, RepoToolchainPreflightFailure, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_from_manifest,
     repo_toolchain_preflight_failures, repo_toolchain_preflight_message,
+    repo_toolchain_probe_command,
 };
 
 /// Runs `cargo xtask` using the current process arguments at the repository root.
 pub fn main_entry() -> DynResult<()> {
     match app::main_entry_with(&repo_root(), std::env::args_os()) {
         Ok(()) => Ok(()),
-        Err(error) => match error.downcast::<clap::Error>() {
-            Ok(clap_error) => clap_error.exit(),
-            Err(error) => Err(error),
-        },
+        Err(XtaskError::Clap(clap_error)) => clap_error.exit(),
+        Err(error) => Err(error),
     }
 }
 

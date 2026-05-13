@@ -53,7 +53,7 @@ fn render_catalog_operation_lines(operation: &crate::model::CatalogOperationRepo
             render_catalog_surface(operation.command.as_deref(), &operation.availability)
         ),
         format!("  {}", operation.summary),
-        format!("  core: {}", operation.core_surface),
+        format!("  core api: {}", operation.core_api),
     ];
     lines.extend(render_catalog_contract_surface_lines(
         "request",
@@ -212,7 +212,7 @@ fn render_catalog_contract_surface_lines(
     label: &str,
     contract: &CatalogContractSurface,
 ) -> Vec<String> {
-    let mut lines = vec![format!("  {label}: {}", contract.rust_shape)];
+    let mut lines = vec![format!("  {label}: {}", contract.family)];
     if !contract.schema_refs.is_empty() {
         lines.push(format!(
             "  {label} schemas: {}",

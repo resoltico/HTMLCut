@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: RELEASE
 updated: "2026-05-02"
 route:
@@ -112,7 +112,9 @@ git push
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
 cannot silently drift to unreleased local worktree state. The refresh flow strips test-only
 `dev-dependencies` tables from the released snapshot before packaging, so workspace-local
-maintainer helpers do not block the public-API baseline refresh.
+maintainer helpers do not block the public-API baseline refresh. It also rewrites
+`semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref, package name, package
+version, and the exact refresh command so the checked-in snapshot carries its own provenance cue.
 
 With the documented branch protection, that `git push` is an intentional maintainer-owned direct
 `main` closeout update and GitHub may report it as an admin bypass of the pull-request-only rule.

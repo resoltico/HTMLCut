@@ -4,6 +4,40 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+fn test_command_spec<I, S>(
+    program: impl Into<PathBuf>,
+    args: I,
+    quiet_stdout: bool,
+    force_clang: bool,
+) -> CommandSpec
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    CommandSpec::new(
+        program,
+        args,
+        if quiet_stdout {
+            CommandStdout::Quiet
+        } else {
+            CommandStdout::Inherit
+        },
+        if force_clang {
+            CommandToolchainEnv::ForceClang
+        } else {
+            CommandToolchainEnv::Inherit
+        },
+    )
+}
+
+fn command_is_quiet(command: &CommandSpec) -> bool {
+    matches!(command.stdout, CommandStdout::Quiet)
+}
+
+fn command_forces_clang(command: &CommandSpec) -> bool {
+    matches!(command.toolchain_env, CommandToolchainEnv::ForceClang)
+}
+
 fn write_repo_scaffold(repo_root: &Path) {
     fs::write(
         repo_root.join("Cargo.toml"),

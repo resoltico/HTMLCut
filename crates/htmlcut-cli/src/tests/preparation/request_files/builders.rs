@@ -39,7 +39,7 @@ fn request_file_fixture() -> RequestFileFixture {
                 htmlcut_core::SliceBoundary::new("<article>").expect("slice boundary"),
                 htmlcut_core::SliceBoundary::new("</article>").expect("slice boundary"),
             )
-            .with_boundary_inclusion(true, true),
+            .with_boundary_retention(htmlcut_core::BoundaryRetention::IncludeBoth),
         )
         .with_selection(SelectionSpec::single())
         .with_value(ValueSpec::Text),

@@ -17,7 +17,7 @@ fn inspect_select_json_has_core_preview_parity() {
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
     let expected = preview_extraction(&request, &runtime_options());

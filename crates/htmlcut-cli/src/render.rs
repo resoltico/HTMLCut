@@ -32,9 +32,9 @@ static ANY_LANG_SELECTOR: LazyLock<Selector> =
 pub(crate) use self::discovery::render_catalog_surface;
 pub(crate) use self::discovery::{render_catalog_text, render_schema_text};
 pub(crate) use self::inspection::{
-    build_human_diagnostic_stderr_lines, build_source_inspection_verbose_lines,
-    build_source_load_error_lines, build_verbose_lines, fallback_document_title,
-    render_preview_text, render_source_inspection_text,
+    build_human_diagnostic_stderr_lines, build_human_followup_lines,
+    build_source_inspection_verbose_lines, build_source_load_error_lines, build_verbose_lines,
+    fallback_document_title, render_preview_text, render_source_inspection_text,
 };
 #[cfg(test)]
 pub(crate) use self::inspection::{
@@ -61,7 +61,7 @@ pub(crate) fn write_bundle(
     let bundle_dir = Path::new(&bundle.dir);
     let html_document = wrap_html_document(report)?;
     let text_payload = render_text_payload(report)?;
-    let report_payload = to_pretty_json(report)?;
+    let report_payload = to_pretty_json(&bundle_report(report))?;
 
     prepare_bundle_directory(bundle_dir, write_mode).map_err(|error| {
         let code = if matches!(write_mode, FileWriteMode::CreateFresh) && bundle_dir.exists() {
@@ -98,6 +98,22 @@ pub(crate) fn write_bundle(
         )
     })?;
     Ok(())
+}
+
+fn bundle_report(report: &ExtractionCommandReport) -> ExtractionCommandReport {
+    let mut compact = report.clone();
+    compact.matches = compact
+        .matches
+        .into_iter()
+        .map(strip_bundle_sidecar_payloads)
+        .collect();
+    compact
+}
+
+fn strip_bundle_sidecar_payloads(mut matched: ExtractionMatch) -> ExtractionMatch {
+    matched.html = None;
+    matched.text = None;
+    matched
 }
 
 pub(crate) fn render_extraction_output(

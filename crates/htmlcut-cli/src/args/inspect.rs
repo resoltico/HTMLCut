@@ -4,18 +4,17 @@ use clap::{Args, Subcommand};
 use htmlcut_core::{DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_PREVIEW_CHARS};
 
 use crate::help::{
-    inspect_long_about, inspect_select_about, inspect_select_after_help, inspect_select_long_about,
-    inspect_slice_about, inspect_slice_after_help, inspect_slice_long_about, inspect_source_about,
-    inspect_source_after_help, inspect_source_long_about,
+    inspect_select_about, inspect_select_after_help, inspect_slice_about, inspect_slice_after_help,
+    inspect_source_about, inspect_source_after_help,
 };
 
 use super::{
-    CliInspectOutputMode, CliPatternMode, CliWhitespaceMode, DefinitionArgs, FileWriteArgs,
-    InspectOutputArgs, SelectionArgs, SourceArgs, cli_choice_parser,
+    CliBoundaryRetentionMode, CliInspectOutputMode, CliPatternMode, CliSliceValueMode,
+    CliValueMode, CliWhitespaceMode, DefinitionArgs, FileWriteArgs, InspectOutputArgs,
+    SelectionArgs, SourceArgs, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
-#[command(long_about = inspect_long_about())]
 pub(crate) struct InspectArgs {
     #[command(subcommand)]
     pub(crate) command: InspectCommands,
@@ -26,22 +25,19 @@ pub(crate) enum InspectCommands {
     #[command(
         name = "source",
         about = inspect_source_about(),
-        long_about = inspect_source_long_about(),
-        after_help = inspect_source_after_help()
+        after_long_help = inspect_source_after_help()
     )]
     Source(InspectSourceArgs),
     #[command(
         name = "select",
         about = inspect_select_about(),
-        long_about = inspect_select_long_about(),
-        after_help = inspect_select_after_help()
+        after_long_help = inspect_select_after_help()
     )]
     Select(InspectSelectArgs),
     #[command(
         name = "slice",
         about = inspect_slice_about(),
-        long_about = inspect_slice_long_about(),
-        after_help = inspect_slice_after_help()
+        after_long_help = inspect_slice_after_help()
     )]
     Slice(InspectSliceArgs),
 }
@@ -92,8 +88,16 @@ pub(crate) struct InspectSelectArgs {
     #[command(flatten)]
     pub(crate) selection: SelectionArgs,
 
-    /// Preserve source whitespace or normalize preview text.
-    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Preserve)]
+    /// What each previewed match should produce before the preview report is rendered.
+    #[arg(long, value_parser = cli_choice_parser::<CliValueMode>(), default_value_t = CliValueMode::Structured)]
+    pub(crate) value: CliValueMode,
+
+    /// Attribute name to preview when `--value attribute` is used.
+    #[arg(long)]
+    pub(crate) attribute: Option<String>,
+
+    /// Preserve rendered whitespace or normalize preview text.
+    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in preview HTML and attribute data with the effective base URL.
@@ -131,19 +135,23 @@ pub(crate) struct InspectSliceArgs {
     #[arg(long)]
     pub(crate) regex_flags: Option<String>,
 
-    /// Include the matched `--from` boundary in the preview fragment.
-    #[arg(long, default_value_t = false)]
-    pub(crate) include_start: bool,
-
-    /// Include the matched `--to` boundary in the preview fragment.
-    #[arg(long, default_value_t = false)]
-    pub(crate) include_end: bool,
+    /// Which matched boundaries become part of the preview fragment.
+    #[arg(long, value_parser = cli_choice_parser::<CliBoundaryRetentionMode>(), default_value_t = CliBoundaryRetentionMode::ExcludeBoth)]
+    pub(crate) boundary_retention: CliBoundaryRetentionMode,
 
     #[command(flatten)]
     pub(crate) selection: SelectionArgs,
 
-    /// Preserve source whitespace or normalize preview text.
-    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Preserve)]
+    /// What each previewed slice should produce before the preview report is rendered.
+    #[arg(long, value_parser = cli_choice_parser::<CliSliceValueMode>(), default_value_t = CliSliceValueMode::Structured)]
+    pub(crate) value: CliSliceValueMode,
+
+    /// Attribute name to preview when `--value attribute` is used.
+    #[arg(long)]
+    pub(crate) attribute: Option<String>,
+
+    /// Preserve rendered whitespace or normalize preview text.
+    #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
     /// Rewrite relative URLs in preview HTML and attribute data with the effective base URL.

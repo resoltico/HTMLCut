@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::command_exec::{capture_command_output, repo_worktree_files};
-use crate::model::{CommandSpec, DynResult};
+use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
 use crate::{deny_check_command, fuzz::FUZZ_PACKAGE_NAME};
 
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
@@ -20,23 +20,23 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
         plan.push(CommandSpec::new(
             "bash",
             std::iter::once("-n".to_owned()).chain(path_strings(&scripts)),
-            false,
-            false,
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
         ));
         plan.push(CommandSpec::new(
             "shellcheck",
             path_strings(&scripts),
-            false,
-            false,
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
         ));
     }
 
-    plan.push(CommandSpec::new("cargo", ["fmt", "--check"], false, false));
+    plan.push(format_check_command());
     plan.push(CommandSpec::new(
         "cargo",
         ["nextest", "run", "-p", "xtask", "--tests", "--locked"],
-        false,
-        false,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
     ));
     plan.push(CommandSpec::new(
         "cargo",
@@ -49,8 +49,8 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "--locked",
             "contract_lint",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         "cargo",
@@ -65,8 +65,8 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "-D",
             "warnings",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         "cargo",
@@ -78,8 +78,8 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "--no-default-features",
             "--locked",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         "cargo",
@@ -92,58 +92,14 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "--locked",
             "contract_lint",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        false,
-        true,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "outdated",
-            "--workspace",
-            "--root-deps-only",
-            "--exit-code",
-            "1",
-        ],
-        false,
-        false,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["audit", "-D", "warnings"],
-        false,
-        false,
-    ));
+    plan.push(workspace_clippy_command());
+    plan.push(workspace_outdated_command());
+    plan.push(workspace_audit_command());
     plan.push(deny_check_command(repo_root)?);
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "semver-checks",
-            "--manifest-path",
-            core_manifest_path(repo_root).to_string_lossy().as_ref(),
-            "--baseline-root",
-            semver_baseline_path(repo_root).to_string_lossy().as_ref(),
-            "--release-type",
-            semver_release_type.as_str(),
-            "--all-features",
-        ],
-        false,
-        true,
-    ));
+    plan.push(semver_check_command(repo_root, &semver_release_type));
     plan.push(CommandSpec::new(
         "cargo",
         [
@@ -155,21 +111,21 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "fuzzing",
             "--locked",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
-    plan.extend(full_suite_nextest_specs(repo_root)?);
+    plan.extend(full_suite_test_specs());
     plan.push(CommandSpec::new(
         "cargo",
         ["test", "--workspace", "--doc", "--all-features", "--locked"],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         "cargo",
         ["doc", "--workspace", "--no-deps", "--locked"],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         "cargo",
@@ -183,16 +139,30 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "htmlcut",
             "--locked",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     ));
     plan.push(CommandSpec::new(
         release_binary_path(repo_root),
         ["--version"],
-        true,
-        false,
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
     ));
 
+    Ok(plan)
+}
+
+/// Builds the curated Rust gate executed by cross-platform CI jobs.
+pub fn ci_rust_gate_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
+    ensure_clean_semver_baseline(repo_root)?;
+    let semver_release_type = semver_release_type(repo_root)?;
+
+    let mut plan = vec![format_check_command(), workspace_clippy_command()];
+    plan.extend(all_features_test_specs());
+    plan.push(workspace_outdated_command());
+    plan.push(workspace_audit_command());
+    plan.push(deny_check_command(repo_root)?);
+    plan.push(semver_check_command(repo_root, &semver_release_type));
     Ok(plan)
 }
 
@@ -254,8 +224,8 @@ fn ensure_clean_semver_baseline(repo_root: &Path) -> DynResult<()> {
             "--",
             baseline_arg.as_str(),
         ],
-        true,
-        false,
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
     );
     let output = capture_command_output(repo_root, &status_spec)?;
     if output.is_empty() {
@@ -282,6 +252,91 @@ fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
     paths.iter().map(|path| path.to_string_lossy().into_owned())
 }
 
+fn format_check_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        ["fmt", "--check"],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+}
+
+fn workspace_clippy_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        [
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+}
+
+fn core_all_features_lib_test_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        [
+            "test",
+            "-p",
+            "htmlcut-core",
+            "--lib",
+            "--all-features",
+            "--locked",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+}
+
+fn workspace_outdated_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        [
+            "outdated",
+            "--workspace",
+            "--root-deps-only",
+            "--exit-code",
+            "1",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+}
+
+fn workspace_audit_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        ["audit", "-D", "warnings"],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+}
+
+fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        [
+            "semver-checks",
+            "--manifest-path",
+            core_manifest_path(repo_root).to_string_lossy().as_ref(),
+            "--baseline-root",
+            semver_baseline_path(repo_root).to_string_lossy().as_ref(),
+            "--release-type",
+            semver_release_type,
+            "--all-features",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+}
+
 fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
     let Ok(relative) = path.strip_prefix(repo_root) else {
         return false;
@@ -292,8 +347,23 @@ fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
             && relative.extension() == Some(OsStr::new("sh")))
 }
 
-fn full_suite_nextest_specs(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
-    let mut specs = vec![
+fn all_features_test_specs() -> Vec<CommandSpec> {
+    vec![
+        core_all_features_lib_test_command(),
+        CommandSpec::new(
+            "cargo",
+            [
+                "test",
+                "-p",
+                "htmlcut-cli",
+                "--lib",
+                "--tests",
+                "--all-features",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        ),
         CommandSpec::new(
             "cargo",
             [
@@ -305,82 +375,14 @@ fn full_suite_nextest_specs(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "--tests",
                 "--locked",
             ],
-            false,
-            true,
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
         ),
-        CommandSpec::new(
-            "cargo",
-            [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-core",
-                "--lib",
-                "--tests",
-                "--all-features",
-                "--locked",
-            ],
-            false,
-            true,
-        ),
-    ];
-    specs.extend(htmlcut_cli_nextest_specs(repo_root)?);
-    Ok(specs)
+    ]
 }
 
-fn htmlcut_cli_nextest_specs(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
-    let cli_root = repo_root.join("crates").join("htmlcut-cli");
-    let mut specs = vec![CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "-p",
-            "htmlcut-cli",
-            "--lib",
-            "--all-features",
-            "--locked",
-        ],
-        false,
-        true,
-    )];
-
-    let tests_dir = cli_root.join("tests");
-    if !tests_dir.is_dir() {
-        return Ok(specs);
-    }
-
-    let mut test_targets = fs::read_dir(&tests_dir)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension() == Some(OsStr::new("rs")))
-        .filter_map(|path| {
-            path.file_stem()
-                .and_then(OsStr::to_str)
-                .map(ToOwned::to_owned)
-        })
-        .collect::<Vec<_>>();
-    test_targets.sort();
-
-    specs.extend(test_targets.into_iter().map(|target| {
-        CommandSpec::new(
-            "cargo",
-            [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-cli",
-                "--test",
-                target.as_str(),
-                "--all-features",
-                "--locked",
-            ],
-            false,
-            true,
-        )
-    }));
-
-    Ok(specs)
+fn full_suite_test_specs() -> Vec<CommandSpec> {
+    all_features_test_specs()
 }
 
 #[cfg(test)]

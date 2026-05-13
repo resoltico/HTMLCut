@@ -23,14 +23,14 @@ pub(crate) use htmlcut_cli::{
     SchemaCommandReport, SourceInspectionCommandReport,
 };
 pub(crate) use htmlcut_core::{
-    AttributeName, DEFAULT_PREVIEW_CHARS, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
+    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, ExtractionDefinition,
+    ExtractionRequest, ExtractionSpec, FetchConnectTimeoutMs, FetchTimeoutMs, HttpUrl, MaxBytes,
     OutputOptions, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
     SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
     preview_extraction, result::ExtractionMatchMetadata,
 };
 pub(crate) use htmlcut_tempdir::tempdir;
 pub(crate) use predicates::prelude::*;
-pub(crate) use url::Url;
 
 pub(crate) fn expected_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -55,12 +55,28 @@ pub(crate) fn write_fixture(tempdir: &Path, name: &str, contents: &str) -> PathB
 pub(crate) fn source_request(path: &Path, base_url: Option<&str>) -> SourceRequest {
     let source = SourceRequest::file(path);
     base_url.map_or(source.clone(), |base_url| {
-        source.with_base_url(Url::parse(base_url).expect("base url"))
+        source.with_base_url(http_url(base_url))
     })
 }
 
 pub(crate) fn runtime_options() -> RuntimeOptions {
     RuntimeOptions::default()
+}
+
+pub(crate) fn http_url(value: &str) -> HttpUrl {
+    HttpUrl::parse(value).expect("http url")
+}
+
+pub(crate) fn max_bytes_limit(value: usize) -> MaxBytes {
+    MaxBytes::new(value).expect("max bytes limit")
+}
+
+pub(crate) fn fetch_timeout_limit(value: u64) -> FetchTimeoutMs {
+    FetchTimeoutMs::new(value).expect("fetch timeout")
+}
+
+pub(crate) fn fetch_connect_timeout_limit(value: u64) -> FetchConnectTimeoutMs {
+    FetchConnectTimeoutMs::new(value).expect("fetch connect timeout")
 }
 
 pub(crate) fn extraction_output() -> OutputOptions {
@@ -87,7 +103,7 @@ pub(crate) fn slice_extraction(
         PatternMode::Literal => SliceSpec::new(from, to),
         PatternMode::Regex => SliceSpec::regex(from, to, ""),
     }
-    .with_boundary_inclusion(include_start, include_end);
+    .with_boundary_retention(BoundaryRetention::from_flags(include_start, include_end));
     ExtractionSpec::slice(slice)
 }
 

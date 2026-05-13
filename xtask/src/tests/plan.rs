@@ -123,7 +123,7 @@ fn check_plan_includes_all_strict_gates() {
 
     assert_eq!(
         plan[0],
-        CommandSpec::new(
+        test_command_spec(
             "bash",
             [
                 "-n".to_owned(),
@@ -142,7 +142,7 @@ fn check_plan_includes_all_strict_gates() {
     );
     assert_eq!(
         plan[1],
-        CommandSpec::new(
+        test_command_spec(
             "shellcheck",
             [
                 repo_root
@@ -160,7 +160,7 @@ fn check_plan_includes_all_strict_gates() {
     );
     assert_eq!(
         plan[2],
-        CommandSpec::new("cargo", ["fmt", "--check"], false, false)
+        test_command_spec("cargo", ["fmt", "--check"], false, false)
     );
     assert!(
         plan.iter()
@@ -241,53 +241,29 @@ fn check_plan_includes_all_strict_gates() {
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "nextest",
-                "run",
+                "test",
                 "-p",
                 "htmlcut-core",
+                "--lib",
+                "--all-features",
+                "--locked",
+            ]
+    }));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "test",
+                "-p",
+                "htmlcut-cli",
                 "--lib",
                 "--tests",
                 "--all-features",
                 "--locked",
             ]
     }));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-cli",
-                "--lib",
-                "--all-features",
-                "--locked",
-            ]
-    }));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-cli",
-                "--test",
-                "discovery",
-                "--all-features",
-                "--locked",
-            ]
-    }));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-cli",
-                "--test",
-                "transport",
-                "--all-features",
-                "--locked",
-            ]
+    assert!(!plan.iter().any(|spec| {
+        spec.args.first().map(String::as_str) == Some("nextest")
+            && spec.args.iter().any(|arg| arg == "--test")
     }));
     assert!(
         plan.iter()
@@ -312,12 +288,105 @@ fn check_plan_includes_all_strict_gates() {
     }));
     assert_eq!(
         plan.last().expect("release smoke"),
-        &CommandSpec::new(
+        &test_command_spec(
             release_binary_path(repo_root.path()),
             ["--version"],
             true,
             false
         )
+    );
+}
+
+#[test]
+fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+
+    let plan = crate::ci_rust_gate_plan(repo_root.path()).expect("ci rust gate plan");
+
+    assert_eq!(
+        &plan[..8],
+        vec![
+            test_command_spec("cargo", ["fmt", "--check"], false, false),
+            test_command_spec(
+                "cargo",
+                [
+                    "clippy",
+                    "--workspace",
+                    "--all-targets",
+                    "--all-features",
+                    "--locked",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
+                false,
+                true,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "test",
+                    "-p",
+                    "htmlcut-core",
+                    "--lib",
+                    "--all-features",
+                    "--locked",
+                ],
+                false,
+                true,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "test",
+                    "-p",
+                    "htmlcut-cli",
+                    "--lib",
+                    "--tests",
+                    "--all-features",
+                    "--locked",
+                ],
+                false,
+                true,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "nextest",
+                    "run",
+                    "-p",
+                    "htmlcut-tempdir",
+                    "--lib",
+                    "--tests",
+                    "--locked",
+                ],
+                false,
+                true,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "outdated",
+                    "--workspace",
+                    "--root-deps-only",
+                    "--exit-code",
+                    "1"
+                ],
+                false,
+                false,
+            ),
+            test_command_spec("cargo", ["audit", "-D", "warnings"], false, false),
+            deny_check_command(repo_root.path()).expect("deny check"),
+        ]
+    );
+    assert!(is_semver_check_spec(plan.last().expect("semver command")));
+    assert!(
+        plan.last()
+            .expect("semver command")
+            .args
+            .windows(2)
+            .any(|window| window == ["--release-type", "major"])
     );
 }
 
@@ -399,7 +468,7 @@ fn check_plan_lints_the_canonical_release_script_even_without_extra_shell_files(
 
     assert_eq!(
         plan[0],
-        CommandSpec::new(
+        test_command_spec(
             "bash",
             [
                 "-n".to_owned(),
@@ -416,7 +485,7 @@ fn check_plan_lints_the_canonical_release_script_even_without_extra_shell_files(
     );
     assert_eq!(
         plan[1],
-        CommandSpec::new(
+        test_command_spec(
             "shellcheck",
             [repo_root
                 .path()
@@ -430,7 +499,7 @@ fn check_plan_lints_the_canonical_release_script_even_without_extra_shell_files(
     );
     assert_eq!(
         plan[2],
-        CommandSpec::new("cargo", ["fmt", "--check"], false, false)
+        test_command_spec("cargo", ["fmt", "--check"], false, false)
     );
 }
 
@@ -452,11 +521,11 @@ fn check_plan_keeps_the_cli_lib_gate_when_cli_test_targets_are_missing() {
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "nextest",
-                "run",
+                "test",
                 "-p",
                 "htmlcut-cli",
                 "--lib",
+                "--tests",
                 "--all-features",
                 "--locked",
             ]
@@ -505,7 +574,7 @@ fn coverage_command_targets_repo_coverage_file() {
     let expected_output_path = coverage_output_path(repo_root.path());
 
     assert_eq!(command.program, PathBuf::from("cargo"));
-    assert!(command.force_clang);
+    assert!(command_forces_clang(&command));
     assert_eq!(
         command.args,
         vec![
@@ -527,7 +596,7 @@ fn coverage_command_targets_repo_coverage_file() {
         ]
     );
     assert_eq!(clean.program, PathBuf::from("cargo"));
-    assert!(!clean.force_clang);
+    assert!(!command_forces_clang(&clean));
     assert_eq!(
         clean.args,
         vec![
@@ -656,19 +725,19 @@ fn plan_path_helpers_expose_canonical_workspace_layout() {
 
 #[test]
 fn is_semver_check_spec_matches_only_the_semver_gate() {
-    assert!(is_semver_check_spec(&CommandSpec::new(
+    assert!(is_semver_check_spec(&test_command_spec(
         "cargo",
         ["semver-checks", "--all-features"],
         false,
         true
     )));
-    assert!(!is_semver_check_spec(&CommandSpec::new(
+    assert!(!is_semver_check_spec(&test_command_spec(
         "cargo",
         ["nextest", "run"],
         false,
         true
     )));
-    assert!(!is_semver_check_spec(&CommandSpec::new(
+    assert!(!is_semver_check_spec(&test_command_spec(
         "bash",
         ["check.sh"],
         false,

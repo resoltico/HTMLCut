@@ -38,12 +38,12 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
 
     for schema in &report.schemas {
         lines.push(format!(
-            "- {} | {} | {}",
+            "- {} | {} | {} | {}",
             render_schema_ref(schema),
-            schema.owner_surface,
+            schema.owner,
+            schema.contract_family,
             render_schema_stability(schema.stability)
         ));
-        lines.push(format!("  rust: {}", schema.rust_shape));
         if single_schema {
             lines.push(format!(
                 "  json schema keys: {}",

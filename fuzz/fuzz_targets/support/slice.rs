@@ -1,7 +1,7 @@
 use arbitrary::Arbitrary;
 use htmlcut_core::{
-    ExtractionRequest, ExtractionSpec, SliceBoundary, SliceSpec, SourceRequest, extract,
-    preview_extraction,
+    BoundaryRetention, ExtractionRequest, ExtractionSpec, SliceBoundary, SliceSpec, SourceRequest,
+    extract, preview_extraction,
 };
 
 use crate::request_common::{
@@ -44,7 +44,10 @@ pub fn drive(input: SliceInput) {
     } else {
         SliceSpec::new(start, end)
     }
-    .with_boundary_inclusion(input.include_start, input.include_end);
+    .with_boundary_retention(BoundaryRetention::from_flags(
+        input.include_start,
+        input.include_end,
+    ));
 
     let mut request = ExtractionRequest::new(
         SourceRequest::memory("fuzz", &input.html).with_base_url(sample_base_url()),

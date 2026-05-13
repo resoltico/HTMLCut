@@ -1,4 +1,5 @@
 //! HTMLCut's embeddable extraction and inspection engine.
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod catalog;
@@ -16,15 +17,17 @@ mod schema;
 mod source;
 #[cfg(test)]
 mod tests;
+pub mod wire;
 
 /// Typed request-side contracts for embeddable HTMLCut callers.
 pub mod request {
     pub use crate::contracts::{
-        AttributeName, ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionSpec,
-        ExtractionStrategy, FetchPreflightMode, InspectionOptions, OutputOptions, PatternMode,
-        RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-        SlicePatternSpec, SliceSpec, SourceInput, SourceKind, SourceRequest, ValueSpec, ValueType,
-        WhitespaceMode,
+        AttributeName, BoundaryRetention, ContractValueError, ExtractionDefinition,
+        ExtractionRequest, ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs,
+        FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions, MaxBytes, OutputOptions,
+        PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
+        SlicePatternSpec, SliceSpec, SourceInput, SourceKind, SourceRequest, TlsTrustPolicy,
+        ValueSpec, ValueType, WhitespaceMode,
     };
 }
 
@@ -45,16 +48,17 @@ pub use catalog::{
 };
 pub use cli_choice::CliChoice;
 pub use contracts::{
-    AttributeName, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
+    AttributeName, BoundaryRetention, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
     CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION,
     ContractValueError, DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_PREFLIGHT_MODE,
     DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
     DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel, ExtractionDefinition, ExtractionRequest,
-    ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchPreflightMode, InspectionOptions,
-    OutputOptions, ParseDocumentResult, PatternMode, RenderingOptions, RuntimeOptions,
-    SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
-    SourceInspectionResult, SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep,
-    SourceMetadata, SourceRequest, ValueSpec, ValueType, WhitespaceMode,
+    ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs,
+    FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions, MaxBytes, OutputOptions,
+    ParseDocumentResult, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec,
+    SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult,
+    SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest,
+    TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
 };
 pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};
 #[cfg(test)]

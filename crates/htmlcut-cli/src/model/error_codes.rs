@@ -128,6 +128,14 @@ cli_error_codes! {
     BaseUrlSchemeInvalid => "CLI_BASE_URL_SCHEME_INVALID",
     /// The supplied byte-size string is invalid.
     ByteSizeInvalid => "CLI_BYTE_SIZE_INVALID",
+    /// The supplied fetch timeout is invalid.
+    FetchTimeoutInvalid => "CLI_FETCH_TIMEOUT_INVALID",
+    /// The supplied connect timeout is invalid.
+    FetchConnectTimeoutInvalid => "CLI_FETCH_CONNECT_TIMEOUT_INVALID",
+    /// The CLI needs an explicit CA bundle path for the chosen TLS trust mode.
+    TlsCaBundleRequired => "CLI_TLS_CA_BUNDLE_REQUIRED",
+    /// The supplied CA bundle path conflicts with the chosen TLS trust mode.
+    TlsCaBundleConflict => "CLI_TLS_CA_BUNDLE_CONFLICT",
     /// The supplied preview character count is invalid.
     PreviewCharsInvalid => "CLI_PREVIEW_CHARS_INVALID",
     /// The supplied source URL is syntactically invalid.

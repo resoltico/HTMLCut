@@ -1,4 +1,5 @@
 use super::*;
+use url::Url;
 
 #[test]
 fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
@@ -37,7 +38,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     );
     assert_eq!(
         delimiter_request.output.rendering.whitespace,
-        WhitespaceMode::Preserve
+        WhitespaceMode::Rendered
     );
     assert!(delimiter_request.output.rendering.rewrite_urls);
     assert_eq!(

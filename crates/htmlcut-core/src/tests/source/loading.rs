@@ -6,8 +6,7 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
     let file_path = tempdir.path().join("input.html");
     std::fs::write(&file_path, "<article>Hello</article>").expect("write html");
     let loaded = read_file_source(
-        &file_source(&file_path)
-            .with_base_url(Url::parse("https://example.com/base/").expect("base url")),
+        &file_source(&file_path).with_base_url(http_url("https://example.com/base/")),
         &RuntimeOptions::default(),
     )
     .expect("file source");
@@ -59,7 +58,7 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
         Some(expected_url.as_str())
     );
 
-    let agent = build_http_agent(&RuntimeOptions::default());
+    let agent = build_http_agent(&RuntimeOptions::default()).expect("http agent");
     assert!(matches!(
         agent.config().tls_config().root_certs(),
         RootCerts::WebPki
@@ -83,7 +82,7 @@ fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
         &url_source(&format!("http://{closed_address}")),
         &RuntimeOptions {
             fetch_preflight: FetchPreflightMode::GetOnly,
-            fetch_timeout_ms: 250,
+            fetch_timeout: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )

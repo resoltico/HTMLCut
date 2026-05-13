@@ -48,10 +48,6 @@ pub(crate) fn inspect_slice_about() -> &'static str {
     cache::inspect_slice_about()
 }
 
-pub(crate) fn root_long_about() -> &'static str {
-    cache::root_long_about()
-}
-
 pub(crate) fn root_before_help() -> &'static str {
     cache::root_before_help()
 }
@@ -60,44 +56,12 @@ pub(crate) fn root_after_help() -> &'static str {
     cache::root_after_help()
 }
 
-pub(crate) fn catalog_long_about() -> &'static str {
-    cache::catalog_long_about()
-}
-
 pub(crate) fn catalog_after_help() -> &'static str {
     cache::catalog_after_help()
 }
 
-pub(crate) fn schema_long_about() -> &'static str {
-    cache::schema_long_about()
-}
-
 pub(crate) fn schema_after_help() -> &'static str {
     cache::schema_after_help()
-}
-
-pub(crate) fn inspect_long_about() -> &'static str {
-    cache::inspect_long_about()
-}
-
-pub(crate) fn select_long_about() -> &'static str {
-    cache::select_long_about()
-}
-
-pub(crate) fn slice_long_about() -> &'static str {
-    cache::slice_long_about()
-}
-
-pub(crate) fn inspect_source_long_about() -> &'static str {
-    cache::inspect_source_long_about()
-}
-
-pub(crate) fn inspect_select_long_about() -> &'static str {
-    cache::inspect_select_long_about()
-}
-
-pub(crate) fn inspect_slice_long_about() -> &'static str {
-    cache::inspect_slice_long_about()
 }
 
 pub(crate) fn select_after_help() -> &'static str {

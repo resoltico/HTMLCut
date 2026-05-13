@@ -34,7 +34,7 @@ pub(crate) fn build_catalog_report(
                     None => CatalogAvailability::CoreOnly,
                 },
                 summary: descriptor.description.to_owned(),
-                core_surface: descriptor.core_surface.to_owned(),
+                core_api: descriptor.core_api.to_owned(),
                 request_contract: build_contract_surface(&descriptor.request_contract),
                 result_contract: build_contract_surface(&descriptor.result_contract),
                 command_contract: cli_contract.map(build_catalog_command_contract),
@@ -56,7 +56,7 @@ pub(crate) fn build_catalog_report(
 
 fn build_contract_surface(contract: &htmlcut_core::OperationContract) -> CatalogContractSurface {
     CatalogContractSurface {
-        rust_shape: contract.rust_shape.to_owned(),
+        family: contract.family.to_owned(),
         schema_refs: contract
             .schema_refs
             .iter()

@@ -25,7 +25,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
             cli_operation_display_command(OperationId::SourceInspect)
         ),
         format!(
-            "{} or {} previews matches in structured JSON before extraction.",
+            "{} or {} previews the same extraction value modes plus match metadata before final output.",
             cli_operation_display_command(OperationId::SelectPreview),
             cli_operation_display_command(OperationId::SlicePreview)
         ),
@@ -94,11 +94,13 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 title: "URL resolution".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
-                    "--rewrite-urls resolves relative links with the effective base URL."
+                    "--rewrite-urls rewrites supported relative URLs with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references."
+                        .to_owned(),
+                    "When rendered plain text includes link destinations and an effective base is known, HTMLCut resolves those displayed destinations to absolute URLs even if --rewrite-urls is off."
                         .to_owned(),
                     "The effective base comes from --base-url when supplied, the input URL for URL sources, and any document <base href> when one is present."
                         .to_owned(),
-                    "When no effective base can be resolved, HTMLCut leaves relative URLs unchanged and reports a warning."
+                    "When no effective base can be resolved, HTMLCut leaves HTML fragments unchanged, plain-text link destinations remain relative, and --rewrite-urls reports a warning."
                         .to_owned(),
                 ],
             },
@@ -315,4 +317,36 @@ fn cli_operation_display_command(operation_id: OperationId) -> String {
         .and_then(|descriptor| descriptor.cli_surface)
         .unwrap_or(operation_id.as_str())
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contract::CliAuxCommandId;
+
+    #[test]
+    fn inspect_aux_help_document_lists_the_live_inspection_commands() {
+        let document = cli_aux_command_help_document(CliAuxCommandId::Inspect);
+        assert!(document.examples.is_empty());
+        assert_eq!(document.sections.len(), 1);
+        assert_eq!(document.sections[0].title, "Commands");
+        assert!(
+            document.sections[0]
+                .lines
+                .iter()
+                .any(|line| line.starts_with("inspect source"))
+        );
+        assert!(
+            document.sections[0]
+                .lines
+                .iter()
+                .any(|line| line.starts_with("inspect select"))
+        );
+        assert!(
+            document.sections[0]
+                .lines
+                .iter()
+                .any(|line| line.starts_with("inspect slice"))
+        );
+    }
 }

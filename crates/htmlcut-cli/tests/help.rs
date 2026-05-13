@@ -14,7 +14,7 @@ fn help_prints_the_new_workflows_and_contract_language() {
             env!("CARGO_PKG_DESCRIPTION")
         )))
         .stdout(predicate::str::contains("help     Print this message or the help of the given subcommand(s)."))
-        .stdout(predicate::str::contains("\n\nGuide:\n"))
+        .stdout(predicate::str::contains("\n\nOperator Guide:\n"))
         .stdout(predicate::str::contains("Workflow:"))
         .stdout(predicate::str::contains("Request files:"))
         .stdout(predicate::str::contains("catalog"))
@@ -83,7 +83,7 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
             "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, and `x`",
         ))
         .stdout(predicate::str::contains(
-            "The selected fragment excludes both matched boundaries by default; --include-start and --include-end control that selected fragment precisely.",
+            "The selected fragment excludes both matched boundaries by default; --boundary-retention controls that selected fragment precisely.",
         ))
         .stdout(predicate::str::contains(
             "Structured extraction only supports --output json or --output none.",
@@ -95,7 +95,7 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
             "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",
         ))
         .stdout(predicate::str::contains(
-            "htmlcut slice ./page.html --from '<a' --to '</a>' --include-start --include-end --value attribute --attribute href --rewrite-urls",
+            "htmlcut slice ./page.html --from '<a' --to '</a>' --boundary-retention include-both --value attribute --attribute href --rewrite-urls",
         ));
 }
 
@@ -171,7 +171,7 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
 
@@ -199,7 +199,11 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
         .assert()
         .failure()
         .code(2)
-        .stderr(predicate::str::contains(
+        .stdout(predicate::str::contains(
+            "\"code\": \"CLI_REQUEST_FILE_CONFLICT\"",
+        ))
+        .stdout(predicate::str::contains(
             "--request-file owns the extraction definition",
-        ));
+        ))
+        .stderr("");
 }

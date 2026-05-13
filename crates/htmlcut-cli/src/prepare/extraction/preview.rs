@@ -1,9 +1,10 @@
-use htmlcut_core::{ExtractionStrategy, ValueSpec};
+use htmlcut_core::ExtractionStrategy;
 
 use crate::args::{InspectSelectArgs, InspectSliceArgs};
 use crate::error::CliError;
 use crate::prepare::build::{
-    StrategyArgs, build_extraction_request, build_runtime, validate_preview_chars,
+    StrategyArgs, build_extraction_request, build_runtime, resolve_value_spec,
+    validate_preview_chars,
 };
 use crate::prepare::definition::{
     ensure_inline_inspect_select_request_is_default, ensure_inline_inspect_slice_request_is_default,
@@ -31,6 +32,7 @@ impl PreparedPreview {
             ExtractionStrategy::Selector,
             htmlcut_core::OperationId::SelectPreview,
             || {
+                let value = resolve_value_spec(args.value.into(), args.attribute.clone())?;
                 let preview_chars = validate_preview_chars(args.output.preview_chars)?;
                 Ok((
                     build_extraction_request(
@@ -40,7 +42,7 @@ impl PreparedPreview {
                         &args.source,
                         &args.selection,
                         RequestBuildOptions {
-                            value: ValueSpec::Structured,
+                            value,
                             whitespace: args.whitespace,
                             rewrite_urls: args.rewrite_urls,
                             preview_chars,
@@ -51,12 +53,10 @@ impl PreparedPreview {
                 ))
             },
         )?;
-        let mut request = materialized.request;
-        request.extraction = request.extraction.clone().with_value(ValueSpec::Structured);
         Ok(Self {
             command: commands.report,
             runtime: materialized.runtime,
-            request,
+            request: materialized.request,
             request_definition_output: materialized.request_definition_output,
             output: args.output.output,
             output_file: args.output.output_file,
@@ -83,6 +83,7 @@ impl PreparedPreview {
             ExtractionStrategy::Slice,
             htmlcut_core::OperationId::SlicePreview,
             || {
+                let value = resolve_value_spec(args.value.into(), args.attribute.clone())?;
                 let preview_chars = validate_preview_chars(args.output.preview_chars)?;
                 Ok((
                     build_extraction_request(
@@ -91,13 +92,12 @@ impl PreparedPreview {
                             to: required_cli_value(args.to, "--to")?,
                             pattern: args.pattern,
                             regex_flags: args.regex_flags,
-                            include_start: args.include_start,
-                            include_end: args.include_end,
+                            boundary_retention: args.boundary_retention.into(),
                         },
                         &args.source,
                         &args.selection,
                         RequestBuildOptions {
-                            value: ValueSpec::Structured,
+                            value,
                             whitespace: args.whitespace,
                             rewrite_urls: args.rewrite_urls,
                             preview_chars,
@@ -108,12 +108,10 @@ impl PreparedPreview {
                 ))
             },
         )?;
-        let mut request = materialized.request;
-        request.extraction = request.extraction.clone().with_value(ValueSpec::Structured);
         Ok(Self {
             command: commands.report,
             runtime: materialized.runtime,
-            request,
+            request: materialized.request,
             request_definition_output: materialized.request_definition_output,
             output: args.output.output,
             output_file: args.output.output_file,

@@ -13,7 +13,7 @@ fn slice_json_report_has_core_parity() {
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
     let expected = extract(&request, &runtime_options());
@@ -97,7 +97,7 @@ fn inspect_slice_json_has_core_preview_parity() {
     );
     request.output = extraction_output();
     request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Preserve,
+        whitespace: WhitespaceMode::Rendered,
         rewrite_urls: false,
     };
     let expected = preview_extraction(&request, &runtime_options());
@@ -115,8 +115,8 @@ fn inspect_slice_json_has_core_preview_parity() {
                 "::END",
                 "--pattern",
                 "regex",
-                "--include-start",
-                "--include-end",
+                "--boundary-retention",
+                "include-both",
                 "--match",
                 "all",
             ])
@@ -153,8 +153,8 @@ fn inspect_slice_text_surfaces_ranges_and_boundary_context() {
             "::END",
             "--pattern",
             "regex",
-            "--include-start",
-            "--include-end",
+            "--boundary-retention",
+            "include-both",
             "--match",
             "all",
             "--output",
@@ -219,8 +219,8 @@ fn inspect_slice_text_shows_fragment_preview_for_html_like_matches() {
             "<a",
             "--to",
             "</a>",
-            "--include-start",
-            "--include-end",
+            "--boundary-retention",
+            "include-both",
             "--match",
             "all",
             "--output",

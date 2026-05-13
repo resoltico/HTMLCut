@@ -40,6 +40,7 @@ fn root_help_describes_each_maintained_task() {
     let help = run_xtask_help(&["--help"]);
 
     assert!(help.contains("Run the full maintainer quality gate."));
+    assert!(help.contains("Run the curated cross-platform Rust CI gate."));
     assert!(help.contains("Run only the curated 100% coverage gate."));
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
     assert!(help.contains("Refresh the checked-in htmlcut-core semver baseline."));
@@ -52,7 +53,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
     let help = run_xtask_help(&["--help"]);
     let examples = xtask_help_examples(&help);
 
-    assert_eq!(examples.len(), 5, "root help example inventory drifted");
+    assert_eq!(examples.len(), 6, "root help example inventory drifted");
 
     assert_eq!(
         examples
@@ -62,6 +63,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
             .collect::<Vec<_>>(),
         vec![
             "cargo xtask check",
+            "cargo xtask ci-rust-gate",
             "cargo xtask semver-check",
             "cargo xtask coverage",
             "cargo xtask refresh-semver-baseline --git-ref v7.0.0",
@@ -94,6 +96,9 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
     let check_help = run_xtask_help(&["check", "--help"]);
     assert!(check_help.contains("Run the full maintainer quality gate"));
     assert!(check_help.contains("100% coverage pass"));
+
+    let ci_rust_gate_help = run_xtask_help(&["ci-rust-gate", "--help"]);
+    assert!(ci_rust_gate_help.contains("cross-platform Rust CI gate"));
 
     let coverage_help = run_xtask_help(&["coverage", "--help"]);
     assert!(coverage_help.contains("Run the curated 100% line-and-branch coverage gate"));

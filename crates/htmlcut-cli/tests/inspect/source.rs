@@ -140,7 +140,7 @@ fn inspect_source_text_suggests_content_selector_and_skips_placeholder_links() {
         .stdout(predicate::str::contains(
             "Suggested selectors for rendered text review:",
         ))
-        .stdout(predicate::str::contains("- article ["))
+        .stdout(predicate::str::contains("- article |"))
         .stdout(predicate::str::contains("#content"))
         .stdout(predicate::str::contains("- h1 Article Title"))
         .stdout(predicate::str::contains(
@@ -183,6 +183,51 @@ fn inspect_source_text_prefers_inner_content_candidate_over_outer_wrapper() {
             "Guide [/guide -> https://example.com/guide]",
         ))
         .stdout(predicate::str::contains("Edit [/edit").not())
+        .stdout(predicate::str::contains("Related Topics").not())
+        .stdout(predicate::str::contains("Other [/other").not());
+}
+
+#[test]
+fn inspect_source_text_prefers_markdown_body_inside_layout_shell() {
+    let tempdir = tempdir().expect("tempdir");
+    let repo_heading_chrome = (1..=48)
+        .map(|index| format!("<h3>Repository Section {index}</h3>"))
+        .collect::<String>();
+    let repo_link_chrome = (1..=240)
+        .map(|index| format!("<a href=\"/repo-link-{index}\">Repository Link {index}</a>"))
+        .collect::<String>();
+    let input_path = write_fixture(
+        tempdir.path(),
+        "inspect-github-wiki-like.html",
+        &format!(
+            "<html><body><main id=\"js-repo-pjax-container\"><div id=\"wiki-wrapper\" class=\"page\"><nav class=\"gh-header repo-nav\"><h1>Jackson Release 3.1</h1><a href=\"#wiki-pages-box\">Jump to bottom</a><span>Tatu Saloranta edited this page</span><a href=\"/_history\">152 revisions</a>{repo_heading_chrome}{repo_link_chrome}</nav><div id=\"wiki-content\"><div class=\"Layout Layout--sidebarPosition-end\"><div class=\"Layout-main\"><div id=\"wiki-body\" class=\"gollum-markdown-content\"><div class=\"markdown-body\"><p><a href=\"Jackson-Releases\">Jackson Version</a> 3.1 is a Major New version.</p><p>This wiki page gives a list of links to all changes.</p><div class=\"markdown-heading\"><h2>Status</h2><a class=\"anchor\" href=\"#status\">#</a></div><p>Branch is open for patch releases.</p><div class=\"markdown-heading\"><h3>Patches</h3><a class=\"anchor\" href=\"#patches\">#</a></div><ul><li><a href=\"Jackson-Release-3.1.1\">3.1.1</a></li><li><a href=\"Jackson-Release-3.1.2\">3.1.2</a></li></ul></div></div><aside class=\"Layout-sidebar related-topics\"><h2>Related Topics</h2><a href=\"/other\">Other</a></aside></div></div></div></main></body></html>"
+        ),
+    );
+
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args(["inspect", "source"])
+        .arg(&input_path)
+        .args([
+            "--base-url",
+            "https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1",
+            "--sample-limit",
+            "1",
+            "--output",
+            "text",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Suggested selectors for extraction:\n- #wiki-content |",
+        ))
+        .stdout(predicate::str::contains(
+            "Suggested selectors for rendered text review:\n- #wiki-content |",
+        ))
+        .stdout(predicate::str::contains("- h2 Status"))
+        .stdout(predicate::str::contains(
+            "Jackson Version [Jackson-Releases",
+        ))
         .stdout(predicate::str::contains("Related Topics").not())
         .stdout(predicate::str::contains("Other [/other").not());
 }

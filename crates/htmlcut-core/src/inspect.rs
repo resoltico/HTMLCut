@@ -148,6 +148,10 @@ pub(crate) fn build_document_inspection(
             &mut extraction_candidates,
             &reading_candidates,
         );
+        promote_cleaner_reading_descendant_candidate(
+            &mut extraction_candidates,
+            &reading_candidates,
+        );
     }
     let content_candidate_paths = reading_candidates
         .iter()
@@ -218,6 +222,11 @@ fn build_ranked_content_candidates_for(
         let Some(element) = ElementRef::wrap(node_ref) else {
             continue;
         };
+        if element_looks_like_utility_chrome(&element)
+            || element_has_utility_chrome_ancestor(&element)
+        {
+            continue;
+        }
         let signal_tokens = structural_signal_tokens(&element);
         let positive_signal_count = token_match_count(&signal_tokens, &POSITIVE_CONTENT_TOKENS);
         if !is_content_candidate_container(&element, positive_signal_count) {
@@ -325,6 +334,7 @@ fn apply_nested_content_candidate_bias_for(
             }
 
             let outer_path = candidates[outer_index].inspection.path.clone();
+            let outer_selector = candidates[outer_index].inspection.selector.clone();
             let outer_text_char_count = candidates[outer_index].inspection.text_char_count;
             let outer_heading_count = candidates[outer_index].inspection.heading_count;
             let outer_link_count = candidates[outer_index].inspection.link_count;
@@ -335,6 +345,7 @@ fn apply_nested_content_candidate_bias_for(
             let outer_paragraph_count = candidates[outer_index].paragraph_count;
 
             let inner_path = candidates[inner_index].inspection.path.clone();
+            let inner_selector = candidates[inner_index].inspection.selector.clone();
             let inner_text_char_count = candidates[inner_index].inspection.text_char_count;
             let inner_heading_count = candidates[inner_index].inspection.heading_count;
             let inner_link_count = candidates[inner_index].inspection.link_count;
@@ -374,6 +385,48 @@ fn apply_nested_content_candidate_bias_for(
             {
                 candidates[inner_index].score += 210;
                 candidates[outer_index].score -= 165;
+            }
+
+            if preference == CandidatePreference::Extraction
+                && inner_text_char_count * 100 >= outer_text_char_count * 88
+                && outer_heading_count >= inner_heading_count + 12
+                && outer_link_count >= inner_link_count + 24
+            {
+                candidates[inner_index].score += 760;
+                candidates[outer_index].score -= 620;
+            }
+
+            if preference == CandidatePreference::Extraction
+                && inner_text_char_count * 100 >= outer_text_char_count * 98
+                && outer_heading_count >= inner_heading_count
+                && outer_link_count >= inner_link_count + 20
+            {
+                candidates[inner_index].score += 320;
+                candidates[outer_index].score -= 260;
+            }
+
+            if preference == CandidatePreference::Extraction
+                && inner_text_char_count * 100 >= outer_text_char_count * 95
+                && !drops_outer_title_signal
+                && outer_heading_count <= inner_heading_count + 4
+                && outer_link_count >= inner_link_count + 20
+                && selector_stability_rank(&inner_selector)
+                    >= selector_stability_rank(&outer_selector)
+            {
+                candidates[inner_index].score += 2400;
+                candidates[outer_index].score -= 2000;
+            }
+
+            if inner_text_char_count * 100 >= outer_text_char_count * 98
+                && outer_link_count >= inner_link_count + 120
+            {
+                let (inner_boost, outer_penalty) = if preference == CandidatePreference::Reading {
+                    (620, 520)
+                } else {
+                    (700, 580)
+                };
+                candidates[inner_index].score += inner_boost;
+                candidates[outer_index].score -= outer_penalty;
             }
 
             if preference == CandidatePreference::Extraction
@@ -502,6 +555,10 @@ fn compare_content_candidates_for(
             .link_count
             .cmp(&right.inspection.link_count)
             .then_with(|| {
+                selector_stability_rank(&right.inspection.selector)
+                    .cmp(&selector_stability_rank(&left.inspection.selector))
+            })
+            .then_with(|| {
                 path_depth(&right.inspection.path).cmp(&path_depth(&left.inspection.path))
             })
             .then_with(|| {
@@ -522,6 +579,10 @@ fn compare_content_candidates_for(
                 .inspection
                 .heading_count
                 .cmp(&left.inspection.heading_count)
+        })
+        .then_with(|| {
+            selector_stability_rank(&right.inspection.selector)
+                .cmp(&selector_stability_rank(&left.inspection.selector))
         })
         .then_with(|| left.inspection.selector.cmp(&right.inspection.selector))
 }
@@ -660,6 +721,9 @@ fn sample_links_from_scope(
             if text.is_empty() {
                 return None;
             }
+            if link_preview_is_low_signal(&href, &text, &path_hint_for_link(&element)) {
+                return None;
+            }
 
             let path = build_node_path(&element);
             if !seen_paths.insert(path.clone()) {
@@ -675,6 +739,25 @@ fn sample_links_from_scope(
         })
         .take(limit)
         .collect()
+}
+
+fn path_hint_for_link(element: &ElementRef<'_>) -> String {
+    build_node_path(element)
+}
+
+fn link_preview_is_low_signal(href: &str, text: &str, path: &str) -> bool {
+    if !href.starts_with('#') {
+        return false;
+    }
+
+    let trimmed = text.trim();
+    let has_word = trimmed.chars().any(char::is_alphabetic);
+    let only_marker_chars = !trimmed.is_empty()
+        && trimmed.chars().all(|character| {
+            character.is_ascii_digit() || matches!(character, '*' | '#' | '[' | ']')
+        });
+
+    (!has_word && only_marker_chars) || path.contains("> sup:nth-of-type(")
 }
 
 fn select_elements_in_scope<'a>(
@@ -911,6 +994,30 @@ fn path_depth(path: &str) -> usize {
     path.matches(" > ").count()
 }
 
+fn selector_stability_rank(selector: &str) -> u8 {
+    if selector.contains(":nth-of-type(") {
+        return 0;
+    }
+
+    if selector.starts_with('#') {
+        return 5;
+    }
+
+    if selector.contains("[itemprop=") || selector.contains("[role=") || selector.starts_with('[') {
+        return 4;
+    }
+
+    if selector.contains('.') && selector.chars().next().is_some_and(char::is_alphabetic) {
+        return 3;
+    }
+
+    if selector.starts_with('.') {
+        return 2;
+    }
+
+    1
+}
+
 fn promote_precise_reading_descendant_candidate(
     extraction_candidates: &mut Vec<RankedContentCandidate>,
     reading_candidates: &[RankedContentCandidate],
@@ -921,38 +1028,74 @@ fn promote_precise_reading_descendant_candidate(
     let Some(reading_top) = reading_candidates.first() else {
         return;
     };
-    if current_extraction.inspection.path != reading_top.inspection.path {
-        return;
-    }
 
-    let descendant_prefix = format!("{} > ", reading_top.inspection.path);
-    let Some(promoted_candidate) = reading_candidates
-        .iter()
-        .skip(1)
-        .filter(|candidate| {
-            candidate.inspection.path.starts_with(&descendant_prefix)
-                && candidate.inspection.text_char_count * 100
-                    >= reading_top.inspection.text_char_count * 92
-                && candidate.inspection.heading_count + 2 >= reading_top.inspection.heading_count
-                && candidate.inspection.link_count <= reading_top.inspection.link_count
-        })
-        .max_by(|left, right| {
-            content_tag_rank(&left.inspection.tag_name)
-                .cmp(&content_tag_rank(&right.inspection.tag_name))
-                .then_with(|| {
-                    right
-                        .inspection
-                        .text_char_count
-                        .cmp(&left.inspection.text_char_count)
-                })
-                .then_with(|| right.inspection.link_count.cmp(&left.inspection.link_count))
-                .then_with(|| {
-                    path_depth(&left.inspection.path).cmp(&path_depth(&right.inspection.path))
-                })
-                .then_with(|| left.inspection.selector.cmp(&right.inspection.selector))
-        })
-        .cloned()
-    else {
+    let promoted_candidate = if current_extraction.inspection.path == reading_top.inspection.path {
+        let descendant_prefix = format!("{} > ", reading_top.inspection.path);
+        reading_candidates
+            .iter()
+            .skip(1)
+            .filter(|candidate| {
+                candidate.inspection.path.starts_with(&descendant_prefix)
+                    && candidate.inspection.text_char_count * 100
+                        >= reading_top.inspection.text_char_count * 92
+                    && candidate.inspection.heading_count + 2
+                        >= reading_top.inspection.heading_count
+                    && candidate.inspection.link_count <= reading_top.inspection.link_count
+            })
+            .max_by(|left, right| {
+                content_tag_rank(&left.inspection.tag_name)
+                    .cmp(&content_tag_rank(&right.inspection.tag_name))
+                    .then_with(|| {
+                        selector_stability_rank(&left.inspection.selector)
+                            .cmp(&selector_stability_rank(&right.inspection.selector))
+                    })
+                    .then_with(|| {
+                        right
+                            .inspection
+                            .text_char_count
+                            .cmp(&left.inspection.text_char_count)
+                    })
+                    .then_with(|| right.inspection.link_count.cmp(&left.inspection.link_count))
+                    .then_with(|| {
+                        path_depth(&right.inspection.path).cmp(&path_depth(&left.inspection.path))
+                    })
+                    .then_with(|| left.inspection.selector.cmp(&right.inspection.selector))
+            })
+            .cloned()
+    } else {
+        let descendant_prefix = format!("{} > ", current_extraction.inspection.path);
+        reading_candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.inspection.path.starts_with(&descendant_prefix)
+                    && candidate.inspection.text_char_count * 100
+                        >= current_extraction.inspection.text_char_count * 90
+                    && current_extraction.inspection.link_count
+                        >= candidate.inspection.link_count + 20
+                    && selector_stability_rank(&candidate.inspection.selector) >= 2
+            })
+            .max_by(|left, right| {
+                selector_stability_rank(&left.inspection.selector)
+                    .cmp(&selector_stability_rank(&right.inspection.selector))
+                    .then_with(|| {
+                        content_tag_rank(&left.inspection.tag_name)
+                            .cmp(&content_tag_rank(&right.inspection.tag_name))
+                    })
+                    .then_with(|| {
+                        right
+                            .inspection
+                            .text_char_count
+                            .cmp(&left.inspection.text_char_count)
+                    })
+                    .then_with(|| right.inspection.link_count.cmp(&left.inspection.link_count))
+                    .then_with(|| {
+                        path_depth(&right.inspection.path).cmp(&path_depth(&left.inspection.path))
+                    })
+                    .then_with(|| left.inspection.selector.cmp(&right.inspection.selector))
+            })
+            .cloned()
+    };
+    let Some(promoted_candidate) = promoted_candidate else {
         return;
     };
 
@@ -1002,6 +1145,61 @@ fn promote_title_bearing_reading_ancestor_candidate(
     }
 
     let promoted_candidate = reading_top.clone();
+    extraction_candidates
+        .retain(|candidate| candidate.inspection.path != promoted_candidate.inspection.path);
+    extraction_candidates.insert(0, promoted_candidate);
+}
+
+fn promote_cleaner_reading_descendant_candidate(
+    extraction_candidates: &mut Vec<RankedContentCandidate>,
+    reading_candidates: &[RankedContentCandidate],
+) {
+    let Some(current_extraction) = extraction_candidates.first() else {
+        return;
+    };
+
+    let descendant_prefix = format!("{} > ", current_extraction.inspection.path);
+    let promoted_candidate = reading_candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.inspection.path.starts_with(&descendant_prefix)
+                && candidate.inspection.text_char_count * 100
+                    >= current_extraction.inspection.text_char_count * 90
+                && candidate.inspection.heading_count + 2
+                    >= current_extraction.inspection.heading_count
+                && current_extraction.inspection.link_count >= candidate.inspection.link_count + 20
+                && !drops_outer_title_signal(
+                    current_extraction.primary_heading_level,
+                    current_extraction.primary_heading_depth,
+                    candidate.primary_heading_level,
+                    candidate.primary_heading_depth,
+                )
+        })
+        .min_by(|left, right| {
+            left.inspection
+                .link_count
+                .cmp(&right.inspection.link_count)
+                .then_with(|| {
+                    selector_stability_rank(&right.inspection.selector)
+                        .cmp(&selector_stability_rank(&left.inspection.selector))
+                })
+                .then_with(|| {
+                    right
+                        .inspection
+                        .text_char_count
+                        .cmp(&left.inspection.text_char_count)
+                })
+                .then_with(|| {
+                    path_depth(&left.inspection.path).cmp(&path_depth(&right.inspection.path))
+                })
+                .then_with(|| left.inspection.selector.cmp(&right.inspection.selector))
+        })
+        .cloned();
+
+    let Some(promoted_candidate) = promoted_candidate else {
+        return;
+    };
+
     extraction_candidates
         .retain(|candidate| candidate.inspection.path != promoted_candidate.inspection.path);
     extraction_candidates.insert(0, promoted_candidate);
@@ -3359,7 +3557,92 @@ mod tests {
             }),
         ];
         promote_precise_reading_descendant_candidate(&mut unchanged_extraction, &tied_descendants);
-        assert_eq!(unchanged_extraction[0].inspection.selector, "article.deep");
+        assert_eq!(
+            unchanged_extraction[0].inspection.selector,
+            "article.shallow"
+        );
+
+        let mut chrome_wrapper_extraction = vec![ranked_content_candidate(PromotionFixture {
+            selector: "#js-repo-pjax-container",
+            path: "html > body > main#js-repo-pjax-container",
+            tag_name: "main",
+            text_char_count: 23_201,
+            heading_count: 215,
+            link_count: 619,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(2),
+        })];
+        let chrome_wrapper_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "div.markdown-body",
+                path: "html > body > main#js-repo-pjax-container > div > div > div.markdown-body",
+                tag_name: "div",
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 225,
+                primary_heading_level: Some(2),
+                primary_heading_depth: Some(2),
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "#wiki-body",
+                path: "html > body > main#js-repo-pjax-container > div > div > #wiki-body",
+                tag_name: "div",
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 225,
+                primary_heading_level: Some(2),
+                primary_heading_depth: Some(1),
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(
+            &mut chrome_wrapper_extraction,
+            &chrome_wrapper_reading,
+        );
+        assert_eq!(
+            chrome_wrapper_extraction[0].inspection.selector,
+            "#wiki-body"
+        );
+
+        let mut link_heavy_extraction = vec![ranked_content_candidate(PromotionFixture {
+            selector: "#content",
+            path: "html > body > main#content",
+            tag_name: "main",
+            text_char_count: 192_859,
+            heading_count: 41,
+            link_count: 2_951,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        })];
+        let link_heavy_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "div.mw-content-ltr.mw-parser-output",
+                path: "html > body > main#content > div#bodyContent > div#mw-content-text > div.mw-content-ltr.mw-parser-output",
+                tag_name: "div",
+                text_char_count: 192_844,
+                heading_count: 40,
+                link_count: 2_641,
+                primary_heading_level: Some(2),
+                primary_heading_depth: Some(1),
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "#mw-content-text",
+                path: "html > body > main#content > div#bodyContent > div#mw-content-text",
+                tag_name: "div",
+                text_char_count: 192_844,
+                heading_count: 40,
+                link_count: 2_642,
+                primary_heading_level: Some(2),
+                primary_heading_depth: Some(1),
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(
+            &mut link_heavy_extraction,
+            &link_heavy_reading,
+        );
+        assert_eq!(
+            link_heavy_extraction[0].inspection.selector,
+            "#mw-content-text"
+        );
 
         let mut ancestor_empty = Vec::new();
         promote_title_bearing_reading_ancestor_candidate(
@@ -4075,5 +4358,630 @@ mod tests {
         );
 
         assert_eq!(extraction_candidates[0].inspection.selector, "#content");
+    }
+
+    #[test]
+    fn selector_rank_and_nested_bias_helpers_cover_new_extraction_branches() {
+        assert_eq!(selector_stability_rank("article:nth-of-type(2)"), 0);
+        assert_eq!(selector_stability_rank("#main"), 5);
+        assert_eq!(selector_stability_rank("[role=\"main\"]"), 4);
+        assert_eq!(selector_stability_rank("article.card"), 3);
+        assert_eq!(selector_stability_rank(".card"), 2);
+        assert_eq!(selector_stability_rank("article"), 1);
+
+        let mut heading_and_link_heavy_outer = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "main.wrapper",
+                path: "html > body > main.wrapper",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 20,
+                link_count: 40,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "main.wrapper > article.story",
+                path: "html > body > main.wrapper > article.story",
+                tag_name: "article",
+                text_char_count: 900,
+                heading_count: 4,
+                link_count: 12,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut heading_and_link_heavy_outer,
+            CandidatePreference::Extraction,
+        );
+        assert!(heading_and_link_heavy_outer[1].score > heading_and_link_heavy_outer[0].score);
+
+        let mut stable_inner_with_fewer_links = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 3,
+                link_count: 36,
+                paragraph_count: 3,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 970,
+                heading_count: 4,
+                link_count: 10,
+                paragraph_count: 3,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(2),
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut stable_inner_with_fewer_links,
+            CandidatePreference::Extraction,
+        );
+        assert!(stable_inner_with_fewer_links[1].score > stable_inner_with_fewer_links[0].score);
+
+        let mut near_equal_inner = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "main.wrapper",
+                path: "html > body > main.wrapper",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 5,
+                link_count: 30,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main.wrapper > article.story",
+                tag_name: "article",
+                text_char_count: 980,
+                heading_count: 5,
+                link_count: 10,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut near_equal_inner,
+            CandidatePreference::Extraction,
+        );
+        assert!(near_equal_inner[1].score > near_equal_inner[0].score);
+
+        let mut stable_selector_inner = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 4,
+                link_count: 30,
+                paragraph_count: 3,
+                primary_heading_level: Some(2),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 950,
+                heading_count: 5,
+                link_count: 10,
+                paragraph_count: 3,
+                primary_heading_level: Some(2),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(2),
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut stable_selector_inner,
+            CandidatePreference::Extraction,
+        );
+        assert!(stable_selector_inner[1].score > stable_selector_inner[0].score);
+
+        let mut reading_preference_link_shell = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 3,
+                link_count: 200,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 980,
+                heading_count: 3,
+                link_count: 20,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut reading_preference_link_shell,
+            CandidatePreference::Reading,
+        );
+        assert!(reading_preference_link_shell[1].score > reading_preference_link_shell[0].score);
+
+        let mut extraction_preference_link_shell = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 3,
+                link_count: 200,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 980,
+                heading_count: 3,
+                link_count: 20,
+                paragraph_count: 3,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 0,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut extraction_preference_link_shell,
+            CandidatePreference::Extraction,
+        );
+        assert!(
+            extraction_preference_link_shell[1].score > extraction_preference_link_shell[0].score
+        );
+    }
+
+    #[test]
+    fn promotion_helpers_cover_path_depth_empty_inputs_and_cleaner_descendants() {
+        let mut empty = Vec::new();
+        promote_cleaner_reading_descendant_candidate(&mut empty, &[]);
+        promote_title_bearing_reading_ancestor_candidate(&mut empty, &[]);
+
+        let mut cleaner_descendants = vec![ranked_content_candidate(PromotionFixture {
+            selector: "#content",
+            path: "html > body > main#content",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 3,
+            link_count: 80,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        })];
+        let reading_candidates = vec![
+            cleaner_descendants[0].clone(),
+            ranked_content_candidate(PromotionFixture {
+                selector: ".story",
+                path: "html > body > main#content > section > article.story",
+                tag_name: "article",
+                text_char_count: 930,
+                heading_count: 3,
+                link_count: 40,
+                primary_heading_level: Some(1),
+                primary_heading_depth: Some(2),
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: ".story-body",
+                path: "html > body > main#content > article.story-body",
+                tag_name: "article",
+                text_char_count: 930,
+                heading_count: 3,
+                link_count: 40,
+                primary_heading_level: Some(1),
+                primary_heading_depth: Some(2),
+            }),
+        ];
+        promote_cleaner_reading_descendant_candidate(&mut cleaner_descendants, &reading_candidates);
+        assert_eq!(cleaner_descendants[0].inspection.selector, ".story-body");
+
+        let mut precise_descendants = vec![ranked_content_candidate(PromotionFixture {
+            selector: "main.layout",
+            path: "html > body > main.layout",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 3,
+            link_count: 100,
+            primary_heading_level: None,
+            primary_heading_depth: None,
+        })];
+        let precise_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story:nth-of-type(1)",
+                path: "html > body > main.layout > section > article.story:nth-of-type(1)",
+                tag_name: "article",
+                text_char_count: 920,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story",
+                path: "html > body > main.layout > article.story",
+                tag_name: "article",
+                text_char_count: 920,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(&mut precise_descendants, &precise_reading);
+        assert_eq!(precise_descendants[0].inspection.selector, "article.story");
+
+        let mut precise_path_depth_tie = vec![ranked_content_candidate(PromotionFixture {
+            selector: "main.layout",
+            path: "html > body > main.layout",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 3,
+            link_count: 100,
+            primary_heading_level: None,
+            primary_heading_depth: None,
+        })];
+        let precise_path_depth_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story-a",
+                path: "html > body > main.layout > section > article.story-a",
+                tag_name: "article",
+                text_char_count: 920,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story-b",
+                path: "html > body > main.layout > article.story-b",
+                tag_name: "article",
+                text_char_count: 920,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(
+            &mut precise_path_depth_tie,
+            &precise_path_depth_reading,
+        );
+        assert_eq!(
+            precise_path_depth_tie[0].inspection.selector,
+            "article.story-b"
+        );
+    }
+
+    #[test]
+    fn selector_rank_and_link_preview_helpers_cover_attribute_and_reference_edges() {
+        assert_eq!(selector_stability_rank("[itemprop=\"articleBody\"]"), 4);
+        assert_eq!(selector_stability_rank("[data-surface=\"story\"]"), 4);
+
+        assert!(!link_preview_is_low_signal(
+            "#cite-note",
+            "   ",
+            "article > p"
+        ));
+        assert!(link_preview_is_low_signal(
+            "#cite-note",
+            "[12]",
+            "article > p"
+        ));
+        assert!(link_preview_is_low_signal(
+            "#cite-note",
+            "*",
+            "article > sup:nth-of-type(2)"
+        ));
+    }
+
+    #[test]
+    fn extraction_nested_bias_guard_branches_cover_false_link_and_title_thresholds() {
+        let mut link_gap_guard = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 20,
+                link_count: 29,
+                paragraph_count: 5,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 13,
+                score: 100,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: ".story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 890,
+                heading_count: 8,
+                link_count: 6,
+                paragraph_count: 1,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 80,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut link_gap_guard,
+            CandidatePreference::Extraction,
+        );
+        assert_eq!(link_gap_guard[0].score, 100);
+        assert_eq!(link_gap_guard[1].score, 80);
+
+        let mut equal_heading_guard = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 4,
+                link_count: 40,
+                paragraph_count: 10,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 13,
+                score: 100,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 990,
+                heading_count: 5,
+                link_count: 10,
+                paragraph_count: 1,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 80,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut equal_heading_guard,
+            CandidatePreference::Extraction,
+        );
+        assert_eq!(equal_heading_guard[0].score, 100);
+        assert_eq!(equal_heading_guard[1].score, 80);
+
+        let mut dropped_title_guard = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 10,
+                link_count: 30,
+                paragraph_count: 0,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 13,
+                score: 100,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: ".story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 960,
+                heading_count: 7,
+                link_count: 5,
+                paragraph_count: 1,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 80,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut dropped_title_guard,
+            CandidatePreference::Extraction,
+        );
+        assert_eq!(dropped_title_guard[0].score, 100);
+        assert_eq!(dropped_title_guard[1].score, 80);
+
+        let mut heading_gap_guard = vec![
+            ranked_bias_candidate(BiasFixture {
+                selector: "#content",
+                path: "html > body > main#content",
+                tag_name: "main",
+                text_char_count: 1_000,
+                heading_count: 10,
+                link_count: 30,
+                paragraph_count: 10,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 13,
+                score: 100,
+            }),
+            ranked_bias_candidate(BiasFixture {
+                selector: ".story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 960,
+                heading_count: 5,
+                link_count: 5,
+                paragraph_count: 1,
+                primary_heading_level: None,
+                primary_heading_count: 0,
+                primary_heading_depth: None,
+                utility_descendant_count: 0,
+                score: 80,
+            }),
+        ];
+        apply_nested_content_candidate_bias_for(
+            &mut heading_gap_guard,
+            CandidatePreference::Extraction,
+        );
+        assert_eq!(heading_gap_guard[0].score, 100);
+        assert_eq!(heading_gap_guard[1].score, 80);
+    }
+
+    #[test]
+    fn promotion_filter_guards_cover_remaining_false_threshold_paths() {
+        let mut precise_text_threshold = vec![ranked_content_candidate(PromotionFixture {
+            selector: "main.layout",
+            path: "html > body > main.layout",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 3,
+            link_count: 100,
+            primary_heading_level: None,
+            primary_heading_depth: None,
+        })];
+        let precise_text_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "#other",
+                path: "html > body > aside#other",
+                tag_name: "aside",
+                text_char_count: 200,
+                heading_count: 1,
+                link_count: 1,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story",
+                path: "html > body > main.layout > article.story",
+                tag_name: "article",
+                text_char_count: 899,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(
+            &mut precise_text_threshold,
+            &precise_text_reading,
+        );
+        assert_eq!(precise_text_threshold[0].inspection.selector, "main.layout");
+
+        let mut precise_link_gap = vec![ranked_content_candidate(PromotionFixture {
+            selector: "main.layout",
+            path: "html > body > main.layout",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 3,
+            link_count: 79,
+            primary_heading_level: None,
+            primary_heading_depth: None,
+        })];
+        let precise_link_reading = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "#other",
+                path: "html > body > aside#other",
+                tag_name: "aside",
+                text_char_count: 200,
+                heading_count: 1,
+                link_count: 1,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story",
+                path: "html > body > main.layout > article.story",
+                tag_name: "article",
+                text_char_count: 920,
+                heading_count: 3,
+                link_count: 60,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+        promote_precise_reading_descendant_candidate(&mut precise_link_gap, &precise_link_reading);
+        assert_eq!(precise_link_gap[0].inspection.selector, "main.layout");
+
+        let mut cleaner_heading_gap = vec![ranked_content_candidate(PromotionFixture {
+            selector: "#content",
+            path: "html > body > main#content",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 4,
+            link_count: 80,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        })];
+        let cleaner_heading_reading = vec![
+            cleaner_heading_gap[0].clone(),
+            ranked_content_candidate(PromotionFixture {
+                selector: ".story-fragment",
+                path: "html > body > main#content > article.story-fragment",
+                tag_name: "article",
+                text_char_count: 930,
+                heading_count: 1,
+                link_count: 40,
+                primary_heading_level: Some(1),
+                primary_heading_depth: Some(2),
+            }),
+        ];
+        promote_cleaner_reading_descendant_candidate(
+            &mut cleaner_heading_gap,
+            &cleaner_heading_reading,
+        );
+        assert_eq!(cleaner_heading_gap[0].inspection.selector, "#content");
     }
 }

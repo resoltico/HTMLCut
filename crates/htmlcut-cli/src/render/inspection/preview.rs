@@ -1,9 +1,10 @@
 use htmlcut_core::{
-    DEFAULT_PREVIEW_CHARS,
+    DEFAULT_PREVIEW_CHARS, ValueType,
     result::{ExtractionMatch, ExtractionMatchMetadata},
 };
 
 use crate::model::ExtractionCommandReport;
+use crate::render::{render_match_as_html, render_match_as_text};
 
 use super::shared::{
     block_text_preview, compact_inline_preview, format_range_summary, render_attribute_summary,
@@ -34,6 +35,15 @@ pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
         lines.extend(report.diagnostics.iter().map(render_diagnostic_line));
     }
 
+    if let Some(projected_output) = projected_output_preview(report) {
+        lines.push("Projected Output:".to_owned());
+        lines.extend(
+            block_text_preview(&projected_output, DEFAULT_PREVIEW_CHARS * 2, 10)
+                .into_iter()
+                .map(|line| format!("  {line}")),
+        );
+    }
+
     if report.matches.is_empty() {
         return lines.join("\n");
     }
@@ -44,6 +54,27 @@ pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
     }
 
     lines.join("\n")
+}
+
+fn projected_output_preview(report: &ExtractionCommandReport) -> Option<String> {
+    let first = report.matches.first()?;
+    match first.value_type {
+        ValueType::Structured => None,
+        ValueType::InnerHtml | ValueType::OuterHtml | ValueType::SelectedHtml => report
+            .matches
+            .iter()
+            .map(render_match_as_html)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+            .map(|parts| parts.join("\n\n")),
+        _ => report
+            .matches
+            .iter()
+            .map(render_match_as_text)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+            .map(|parts| parts.join("\n\n")),
+    }
 }
 
 pub(crate) fn render_preview_match_lines(
@@ -151,4 +182,140 @@ pub(crate) fn render_preview_location(
     }
 
     "(no path)".to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use htmlcut_core::{
+        ExtractionSpec, OperationId, SourceKind, SourceMetadata, ValueType,
+        result::{
+            DelimiterPairMatchMetadata, ExtractionMatch, ExtractionMatchMetadata, ExtractionStats,
+            Range, SelectorMatchMetadata,
+        },
+    };
+    use serde_json::json;
+    use std::collections::BTreeMap;
+
+    fn source_metadata() -> SourceMetadata {
+        SourceMetadata {
+            kind: SourceKind::Memory,
+            value: "<article>Hello</article>".to_owned(),
+            input_base_url: None,
+            effective_base_url: None,
+            bytes_read: 24,
+            load_steps: Vec::new(),
+            text: None,
+        }
+    }
+
+    fn selector_match(
+        value_type: ValueType,
+        html: Option<&str>,
+        text: Option<&str>,
+    ) -> ExtractionMatch {
+        ExtractionMatch {
+            index: 1,
+            path: Some("article".to_owned()),
+            value_type,
+            value: json!(html.or(text).unwrap_or("Hello")),
+            html: html.map(str::to_owned),
+            text: text.map(str::to_owned),
+            preview: "Hello".to_owned(),
+            metadata: ExtractionMatchMetadata::Selector(SelectorMatchMetadata {
+                candidate_count: 1,
+                candidate_index: 1,
+                path: "article".to_owned(),
+                tag_name: "article".to_owned(),
+                attributes: BTreeMap::new(),
+            }),
+        }
+    }
+
+    fn extraction_report(matches: Vec<ExtractionMatch>) -> ExtractionCommandReport {
+        ExtractionCommandReport {
+            tool: "htmlcut".to_owned(),
+            engine: "htmlcut-core".to_owned(),
+            version: "9.0.0".to_owned(),
+            schema_name: "htmlcut.extraction_report".to_owned(),
+            schema_version: 6,
+            command: "inspect select".to_owned(),
+            operation_id: OperationId::SelectPreview,
+            ok: true,
+            source: source_metadata(),
+            extraction: ExtractionSpec::selector(
+                htmlcut_core::SelectorQuery::new("article").expect("selector"),
+            ),
+            stats: ExtractionStats {
+                duration_ms: 1,
+                candidate_count: 1,
+                match_count: matches.len(),
+            },
+            document_title: None,
+            matches,
+            diagnostics: Vec::new(),
+            bundle: None,
+        }
+    }
+
+    #[test]
+    fn projected_output_preview_joins_html_and_text_modes() {
+        let html_report = extraction_report(vec![
+            selector_match(
+                ValueType::SelectedHtml,
+                Some("<article>Alpha</article>"),
+                None,
+            ),
+            selector_match(
+                ValueType::SelectedHtml,
+                Some("<article>Beta</article>"),
+                None,
+            ),
+        ]);
+        assert_eq!(
+            projected_output_preview(&html_report).as_deref(),
+            Some("<article>Alpha</article>\n\n<article>Beta</article>")
+        );
+
+        let text_report = extraction_report(vec![
+            selector_match(ValueType::Text, None, Some("Alpha")),
+            selector_match(ValueType::Text, None, Some("Beta")),
+        ]);
+        assert_eq!(
+            projected_output_preview(&text_report).as_deref(),
+            Some("Alpha\n\nBeta")
+        );
+
+        let structured_report =
+            extraction_report(vec![selector_match(ValueType::Structured, None, None)]);
+        assert_eq!(projected_output_preview(&structured_report), None);
+    }
+
+    #[test]
+    fn render_preview_location_falls_back_to_slice_ranges() {
+        let matched = ExtractionMatch {
+            index: 1,
+            path: None,
+            value_type: ValueType::Text,
+            value: json!("Alpha"),
+            html: None,
+            text: Some("Alpha".to_owned()),
+            preview: "Alpha".to_owned(),
+            metadata: ExtractionMatchMetadata::DelimiterPair(DelimiterPairMatchMetadata {
+                candidate_count: 1,
+                candidate_index: 1,
+                selected_range: Range { start: 5, end: 10 },
+                inner_range: Range { start: 6, end: 9 },
+                outer_range: Range { start: 4, end: 11 },
+                include_start: false,
+                include_end: false,
+                matched_start: "START".to_owned(),
+                matched_end: "END".to_owned(),
+            }),
+        };
+        assert_eq!(
+            render_preview_location(OperationId::SlicePreview, &matched),
+            "range 5..10"
+        );
+    }
 }

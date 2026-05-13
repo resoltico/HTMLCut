@@ -228,8 +228,8 @@ mod tests {
         crate::model::SchemaDocumentReport {
             schema_name: name.to_owned(),
             schema_version: version,
-            owner_surface: "htmlcut-cli".to_owned(),
-            rust_shape: "Fixture".to_owned(),
+            owner: "cli".to_owned(),
+            contract_family: "fixture".to_owned(),
             stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: serde_json::json!({"type": "object"}),
         }

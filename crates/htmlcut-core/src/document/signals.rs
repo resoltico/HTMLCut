@@ -3,6 +3,15 @@ use scraper::{ElementRef, Node};
 const CONTENT_HINT_TOKENS: [&str; 8] = [
     "article", "body", "content", "entry", "guide", "help", "main", "text",
 ];
+const LAYOUT_SHELL_TOKENS: [&str; 7] = [
+    "column",
+    "columns",
+    "container",
+    "frame",
+    "grid",
+    "layout",
+    "wrapper",
+];
 const UTILITY_CHROME_TOKENS: [&str; 63] = [
     "ad",
     "advert",
@@ -119,6 +128,10 @@ pub(crate) fn token_match_count(tokens: &[String], vocabulary: &[&str]) -> usize
 
 pub(crate) fn element_looks_like_utility_chrome(element: &ElementRef<'_>) -> bool {
     let tag_name = element.value().name();
+    if matches!(tag_name, "html" | "body") {
+        return false;
+    }
+
     if matches!(
         tag_name,
         "button" | "footer" | "input" | "nav" | "option" | "select" | "textarea"
@@ -158,6 +171,14 @@ pub(crate) fn element_looks_like_utility_chrome(element: &ElementRef<'_>) -> boo
         return false;
     }
 
+    if !matches!(tag_name, "article" | "main")
+        && content_count == 0
+        && looks_like_layout_shell(&tokens)
+        && element_contains_primary_content_surface(element)
+    {
+        return false;
+    }
+
     utility_count > content_count && !matches!(tag_name, "article" | "main")
 }
 
@@ -194,6 +215,72 @@ fn tokenize_structural_signal(value: &str) -> Vec<String> {
     tokens.push(current);
 
     tokens
+}
+
+fn looks_like_layout_shell(tokens: &[String]) -> bool {
+    token_match_count(tokens, &LAYOUT_SHELL_TOKENS) > 0
+}
+
+fn element_contains_primary_content_surface(element: &ElementRef<'_>) -> bool {
+    let mut inspected = 0usize;
+    for descendant in element.descendants().filter_map(ElementRef::wrap) {
+        if descendant.id() == element.id() {
+            continue;
+        }
+
+        inspected += 1;
+        if inspected > 256 {
+            break;
+        }
+
+        if descendant_looks_like_primary_content_surface(&descendant) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn descendant_looks_like_primary_content_surface(element: &ElementRef<'_>) -> bool {
+    if matches!(element.value().name(), "main") {
+        return true;
+    }
+
+    if element
+        .value()
+        .attr("role")
+        .is_some_and(|role| role.eq_ignore_ascii_case("main"))
+        || element
+            .value()
+            .attr("itemprop")
+            .is_some_and(|value| value.eq_ignore_ascii_case("articleBody"))
+    {
+        return true;
+    }
+
+    let tokens = structural_signal_tokens(element);
+    let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
+    let utility_count = token_match_count(&tokens, &UTILITY_CHROME_TOKENS);
+    let block_count = descendant_block_signal_count(element);
+
+    (matches!(element.value().name(), "article") && block_count >= 2)
+        || (content_count >= 2 && utility_count <= content_count && block_count >= 1)
+        || (content_count >= 1 && utility_count == 0 && block_count >= 3)
+}
+
+fn descendant_block_signal_count(element: &ElementRef<'_>) -> usize {
+    element
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .filter(|descendant| descendant.id() != element.id())
+        .filter(|descendant| {
+            matches!(
+                descendant.value().name(),
+                "blockquote" | "h1" | "h2" | "h3" | "h4" | "li" | "p" | "pre" | "table"
+            )
+        })
+        .take(4)
+        .count()
 }
 
 fn element_looks_like_compact_utility_widget(
@@ -419,5 +506,108 @@ mod tests {
         let standalone_document = parse_document_node("<main><div><span>Alpha</span></div></main>");
         let standalone_div = select_first(&standalone_document, "main div").expect("standalone");
         assert!(!element_has_utility_chrome_ancestor(&standalone_div));
+
+        let layout_shell = parse_document_node(
+            "<div class=\"Layout Layout--sidebarPosition-end\"><div class=\"Layout-main\"><div id=\"wiki-body\" class=\"gollum-markdown-content\"><div class=\"markdown-body\"><p>Lead paragraph.</p><div class=\"markdown-heading\"><h2>Status</h2><a class=\"anchor\" href=\"#status\">#</a></div><p>More context.</p></div></div></div></div>",
+        );
+        let layout_shell_element = select_first(&layout_shell, "div.Layout").expect("layout");
+        assert!(!element_looks_like_utility_chrome(&layout_shell_element));
+        let wiki_body = select_first(&layout_shell, "#wiki-body").expect("wiki body");
+        assert!(!element_has_utility_chrome_ancestor(&wiki_body));
+
+        let root_shell = parse_document_node(
+            "<html class=\"vector-feature-language-in-main-menu-disabled vector-feature-toc-pinned-clientpref-1\"><body><main id=\"content\"><div id=\"mw-content-text\" class=\"mw-body-content\"><p>Lead paragraph.</p></div></main></body></html>",
+        );
+        let html_root = select_first(&root_shell, "html").expect("html");
+        assert!(!element_looks_like_utility_chrome(&html_root));
+        let body_root = select_first(&root_shell, "body").expect("body");
+        assert!(!element_looks_like_utility_chrome(&body_root));
+        let math_content = select_first(&root_shell, "#mw-content-text").expect("content");
+        assert!(!element_has_utility_chrome_ancestor(&math_content));
+    }
+
+    #[test]
+    fn primary_content_surface_helpers_cover_limits_main_role_and_itemprop() {
+        let descendant_limit = parse_document_node(&format!(
+            "<div>{}<main><p>Body</p></main></div>",
+            "<span>Spacer</span>".repeat(257)
+        ));
+        let outer = select_first(&descendant_limit, "div").expect("outer");
+        assert!(!element_contains_primary_content_surface(&outer));
+
+        let main_document = parse_document_node("<main><p>Body</p></main>");
+        let main = select_first(&main_document, "main").expect("main");
+        assert!(descendant_looks_like_primary_content_surface(&main));
+
+        let role_main_document = parse_document_node("<div role=\"main\"><p>Body</p></div>");
+        let role_main = select_first(&role_main_document, "div").expect("role main");
+        assert!(descendant_looks_like_primary_content_surface(&role_main));
+
+        let article_body_document =
+            parse_document_node("<section itemprop=\"articleBody\"><p>Body</p></section>");
+        let article_body = select_first(&article_body_document, "section").expect("article body");
+        assert!(descendant_looks_like_primary_content_surface(&article_body));
+
+        let false_positive_guard = parse_document_node(
+            "<div class=\"footer sidebar\"><span>Utility</span><span>Only</span></div>",
+        );
+        let false_positive = select_first(&false_positive_guard, "div").expect("div");
+        assert!(!descendant_looks_like_primary_content_surface(
+            &false_positive
+        ));
+    }
+
+    #[test]
+    fn primary_content_surface_clause_helpers_cover_article_and_token_thresholds() {
+        let article_blocks = parse_document_node("<article><p>Lead</p><p>Body</p></article>");
+        let article = select_first(&article_blocks, "article").expect("article");
+        assert!(descendant_looks_like_primary_content_surface(&article));
+        let short_article = parse_document_node("<article><p>Lead</p></article>");
+        let short_article_element = select_first(&short_article, "article").expect("short article");
+        assert!(!descendant_looks_like_primary_content_surface(
+            &short_article_element
+        ));
+
+        let strong_content =
+            parse_document_node("<section class=\"content body\"><p>Body</p></section>");
+        let strong_content_element =
+            select_first(&strong_content, "section").expect("strong content");
+        assert!(descendant_looks_like_primary_content_surface(
+            &strong_content_element
+        ));
+
+        let strong_content_overwhelmed = parse_document_node(
+            "<section class=\"content body footer sidebar related comments social newsletter\"><p>Body</p></section>",
+        );
+        let strong_content_overwhelmed_element =
+            select_first(&strong_content_overwhelmed, "section").expect("overwhelmed");
+        assert!(!descendant_looks_like_primary_content_surface(
+            &strong_content_overwhelmed_element
+        ));
+
+        let strong_content_without_blocks =
+            parse_document_node("<section class=\"content body\">Inline only</section>");
+        let strong_content_without_blocks_element =
+            select_first(&strong_content_without_blocks, "section").expect("inline only");
+        assert!(!descendant_looks_like_primary_content_surface(
+            &strong_content_without_blocks_element
+        ));
+
+        let soft_content = parse_document_node(
+            "<section class=\"content\"><p>One</p><p>Two</p><p>Three</p></section>",
+        );
+        let soft_content_element = select_first(&soft_content, "section").expect("soft content");
+        assert!(descendant_looks_like_primary_content_surface(
+            &soft_content_element
+        ));
+
+        let soft_content_with_utility = parse_document_node(
+            "<section class=\"content footer sidebar related comments\"><p>One</p><p>Two</p><p>Three</p></section>",
+        );
+        let soft_content_with_utility_element =
+            select_first(&soft_content_with_utility, "section").expect("soft content utility");
+        assert!(!descendant_looks_like_primary_content_surface(
+            &soft_content_with_utility_element
+        ));
     }
 }

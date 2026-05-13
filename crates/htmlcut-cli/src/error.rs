@@ -44,6 +44,7 @@ pub(crate) fn primary_extraction_error(diagnostics: &[Diagnostic]) -> CliError {
         ),
         DiagnosticCode::InvalidSelector
         | DiagnosticCode::InvalidSlicePattern
+        | DiagnosticCode::UnsupportedValueType
         | DiagnosticCode::UnsupportedSpecVersion => usage_error_with_diagnostics(
             diagnostic.code,
             diagnostic.message.clone(),

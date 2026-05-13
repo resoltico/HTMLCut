@@ -6,6 +6,9 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
     let select_extract =
         crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
             .expect("select extract contract");
+    let slice_extract =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SliceExtract)
+            .expect("slice extract contract");
     let select_preview =
         crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
             .expect("select preview contract");
@@ -24,6 +27,19 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliValueMode>()),
         select_extract
+            .value_modes
+            .iter()
+            .copied()
+            .map(
+                |value| crate::contract::render_cli_value(crate::contract::CliValue::ValueType(
+                    value
+                ))
+            )
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        parser_value_names(crate::args::cli_choice_parser::<CliSliceValueMode>()),
+        slice_extract
             .value_modes
             .iter()
             .copied()
@@ -72,7 +88,7 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
         parser_value_names(crate::args::cli_choice_parser::<CliWhitespaceMode>()),
         vec![
             crate::contract::render_cli_value(crate::contract::CliValue::WhitespaceMode(
-                WhitespaceMode::Preserve,
+                WhitespaceMode::Rendered,
             )),
             crate::contract::render_cli_value(crate::contract::CliValue::WhitespaceMode(
                 WhitespaceMode::Normalize,

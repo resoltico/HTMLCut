@@ -7,9 +7,10 @@ use htmlcut_tempdir::tempdir;
 
 use crate::fuzz::FUZZ_SMOKE_EXAMPLE_TARGET;
 use crate::{
-    CommandSpec, CoverageFailure, DEFAULT_FUZZ_SMOKE_RUNS, DynResult, assert_known_fuzz_target,
-    check_plan, coverage_clean_command, coverage_command, coverage_output_path,
-    ensure_coverage_output_dir, ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites,
+    CommandSpec, CommandStdout, CommandToolchainEnv, CoverageFailure, DEFAULT_FUZZ_SMOKE_RUNS,
+    DynResult, assert_known_fuzz_target, check_plan, ci_rust_gate_plan, coverage_clean_command,
+    coverage_command, coverage_output_path, ensure_coverage_output_dir,
+    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites,
     ensure_repo_toolchain_prerequisites, evaluate_coverage_report, fuzz_smoke_command,
     fuzz_smoke_targets, is_semver_check_spec, read_coverage_report, remove_dir_if_exists, run_spec,
     semver_scratch_dir, stage_fuzz_corpus, strip_dev_dependency_tables, tracked_files,
@@ -30,6 +31,11 @@ enum Task {
         long_about = "Run the full maintainer quality gate, including formatting, docs, dependency policy, tests, and the final curated 100% coverage pass."
     )]
     Check,
+    #[command(
+        about = "Run the curated cross-platform Rust CI gate.",
+        long_about = "Run the maintained cross-platform Rust CI gate through cargo xtask so GitHub Actions does not duplicate command ownership."
+    )]
+    CiRustGate,
     #[command(
         about = "Run only the maintained htmlcut-core semver gate.",
         long_about = "Run only the maintained htmlcut-core cargo-semver-checks gate with the same baseline and release-type policy used by cargo xtask check."
@@ -92,13 +98,14 @@ fn cli_command() -> clap::Command {
 
 fn xtask_after_help() -> String {
     format!(
-        "Examples:\n  cargo xtask check\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
+        "Examples:\n  cargo xtask check\n  cargo xtask ci-rust-gate\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
     )
 }
 
 fn run_task(repo_root: &Path, task: Task) -> DynResult<()> {
     match task {
         Task::Check => run_check(repo_root),
+        Task::CiRustGate => run_ci_rust_gate(repo_root),
         Task::SemverCheck => run_semver_check(repo_root),
         Task::Coverage => run_coverage(repo_root),
         Task::FuzzSmoke { target, runs } => run_fuzz_smoke(repo_root, target.as_deref(), runs),
@@ -124,6 +131,26 @@ fn run_check(repo_root: &Path) -> DynResult<()> {
     }
 
     run_coverage(repo_root)
+}
+
+fn run_ci_rust_gate(repo_root: &Path) -> DynResult<()> {
+    ensure_repo_toolchain_prerequisites(repo_root)?;
+    println!("==> Cross-platform Rust gate");
+
+    for spec in ci_rust_gate_plan(repo_root)? {
+        if is_semver_check_spec(&spec) {
+            remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
+            let result = run_spec(repo_root, &spec);
+            let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
+            result?;
+            cleanup?;
+            continue;
+        }
+
+        run_spec(repo_root, &spec)?;
+    }
+
+    Ok(())
 }
 
 fn run_semver_check(repo_root: &Path) -> DynResult<()> {
@@ -247,7 +274,24 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let cargo_toml = fs::read_to_string(&baseline_manifest)?;
     fs::write(&baseline_manifest, with_workspace_stub(&cargo_toml))?;
     fs::rename(extracted_dir, baseline_dir)?;
+    let provenance_path = baseline_parent.join("htmlcut-core").join("BASELINE.toml");
+    let provenance = semver_baseline_provenance(git_ref, &version);
+    fs::write(provenance_path, provenance)?;
     Ok(())
+}
+
+fn semver_baseline_provenance(git_ref: &str, version: &str) -> String {
+    format!(
+        concat!(
+            "schema = \"htmlcut.semver_baseline_provenance@1\"\n",
+            "package = \"htmlcut-core\"\n",
+            "package_version = \"{version}\"\n",
+            "source_git_ref = \"{git_ref}\"\n",
+            "refresh_command = \"cargo xtask refresh-semver-baseline --git-ref {git_ref}\"\n",
+        ),
+        git_ref = git_ref,
+        version = version,
+    )
 }
 
 fn report_coverage_failure(failure: &CoverageFailure) {
@@ -279,8 +323,8 @@ fn snapshot_archive_command(snapshot_archive: &Path, git_ref: &str) -> CommandSp
             snapshot_archive.to_string_lossy().as_ref(),
             git_ref,
         ],
-        false,
-        false,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
     )
 }
 
@@ -293,8 +337,8 @@ fn unpack_snapshot_command(snapshot_archive: &Path, snapshot_root: &Path) -> Com
             "-C",
             snapshot_root.to_string_lossy().as_ref(),
         ],
-        false,
-        false,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
     )
 }
 
@@ -308,8 +352,8 @@ fn package_snapshot_command() -> CommandSpec {
             "-p",
             "htmlcut-core",
         ],
-        false,
-        true,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
     )
 }
 
@@ -322,8 +366,8 @@ fn extract_baseline_command(archive: &Path, baseline_parent: &Path) -> CommandSp
             "-C",
             baseline_parent.to_string_lossy().as_ref(),
         ],
-        false,
-        false,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
     )
 }
 

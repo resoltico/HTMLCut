@@ -1,8 +1,50 @@
 #!/usr/bin/env bash
 # Canonical contributor Rust tool inventory shared by bootstrap scripts, docs, and CI.
 
-export HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN="1.95.0"
-export HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "${script_dir}/common.sh"
+repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
+
+HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN="$(
+    python3 - <<'PY' "${repo_root}/rust-toolchain.toml"
+import pathlib
+import re
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
+
+if tomllib is not None:
+    with manifest_path.open("rb") as handle:
+        manifest = tomllib.load(handle)
+    print(manifest["toolchain"]["channel"])
+    raise SystemExit(0)
+
+toolchain_section = False
+channel_pattern = re.compile(r'^\s*channel\s*=\s*"([^"]+)"\s*$')
+for raw_line in manifest_path.read_text(encoding="utf-8").splitlines():
+    stripped = raw_line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        toolchain_section = stripped == "[toolchain]"
+        continue
+    if not toolchain_section or not stripped or stripped.startswith("#"):
+        continue
+    match = channel_pattern.match(raw_line)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+
+print(f"error: toolchain channel not found in {manifest_path}", file=sys.stderr)
+raise SystemExit(1)
+PY
+)"
+export HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
+HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly"
+export HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
 
@@ -30,7 +72,8 @@ htmlcut_selected_contributor_cargo_tools() {
     local binary_name
 
     for requested_tool in "$@"; do
-        local matched=0
+        local matched
+        matched=0
         while read -r crate_name version binary_name; do
             if [[ "${requested_tool}" == "${crate_name}" || "${requested_tool}" == "${binary_name}" ]]; then
                 printf '%s %s %s\n' "${crate_name}" "${version}" "${binary_name}"

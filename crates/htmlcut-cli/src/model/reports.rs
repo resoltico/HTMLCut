@@ -32,7 +32,7 @@ pub struct BundlePaths {
 }
 
 /// Structured report emitted by extraction and preview CLI commands.
-#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ExtractionCommandReport {
     /// The user-facing tool name.
     pub tool: String,
@@ -68,7 +68,7 @@ pub struct ExtractionCommandReport {
 }
 
 /// Structured report emitted by `htmlcut inspect source`.
-#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SourceInspectionCommandReport {
     /// The user-facing tool name.
     pub tool: String,

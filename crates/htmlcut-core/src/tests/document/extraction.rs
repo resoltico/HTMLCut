@@ -17,8 +17,10 @@ fn selector_and_slice_runs_collect_builder_errors() {
             "<a href=\"/x\">Hello</a>",
             "https://example.com/base/",
         ),
-        ExtractionSpec::slice(slice_spec("<a", "</a>").with_boundary_inclusion(true, true))
-            .with_value(attribute_value("title")),
+        ExtractionSpec::slice(
+            slice_spec("<a", "</a>").with_boundary_retention(BoundaryRetention::IncludeBoth),
+        )
+        .with_value(attribute_value("title")),
     );
     let selector_loaded =
         load_source(&slice_request.source, &RuntimeOptions::default()).expect("loaded");

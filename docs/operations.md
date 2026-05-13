@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "8.0.0"
+version: "9.0.0"
 domain: OPERATIONS
-updated: "2026-05-02"
+updated: "2026-05-13"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
@@ -43,12 +43,12 @@ maintained human guide, but it is not allowed to silently drift away from the ca
 
 | Operation ID | CLI surface | Core surface | Request shape | Result shape | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `document.parse` | none | `parse_document` | `SourceRequest + RuntimeOptions` | `ParseDocumentResult` | Core-only document loading and parsing for in-process callers. |
-| `source.inspect` | `inspect source` | `inspect_source` | `SourceRequest + RuntimeOptions + InspectionOptions` | `SourceInspectionResult` | Source analysis and introspection. |
-| `select.preview` | `inspect select` | `preview_extraction` with selector strategy | `ExtractionRequest + RuntimeOptions` | `ExtractionResult` | Structured selector preview before final extraction. Selection modes include exact-one `single`, `first`, `nth`, and `all`. |
-| `slice.preview` | `inspect slice` | `preview_extraction` with slice strategy | `ExtractionRequest + RuntimeOptions` | `ExtractionResult` | Structured literal or regex slice preview before final extraction. Slice boundaries support precise `include_start` and `include_end` semantics. |
-| `select.extract` | `select` | `extract` with selector strategy | `ExtractionRequest + RuntimeOptions` | `ExtractionResult` | Final selector extraction. Selection modes include exact-one `single`, `first`, `nth`, and `all`. |
-| `slice.extract` | `slice` | `extract` with slice strategy | `ExtractionRequest + RuntimeOptions` | `ExtractionResult` | Final literal or regex slice extraction. Slice boundaries support precise `include_start` and `include_end` semantics. |
+| `document.parse` | none | `parse document` | `source request + runtime options` | `parsed document result` | Core-only document loading and parsing for in-process callers. |
+| `source.inspect` | `inspect source` | `inspect source` | `source request + runtime options + inspection options` | `source inspection result` | Source analysis and introspection. |
+| `select.preview` | `inspect select` | `preview selector extraction` | `extraction request + runtime options` | `extraction result` | Selector preview before final extraction. Preview accepts the same value modes as final selector extraction while surfacing match metadata. |
+| `slice.preview` | `inspect slice` | `preview slice extraction` | `extraction request + runtime options` | `extraction result` | Literal or regex slice preview before final extraction. Slice requests model named boundary-retention modes, while structured match metadata reports the realized `include_start` / `include_end` facts. |
+| `select.extract` | `select` | `extract selector values` | `extraction request + runtime options` | `extraction result` | Final selector extraction. Selection modes include exact-one `single`, `first`, `nth`, and `all`. |
+| `slice.extract` | `slice` | `extract slice values` | `extraction request + runtime options` | `extraction result` | Final literal or regex slice extraction. Slice requests model named boundary-retention modes, while structured match metadata reports the realized `include_start` / `include_end` facts. |
 
 ## Interop Boundary
 
