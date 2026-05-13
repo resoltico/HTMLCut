@@ -5,6 +5,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Refined release closeout guidance so overlapping Dependabot PRs that touch the same write set
+  are consolidated through one maintainer-owned `main` update instead of churny sequential merges
+  that immediately put sibling branches behind.
+- Updated the workspace dependency graph to `assert_cmd 2.2.2` and `scraper 0.27.0` after the
+  `9.0.0` publication, keeping post-release `main` aligned with the reviewed Dependabot payloads
+  without leaving superseded bot branches open.
+- Refreshed the checked-in `semver-baseline/htmlcut-core` snapshot from the published `v9.0.0`
+  tag so future API comparisons use the actual released 9.0.0 surface and its recorded
+  provenance.
+
 ## [9.0.0] - 2026-05-13
 
 ### Changed
