@@ -26,7 +26,7 @@ homepage = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
 arbitrary = { version = "1.4.2", features = ["derive"] }
-assert_cmd = "2.2.0"
+assert_cmd = "2.2.2"
 clap = { version = "4.6.1", features = ["derive"] }
 ego-tree = "0.11.0"
 htmlcut-cli = { path = "crates/htmlcut-cli", version = "9.0.0" }
