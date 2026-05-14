@@ -41,6 +41,10 @@ pub(super) fn release_doc_errors(repo_root: &Path, display_path: &str, text: &st
         errors.extend(explicit_main_sync_errors(display_path, text));
     }
 
+    if display_path == "docs/release-preflight.md" {
+        errors.extend(merge_handoff_errors(display_path, text));
+    }
+
     if display_path == "docs/release-closeout.md" {
         errors.extend(worktree_handoff_errors(display_path, text));
     }
@@ -181,6 +185,24 @@ fn worktree_handoff_errors(display_path: &str, text: &str) -> Vec<String> {
         .collect()
 }
 
+fn merge_handoff_errors(display_path: &str, text: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if !text.contains("gh pr merge <N> --merge --subject") {
+        errors.push(format!(
+            "{display_path} is missing the canonical release merge handoff command without local branch deletion side effects"
+        ));
+    }
+
+    if text.contains("gh pr merge <N> --merge --delete-branch") {
+        errors.push(format!(
+            "{display_path} must not use `gh pr merge --delete-branch` from the disposable release worktree handoff"
+        ));
+    }
+
+    errors
+}
+
 fn version_banner_check_errors(display_path: &str, text: &str) -> Vec<String> {
     let mut errors = Vec::new();
 
@@ -296,6 +318,23 @@ mod tests {
             error.contains(
                 "docs/release-closeout.md must document detaching a disposable release worktree",
             )
+        }));
+    }
+
+    #[test]
+    fn merge_handoff_errors_reject_delete_branch_side_effects() {
+        let errors = merge_handoff_errors(
+            "docs/release-preflight.md",
+            "gh pr merge <N> --merge --delete-branch --subject \"release: bump version to X.Y.Z (#N)\"",
+        );
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| { error.contains("must not use `gh pr merge --delete-branch`") })
+        );
+        assert!(errors.iter().any(|error| {
+            error.contains("is missing the canonical release merge handoff command")
         }));
     }
 

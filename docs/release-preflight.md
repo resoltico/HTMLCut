@@ -288,7 +288,7 @@ the release-target smoke matrix.
 ## 4. Merge Handoff
 
 ```bash
-gh pr merge <N> --merge --delete-branch --subject "release: bump version to X.Y.Z (#N)"
+gh pr merge <N> --merge --subject "release: bump version to X.Y.Z (#N)"
 git checkout main
 git fetch origin --prune --tags
 git merge --ff-only origin/main
@@ -307,6 +307,12 @@ and then merge normally. If it is blocked by review requirements or admin-enforc
 protection, repository settings have drifted away from this protocol and must be corrected before
 the release proceeds. Do not work around that drift by adding manual review steps to the normal
 release path.
+
+Do not pass `--delete-branch` to `gh pr merge` from a disposable `release/X.Y.Z` worktree. GitHub
+can merge the PR and delete the remote branch successfully while the CLI still exits non-zero
+because it cannot delete the checked-out local branch from that disposable worktree. Treat remote
+branch cleanup as a verified release condition, not as part of the merge command's local side
+effects.
 
 If the local `release/X.Y.Z` branch still exists:
 
