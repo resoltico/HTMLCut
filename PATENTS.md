@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "9.0.0"
+  version: "10.0.0"
   domain: LEGAL
   updated: "2026-05-05"
 RETRIEVAL_HINTS:

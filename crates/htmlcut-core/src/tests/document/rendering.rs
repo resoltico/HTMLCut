@@ -220,7 +220,21 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
     );
     assert_eq!(
         render_html_as_text(
+            "<article><span>When you purchase through links on our site, we may earn an affiliate commission. <a href=\"/terms\">Here’s how it works</a>.</span><h1>Story</h1><p>Body paragraph.</p></article>",
+            WhitespaceMode::Rendered,
+        ),
+        "# Story\n\nBody paragraph."
+    );
+    assert_eq!(
+        render_html_as_text(
             "<article><p><a href=\"/promo\"><strong>READ THE FULL TRANSCRIPT HERE</strong></a></p><p>Body paragraph.</p></article>",
+            WhitespaceMode::Rendered,
+        ),
+        "Body paragraph."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<article><div class=\"hatnote\">For other uses, see <a href=\"/wiki/Math_(disambiguation)\">Math (disambiguation)</a>.</div><p>Body paragraph.</p></article>",
             WhitespaceMode::Rendered,
         ),
         "Body paragraph."
@@ -318,6 +332,13 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
             WhitespaceMode::Rendered,
         ),
         "# Help\n\nBody."
+    );
+    assert_eq!(
+        render_html_as_text(
+            "<main id=\"main\"><section class=\"section section-design section-product-story\"><h2>Design</h2><p>All-screen front.</p></section><section id=\"accessories\" class=\"section section-accessories section-product-story\"><h2>Accessories</h2><p><a href=\"/shop\">Shop all iPhone accessories</a></p></section><section class=\"section section-faq\"><h2>Questions? Answers.</h2><p>FAQ body.</p></section><section class=\"section section-upgrade\"><h2>Upgrade</h2><p><a href=\"/trade\">Find your trade-in value</a></p></section></main>",
+            WhitespaceMode::Rendered,
+        ),
+        "## Design\n\nAll-screen front."
     );
     assert_eq!(
         render_html_as_text(

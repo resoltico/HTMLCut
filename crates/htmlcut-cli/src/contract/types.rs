@@ -112,6 +112,24 @@ impl_cli_choice!(CliTextJsonOutputMode {
     CliTextJsonOutputMode::Json => "json",
 });
 
+/// Canonical stdout rendering modes for `htmlcut schema`.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum CliSchemaOutputMode {
+    /// Render compact human-readable text.
+    Text,
+    /// Render the full validator-grade JSON Schema documents.
+    Json,
+    /// Render only the machine-readable schema inventory without embedded documents.
+    IndexJson,
+}
+
+impl_cli_choice!(CliSchemaOutputMode {
+    CliSchemaOutputMode::Text => "text",
+    CliSchemaOutputMode::Json => "json",
+    CliSchemaOutputMode::IndexJson => "index-json",
+});
+
 /// Canonical TLS trust modes exposed by HTMLCut CLI commands.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "kebab-case")]
@@ -174,6 +192,22 @@ impl CliTextJsonOutputMode {
 
 impl From<CliTextJsonOutputMode> for CliOutputMode {
     fn from(value: CliTextJsonOutputMode) -> Self {
+        value.as_output_mode()
+    }
+}
+
+impl CliSchemaOutputMode {
+    /// Returns the corresponding general CLI output mode for this schema surface.
+    pub const fn as_output_mode(self) -> CliOutputMode {
+        match self {
+            Self::Text => CliOutputMode::Text,
+            Self::Json | Self::IndexJson => CliOutputMode::Json,
+        }
+    }
+}
+
+impl From<CliSchemaOutputMode> for CliOutputMode {
+    fn from(value: CliSchemaOutputMode) -> Self {
         value.as_output_mode()
     }
 }
@@ -413,6 +447,30 @@ mod tests {
         assert_eq!(
             BoundaryRetention::from(CliBoundaryRetentionMode::IncludeBoth),
             BoundaryRetention::IncludeBoth
+        );
+    }
+
+    #[test]
+    fn text_json_and_schema_output_modes_map_back_to_general_output_modes() {
+        assert_eq!(
+            CliTextJsonOutputMode::Text.as_output_mode(),
+            CliOutputMode::Text
+        );
+        assert_eq!(
+            CliTextJsonOutputMode::Json.as_output_mode(),
+            CliOutputMode::Json
+        );
+        assert_eq!(
+            CliSchemaOutputMode::Text.as_output_mode(),
+            CliOutputMode::Text
+        );
+        assert_eq!(
+            CliSchemaOutputMode::Json.as_output_mode(),
+            CliOutputMode::Json
+        );
+        assert_eq!(
+            CliSchemaOutputMode::IndexJson.as_output_mode(),
+            CliOutputMode::Json
         );
     }
 }

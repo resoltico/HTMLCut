@@ -123,9 +123,11 @@ impl<'a> RawInvocation<'a> {
         let text_output_mode = crate::args::CliOutputMode::Text.to_string();
         let html_output_mode = crate::args::CliOutputMode::Html.to_string();
         let none_output_mode = crate::args::CliOutputMode::None.to_string();
+        let index_json_output_mode = crate::args::CliSchemaOutputMode::IndexJson.to_string();
 
         match self.explicit_output {
             Some(value) if value == json_output_mode.as_str() => true,
+            Some(value) if value == index_json_output_mode.as_str() => true,
             Some(value)
                 if value == text_output_mode.as_str()
                     || value == html_output_mode.as_str()
@@ -133,7 +135,7 @@ impl<'a> RawInvocation<'a> {
             {
                 false
             }
-            _ => self.inspect_mode() || self.structured_value,
+            _ => self.structured_value,
         }
     }
 
@@ -156,10 +158,6 @@ impl<'a> RawInvocation<'a> {
             "inspect" => "inspect".to_owned(),
             command => command.to_owned(),
         }
-    }
-
-    fn inspect_mode(&self) -> bool {
-        self.recognized_command && matches!(self.command_tokens.first(), Some(&"inspect"))
     }
 }
 

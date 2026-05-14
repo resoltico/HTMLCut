@@ -35,21 +35,71 @@ const BLOCK_TAGS: [&str; 21] = [
     "section",
 ];
 const SKIP_TAGS: [&str; 5] = ["head", "noscript", "script", "style", "template"];
-const READER_AUXILIARY_TOKENS: [&str; 12] = [
+const READER_AUXILIARY_TOKENS: [&str; 20] = [
     "backlink",
     "bibliography",
     "citation",
     "citations",
     "cite",
+    "disambiguation",
     "editsection",
     "footnote",
     "footnotes",
+    "hatnote",
     "noteref",
     "reflist",
     "reference",
     "references",
+    "redirect",
+    "shortdescription",
+    "subjectbar",
+    "subjectpageheader",
+    "sister",
+    "toc",
 ];
 const CONTENT_HINT_TOKENS: [&str; 6] = ["article", "body", "content", "main", "story", "text"];
+const READER_NOTICE_TOKENS: [&str; 14] = [
+    "advertising",
+    "affiliate",
+    "commission",
+    "copyright",
+    "cookie",
+    "cookies",
+    "disclosure",
+    "earn",
+    "links",
+    "policy",
+    "privacy",
+    "purchase",
+    "sponsored",
+    "terms",
+];
+const READER_NOTICE_PHRASES: [&str; 8] = [
+    "affiliate commission",
+    "fair use",
+    "here's how it works",
+    "how it works",
+    "terms apply",
+    "we may earn",
+    "when you purchase through links",
+    "when you purchase through links on our site",
+];
+const READER_NOTICE_STRONG_PHRASES: [&str; 4] = [
+    "copyright act",
+    "reviewed by an editor",
+    "this article was generated",
+    "used for the purpose of news reporting",
+];
+const AUXILIARY_SECTION_HEADINGS: [&str; 7] = [
+    "citations",
+    "external links",
+    "further reading",
+    "notes",
+    "other sources",
+    "references",
+    "see also",
+];
+const SOURCE_ATTRIBUTION_PREFIXES: [&str; 3] = ["source:", "sources:", "via:"];
 const NOTE_FRAGMENT_PREFIXES: [&str; 8] = [
     "#bib",
     "#cite",
@@ -102,9 +152,7 @@ fn render_children_as_text<'a>(
     whitespace: WhitespaceMode,
 ) -> String {
     let mut output = String::new();
-    for child in children {
-        render_node(child, &mut output, false, false);
-    }
+    render_child_nodes(children, &mut output, false, false, true);
 
     normalize_rendered_output(output, whitespace)
 }
@@ -161,7 +209,7 @@ pub(crate) fn render_node(
                 return;
             }
 
-            if element_has_hidden_style(&element) || element_looks_like_reader_auxiliary(&element) {
+            if element_should_skip_in_reader_text(&element) {
                 return;
             }
 
@@ -230,9 +278,7 @@ pub(crate) fn render_node(
 
             if tag_name == "ul" || tag_name == "ol" {
                 push_newline(output, 2);
-                for child in node.children() {
-                    render_node(child, output, false, false);
-                }
+                render_child_nodes(node.children(), output, false, false, false);
                 push_newline(output, 2);
                 return;
             }
@@ -266,9 +312,7 @@ pub(crate) fn render_node(
 
             if tag_name == "dl" {
                 push_newline(output, 2);
-                for child in node.children() {
-                    render_node(child, output, false, false);
-                }
+                render_child_nodes(node.children(), output, false, false, false);
                 push_newline(output, 2);
                 return;
             }
@@ -286,9 +330,7 @@ pub(crate) fn render_node(
 
             if tag_name == "dt" {
                 push_newline(output, 2);
-                for child in node.children() {
-                    render_node(child, output, false, false);
-                }
+                render_child_nodes(node.children(), output, false, false, false);
                 push_newline(output, 1);
                 return;
             }
@@ -296,9 +338,7 @@ pub(crate) fn render_node(
             if tag_name == "dd" {
                 push_newline(output, 1);
                 output.push_str(": ");
-                for child in node.children() {
-                    render_node(child, output, false, true);
-                }
+                render_child_nodes(node.children(), output, false, true, false);
                 push_newline(output, 2);
                 return;
             }
@@ -316,9 +356,7 @@ pub(crate) fn render_node(
             }
 
             let child_in_pre = in_pre || tag_name == "pre";
-            for child in node.children() {
-                render_node(child, output, child_in_pre, false);
-            }
+            render_child_nodes(node.children(), output, child_in_pre, false, true);
 
             if is_block {
                 push_newline(output, 2);
@@ -409,7 +447,7 @@ fn render_heading_text_node(node: DomNodeRef<'_, Node>, output: &mut String, in_
                 return;
             }
 
-            if element_has_hidden_style(&element) || element_looks_like_reader_auxiliary(&element) {
+            if element_should_skip_in_reader_text(&element) {
                 return;
             }
 
@@ -541,6 +579,183 @@ fn element_looks_like_reader_auxiliary(element: &ElementRef<'_>) -> bool {
         )
 }
 
+fn element_looks_like_brief_reader_notice(element: &ElementRef<'_>) -> bool {
+    if !matches!(
+        element.value().name(),
+        "aside" | "div" | "li" | "p" | "section" | "span"
+    ) {
+        return false;
+    }
+
+    let text = collect_notice_text(**element, 420);
+    if text.is_empty() {
+        return false;
+    }
+
+    let normalized = collapse_inline_whitespace(text.trim()).to_ascii_lowercase();
+    let strong_phrase_hit = READER_NOTICE_STRONG_PHRASES
+        .iter()
+        .any(|phrase| normalized.contains(phrase));
+    let character_count = normalized.chars().count();
+    if character_count > 420 {
+        return false;
+    }
+    if character_count > 240 && !strong_phrase_hit {
+        return false;
+    }
+
+    if normalized
+        .chars()
+        .filter(|character| character.is_alphabetic())
+        .count()
+        < 18
+    {
+        return false;
+    }
+
+    let token_hits = tokenize_notice_text(&normalized)
+        .into_iter()
+        .filter(|token| READER_NOTICE_TOKENS.contains(&token.as_str()))
+        .count();
+    let phrase_hit = READER_NOTICE_PHRASES
+        .iter()
+        .any(|phrase| normalized.contains(phrase));
+    let has_link = element
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .any(|descendant| descendant.value().name() == "a");
+
+    if !has_link {
+        return false;
+    }
+
+    strong_phrase_hit || phrase_hit || token_hits >= 3
+}
+
+fn element_should_skip_in_reader_text(element: &ElementRef<'_>) -> bool {
+    if element_has_hidden_style(element) {
+        return true;
+    }
+    if element_looks_like_reader_auxiliary(element) {
+        return true;
+    }
+    if element_looks_like_brief_reader_notice(element) {
+        return true;
+    }
+    if element_looks_like_source_attribution(element) {
+        return true;
+    }
+    if element_looks_like_auxiliary_section(element) {
+        return true;
+    }
+    false
+}
+
+fn element_looks_like_source_attribution(element: &ElementRef<'_>) -> bool {
+    if !matches!(
+        element.value().name(),
+        "div" | "li" | "p" | "section" | "span"
+    ) {
+        return false;
+    }
+
+    let text = collect_notice_text(**element, 220);
+    if text.is_empty() {
+        return false;
+    }
+
+    let normalized = collapse_inline_whitespace(text.trim()).to_ascii_lowercase();
+    let link_count = element
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .filter(|descendant| descendant.value().name() == "a")
+        .count();
+    link_count > 0
+        && normalized.chars().count() <= 220
+        && SOURCE_ATTRIBUTION_PREFIXES
+            .iter()
+            .any(|prefix| normalized.starts_with(prefix))
+}
+
+fn element_looks_like_auxiliary_section(element: &ElementRef<'_>) -> bool {
+    if !matches!(element.value().name(), "aside" | "div" | "nav" | "section") {
+        return false;
+    }
+
+    leading_section_heading(element)
+        .map(|heading| normalize_auxiliary_heading(&heading))
+        .is_some_and(|heading| AUXILIARY_SECTION_HEADINGS.contains(&heading.as_str()))
+}
+
+fn render_child_nodes<'a>(
+    children: impl Iterator<Item = DomNodeRef<'a, Node>>,
+    output: &mut String,
+    in_pre: bool,
+    list_item: bool,
+    stop_at_terminal_auxiliary: bool,
+) {
+    let mut rendered_substantive = output.chars().any(|character| !character.is_whitespace());
+    for child in children {
+        if stop_at_terminal_auxiliary
+            && rendered_substantive
+            && node_starts_terminal_non_narrative_section(child)
+        {
+            break;
+        }
+        let before_len = output.len();
+        render_node(child, output, in_pre, list_item);
+        if output.len() > before_len {
+            rendered_substantive = true;
+        }
+    }
+}
+
+fn node_starts_terminal_non_narrative_section(node: DomNodeRef<'_, Node>) -> bool {
+    let Some(element) = ElementRef::wrap(node) else {
+        return false;
+    };
+
+    element_starts_terminal_utility_section(&element)
+        || leading_section_heading(&element)
+            .map(|heading| normalize_auxiliary_heading(&heading))
+            .is_some_and(|heading| AUXILIARY_SECTION_HEADINGS.contains(&heading.as_str()))
+}
+
+fn element_starts_terminal_utility_section(element: &ElementRef<'_>) -> bool {
+    matches!(element.value().name(), "aside" | "nav" | "section")
+        && element_looks_like_utility_chrome(element)
+}
+
+fn leading_section_heading(element: &ElementRef<'_>) -> Option<String> {
+    if let Some(heading) = heading_text_if_heading(element) {
+        return Some(heading);
+    }
+
+    for child in element.children().filter_map(ElementRef::wrap).take(4) {
+        if let Some(heading) = heading_text_if_heading(&child) {
+            return Some(heading);
+        }
+
+        if !matches!(child.value().name(), "div" | "header" | "section") {
+            continue;
+        }
+
+        for grandchild in child.children().filter_map(ElementRef::wrap).take(4) {
+            if let Some(heading) = heading_text_if_heading(&grandchild) {
+                return Some(heading);
+            }
+        }
+    }
+
+    None
+}
+
+fn heading_text_if_heading(element: &ElementRef<'_>) -> Option<String> {
+    heading_level(element.value().name())
+        .and_then(|_| extract_heading_text(element))
+        .filter(|heading| !heading.trim().is_empty())
+}
+
 fn looks_like_note_fragment_anchor(element: &ElementRef<'_>) -> bool {
     if element
         .value()
@@ -560,6 +775,79 @@ fn looks_like_note_fragment_anchor(element: &ElementRef<'_>) -> bool {
                 .attr("href")
                 .is_some_and(is_note_fragment_href)
         })
+}
+
+fn collect_notice_text(element: DomNodeRef<'_, Node>, limit: usize) -> String {
+    let mut rendered = String::new();
+    collect_notice_node_text(element, limit, &mut rendered);
+    collapse_inline_whitespace(rendered.trim())
+}
+
+fn collect_notice_node_text(node: DomNodeRef<'_, Node>, limit: usize, output: &mut String) {
+    if output.chars().count() >= limit {
+        return;
+    }
+
+    match node.value() {
+        Node::Text(contents) => {
+            let text = collapse_inline_whitespace(contents);
+            if text.is_empty() {
+                return;
+            }
+            if needs_space(output, &text) {
+                output.push(' ');
+            }
+            output.push_str(&text);
+        }
+        Node::Element(data) => {
+            if matches!(
+                data.name(),
+                "head" | "noscript" | "script" | "style" | "template"
+            ) {
+                return;
+            }
+
+            for child in node.children() {
+                collect_notice_node_text(child, limit, output);
+                if output.chars().count() >= limit {
+                    return;
+                }
+            }
+        }
+        _ => {
+            for child in node.children() {
+                collect_notice_node_text(child, limit, output);
+                if output.chars().count() >= limit {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn tokenize_notice_text(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+
+    for character in input.chars() {
+        if character.is_ascii_alphanumeric() {
+            current.push(character.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
+fn normalize_auxiliary_heading(input: &str) -> String {
+    collapse_inline_whitespace(input.trim())
+        .trim_end_matches(':')
+        .to_ascii_lowercase()
 }
 
 fn is_note_fragment_href(href: &str) -> bool {
@@ -1755,6 +2043,121 @@ mod tests {
         let reference_list = parse_document_node("<ul class=\"references\"><li>Ref</li></ul>");
         let reference_list_element = select_first(&reference_list, "ul").expect("ul");
         assert!(element_looks_like_reader_auxiliary(&reference_list_element));
+        let hatnote = parse_document_node(
+            "<div class=\"hatnote navigation-not-searchable\">For other uses, see <a href=\"/wiki/Math_(disambiguation)\">Math (disambiguation)</a>.</div>",
+        );
+        let hatnote_element = select_first(&hatnote, "div").expect("hatnote");
+        assert!(element_looks_like_reader_auxiliary(&hatnote_element));
+        let subjectpageheader = parse_document_node(
+            "<div class=\"mw-subjectpageheader\"><span>From Wikipedia, the free encyclopedia</span></div>",
+        );
+        let subjectpageheader_element =
+            select_first(&subjectpageheader, "div").expect("subjectpageheader");
+        assert!(element_looks_like_reader_auxiliary(
+            &subjectpageheader_element
+        ));
+        let affiliate_notice = parse_document_node(
+            "<span>When you purchase through links on our site, we may earn an affiliate commission. <a href=\"/terms\">Here’s how it works</a>.</span>",
+        );
+        let affiliate_notice_element =
+            select_first(&affiliate_notice, "span").expect("affiliate notice");
+        assert!(element_looks_like_brief_reader_notice(
+            &affiliate_notice_element
+        ));
+        let ordinary_short_text = parse_document_node(
+            "<span><a href=\"/guide\">Guide</a> to the latest experiment results.</span>",
+        );
+        let ordinary_short_text_element =
+            select_first(&ordinary_short_text, "span").expect("ordinary short text");
+        assert!(!element_looks_like_brief_reader_notice(
+            &ordinary_short_text_element
+        ));
+        assert_eq!(
+            collect_notice_text(*affiliate_notice_element, 240),
+            "When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works."
+        );
+        let long_strong_notice = parse_document_node(
+            "<span>\
+                This article was generated for demonstration purposes. \
+                This article was generated for demonstration purposes. \
+                This article was generated for demonstration purposes. \
+                This article was generated for demonstration purposes. \
+                This article was generated for demonstration purposes. \
+                <a href=\"/terms\">Read more</a>.\
+            </span>",
+        );
+        assert!(element_looks_like_brief_reader_notice(
+            &select_first(&long_strong_notice, "span").expect("strong notice")
+        ));
+        let source_attribution = parse_document_node(
+            "<p>Source: <a href=\"https://example.test/feed\">Research Feed</a></p>",
+        );
+        let source_attribution_element =
+            select_first(&source_attribution, "p").expect("source attribution");
+        assert!(element_looks_like_source_attribution(
+            &source_attribution_element
+        ));
+        assert!(element_should_skip_in_reader_text(
+            &source_attribution_element
+        ));
+        let auxiliary_section = parse_document_node(
+            "<section><h2>References</h2><ul><li><a href=\"/source\">Source</a></li></ul></section>",
+        );
+        let auxiliary_section_element =
+            select_first(&auxiliary_section, "section").expect("auxiliary section");
+        assert!(element_looks_like_auxiliary_section(
+            &auxiliary_section_element
+        ));
+        assert!(element_should_skip_in_reader_text(
+            &auxiliary_section_element
+        ));
+        assert_eq!(
+            tokenize_notice_text("Terms apply; we may earn affiliate commission!"),
+            vec![
+                "terms",
+                "apply",
+                "we",
+                "may",
+                "earn",
+                "affiliate",
+                "commission"
+            ]
+        );
+        let nested_notice_document = parse_document_node(
+            "<div><!--ignored--><script>skip</script><style>.x{}</style><template><span>Hidden</span></template><noscript>Fallback</noscript><span>Alpha</span><span>Beta</span></div>",
+        );
+        let nested_notice_element = select_first(&nested_notice_document, "div").expect("notice");
+        assert_eq!(
+            collect_notice_text(*nested_notice_element, 240),
+            "Alpha Beta"
+        );
+        let whitespace_notice_document = parse_document_node("<div>   </div>");
+        let whitespace_notice = select_first(&whitespace_notice_document, "div").expect("notice");
+        let whitespace_text = whitespace_notice
+            .children()
+            .next()
+            .expect("whitespace text child");
+        let mut whitespace_output = String::new();
+        collect_notice_node_text(whitespace_text, 240, &mut whitespace_output);
+        assert!(whitespace_output.is_empty());
+        let mut capped_output = "already enough".to_owned();
+        collect_notice_node_text(*nested_notice_element, 5, &mut capped_output);
+        assert_eq!(capped_output, "already enough");
+        let mut document_root_output = String::new();
+        collect_notice_node_text(
+            nested_notice_document.tree.root(),
+            240,
+            &mut document_root_output,
+        );
+        assert!(document_root_output.contains("Alpha Beta"));
+        let root_limited_document = parse_document_node("<div>Alpha</div><div>Beta</div>");
+        let mut root_limited_output = String::new();
+        collect_notice_node_text(
+            root_limited_document.tree.root(),
+            5,
+            &mut root_limited_output,
+        );
+        assert_eq!(root_limited_output, "Alpha");
 
         let direct_math_root =
             parse_document_node("<math><msup><mi>x</mi><mn>2</mn></msup></math>");

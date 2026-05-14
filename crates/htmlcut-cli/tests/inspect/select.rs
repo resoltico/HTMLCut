@@ -28,7 +28,14 @@ fn inspect_select_json_has_core_preview_parity() {
         command
             .args(["inspect", "select"])
             .arg(&input_path)
-            .args(["--css", "section.card", "--match", "all"])
+            .args([
+                "--css",
+                "section.card",
+                "--match",
+                "all",
+                "--output",
+                "json",
+            ])
             .assert()
             .success(),
     );
@@ -42,8 +49,11 @@ fn inspect_select_json_has_core_preview_parity() {
     assert_eq!(report.extraction, expected.extraction);
     assert_eq!(report.stats.candidate_count, expected.stats.candidate_count);
     assert_eq!(report.stats.match_count, expected.stats.match_count);
-    assert_eq!(report.matches, expected.matches);
-    assert_eq!(report.diagnostics, expected.diagnostics);
+    assert_eq!(report.matches, normalize_public_matches(expected.matches));
+    assert_eq!(
+        report.diagnostics,
+        normalize_public_diagnostics(expected.diagnostics)
+    );
 }
 #[test]
 fn inspect_select_nth_does_not_warn_about_multiple_candidates() {

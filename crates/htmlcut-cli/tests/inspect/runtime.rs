@@ -26,6 +26,7 @@ fn stdin_bundle_flow_and_verbose_levels_work() {
 
     assert!(bundle_dir.join("selection.html").exists());
     assert!(bundle_dir.join("selection.txt").exists());
+    assert!(bundle_dir.join("selection.json").exists());
     assert!(bundle_dir.join("report.json").exists());
 }
 #[test]

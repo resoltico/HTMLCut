@@ -4,6 +4,7 @@ use crate::{
     AttributeName, EXTRACTION_DEFINITION_SCHEMA_VERSION, ExtractionDefinition, ExtractionRequest,
     ExtractionSpec, HttpUrl, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec,
     SelectorQuery, SourceRequest, ValueSpec, extract, result::ExtractionMatchMetadata,
+    wire::v1::ExtractionDefinitionDocument,
 };
 
 #[test]
@@ -87,7 +88,10 @@ fn reusable_extraction_definition_example_emits_a_reusable_definition() {
         ..ExtractionDefinition::new(request)
     };
 
-    let encoded = serde_json::to_string_pretty(&definition).expect("encode definition");
+    let encoded = serde_json::to_string_pretty(
+        &ExtractionDefinitionDocument::try_from(definition).expect("definition document"),
+    )
+    .expect("encode definition");
     let value: Value = serde_json::from_str(&encoded).expect("parse definition");
 
     assert_eq!(value["schema_name"], "htmlcut.extraction_definition");
@@ -95,7 +99,8 @@ fn reusable_extraction_definition_example_emits_a_reusable_definition() {
         value["schema_version"],
         EXTRACTION_DEFINITION_SCHEMA_VERSION
     );
+    assert_eq!(value["request"]["spec_version"], crate::CORE_SPEC_VERSION);
     assert_eq!(value["request"]["extraction"]["kind"], "selector");
     assert_eq!(value["request"]["extraction"]["selector"], "article a");
-    assert_eq!(value["runtime"]["fetch_preflight"], "head-first");
+    assert!(value.get("runtime").is_none());
 }

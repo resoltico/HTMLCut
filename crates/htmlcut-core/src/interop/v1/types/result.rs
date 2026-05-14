@@ -5,7 +5,6 @@ use std::num::NonZeroUsize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use url::Url;
 
 use super::super::stable_json::digest_stable_json_omitting_field;
 use super::plan::{Output, OutputKind, SelectionMode, StrategyKind};
@@ -13,6 +12,7 @@ use super::shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
     RESULT_SCHEMA_VERSION, validate_schema_identity, validate_sha256_hex,
 };
+use crate::DisplayedHttpUrl;
 
 macro_rules! interop_diagnostic_codes {
     (
@@ -194,13 +194,14 @@ impl From<&crate::result::Range> for ByteRange {
 
 /// Source summary carried in one successful extraction result.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ResultSource {
     /// Base URL supplied before document parsing.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_base_url: Option<Url>,
+    pub input_base_url: Option<DisplayedHttpUrl>,
     /// Effective base URL after document `<base href>` resolution.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub effective_base_url: Option<Url>,
+    pub effective_base_url: Option<DisplayedHttpUrl>,
     /// Parsed document title when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_title: Option<String>,
@@ -334,6 +335,7 @@ pub struct SelectedMatch {
 
 /// Successful extraction result owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct InteropResult {
     /// Schema identity.
     pub schema_name: String,
@@ -545,6 +547,7 @@ pub enum ErrorCode {
 
 /// Typed extraction error document owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct InteropError {
     /// Schema identity.
     pub schema_name: String,

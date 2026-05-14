@@ -111,28 +111,28 @@ fn getting_started_quick_start_commands_run_on_the_demo_page() {
         .stdout(predicate::str::contains("Root tag: html"));
 
     let mut inspect_select = Command::cargo_bin("htmlcut").expect("binary");
-    let inspect_select_report = parse_extraction_report(
-        inspect_select
-            .args(["inspect", "select"])
-            .arg(&input_path)
-            .args(["--css", ".card", "--match", "all"])
-            .assert()
-            .success(),
-    );
-    assert_eq!(inspect_select_report.command, "inspect-select");
-    assert_eq!(inspect_select_report.matches.len(), 2);
+    inspect_select
+        .args(["inspect", "select"])
+        .arg(&input_path)
+        .args(["--css", ".card", "--match", "all"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Command: inspect-select"))
+        .stdout(predicate::str::contains("Candidates: 2 | Selected: 2"))
+        .stdout(predicate::str::contains("Card alpha"))
+        .stdout(predicate::str::contains("Card beta"));
 
     let mut inspect_slice = Command::cargo_bin("htmlcut").expect("binary");
-    let inspect_slice_report = parse_extraction_report(
-        inspect_slice
-            .args(["inspect", "slice"])
-            .arg(&input_path)
-            .args(["--from", "<article>", "--to", "</article>"])
-            .assert()
-            .success(),
-    );
-    assert_eq!(inspect_slice_report.command, "inspect-slice");
-    assert_eq!(inspect_slice_report.matches.len(), 1);
+    inspect_slice
+        .args(["inspect", "slice"])
+        .arg(&input_path)
+        .args(["--from", "<article>", "--to", "</article>"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Command: inspect-slice"))
+        .stdout(predicate::str::contains("Candidates: 1 | Selected: 1"))
+        .stdout(predicate::str::contains("boundaries: <article>"))
+        .stdout(predicate::str::contains("# Guide"));
 }
 
 #[test]

@@ -2,10 +2,7 @@ use std::path::Path;
 
 use htmlcut_core::{AttributeName, ValueSpec, ValueType};
 
-use crate::args::{
-    CliOutputMode, CliPatternMode, CliSliceValueMode, CliValueMode, ExtractOutputArgs,
-    SliceExtractOutputArgs,
-};
+use crate::args::{CliOutputMode, CliPatternMode, ExtractOutputArgs, SliceExtractOutputArgs};
 use crate::error::{CliError, usage_error};
 use crate::model::CliErrorCode;
 
@@ -20,7 +17,7 @@ impl ExtractOutputLike for ExtractOutputArgs {
     }
 
     fn default_value_type(&self) -> ValueType {
-        ValueType::from(CliValueMode::Structured)
+        ValueType::from(self.value)
     }
 }
 
@@ -30,7 +27,7 @@ impl ExtractOutputLike for SliceExtractOutputArgs {
     }
 
     fn default_value_type(&self) -> ValueType {
-        ValueType::from(CliSliceValueMode::Structured)
+        ValueType::from(self.value)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
+use super::{displayed_http_url, http_url};
 use crate::DEFAULT_MAX_BYTES;
 use crate::interop::v1::{
     ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText,
@@ -12,7 +13,6 @@ use crate::interop::v1::{
     stable_json_v1,
 };
 use serde_json::json;
-use url::Url;
 
 const TEST_PLAN_DIGEST_SHA256: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -81,7 +81,7 @@ fn stable_json_v1_sorts_object_keys_recursively() {
 
 #[test]
 fn html_input_builds_memory_source_request() {
-    let base_url = Url::parse("https://example.com/start.html").expect("base url");
+    let base_url = http_url("https://example.com/start.html");
     let source = HtmlInput::new("target-news", "<article>Hello</article>")
         .expect("source input")
         .with_input_base_url(base_url.clone());
@@ -140,8 +140,8 @@ fn interop_result_digest_ignores_existing_digest_field() {
             1,
         ),
         ResultSource {
-            input_base_url: Some(Url::parse("https://example.com/start.html").expect("url")),
-            effective_base_url: Some(Url::parse("https://example.com/base/").expect("url")),
+            input_base_url: Some(displayed_http_url("https://example.com/start.html")),
+            effective_base_url: Some(displayed_http_url("https://example.com/base/")),
             document_title: Some("Example".to_owned()),
         },
         selected_matches(selector_match()),
@@ -300,7 +300,7 @@ fn prepared_plan_executes_without_revalidating_the_plan_surface() {
         "<html><head><title>Example</title></head><body><article><a href=\"guide.html\">Guide</a></article></body></html>",
     )
     .expect("source")
-    .with_input_base_url(Url::parse("https://example.com/docs/start.html").expect("url"));
+    .with_input_base_url(http_url("https://example.com/docs/start.html"));
     let plan = Plan::new(
         PlanStrategy::css_selector(css_selector("article a")),
         Selection::single(),
@@ -330,7 +330,7 @@ fn execute_plan_executes_css_selector_with_rewritten_outer_html() {
         "<html><head><title>Example</title></head><body><article><a href=\"guide.html\">Guide</a></article></body></html>",
     )
     .expect("source")
-    .with_input_base_url(Url::parse("https://example.com/docs/start.html").expect("url"));
+    .with_input_base_url(http_url("https://example.com/docs/start.html"));
     let plan = Plan::new(
         PlanStrategy::css_selector(css_selector("article a")),
         Selection::single(),
@@ -345,11 +345,11 @@ fn execute_plan_executes_css_selector_with_rewritten_outer_html() {
     assert_eq!(result.result_digest_sha256.len(), 64);
     assert_eq!(
         result.source.input_base_url,
-        Some(Url::parse("https://example.com/docs/start.html").expect("url"))
+        Some(displayed_http_url("https://example.com/docs/start.html"))
     );
     assert_eq!(
         result.source.effective_base_url,
-        Some(Url::parse("https://example.com/docs/start.html").expect("url"))
+        Some(displayed_http_url("https://example.com/docs/start.html"))
     );
     assert_eq!(result.source.document_title.as_deref(), Some("Example"));
     assert_eq!(result.candidate_count, 1);

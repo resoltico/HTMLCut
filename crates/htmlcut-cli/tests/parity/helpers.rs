@@ -8,10 +8,10 @@ pub(super) use htmlcut_cli::{
     SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SourceInspectionCommandReport, run,
 };
 pub(super) use htmlcut_core::{
-    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, ExtractionRequest, ExtractionSpec,
-    HttpUrl, OutputOptions, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec,
-    SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
-    inspect_source, preview_extraction,
+    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, Diagnostic, ExtractionRequest,
+    ExtractionSpec, HttpUrl, OutputOptions, PatternMode, RenderingOptions, RuntimeOptions,
+    SelectionSpec, SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec,
+    WhitespaceMode, extract, inspect_source, preview_extraction, result::ExtractionMatch,
 };
 pub(super) use htmlcut_tempdir::tempdir;
 
@@ -163,8 +163,18 @@ pub(super) fn assert_extraction_parity(case: &ExtractionParityCase) {
         "{}",
         case.name
     );
-    assert_eq!(report.matches, expected.matches, "{}", case.name);
-    assert_eq!(report.diagnostics, expected.diagnostics, "{}", case.name);
+    assert_eq!(
+        report.matches,
+        normalize_public_matches(expected.matches),
+        "{}",
+        case.name
+    );
+    assert_eq!(
+        report.diagnostics,
+        normalize_public_diagnostics(expected.diagnostics),
+        "{}",
+        case.name
+    );
     assert!(report.bundle.is_none(), "{}", case.name);
 }
 
@@ -199,4 +209,73 @@ pub(super) fn assert_source_inspection_parity(case: &SourceInspectionParityCase)
     assert_eq!(report.source, expected.source, "{}", case.name);
     assert_eq!(report.document, expected.document, "{}", case.name);
     assert_eq!(report.diagnostics, expected.diagnostics, "{}", case.name);
+}
+
+fn normalize_public_matches(matches: Vec<ExtractionMatch>) -> Vec<ExtractionMatch> {
+    matches
+        .into_iter()
+        .map(|mut matched| {
+            matched.value = normalize_public_json_value(matched.value);
+            matched
+        })
+        .collect()
+}
+
+fn normalize_public_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics
+        .into_iter()
+        .map(|mut diagnostic| {
+            diagnostic.details = diagnostic.details.map(normalize_public_json_value);
+            diagnostic
+        })
+        .collect()
+}
+
+fn normalize_public_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => serde_json::Value::Object(
+            object
+                .into_iter()
+                .map(|(key, value)| (snake_case_key(&key), normalize_public_json_value(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .into_iter()
+                .map(normalize_public_json_value)
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn snake_case_key(key: &str) -> String {
+    let mut normalized = String::with_capacity(key.len() + 4);
+    let mut previous_was_underscore = false;
+
+    for character in key.chars() {
+        if character == '-' || character == ' ' {
+            if !previous_was_underscore {
+                normalized.push('_');
+                previous_was_underscore = true;
+            }
+            continue;
+        }
+
+        if character.is_uppercase() {
+            if !normalized.is_empty() && !previous_was_underscore {
+                normalized.push('_');
+            }
+            for lowercase in character.to_lowercase() {
+                normalized.push(lowercase);
+            }
+            previous_was_underscore = false;
+            continue;
+        }
+
+        normalized.push(character);
+        previous_was_underscore = character == '_';
+    }
+
+    normalized
 }

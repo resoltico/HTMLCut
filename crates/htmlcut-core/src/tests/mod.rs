@@ -1,7 +1,7 @@
 use super::*;
 use crate::contracts::{
     default_fetch_timeout_ms, default_inspection_sample_limit, default_max_bytes,
-    default_preview_chars, default_spec_version, default_true,
+    default_preview_chars, default_true,
 };
 use crate::diagnostics::{error_diagnostic, has_errors, warning_diagnostic};
 use crate::document::{

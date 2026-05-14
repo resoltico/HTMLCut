@@ -505,7 +505,7 @@ fn source_size_limits_are_enforced() {
 
     let runtime = RuntimeOptions {
         max_bytes: max_bytes_limit(5),
-        fetch_timeout: fetch_timeout_limit(1000),
+        fetch_timeout_ms: fetch_timeout_limit(1000),
         ..RuntimeOptions::default()
     };
 

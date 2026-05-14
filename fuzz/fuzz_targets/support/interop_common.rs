@@ -1,8 +1,7 @@
 use arbitrary::Arbitrary;
 use htmlcut_core::interop::v1::{
-    Output, OutputAttributeName, Rendering, Selection, StrategyKind, TextWhitespace,
+    AttributeName, HttpUrl, Output, Rendering, Selection, StrategyKind, TextWhitespace,
 };
-use url::Url;
 
 #[derive(Arbitrary, Clone, Copy, Debug)]
 pub enum FuzzValueKind {
@@ -21,7 +20,7 @@ impl FuzzValueKind {
             Self::OuterHtml => Output::outer_html(),
             Self::Structured => Output::structured(),
             Self::AttributeHref => Output::attribute(
-                OutputAttributeName::new(match strategy_kind {
+                AttributeName::new(match strategy_kind {
                     StrategyKind::CssSelector => "href",
                     StrategyKind::DelimiterPair => "data-id",
                 })
@@ -69,8 +68,8 @@ impl FuzzRendering {
     }
 }
 
-pub fn sample_base_url() -> Url {
-    Url::parse("https://example.com/fuzz/index.html").expect("static URL")
+pub fn sample_base_url() -> HttpUrl {
+    HttpUrl::parse("https://example.com/fuzz/index.html").expect("static URL")
 }
 
 fn non_zero_index(raw: u8) -> std::num::NonZeroUsize {

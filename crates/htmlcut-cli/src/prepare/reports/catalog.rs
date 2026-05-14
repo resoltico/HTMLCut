@@ -31,10 +31,10 @@ pub(crate) fn build_catalog_report(
                 command: cli_contract.map(|contract| contract.display_command()),
                 availability: match cli_contract {
                     Some(_) => CatalogAvailability::Cli,
-                    None => CatalogAvailability::CoreOnly,
+                    None => CatalogAvailability::EngineOnly,
                 },
                 summary: descriptor.description.to_owned(),
-                core_api: descriptor.core_api.to_owned(),
+                engine_capability: descriptor.core_api.to_owned(),
                 request_contract: build_contract_surface(&descriptor.request_contract),
                 result_contract: build_contract_surface(&descriptor.result_contract),
                 command_contract: cli_contract.map(build_catalog_command_contract),
@@ -56,7 +56,7 @@ pub(crate) fn build_catalog_report(
 
 fn build_contract_surface(contract: &htmlcut_core::OperationContract) -> CatalogContractSurface {
     CatalogContractSurface {
-        family: contract.family.to_owned(),
+        artifact: contract.family.to_owned(),
         schema_refs: contract
             .schema_refs
             .iter()

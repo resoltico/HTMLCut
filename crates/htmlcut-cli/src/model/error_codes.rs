@@ -152,6 +152,8 @@ cli_error_codes! {
     RequestFileSchemaUnsupported => "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED",
     /// The request file strategy does not match the invoked command.
     RequestFileStrategyMismatch => "CLI_REQUEST_FILE_STRATEGY_MISMATCH",
+    /// The current request cannot be persisted as a replayable request file.
+    RequestFilePersistenceInvalid => "CLI_REQUEST_FILE_PERSISTENCE_INVALID",
     /// `--schema-version` requires an explicit schema name filter.
     SchemaVersionRequiresName => "CLI_SCHEMA_VERSION_REQUIRES_NAME",
     /// Creating the bundle directory failed.
@@ -160,6 +162,8 @@ cli_error_codes! {
     BundlePathExists => "CLI_BUNDLE_PATH_EXISTS",
     /// Writing the bundle HTML artifact failed.
     BundleHtmlWriteFailed => "CLI_BUNDLE_HTML_WRITE_FAILED",
+    /// Writing the bundle canonical JSON artifact failed.
+    BundleJsonWriteFailed => "CLI_BUNDLE_JSON_WRITE_FAILED",
     /// Writing the bundle report artifact failed.
     BundleReportWriteFailed => "CLI_BUNDLE_REPORT_WRITE_FAILED",
     /// Writing the bundle text artifact failed.

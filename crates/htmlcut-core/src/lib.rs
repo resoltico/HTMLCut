@@ -22,12 +22,12 @@ pub mod wire;
 /// Typed request-side contracts for embeddable HTMLCut callers.
 pub mod request {
     pub use crate::contracts::{
-        AttributeName, BoundaryRetention, ContractValueError, ExtractionDefinition,
-        ExtractionRequest, ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs,
-        FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions, MaxBytes, OutputOptions,
-        PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-        SlicePatternSpec, SliceSpec, SourceInput, SourceKind, SourceRequest, TlsTrustPolicy,
-        ValueSpec, ValueType, WhitespaceMode,
+        AttributeName, BoundaryRetention, ContractValueError, DisplayedHttpUrl,
+        ExtractionDefinition, ExtractionRequest, ExtractionSpec, ExtractionStrategy,
+        FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions,
+        MaxBytes, OutputOptions, PatternMode, PersistedHttpUrl, RenderingOptions, RuntimeOptions,
+        SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
+        SourceKind, SourceRequest, TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
     };
 }
 
@@ -48,16 +48,17 @@ pub use catalog::{
 };
 pub use cli_choice::CliChoice;
 pub use contracts::{
-    AttributeName, BoundaryRetention, CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION,
-    CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION,
-    ContractValueError, DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_PREFLIGHT_MODE,
-    DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES,
-    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel, ExtractionDefinition, ExtractionRequest,
-    ExtractionResult, ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs,
-    FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions, MaxBytes, OutputOptions,
-    ParseDocumentResult, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec,
-    SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult,
-    SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest,
+    AttributeName, BUILTIN_HTTP_CLIENT_AVAILABLE, BoundaryRetention, CORE_RESULT_SCHEMA_NAME,
+    CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
+    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, ContractValueError,
+    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_PREFLIGHT_MODE, DEFAULT_FETCH_TIMEOUT_MS,
+    DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS, Diagnostic,
+    DiagnosticLevel, DisplayedHttpUrl, ExtractionDefinition, ExtractionRequest, ExtractionResult,
+    ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs,
+    HttpUrl, InspectionOptions, MaxBytes, OutputOptions, ParseDocumentResult, PatternMode,
+    PersistedHttpUrl, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
+    SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult, SourceKind,
+    SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest,
     TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
 };
 pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};

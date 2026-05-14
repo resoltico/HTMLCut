@@ -14,7 +14,12 @@ use serde_json::Value;
 use crate::args::CliOutputMode;
 use crate::error::{CliError, internal_error, output_error};
 use crate::file_output::{FileWriteMode, prepare_bundle_directory, write_text_file};
-use crate::model::{BundlePaths, CliErrorCode, ExtractionCommandReport};
+use crate::model::{
+    BUNDLE_COMMAND_REPORT_SCHEMA_NAME, BUNDLE_COMMAND_REPORT_SCHEMA_VERSION,
+    BUNDLE_SELECTION_SCHEMA_NAME, BUNDLE_SELECTION_SCHEMA_VERSION, BundleCommandReport,
+    BundleMatchReport, BundlePaths, BundleSelectionMatch, BundleSelectionPayload, CliErrorCode,
+    ExtractionCommandReport,
+};
 
 #[cfg(test)]
 thread_local! {
@@ -49,6 +54,7 @@ pub(crate) fn get_bundle_paths(dir: &Path) -> BundlePaths {
         dir: dir.to_string_lossy().into_owned(),
         html: dir.join("selection.html").to_string_lossy().into_owned(),
         text: dir.join("selection.txt").to_string_lossy().into_owned(),
+        json: dir.join("selection.json").to_string_lossy().into_owned(),
         report: dir.join("report.json").to_string_lossy().into_owned(),
     }
 }
@@ -61,7 +67,8 @@ pub(crate) fn write_bundle(
     let bundle_dir = Path::new(&bundle.dir);
     let html_document = wrap_html_document(report)?;
     let text_payload = render_text_payload(report)?;
-    let report_payload = to_pretty_json(&bundle_report(report))?;
+    let json_payload = to_pretty_json(&bundle_selection_payload(report))?;
+    let report_payload = to_pretty_json(&bundle_report(report, bundle))?;
 
     prepare_bundle_directory(bundle_dir, write_mode).map_err(|error| {
         let code = if matches!(write_mode, FileWriteMode::CreateFresh) && bundle_dir.exists() {
@@ -87,6 +94,17 @@ pub(crate) fn write_bundle(
         )
     })?;
     write_text_file(
+        Path::new(&bundle.json),
+        &format!("{json_payload}\n"),
+        write_mode,
+    )
+    .map_err(|error| {
+        output_error(
+            CliErrorCode::BundleJsonWriteFailed,
+            format!("Could not write {}: {error}", bundle.json),
+        )
+    })?;
+    write_text_file(
         Path::new(&bundle.report),
         &format!("{report_payload}\n"),
         write_mode,
@@ -100,20 +118,55 @@ pub(crate) fn write_bundle(
     Ok(())
 }
 
-fn bundle_report(report: &ExtractionCommandReport) -> ExtractionCommandReport {
-    let mut compact = report.clone();
-    compact.matches = compact
-        .matches
-        .into_iter()
-        .map(strip_bundle_sidecar_payloads)
-        .collect();
-    compact
+fn bundle_report(report: &ExtractionCommandReport, bundle: &BundlePaths) -> BundleCommandReport {
+    BundleCommandReport {
+        tool: report.tool.clone(),
+        engine: report.engine.clone(),
+        version: report.version.clone(),
+        schema_name: BUNDLE_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+        schema_version: BUNDLE_COMMAND_REPORT_SCHEMA_VERSION,
+        command: report.command.clone(),
+        operation_id: report.operation_id,
+        ok: report.ok,
+        source: report.source.clone(),
+        extraction: report.extraction.clone(),
+        stats: report.stats.clone(),
+        document_title: report.document_title.clone(),
+        matches: report.matches.iter().map(bundle_match_report).collect(),
+        diagnostics: report.diagnostics.clone(),
+        bundle: bundle.clone(),
+    }
 }
 
-fn strip_bundle_sidecar_payloads(mut matched: ExtractionMatch) -> ExtractionMatch {
-    matched.html = None;
-    matched.text = None;
-    matched
+fn bundle_match_report(matched: &ExtractionMatch) -> BundleMatchReport {
+    BundleMatchReport {
+        index: matched.index,
+        path: matched.path.clone(),
+        value_type: matched.value_type,
+        preview: matched.preview.clone(),
+        metadata: matched.metadata.clone(),
+    }
+}
+
+fn bundle_selection_payload(report: &ExtractionCommandReport) -> BundleSelectionPayload {
+    BundleSelectionPayload {
+        tool: report.tool.clone(),
+        engine: report.engine.clone(),
+        version: report.version.clone(),
+        schema_name: BUNDLE_SELECTION_SCHEMA_NAME.to_owned(),
+        schema_version: BUNDLE_SELECTION_SCHEMA_VERSION,
+        command: report.command.clone(),
+        operation_id: report.operation_id,
+        matches: report.matches.iter().map(bundle_selection_match).collect(),
+    }
+}
+
+fn bundle_selection_match(matched: &ExtractionMatch) -> BundleSelectionMatch {
+    BundleSelectionMatch {
+        index: matched.index,
+        value_type: matched.value_type,
+        value: matched.value.clone(),
+    }
 }
 
 pub(crate) fn render_extraction_output(
@@ -147,7 +200,10 @@ pub(crate) fn render_html_payload(report: &ExtractionCommandReport) -> Result<St
 }
 
 pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> Result<String, CliError> {
-    if matched.value_type == ValueType::InnerHtml || matched.value_type == ValueType::OuterHtml {
+    if matches!(
+        matched.value_type,
+        ValueType::SelectedHtml | ValueType::InnerHtml | ValueType::OuterHtml
+    ) {
         return matched.text.clone().ok_or_else(|| {
             internal_error(
                 CliErrorCode::TextProjectionMissing,

@@ -5,15 +5,15 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
     let core_only_operation = CatalogOperationReport {
         operation_id: htmlcut_core::OperationId::DocumentParse,
         command: None,
-        availability: CatalogAvailability::CoreOnly,
+        availability: CatalogAvailability::EngineOnly,
         summary: "Core-only parse".to_owned(),
-        core_api: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
+        engine_capability: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
         request_contract: CatalogContractSurface {
-            family: "SourceRequest + RuntimeOptions".to_owned(),
+            artifact: "SourceRequest + RuntimeOptions".to_owned(),
             schema_refs: Vec::new(),
         },
         result_contract: CatalogContractSurface {
-            family: "ParseDocumentResult".to_owned(),
+            artifact: "ParseDocumentResult".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.parse_document_result".to_owned(),
                 schema_version: 1,
@@ -26,16 +26,16 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         command: Some("select".to_owned()),
         availability: CatalogAvailability::Cli,
         summary: "Synthetic contract".to_owned(),
-        core_api: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
+        engine_capability: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
         request_contract: CatalogContractSurface {
-            family: "ExtractionRequest + RuntimeOptions".to_owned(),
+            artifact: "ExtractionRequest + RuntimeOptions".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.extraction_request".to_owned(),
                 schema_version: 2,
             }],
         },
         result_contract: CatalogContractSurface {
-            family: "ExtractionResult".to_owned(),
+            artifact: "ExtractionResult".to_owned(),
             schema_refs: vec![SchemaRefReport {
                 schema_name: "htmlcut.extraction_result".to_owned(),
                 schema_version: 3,
@@ -132,7 +132,15 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
     };
     let rendered_catalog = render_catalog_text(&report);
     assert!(rendered_catalog.contains("Core-only parse"));
-    assert!(rendered_catalog.contains("inputs: file | url | stdin"));
+    assert!(rendered_catalog.contains("document.parse | engine only"));
+    assert!(
+        rendered_catalog
+            .contains("engine capability: parse_document(SourceRequest, RuntimeOptions)")
+    );
+    assert!(
+        rendered_catalog
+            .contains("Use `--output json` for parameters, defaults, constraints, and examples.")
+    );
 
     let single_operation_catalog = CatalogCommandReport {
         operations: vec![CatalogOperationReport {
@@ -140,16 +148,17 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Synthetic contract".to_owned(),
-            core_api: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)".to_owned(),
+            engine_capability: "extract(ExtractionRequest{kind=selector}, RuntimeOptions)"
+                .to_owned(),
             request_contract: CatalogContractSurface {
-                family: "ExtractionRequest + RuntimeOptions".to_owned(),
+                artifact: "ExtractionRequest + RuntimeOptions".to_owned(),
                 schema_refs: vec![SchemaRefReport {
                     schema_name: "htmlcut.extraction_request".to_owned(),
                     schema_version: 2,
                 }],
             },
             result_contract: CatalogContractSurface {
-                family: "ExtractionResult".to_owned(),
+                artifact: "ExtractionResult".to_owned(),
                 schema_refs: vec![SchemaRefReport {
                     schema_name: "htmlcut.extraction_result".to_owned(),
                     schema_version: 3,
@@ -239,22 +248,20 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         ..report
     };
     let rendered_single_catalog = render_catalog_text(&single_operation_catalog);
-    assert!(rendered_single_catalog.contains("inputs: file | url | stdin"));
-    assert!(rendered_single_catalog.contains("default match: first"));
-    assert!(rendered_single_catalog.contains("match modes: single, all"));
-    assert!(rendered_single_catalog.contains("default value: text"));
-    assert!(rendered_single_catalog.contains("value modes: text, structured"));
-    assert!(rendered_single_catalog.contains("default output: text"));
-    assert!(rendered_single_catalog.contains("default output overrides:"));
-    assert!(rendered_single_catalog.contains("requires --attribute when --value is attribute"));
-    assert!(rendered_single_catalog.contains("allows --regex-flags only when --pattern is regex"));
+    assert!(rendered_single_catalog.contains("select"));
+    assert!(
+        rendered_single_catalog.contains(
+            "engine capability: extract(ExtractionRequest{kind=selector}, RuntimeOptions)"
+        )
+    );
+    assert!(rendered_single_catalog.contains("request: ExtractionRequest + RuntimeOptions"));
+    assert!(rendered_single_catalog.contains("result: ExtractionResult"));
     assert!(
         rendered_single_catalog
-            .contains("restricts --output to json, none when --value is structured")
+            .contains("Use `--output json` for parameters, defaults, constraints, and examples.")
     );
-    assert!(rendered_single_catalog.contains("option --attribute <ATTRIBUTE> | conditional"));
-    assert!(rendered_single_catalog.contains("default: text"));
-    assert!(rendered_single_catalog.contains("values: text, structured"));
+    assert!(!rendered_single_catalog.contains("inputs: file | url | stdin"));
+    assert!(!rendered_single_catalog.contains("default match: first"));
 
     let single_schema = SchemaCommandReport {
         tool: TOOL_NAME.to_owned(),
@@ -267,8 +274,9 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
         schemas: vec![SchemaDocumentReport {
             schema_name: "synthetic.single".to_owned(),
             schema_version: 7,
-            owner: "tests".to_owned(),
-            contract_family: "Synthetic".to_owned(),
+            surface: "tests".to_owned(),
+            profile: None,
+            artifact: "Synthetic".to_owned(),
             stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: Value::String("not an object".to_owned()),
         }],
@@ -283,16 +291,18 @@ fn schema_and_catalog_renderers_cover_optional_surfaces() {
             SchemaDocumentReport {
                 schema_name: "synthetic.a".to_owned(),
                 schema_version: 1,
-                owner: "tests".to_owned(),
-                contract_family: "A".to_owned(),
+                surface: "tests".to_owned(),
+                profile: None,
+                artifact: "A".to_owned(),
                 stability: htmlcut_core::SchemaStability::Versioned,
                 json_schema: serde_json::json!({ "type": "object" }),
             },
             SchemaDocumentReport {
                 schema_name: "synthetic.b".to_owned(),
                 schema_version: 2,
-                owner: "tests".to_owned(),
-                contract_family: "B".to_owned(),
+                surface: "tests".to_owned(),
+                profile: None,
+                artifact: "B".to_owned(),
                 stability: htmlcut_core::SchemaStability::Versioned,
                 json_schema: serde_json::json!({ "type": "object" }),
             },
@@ -318,16 +328,18 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         catalog_report
             .operations
             .iter()
-            .any(|operation| operation.availability == CatalogAvailability::CoreOnly)
+            .any(|operation| operation.availability == CatalogAvailability::EngineOnly)
     );
 
     let text_outcome = run_schema(
         SchemaArgs {
             output: CliSchemaOutputMode::Text,
             output_file: None,
-            file_write: default_file_write_args(),
-            name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
-            schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+                schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+            },
         },
         0,
         false,
@@ -344,9 +356,11 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         SchemaArgs {
             output: CliSchemaOutputMode::Json,
             output_file: None,
-            file_write: default_file_write_args(),
-            name: Some("synthetic.missing".to_owned()),
-            schema_version: Some(99),
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: Some("synthetic.missing".to_owned()),
+                schema_version: Some(99),
+            },
         },
         0,
         false,
@@ -363,9 +377,11 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
         SchemaArgs {
             output: CliSchemaOutputMode::Text,
             output_file: None,
-            file_write: default_file_write_args(),
-            name: None,
-            schema_version: Some(1),
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: None,
+                schema_version: Some(1),
+            },
         },
         0,
         false,
@@ -376,6 +392,72 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
             .stderr
             .iter()
             .any(|line| line.contains("`--schema-version` requires `--name`."))
+    );
+
+    let index_json_outcome = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::IndexJson,
+            output_file: None,
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+                schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+            },
+        },
+        0,
+        false,
+    );
+    assert_eq!(index_json_outcome.exit_code, 0);
+    assert!(
+        index_json_outcome
+            .stdout
+            .as_deref()
+            .is_some_and(|stdout| stdout.contains("\"schema_name\": \"htmlcut.result\""))
+    );
+
+    let tempdir = tempdir().expect("tempdir");
+    let blocked_output = tempdir.path().join("inventory.json");
+    fs::write(&blocked_output, "occupied").expect("blocked output");
+    let json_path_error = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::Json,
+            output_file: Some(blocked_output.clone()),
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: Some(htmlcut_core::EXTRACTION_REQUEST_SCHEMA_NAME.to_owned()),
+                schema_version: Some(htmlcut_core::CORE_REQUEST_SCHEMA_VERSION),
+            },
+        },
+        0,
+        false,
+    );
+    assert_eq!(json_path_error.exit_code, EXIT_CODE_OUTPUT);
+    assert!(
+        json_path_error
+            .stdout
+            .as_deref()
+            .is_some_and(|stdout| stdout.contains("CLI_OUTPUT_FILE_EXISTS"))
+    );
+
+    let index_json_path_error = run_schema(
+        SchemaArgs {
+            output: CliSchemaOutputMode::IndexJson,
+            output_file: Some(blocked_output),
+            file_write: default_output_file_write_args(),
+            filter: crate::args::SchemaFilterArgs {
+                name: None,
+                schema_version: None,
+            },
+        },
+        0,
+        false,
+    );
+    assert_eq!(index_json_path_error.exit_code, EXIT_CODE_OUTPUT);
+    assert!(
+        index_json_path_error
+            .stdout
+            .as_deref()
+            .is_some_and(|stdout| stdout.contains("CLI_OUTPUT_FILE_EXISTS"))
     );
 
     let source = build_source_request(&SourceArgs {
@@ -606,8 +688,8 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
             CatalogArgs {
                 output: CliCatalogOutputMode::Json,
                 output_file: None,
-                file_write: default_file_write_args(),
-                operation: None,
+                file_write: default_output_file_write_args(),
+                filter: crate::args::CatalogFilterArgs { operation: None },
             },
             0,
             false,
@@ -627,9 +709,11 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
             SchemaArgs {
                 output: CliSchemaOutputMode::Json,
                 output_file: None,
-                file_write: default_file_write_args(),
-                name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
-                schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+                file_write: default_output_file_write_args(),
+                filter: crate::args::SchemaFilterArgs {
+                    name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+                    schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+                },
             },
             0,
             false,
@@ -637,4 +721,22 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
     });
     assert_eq!(schema_outcome.exit_code, EXIT_CODE_INTERNAL);
     assert!(schema_outcome.stdout.is_none());
+
+    let schema_inventory_outcome = with_json_render_failure_for_tests(|| {
+        run_schema(
+            SchemaArgs {
+                output: CliSchemaOutputMode::IndexJson,
+                output_file: None,
+                file_write: default_output_file_write_args(),
+                filter: crate::args::SchemaFilterArgs {
+                    name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
+                    schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+                },
+            },
+            0,
+            false,
+        )
+    });
+    assert_eq!(schema_inventory_outcome.exit_code, EXIT_CODE_INTERNAL);
+    assert!(schema_inventory_outcome.stdout.is_none());
 }

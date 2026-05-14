@@ -9,9 +9,9 @@ pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
 /// Schema name for the extraction error.
 pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
-pub const PLAN_SCHEMA_VERSION: u32 = 4;
+pub const PLAN_SCHEMA_VERSION: u32 = 5;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 5;
+pub const RESULT_SCHEMA_VERSION: u32 = 6;
 /// Schema version for the extraction error.
 pub const ERROR_SCHEMA_VERSION: u32 = 2;
 

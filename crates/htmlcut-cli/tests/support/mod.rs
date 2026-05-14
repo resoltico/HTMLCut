@@ -23,11 +23,12 @@ pub(crate) use htmlcut_cli::{
     SchemaCommandReport, SourceInspectionCommandReport,
 };
 pub(crate) use htmlcut_core::{
-    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, ExtractionDefinition,
+    AttributeName, BoundaryRetention, DEFAULT_PREVIEW_CHARS, Diagnostic, ExtractionDefinition,
     ExtractionRequest, ExtractionSpec, FetchConnectTimeoutMs, FetchTimeoutMs, HttpUrl, MaxBytes,
     OutputOptions, PatternMode, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
     SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, inspect_source,
-    preview_extraction, result::ExtractionMatchMetadata,
+    preview_extraction,
+    result::{ExtractionMatch, ExtractionMatchMetadata},
 };
 pub(crate) use htmlcut_tempdir::tempdir;
 pub(crate) use predicates::prelude::*;
@@ -38,7 +39,7 @@ pub(crate) fn expected_version() -> &'static str {
 
 pub(crate) fn expected_version_banner() -> String {
     format!(
-        "HTMLCut {}\n{}\nengine: htmlcut-core\nschema-profile: {}\nrepository: {}\n",
+        "HTMLCut {}\n{}\nschema registry: {}\nrepository: {}\n",
         expected_version(),
         env!("CARGO_PKG_DESCRIPTION"),
         htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE,
@@ -134,4 +135,73 @@ pub(crate) fn parse_error_report(assert: assert_cmd::assert::Assert) -> ErrorCom
 pub(crate) fn parse_schema_report(assert: assert_cmd::assert::Assert) -> SchemaCommandReport {
     let stdout = assert.get_output().stdout.clone();
     serde_json::from_slice(&stdout).expect("parse schema report")
+}
+
+pub(crate) fn normalize_public_matches(matches: Vec<ExtractionMatch>) -> Vec<ExtractionMatch> {
+    matches
+        .into_iter()
+        .map(|mut matched| {
+            matched.value = normalize_public_json_value(matched.value);
+            matched
+        })
+        .collect()
+}
+
+pub(crate) fn normalize_public_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics
+        .into_iter()
+        .map(|mut diagnostic| {
+            diagnostic.details = diagnostic.details.map(normalize_public_json_value);
+            diagnostic
+        })
+        .collect()
+}
+
+fn normalize_public_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => serde_json::Value::Object(
+            object
+                .into_iter()
+                .map(|(key, value)| (snake_case_key(&key), normalize_public_json_value(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .into_iter()
+                .map(normalize_public_json_value)
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn snake_case_key(key: &str) -> String {
+    let mut normalized = String::with_capacity(key.len() + 4);
+    let mut previous_was_underscore = false;
+
+    for character in key.chars() {
+        if character == '-' || character == ' ' {
+            if !previous_was_underscore {
+                normalized.push('_');
+                previous_was_underscore = true;
+            }
+            continue;
+        }
+
+        if character.is_uppercase() {
+            if !normalized.is_empty() && !previous_was_underscore {
+                normalized.push('_');
+            }
+            for lowercase in character.to_lowercase() {
+                normalized.push(lowercase);
+            }
+            previous_was_underscore = false;
+            continue;
+        }
+
+        normalized.push(character);
+        previous_was_underscore = character == '_';
+    }
+
+    normalized
 }

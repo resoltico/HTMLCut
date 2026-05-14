@@ -1,8 +1,11 @@
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use htmlcut_core::wire::v1::ExtractionDefinitionDocument;
-use htmlcut_core::{ExtractionDefinition, ExtractionRequest, ExtractionStrategy, RuntimeOptions};
+use htmlcut_core::{
+    ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionStrategy, RuntimeOptions,
+};
 use serde_json::Value;
 
 use crate::error::{CliError, usage_error};
@@ -29,21 +32,43 @@ where
         build_inline()?
     };
 
+    let request_definition_output = definition_args
+        .emit_request_file
+        .clone()
+        .map(|path| build_pending_definition_write(path, &request, &runtime))
+        .transpose()?;
+
     Ok(MaterializedDefinition {
-        request_definition_output: definition_args.emit_request_file.clone().map(|path| {
-            PendingExtractionDefinitionWrite {
-                path,
-                definition: ExtractionDefinition {
-                    schema_name: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned(),
-                    schema_version: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
-                    request: request.clone(),
-                    runtime: runtime.clone(),
-                },
-            }
-        }),
+        request_definition_output,
         request,
         runtime,
     })
+}
+
+fn build_pending_definition_write(
+    path: PathBuf,
+    request: &ExtractionRequest,
+    runtime: &RuntimeOptions,
+) -> Result<PendingExtractionDefinitionWrite, CliError> {
+    let definition = ExtractionDefinition {
+        schema_name: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned(),
+        schema_version: htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
+        request: request.clone(),
+        runtime: runtime.clone(),
+    };
+    let document = ExtractionDefinitionDocument::try_from(definition)
+        .map_err(request_file_persistence_error)?;
+
+    Ok(PendingExtractionDefinitionWrite { path, document })
+}
+
+fn request_file_persistence_error(error: ContractValueError) -> CliError {
+    usage_error(
+        CliErrorCode::RequestFilePersistenceInvalid,
+        format!(
+            "The current request cannot be written as a replayable request file: {error}. Replayable request files accept only absolute HTTP(S) URLs without userinfo, query strings, or fragments."
+        ),
+    )
 }
 
 fn load_extraction_definition(
@@ -223,7 +248,7 @@ fn request_file_recovery_hint(
                 "Selector request files use `request.extraction.selector` as a plain JSON string."
             }
             ExtractionStrategy::Slice => {
-                "Slice request files use plain JSON strings for `request.extraction.from` and `request.extraction.to`."
+                "Slice request files use `request.extraction.pattern` with plain JSON string `from` and `to` fields."
             }
         };
         hint.push(' ');
@@ -246,11 +271,12 @@ fn request_file_shape_hint(value: &Value, expected_strategy: ExtractionStrategy)
             }),
         ExtractionStrategy::Slice => ["from", "to"].iter().find_map(|field| {
             extraction
-                .get(field)
+                .get("pattern")
+                .and_then(|pattern| pattern.get(field))
                 .filter(|boundary| matches!(boundary, Value::Object(_) | Value::Array(_)))
                 .map(|_| {
                     format!(
-                        "Slice request files use `request.extraction.{field}` as a plain JSON string, not an object."
+                        "Slice request files use `request.extraction.pattern.{field}` as a plain JSON string, not an object."
                     )
                 })
         }),

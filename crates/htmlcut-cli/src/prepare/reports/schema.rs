@@ -13,54 +13,17 @@ use crate::model::{
     ERROR_COMMAND_REPORT_SCHEMA_NAME, ERROR_COMMAND_REPORT_SCHEMA_VERSION,
     EXTRACTION_COMMAND_REPORT_SCHEMA_NAME, EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION,
     ErrorCommandReport, ExtractionCommandReport, SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
-    SCHEMA_COMMAND_REPORT_SCHEMA_VERSION, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
+    SCHEMA_COMMAND_REPORT_SCHEMA_VERSION, SCHEMA_INVENTORY_REPORT_SCHEMA_NAME,
+    SCHEMA_INVENTORY_REPORT_SCHEMA_VERSION, SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME,
     SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_VERSION, SchemaCommandReport, SchemaDocumentReport,
-    SourceInspectionCommandReport,
+    SchemaInventoryCommandReport, SchemaInventoryEntryReport, SourceInspectionCommandReport,
 };
 
 pub(crate) fn build_schema_report(
     name_filter: Option<&str>,
     version_filter: Option<u32>,
 ) -> Result<SchemaCommandReport, CliError> {
-    if let (Some(_), None) = (version_filter, name_filter) {
-        return Err(crate::error::usage_error(
-            CliErrorCode::SchemaVersionRequiresName,
-            "`--schema-version` requires `--name`.",
-        ));
-    }
-
-    let mut schemas = htmlcut_core::schema_catalog()
-        .iter()
-        .map(build_schema_document_report)
-        .chain(
-            cli_schema_catalog()
-                .iter()
-                .map(build_schema_document_report),
-        )
-        .collect::<Result<Vec<_>, _>>()?;
-
-    schemas.sort_by(|left, right| {
-        left.schema_name
-            .cmp(&right.schema_name)
-            .then(left.schema_version.cmp(&right.schema_version))
-    });
-
-    let filtered = if let Some(name) = name_filter {
-        let filtered = schemas
-            .iter()
-            .filter(|schema| schema.schema_name == name)
-            .filter(|schema| version_filter.is_none_or(|version| schema.schema_version == version))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        if filtered.is_empty() {
-            return Err(unknown_schema_error(name, version_filter, &schemas));
-        }
-
-        filtered
-    } else {
-        schemas
-    };
+    let filtered = collect_filtered_schemas(name_filter, version_filter)?;
 
     Ok(SchemaCommandReport {
         tool: TOOL_NAME.to_owned(),
@@ -70,8 +33,92 @@ pub(crate) fn build_schema_report(
         schema_profile: htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE.to_owned(),
         description: HTMLCUT_DESCRIPTION.to_owned(),
         command: "schema".to_owned(),
-        schemas: filtered,
+        schemas: filtered
+            .iter()
+            .map(build_schema_document_report)
+            .collect::<Result<Vec<_>, _>>()?,
     })
+}
+
+pub(crate) fn build_schema_inventory_report(
+    name_filter: Option<&str>,
+    version_filter: Option<u32>,
+) -> Result<SchemaInventoryCommandReport, CliError> {
+    let filtered = collect_filtered_schemas(name_filter, version_filter)?;
+
+    Ok(SchemaInventoryCommandReport {
+        tool: TOOL_NAME.to_owned(),
+        version: HTMLCUT_VERSION.to_owned(),
+        schema_name: SCHEMA_INVENTORY_REPORT_SCHEMA_NAME.to_owned(),
+        schema_version: SCHEMA_INVENTORY_REPORT_SCHEMA_VERSION,
+        schema_profile: htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE.to_owned(),
+        description: HTMLCUT_DESCRIPTION.to_owned(),
+        command: "schema".to_owned(),
+        schemas: filtered.iter().map(build_schema_inventory_entry).collect(),
+    })
+}
+
+fn collect_filtered_schemas(
+    name_filter: Option<&str>,
+    version_filter: Option<u32>,
+) -> Result<Vec<htmlcut_core::SchemaDescriptor>, CliError> {
+    if let (Some(_), None) = (version_filter, name_filter) {
+        return Err(crate::error::usage_error(
+            CliErrorCode::SchemaVersionRequiresName,
+            "`--schema-version` requires `--name`.",
+        ));
+    }
+
+    let mut schemas = htmlcut_core::schema_catalog()
+        .iter()
+        .copied()
+        .chain(cli_schema_catalog().iter().copied())
+        .collect::<Vec<_>>();
+
+    schemas.sort_by(|left, right| {
+        left.schema_ref
+            .schema_name
+            .cmp(right.schema_ref.schema_name)
+            .then(
+                left.schema_ref
+                    .schema_version
+                    .cmp(&right.schema_ref.schema_version),
+            )
+    });
+
+    let filtered = if let Some(name) = name_filter {
+        let filtered = schemas
+            .iter()
+            .filter(|schema| schema.schema_ref.schema_name == name)
+            .filter(|schema| {
+                version_filter.is_none_or(|version| schema.schema_ref.schema_version == version)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if filtered.is_empty() {
+            let known = schemas
+                .iter()
+                .map(build_schema_inventory_entry)
+                .map(|schema| SchemaDocumentReport {
+                    schema_name: schema.schema_name,
+                    schema_version: schema.schema_version,
+                    surface: schema.surface,
+                    profile: schema.profile,
+                    artifact: schema.artifact,
+                    stability: schema.stability,
+                    json_schema: Value::Null,
+                })
+                .collect::<Vec<_>>();
+            return Err(unknown_schema_error(name, version_filter, &known));
+        }
+
+        filtered
+    } else {
+        schemas
+    };
+
+    Ok(filtered)
 }
 
 const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
@@ -112,6 +159,14 @@ const CLI_SCHEMA_CATALOG: &[htmlcut_core::SchemaDescriptor] = &[
         "schema report",
         schema_command_report_schema,
     ),
+    cli_schema_descriptor(
+        htmlcut_core::SchemaRef::new(
+            SCHEMA_INVENTORY_REPORT_SCHEMA_NAME,
+            SCHEMA_INVENTORY_REPORT_SCHEMA_VERSION,
+        ),
+        "schema inventory report",
+        schema_inventory_command_report_schema,
+    ),
 ];
 
 fn cli_schema_catalog() -> &'static [htmlcut_core::SchemaDescriptor] {
@@ -144,14 +199,39 @@ pub(crate) fn cli_schema_descriptor_for_tests(
 fn build_schema_document_report(
     descriptor: &htmlcut_core::SchemaDescriptor,
 ) -> Result<SchemaDocumentReport, CliError> {
+    let (surface, profile) = public_schema_surface(descriptor.owner);
     Ok(SchemaDocumentReport {
         schema_name: descriptor.schema_ref.schema_name.to_owned(),
         schema_version: descriptor.schema_ref.schema_version,
-        owner: descriptor.owner.to_owned(),
-        contract_family: descriptor.contract_family.to_owned(),
+        surface,
+        profile,
+        artifact: descriptor.contract_family.to_owned(),
         stability: descriptor.stability,
         json_schema: (descriptor.json_schema)().map_err(schema_export_error)?,
     })
+}
+
+fn build_schema_inventory_entry(
+    descriptor: &htmlcut_core::SchemaDescriptor,
+) -> SchemaInventoryEntryReport {
+    let (surface, profile) = public_schema_surface(descriptor.owner);
+    SchemaInventoryEntryReport {
+        schema_name: descriptor.schema_ref.schema_name.to_owned(),
+        schema_version: descriptor.schema_ref.schema_version,
+        surface,
+        profile,
+        artifact: descriptor.contract_family.to_owned(),
+        stability: descriptor.stability,
+    }
+}
+
+fn public_schema_surface(owner: &str) -> (String, Option<String>) {
+    match owner {
+        "core" => ("engine".to_owned(), None),
+        "cli" => ("cli".to_owned(), None),
+        "interop-v1" => ("integration".to_owned(), Some("htmlcut-v1".to_owned())),
+        other => (other.to_owned(), None),
+    }
 }
 
 fn schema_json_for<T: schemars::JsonSchema>(
@@ -197,6 +277,13 @@ fn schema_command_report_schema() -> Result<Value, htmlcut_core::SchemaExportErr
     schema_json_for::<SchemaCommandReport>(htmlcut_core::SchemaRef::new(
         SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
         SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
+    ))
+}
+
+fn schema_inventory_command_report_schema() -> Result<Value, htmlcut_core::SchemaExportError> {
+    schema_json_for::<SchemaInventoryCommandReport>(htmlcut_core::SchemaRef::new(
+        SCHEMA_INVENTORY_REPORT_SCHEMA_NAME,
+        SCHEMA_INVENTORY_REPORT_SCHEMA_VERSION,
     ))
 }
 
@@ -270,6 +357,10 @@ fn cli_schema_catalog_validation_errors(catalog: &[htmlcut_core::SchemaDescripto
             SCHEMA_COMMAND_REPORT_SCHEMA_NAME,
             SCHEMA_COMMAND_REPORT_SCHEMA_VERSION,
         ),
+        htmlcut_core::SchemaRef::new(
+            SCHEMA_INVENTORY_REPORT_SCHEMA_NAME,
+            SCHEMA_INVENTORY_REPORT_SCHEMA_VERSION,
+        ),
     ]
     .into_iter()
     .collect::<BTreeSet<_>>();
@@ -310,4 +401,31 @@ fn cli_schema_catalog_validation_errors(catalog: &[htmlcut_core::SchemaDescripto
     }
 
     errors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_inventory_and_surface_helpers_cover_inventory_and_unknown_owners() {
+        let inventory = build_schema_inventory_report(
+            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME),
+            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+        )
+        .expect("schema inventory");
+        assert_eq!(inventory.command, "schema");
+        assert_eq!(inventory.schemas.len(), 1);
+        assert_eq!(
+            inventory.schemas[0].schema_name,
+            htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
+        );
+        assert_eq!(inventory.schemas[0].surface, "integration");
+        assert_eq!(inventory.schemas[0].profile.as_deref(), Some("htmlcut-v1"));
+
+        assert_eq!(
+            public_schema_surface("synthetic-owner"),
+            ("synthetic-owner".to_owned(), None)
+        );
+    }
 }

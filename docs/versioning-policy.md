@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "9.0.0"
+version: "10.0.0"
 domain: MAINTAINER
 updated: "2026-05-02"
 route:
@@ -106,6 +106,9 @@ Rules:
 - keep schema names generic and product-owned
 - do not encode downstream consumer names into generic schema families
 - keep `schema_name` and `schema_version` on every maintained public JSON document
+- keep other required identity fields, such as `request.spec_version`, explicit on persisted
+  request documents
+- reject schema-less stored request artifacts instead of silently treating them as current
 - use the schema registry as the validator surface, not prose examples
 
 Interop schemas also use product-owned names:

@@ -24,6 +24,10 @@ fn write_bundle_reports_each_output_failure() {
                     .join("selection.txt")
                     .to_string_lossy()
                     .into_owned(),
+                json: create_dir_path
+                    .join("selection.json")
+                    .to_string_lossy()
+                    .into_owned(),
                 report: create_dir_path
                     .join("report.json")
                     .to_string_lossy()
@@ -46,6 +50,10 @@ fn write_bundle_reports_each_output_failure() {
                     .into_owned(),
                 text: create_dir_path
                     .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                json: create_dir_path
+                    .join("selection.json")
                     .to_string_lossy()
                     .into_owned(),
                 report: create_dir_path
@@ -77,6 +85,11 @@ fn write_bundle_reports_each_output_failure() {
                     .join("selection.txt")
                     .to_string_lossy()
                     .into_owned(),
+                json: blocked_parent
+                    .join("bundle")
+                    .join("selection.json")
+                    .to_string_lossy()
+                    .into_owned(),
                 report: blocked_parent
                     .join("bundle")
                     .join("report.json")
@@ -106,6 +119,10 @@ fn write_bundle_reports_each_output_failure() {
                     .join("selection.txt")
                     .to_string_lossy()
                     .into_owned(),
+                json: existing_bundle
+                    .join("selection.json")
+                    .to_string_lossy()
+                    .into_owned(),
                 report: existing_bundle
                     .join("report.json")
                     .to_string_lossy()
@@ -131,6 +148,11 @@ fn write_bundle_reports_each_output_failure() {
                 text: html_temp
                     .path()
                     .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                json: html_temp
+                    .path()
+                    .join("selection.json")
                     .to_string_lossy()
                     .into_owned(),
                 report: html_temp
@@ -163,6 +185,11 @@ fn write_bundle_reports_each_output_failure() {
                     .join("selection.txt")
                     .to_string_lossy()
                     .into_owned(),
+                json: text_temp
+                    .path()
+                    .join("selection.json")
+                    .to_string_lossy()
+                    .into_owned(),
                 report: text_temp
                     .path()
                     .join("report.json")
@@ -174,6 +201,41 @@ fn write_bundle_reports_each_output_failure() {
         .expect_err("text write should fail")
         .code,
         "CLI_BUNDLE_TEXT_WRITE_FAILED"
+    );
+
+    let json_temp = tempdir().expect("tempdir");
+    fs::create_dir(json_temp.path().join("selection.json")).expect("json dir");
+    assert_eq!(
+        crate::render::write_bundle(
+            &report,
+            &BundlePaths {
+                dir: json_temp.path().to_string_lossy().into_owned(),
+                html: json_temp
+                    .path()
+                    .join("selection.html")
+                    .to_string_lossy()
+                    .into_owned(),
+                text: json_temp
+                    .path()
+                    .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                json: json_temp
+                    .path()
+                    .join("selection.json")
+                    .to_string_lossy()
+                    .into_owned(),
+                report: json_temp
+                    .path()
+                    .join("report.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            },
+            crate::file_output::FileWriteMode::Overwrite,
+        )
+        .expect_err("json write should fail")
+        .code,
+        "CLI_BUNDLE_JSON_WRITE_FAILED"
     );
 
     let report_temp = tempdir().expect("tempdir");
@@ -191,6 +253,11 @@ fn write_bundle_reports_each_output_failure() {
                 text: report_temp
                     .path()
                     .join("selection.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+                json: report_temp
+                    .path()
+                    .join("selection.json")
                     .to_string_lossy()
                     .into_owned(),
                 report: report_temp

@@ -4,8 +4,9 @@ use htmlcut_core::{
 };
 
 use super::common::{
-    common_definition_parameters, common_extract_parameters, common_filesystem_output_parameters,
-    common_inspect_output_parameters, common_selection_parameters, common_source_parameters,
+    common_definition_parameters, common_extract_parameters, common_inspect_output_parameters,
+    common_selection_parameters, common_source_parameters, extraction_filesystem_output_parameters,
+    output_file_filesystem_output_parameters, preview_filesystem_output_parameters,
     request_file_aware_source_parameters, select_extract_value_modes, slice_extract_value_modes,
 };
 use super::descriptors::{param_flag, param_option};
@@ -58,7 +59,7 @@ pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
         Vec::new(),
         "Write the stdout payload to exactly one file instead of stdout.",
     ));
-    parameters.extend(common_filesystem_output_parameters());
+    parameters.extend(output_file_filesystem_output_parameters());
     parameters
 }
 
@@ -111,7 +112,7 @@ pub(super) fn inspect_select_parameters() -> Vec<CliParameterDescriptor> {
         "Rewrite supported relative URLs in preview HTML with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references.",
     ));
     parameters.extend(common_inspect_output_parameters());
-    parameters.extend(common_filesystem_output_parameters());
+    parameters.extend(preview_filesystem_output_parameters());
     parameters
 }
 
@@ -156,7 +157,7 @@ pub(super) fn inspect_slice_parameters() -> Vec<CliParameterDescriptor> {
         "Rewrite supported relative URLs in preview HTML with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references.",
     ));
     parameters.extend(common_inspect_output_parameters());
-    parameters.extend(common_filesystem_output_parameters());
+    parameters.extend(preview_filesystem_output_parameters());
     parameters
 }
 
@@ -174,7 +175,7 @@ pub(super) fn select_extract_parameters() -> Vec<CliParameterDescriptor> {
     ));
     parameters.extend(common_selection_parameters());
     parameters.extend(common_extract_parameters(&select_extract_value_modes()));
-    parameters.extend(common_filesystem_output_parameters());
+    parameters.extend(extraction_filesystem_output_parameters());
     parameters
 }
 
@@ -184,7 +185,7 @@ pub(super) fn slice_extract_parameters() -> Vec<CliParameterDescriptor> {
     parameters.extend(slice_strategy_parameters(CliParameterSection::Source));
     parameters.extend(common_selection_parameters());
     parameters.extend(common_extract_parameters(&slice_extract_value_modes()));
-    parameters.extend(common_filesystem_output_parameters());
+    parameters.extend(extraction_filesystem_output_parameters());
     parameters
 }
 

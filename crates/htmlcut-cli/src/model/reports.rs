@@ -8,7 +8,15 @@ use super::ErrorReportCode;
 /// Frozen schema name for extraction and preview CLI reports.
 pub const EXTRACTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.extraction_report";
 /// Schema version for extraction and preview CLI reports.
-pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 6;
+pub const EXTRACTION_COMMAND_REPORT_SCHEMA_VERSION: u32 = 7;
+/// Frozen schema name for bundle summary reports.
+pub const BUNDLE_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.bundle_report";
+/// Schema version for bundle summary reports.
+pub const BUNDLE_COMMAND_REPORT_SCHEMA_VERSION: u32 = 1;
+/// Frozen schema name for canonical bundle selection payloads.
+pub const BUNDLE_SELECTION_SCHEMA_NAME: &str = "htmlcut.bundle_selection";
+/// Schema version for canonical bundle selection payloads.
+pub const BUNDLE_SELECTION_SCHEMA_VERSION: u32 = 1;
 /// Frozen schema name for `htmlcut inspect source` reports.
 pub const SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME: &str = "htmlcut.source_inspection_report";
 /// Schema version for `htmlcut inspect source` reports.
@@ -27,8 +35,94 @@ pub struct BundlePaths {
     pub html: String,
     /// The plain-text artifact path inside the bundle directory.
     pub text: String,
+    /// The canonical machine-readable selection payload inside the bundle directory.
+    pub json: String,
     /// The structured JSON report path inside the bundle directory.
     pub report: String,
+}
+
+/// Summary metadata for one bundled extraction match.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct BundleMatchReport {
+    /// One-based position in the returned match list.
+    pub index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// DOM path when the match came from selector extraction.
+    pub path: Option<String>,
+    /// Value shape stored in the canonical bundle selection payload.
+    pub value_type: htmlcut_core::ValueType,
+    /// Compact preview string for humans and agents.
+    pub preview: String,
+    /// Stable typed per-match metadata.
+    pub metadata: htmlcut_core::result::ExtractionMatchMetadata,
+}
+
+/// Structured summary report emitted as `report.json` inside a bundle.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct BundleCommandReport {
+    /// The user-facing tool name.
+    pub tool: String,
+    /// The engine that produced the extraction result.
+    pub engine: String,
+    /// The CLI version string.
+    pub version: String,
+    /// The stable schema name for this bundle report document.
+    pub schema_name: String,
+    /// The bundle report schema version.
+    pub schema_version: u32,
+    /// The concrete command that produced this report.
+    pub command: String,
+    /// The canonical cross-surface operation ID for this execution.
+    pub operation_id: htmlcut_core::OperationId,
+    /// Whether the command completed without error diagnostics.
+    pub ok: bool,
+    /// Source metadata copied from `htmlcut-core`.
+    pub source: htmlcut_core::SourceMetadata,
+    /// The extraction request contract that produced the result.
+    pub extraction: htmlcut_core::ExtractionSpec,
+    /// Match counts and timing information for the execution.
+    pub stats: htmlcut_core::result::ExtractionStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The parsed document title when one was available.
+    pub document_title: Option<String>,
+    /// Extracted match summaries in CLI report order.
+    pub matches: Vec<BundleMatchReport>,
+    /// Diagnostics emitted by the core engine.
+    pub diagnostics: Vec<htmlcut_core::Diagnostic>,
+    /// Bundle artifact paths for the canonical payloads and projections.
+    pub bundle: BundlePaths,
+}
+
+/// Canonical machine-readable selection payload emitted as `selection.json` inside a bundle.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct BundleSelectionPayload {
+    /// The user-facing tool name.
+    pub tool: String,
+    /// The engine that produced the extraction result.
+    pub engine: String,
+    /// The CLI version string.
+    pub version: String,
+    /// The stable schema name for this selection document.
+    pub schema_name: String,
+    /// The bundle selection schema version.
+    pub schema_version: u32,
+    /// The concrete command that produced this payload.
+    pub command: String,
+    /// The canonical cross-surface operation ID for this execution.
+    pub operation_id: htmlcut_core::OperationId,
+    /// Canonical extracted values in CLI match order.
+    pub matches: Vec<BundleSelectionMatch>,
+}
+
+/// One canonical bundled extraction value.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct BundleSelectionMatch {
+    /// One-based position in the returned match list.
+    pub index: usize,
+    /// Value shape stored in [`Self::value`].
+    pub value_type: htmlcut_core::ValueType,
+    /// Final extracted value.
+    pub value: Value,
 }
 
 /// Structured report emitted by extraction and preview CLI commands.

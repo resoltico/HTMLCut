@@ -15,7 +15,7 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert_eq!(
         render_catalog_text(&empty_catalog),
         format!(
-            "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\nCatalog: 0 operations.\nUse `htmlcut catalog --operation <OPERATION_ID> --output json` for one exact contract."
+            "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\nCatalog: 0 operations.\nUse `htmlcut catalog --operation <OPERATION_ID>` for one compact contract or `--output json` for the full machine-readable surface."
         )
     );
     assert_eq!(
@@ -41,37 +41,16 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     ]);
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("Operation:"));
-    assert!(stdout.contains("core api: extract slice values"));
+    assert!(stdout.contains("engine capability: extract slice values"));
     assert!(stdout.contains("request: extraction request + runtime options"));
     assert!(
-        stdout.contains("request schemas: htmlcut.extraction_request@5, htmlcut.runtime_options@5")
+        stdout.contains("request schemas: htmlcut.extraction_request@7, htmlcut.runtime_options@7")
     );
     assert!(stdout.contains("result: extraction result"));
     assert!(stdout.contains("result schemas: htmlcut.extraction_result@6"));
-    assert!(stdout.contains("usage: htmlcut slice [OPTIONS] --from <FROM> --to <TO> [INPUT]"));
-    assert!(stdout.contains("default output: text"));
-    assert!(stdout.contains("default output overrides:"));
-    assert!(stdout.contains("when --value is structured => json"));
-    assert!(stdout.contains("constraints:"));
-    assert!(stdout.contains("requires --bundle when --output is none"));
-    assert!(stdout.contains("restricts --output to json, none when --value is structured"));
-    assert!(stdout.contains("parameters:"));
-    assert!(stdout.contains("option --request-file <PATH> | optional"));
-    assert!(stdout.contains("option --fetch-preflight <FETCH_PREFLIGHT> | optional"));
     assert!(
-        stdout
-            .contains("positional <INPUT> | conditional (required unless --request-file is used)")
+        stdout.contains("Use `--output json` for parameters, defaults, constraints, and examples.")
     );
-    assert!(
-        stdout.contains(
-            "option --from <FROM> | conditional (required unless --request-file is used)"
-        )
-    );
-    assert!(stdout.contains("option --regex-flags <REGEX_FLAGS> | conditional (allowed only when --pattern regex is used)"));
-    assert!(stdout.contains("option --output-file <PATH> | optional"));
-    assert!(stdout.contains(
-        "The selected fragment excludes both matched boundaries by default; --boundary-retention controls that selected fragment precisely."
-    ));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
@@ -161,32 +140,15 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(
         slice_preview_lines
             .iter()
-            .any(|line| line == "   candidate index: 7")
+            .any(|line| {
+                line
+                    == "   candidate 7 | selected 1..12 | inner 4..9 | outer 1..12 | retention include-both"
+            })
     );
     assert!(
         slice_preview_lines
             .iter()
-            .any(|line| line == "   selected range: 1..12")
-    );
-    assert!(
-        slice_preview_lines
-            .iter()
-            .any(|line| line == "   inner range: 4..9")
-    );
-    assert!(
-        slice_preview_lines
-            .iter()
-            .any(|line| line == "   outer range: 1..12")
-    );
-    assert!(
-        slice_preview_lines
-            .iter()
-            .any(|line| line == "   include start: true")
-    );
-    assert!(
-        slice_preview_lines
-            .iter()
-            .any(|line| line == "   include end: true")
+            .any(|line| line == "   boundaries: <article> … </article>")
     );
     assert!(
         slice_preview_lines
@@ -207,31 +169,9 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
             metadata: delimiter_metadata(10, 8, (2, 7), (2, 7), (1, 8), false, false),
         },
     );
-    assert!(
-        rich_slice_preview_lines
-            .iter()
-            .any(|line| line == "   candidate index: 8")
-    );
-    assert!(
-        rich_slice_preview_lines
-            .iter()
-            .any(|line| line == "   include start: false")
-    );
-    assert!(
-        rich_slice_preview_lines
-            .iter()
-            .any(|line| line == "   include end: false")
-    );
-    assert!(
-        rich_slice_preview_lines
-            .iter()
-            .any(|line| line == "   inner range: 2..7")
-    );
-    assert!(
-        rich_slice_preview_lines
-            .iter()
-            .any(|line| line == "   outer range: 1..8")
-    );
+    assert!(rich_slice_preview_lines.iter().any(|line| {
+        line == "   candidate 8 | selected 2..7 | inner 2..7 | outer 1..8 | retention exclude-both"
+    }));
     assert!(
         rich_slice_preview_lines
             .iter()
@@ -288,12 +228,10 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(
         sparse_slice_preview_lines
             .iter()
-            .any(|line| line == "   candidate index: 1")
-    );
-    assert!(
-        sparse_slice_preview_lines
-            .iter()
-            .any(|line| line == "   selected range: 10..20")
+            .any(|line| {
+                line
+                    == "   candidate 1 | selected 10..20 | inner 10..20 | outer 9..21 | retention exclude-both"
+            })
     );
     assert!(
         sparse_slice_preview_lines

@@ -86,7 +86,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             include_source_text: false,
             output_file: None,
         },
-        file_write: default_file_write_args(),
+        file_write: default_preview_file_write_args(),
     })
     .expect("inspect select request file");
     assert_eq!(preview_select.request.extraction.value(), &ValueSpec::Text);
@@ -126,7 +126,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             include_source_text: false,
             output_file: None,
         },
-        file_write: default_file_write_args(),
+        file_write: default_preview_file_write_args(),
     })
     .expect("inspect slice request file");
     assert_eq!(preview_slice.request.extraction.value(), &ValueSpec::Text);
@@ -221,7 +221,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 include_source_text: true,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         }),
         "inspect select request file conflict",
     );
@@ -264,7 +264,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 include_source_text: true,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         }),
         "inspect slice request file conflict",
     );

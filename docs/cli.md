@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "9.0.0"
+version: "10.0.0"
 domain: CLI
 updated: "2026-05-13"
 route:
@@ -161,7 +161,9 @@ selectors so HTML saving and rendered-text review do not have to share one compr
 Those same four command surfaces accept `--emit-request-file <PATH>`, which writes the normalized
 extraction-definition JSON used for that run. That makes it practical to prototype inline first,
 then promote the exact normalized request into a reusable JSON file without manually rewriting the
-contract.
+contract. Emitted request files always carry explicit `schema_name`, `schema_version`, and
+`request.spec_version` identity fields while omitting unchanged defaults. Replayable request files
+accept only absolute HTTP(S) URLs without userinfo, query strings, or fragments.
 
 When an extraction-definition file is missing, malformed, on an unsupported schema revision, or
 uses the wrong extraction strategy for the command, the CLI points back to the maintained
@@ -269,8 +271,9 @@ Boundary semantics are exact:
 - `--value outer-html` returns the full outer matched range including both boundaries
 
 `selected-html` is the CLI spelling for the core-side `SelectedHtml` value kind.
-Reusable extraction-definition JSON serializes that boundary policy under
-`boundary_retention` with one of `exclude-both`, `include-start`, `include-end`, or
+Reusable extraction-definition JSON serializes slice boundaries under
+`request.extraction.pattern` with `mode`, `from`, and `to`, and serializes the boundary policy
+under `boundary_retention` with one of `exclude-both`, `include-start`, `include-end`, or
 `include-both`.
 
 Use `inspect slice` before committing to extraction whenever the boundary pattern may consume more
@@ -327,15 +330,18 @@ With `--verbose`, successful `catalog`, `schema`, extraction, and inspection run
 
 `--bundle <dir>` writes:
 
+- `selection.json`
 - `selection.html`
 - `selection.txt`
 - `report.json`
 
-`selection.html` is a wrapped review artifact, not a byte-for-byte replay of the source document.
-`selection.txt` is the rendered plain-text view of the same extracted matches, including when the
-underlying extracted value is HTML. `report.json` is the structured execution report; it keeps the
-canonical extracted value plus metadata, but omits duplicate `html` and `text` sidecar payloads
-because those already exist as `selection.html` and `selection.txt`.
+`selection.json` is the canonical machine-readable payload for the selected matches. It keeps the
+extracted value plus match metadata in one stable JSON artifact. `selection.html` is a wrapped
+review artifact, not a byte-for-byte replay of the source document. `selection.txt` is the
+rendered plain-text view of the same extracted matches, including when the underlying extracted
+value is HTML. `report.json` is the lightweight execution summary for the bundle run; it points at
+the same extraction outcome without duplicating the canonical value bodies that already live in the
+selection artifacts.
 
 If `<dir>` already exists, rerun with `--overwrite` only when you intend to replace the managed
 bundle artifacts in place.

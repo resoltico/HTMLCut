@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "9.0.0"
+version: "10.0.0"
 domain: INTEROP
 updated: "2026-05-05"
 route:
@@ -67,7 +67,8 @@ Main types:
 Validator discovery:
 
 - `htmlcut schema --name htmlcut.plan --schema-version 4 --output json`
-- `htmlcut schema --name htmlcut.result --schema-version 5 --output json`
+- `htmlcut schema --name htmlcut.plan --schema-version 5 --output json`
+- `htmlcut schema --name htmlcut.result --schema-version 6 --output json`
 - `htmlcut schema --name htmlcut.error --schema-version 2 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
@@ -83,17 +84,16 @@ Deterministic JSON and digest helpers:
 
 ```rust
 use htmlcut_core::interop::v1::{
-    CssSelectorText, HtmlInput, Output, Plan, PlanStrategy, Rendering, Selection,
+    CssSelectorText, HtmlInput, HttpUrl, Output, Plan, PlanStrategy, Rendering, Selection,
     TextWhitespace, execute_validated_plan, prepare_plan,
 };
-use url::Url;
 
 let source = HtmlInput::new(
     "example_news",
     "<article><h1>Headline</h1></article>",
 )
 .unwrap()
-.with_input_base_url(Url::parse("https://example.com/news/").unwrap());
+.with_input_base_url(HttpUrl::parse("https://example.com/news/").unwrap());
 
 let plan = Plan::new(
     PlanStrategy::css_selector(CssSelectorText::new("article h1").unwrap()),

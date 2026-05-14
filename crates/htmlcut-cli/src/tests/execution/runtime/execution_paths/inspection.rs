@@ -36,8 +36,8 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
         "ftp://example.com".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"code\": \"CLI_BASE_URL_SCHEME_INVALID\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("URLs must use http or https."));
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -73,8 +73,8 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
         "nth".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"code\": \"CLI_MATCH_INDEX_REQUIRED\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("--index is required with --match nth."));
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -89,8 +89,8 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
         "i".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"code\": \"CLI_REGEX_FLAGS_CONFLICT\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("--regex-flags can only be used with --pattern regex."));
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

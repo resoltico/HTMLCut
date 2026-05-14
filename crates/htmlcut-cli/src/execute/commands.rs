@@ -15,7 +15,8 @@ use crate::file_output::{
 use crate::lookup;
 use crate::prepare::{
     PreparedExtraction, PreparedPreview, PreparedSourceInspection, build_catalog_report,
-    build_schema_report, build_source_inspection_report, extract_prefers_json,
+    build_schema_inventory_report, build_schema_report, build_source_inspection_report,
+    extract_prefers_json,
 };
 use crate::render::{
     build_source_inspection_verbose_lines, render_catalog_text, render_schema_text,
@@ -36,7 +37,7 @@ pub(crate) fn run_catalog(args: CatalogArgs, _verbose: u8, quiet: bool) -> Execu
         );
     }
 
-    let report = match build_catalog_report(args.operation.as_deref()) {
+    let report = match build_catalog_report(args.filter.operation.as_deref()) {
         Ok(report) => report,
         Err(error) => {
             return error_outcome(
@@ -54,7 +55,7 @@ pub(crate) fn run_catalog(args: CatalogArgs, _verbose: u8, quiet: bool) -> Execu
         CliCatalogOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
             Err(error) => {
-                return error_outcome("catalog".to_owned(), false, None, write_mode, error);
+                return error_outcome("catalog".to_owned(), true, None, write_mode, error);
             }
         },
         CliCatalogOutputMode::Text => render_catalog_text(&report),
@@ -71,24 +72,29 @@ pub(crate) fn run_catalog(args: CatalogArgs, _verbose: u8, quiet: bool) -> Execu
 
 pub(crate) fn run_schema(args: SchemaArgs, _verbose: u8, quiet: bool) -> ExecutionOutcome {
     let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
+    let wants_machine_readable_output = matches!(
+        args.output,
+        CliSchemaOutputMode::Json | CliSchemaOutputMode::IndexJson
+    );
     if let Some(path) = args.output_file.as_deref()
         && let Err(error) = validate_output_file_target(path, write_mode)
     {
         return error_outcome(
             "schema".to_owned(),
-            args.output == CliSchemaOutputMode::Json,
+            wants_machine_readable_output,
             None,
             write_mode,
             error,
         );
     }
 
-    let report = match build_schema_report(args.name.as_deref(), args.schema_version) {
+    let report = match build_schema_report(args.filter.name.as_deref(), args.filter.schema_version)
+    {
         Ok(report) => report,
         Err(error) => {
             return error_outcome(
                 "schema".to_owned(),
-                args.output == CliSchemaOutputMode::Json,
+                wants_machine_readable_output,
                 args.output_file,
                 write_mode,
                 error,
@@ -101,9 +107,22 @@ pub(crate) fn run_schema(args: SchemaArgs, _verbose: u8, quiet: bool) -> Executi
         CliSchemaOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
             Err(error) => {
-                return error_outcome("schema".to_owned(), false, None, write_mode, error);
+                return error_outcome("schema".to_owned(), true, None, write_mode, error);
             }
         },
+        CliSchemaOutputMode::IndexJson => {
+            match build_schema_inventory_report(
+                args.filter.name.as_deref(),
+                args.filter.schema_version,
+            )
+            .and_then(|report| to_pretty_json(&report))
+            {
+                Ok(stdout) => stdout,
+                Err(error) => {
+                    return error_outcome("schema".to_owned(), true, None, write_mode, error);
+                }
+            }
+        }
         CliSchemaOutputMode::Text => render_schema_text(&report),
     };
     ExecutionOutcome {
@@ -271,7 +290,7 @@ pub(crate) fn run_inspect_source(
                 },
                 Err(render_error) => error_outcome(
                     prepared.command.clone(),
-                    false,
+                    true,
                     None,
                     write_mode,
                     render_error,
@@ -279,7 +298,13 @@ pub(crate) fn run_inspect_source(
             };
         }
 
-        return error_outcome(prepared.command.clone(), false, None, write_mode, error);
+        return error_outcome(
+            prepared.command.clone(),
+            prefers_json,
+            None,
+            write_mode,
+            error,
+        );
     }
 
     let post_write_stderr = output_file_notice(prepared.output_file.as_deref(), prepared.quiet);
@@ -287,7 +312,7 @@ pub(crate) fn run_inspect_source(
         CliInspectOutputMode::Json => match to_pretty_json(&report) {
             Ok(stdout) => stdout,
             Err(error) => {
-                return error_outcome(prepared.command.clone(), false, None, write_mode, error);
+                return error_outcome(prepared.command.clone(), true, None, write_mode, error);
             }
         },
         CliInspectOutputMode::Text => {

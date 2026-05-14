@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
+use super::{displayed_http_url, output_attribute_name};
+use crate::DisplayedHttpUrl;
 use crate::interop::v1::{
     ByteRange, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode,
     ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError,
-    InteropResult, Output, OutputAttributeName, Plan, PlanStrategy, RegexFlag, Rendering,
-    ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode,
-    StrategyKind, TextWhitespace, stable_json_v1,
+    InteropResult, Output, Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource,
+    SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
+    stable_json_v1,
 };
 use serde_json::{Map, Value};
-use url::Url;
 
 const CASES: usize = 256;
 const TEST_PLAN_DIGEST_SHA256: &str =
@@ -130,10 +131,9 @@ impl CaseGenerator {
                 0 => Output::text(),
                 1 => Output::inner_html(),
                 2 => Output::outer_html(),
-                3 => Output::attribute(
-                    OutputAttributeName::new(self.non_empty_text(8).replace(' ', "_"))
-                        .expect("attribute"),
-                ),
+                3 => Output::attribute(output_attribute_name(
+                    &self.non_empty_text(8).replace(' ', "_"),
+                )),
                 _ => Output::structured(),
             },
             StrategyKind::DelimiterPair => match self.bounded(6) {
@@ -141,10 +141,9 @@ impl CaseGenerator {
                 1 => Output::inner_html(),
                 2 => Output::outer_html(),
                 3 => Output::selected_html(),
-                4 => Output::attribute(
-                    OutputAttributeName::new(self.non_empty_text(8).replace(' ', "_"))
-                        .expect("attribute"),
-                ),
+                4 => Output::attribute(output_attribute_name(
+                    &self.non_empty_text(8).replace(' ', "_"),
+                )),
                 _ => Output::structured(),
             },
         }
@@ -184,11 +183,10 @@ impl CaseGenerator {
         }
     }
 
-    fn url(&mut self) -> Url {
+    fn url(&mut self) -> DisplayedHttpUrl {
         let segment = self.non_empty_text(8).replace(' ', "_");
         let leaf = self.non_empty_text(8).replace(' ', "_");
-        Url::parse(&format!("https://example.com/{segment}/{leaf}.html"))
-            .expect("generated URL should parse")
+        displayed_http_url(&format!("https://example.com/{segment}/{leaf}.html"))
     }
 
     fn extensions(&mut self) -> Option<BTreeMap<String, Value>> {

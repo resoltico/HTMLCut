@@ -105,7 +105,7 @@ pub(crate) fn parse_optional_url_for_tests(
     value: Option<&str>,
     field: &'static str,
     diagnostics: &[crate::Diagnostic],
-) -> Result<Option<url::Url>, Box<InteropError>> {
+) -> Result<Option<crate::DisplayedHttpUrl>, Box<InteropError>> {
     project::parse_optional_url(
         value,
         TEST_PLAN_DIGEST_SHA256,

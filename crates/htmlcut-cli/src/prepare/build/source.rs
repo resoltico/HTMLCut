@@ -42,11 +42,12 @@ pub(crate) fn build_runtime(args: &SourceArgs) -> Result<RuntimeOptions, CliErro
     Ok(RuntimeOptions {
         max_bytes: MaxBytes::new(parse_byte_size(&args.max_bytes)?)
             .map_err(|error| usage_error(CliErrorCode::ByteSizeInvalid, error.to_string()))?,
-        fetch_timeout: FetchTimeoutMs::new(args.fetch_timeout_ms)
+        fetch_timeout_ms: FetchTimeoutMs::new(args.fetch_timeout_ms)
             .map_err(|error| usage_error(CliErrorCode::FetchTimeoutInvalid, error.to_string()))?,
-        fetch_connect_timeout: FetchConnectTimeoutMs::new(args.fetch_connect_timeout_ms).map_err(
-            |error| usage_error(CliErrorCode::FetchConnectTimeoutInvalid, error.to_string()),
-        )?,
+        fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(args.fetch_connect_timeout_ms)
+            .map_err(|error| {
+                usage_error(CliErrorCode::FetchConnectTimeoutInvalid, error.to_string())
+            })?,
         fetch_preflight: args.fetch_preflight,
         tls_trust: build_tls_trust_policy(args)?,
     })
@@ -196,7 +197,10 @@ fn map_http_url_error(
         ContractValueError::InvalidUrl { .. } => {
             usage_error(invalid_code, format!("Invalid URL: {value}"))
         }
-        ContractValueError::NonPositive { .. }
+        ContractValueError::UrlQueryUnsupported { .. }
+        | ContractValueError::UrlUnredactedQueryUnsupported { .. }
+        | ContractValueError::UrlFragmentUnsupported { .. }
+        | ContractValueError::NonPositive { .. }
         | ContractValueError::Empty { .. }
         | ContractValueError::ContainsWhitespace { .. } => {
             usage_error(invalid_code, error.to_string())

@@ -10,8 +10,8 @@ use crate::help::{
 
 use super::{
     CliBoundaryRetentionMode, CliInspectOutputMode, CliPatternMode, CliSliceValueMode,
-    CliValueMode, CliWhitespaceMode, DefinitionArgs, FileWriteArgs, InspectOutputArgs,
-    SelectionArgs, SourceArgs, cli_choice_parser,
+    CliValueMode, CliWhitespaceMode, DefinitionArgs, InspectOutputArgs, OutputFileWriteArgs,
+    PreviewFileWriteArgs, SelectionArgs, SourceArgs, cli_choice_parser,
 };
 
 #[derive(Debug, Args)]
@@ -52,7 +52,7 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) sample_limit: usize,
 
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Json)]
+    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Text)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Include the full source text in JSON output and a bounded preview in text output.
@@ -70,7 +70,7 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) output_file: Option<PathBuf>,
 
     #[command(flatten)]
-    pub(crate) file_write: FileWriteArgs,
+    pub(crate) file_write: OutputFileWriteArgs,
 }
 
 #[derive(Debug, Args)]
@@ -108,7 +108,7 @@ pub(crate) struct InspectSelectArgs {
     pub(crate) output: InspectOutputArgs,
 
     #[command(flatten)]
-    pub(crate) file_write: FileWriteArgs,
+    pub(crate) file_write: PreviewFileWriteArgs,
 }
 
 #[derive(Debug, Args)]
@@ -162,5 +162,5 @@ pub(crate) struct InspectSliceArgs {
     pub(crate) output: InspectOutputArgs,
 
     #[command(flatten)]
-    pub(crate) file_write: FileWriteArgs,
+    pub(crate) file_write: PreviewFileWriteArgs,
 }

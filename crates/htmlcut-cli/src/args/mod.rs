@@ -18,13 +18,15 @@ mod inspect;
 mod shared;
 
 pub(crate) use self::discovery::{CatalogArgs, SchemaArgs};
+#[cfg(test)]
+pub(crate) use self::discovery::{CatalogFilterArgs, SchemaFilterArgs};
 pub(crate) use self::extract::{SelectArgs, SliceArgs};
 pub(crate) use self::inspect::{
     InspectArgs, InspectCommands, InspectSelectArgs, InspectSliceArgs, InspectSourceArgs,
 };
 pub(crate) use self::shared::{
-    DefinitionArgs, ExtractOutputArgs, FileWriteArgs, GlobalArgs, InspectOutputArgs, SelectionArgs,
-    SliceExtractOutputArgs, SourceArgs,
+    DefinitionArgs, ExtractOutputArgs, FileWriteArgs, GlobalArgs, InspectOutputArgs,
+    OutputFileWriteArgs, PreviewFileWriteArgs, SelectionArgs, SliceExtractOutputArgs, SourceArgs,
 };
 
 pub(crate) type CliPatternMode = htmlcut_core::PatternMode;
@@ -32,7 +34,7 @@ pub(crate) type CliMatchMode = crate::contract::CliSelectionMode;
 pub(crate) type CliOutputMode = crate::contract::CliOutputMode;
 pub(crate) type CliInspectOutputMode = crate::contract::CliTextJsonOutputMode;
 pub(crate) type CliCatalogOutputMode = crate::contract::CliTextJsonOutputMode;
-pub(crate) type CliSchemaOutputMode = crate::contract::CliTextJsonOutputMode;
+pub(crate) type CliSchemaOutputMode = crate::contract::CliSchemaOutputMode;
 pub(crate) type CliTlsTrustMode = crate::contract::CliTlsTrustMode;
 pub(crate) type CliBoundaryRetentionMode = crate::contract::CliBoundaryRetentionMode;
 pub(crate) type CliWhitespaceMode = htmlcut_core::WhitespaceMode;

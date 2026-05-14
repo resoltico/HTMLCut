@@ -3,7 +3,6 @@ mod io;
 mod metadata;
 mod types;
 
-#[cfg(feature = "http-client")]
 use http as url_loader;
 
 #[cfg(all(test, feature = "http-client"))]
@@ -61,7 +60,6 @@ pub(crate) fn load_source(
                 load_steps: Vec::new(),
             })
         }
-        #[cfg(feature = "http-client")]
         SourceInput::Url { href } => url_loader::read_url_source(source, href, runtime),
         SourceInput::File { path } => io::read_file_source(source, path, runtime),
         SourceInput::Stdin => read_stdin_source(source, runtime),

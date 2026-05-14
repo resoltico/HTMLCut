@@ -44,7 +44,11 @@ fn restricted_output_modes_only_expose_text_and_json() {
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliSchemaOutputMode>()),
-        vec!["text".to_owned(), "json".to_owned()]
+        vec![
+            "text".to_owned(),
+            "json".to_owned(),
+            "index-json".to_owned()
+        ]
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliInspectOutputMode>()),
@@ -194,7 +198,29 @@ fn extract_prefers_json_matches_default_structured_behavior() {
         attribute: None,
         whitespace: CliWhitespaceMode::Rendered,
         rewrite_urls: false,
+        output: None,
+        bundle: None,
+        preview_chars: DEFAULT_PREVIEW_CHARS,
+        include_source_text: false,
+        output_file: None,
+    }));
+    assert!(!extract_prefers_json(&ExtractOutputArgs {
+        value: CliValueMode::Text,
+        attribute: None,
+        whitespace: CliWhitespaceMode::Rendered,
+        rewrite_urls: false,
         output: Some(CliOutputMode::Text),
+        bundle: None,
+        preview_chars: DEFAULT_PREVIEW_CHARS,
+        include_source_text: false,
+        output_file: None,
+    }));
+    assert!(!extract_prefers_json(&SliceExtractOutputArgs {
+        value: CliSliceValueMode::Text,
+        attribute: None,
+        whitespace: CliWhitespaceMode::Rendered,
+        rewrite_urls: false,
+        output: None,
         bundle: None,
         preview_chars: DEFAULT_PREVIEW_CHARS,
         include_source_text: false,

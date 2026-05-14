@@ -30,15 +30,15 @@ fn catalog_json_surfaces_operation_catalog() {
         htmlcut_core::operation_catalog()[0].id
     );
     assert_eq!(
-        report.operations[0].core_api,
+        report.operations[0].engine_capability,
         htmlcut_core::operation_catalog()[0].core_api
     );
     assert_eq!(
-        report.operations[0].request_contract.family,
+        report.operations[0].request_contract.artifact,
         htmlcut_core::operation_catalog()[0].request_contract.family
     );
     assert_eq!(
-        report.operations[0].result_contract.family,
+        report.operations[0].result_contract.artifact,
         htmlcut_core::operation_catalog()[0].result_contract.family
     );
     assert!(report.operations[0].command_contract.is_none());
@@ -143,19 +143,20 @@ fn schema_json_surfaces_registry_for_core_cli_and_interop() {
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == htmlcut_core::EXTRACTION_REQUEST_SCHEMA_NAME
             && schema.schema_version == htmlcut_core::CORE_REQUEST_SCHEMA_VERSION
-            && schema.owner == "core"
+            && schema.surface == "engine"
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
-            && schema.owner == "interop-v1"
+            && schema.surface == "integration"
+            && schema.profile.as_deref() == Some("htmlcut-v1")
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.owner == "cli"
+        schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.surface == "cli"
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == ERROR_COMMAND_REPORT_SCHEMA_NAME
             && schema.schema_version == ERROR_COMMAND_REPORT_SCHEMA_VERSION
-            && schema.owner == "cli"
+            && schema.surface == "cli"
     }));
 }
 

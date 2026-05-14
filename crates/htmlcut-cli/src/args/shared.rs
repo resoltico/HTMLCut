@@ -118,7 +118,8 @@ pub(crate) struct ExtractOutputArgs {
     #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
     pub(crate) output: Option<CliOutputMode>,
 
-    /// Write `report.json`, `selection.html`, and `selection.txt` to this directory.
+    /// Write `selection.json`, `selection.html`, `selection.txt`, and `report.json` to this
+    /// directory.
     ///
     /// Parent directories are created automatically. Existing bundle paths require `--overwrite`.
     #[arg(long)]
@@ -164,7 +165,8 @@ pub(crate) struct SliceExtractOutputArgs {
     #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
     pub(crate) output: Option<CliOutputMode>,
 
-    /// Write `report.json`, `selection.html`, and `selection.txt` to this directory.
+    /// Write `selection.json`, `selection.html`, `selection.txt`, and `report.json` to this
+    /// directory.
     ///
     /// Parent directories are created automatically. Existing bundle paths require `--overwrite`.
     #[arg(long)]
@@ -189,7 +191,7 @@ pub(crate) struct SliceExtractOutputArgs {
 #[command(next_help_heading = "Inspection Output")]
 pub(crate) struct InspectOutputArgs {
     /// Render the inspection as compact text or structured JSON.
-    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Json)]
+    #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Text)]
     pub(crate) output: CliInspectOutputMode,
 
     /// Maximum preview length stored in structured preview reports.
@@ -209,8 +211,25 @@ pub(crate) struct InspectOutputArgs {
 
 #[derive(Debug, Default, Args)]
 #[command(next_help_heading = "Filesystem Output")]
+pub(crate) struct OutputFileWriteArgs {
+    /// Allow HTMLCut to replace an existing `--output-file`.
+    #[arg(long, default_value_t = false)]
+    pub(crate) overwrite: bool,
+}
+
+#[derive(Debug, Default, Args)]
+#[command(next_help_heading = "Filesystem Output")]
+pub(crate) struct PreviewFileWriteArgs {
+    /// Allow HTMLCut to replace existing `--output-file` and `--emit-request-file` paths.
+    #[arg(long, default_value_t = false)]
+    pub(crate) overwrite: bool,
+}
+
+#[derive(Debug, Default, Args)]
+#[command(next_help_heading = "Filesystem Output")]
 pub(crate) struct FileWriteArgs {
-    /// Allow HTMLCut to replace existing `--output-file`, `--emit-request-file`, and bundle paths.
+    /// Allow HTMLCut to replace existing `--output-file`, `--emit-request-file`, and `--bundle`
+    /// paths.
     #[arg(long, default_value_t = false)]
     pub(crate) overwrite: bool,
 }

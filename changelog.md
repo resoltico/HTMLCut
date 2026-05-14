@@ -5,7 +5,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.0.0] - 2026-05-14
+
 ### Changed
+- Promoted the workspace and current unpublished contract line to `10.0.0` because the request,
+  interop, and runtime boundary cleanups in this development line intentionally break the
+  published `9.0.0` surface and therefore require a new major release identity.
+- Bumped the request-side public contract to `htmlcut.extraction_definition@4` and core request
+  spec version `7`, made persisted request identities explicit and mandatory, and rewrote slice
+  request documents to carry a nested `request.extraction.pattern` object instead of the older
+  flatter boundary layout.
 - Refined release closeout guidance so overlapping Dependabot PRs that touch the same write set
   are consolidated through one maintainer-owned `main` update instead of churny sequential merges
   that immediately put sibling branches behind.
@@ -15,6 +24,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refreshed the checked-in `semver-baseline/htmlcut-core` snapshot from the published `v9.0.0`
   tag so future API comparisons use the actual released 9.0.0 surface and its recorded
   provenance.
+- Reworked the CLI help and discovery presentation so long help stays grammar-first with examples
+  after the option surface, and `catalog` / `schema` now group discovery filters under explicit
+  filter headings instead of burying them under filesystem-output controls.
+
+### Fixed
+- Reusable request files now form one strict closed loop: emitted request files replay through the
+  same maintained schema, legacy slice `include_start` / `include_end` booleans are rejected
+  instead of being silently ignored, and request-file emission refuses URL inputs that would
+  persist userinfo, query strings, or fragments.
+- Exported request schemas are now feature-stable across `http-client` builds, no-HTTP builds
+  reject URL execution at the capability boundary instead of at the schema boundary, and public
+  display/result URLs only allow the explicit `?[redacted]` query marker in serialized artifacts.
+- Help text, contract metadata, and CLI docs now describe bundle output truthfully: extraction
+  bundles write `selection.json`, `selection.html`, `selection.txt`, and `report.json`, and each
+  command family scopes `--overwrite` to the writable targets that command actually owns instead
+  of claiming unrelated request-file or bundle surfaces.
+- `inspect source` now demotes broad wrappers that preserve nearly all text while adding large
+  heading-only shells, so wiki and documentation pages promote the real article body ahead of
+  repository or page chrome in both extraction and reading suggestions.
+- The getting-started guide now states that `inspect select` and `inspect slice` default to
+  human-readable text previews and require `--output json` for structured preview reports, keeping
+  the published quick-start flow aligned with the actual CLI surface.
 
 ## [9.0.0] - 2026-05-13
 

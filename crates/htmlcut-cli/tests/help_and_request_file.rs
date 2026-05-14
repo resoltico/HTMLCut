@@ -4,15 +4,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
-use htmlcut_cli::contract::{
-    CliValue, OperationCliContract, cli_operation_contract, render_cli_value,
-};
 use htmlcut_core::{
-    ExtractionDefinition, ExtractionRequest, ExtractionSpec, OperationId, SelectorQuery,
-    SliceBoundary, SliceSpec, SourceRequest,
+    ExtractionDefinition, ExtractionRequest, ExtractionSpec, SelectorQuery, SliceBoundary,
+    SliceSpec, SourceRequest, wire::v1::ExtractionDefinitionDocument,
 };
 use htmlcut_tempdir::tempdir;
 use predicates::prelude::*;
+use serde_json::json;
 
 fn write_json_file(tempdir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = tempdir.join(name);
@@ -22,9 +20,11 @@ fn write_json_file(tempdir: &Path, name: &str, contents: &str) -> PathBuf {
 
 fn write_definition_file(tempdir: &Path, name: &str, definition: &ExtractionDefinition) -> PathBuf {
     let path = tempdir.join(name);
+    let document =
+        ExtractionDefinitionDocument::try_from(definition.clone()).expect("definition document");
     fs::write(
         &path,
-        serde_json::to_string_pretty(definition).expect("serialize definition"),
+        serde_json::to_string_pretty(&document).expect("serialize definition"),
     )
     .expect("write definition fixture");
     path
@@ -32,14 +32,6 @@ fn write_definition_file(tempdir: &Path, name: &str, definition: &ExtractionDefi
 
 fn normalize_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn join_cli_values(values: impl IntoIterator<Item = CliValue>) -> String {
-    values
-        .into_iter()
-        .map(render_cli_value)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn help_output(args: &[&str]) -> String {
@@ -51,134 +43,33 @@ fn help_output(args: &[&str]) -> String {
     String::from_utf8(assert.get_output().stdout.clone()).expect("stdout utf8")
 }
 
-fn assert_help_contains_contract(args: &[&str], operation_id: OperationId) {
+fn assert_help_stays_grammar_first(args: &[&str]) {
     let help = normalize_whitespace(&help_output(args));
-    let contract = cli_operation_contract(operation_id).expect("cli contract");
-
-    assert_contract_modes_and_notes(&help, contract);
-}
-
-fn assert_contract_modes_and_notes(help: &str, contract: &OperationCliContract) {
-    if let Some(default_match) = contract.default_match {
-        let fragment = format!(
-            "Default match mode: {}.",
-            render_cli_value(CliValue::SelectionMode(default_match))
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    if !contract.selection_modes.is_empty() {
-        let fragment = format!(
-            "Supported match modes: {}.",
-            join_cli_values(
-                contract
-                    .selection_modes
-                    .iter()
-                    .copied()
-                    .map(CliValue::SelectionMode)
-            )
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    if let Some(default_value) = contract.default_value {
-        let fragment = format!(
-            "Default value mode: {}.",
-            render_cli_value(CliValue::ValueType(default_value))
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    if !contract.value_modes.is_empty() {
-        let fragment = format!(
-            "Supported value modes: {}.",
-            join_cli_values(
-                contract
-                    .value_modes
-                    .iter()
-                    .copied()
-                    .map(CliValue::ValueType)
-            )
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    if let Some(default_output) = contract.default_output {
-        let fragment = format!(
-            "Default output mode: {}.",
-            render_cli_value(CliValue::OutputMode(default_output))
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    for override_rule in &contract.default_output_overrides {
-        let verb = if override_rule.when.values.len() == 1 {
-            "is"
-        } else {
-            "is one of"
-        };
-        let fragment = format!(
-            "Output default override: {} when {} {} {}.",
-            render_cli_value(override_rule.value),
-            override_rule.when.parameter,
-            verb,
-            join_cli_values(override_rule.when.values.iter().copied())
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    if !contract.output_modes.is_empty() {
-        let fragment = format!(
-            "Supported output modes: {}.",
-            join_cli_values(
-                contract
-                    .output_modes
-                    .iter()
-                    .copied()
-                    .map(CliValue::OutputMode)
-            )
-        );
-        assert!(
-            help.contains(&normalize_whitespace(&fragment)),
-            "{fragment}"
-        );
-    }
-    for note in &contract.notes {
-        assert!(help.contains(&normalize_whitespace(note)), "{note}");
+    assert!(help.contains("Usage:"), "{help}");
+    assert!(help.contains("Examples:"), "{help}");
+    for fragment in [
+        "Default match mode:",
+        "Supported match modes:",
+        "Default value mode:",
+        "Supported value modes:",
+        "Default output mode:",
+        "Output default override:",
+        "Supported output modes:",
+    ] {
+        assert!(!help.contains(fragment), "{fragment}");
     }
 }
 
 #[test]
 fn subcommand_help_renders_canonical_contract_modes_and_notes() {
-    for (args, operation_id) in [
-        (&["select", "--help"][..], OperationId::SelectExtract),
-        (&["slice", "--help"][..], OperationId::SliceExtract),
-        (
-            &["inspect", "source", "--help"][..],
-            OperationId::SourceInspect,
-        ),
-        (
-            &["inspect", "select", "--help"][..],
-            OperationId::SelectPreview,
-        ),
-        (
-            &["inspect", "slice", "--help"][..],
-            OperationId::SlicePreview,
-        ),
+    for args in [
+        &["select", "--help"][..],
+        &["slice", "--help"][..],
+        &["inspect", "source", "--help"][..],
+        &["inspect", "select", "--help"][..],
+        &["inspect", "slice", "--help"][..],
     ] {
-        assert_help_contains_contract(args, operation_id);
+        assert_help_stays_grammar_first(args);
     }
 }
 
@@ -194,35 +85,33 @@ fn missing_request_file_points_back_to_schema_and_catalog_contracts() {
         .assert()
         .failure()
         .code(2)
-        .stdout(predicate::str::contains(
-            "\"code\": \"CLI_REQUEST_FILE_READ_FAILED\"",
-        ))
-        .stdout(predicate::str::contains(
+        .stdout("")
+        .stderr(predicate::str::contains(
             "Could not read extraction definition",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
-        ))
-        .stderr("");
+        ));
 }
 
 #[test]
 fn unsupported_request_file_schema_carries_recovery_guidance() {
     let tempdir = tempdir().expect("tempdir");
+    let definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    ));
+    let mut document =
+        serde_json::to_value(ExtractionDefinitionDocument::try_from(definition).expect("document"))
+            .expect("serialize definition");
+    document["schema_version"] = json!(999_u32);
     let request_path = write_json_file(
         tempdir.path(),
         "unsupported schema.json",
-        r#"{
-  "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 999,
-  "request": {
-    "source": { "input": { "type": "stdin" } },
-    "extraction": { "kind": "selector", "selector": "article" }
-  }
-}"#,
+        &serde_json::to_string_pretty(&document).expect("serialize unsupported schema fixture"),
     );
 
     Command::cargo_bin("htmlcut")
@@ -232,20 +121,17 @@ fn unsupported_request_file_schema_carries_recovery_guidance() {
         .assert()
         .failure()
         .code(2)
-        .stdout(predicate::str::contains(
-            "\"code\": \"CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED\"",
-        ))
-        .stdout(predicate::str::contains(
+        .stdout("")
+        .stderr(predicate::str::contains(
             "Unsupported extraction definition schema",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
         ))
-        .stdout(predicate::str::contains("--emit-request-file <PATH>"))
-        .stderr("");
+        .stderr(predicate::str::contains("--emit-request-file <PATH>"));
 }
 
 #[test]
@@ -271,22 +157,19 @@ fn strategy_mismatch_request_file_points_back_to_the_matching_contract() {
         .assert()
         .failure()
         .code(2)
-        .stdout(predicate::str::contains(
-            "\"code\": \"CLI_REQUEST_FILE_STRATEGY_MISMATCH\"",
-        ))
-        .stdout(predicate::str::contains(
+        .stdout("")
+        .stderr(predicate::str::contains(
             "select cannot execute a slice extraction definition",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "only accepts selector extraction definitions",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "htmlcut catalog --operation select.extract --output json",
-        ))
-        .stderr("");
+        ));
 }
 
 #[test]
@@ -295,9 +178,12 @@ fn request_file_schema_fixtures_stay_parseable_for_regression_tests() {
         SourceRequest::stdin(),
         ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
     ));
-    let serialized = serde_json::to_string_pretty(&definition).expect("serialize definition");
-    let parsed: ExtractionDefinition =
+    let document =
+        ExtractionDefinitionDocument::try_from(definition.clone()).expect("definition document");
+    let serialized = serde_json::to_string_pretty(&document).expect("serialize definition");
+    let parsed_document: ExtractionDefinitionDocument =
         serde_json::from_str(&serialized).expect("parse serialized definition");
+    let parsed = ExtractionDefinition::from(parsed_document);
     assert_eq!(
         parsed.request.extraction.strategy(),
         definition.request.extraction.strategy()

@@ -7,23 +7,20 @@ use crate::error::CliError;
 
 use crate::metadata::identity_banner;
 
-use super::render::{
-    build_operation_long_about, operation_examples_after_help, render_examples_then_operator_guide,
-};
+use super::render::{operation_examples_after_help, render_examples_after_help};
 
 static ROOT_BEFORE_HELP: LazyLock<String> = LazyLock::new(identity_banner);
-static ROOT_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
-    render_examples_then_operator_guide(&crate::contract::cli_root_help_document())
-});
+static ROOT_AFTER_HELP: LazyLock<String> =
+    LazyLock::new(|| render_examples_after_help(&crate::contract::cli_root_help_document()));
 
 static CATALOG_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
-    render_examples_then_operator_guide(&crate::contract::cli_aux_command_help_document(
+    render_examples_after_help(&crate::contract::cli_aux_command_help_document(
         CliAuxCommandId::Catalog,
     ))
 });
 
 static SCHEMA_AFTER_HELP: LazyLock<String> = LazyLock::new(|| {
-    render_examples_then_operator_guide(&crate::contract::cli_aux_command_help_document(
+    render_examples_after_help(&crate::contract::cli_aux_command_help_document(
         CliAuxCommandId::Schema,
     ))
 });
@@ -123,36 +120,7 @@ fn resolve_cached_help_text(result: Result<String, CliError>) -> String {
 }
 
 fn operation_after_help(operation_id: OperationId) -> String {
-    let examples = resolve_cached_help_text(operation_examples_after_help(operation_id));
-    let guide = resolve_cached_help_text(build_operation_long_about(operation_id));
-    compose_examples_and_operator_guide(examples, &guide)
-}
-
-fn compose_examples_and_operator_guide(examples: String, guide: &str) -> String {
-    if guide.is_empty() {
-        return examples;
-    }
-
-    let guide = format!("Operator Guide:\n\n{}", indent_operator_guide(guide));
-    if examples.is_empty() {
-        guide
-    } else {
-        format!("{examples}\n\n{guide}")
-    }
-}
-
-fn indent_operator_guide(guide: &str) -> String {
-    guide
-        .lines()
-        .map(|line| {
-            if line.is_empty() {
-                String::new()
-            } else {
-                format!("  {line}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    resolve_cached_help_text(operation_examples_after_help(operation_id))
 }
 
 #[cfg(test)]
@@ -165,33 +133,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compose_examples_and_operator_guide_handles_empty_and_non_empty_guides() {
-        assert_eq!(
-            compose_examples_and_operator_guide("Examples:\n  htmlcut".to_owned(), ""),
-            "Examples:\n  htmlcut"
-        );
-        assert_eq!(
-            compose_examples_and_operator_guide(String::new(), "Workflow:\nLine"),
-            "Operator Guide:\n\n  Workflow:\n  Line"
-        );
-        assert_eq!(
-            compose_examples_and_operator_guide(
-                "Examples:\n  htmlcut".to_owned(),
-                "Workflow:\nLine"
-            ),
-            "Examples:\n  htmlcut\n\nOperator Guide:\n\n  Workflow:\n  Line"
-        );
-    }
-
-    #[test]
-    fn cached_help_accessors_return_operator_guide_surfaces() {
-        assert!(root_after_help().contains("Operator Guide:"));
-        assert!(catalog_after_help().contains("Operator Guide:"));
-        assert!(schema_after_help().contains("Operator Guide:"));
-        assert!(select_after_help().contains("Operator Guide:"));
-        assert!(slice_after_help().contains("Operator Guide:"));
-        assert!(inspect_source_after_help().contains("Operator Guide:"));
-        assert!(inspect_select_after_help().contains("Operator Guide:"));
-        assert!(inspect_slice_after_help().contains("Operator Guide:"));
+    fn cached_help_accessors_return_example_surfaces() {
+        assert!(root_after_help().contains("Examples:"));
+        assert!(catalog_after_help().contains("Examples:"));
+        assert!(schema_after_help().contains("Examples:"));
+        assert!(select_after_help().contains("Examples:"));
+        assert!(slice_after_help().contains("Examples:"));
+        assert!(inspect_source_after_help().contains("Examples:"));
+        assert!(inspect_select_after_help().contains("Examples:"));
+        assert!(inspect_slice_after_help().contains("Examples:"));
     }
 }

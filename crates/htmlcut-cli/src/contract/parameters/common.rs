@@ -161,11 +161,27 @@ pub(super) fn common_definition_parameters() -> Vec<CliParameterDescriptor> {
     ]
 }
 
-pub(super) fn common_filesystem_output_parameters() -> Vec<CliParameterDescriptor> {
+pub(super) fn output_file_filesystem_output_parameters() -> Vec<CliParameterDescriptor> {
     vec![param_flag(
         CliParameterSection::FilesystemOutput,
         CliParameterId::Overwrite,
-        "Allow HTMLCut to replace existing --output-file, --emit-request-file, and bundle paths.",
+        "Allow HTMLCut to replace an existing --output-file.",
+    )]
+}
+
+pub(super) fn preview_filesystem_output_parameters() -> Vec<CliParameterDescriptor> {
+    vec![param_flag(
+        CliParameterSection::FilesystemOutput,
+        CliParameterId::Overwrite,
+        "Allow HTMLCut to replace existing --output-file and --emit-request-file paths.",
+    )]
+}
+
+pub(super) fn extraction_filesystem_output_parameters() -> Vec<CliParameterDescriptor> {
+    vec![param_flag(
+        CliParameterSection::FilesystemOutput,
+        CliParameterId::Overwrite,
+        "Allow HTMLCut to replace existing --output-file, --emit-request-file, and --bundle paths.",
     )]
 }
 
@@ -256,7 +272,7 @@ pub(super) fn common_extract_parameters(value_modes: &[ValueType]) -> Vec<CliPar
             "BUNDLE",
             None,
             Vec::new(),
-            "Write report.json, selection.html, and selection.txt to this directory. selection.txt always contains rendered plain text, even when the extracted value is HTML. report.json keeps the canonical extracted value and metadata but omits duplicate html/text sidecar payloads that already live in the bundle files.",
+            "Write selection.json, selection.html, selection.txt, and report.json to this directory. selection.json keeps the canonical extracted values and metadata, selection.txt always contains rendered plain text, even when the extracted value is HTML, and report.json is the lightweight execution summary for the same bundle run.",
         ),
         param_option(
             CliParameterSection::Extraction,

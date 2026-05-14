@@ -4,7 +4,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::constants::CORE_SPEC_VERSION;
-use super::super::default_spec_version;
 use super::{ExtractionSpec, HttpUrl, OutputOptions, RuntimeOptions, SourceKind};
 
 /// Source locator for the HTML being loaded.
@@ -19,10 +18,6 @@ pub struct SourceRequest {
 
 impl SourceRequest {
     /// Creates a request for an HTTP or HTTPS source.
-    ///
-    /// This constructor exists only in builds that enable the `htmlcut-core/http-client`
-    /// capability.
-    #[cfg(feature = "http-client")]
     pub fn url(href: HttpUrl) -> Self {
         Self {
             input: SourceInput::Url { href },
@@ -74,10 +69,6 @@ impl SourceRequest {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SourceInput {
     /// Load HTML from an HTTP or HTTPS URL.
-    ///
-    /// This source kind exists only when the executing `htmlcut-core` build enables the
-    /// `http-client` capability.
-    #[cfg(feature = "http-client")]
     Url {
         /// Absolute HTTP or HTTPS URL to fetch.
         href: HttpUrl,
@@ -102,7 +93,6 @@ impl SourceInput {
     /// Returns the concrete source kind for this input.
     pub const fn kind(&self) -> SourceKind {
         match self {
-            #[cfg(feature = "http-client")]
             Self::Url { .. } => SourceKind::Url,
             Self::File { .. } => SourceKind::File,
             Self::Stdin => SourceKind::Stdin,
@@ -114,7 +104,6 @@ impl SourceInput {
 /// Full extraction request consumed by [`crate::extract`] and [`crate::preview_extraction`].
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExtractionRequest {
-    #[serde(default = "default_spec_version")]
     /// Version of the request contract.
     pub spec_version: u32,
     /// Source locator for the HTML input.
@@ -141,10 +130,8 @@ impl ExtractionRequest {
 /// Versioned reusable extraction definition for repeatable HTMLCut runs.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExtractionDefinition {
-    #[serde(default = "default_extraction_definition_schema_name")]
     /// Stable schema name for this reusable definition file.
     pub schema_name: String,
-    #[serde(default = "default_extraction_definition_schema_version")]
     /// Schema version for this reusable definition file.
     pub schema_version: u32,
     /// Extraction request executed by this definition.
@@ -158,18 +145,10 @@ impl ExtractionDefinition {
     /// Creates a reusable extraction definition with the current schema identity.
     pub fn new(request: ExtractionRequest) -> Self {
         Self {
-            schema_name: default_extraction_definition_schema_name(),
-            schema_version: default_extraction_definition_schema_version(),
+            schema_name: crate::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned(),
+            schema_version: crate::EXTRACTION_DEFINITION_SCHEMA_VERSION,
             request,
             runtime: RuntimeOptions::default(),
         }
     }
-}
-
-fn default_extraction_definition_schema_name() -> String {
-    crate::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned()
-}
-
-const fn default_extraction_definition_schema_version() -> u32 {
-    crate::EXTRACTION_DEFINITION_SCHEMA_VERSION
 }

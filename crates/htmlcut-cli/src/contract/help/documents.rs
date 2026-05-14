@@ -44,12 +44,12 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
     CliHelpDocument {
         sections: vec![
             CliHelpSection {
-                title: "Workflow".to_owned(),
+                title: "Start Here".to_owned(),
                 style: CliHelpSectionStyle::Numbered,
                 lines: start_here_lines,
             },
             CliHelpSection {
-                title: "Request files".to_owned(),
+                title: "Saved Definitions".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "--emit-request-file writes the normalized extraction definition for the current run."
@@ -61,7 +61,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 ],
             },
             CliHelpSection {
-                title: "Inputs".to_owned(),
+                title: "Input Sources".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "<INPUT> may be a local file path, an http:// or https:// URL, or - for stdin."
@@ -73,7 +73,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 ],
             },
             CliHelpSection {
-                title: "Output".to_owned(),
+                title: "Output Behavior".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "--value chooses what each extracted match should produce before stdout formatting."
@@ -85,13 +85,12 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                         .to_owned(),
                     "--output none suppresses stdout and therefore requires --bundle."
                         .to_owned(),
-                    "inspect defaults to JSON so agents and scripts can reason about the source or preview report."
+                    "inspect defaults to text for a readable preview; add --output json when an agent or script needs machine-readable reports."
                         .to_owned(),
-                    "Use --output text for a compact human summary.".to_owned(),
                 ],
             },
             CliHelpSection {
-                title: "URL resolution".to_owned(),
+                title: "URL Handling".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "--rewrite-urls rewrites supported relative URLs with the effective base URL, including standard HTML URL-bearing attributes plus CSS url(...) and quoted @import references."
@@ -105,7 +104,7 @@ pub(super) fn build_cli_root_help_document() -> CliHelpDocument {
                 ],
             },
             CliHelpSection {
-                title: "Errors".to_owned(),
+                title: "Failure Format".to_owned(),
                 style: CliHelpSectionStyle::Bullets,
                 lines: vec![
                     "Human output modes print the primary failure to stderr.".to_owned(),
@@ -146,17 +145,25 @@ pub fn cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
 pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHelpDocument {
     match id {
         CliAuxCommandId::Catalog => CliHelpDocument {
-            sections: vec![CliHelpSection {
-                title: "Overview".to_owned(),
-                style: CliHelpSectionStyle::Bullets,
-                lines: vec![
-                    "Print HTMLCut's capability catalog.".to_owned(),
-                    "Use this command to discover stable operation IDs, the command and core surfaces that expose each operation, the public request/result contracts tied to that operation, and the machine-readable CLI command contract when one exists, including parameter inventory, typed defaults, command constraints, and schema references.".to_owned(),
-                    "Use --output json when an agent or script wants machine-readable capability introspection.".to_owned(),
-                    "When --output-file points at an existing path, pass --overwrite or choose a fresh file instead."
-                        .to_owned(),
-                ],
-            }],
+            sections: vec![
+                CliHelpSection {
+                    title: "What It Prints".to_owned(),
+                    style: CliHelpSectionStyle::Bullets,
+                    lines: vec![
+                        "Stable operation IDs, their CLI command when one exists, the engine capability behind each operation, and the request/result contract families tied to that operation.".to_owned(),
+                        "Text output is a compact operator summary. JSON output is the full machine-readable contract surface.".to_owned(),
+                    ],
+                },
+                CliHelpSection {
+                    title: "Focused Use".to_owned(),
+                    style: CliHelpSectionStyle::Bullets,
+                    lines: vec![
+                        "Use --operation for one exact operation contract instead of the whole inventory.".to_owned(),
+                        "When --output-file points at an existing path, pass --overwrite or choose a fresh file instead."
+                            .to_owned(),
+                    ],
+                },
+            ],
             examples: vec![
                 format!(
                     "htmlcut {}",
@@ -181,28 +188,29 @@ pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHel
         CliAuxCommandId::Schema => CliHelpDocument {
             sections: vec![
                 CliHelpSection {
-                    title: "Overview".to_owned(),
+                    title: "What It Exports".to_owned(),
                     style: CliHelpSectionStyle::Bullets,
                     lines: vec![
                         "Export HTMLCut's validator-grade JSON schema registry.".to_owned(),
-                        "Use this command when a downstream tool needs the actual JSON Schema documents for HTMLCut's public JSON contracts instead of descriptive capability text."
+                        "Use --output json when a downstream tool needs the full JSON Schema documents for HTMLCut's public JSON contracts."
+                            .to_owned(),
+                        "Use --output index-json when a downstream tool only needs names, versions, and contract metadata."
                             .to_owned(),
                         "When --output-file points at an existing path, pass --overwrite or choose a fresh file instead."
                             .to_owned(),
                     ],
                 },
                 CliHelpSection {
-                    title: "Registry includes".to_owned(),
+                    title: "Registry Scope".to_owned(),
                     style: CliHelpSectionStyle::Bullets,
                     lines: vec![
-                        "htmlcut-core request/result schemas".to_owned(),
-                        "htmlcut-cli report schemas".to_owned(),
-                        "the versioned interop schemas shipped by htmlcut_core::interop::v1"
-                            .to_owned(),
+                        "Engine request/result schemas".to_owned(),
+                        "CLI report schemas".to_owned(),
+                        "Published downstream integration schemas".to_owned(),
                     ],
                 },
                 CliHelpSection {
-                    title: "Filtering".to_owned(),
+                    title: "Filters".to_owned(),
                     style: CliHelpSectionStyle::Bullets,
                     lines: vec![
                         "Use --name to select one schema family.".to_owned(),
@@ -217,6 +225,10 @@ pub(super) fn build_cli_aux_command_help_document(id: CliAuxCommandId) -> CliHel
                 ),
                 format!(
                     "htmlcut {} --output json",
+                    cli_aux_command_display_command(CliAuxCommandId::Schema)
+                ),
+                format!(
+                    "htmlcut {} --output index-json",
                     cli_aux_command_display_command(CliAuxCommandId::Schema)
                 ),
                 format!(
