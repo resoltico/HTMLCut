@@ -407,6 +407,57 @@ fn inspect_source_keeps_markdown_body_candidates_inside_mixed_layout_shells() {
 }
 
 #[test]
+fn inspect_source_prefers_inner_markdown_body_when_outer_wrapper_only_adds_heading_shell() {
+    let repo_heading_chrome = (1..=60)
+        .map(|index| format!("<h3>Repository Section {index}</h3>"))
+        .collect::<String>();
+    let body_sections = (1..=18)
+        .map(|index| {
+            format!(
+                "<h2>Body Section {index}</h2><p>Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega section {index}.</p>"
+            )
+        })
+        .collect::<String>();
+    let html = format!(
+        "<html><body><main id=\"js-repo-pjax-container\"><div id=\"repo-content-pjax-container\"><div id=\"wiki-wrapper\" class=\"page\"><nav class=\"gh-header repo-nav\"><h1>Jackson Release 3.1</h1><a href=\"#wiki-body\">Jump to wiki</a><a href=\"/_history\">152 revisions</a>{repo_heading_chrome}</nav><div id=\"wiki-content\"><div class=\"Layout Layout--sidebarPosition-end\"><div class=\"Layout-main\"><div id=\"wiki-body\" class=\"gollum-markdown-content\"><div class=\"markdown-body\">{body_sections}</div></div><aside class=\"Layout-sidebar related-topics\"><h2>Related Topics</h2><a href=\"/other\">Other</a></aside></div></div></div></div></main></body></html>"
+    );
+    let source = memory_source_with_base(
+        "fixture.html",
+        &html,
+        "https://github.com/FasterXML/jackson/wiki/Jackson-Release-3.1",
+    );
+
+    let inspection = inspect_source(
+        &source,
+        &RuntimeOptions::default(),
+        &InspectionOptions {
+            include_source_text: false,
+            sample_limit: 5,
+        },
+    );
+
+    assert!(inspection.ok);
+    let document = inspection.document.expect("document inspection");
+    assert!(matches!(
+        document.extraction_candidates[0].selector.as_str(),
+        "#wiki-content" | "div.Layout-main" | "#wiki-body" | "div.markdown-body"
+    ));
+    assert!(matches!(
+        document.reading_candidates[0].selector.as_str(),
+        "#wiki-content" | "div.Layout-main" | "#wiki-body" | "div.markdown-body"
+    ));
+    assert_ne!(
+        document.extraction_candidates[0].selector,
+        "#js-repo-pjax-container"
+    );
+    assert_ne!(
+        document.extraction_candidates[0].selector,
+        "#repo-content-pjax-container"
+    );
+    assert_ne!(document.extraction_candidates[0].selector, "#wiki-wrapper");
+}
+
+#[test]
 fn inspect_source_ignores_document_root_feature_shells() {
     let source = memory_source(
         "fixture.html",

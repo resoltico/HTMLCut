@@ -1,5 +1,5 @@
 schema = "htmlcut.semver_baseline_provenance@1"
 package = "htmlcut-core"
-package_version = "9.0.0"
-source_git_ref = "v9.0.0"
-refresh_command = "cargo xtask refresh-semver-baseline --git-ref v9.0.0"
+package_version = "10.0.0"
+source_git_ref = "v10.0.0"
+refresh_command = "cargo xtask refresh-semver-baseline --git-ref v10.0.0"

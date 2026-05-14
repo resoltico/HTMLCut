@@ -1,5 +1,4 @@
 use super::*;
-use url::Url;
 
 #[test]
 fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
@@ -111,7 +110,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     let adapted_text = v1::adapt_successful_extraction_for_tests(
         &selector_source
             .clone()
-            .with_input_base_url(Url::parse("https://example.com/start.html").expect("url")),
+            .with_input_base_url(http_url("https://example.com/start.html")),
         &selector_plan(),
         successful_selector_extraction(
             vec![selector_core_match(1, 1, 1)],
@@ -131,7 +130,7 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
             .source
             .effective_base_url
             .as_ref()
-            .map(Url::as_str),
+            .map(DisplayedHttpUrl::as_str),
         Some("https://example.com/base.html")
     );
 

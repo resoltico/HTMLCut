@@ -12,10 +12,10 @@ use crate::result::{
     Range, SelectorMatchMetadata,
 };
 use crate::{
-    AttributeName, BoundaryRetention, Diagnostic, DiagnosticCode, DiagnosticLevel,
-    ExtractionDefinition, ExtractionRequest, ExtractionResult, ExtractionSpec,
-    FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions,
-    MaxBytes, OperationId, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec,
+    AttributeName, BoundaryRetention, ContractValueError, Diagnostic, DiagnosticCode,
+    DiagnosticLevel, ExtractionDefinition, ExtractionRequest, ExtractionResult, ExtractionSpec,
+    FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs, InspectionOptions, MaxBytes,
+    OperationId, OutputOptions, PersistedHttpUrl, RenderingOptions, RuntimeOptions, SelectionSpec,
     SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult,
     SourceKind, SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest,
     TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
@@ -23,24 +23,26 @@ use crate::{
 
 /// Versioned JSON document for the `htmlcut.source_request` schema.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SourceRequestDocument {
     input: SourceInputDocument,
     #[serde(skip_serializing_if = "Option::is_none")]
-    base_url: Option<HttpUrl>,
+    base_url: Option<PersistedHttpUrl>,
 }
 
 /// Versioned JSON document for the `htmlcut.runtime_options` schema.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct RuntimeOptionsDocument {
     #[serde(default = "default_max_bytes_limit")]
     #[serde(skip_serializing_if = "is_default_runtime_max_bytes")]
     max_bytes: MaxBytes,
     #[serde(default = "default_fetch_timeout_limit")]
     #[serde(skip_serializing_if = "is_default_runtime_fetch_timeout")]
-    fetch_timeout: FetchTimeoutMs,
+    fetch_timeout_ms: FetchTimeoutMs,
     #[serde(default = "default_fetch_connect_timeout_limit")]
     #[serde(skip_serializing_if = "is_default_runtime_fetch_connect_timeout")]
-    fetch_connect_timeout: FetchConnectTimeoutMs,
+    fetch_connect_timeout_ms: FetchConnectTimeoutMs,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default_fetch_preflight")]
     fetch_preflight: FetchPreflightMode,
@@ -51,6 +53,7 @@ pub struct RuntimeOptionsDocument {
 
 /// Versioned JSON document for the `htmlcut.inspection_options` schema.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct InspectionOptionsDocument {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_false")]
@@ -62,9 +65,8 @@ pub struct InspectionOptionsDocument {
 
 /// Versioned JSON document for the `htmlcut.extraction_request` schema.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ExtractionRequestDocument {
-    #[serde(default = "default_spec_version_document")]
-    #[serde(skip_serializing_if = "is_default_spec_version_document")]
     spec_version: u32,
     source: SourceRequestDocument,
     extraction: ExtractionSpecDocument,
@@ -75,12 +77,9 @@ pub struct ExtractionRequestDocument {
 
 /// Versioned JSON document for the `htmlcut.extraction_definition` schema.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ExtractionDefinitionDocument {
-    #[serde(default = "default_extraction_definition_schema_name_document")]
-    #[serde(skip_serializing_if = "is_default_extraction_definition_schema_name_document")]
     schema_name: String,
-    #[serde(default = "default_extraction_definition_schema_version_document")]
-    #[serde(skip_serializing_if = "is_default_extraction_definition_schema_version_document")]
     schema_version: u32,
     request: ExtractionRequestDocument,
     #[serde(default)]
@@ -118,23 +117,17 @@ pub struct SourceInspectionResultDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum SourceInputDocument {
-    #[cfg(feature = "http-client")]
-    Url {
-        href: HttpUrl,
-    },
-    File {
-        path: PathBuf,
-    },
+    Url { href: PersistedHttpUrl },
+    File { path: PathBuf },
     Stdin,
-    Memory {
-        label: String,
-        text: String,
-    },
+    Memory { label: String, text: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "mode", rename_all = "lowercase")]
 enum SlicePatternSpecDocument {
     Literal {
@@ -150,6 +143,7 @@ enum SlicePatternSpecDocument {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum SelectionSpecDocument {
     Single,
@@ -162,6 +156,7 @@ enum SelectionSpecDocument {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 enum ValueSpecDocument {
     #[default]
@@ -186,15 +181,7 @@ enum BoundaryRetentionDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-struct SliceSpecDocument {
-    #[serde(flatten)]
-    pattern: SlicePatternSpecDocument,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default_boundary_retention_document")]
-    boundary_retention: BoundaryRetentionDocument,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum ExtractionSpecDocument {
     Selector {
@@ -207,8 +194,10 @@ enum ExtractionSpecDocument {
         value: ValueSpecDocument,
     },
     Slice {
-        #[serde(flatten)]
-        slice: SliceSpecDocument,
+        pattern: SlicePatternSpecDocument,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "is_default_boundary_retention_document")]
+        boundary_retention: BoundaryRetentionDocument,
         #[serde(default)]
         #[serde(skip_serializing_if = "is_default_selection_spec_document")]
         selection: SelectionSpecDocument,
@@ -219,6 +208,7 @@ enum ExtractionSpecDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct RenderingOptionsDocument {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default_whitespace_mode")]
@@ -229,6 +219,7 @@ struct RenderingOptionsDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct OutputOptionsDocument {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default_rendering_options_document")]
@@ -248,6 +239,7 @@ struct OutputOptionsDocument {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum TlsTrustPolicyDocument {
     #[default]
@@ -408,8 +400,8 @@ impl Default for RuntimeOptionsDocument {
     fn default() -> Self {
         Self {
             max_bytes: default_max_bytes_limit(),
-            fetch_timeout: default_fetch_timeout_limit(),
-            fetch_connect_timeout: default_fetch_connect_timeout_limit(),
+            fetch_timeout_ms: default_fetch_timeout_limit(),
+            fetch_connect_timeout_ms: default_fetch_connect_timeout_limit(),
             fetch_preflight: FetchPreflightMode::default(),
             tls_trust: TlsTrustPolicyDocument::default(),
         }
@@ -446,12 +438,14 @@ impl Default for OutputOptionsDocument {
     }
 }
 
-impl From<SourceRequest> for SourceRequestDocument {
-    fn from(value: SourceRequest) -> Self {
-        Self {
-            input: value.input.into(),
-            base_url: value.base_url,
-        }
+impl TryFrom<SourceRequest> for SourceRequestDocument {
+    type Error = ContractValueError;
+
+    fn try_from(value: SourceRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            input: value.input.try_into()?,
+            base_url: value.base_url.map(TryInto::try_into).transpose()?,
+        })
     }
 }
 
@@ -459,7 +453,7 @@ impl From<SourceRequestDocument> for SourceRequest {
     fn from(value: SourceRequestDocument) -> Self {
         Self {
             input: value.input.into(),
-            base_url: value.base_url,
+            base_url: value.base_url.map(Into::into),
         }
     }
 }
@@ -468,8 +462,8 @@ impl From<RuntimeOptions> for RuntimeOptionsDocument {
     fn from(value: RuntimeOptions) -> Self {
         Self {
             max_bytes: value.max_bytes,
-            fetch_timeout: value.fetch_timeout,
-            fetch_connect_timeout: value.fetch_connect_timeout,
+            fetch_timeout_ms: value.fetch_timeout_ms,
+            fetch_connect_timeout_ms: value.fetch_connect_timeout_ms,
             fetch_preflight: value.fetch_preflight,
             tls_trust: value.tls_trust.into(),
         }
@@ -480,8 +474,8 @@ impl From<RuntimeOptionsDocument> for RuntimeOptions {
     fn from(value: RuntimeOptionsDocument) -> Self {
         Self {
             max_bytes: value.max_bytes,
-            fetch_timeout: value.fetch_timeout,
-            fetch_connect_timeout: value.fetch_connect_timeout,
+            fetch_timeout_ms: value.fetch_timeout_ms,
+            fetch_connect_timeout_ms: value.fetch_connect_timeout_ms,
             fetch_preflight: value.fetch_preflight,
             tls_trust: value.tls_trust.into(),
         }
@@ -506,14 +500,16 @@ impl From<InspectionOptionsDocument> for InspectionOptions {
     }
 }
 
-impl From<ExtractionRequest> for ExtractionRequestDocument {
-    fn from(value: ExtractionRequest) -> Self {
-        Self {
+impl TryFrom<ExtractionRequest> for ExtractionRequestDocument {
+    type Error = ContractValueError;
+
+    fn try_from(value: ExtractionRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
             spec_version: value.spec_version,
-            source: value.source.into(),
+            source: value.source.try_into()?,
             extraction: value.extraction.into(),
             output: value.output.into(),
-        }
+        })
     }
 }
 
@@ -528,14 +524,16 @@ impl From<ExtractionRequestDocument> for ExtractionRequest {
     }
 }
 
-impl From<ExtractionDefinition> for ExtractionDefinitionDocument {
-    fn from(value: ExtractionDefinition) -> Self {
-        Self {
+impl TryFrom<ExtractionDefinition> for ExtractionDefinitionDocument {
+    type Error = ContractValueError;
+
+    fn try_from(value: ExtractionDefinition) -> Result<Self, Self::Error> {
+        Ok(Self {
             schema_name: value.schema_name,
             schema_version: value.schema_version,
-            request: value.request.into(),
+            request: value.request.try_into()?,
             runtime: value.runtime.into(),
-        }
+        })
     }
 }
 
@@ -612,14 +610,17 @@ impl From<SourceInspectionResultDocument> for SourceInspectionResult {
     }
 }
 
-impl From<SourceInput> for SourceInputDocument {
-    fn from(value: SourceInput) -> Self {
+impl TryFrom<SourceInput> for SourceInputDocument {
+    type Error = ContractValueError;
+
+    fn try_from(value: SourceInput) -> Result<Self, Self::Error> {
         match value {
-            #[cfg(feature = "http-client")]
-            SourceInput::Url { href } => Self::Url { href },
-            SourceInput::File { path } => Self::File { path },
-            SourceInput::Stdin => Self::Stdin,
-            SourceInput::Memory { label, text } => Self::Memory { label, text },
+            SourceInput::Url { href } => Ok(Self::Url {
+                href: href.try_into()?,
+            }),
+            SourceInput::File { path } => Ok(Self::File { path }),
+            SourceInput::Stdin => Ok(Self::Stdin),
+            SourceInput::Memory { label, text } => Ok(Self::Memory { label, text }),
         }
     }
 }
@@ -627,8 +628,7 @@ impl From<SourceInput> for SourceInputDocument {
 impl From<SourceInputDocument> for SourceInput {
     fn from(value: SourceInputDocument) -> Self {
         match value {
-            #[cfg(feature = "http-client")]
-            SourceInputDocument::Url { href } => Self::Url { href },
+            SourceInputDocument::Url { href } => Self::Url { href: href.into() },
             SourceInputDocument::File { path } => Self::File { path },
             SourceInputDocument::Stdin => Self::Stdin,
             SourceInputDocument::Memory { label, text } => Self::Memory { label, text },
@@ -724,24 +724,6 @@ impl From<BoundaryRetentionDocument> for BoundaryRetention {
     }
 }
 
-impl From<SliceSpec> for SliceSpecDocument {
-    fn from(value: SliceSpec) -> Self {
-        Self {
-            pattern: value.pattern.into(),
-            boundary_retention: value.boundary_retention.into(),
-        }
-    }
-}
-
-impl From<SliceSpecDocument> for SliceSpec {
-    fn from(value: SliceSpecDocument) -> Self {
-        Self {
-            pattern: value.pattern.into(),
-            boundary_retention: value.boundary_retention.into(),
-        }
-    }
-}
-
 impl From<ExtractionSpec> for ExtractionSpecDocument {
     fn from(value: ExtractionSpec) -> Self {
         match value {
@@ -759,7 +741,8 @@ impl From<ExtractionSpec> for ExtractionSpecDocument {
                 selection,
                 value,
             } => Self::Slice {
-                slice: slice.into(),
+                pattern: slice.pattern.into(),
+                boundary_retention: slice.boundary_retention.into(),
                 selection: selection.into(),
                 value: value.into(),
             },
@@ -780,11 +763,15 @@ impl From<ExtractionSpecDocument> for ExtractionSpec {
                 value: value.into(),
             },
             ExtractionSpecDocument::Slice {
-                slice,
+                pattern,
+                boundary_retention,
                 selection,
                 value,
             } => Self::Slice {
-                slice: slice.into(),
+                slice: SliceSpec {
+                    pattern: pattern.into(),
+                    boundary_retention: boundary_retention.into(),
+                },
                 selection: selection.into(),
                 value: value.into(),
             },
@@ -1222,10 +1209,6 @@ impl From<DocumentInspectionDocument> for DocumentInspection {
     }
 }
 
-fn default_spec_version_document() -> u32 {
-    crate::CORE_SPEC_VERSION
-}
-
 fn is_false(value: &bool) -> bool {
     !value
 }
@@ -1286,26 +1269,6 @@ fn is_default_output_options_document(value: &OutputOptionsDocument) -> bool {
     *value == OutputOptionsDocument::default()
 }
 
-fn is_default_spec_version_document(value: &u32) -> bool {
-    *value == default_spec_version_document()
-}
-
-fn default_extraction_definition_schema_name_document() -> String {
-    crate::EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned()
-}
-
-fn is_default_extraction_definition_schema_name_document(value: &String) -> bool {
-    value == crate::EXTRACTION_DEFINITION_SCHEMA_NAME
-}
-
-const fn default_extraction_definition_schema_version_document() -> u32 {
-    crate::EXTRACTION_DEFINITION_SCHEMA_VERSION
-}
-
-fn is_default_extraction_definition_schema_version_document(value: &u32) -> bool {
-    *value == default_extraction_definition_schema_version_document()
-}
-
 fn default_preview_chars_non_zero_document() -> NonZeroUsize {
     OutputOptions::default().preview_chars
 }
@@ -1327,9 +1290,9 @@ fn default_max_bytes_limit() -> MaxBytes {
 }
 
 fn default_fetch_timeout_limit() -> FetchTimeoutMs {
-    RuntimeOptions::default().fetch_timeout
+    RuntimeOptions::default().fetch_timeout_ms
 }
 
 fn default_fetch_connect_timeout_limit() -> FetchConnectTimeoutMs {
-    RuntimeOptions::default().fetch_connect_timeout
+    RuntimeOptions::default().fetch_connect_timeout_ms
 }

@@ -2,10 +2,9 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use serde_json::Value;
-use url::Url;
 
 use crate::{
-    Diagnostic,
+    Diagnostic, DisplayedHttpUrl,
     result::{ExtractionMatch, ExtractionMatchMetadata},
 };
 
@@ -62,7 +61,7 @@ pub(super) fn adapt_successful_extraction(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let source_summary = ResultSource {
-        input_base_url: source.input_base_url.clone(),
+        input_base_url: source.input_base_url.as_ref().map(DisplayedHttpUrl::from),
         effective_base_url: parse_optional_url(
             extraction.source.effective_base_url.as_deref(),
             &plan_digest_sha256,
@@ -388,10 +387,10 @@ pub(super) fn parse_optional_url(
     strategy_kind: StrategyKind,
     field: &'static str,
     diagnostics: &[Diagnostic],
-) -> Result<Option<Url>, Box<InteropError>> {
+) -> Result<Option<DisplayedHttpUrl>, Box<InteropError>> {
     value
         .map(|value| {
-            Url::parse(value).map_err(|_| {
+            DisplayedHttpUrl::parse(value).map_err(|_| {
                 let mut details = BTreeMap::new();
                 details.insert("field".to_owned(), Value::from(field));
                 details.insert("value".to_owned(), Value::from(value));

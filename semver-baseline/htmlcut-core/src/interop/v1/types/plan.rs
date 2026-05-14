@@ -5,13 +5,13 @@ use std::num::NonZeroUsize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use url::Url;
 
 use super::super::stable_json::digest_stable_json;
 use super::shared::{
     ContractError, INTEROP_V1_PROFILE, PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION,
     validate_schema_identity,
 };
+use crate::{AttributeName, HttpUrl};
 
 macro_rules! non_empty_string_type {
     ($name:ident, $error_variant:ident, $doc:literal) => {
@@ -72,54 +72,6 @@ non_empty_string_type!(
     EmptyDelimiterBoundary,
     "Validated delimiter boundary text owned by htmlcut-v1."
 );
-
-/// Validated attribute name owned by htmlcut-v1.
-#[derive(
-    Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
-#[serde(try_from = "String")]
-#[schemars(with = "String")]
-pub struct OutputAttributeName(String);
-
-impl OutputAttributeName {
-    /// Validates and stores one attribute name.
-    pub fn new(value: impl Into<String>) -> Result<Self, ContractError> {
-        let value = value.into();
-        if value.trim().is_empty() {
-            return Err(ContractError::EmptyAttributeName);
-        }
-        if value.chars().any(char::is_whitespace) {
-            return Err(ContractError::AttributeNameContainsWhitespace);
-        }
-
-        Ok(Self(value))
-    }
-
-    /// Returns the stored attribute name.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for OutputAttributeName {
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl fmt::Display for OutputAttributeName {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl TryFrom<String> for OutputAttributeName {
-    type Error = ContractError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
 
 /// Strategy family available in v1.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -197,6 +149,7 @@ impl DelimiterBoundaryRetention {
 
 /// v1 strategy union.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PlanStrategy {
     /// Select candidates with a CSS selector.
@@ -282,6 +235,7 @@ pub enum SelectionMode {
 
 /// v1 candidate selection contract.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum Selection {
     /// Require exactly one candidate.
@@ -369,6 +323,7 @@ impl fmt::Display for OutputKind {
 
 /// v1 output selection object.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Output {
     /// Extract normalized or preserved text.
@@ -382,7 +337,7 @@ pub enum Output {
     /// Extract one named attribute.
     Attribute {
         /// Attribute name to recover from the selected element or fragment root.
-        name: OutputAttributeName,
+        name: AttributeName,
     },
     /// Extract the full structured HTMLCut payload.
     Structured,
@@ -410,7 +365,7 @@ impl Output {
     }
 
     /// Builds an attribute output selection.
-    pub const fn attribute(name: OutputAttributeName) -> Self {
+    pub const fn attribute(name: AttributeName) -> Self {
         Self::Attribute { name }
     }
 
@@ -461,6 +416,7 @@ pub enum TextWhitespace {
 
 /// v1 rendering contract.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Rendering {
     /// Whitespace handling for text generation.
     pub whitespace: TextWhitespace,
@@ -480,6 +436,7 @@ impl Rendering {
 
 /// Versioned extraction plan owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Plan {
     /// Schema identity.
     pub schema_name: String,
@@ -555,7 +512,7 @@ pub struct HtmlInput {
     /// Decoded HTML.
     pub html: String,
     /// Input base URL that HTMLCut should use before any document `<base href>`.
-    pub input_base_url: Option<Url>,
+    pub input_base_url: Option<HttpUrl>,
 }
 
 impl HtmlInput {
@@ -574,7 +531,7 @@ impl HtmlInput {
     }
 
     /// Sets the input base URL used by HTMLCut before resolving any document base href.
-    pub fn with_input_base_url(mut self, input_base_url: Url) -> Self {
+    pub fn with_input_base_url(mut self, input_base_url: HttpUrl) -> Self {
         self.input_base_url = Some(input_base_url);
         self
     }

@@ -1,8 +1,8 @@
 use super::*;
 use crate::interop::v1::{
-    self, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention,
-    DelimiterBoundaryText, DelimiterMode, ErrorCode, HtmlInput, InteropDiagnosticCode,
-    InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputAttributeName, OutputKind,
+    self, AttributeName, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention,
+    DelimiterBoundaryText, DelimiterMode, DisplayedHttpUrl, ErrorCode, HtmlInput, HttpUrl,
+    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputKind,
     Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource, SelectedMatch,
     SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
 };
@@ -52,8 +52,16 @@ fn delimiter_boundary(boundary: &str) -> DelimiterBoundaryText {
     DelimiterBoundaryText::new(boundary).expect("delimiter boundary")
 }
 
-fn output_attribute_name(name: &str) -> OutputAttributeName {
-    OutputAttributeName::new(name).expect("output attribute name")
+fn output_attribute_name(name: &str) -> AttributeName {
+    AttributeName::new(name).expect("output attribute name")
+}
+
+fn http_url(value: &str) -> HttpUrl {
+    HttpUrl::parse(value).expect("http url")
+}
+
+fn displayed_http_url(value: &str) -> DisplayedHttpUrl {
+    DisplayedHttpUrl::parse(value).expect("displayed http url")
 }
 
 fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) -> SelectedMatch {

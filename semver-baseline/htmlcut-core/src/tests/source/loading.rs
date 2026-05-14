@@ -82,7 +82,7 @@ fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
         &url_source(&format!("http://{closed_address}")),
         &RuntimeOptions {
             fetch_preflight: FetchPreflightMode::GetOnly,
-            fetch_timeout: fetch_timeout_limit(250),
+            fetch_timeout_ms: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )
@@ -145,7 +145,7 @@ fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
     );
 }
 #[test]
-fn url_loading_accepts_headerless_and_xhtml_success_responses() {
+fn url_loading_accepts_headerless_and_supported_html_content_types() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind headerless server");
     let address = listener.local_addr().expect("headerless server addr");
     let server = thread::spawn(move || {
@@ -208,10 +208,10 @@ fn url_loading_accepts_headerless_and_xhtml_success_responses() {
     assert!(!content_type_is_obviously_non_html_for_tests(
         "application/xhtml+xml; charset=utf-8"
     ));
-    assert!(!content_type_is_obviously_non_html_for_tests(
+    assert!(content_type_is_obviously_non_html_for_tests(
         "text/xhtml+xml"
     ));
-    assert!(!content_type_is_obviously_non_html_for_tests(
+    assert!(content_type_is_obviously_non_html_for_tests(
         "text/xhtml+xml; charset=utf-8"
     ));
     assert!(content_type_is_obviously_non_html_for_tests("text/plain"));

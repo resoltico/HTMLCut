@@ -1,1 +1,1 @@
-{"interop_profile":"htmlcut-v1","output":{"kind":"attribute","name":"data-id"},"rendering":{"rewrite_urls":true,"whitespace":"normalize"},"schema_name":"htmlcut.plan","schema_version":4,"selection":{"mode":"single"},"strategy":{"kind":"css_selector","selector":"article a"}}
+{"interop_profile":"htmlcut-v1","output":{"kind":"attribute","name":"data-id"},"rendering":{"rewrite_urls":true,"whitespace":"normalize"},"schema_name":"htmlcut.plan","schema_version":5,"selection":{"mode":"single"},"strategy":{"kind":"css_selector","selector":"article a"}}

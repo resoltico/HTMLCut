@@ -32,6 +32,7 @@ fn wire_default_documents_match_domain_defaults() {
 
     let output_request: ExtractionRequest =
         serde_json::from_value::<ExtractionRequestDocument>(json!({
+            "spec_version": CORE_SPEC_VERSION,
             "source": { "input": { "type": "stdin" } },
             "extraction": { "kind": "selector", "selector": "article" }
         }))
@@ -46,18 +47,13 @@ fn wire_request_documents_round_trip_all_source_and_extraction_variants() {
         SourceRequest::stdin(),
         SourceRequest::file("page.html"),
         SourceRequest::memory("inline", "<article>Hello</article>"),
+        SourceRequest::url(http_url("https://example.com/input.html")),
     ];
-    #[cfg(feature = "http-client")]
-    let sources = {
-        let mut sources = sources;
-        sources.push(SourceRequest::url(http_url(
-            "https://example.com/input.html",
-        )));
-        sources
-    };
 
     for source in sources {
-        let roundtrip: SourceRequest = SourceRequestDocument::from(source.clone()).into();
+        let roundtrip: SourceRequest = SourceRequestDocument::try_from(source.clone())
+            .expect("source document")
+            .into();
         assert_eq!(roundtrip, source);
     }
 
@@ -129,7 +125,9 @@ fn wire_request_documents_round_trip_all_source_and_extraction_variants() {
     ];
 
     for request in requests {
-        let roundtrip: ExtractionRequest = ExtractionRequestDocument::from(request.clone()).into();
+        let roundtrip: ExtractionRequest = ExtractionRequestDocument::try_from(request.clone())
+            .expect("request document")
+            .into();
         assert_eq!(roundtrip, request);
     }
 
@@ -145,20 +143,22 @@ fn wire_request_documents_round_trip_all_source_and_extraction_variants() {
         ),
         runtime: RuntimeOptions {
             max_bytes: max_bytes_limit(2048),
-            fetch_timeout: fetch_timeout_limit(1500),
-            fetch_connect_timeout: FetchConnectTimeoutMs::new(250).expect("connect timeout"),
+            fetch_timeout_ms: fetch_timeout_limit(1500),
+            fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(250).expect("connect timeout"),
             fetch_preflight: FetchPreflightMode::GetOnly,
             tls_trust: TlsTrustPolicy::Platform,
         },
     };
     let roundtrip: ExtractionDefinition =
-        ExtractionDefinitionDocument::from(definition.clone()).into();
+        ExtractionDefinitionDocument::try_from(definition.clone())
+            .expect("definition document")
+            .into();
     assert_eq!(roundtrip, definition);
 
     let runtime = RuntimeOptions {
         max_bytes: max_bytes_limit(4096),
-        fetch_timeout: fetch_timeout_limit(2750),
-        fetch_connect_timeout: FetchConnectTimeoutMs::new(750).expect("connect timeout"),
+        fetch_timeout_ms: fetch_timeout_limit(2750),
+        fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(750).expect("connect timeout"),
         fetch_preflight: FetchPreflightMode::HeadFirst,
         tls_trust: TlsTrustPolicy::CustomCaBundle {
             path: "certs/custom.pem".into(),
