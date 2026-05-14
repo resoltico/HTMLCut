@@ -6,13 +6,13 @@ use super::SchemaRefReport;
 /// Frozen schema name for the machine-readable `htmlcut catalog` report.
 pub const CATALOG_REPORT_SCHEMA_NAME: &str = "htmlcut.catalog_report";
 /// Schema version for the machine-readable `htmlcut catalog` report.
-pub const CATALOG_SCHEMA_VERSION: u32 = 4;
+pub const CATALOG_SCHEMA_VERSION: u32 = 5;
 
 /// Public contract family and JSON-schema surface for one operation input or output.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct CatalogContractSurface {
-    /// Public contract family name exposed to operators and embedders.
-    pub family: String,
+    /// Public artifact label exposed to operators and embedders.
+    pub artifact: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     /// Exported JSON schema references for this contract.
     pub schema_refs: Vec<SchemaRefReport>,
@@ -24,8 +24,8 @@ pub struct CatalogContractSurface {
 pub enum CatalogAvailability {
     /// The operation is available through a first-class CLI command.
     Cli,
-    /// The operation exists only for embeddable `htmlcut-core` callers.
-    CoreOnly,
+    /// The operation exists only for embeddable engine callers.
+    EngineOnly,
 }
 
 /// Parameter location within one CLI command contract.
@@ -183,8 +183,8 @@ pub struct CatalogOperationReport {
     pub availability: CatalogAvailability,
     /// A concise summary of what the operation does.
     pub summary: String,
-    /// The public embeddable core API capability behind this operation.
-    pub core_api: String,
+    /// The public engine capability behind this operation.
+    pub engine_capability: String,
     /// The public request contract for this operation.
     pub request_contract: CatalogContractSurface,
     /// The public result contract for this operation.

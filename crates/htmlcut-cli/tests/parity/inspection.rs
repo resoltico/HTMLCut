@@ -20,6 +20,8 @@ fn source_inspection_commands_stay_in_lockstep_with_core() {
             "--sample-limit".to_owned(),
             "3".to_owned(),
             "--include-source-text".to_owned(),
+            "--output".to_owned(),
+            "json".to_owned(),
         ],
         command: "inspect-source",
         source: source_request(&input_path, Some("https://example.com/docs/start.html")),

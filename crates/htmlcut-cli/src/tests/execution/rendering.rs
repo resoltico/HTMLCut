@@ -155,6 +155,13 @@ fn render_output_helpers_cover_text_html_json_and_none() {
             .display()
             .to_string()
     );
+    assert_eq!(
+        bundle.json,
+        expected_bundle_dir
+            .join("selection.json")
+            .display()
+            .to_string()
+    );
 }
 
 #[test]
@@ -175,13 +182,19 @@ fn bundle_report_omits_sidecar_payload_duplicates() {
     let bundled_report: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&bundle.report).expect("bundle report"))
             .expect("json");
+    let bundled_selection: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&bundle.json).expect("bundle selection"))
+            .expect("json");
 
-    assert_eq!(
-        bundled_report["matches"][0]["value"],
-        Value::String("<article><a href=\"guide.html\">Guide</a></article>".to_owned())
-    );
+    assert_eq!(bundled_report["schema_name"], "htmlcut.bundle_report");
+    assert!(bundled_report["matches"][0].get("value").is_none());
     assert!(bundled_report["matches"][0].get("html").is_none());
     assert!(bundled_report["matches"][0].get("text").is_none());
+    assert_eq!(bundled_selection["schema_name"], "htmlcut.bundle_selection");
+    assert_eq!(
+        bundled_selection["matches"][0]["value"],
+        Value::String("<article><a href=\"guide.html\">Guide</a></article>".to_owned())
+    );
 }
 
 #[test]
@@ -270,9 +283,8 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     let slice_preview_text = render_preview_text(&slice_preview);
     assert!(slice_preview_text.contains("fragment: <article>Hello</article>"));
     assert!(slice_preview_text.contains("text: Hello"));
-    assert!(slice_preview_text.contains("include start: true"));
-    assert!(slice_preview_text.contains("matched start: <article>"));
-    assert!(slice_preview_text.contains("matched end: </article>"));
+    assert!(slice_preview_text.contains("retention include-both"));
+    assert!(slice_preview_text.contains("boundaries: <article> … </article>"));
 
     let mut inspection = fixture_inspection();
     inspection.source.load_steps = vec![
@@ -469,6 +481,7 @@ fn verbose_and_diagnostic_renderers_cover_branching_paths() {
             dir: "/tmp/bundle".to_owned(),
             html: "/tmp/bundle/selection.html".to_owned(),
             text: "/tmp/bundle/selection.txt".to_owned(),
+            json: "/tmp/bundle/selection.json".to_owned(),
             report: "/tmp/bundle/report.json".to_owned(),
         }),
     );
@@ -584,7 +597,7 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
             output_file: None,
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             preview_chars: DEFAULT_PREVIEW_CHARS,
-            file_write: default_file_write_args(),
+            file_write: default_output_file_write_args(),
         },
         2,
         true,
@@ -630,7 +643,7 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
-                file_write: default_file_write_args(),
+                file_write: default_preview_file_write_args(),
             },
             2,
             true,

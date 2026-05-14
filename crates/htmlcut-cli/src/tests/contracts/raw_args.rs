@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
-    assert!(raw_args_prefers_json(&[
+    assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),
         "inspect".to_owned(),
         "source".to_owned(),
@@ -26,6 +26,12 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
         "select".to_owned(),
         "page.html".to_owned(),
         "--output=json".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "schema".to_owned(),
+        "--output".to_owned(),
+        "index-json".to_owned(),
     ]));
     assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),

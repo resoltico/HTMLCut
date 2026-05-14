@@ -88,9 +88,10 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Operator Guide:").expect("guide")
+            < stdout.find("Examples:").expect("examples")
     );
     assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+    assert!(!stdout.contains("Guidance:"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--help".to_owned()]);
@@ -102,14 +103,15 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         stdout
             .find("Usage: htmlcut [OPTIONS] <COMMAND>")
             .expect("usage")
-            < stdout.find("Operator Guide:").expect("guide")
+            < stdout.find("Examples:").expect("examples")
     );
     assert!(stdout.contains("inspect"));
+    assert!(!stdout.contains("Guidance:"));
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "-h".to_owned()]);
     assert_eq!(exit_code, 0);
     assert_eq!(stdout.matches(HTMLCUT_DESCRIPTION).count(), 1);
-    assert!(!stdout.contains("Operator Guide:"));
+    assert!(!stdout.contains("Guidance:"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned(), "help".to_owned()]);
@@ -164,10 +166,8 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
         "-V".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"category\": \"usage\""));
-    assert!(stdout.contains("\"command\": \"inspect-source\""));
-    assert!(stdout.contains("unexpected argument '-V'"));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("unexpected argument '-V'"));
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

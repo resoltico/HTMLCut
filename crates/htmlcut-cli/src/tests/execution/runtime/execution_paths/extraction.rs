@@ -38,9 +38,8 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
         "i".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"code\": \"CLI_REGEX_FLAGS_CONFLICT\""));
-    assert!(stdout.contains("--regex-flags can only be used with --pattern regex."));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("--regex-flags can only be used with --pattern regex."));
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -76,7 +75,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
     assert!(stdout.contains("\"code\": \"CLI_BUNDLE_HTML_WRITE_FAILED\""));
     assert!(stderr.is_empty());
 
-    let (exit_code, stdout, _) = run_vec(vec![
+    let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
         "inspect".to_owned(),
         "select".to_owned(),
@@ -85,7 +84,8 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
         "[".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
-    assert!(stdout.contains("\"command\": \"inspect-select\""));
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("Invalid selector"));
 
     let (exit_code, _, stderr) = run_vec(vec![
         "htmlcut".to_owned(),
@@ -256,6 +256,7 @@ fn run_overwrite_replaces_existing_outputs_when_requested() {
             .expect("overwritten bundle text")
             .contains("Guide")
     );
+    assert!(bundle_dir.join("selection.json").is_file());
     assert!(bundle_dir.join("report.json").is_file());
     assert!(bundle_dir.join("selection.html").is_file());
 }
@@ -322,6 +323,11 @@ fn run_renders_human_text_for_html_valued_extractions_and_bundles() {
     assert_eq!(
         fs::read_to_string(bundle_dir.join("selection.txt")).expect("bundle text"),
         "## Heading\n- Guide [https://example.com/guide]"
+    );
+    assert!(
+        fs::read_to_string(bundle_dir.join("selection.json"))
+            .expect("bundle json")
+            .contains("\"htmlcut.bundle_selection\"")
     );
     assert!(
         fs::read_to_string(bundle_dir.join("selection.html"))

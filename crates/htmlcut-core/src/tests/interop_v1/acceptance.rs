@@ -1,11 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::interop::v1::{
-    HtmlInput, INTEROP_V1_PROFILE, InteropError, InteropResult, PLAN_SCHEMA_NAME,
-    PLAN_SCHEMA_VERSION, Plan, execute_plan,
-};
-use url::Url;
+use super::http_url;
+use crate::interop::v1::{HtmlInput, InteropError, InteropResult, Plan, execute_plan};
 
 enum ExpectedDocumentKind {
     Result,
@@ -120,7 +117,7 @@ fn load_source(case: &AcceptanceCase) -> HtmlInput {
     let html = fixture_text(&fixture_dir(case).join("source.html"));
     let source = HtmlInput::new(case.label, html).expect("fixture source input");
     if let Some(input_base_url) = case.input_base_url {
-        source.with_input_base_url(Url::parse(input_base_url).expect("fixture input base url"))
+        source.with_input_base_url(http_url(input_base_url))
     } else {
         source
     }
@@ -159,40 +156,8 @@ fn update_fixtures() {
 
     for case in ACCEPTANCE_CASES {
         let source = load_source(case);
-
-        // Read the existing plan as a raw JSON Value so we can patch stale identity
-        // fields without failing the schema-identity check inside stable_json().
         let plan_path = fixture_dir(case).join("plan.json");
-        let raw = fs::read_to_string(&plan_path).expect("plan json");
-        let mut plan_value: serde_json::Value =
-            serde_json::from_str(raw.trim_end()).expect("plan value");
-        plan_value["schema_name"] = serde_json::Value::String(PLAN_SCHEMA_NAME.to_owned());
-        plan_value["schema_version"] =
-            serde_json::Value::Number(serde_json::Number::from(PLAN_SCHEMA_VERSION));
-        plan_value["interop_profile"] = serde_json::Value::String(INTEROP_V1_PROFILE.to_owned());
-        if let Some(strategy) = plan_value["strategy"].as_object_mut() {
-            let include_start = strategy
-                .remove("include_start")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            let include_end = strategy
-                .remove("include_end")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            if !strategy.contains_key("boundary_retention") {
-                let boundary_retention = match (include_start, include_end) {
-                    (false, false) => "exclude_both",
-                    (true, false) => "include_start",
-                    (false, true) => "include_end",
-                    (true, true) => "include_both",
-                };
-                strategy.insert(
-                    "boundary_retention".to_owned(),
-                    serde_json::Value::String(boundary_retention.to_owned()),
-                );
-            }
-        }
-        let plan: Plan = serde_json::from_value(plan_value).expect("plan from patched value");
+        let (plan, _) = load_plan(case);
         let new_plan_json = plan.stable_json().expect("plan stable json");
         fs::write(&plan_path, format!("{new_plan_json}\n")).expect("write plan");
 

@@ -46,6 +46,14 @@ fn default_file_write_args() -> FileWriteArgs {
     FileWriteArgs::default()
 }
 
+fn default_output_file_write_args() -> OutputFileWriteArgs {
+    OutputFileWriteArgs::default()
+}
+
+fn default_preview_file_write_args() -> PreviewFileWriteArgs {
+    PreviewFileWriteArgs::default()
+}
+
 fn create_fresh_write_mode() -> crate::file_output::FileWriteMode {
     crate::file_output::FileWriteMode::CreateFresh
 }
@@ -194,6 +202,7 @@ fn known_schema_names() -> std::collections::BTreeSet<String> {
             crate::model::CATALOG_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::ERROR_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
+            crate::model::SCHEMA_INVENTORY_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
             crate::model::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
         ])
@@ -260,9 +269,12 @@ fn assert_command_path_registered(command: &clap::Command, command_path: &[&str]
 
 fn write_definition_file(dir: &Path, name: &str, definition: &ExtractionDefinition) -> PathBuf {
     let path = dir.join(name);
+    let document =
+        htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition.clone())
+            .expect("definition document");
     fs::write(
         &path,
-        serde_json::to_string_pretty(definition).expect("serialize definition"),
+        serde_json::to_string_pretty(&document).expect("serialize definition"),
     )
     .expect("write definition file");
     path

@@ -47,8 +47,8 @@ enum FuzzInteropStrategy {
         start: String,
         end: String,
         regex_mode: bool,
-        include_start: bool,
-        include_end: bool,
+        retain_start: bool,
+        retain_end: bool,
         flags: FuzzRegexFlags,
     },
 }
@@ -94,8 +94,8 @@ impl FuzzInteropStrategy {
                 start,
                 end,
                 regex_mode,
-                include_start,
-                include_end,
+                retain_start,
+                retain_end,
                 flags,
             } => {
                 let start = DelimiterBoundaryText::new(start.clone()).ok()?;
@@ -115,7 +115,7 @@ impl FuzzInteropStrategy {
                     start,
                     end,
                     mode,
-                    DelimiterBoundaryRetention::from_flags(*include_start, *include_end),
+                    DelimiterBoundaryRetention::from_flags(*retain_start, *retain_end),
                     flags,
                 ))
             }

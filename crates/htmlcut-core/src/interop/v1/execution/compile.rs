@@ -18,9 +18,9 @@ pub(super) fn exact_plan_digest_sha256(plan: &Plan) -> Result<String, ContractEr
 pub(super) fn default_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         max_bytes: MaxBytes::new(DEFAULT_MAX_BYTES).expect("default max bytes"),
-        fetch_timeout: FetchTimeoutMs::new(DEFAULT_FETCH_TIMEOUT_MS)
+        fetch_timeout_ms: FetchTimeoutMs::new(DEFAULT_FETCH_TIMEOUT_MS)
             .expect("default fetch timeout"),
-        fetch_connect_timeout: FetchConnectTimeoutMs::new(DEFAULT_FETCH_CONNECT_TIMEOUT_MS)
+        fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(DEFAULT_FETCH_CONNECT_TIMEOUT_MS)
             .expect("default connect timeout"),
         fetch_preflight: crate::FetchPreflightMode::HeadFirst,
         tls_trust: crate::TlsTrustPolicy::WebPki,
@@ -88,12 +88,7 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
 fn compile_source_request(source: &HtmlInput) -> SourceRequest {
     let mut compiled = SourceRequest::memory(source.label.clone(), source.html.clone());
     if let Some(base_url) = &source.input_base_url {
-        compiled = compiled.with_base_url(
-            base_url
-                .clone()
-                .try_into()
-                .expect("validated interop base URL must compile into a core HTTP URL"),
-        );
+        compiled = compiled.with_base_url(base_url.clone());
     }
 
     compiled

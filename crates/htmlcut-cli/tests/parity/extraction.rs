@@ -208,6 +208,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "--preview-chars".to_owned(),
                 "48".to_owned(),
                 "--include-source-text".to_owned(),
+                "--output".to_owned(),
+                "json".to_owned(),
             ],
             command: "inspect-select",
             request: {
@@ -246,6 +248,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "--preview-chars".to_owned(),
                 "48".to_owned(),
                 "--include-source-text".to_owned(),
+                "--output".to_owned(),
+                "json".to_owned(),
             ],
             command: "inspect-slice",
             request: {
@@ -286,6 +290,8 @@ fn extraction_and_preview_commands_stay_in_lockstep_with_core() {
                 "--preview-chars".to_owned(),
                 "48".to_owned(),
                 "--include-source-text".to_owned(),
+                "--output".to_owned(),
+                "json".to_owned(),
             ],
             command: "inspect-slice",
             request: {

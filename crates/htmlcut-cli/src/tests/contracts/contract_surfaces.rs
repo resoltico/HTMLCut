@@ -78,7 +78,11 @@ fn contract_lint_clap_choice_parsers_match_core_contract_domains() {
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliSchemaOutputMode>()),
-        vec!["text".to_owned(), "json".to_owned()]
+        vec![
+            "text".to_owned(),
+            "json".to_owned(),
+            "index-json".to_owned(),
+        ]
     );
     assert_eq!(
         parser_value_names(crate::args::cli_choice_parser::<CliInspectOutputMode>()),

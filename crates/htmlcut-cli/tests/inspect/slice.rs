@@ -36,8 +36,11 @@ fn slice_json_report_has_core_parity() {
     assert_eq!(report.extraction, expected.extraction);
     assert_eq!(report.stats.candidate_count, expected.stats.candidate_count);
     assert_eq!(report.stats.match_count, expected.stats.match_count);
-    assert_eq!(report.matches, expected.matches);
-    assert_eq!(report.diagnostics, expected.diagnostics);
+    assert_eq!(report.matches, normalize_public_matches(expected.matches));
+    assert_eq!(
+        report.diagnostics,
+        normalize_public_diagnostics(expected.diagnostics)
+    );
 }
 #[test]
 fn slice_html_value_modes_default_to_html_stdout() {
@@ -119,6 +122,8 @@ fn inspect_slice_json_has_core_preview_parity() {
                 "include-both",
                 "--match",
                 "all",
+                "--output",
+                "json",
             ])
             .assert()
             .success(),
@@ -130,8 +135,11 @@ fn inspect_slice_json_has_core_preview_parity() {
     assert_eq!(report.extraction, expected.extraction);
     assert_eq!(report.stats.candidate_count, expected.stats.candidate_count);
     assert_eq!(report.stats.match_count, expected.stats.match_count);
-    assert_eq!(report.matches, expected.matches);
-    assert_eq!(report.diagnostics, expected.diagnostics);
+    assert_eq!(report.matches, normalize_public_matches(expected.matches));
+    assert_eq!(
+        report.diagnostics,
+        normalize_public_diagnostics(expected.diagnostics)
+    );
 }
 #[test]
 fn inspect_slice_text_surfaces_ranges_and_boundary_context() {
@@ -162,13 +170,12 @@ fn inspect_slice_text_surfaces_ranges_and_boundary_context() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Selected: 2"))
-        .stdout(predicate::str::contains("candidate index:"))
-        .stdout(predicate::str::contains("include start: true"))
-        .stdout(predicate::str::contains("include end: true"))
-        .stdout(predicate::str::contains("selected range:"))
-        .stdout(predicate::str::contains("inner range:"))
-        .stdout(predicate::str::contains("outer range:"))
+        .stdout(predicate::str::contains("Candidates: 2 | Selected: 2"))
+        .stdout(predicate::str::contains("candidate 1 | selected"))
+        .stdout(predicate::str::contains("inner 17..17"))
+        .stdout(predicate::str::contains("outer 5..22"))
+        .stdout(predicate::str::contains("retention include-both"))
+        .stdout(predicate::str::contains("boundaries: START::Alpha"))
         .stdout(predicate::str::contains("text: START::Alpha::END"));
 }
 #[test]

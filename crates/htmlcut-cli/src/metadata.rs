@@ -11,7 +11,7 @@ pub(crate) fn identity_banner() -> String {
 
 pub(crate) fn version_banner() -> String {
     format!(
-        "{}\nengine: {ENGINE_NAME}\nschema-profile: {}\nrepository: {HTMLCUT_REPOSITORY}",
+        "{}\nschema registry: {}\nrepository: {HTMLCUT_REPOSITORY}",
         identity_banner(),
         htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE
     )

@@ -27,26 +27,24 @@ fn contract_lint_rendered_root_help_carries_manifest_identity_and_clap_commands(
     let usage_index = rendered_help
         .find("Usage: htmlcut [OPTIONS] <COMMAND>")
         .expect("root help usage");
-    let guide_index = rendered_help
-        .find("Operator Guide:")
-        .expect("root help guide");
+    let examples_index = rendered_help.find("Examples:").expect("root help examples");
     assert!(
-        usage_index < guide_index,
-        "root help should present usage before workflow detail: {rendered_help}"
+        usage_index < examples_index,
+        "root help should present usage before examples: {rendered_help}"
     );
     assert!(
-        crate::help::root_after_help().contains("Operator Guide:"),
-        "root help lost the guide heading: {}",
+        crate::help::root_after_help().contains("Examples:"),
+        "root help lost the examples heading: {}",
         crate::help::root_after_help()
     );
     assert!(
-        crate::help::root_after_help().contains("Workflow:"),
-        "root help lost the workflow section: {}",
+        !crate::help::root_after_help().contains("Guidance:"),
+        "root help regained the narrative guidance block: {}",
         crate::help::root_after_help()
     );
     assert!(
-        crate::help::root_after_help().contains("Request files:"),
-        "root help lost request-file guidance: {}",
+        crate::help::root_after_help().contains("--emit-request-file"),
+        "root help lost reusable request-file examples: {}",
         crate::help::root_after_help()
     );
 
@@ -373,6 +371,7 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
     );
     assert_eq!(empty_summary, "");
 
-    assert!(crate::help::select_after_help().contains("Notes:"));
-    assert!(crate::help::inspect_source_after_help().contains("Modes:"));
+    assert!(crate::help::select_after_help().contains("Examples:"));
+    assert!(crate::help::inspect_source_after_help().contains("Examples:"));
+    assert!(!crate::help::select_after_help().contains("Guidance:"));
 }

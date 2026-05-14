@@ -68,7 +68,6 @@ pub(crate) fn empty_source_metadata(source: &SourceRequest) -> SourceMetadata {
 
 fn source_locator_value(input: &SourceInput) -> String {
     match input {
-        #[cfg(feature = "http-client")]
         SourceInput::Url { href } => href.to_string(),
         SourceInput::File { path } => path.to_string_lossy().into_owned(),
         SourceInput::Stdin => "-".to_owned(),

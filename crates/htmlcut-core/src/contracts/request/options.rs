@@ -14,7 +14,7 @@ use super::{ContractValueError, FetchPreflightMode, WhitespaceMode};
 /// Maximum number of bytes HTMLCut may read for one source.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(try_from = "usize", into = "usize")]
-#[schemars(with = "usize")]
+#[schemars(with = "std::num::NonZeroUsize")]
 pub struct MaxBytes(NonZeroUsize);
 
 impl MaxBytes {
@@ -48,7 +48,7 @@ impl From<MaxBytes> for usize {
 /// HTTP fetch timeout in milliseconds.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(try_from = "u64", into = "u64")]
-#[schemars(with = "u64")]
+#[schemars(with = "std::num::NonZeroU64")]
 pub struct FetchTimeoutMs(NonZeroU64);
 
 impl FetchTimeoutMs {
@@ -84,7 +84,7 @@ impl From<FetchTimeoutMs> for u64 {
 /// HTTP connect timeout in milliseconds.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(try_from = "u64", into = "u64")]
-#[schemars(with = "u64")]
+#[schemars(with = "std::num::NonZeroU64")]
 pub struct FetchConnectTimeoutMs(NonZeroU64);
 
 impl FetchConnectTimeoutMs {
@@ -193,10 +193,10 @@ pub struct RuntimeOptions {
     pub max_bytes: MaxBytes,
     #[serde(default = "default_fetch_timeout_limit")]
     /// HTTP fetch timeout in milliseconds.
-    pub fetch_timeout: FetchTimeoutMs,
+    pub fetch_timeout_ms: FetchTimeoutMs,
     #[serde(default = "default_fetch_connect_timeout_limit")]
     /// HTTP connect timeout in milliseconds.
-    pub fetch_connect_timeout: FetchConnectTimeoutMs,
+    pub fetch_connect_timeout_ms: FetchConnectTimeoutMs,
     #[serde(default)]
     /// URL-fetch preflight policy used before reading a remote response body.
     pub fetch_preflight: FetchPreflightMode,
@@ -209,8 +209,8 @@ impl Default for RuntimeOptions {
     fn default() -> Self {
         Self {
             max_bytes: default_max_bytes_limit(),
-            fetch_timeout: default_fetch_timeout_limit(),
-            fetch_connect_timeout: default_fetch_connect_timeout_limit(),
+            fetch_timeout_ms: default_fetch_timeout_limit(),
+            fetch_connect_timeout_ms: default_fetch_connect_timeout_limit(),
             fetch_preflight: FetchPreflightMode::default(),
             tls_trust: TlsTrustPolicy::default(),
         }

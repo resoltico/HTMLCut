@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "9.0.0"
+version: "10.0.0"
 domain: SCHEMA
 updated: "2026-05-13"
 route:
@@ -24,7 +24,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 5 --output json
+htmlcut schema --name htmlcut.result --schema-version 6 --output json
 ```
 
 Rust:
@@ -111,8 +111,9 @@ Use those refs with the schema registry instead of treating catalog prose as the
 
 For slice extraction, the request/result family is mode-correct:
 
-- literal slices carry `mode`, `from`, and `to` with no regex `flags`
-- regex slices carry `mode`, `from`, `to`, and `flags`
+- slice request documents carry a nested `pattern` object
+- literal slice patterns carry `mode`, `from`, and `to` with no regex `flags`
+- regex slice patterns carry `mode`, `from`, `to`, and `flags`
 - request-side slice documents serialize boundary retention as one named
   `boundary_retention` enum, not as paired boolean mode flags
 
@@ -123,8 +124,11 @@ The request-side value enums serialize HTML fragment modes explicitly:
 
 The request-side schema family also covers:
 
-- non-zero `max_bytes`, `fetch_timeout`, and `fetch_connect_timeout` values in `RuntimeOptions`
+- non-zero `max_bytes`, `fetch_timeout_ms`, and `fetch_connect_timeout_ms` values in
+  `RuntimeOptions`
 - `fetch_preflight` and `tls_trust` in `RuntimeOptions`
+- replayable request URLs that must be absolute HTTP(S) without userinfo, query, or fragment
+- public display URLs that may carry only the explicit `?[redacted]` query marker
 - reusable serialized CLI/core requests through `ExtractionDefinition`
 
 Those exported request/result schema roots are owned by the explicit

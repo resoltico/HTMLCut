@@ -1,5 +1,5 @@
 use super::*;
-use url::Url;
+use crate::ContractValueError;
 
 #[test]
 fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {
@@ -16,10 +16,9 @@ fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {
     assert_eq!(source.label, "inline");
     assert_eq!(source.html, "<article>Hello</article>");
 
-    let with_base =
-        source.with_input_base_url(Url::parse("https://example.com/start.html").expect("url"));
+    let with_base = source.with_input_base_url(http_url("https://example.com/start.html"));
     assert_eq!(
-        with_base.input_base_url.as_ref().map(Url::as_str),
+        with_base.input_base_url.as_ref().map(HttpUrl::as_fetch_str),
         Some("https://example.com/start.html")
     );
 }
@@ -123,21 +122,25 @@ fn interop_owned_value_objects_and_diagnostic_helpers_cover_public_surface() {
         InteropDiagnosticCode::UnsupportedValueType
     );
 
-    let attribute = OutputAttributeName::new("href").expect("attribute");
+    let attribute = AttributeName::new("href").expect("attribute");
     assert_eq!(attribute.as_str(), "href");
     assert_eq!(attribute.as_ref(), "href");
     assert_eq!(attribute.to_string(), "href");
-    let attribute_from_string: OutputAttributeName = String::from("data-id")
+    let attribute_from_string: AttributeName = String::from("data-id")
         .try_into()
         .expect("attribute from string");
     assert_eq!(attribute_from_string.as_str(), "data-id");
     assert!(matches!(
-        OutputAttributeName::new("   "),
-        Err(ContractError::EmptyAttributeName)
+        AttributeName::new("   "),
+        Err(ContractValueError::Empty {
+            field: "attribute name"
+        })
     ));
     assert!(matches!(
-        OutputAttributeName::new("href value"),
-        Err(ContractError::AttributeNameContainsWhitespace)
+        AttributeName::new("href value"),
+        Err(ContractValueError::ContainsWhitespace {
+            field: "attribute name"
+        })
     ));
 
     let output_kinds = [

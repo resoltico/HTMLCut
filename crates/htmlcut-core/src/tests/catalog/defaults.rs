@@ -29,7 +29,7 @@ fn contract_lint_defaults_cover_public_default_contracts() {
         RuntimeOptions::default().max_bytes,
         max_bytes_limit(DEFAULT_MAX_BYTES)
     );
-    assert_eq!(default_spec_version(), CORE_SPEC_VERSION);
+    assert_eq!(CORE_SPEC_VERSION, 7);
     assert_eq!(default_preview_chars(), DEFAULT_PREVIEW_CHARS);
     assert_eq!(
         InspectionOptions::default().sample_limit,

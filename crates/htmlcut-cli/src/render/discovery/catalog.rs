@@ -1,8 +1,5 @@
 use crate::metadata::DISPLAY_NAME;
-use crate::model::{
-    CatalogAvailability, CatalogCommandContract, CatalogCommandReport, CatalogCondition,
-    CatalogConstraint, CatalogContractSurface, CatalogParameterKind, CatalogParameterRequirement,
-};
+use crate::model::{CatalogAvailability, CatalogCommandReport, CatalogContractSurface};
 
 use super::shared::render_schema_ref;
 
@@ -21,7 +18,7 @@ pub(crate) fn render_catalog_text(report: &CatalogCommandReport) -> String {
     ));
     lines.push(
         format!(
-            "Use `htmlcut {catalog_command} --operation <OPERATION_ID> --output json` for one exact contract."
+            "Use `htmlcut {catalog_command} --operation <OPERATION_ID>` for one compact contract or `--output json` for the full machine-readable surface."
         ),
     );
 
@@ -46,15 +43,16 @@ pub(crate) fn render_catalog_text(report: &CatalogCommandReport) -> String {
 }
 
 fn render_catalog_operation_lines(operation: &crate::model::CatalogOperationReport) -> Vec<String> {
-    let mut lines = vec![
-        format!(
-            "- {} | {}",
-            operation.operation_id,
-            render_catalog_surface(operation.command.as_deref(), &operation.availability)
-        ),
-        format!("  {}", operation.summary),
-        format!("  core api: {}", operation.core_api),
-    ];
+    let mut lines = vec![format!(
+        "- {} | {}",
+        operation.operation_id,
+        render_catalog_surface(operation.command.as_deref(), &operation.availability)
+    )];
+    lines.push(format!("  {}", operation.summary));
+    lines.push(format!(
+        "  engine capability: {}",
+        operation.engine_capability
+    ));
     lines.extend(render_catalog_contract_surface_lines(
         "request",
         &operation.request_contract,
@@ -63,156 +61,19 @@ fn render_catalog_operation_lines(operation: &crate::model::CatalogOperationRepo
         "result",
         &operation.result_contract,
     ));
-    if let Some(command_contract) = operation.command_contract.as_ref() {
-        lines.extend(render_catalog_contract_lines(command_contract));
+    if operation.command_contract.is_some() && operation.command.is_some() {
+        lines.push(
+            "  Use `--output json` for parameters, defaults, constraints, and examples.".to_owned(),
+        );
     }
 
     lines
 }
-
-fn render_catalog_contract_lines(contract: &CatalogCommandContract) -> Vec<String> {
-    let mut lines = vec![format!("  usage: {}", contract.invocation)];
-
-    push_joined_catalog_line(&mut lines, "inputs", &contract.inputs, " | ");
-    push_optional_catalog_line(
-        &mut lines,
-        "default match",
-        contract.default_match.as_deref(),
-    );
-    push_joined_catalog_line(&mut lines, "match modes", &contract.selection_modes, ", ");
-    push_optional_catalog_line(
-        &mut lines,
-        "default value",
-        contract.default_value.as_deref(),
-    );
-    push_joined_catalog_line(&mut lines, "value modes", &contract.value_modes, ", ");
-    push_optional_catalog_line(
-        &mut lines,
-        "default output",
-        contract.default_output.as_deref(),
-    );
-    if !contract.default_output_overrides.is_empty() {
-        lines.push("  default output overrides:".to_owned());
-        lines.extend(
-            contract
-                .default_output_overrides
-                .iter()
-                .map(|override_spec| {
-                    format!(
-                        "  - when {} => {}",
-                        render_catalog_condition(&override_spec.when),
-                        override_spec.value
-                    )
-                }),
-        );
-    }
-    push_joined_catalog_line(&mut lines, "output modes", &contract.output_modes, ", ");
-    if !contract.constraints.is_empty() {
-        lines.push("  constraints:".to_owned());
-        lines.extend(
-            contract
-                .constraints
-                .iter()
-                .map(render_catalog_constraint_line),
-        );
-    }
-    if !contract.notes.is_empty() {
-        lines.push("  notes:".to_owned());
-        lines.extend(contract.notes.iter().map(|note| format!("  - {note}")));
-    }
-    if !contract.examples.is_empty() {
-        lines.push("  examples:".to_owned());
-        lines.extend(
-            contract
-                .examples
-                .iter()
-                .map(|example| format!("  - {example}")),
-        );
-    }
-    if !contract.parameters.is_empty() {
-        lines.push("  parameters:".to_owned());
-        for parameter in &contract.parameters {
-            lines.push(format!(
-                "  - {} | {} {} | {}",
-                parameter.section,
-                render_parameter_kind(&parameter.kind),
-                render_parameter_name(parameter),
-                render_parameter_requirement(parameter)
-            ));
-            lines.push(format!("    {}", parameter.summary));
-            if let Some(default) = parameter.default.as_deref() {
-                lines.push(format!("    default: {default}"));
-            }
-            if !parameter.allowed_values.is_empty() {
-                lines.push(format!(
-                    "    values: {}",
-                    parameter.allowed_values.join(", ")
-                ));
-            }
-        }
-    }
-
-    lines
-}
-
-fn push_joined_catalog_line(
-    lines: &mut Vec<String>,
-    label: &str,
-    values: &[String],
-    separator: &str,
-) {
-    if !values.is_empty() {
-        lines.push(format!("  {label}: {}", values.join(separator)));
-    }
-}
-
-fn push_optional_catalog_line(lines: &mut Vec<String>, label: &str, value: Option<&str>) {
-    if let Some(value) = value {
-        lines.push(format!("  {label}: {value}"));
-    }
-}
-
-fn render_catalog_constraint_line(constraint: &CatalogConstraint) -> String {
-    match constraint {
-        CatalogConstraint::RequiresParameter { parameter, when } => {
-            format!(
-                "  - requires {parameter} when {}",
-                render_catalog_condition(when)
-            )
-        }
-        CatalogConstraint::AllowedOnlyWhen { parameter, when } => format!(
-            "  - allows {parameter} only when {}",
-            render_catalog_condition(when)
-        ),
-        CatalogConstraint::RestrictsParameterValues {
-            parameter,
-            allowed_values,
-            when,
-        } => format!(
-            "  - restricts {parameter} to {} when {}",
-            allowed_values.join(", "),
-            render_catalog_condition(when)
-        ),
-    }
-}
-
-fn render_catalog_condition(condition: &CatalogCondition) -> String {
-    if condition.values.is_empty() {
-        return condition.parameter.clone();
-    }
-
-    format!(
-        "{} is {}",
-        condition.parameter,
-        condition.values.join(" or ")
-    )
-}
-
 fn render_catalog_contract_surface_lines(
     label: &str,
     contract: &CatalogContractSurface,
 ) -> Vec<String> {
-    let mut lines = vec![format!("  {label}: {}", contract.family)];
+    let mut lines = vec![format!("  {label}: {}", contract.artifact)];
     if !contract.schema_refs.is_empty() {
         lines.push(format!(
             "  {label} schemas: {}",
@@ -228,44 +89,81 @@ fn render_catalog_contract_surface_lines(
     lines
 }
 
-fn render_parameter_kind(kind: &CatalogParameterKind) -> &'static str {
-    match kind {
-        CatalogParameterKind::Positional => "positional",
-        CatalogParameterKind::Option => "option",
-        CatalogParameterKind::Flag => "flag",
-    }
-}
-
-fn render_parameter_name(parameter: &crate::model::CatalogParameterSpec) -> String {
-    match parameter.value_hint.as_deref() {
-        Some(value_hint) if parameter.kind == CatalogParameterKind::Option => {
-            format!("{} <{value_hint}>", parameter.name)
-        }
-        _ => parameter.name.clone(),
-    }
-}
-
-fn render_parameter_requirement(parameter: &crate::model::CatalogParameterSpec) -> String {
-    match parameter.requirement {
-        CatalogParameterRequirement::Required => "required".to_owned(),
-        CatalogParameterRequirement::Optional => "optional".to_owned(),
-        CatalogParameterRequirement::Conditional => format!(
-            "conditional ({})",
-            parameter
-                .requirement_note
-                .as_deref()
-                .unwrap_or("see command notes")
-        ),
-    }
-}
-
 pub(crate) fn render_catalog_surface(
     command: Option<&str>,
     availability: &CatalogAvailability,
 ) -> String {
     match (command, availability) {
         (Some(command), _) => command.to_owned(),
-        (None, CatalogAvailability::CoreOnly) => "core only".to_owned(),
+        (None, CatalogAvailability::EngineOnly) => "engine only".to_owned(),
         (None, CatalogAvailability::Cli) => "cli".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{CatalogContractSurface, CatalogOperationReport};
+
+    #[test]
+    fn catalog_surface_rendering_covers_cli_without_explicit_command() {
+        assert_eq!(
+            render_catalog_surface(None, &CatalogAvailability::Cli),
+            "cli"
+        );
+        assert_eq!(
+            render_catalog_surface(None, &CatalogAvailability::EngineOnly),
+            "engine only"
+        );
+        assert_eq!(
+            render_catalog_surface(Some("inspect source"), &CatalogAvailability::Cli),
+            "inspect source"
+        );
+    }
+
+    #[test]
+    fn catalog_operation_rendering_skips_optional_sections_when_contracts_are_sparse() {
+        let lines = render_catalog_operation_lines(&CatalogOperationReport {
+            operation_id: htmlcut_core::OperationId::DocumentParse,
+            command: None,
+            availability: CatalogAvailability::EngineOnly,
+            summary: "Parse a document".to_owned(),
+            engine_capability: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
+            request_contract: CatalogContractSurface {
+                artifact: "SourceRequest + RuntimeOptions".to_owned(),
+                schema_refs: Vec::new(),
+            },
+            result_contract: CatalogContractSurface {
+                artifact: "ParseDocumentResult".to_owned(),
+                schema_refs: Vec::new(),
+            },
+            command_contract: Some(crate::model::CatalogCommandContract {
+                invocation: "htmlcut parse".to_owned(),
+                inputs: Vec::new(),
+                default_match: None,
+                selection_modes: Vec::new(),
+                default_value: None,
+                value_modes: Vec::new(),
+                default_output: None,
+                default_output_overrides: Vec::new(),
+                output_modes: Vec::new(),
+                constraints: Vec::new(),
+                notes: Vec::new(),
+                examples: Vec::new(),
+                parameters: Vec::new(),
+            }),
+        });
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "  request: SourceRequest + RuntimeOptions")
+        );
+        assert!(lines.iter().all(|line| !line.contains("schemas:")));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains("Use `--output json` for parameters"))
+        );
     }
 }

@@ -74,7 +74,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output_file: None,
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             preview_chars: DEFAULT_PREVIEW_CHARS,
-            file_write: default_file_write_args(),
+            file_write: default_output_file_write_args(),
         },
         0,
         false,
@@ -100,7 +100,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             output_file: None,
             sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
             preview_chars: DEFAULT_PREVIEW_CHARS,
-            file_write: default_file_write_args(),
+            file_write: default_output_file_write_args(),
         },
         0,
         false,
@@ -144,7 +144,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -183,7 +183,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -226,7 +226,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         })
         .expect("preview builder"),
     );
@@ -326,6 +326,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             .iter()
             .any(|line| line.contains("wrote bundle to"))
     );
+    assert!(bundle_dir.join("selection.json").exists());
     assert!(bundle_dir.join("report.json").exists());
 
     let extract_success_no_bundle = execute_extraction(
@@ -570,7 +571,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output_file: None,
                 sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
-                file_write: default_file_write_args(),
+                file_write: default_output_file_write_args(),
             },
             0,
             false,
@@ -603,7 +604,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 output_file: None,
                 sample_limit: DEFAULT_INSPECTION_SAMPLE_LIMIT,
                 preview_chars: DEFAULT_PREVIEW_CHARS,
-                file_write: default_file_write_args(),
+                file_write: default_output_file_write_args(),
             },
             0,
             false,
@@ -644,7 +645,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
-                file_write: default_file_write_args(),
+                file_write: default_preview_file_write_args(),
             })
             .expect("preview builder"),
         )
@@ -684,7 +685,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                     include_source_text: false,
                     output_file: None,
                 },
-                file_write: default_file_write_args(),
+                file_write: default_preview_file_write_args(),
             })
             .expect("preview builder"),
         )

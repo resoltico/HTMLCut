@@ -41,7 +41,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         }),
         "missing --from",
     );
@@ -239,7 +239,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             include_source_text: false,
             output_file: None,
             preview_chars: 0,
-            file_write: default_file_write_args(),
+            file_write: default_output_file_write_args(),
         })
         .is_err()
     );
@@ -260,7 +260,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             include_source_text: false,
             output_file: None,
             preview_chars: DEFAULT_PREVIEW_CHARS,
-            file_write: default_file_write_args(),
+            file_write: default_output_file_write_args(),
         })
         .is_err()
     );
@@ -295,7 +295,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         })
         .is_err()
     );
@@ -334,7 +334,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
                 include_source_text: false,
                 output_file: None,
             },
-            file_write: default_file_write_args(),
+            file_write: default_preview_file_write_args(),
         })
         .is_err()
     );

@@ -8,6 +8,9 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
         ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
     );
     let definition = ExtractionDefinition::new(request.clone());
+    let document =
+        htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition.clone())
+            .expect("definition document");
 
     assert_eq!(
         request_definition_parent_dir_for_tests(Path::new("request.json")),
@@ -30,7 +33,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
         runtime: htmlcut_core::RuntimeOptions::default(),
         request_definition_output: Some(PendingExtractionDefinitionWrite {
             path: request_dir,
-            definition: definition.clone(),
+            document: document.clone(),
         }),
         output: CliOutputMode::Json,
         bundle: None,
@@ -56,7 +59,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
         runtime: htmlcut_core::RuntimeOptions::default(),
         request_definition_output: Some(PendingExtractionDefinitionWrite {
             path: bad_parent.join("request.json"),
-            definition: definition.clone(),
+            document: document.clone(),
         }),
         output: CliInspectOutputMode::Json,
         output_file: None,
@@ -79,7 +82,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
         runtime: htmlcut_core::RuntimeOptions::default(),
         request_definition_output: Some(PendingExtractionDefinitionWrite {
             path: PathBuf::from("/"),
-            definition: definition.clone(),
+            document: document.clone(),
         }),
         output: CliInspectOutputMode::Json,
         output_file: None,
@@ -105,7 +108,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
         runtime: htmlcut_core::RuntimeOptions::default(),
         request_definition_output: Some(PendingExtractionDefinitionWrite {
             path: preview_request_path.clone(),
-            definition,
+            document,
         }),
         output: CliInspectOutputMode::Text,
         output_file: None,
@@ -249,9 +252,11 @@ fn request_definition_write_reports_json_render_failures_without_panicking() {
         SourceRequest::memory("inline", "<article>Hello</article>"),
         ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
     ));
+    let document = htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition)
+        .expect("definition document");
     let output = PendingExtractionDefinitionWrite {
         path: tempdir.path().join("request.json"),
-        definition,
+        document,
     };
 
     let error = with_json_render_failure_for_tests(|| write_request_definition(&output))

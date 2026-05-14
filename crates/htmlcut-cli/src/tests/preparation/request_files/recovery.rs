@@ -36,7 +36,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     );
     assert!(
         inspect_slice_error.message.contains(
-            "Slice request files use plain JSON strings for `request.extraction.from` and `request.extraction.to`."
+            "Slice request files use `request.extraction.pattern` with plain JSON string `from` and `to` fields."
         )
     );
 
@@ -73,13 +73,17 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-slice-shape.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 2,
+  "schema_version": 4,
   "request": {
+    "spec_version": 7,
     "source": { "input": { "type": "stdin" } },
     "extraction": {
       "kind": "slice",
-      "from": { "literal": "<article>" },
-      "to": "</article>"
+      "pattern": {
+        "mode": "literal",
+        "from": { "literal": "<article>" },
+        "to": "</article>"
+      }
     }
   }
 }"#,
@@ -96,7 +100,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     assert!(
         invalid_slice_shape_error
             .message
-            .contains("request.extraction.from` as a plain JSON string, not an object")
+            .contains("request.extraction.pattern.from` as a plain JSON string, not an object")
     );
 
     let invalid_selector_array_path = write_fixture_file(
@@ -104,8 +108,9 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-selector-array.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 2,
+  "schema_version": 4,
   "request": {
+    "spec_version": 7,
     "source": { "input": { "type": "stdin" } },
     "extraction": {
       "kind": "selector",
@@ -133,13 +138,17 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
         "invalid-slice-array.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 2,
+  "schema_version": 4,
   "request": {
+    "spec_version": 7,
     "source": { "input": { "type": "stdin" } },
     "extraction": {
       "kind": "slice",
-      "from": ["<article>"],
-      "to": "</article>"
+      "pattern": {
+        "mode": "literal",
+        "from": ["<article>"],
+        "to": "</article>"
+      }
     }
   }
 }"#,
@@ -155,7 +164,7 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     assert!(
         invalid_slice_array_error
             .message
-            .contains("request.extraction.from` as a plain JSON string, not an object")
+            .contains("request.extraction.pattern.from` as a plain JSON string, not an object")
     );
 }
 

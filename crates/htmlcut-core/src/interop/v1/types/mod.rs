@@ -2,10 +2,11 @@ mod plan;
 mod result;
 mod shared;
 
+pub use crate::{AttributeName, DisplayedHttpUrl, HttpUrl};
 pub use plan::{
     CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode, HtmlInput,
-    Output, OutputAttributeName, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection,
-    SelectionMode, StrategyKind, TextWhitespace,
+    Output, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection, SelectionMode,
+    StrategyKind, TextWhitespace,
 };
 pub use result::{
     ByteRange, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel,

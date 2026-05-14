@@ -223,8 +223,11 @@ fn select_json_report_has_core_parity_for_structured_extraction() {
     assert_eq!(report.extraction, expected.extraction);
     assert_eq!(report.stats.candidate_count, expected.stats.candidate_count);
     assert_eq!(report.stats.match_count, expected.stats.match_count);
-    assert_eq!(report.matches, expected.matches);
-    assert_eq!(report.diagnostics, expected.diagnostics);
+    assert_eq!(report.matches, normalize_public_matches(expected.matches));
+    assert_eq!(
+        report.diagnostics,
+        normalize_public_diagnostics(expected.diagnostics)
+    );
     assert_eq!(report.document_title.as_deref(), Some("Parity"));
     assert!(report.bundle.is_none());
 }
@@ -326,7 +329,7 @@ fn select_attribute_rewrite_has_core_parity() {
 
     assert_eq!(report.source, expected.source);
     assert_eq!(report.extraction, expected.extraction);
-    assert_eq!(report.matches, expected.matches);
+    assert_eq!(report.matches, normalize_public_matches(expected.matches));
     assert_eq!(
         report.matches[0].value.as_str(),
         Some("https://example.com/guide.html")

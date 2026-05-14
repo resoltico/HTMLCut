@@ -29,7 +29,7 @@ fn source_reading_helpers_cover_error_paths() {
         &file_source(&large_path),
         &RuntimeOptions {
             max_bytes: max_bytes_limit(3),
-            fetch_timeout: fetch_timeout_limit(1000),
+            fetch_timeout_ms: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
@@ -76,7 +76,7 @@ fn url_source_reading_helpers_cover_error_paths() {
         &url_source(&format!("http://{closed_address}")),
         &RuntimeOptions {
             max_bytes: max_bytes_limit(1024),
-            fetch_timeout: fetch_timeout_limit(250),
+            fetch_timeout_ms: fetch_timeout_limit(250),
             ..RuntimeOptions::default()
         },
     )
@@ -99,7 +99,7 @@ fn url_source_reading_helpers_cover_error_paths() {
         &url_source(&format!("http://{address}")),
         &RuntimeOptions {
             max_bytes: max_bytes_limit(4),
-            fetch_timeout: fetch_timeout_limit(1000),
+            fetch_timeout_ms: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
@@ -113,7 +113,7 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
         &memory_source("inline", "12345"),
         &RuntimeOptions {
             max_bytes: max_bytes_limit(3),
-            fetch_timeout: fetch_timeout_limit(1000),
+            fetch_timeout_ms: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     )
@@ -127,7 +127,7 @@ fn source_loading_covers_memory_limits_and_extract_load_failures() {
         ),
         &RuntimeOptions {
             max_bytes: max_bytes_limit(3),
-            fetch_timeout: fetch_timeout_limit(1000),
+            fetch_timeout_ms: fetch_timeout_limit(1000),
             ..RuntimeOptions::default()
         },
     );
@@ -146,7 +146,7 @@ fn url_source_requests_keep_the_url_source_kind() {
 fn url_stream_source_helpers_preserve_failure_metadata() {
     let runtime = RuntimeOptions {
         max_bytes: max_bytes_limit(3),
-        fetch_timeout: fetch_timeout_limit(1000),
+        fetch_timeout_ms: fetch_timeout_limit(1000),
         ..RuntimeOptions::default()
     };
     let source_value = "https://example.com/page";
@@ -216,7 +216,7 @@ fn url_stream_source_helpers_preserve_failure_metadata() {
 fn stdin_stream_source_helpers_preserve_failure_metadata() {
     let runtime = RuntimeOptions {
         max_bytes: max_bytes_limit(3),
-        fetch_timeout: fetch_timeout_limit(1000),
+        fetch_timeout_ms: fetch_timeout_limit(1000),
         ..RuntimeOptions::default()
     };
     let stdin_request = SourceRequest::stdin().with_base_url(http_url("https://example.com/base/"));

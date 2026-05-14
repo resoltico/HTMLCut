@@ -1,7 +1,7 @@
 use super::request::FetchPreflightMode;
 
 /// Current version of the embeddable extraction request contract.
-pub const CORE_SPEC_VERSION: u32 = 5;
+pub const CORE_SPEC_VERSION: u32 = 7;
 /// Frozen schema name for [`crate::ExtractionResult`].
 pub const CORE_RESULT_SCHEMA_NAME: &str = "htmlcut.extraction_result";
 /// Current schema version for [`crate::ExtractionResult`].
@@ -22,10 +22,8 @@ pub const DEFAULT_FETCH_CONNECT_TIMEOUT_MS: u64 = 5_000;
 pub const DEFAULT_FETCH_PREFLIGHT_MODE: FetchPreflightMode = FetchPreflightMode::HeadFirst;
 /// Default limit for sampled inspection headings, links, tags, classes, and content candidates.
 pub const DEFAULT_INSPECTION_SAMPLE_LIMIT: usize = 8;
-
-pub(crate) const fn default_spec_version() -> u32 {
-    CORE_SPEC_VERSION
-}
+/// Whether this build includes the built-in HTTP(S) source loader.
+pub const BUILTIN_HTTP_CLIENT_AVAILABLE: bool = cfg!(feature = "http-client");
 
 #[cfg(test)]
 pub(crate) const fn default_preview_chars() -> usize {

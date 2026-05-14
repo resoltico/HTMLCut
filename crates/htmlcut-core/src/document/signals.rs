@@ -12,68 +12,141 @@ const LAYOUT_SHELL_TOKENS: [&str; 7] = [
     "layout",
     "wrapper",
 ];
-const UTILITY_CHROME_TOKENS: [&str; 63] = [
+const STRONG_UTILITY_CHROME_TOKENS: [&str; 34] = [
+    "accessories",
+    "affiliate",
+    "buy",
+    "carrier",
+    "compare",
+    "comparison",
+    "deal",
+    "deals",
+    "disambiguation",
+    "disclaimer",
+    "disclosure",
+    "environment",
+    "faq",
+    "hatnote",
+    "incentive",
+    "legal",
+    "modal",
+    "offer",
+    "offers",
+    "policy",
+    "pricing",
+    "promo",
+    "report",
+    "ribbon",
+    "shop",
+    "shopping",
+    "specialist",
+    "subjectpageheader",
+    "tag",
+    "tags",
+    "terms",
+    "trade",
+    "upgrade",
+    "values",
+];
+const UTILITY_CHROME_TOKENS: [&str; 100] = [
     "ad",
     "advert",
+    "affiliate",
     "appearance",
     "author",
     "audio",
     "bio",
     "breadcrumb",
+    "buy",
     "byline",
     "categories",
     "category",
     "caption",
+    "carrier",
     "catlinks",
     "comment",
     "comments",
+    "compare",
+    "comparison",
     "copied",
     "copy",
     "control",
     "controls",
     "count",
+    "deal",
+    "deals",
+    "disambiguation",
+    "disclaimer",
+    "disclosure",
     "dropdown",
+    "environment",
     "eyebrow",
     "edit",
     "editsection",
     "featured",
     "export",
+    "faq",
     "filter",
     "filters",
+    "globalnav",
+    "hatnote",
     "hidden",
     "indicator",
     "indicators",
+    "incentive",
     "interface",
     "kicker",
     "lang",
     "language",
+    "legal",
+    "localnav",
     "meta",
     "metadata",
     "media",
     "menu",
+    "modal",
     "nav",
     "newsletter",
     "noprint",
+    "offer",
+    "offers",
     "pending",
     "pagination",
     "player",
+    "policy",
     "portlet",
+    "pricing",
     "print",
+    "promo",
+    "report",
     "reaction",
     "reactions",
     "recommend",
     "recommended",
     "related",
     "revision",
+    "ribbon",
     "share",
+    "shop",
+    "shopping",
     "sidebar",
     "social",
+    "specialist",
     "status",
     "subtitle",
     "subscribe",
+    "subjectpageheader",
+    "tag",
+    "tags",
     "feedback",
+    "terms",
     "topic",
     "topics",
+    "trade",
+    "upsell",
+    "upgrade",
+    "utility",
+    "values",
     "video",
     "widget",
 ];
@@ -158,6 +231,11 @@ pub(crate) fn element_looks_like_utility_chrome(element: &ElementRef<'_>) -> boo
 
     let tokens = structural_signal_tokens(element);
     let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
+    if !matches!(tag_name, "article" | "main")
+        && token_match_count(&tokens, &STRONG_UTILITY_CHROME_TOKENS) > 0
+    {
+        return true;
+    }
     if element_looks_like_compact_utility_widget(element, content_count) {
         return true;
     }
@@ -524,6 +602,21 @@ mod tests {
         assert!(!element_looks_like_utility_chrome(&body_root));
         let math_content = select_first(&root_shell, "#mw-content-text").expect("content");
         assert!(!element_has_utility_chrome_ancestor(&math_content));
+
+        let accessory_section = parse_document_node(
+            "<section id=\"accessories\" class=\"section section-accessories section-product-story\"><h2>Accessories</h2><p><a href=\"/shop\">Shop all accessories</a></p></section>",
+        );
+        let accessory_section_element =
+            select_first(&accessory_section, "section").expect("accessory section");
+        assert!(element_looks_like_utility_chrome(
+            &accessory_section_element
+        ));
+        let upgrade_section = parse_document_node(
+            "<section class=\"section section-upgrade\"><h2>Upgrade</h2><p><a href=\"/trade\">Find your trade-in value</a></p></section>",
+        );
+        let upgrade_section_element =
+            select_first(&upgrade_section, "section").expect("upgrade section");
+        assert!(element_looks_like_utility_chrome(&upgrade_section_element));
     }
 
     #[test]

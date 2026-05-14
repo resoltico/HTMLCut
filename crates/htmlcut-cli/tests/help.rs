@@ -14,33 +14,15 @@ fn help_prints_the_new_workflows_and_contract_language() {
             env!("CARGO_PKG_DESCRIPTION")
         )))
         .stdout(predicate::str::contains("help     Print this message or the help of the given subcommand(s)."))
-        .stdout(predicate::str::contains("\n\nOperator Guide:\n"))
-        .stdout(predicate::str::contains("Workflow:"))
-        .stdout(predicate::str::contains("Request files:"))
+        .stdout(predicate::str::contains("\n\nExamples:\n"))
+        .stdout(predicate::str::contains("Guidance:").not())
         .stdout(predicate::str::contains("catalog"))
         .stdout(predicate::str::contains("schema"))
         .stdout(predicate::str::contains("select"))
         .stdout(predicate::str::contains("slice"))
         .stdout(predicate::str::contains("inspect"))
         .stdout(predicate::str::contains("help"))
-        .stdout(predicate::str::contains("--value"))
-        .stdout(predicate::str::contains("--output"))
         .stdout(predicate::str::contains("--verbose"))
-        .stdout(predicate::str::contains(
-            "--output none suppresses stdout and therefore requires --bundle.",
-        ))
-        .stdout(predicate::str::contains(
-            "--emit-request-file writes the normalized extraction definition for the current run.",
-        ))
-        .stdout(predicate::str::contains(
-            "--overwrite is required before HTMLCut will replace an existing request file, output file, or bundle path.",
-        ))
-        .stdout(predicate::str::contains(
-            "Parent directories are created automatically for --emit-request-file, --output-file, and --bundle.",
-        ))
-        .stdout(predicate::str::contains(
-            "--request-file reruns a saved definition instead of spelling the source and strategy inline.",
-        ))
         .stdout(predicate::str::contains(
             "htmlcut select --request-file ./article-link.request.json --output-file ./article-link.txt",
         ));
@@ -53,20 +35,16 @@ fn select_help_stays_select_specific() {
         .args(["select", "--help"])
         .assert()
         .success()
+        .stdout(predicate::str::contains("\n\nExamples:\n"))
+        .stdout(predicate::str::contains("Guidance:").not())
         .stdout(predicate::str::contains(
-            "Supported match modes: single, first, nth, all.",
-        ))
-        .stdout(predicate::str::contains(
-            "Output default override: html when --value is one of inner-html, outer-html.",
-        ))
-        .stdout(predicate::str::contains(
-            "Output default override: json when --value is structured.",
-        ))
-        .stdout(predicate::str::contains(
-            "--output none suppresses stdout and therefore requires --bundle.",
+            "`--output none` suppresses stdout and therefore requires `--bundle`.",
         ))
         .stdout(predicate::str::contains(
             "Attribute name to extract when `--value attribute` is used",
+        ))
+        .stdout(predicate::str::contains(
+            "Write `selection.json`, `selection.html`, `selection.txt`, and `report.json` to this directory.",
         ))
         .stdout(predicate::str::contains("The selected fragment excludes").not());
 }
@@ -78,18 +56,16 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
         .args(["slice", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Boundary matches are consumed exactly as matched."))
+        .stdout(predicate::str::contains("\n\nExamples:\n"))
+        .stdout(predicate::str::contains("Guidance:").not())
         .stdout(predicate::str::contains(
             "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, and `x`",
         ))
         .stdout(predicate::str::contains(
-            "The selected fragment excludes both matched boundaries by default; --boundary-retention controls that selected fragment precisely.",
+            "Which matched boundaries become part of the selected fragment",
         ))
         .stdout(predicate::str::contains(
-            "Structured extraction only supports --output json or --output none.",
-        ))
-        .stdout(predicate::str::contains(
-            "--output none suppresses stdout and therefore requires --bundle.",
+            "`--output none` suppresses stdout and therefore requires `--bundle`.",
         ))
         .stdout(predicate::str::contains(
             "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",
@@ -97,6 +73,41 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
         .stdout(predicate::str::contains(
             "htmlcut slice ./page.html --from '<a' --to '</a>' --boundary-retention include-both --value attribute --attribute href --rewrite-urls",
         ));
+}
+
+#[test]
+fn inspect_and_discovery_help_scope_overwrite_to_real_targets() {
+    let mut inspect_source = Command::cargo_bin("htmlcut").expect("binary");
+    inspect_source
+        .args(["inspect", "source", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Allow HTMLCut to replace an existing `--output-file`",
+        ))
+        .stdout(predicate::str::contains("--emit-request-file").not())
+        .stdout(predicate::str::contains("bundle paths").not());
+
+    let mut inspect_select = Command::cargo_bin("htmlcut").expect("binary");
+    inspect_select
+        .args(["inspect", "select", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Allow HTMLCut to replace existing `--output-file` and `--emit-request-file` paths",
+        ))
+        .stdout(predicate::str::contains("bundle paths").not());
+
+    let mut schema = Command::cargo_bin("htmlcut").expect("binary");
+    schema
+        .args(["schema", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Allow HTMLCut to replace an existing `--output-file`",
+        ))
+        .stdout(predicate::str::contains("--emit-request-file").not())
+        .stdout(predicate::str::contains("bundle paths").not());
 }
 
 #[test]
@@ -199,11 +210,9 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
         .assert()
         .failure()
         .code(2)
-        .stdout(predicate::str::contains(
-            "\"code\": \"CLI_REQUEST_FILE_CONFLICT\"",
-        ))
-        .stdout(predicate::str::contains(
+        .stdout("")
+        .stderr(predicate::str::contains(
             "--request-file owns the extraction definition",
         ))
-        .stderr("");
+        .stderr(predicate::str::contains("--emit-request-file <PATH>"));
 }

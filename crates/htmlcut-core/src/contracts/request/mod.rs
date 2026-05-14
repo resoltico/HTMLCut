@@ -11,7 +11,8 @@ pub use options::{
     RenderingOptions, RuntimeOptions, TlsTrustPolicy,
 };
 pub use primitives::{
-    AttributeName, ContractValueError, ExtractionStrategy, FetchPreflightMode, HttpUrl,
-    PatternMode, SelectorQuery, SliceBoundary, SourceKind, ValueType, WhitespaceMode,
+    AttributeName, ContractValueError, DisplayedHttpUrl, ExtractionStrategy, FetchPreflightMode,
+    HttpUrl, PatternMode, PersistedHttpUrl, SelectorQuery, SliceBoundary, SourceKind, ValueType,
+    WhitespaceMode,
 };
 pub use requests::{ExtractionDefinition, ExtractionRequest, SourceInput, SourceRequest};

@@ -8,8 +8,8 @@ mod inspection;
 mod reports;
 
 use htmlcut_core::{
-    ExtractionDefinition, ExtractionRequest, InspectionOptions, RuntimeOptions, SourceRequest,
-    ValueSpec,
+    ExtractionRequest, InspectionOptions, RuntimeOptions, SourceRequest, ValueSpec,
+    wire::v1::ExtractionDefinitionDocument,
 };
 
 use crate::args::{CliOutputMode, CliWhitespaceMode};
@@ -37,8 +37,8 @@ pub(crate) use self::reports::{
     schema_export_serialize_error_for_tests,
 };
 pub(crate) use self::reports::{
-    build_catalog_report, build_extraction_report, build_schema_report,
-    build_source_inspection_report,
+    build_catalog_report, build_extraction_report, build_schema_inventory_report,
+    build_schema_report, build_source_inspection_report,
 };
 
 pub(crate) struct PreparedExtraction {
@@ -87,7 +87,7 @@ pub(crate) struct RequestBuildOptions {
 #[derive(Clone, Debug)]
 pub(crate) struct PendingExtractionDefinitionWrite {
     pub(crate) path: PathBuf,
-    pub(crate) definition: ExtractionDefinition,
+    pub(crate) document: ExtractionDefinitionDocument,
 }
 
 pub(super) struct MaterializedDefinition {

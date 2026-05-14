@@ -58,3 +58,27 @@ fn emit_request_file_round_trips_and_reports_verbose_success() {
     assert!(round_trip_stdout.contains("\"ok\": true"));
     assert!(round_trip_stderr.is_empty());
 }
+
+#[test]
+fn emit_request_file_rejects_query_bearing_url_inputs() {
+    let tempdir = tempdir().expect("tempdir");
+    let emitted_request_path = tempdir.path().join("request.json");
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "https://example.com/articles?token=secret".to_owned(),
+        "--css".to_owned(),
+        "article".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+        "--emit-request-file".to_owned(),
+        emitted_request_path.to_string_lossy().into_owned(),
+    ]);
+
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stderr.is_empty());
+    assert!(stdout.contains("\"code\": \"CLI_REQUEST_FILE_PERSISTENCE_INVALID\""));
+    assert!(stdout.contains("without userinfo, query strings, or fragments"));
+    assert!(!emitted_request_path.exists());
+}

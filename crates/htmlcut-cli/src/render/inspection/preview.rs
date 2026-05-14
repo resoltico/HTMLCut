@@ -12,6 +12,11 @@ use super::shared::{
     render_source_load_trace_lines,
 };
 
+const MAX_PROJECTED_OUTPUT_MATCHES: usize = 3;
+const MAX_RENDERED_MATCHES: usize = 8;
+const MAX_LOCATION_SEGMENTS: usize = 4;
+const MAX_LOCATION_CHARS: usize = 96;
+
 pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
     let mut lines = vec![
         format!("Command: {}", report.command),
@@ -48,9 +53,23 @@ pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
         return lines.join("\n");
     }
 
-    lines.push("Matches:".to_owned());
-    for matched in &report.matches {
+    let shown_matches = report.matches.len().min(MAX_RENDERED_MATCHES);
+    if shown_matches == report.matches.len() {
+        lines.push("Matches:".to_owned());
+    } else {
+        lines.push(format!(
+            "Matches: showing first {shown_matches} of {}.",
+            report.matches.len()
+        ));
+    }
+    for matched in report.matches.iter().take(MAX_RENDERED_MATCHES) {
         lines.extend(render_preview_match_lines(report.operation_id, matched));
+    }
+    if shown_matches < report.matches.len() {
+        lines.push(
+            "Use `--output json` or narrow the selector when you need every match in one report."
+                .to_owned(),
+        );
     }
 
     lines.join("\n")
@@ -58,23 +77,39 @@ pub(crate) fn render_preview_text(report: &ExtractionCommandReport) -> String {
 
 fn projected_output_preview(report: &ExtractionCommandReport) -> Option<String> {
     let first = report.matches.first()?;
-    match first.value_type {
+    let previewable_matches = report
+        .matches
+        .iter()
+        .take(MAX_PROJECTED_OUTPUT_MATCHES)
+        .collect::<Vec<_>>();
+    let mut preview = match first.value_type {
         ValueType::Structured => None,
-        ValueType::InnerHtml | ValueType::OuterHtml | ValueType::SelectedHtml => report
-            .matches
+        ValueType::InnerHtml | ValueType::OuterHtml | ValueType::SelectedHtml => {
+            previewable_matches
+                .iter()
+                .copied()
+                .map(render_match_as_html)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()
+                .map(|parts| parts.join("\n\n"))
+        }
+        _ => previewable_matches
             .iter()
-            .map(render_match_as_html)
-            .collect::<Result<Vec<_>, _>>()
-            .ok()
-            .map(|parts| parts.join("\n\n")),
-        _ => report
-            .matches
-            .iter()
+            .copied()
             .map(render_match_as_text)
             .collect::<Result<Vec<_>, _>>()
             .ok()
             .map(|parts| parts.join("\n\n")),
+    }?;
+
+    if report.matches.len() > MAX_PROJECTED_OUTPUT_MATCHES {
+        preview.push_str(&format!(
+            "\n\n... {} more match(es) omitted from the projected output preview.",
+            report.matches.len() - MAX_PROJECTED_OUTPUT_MATCHES
+        ));
     }
+
+    Some(preview)
 }
 
 pub(crate) fn render_preview_match_lines(
@@ -103,28 +138,18 @@ pub(crate) fn render_preview_match_lines(
         }
         htmlcut_core::OperationId::SlicePreview => {
             if let ExtractionMatchMetadata::DelimiterPair(metadata) = &matched.metadata {
-                lines.push(format!("   candidate index: {}", metadata.candidate_index));
                 lines.push(format!(
-                    "   selected range: {}",
-                    format_range_summary(&metadata.selected_range)
+                    "   candidate {} | selected {} | inner {} | outer {} | retention {}",
+                    metadata.candidate_index,
+                    format_range_summary(&metadata.selected_range),
+                    format_range_summary(&metadata.inner_range),
+                    format_range_summary(&metadata.outer_range),
+                    render_boundary_retention(metadata.include_start, metadata.include_end),
                 ));
                 lines.push(format!(
-                    "   inner range: {}",
-                    format_range_summary(&metadata.inner_range)
-                ));
-                lines.push(format!(
-                    "   outer range: {}",
-                    format_range_summary(&metadata.outer_range)
-                ));
-                lines.push(format!("   include start: {}", metadata.include_start));
-                lines.push(format!("   include end: {}", metadata.include_end));
-                lines.push(format!(
-                    "   matched start: {}",
-                    compact_inline_preview(&metadata.matched_start, DEFAULT_PREVIEW_CHARS)
-                ));
-                lines.push(format!(
-                    "   matched end: {}",
-                    compact_inline_preview(&metadata.matched_end, DEFAULT_PREVIEW_CHARS)
+                    "   boundaries: {} … {}",
+                    compact_inline_preview(&metadata.matched_start, DEFAULT_PREVIEW_CHARS / 2),
+                    compact_inline_preview(&metadata.matched_end, DEFAULT_PREVIEW_CHARS / 2)
                 ));
             }
             let text_preview = matched
@@ -171,7 +196,7 @@ pub(crate) fn render_preview_location(
     matched: &ExtractionMatch,
 ) -> String {
     if let Some(path) = matched.path.as_deref() {
-        return path.to_owned();
+        return compact_location(path);
     }
 
     if operation_id == htmlcut_core::OperationId::SlicePreview
@@ -182,6 +207,42 @@ pub(crate) fn render_preview_location(
     }
 
     "(no path)".to_owned()
+}
+
+fn compact_location(path: &str) -> String {
+    let segments = path.split(" > ").collect::<Vec<_>>();
+    let compact = if segments.len() > MAX_LOCATION_SEGMENTS {
+        format!(
+            "... > {}",
+            segments[segments.len() - MAX_LOCATION_SEGMENTS..].join(" > ")
+        )
+    } else {
+        path.to_owned()
+    };
+
+    if compact.chars().count() <= MAX_LOCATION_CHARS {
+        return compact;
+    }
+
+    let mut shortened = String::new();
+    for (index, character) in compact.chars().enumerate() {
+        if index >= MAX_LOCATION_CHARS.saturating_sub(3) {
+            shortened.push_str("...");
+            break;
+        }
+        shortened.push(character);
+    }
+
+    shortened
+}
+
+fn render_boundary_retention(include_start: bool, include_end: bool) -> &'static str {
+    match (include_start, include_end) {
+        (false, false) => "exclude-both",
+        (true, false) => "include-start",
+        (false, true) => "include-end",
+        (true, true) => "include-both",
+    }
 }
 
 #[cfg(test)]
@@ -236,7 +297,7 @@ mod tests {
         ExtractionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "9.0.0".to_owned(),
+            version: "10.0.0".to_owned(),
             schema_name: "htmlcut.extraction_report".to_owned(),
             schema_version: 6,
             command: "inspect select".to_owned(),
@@ -317,5 +378,57 @@ mod tests {
             render_preview_location(OperationId::SlicePreview, &matched),
             "range 5..10"
         );
+    }
+
+    #[test]
+    fn preview_rendering_helpers_cover_truncation_and_retention_labels() {
+        let mut long_path_match = selector_match(ValueType::Text, None, Some("Alpha"));
+        long_path_match.path = Some(
+            "html > body > main:nth-of-type(1) > article:nth-of-type(1) > section:nth-of-type(1) > div[data-section=\"primary-feature-surface\"][data-variant=\"comparison-rail\"] > ul[data-list=\"deep-navigation-links\"] > li[data-entry=\"international-purchasing-and-delivery-details\"] > a[data-tracking-id=\"primary-cta\"][aria-label=\"Open the full international purchasing and delivery details article\"]"
+                .to_owned(),
+        );
+        let compact = render_preview_location(OperationId::SelectPreview, &long_path_match);
+        assert!(compact.starts_with("... > "));
+        assert!(compact.ends_with("..."));
+
+        let overflow_report = extraction_report(
+            (1..=MAX_RENDERED_MATCHES + 1)
+                .map(|index| {
+                    let mut matched = selector_match(ValueType::Text, None, Some("Alpha"));
+                    matched.index = index;
+                    matched
+                })
+                .collect(),
+        );
+        let overflow_text = render_preview_text(&overflow_report);
+        assert!(overflow_text.contains(&format!(
+            "Matches: showing first {} of {}.",
+            MAX_RENDERED_MATCHES,
+            MAX_RENDERED_MATCHES + 1
+        )));
+        assert!(overflow_text.contains("Use `--output json` or narrow the selector"));
+
+        let projected_overflow = extraction_report(
+            (1..=MAX_PROJECTED_OUTPUT_MATCHES + 1)
+                .map(|index| {
+                    let mut matched = selector_match(
+                        ValueType::SelectedHtml,
+                        Some(&format!("<article>{index}</article>")),
+                        None,
+                    );
+                    matched.index = index;
+                    matched
+                })
+                .collect(),
+        );
+        assert!(
+            projected_output_preview(&projected_overflow)
+                .expect("projected preview")
+                .contains("more match(es) omitted")
+        );
+
+        assert_eq!(render_boundary_retention(true, false), "include-start");
+        assert_eq!(render_boundary_retention(false, true), "include-end");
+        assert_eq!(render_boundary_retention(true, true), "include-both");
     }
 }

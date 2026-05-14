@@ -1,8 +1,6 @@
 use std::io::Write;
 use std::path::Path;
 
-use htmlcut_core::wire::v1::ExtractionDefinitionDocument;
-
 use crate::EXIT_CODE_OUTPUT;
 use crate::error::CliError;
 use crate::file_output::{FileWriteMode, write_text_file};
@@ -59,10 +57,8 @@ pub(crate) fn write_request_definition(
     request_definition_output: &crate::prepare::PendingExtractionDefinitionWrite,
     write_mode: FileWriteMode,
 ) -> Result<(), CliError> {
-    let definition_document =
-        ExtractionDefinitionDocument::from(request_definition_output.definition.clone());
     let definition = crate::render::render_json_string(
-        &definition_document,
+        &request_definition_output.document,
         &format!(
             "request definition {}",
             request_definition_output.path.display()

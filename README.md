@@ -1,9 +1,3 @@
-[![HTMLCut Art](images/HTMLCut.png)](https://github.com/resoltico/HTMLCut)
-
-[![Release](https://img.shields.io/github/v/release/resoltico/HTMLCut?label=release)](https://github.com/resoltico/HTMLCut/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](docs/platform-support.md)
-
 # HTMLCut — repeatable HTML extraction from files, URLs, and stdin
 
 HTMLCut extracts a specific value or fragment from an HTML file, a web page, or stdin.
@@ -18,10 +12,6 @@ selector, slice boundaries, or output settings.
 - Preview a source or an extraction before committing to final output
 - Save reusable request files and replay them unchanged
 - Write outputs or forensic bundles to disk
-
-[Download releases](https://github.com/resoltico/HTMLCut/releases) ·
-[Getting started](docs/getting-started.md) ·
-[Command guide](docs/cli.md)
 
 ## Save and Reuse an Extraction
 

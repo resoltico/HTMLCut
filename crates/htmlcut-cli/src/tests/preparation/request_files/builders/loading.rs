@@ -44,8 +44,9 @@ fn request_file_loading_reports_read_shape_and_schema_failures() {
         "invalid-shape.json",
         r#"{
   "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 2,
+  "schema_version": 4,
   "request": {
+    "spec_version": 7,
     "source": { "input": { "type": "stdin" } },
     "extraction": {
       "kind": "selector",
@@ -150,5 +151,75 @@ fn request_file_loading_reports_strategy_mismatches() {
         )
         .code,
         "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    );
+}
+
+#[test]
+fn request_file_loading_rejects_schema_less_and_legacy_slice_definitions() {
+    let fixture = request_file_fixture();
+
+    let schema_less_path = write_fixture_file(
+        fixture.tempdir.path(),
+        "schema-less.json",
+        r#"{
+  "request": {
+    "spec_version": 7,
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "selector",
+      "selector": "article"
+    }
+  }
+}"#,
+    );
+    let schema_less_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &schema_less_path,
+            ExtractionStrategy::Selector,
+            "select",
+        ),
+        "schema-less request file",
+    );
+    assert_eq!(schema_less_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        schema_less_error
+            .message
+            .contains("missing field `schema_name`")
+    );
+
+    let legacy_slice_path = write_fixture_file(
+        fixture.tempdir.path(),
+        "legacy-slice.json",
+        r#"{
+  "schema_name": "htmlcut.extraction_definition",
+  "schema_version": 4,
+  "request": {
+    "spec_version": 7,
+    "source": { "input": { "type": "stdin" } },
+    "extraction": {
+      "kind": "slice",
+      "pattern": {
+        "mode": "literal",
+        "from": "<article>",
+        "to": "</article>"
+      },
+      "include_start": true,
+      "include_end": false
+    }
+  }
+}"#,
+    );
+    let legacy_slice_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &legacy_slice_path,
+            ExtractionStrategy::Slice,
+            "slice",
+        ),
+        "legacy slice request file",
+    );
+    assert_eq!(legacy_slice_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert!(
+        legacy_slice_error.message.contains("include_start")
+            || legacy_slice_error.message.contains("include_end")
     );
 }

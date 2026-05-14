@@ -336,16 +336,30 @@ pub(crate) fn render_text_preview(input: &str, preview_chars: usize) -> String {
 
 fn selected_match_context(matched: &htmlcut_core::result::ExtractionMatch) -> String {
     if let Some(path) = matched.path.as_deref() {
-        return path.to_owned();
+        return compact_path_context(path);
     }
 
     match &matched.metadata {
-        ExtractionMatchMetadata::Selector(metadata) => metadata.path.clone(),
+        ExtractionMatchMetadata::Selector(metadata) => compact_path_context(&metadata.path),
         ExtractionMatchMetadata::DelimiterPair(metadata) => format!(
             "range {}..{}",
             metadata.selected_range.start, metadata.selected_range.end
         ),
     }
+}
+
+fn compact_path_context(path: &str) -> String {
+    let segments = path.split(" > ").collect::<Vec<_>>();
+    if segments.len() <= 4 {
+        return path.to_owned();
+    }
+
+    format!(
+        "... > {} > {} > {}",
+        segments[segments.len() - 3],
+        segments[segments.len() - 2],
+        segments[segments.len() - 1]
+    )
 }
 
 fn render_verbose_value_type(value_type: htmlcut_core::ValueType) -> &'static str {
@@ -437,7 +451,7 @@ mod tests {
         ExtractionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "9.0.0".to_owned(),
+            version: "10.0.0".to_owned(),
             schema_name: "htmlcut.extraction_report".to_owned(),
             schema_version: 6,
             command: "select".to_owned(),
@@ -508,7 +522,7 @@ mod tests {
         let report = SourceInspectionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "9.0.0".to_owned(),
+            version: "10.0.0".to_owned(),
             schema_name: "htmlcut.source_inspection_report".to_owned(),
             schema_version: 5,
             command: "inspect source".to_owned(),
@@ -632,6 +646,12 @@ mod tests {
                 ..source_metadata()
             }),
             "report"
+        );
+        assert_eq!(
+            compact_path_context(
+                "html > body > main:nth-of-type(1) > article:nth-of-type(2) > p:nth-of-type(3)"
+            ),
+            "... > main:nth-of-type(1) > article:nth-of-type(2) > p:nth-of-type(3)"
         );
     }
 }

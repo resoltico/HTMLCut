@@ -24,7 +24,12 @@ fn inspect_source_json_has_core_parity() {
         command
             .args(["inspect", "source"])
             .arg(&input_path)
-            .args(["--base-url", "https://example.com/start"])
+            .args([
+                "--base-url",
+                "https://example.com/start",
+                "--output",
+                "json",
+            ])
             .assert()
             .success(),
     );
@@ -219,7 +224,7 @@ fn inspect_source_text_prefers_markdown_body_inside_layout_shell() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "Suggested selectors for extraction:\n- #wiki-content |",
+            "Suggested selectors for extraction:\n- div.markdown-body |",
         ))
         .stdout(predicate::str::contains(
             "Suggested selectors for rendered text review:\n- #wiki-content |",

@@ -2,7 +2,27 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use super::{CliCatalogOutputMode, CliSchemaOutputMode, FileWriteArgs, cli_choice_parser};
+use super::{CliCatalogOutputMode, CliSchemaOutputMode, OutputFileWriteArgs, cli_choice_parser};
+
+#[derive(Debug, Default, Args)]
+#[command(next_help_heading = "Catalog Filter")]
+pub(crate) struct CatalogFilterArgs {
+    /// Filter the catalog to one stable operation ID.
+    #[arg(long, value_name = "OPERATION_ID")]
+    pub(crate) operation: Option<String>,
+}
+
+#[derive(Debug, Default, Args)]
+#[command(next_help_heading = "Schema Filter")]
+pub(crate) struct SchemaFilterArgs {
+    /// Filter the registry to one stable schema name.
+    #[arg(long, value_name = "SCHEMA_NAME")]
+    pub(crate) name: Option<String>,
+
+    /// Filter the registry to one schema version. Requires `--name`.
+    #[arg(long = "schema-version", value_name = "SCHEMA_VERSION")]
+    pub(crate) schema_version: Option<u32>,
+}
 
 #[derive(Debug, Args)]
 pub(crate) struct CatalogArgs {
@@ -17,16 +37,15 @@ pub(crate) struct CatalogArgs {
     pub(crate) output_file: Option<PathBuf>,
 
     #[command(flatten)]
-    pub(crate) file_write: FileWriteArgs,
+    pub(crate) filter: CatalogFilterArgs,
 
-    /// Filter the catalog to one stable operation ID.
-    #[arg(long, value_name = "OPERATION_ID")]
-    pub(crate) operation: Option<String>,
+    #[command(flatten)]
+    pub(crate) file_write: OutputFileWriteArgs,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct SchemaArgs {
-    /// Render the schema registry as compact text or structured JSON.
+    /// Render the schema registry as compact text, full JSON Schema documents, or a lightweight machine-readable inventory.
     #[arg(long, value_parser = cli_choice_parser::<CliSchemaOutputMode>(), default_value_t = CliSchemaOutputMode::Text)]
     pub(crate) output: CliSchemaOutputMode,
 
@@ -37,13 +56,8 @@ pub(crate) struct SchemaArgs {
     pub(crate) output_file: Option<PathBuf>,
 
     #[command(flatten)]
-    pub(crate) file_write: FileWriteArgs,
+    pub(crate) filter: SchemaFilterArgs,
 
-    /// Filter the registry to one stable schema name.
-    #[arg(long, value_name = "SCHEMA_NAME")]
-    pub(crate) name: Option<String>,
-
-    /// Filter the registry to one schema version. Requires `--name`.
-    #[arg(long = "schema-version", value_name = "SCHEMA_VERSION")]
-    pub(crate) schema_version: Option<u32>,
+    #[command(flatten)]
+    pub(crate) file_write: OutputFileWriteArgs,
 }

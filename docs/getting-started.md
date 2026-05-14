@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "9.0.0"
+version: "10.0.0"
 domain: SETUP
 updated: "2026-05-13"
 route:
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=9.0.0
+VERSION=10.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "9.0.0"
+$Version = "10.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -196,13 +196,18 @@ Preview selector matches before final extraction:
 htmlcut inspect select ./page.html --css '.card' --match all
 ```
 
+That preview defaults to human-readable text. Add `--output json` when you want the structured
+preview report for automation or fixture-driven verification.
+
 Preview slice matches before final extraction:
 
 ```bash
 htmlcut inspect slice ./page.html --from '<article>' --to '</article>'
 ```
 
-## Save A Repeat Request
+`inspect slice` follows the same rule: text by default, JSON only when you ask for it explicitly.
+
+## Save and Reuse a Request
 
 Write the normalized extraction-definition file while you prototype inline flags:
 
@@ -215,6 +220,8 @@ htmlcut select ./page.html \
 ```
 
 If `./article-link.request.json` already exists, rerun with `--overwrite` or choose a fresh path.
+That saved request file is the exact normalized replayable contract, including explicit schema
+identity fields and only replayable URL forms.
 
 Run that saved request again:
 

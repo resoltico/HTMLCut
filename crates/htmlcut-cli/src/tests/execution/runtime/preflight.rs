@@ -74,8 +74,8 @@ fn command_preflights_reject_existing_paths_before_preparation_runs() {
         existing_slice_output.to_string_lossy().into_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_OUTPUT);
-    assert!(stdout.contains("\"code\": \"CLI_OUTPUT_FILE_EXISTS\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("Refusing to overwrite existing output file"));
 
     let existing_bundle = tempdir.path().join("bundle");
     fs::create_dir(&existing_bundle).expect("bundle dir");
@@ -127,8 +127,8 @@ fn command_preflights_reject_existing_paths_before_preparation_runs() {
             .into_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_OUTPUT);
-    assert!(stdout.contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("Refusing to overwrite existing request file"));
 
     let existing_inspect_select_output = tempdir.path().join("inspect-select.txt");
     fs::write(&existing_inspect_select_output, "select").expect("inspect select output");
@@ -167,8 +167,8 @@ fn command_preflights_reject_existing_paths_before_preparation_runs() {
             .into_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_OUTPUT);
-    assert!(stdout.contains("\"code\": \"CLI_REQUEST_FILE_EXISTS\""));
-    assert!(stderr.is_empty());
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("Refusing to overwrite existing request file"));
 
     let existing_inspect_slice_output = tempdir.path().join("inspect-slice.txt");
     fs::write(&existing_inspect_slice_output, "slice").expect("inspect slice output");

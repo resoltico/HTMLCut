@@ -30,22 +30,26 @@ fn direct_render_helpers_cover_empty_optional_branches() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Minimal".to_owned(),
-            core_api: "BareCoreSurface".to_owned(),
+            engine_capability: "BareCoreSurface".to_owned(),
             request_contract: CatalogContractSurface {
-                family: "BareShape".to_owned(),
+                artifact: "BareShape".to_owned(),
                 schema_refs: Vec::new(),
             },
             result_contract: CatalogContractSurface {
-                family: "BareResult".to_owned(),
+                artifact: "BareResult".to_owned(),
                 schema_refs: Vec::new(),
             },
             command_contract: Some(minimal_contract),
         }],
     };
     let minimal_render = render_catalog_text(&minimal_report);
-    assert!(minimal_render.contains("usage: htmlcut select <INPUT>"));
+    assert!(minimal_render.contains("engine capability: BareCoreSurface"));
     assert!(minimal_render.contains("request: BareShape"));
     assert!(minimal_render.contains("result: BareResult"));
+    assert!(
+        minimal_render
+            .contains("Use `--output json` for parameters, defaults, constraints, and examples.")
+    );
     assert!(!minimal_render.contains("inputs:"));
     assert!(!minimal_render.contains("default output:"));
     assert!(!minimal_render.contains("constraints:"));
@@ -57,13 +61,13 @@ fn direct_render_helpers_cover_empty_optional_branches() {
             command: Some("select".to_owned()),
             availability: CatalogAvailability::Cli,
             summary: "Focused".to_owned(),
-            core_api: "FocusedCoreSurface".to_owned(),
+            engine_capability: "FocusedCoreSurface".to_owned(),
             request_contract: CatalogContractSurface {
-                family: "FocusedRequest".to_owned(),
+                artifact: "FocusedRequest".to_owned(),
                 schema_refs: Vec::new(),
             },
             result_contract: CatalogContractSurface {
-                family: "FocusedResult".to_owned(),
+                artifact: "FocusedResult".to_owned(),
                 schema_refs: Vec::new(),
             },
             command_contract: Some(CatalogCommandContract {
@@ -113,13 +117,17 @@ fn direct_render_helpers_cover_empty_optional_branches() {
         }],
         ..minimal_report
     });
-    assert!(focused_render.contains("inputs: file | url"));
-    assert!(focused_render.contains("default output: text"));
-    assert!(focused_render.contains("requires --thing when --mode"));
-    assert!(focused_render.contains("flag --flag | optional"));
+    assert!(focused_render.contains("engine capability: FocusedCoreSurface"));
+    assert!(focused_render.contains("request: FocusedRequest"));
+    assert!(focused_render.contains("result: FocusedResult"));
     assert!(
-        focused_render.contains("option --conditional <VALUE> | conditional (see command notes)")
+        focused_render
+            .contains("Use `--output json` for parameters, defaults, constraints, and examples.")
     );
+    assert!(!focused_render.contains("inputs: file | url"));
+    assert!(!focused_render.contains("default output: text"));
+    assert!(!focused_render.contains("requires --thing when --mode"));
+    assert!(!focused_render.contains("flag --flag | optional"));
 
     let empty_schema_report = SchemaCommandReport {
         tool: TOOL_NAME.to_owned(),

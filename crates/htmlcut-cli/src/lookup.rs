@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::contract::{CliHelpDocument, OperationCliContract};
+use crate::contract::CliHelpDocument;
+#[cfg(test)]
+use crate::contract::OperationCliContract;
 use htmlcut_core::OperationId;
 
 use crate::error::{CliError, internal_error, usage_error};
@@ -24,6 +26,7 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
     )
 }
 
+#[cfg(test)]
 pub(crate) fn operation_contract(
     operation_id: OperationId,
 ) -> Result<&'static OperationCliContract, CliError> {
@@ -228,8 +231,9 @@ mod tests {
         crate::model::SchemaDocumentReport {
             schema_name: name.to_owned(),
             schema_version: version,
-            owner: "cli".to_owned(),
-            contract_family: "fixture".to_owned(),
+            surface: "cli".to_owned(),
+            profile: None,
+            artifact: "fixture".to_owned(),
             stability: htmlcut_core::SchemaStability::Versioned,
             json_schema: serde_json::json!({"type": "object"}),
         }

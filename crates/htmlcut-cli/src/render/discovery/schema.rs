@@ -22,7 +22,7 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
         if schema_count == 1 { "" } else { "s" }
     ));
     lines.push(format!(
-        "Use `htmlcut {schema_command} --name <SCHEMA_NAME> --output json` for one schema family."
+        "Use `htmlcut {schema_command} --output index-json` for a lightweight machine-readable inventory or `--output json` for embedded schema documents."
     ));
 
     if report.schemas.is_empty() {
@@ -37,11 +37,15 @@ pub(crate) fn render_schema_text(report: &SchemaCommandReport) -> String {
     });
 
     for schema in &report.schemas {
+        let surface = match schema.profile.as_deref() {
+            Some(profile) => format!("{} {profile}", schema.surface),
+            None => schema.surface.clone(),
+        };
         lines.push(format!(
             "- {} | {} | {} | {}",
             render_schema_ref(schema),
-            schema.owner,
-            schema.contract_family,
+            surface,
+            schema.artifact,
             render_schema_stability(schema.stability)
         ));
         if single_schema {

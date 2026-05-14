@@ -35,7 +35,7 @@ pub const EXTRACTION_DEFINITION_SCHEMA_NAME: &str = "htmlcut.extraction_definiti
 /// Schema version for request-side core contracts.
 pub const CORE_REQUEST_SCHEMA_VERSION: u32 = CORE_SPEC_VERSION;
 /// Schema version for reusable extraction definitions.
-pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 2;
+pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 4;
 
 /// Stable reference to one versioned schema document.
 #[derive(

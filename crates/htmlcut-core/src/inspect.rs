@@ -50,6 +50,46 @@ const GENERIC_SELECTOR_CLASSES: [&str; 11] = [
     "page",
     "wrapper",
 ];
+const LOW_SIGNAL_LINK_PATH_TOKENS: [&str; 15] = [
+    "article-share",
+    "article-tags",
+    "breadcrumb",
+    "comment",
+    "comments",
+    "footer",
+    "menu",
+    "nav",
+    "newsletter",
+    "promo",
+    "related",
+    "report",
+    "share",
+    "social",
+    "toolbar",
+];
+const LOW_SIGNAL_LINK_HREF_FRAGMENTS: [&str; 11] = [
+    "/fair-use/",
+    "/policy",
+    "/privacy",
+    "/report/",
+    "/rss",
+    "/subscribe",
+    "/tags/",
+    "/terms",
+    "privacy-policy",
+    "terms-of-use",
+    "terms-and-conditions",
+];
+const LOW_SIGNAL_LINK_TEXT_PHRASES: [&str; 8] = [
+    "add as a preferred source",
+    "follow us",
+    "how it works",
+    "preferred source",
+    "privacy policy",
+    "report a problem",
+    "terms of use",
+    "terms apply",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CandidatePreference {
@@ -83,6 +123,14 @@ struct ContentCandidateScoreInputs<'a> {
     primary_heading_depth: Option<usize>,
     utility_descendant_count: usize,
     uses_exact_path_selector: bool,
+}
+
+#[derive(Clone, Copy)]
+struct HeadingShellCandidate<'a> {
+    text_char_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    selector: &'a str,
 }
 
 pub(crate) fn build_document_inspection(
@@ -157,7 +205,8 @@ pub(crate) fn build_document_inspection(
         .iter()
         .map(|candidate| candidate.inspection.path.clone())
         .collect::<Vec<_>>();
-    let headings = build_heading_samples(document, sample_limit, &content_candidate_paths);
+    let mut headings = build_heading_samples(document, sample_limit, &content_candidate_paths);
+    prepend_document_title_heading_if_missing(document, sample_limit, &mut headings);
     let links = build_link_samples(
         document,
         effective_base_url,
@@ -215,7 +264,8 @@ fn build_ranked_content_candidates_for(
     let heading_selector = Selector::parse("h1, h2, h3, h4, h5, h6").expect("heading selector");
     let primary_heading_selector = Selector::parse("h1, h2").expect("primary heading selector");
     let link_selector = Selector::parse("a").expect("link selector");
-    let paragraph_selector = Selector::parse("p, li").expect("paragraph selector");
+    let paragraph_selector = Selector::parse("p").expect("paragraph selector");
+    let list_item_selector = Selector::parse("li").expect("list item selector");
     let mut candidates = Vec::<RankedContentCandidate>::new();
 
     for node_ref in document.tree.nodes() {
@@ -243,8 +293,22 @@ fn build_ranked_content_candidates_for(
         }
 
         let heading_count = count_meaningful_headings(&element, &heading_selector);
-        let link_count = element.select(&link_selector).count();
-        let paragraph_count = element.select(&paragraph_selector).count();
+        let link_count = count_meaningful_links(&element, &link_selector);
+        let prose_paragraph_count = element.select(&paragraph_selector).count();
+        let paragraph_count = narrative_block_count(
+            prose_paragraph_count,
+            element.select(&list_item_selector).count(),
+        );
+        if !candidate_has_readable_density(
+            element.value().name(),
+            text_char_count,
+            heading_count,
+            link_count,
+            paragraph_count,
+            prose_paragraph_count,
+        ) {
+            continue;
+        }
         let primary_heading = first_meaningful_heading(&element, &primary_heading_selector);
         let primary_heading_level =
             primary_heading.and_then(|heading| heading_level(heading.value().name()));
@@ -365,6 +429,30 @@ fn apply_nested_content_candidate_bias_for(
                 inner_primary_heading_level,
                 inner_primary_heading_depth,
             );
+
+            if outer_wrapper_adds_heading_shell(
+                HeadingShellCandidate {
+                    text_char_count: outer_text_char_count,
+                    heading_count: outer_heading_count,
+                    link_count: outer_link_count,
+                    selector: &outer_selector,
+                },
+                HeadingShellCandidate {
+                    text_char_count: inner_text_char_count,
+                    heading_count: inner_heading_count,
+                    link_count: inner_link_count,
+                    selector: &inner_selector,
+                },
+            ) {
+                let (inner_boost, outer_penalty) = if preference == CandidatePreference::Reading {
+                    (1_900, 1_650)
+                } else {
+                    (2_250, 1_950)
+                };
+                candidates[inner_index].score += inner_boost;
+                candidates[outer_index].score -= outer_penalty;
+                continue;
+            }
 
             if preference == CandidatePreference::Extraction
                 && drops_outer_title_signal
@@ -670,28 +758,30 @@ fn build_link_samples(
 
     let selector = Selector::parse("a").expect("link selector");
     let mut seen_paths = BTreeSet::new();
+    let mut links = Vec::new();
     for scope_path in scope_paths.iter().map(String::as_str) {
-        let links = sample_links_from_scope(
+        links.extend(sample_links_from_scope(
             document,
             effective_base_url,
             Some(scope_path),
-            sample_limit,
+            sample_limit.saturating_sub(links.len()),
             &selector,
             &mut seen_paths,
-        );
-        if !links.is_empty() {
+        ));
+        if links.len() >= sample_limit {
             return links;
         }
     }
 
-    sample_links_from_scope(
+    links.extend(sample_links_from_scope(
         document,
         effective_base_url,
         None,
-        sample_limit,
+        sample_limit.saturating_sub(links.len()),
         &selector,
         &mut seen_paths,
-    )
+    ));
+    links
 }
 
 fn sample_links_from_scope(
@@ -730,9 +820,14 @@ fn sample_links_from_scope(
                 return None;
             }
 
+            let resolved_href = resolve_url(&href, effective_base_url);
+            if effective_base_url.is_some_and(|base| same_page_url(&resolved_href, base)) {
+                return None;
+            }
+
             Some(LinkInspection {
                 text,
-                resolved_href: Some(resolve_url(&href, effective_base_url)),
+                resolved_href: Some(resolved_href),
                 href: Some(href),
                 path,
             })
@@ -747,6 +842,27 @@ fn path_hint_for_link(element: &ElementRef<'_>) -> String {
 
 fn link_preview_is_low_signal(href: &str, text: &str, path: &str) -> bool {
     if !href.starts_with('#') {
+        let normalized_text = text.to_ascii_lowercase();
+        let normalized_href = href.to_ascii_lowercase();
+        let normalized_path = path.to_ascii_lowercase();
+        if LOW_SIGNAL_LINK_TEXT_PHRASES
+            .iter()
+            .any(|phrase| normalized_text.contains(phrase))
+        {
+            return true;
+        }
+        if LOW_SIGNAL_LINK_HREF_FRAGMENTS
+            .iter()
+            .any(|fragment| normalized_href.contains(fragment))
+        {
+            return true;
+        }
+        if LOW_SIGNAL_LINK_PATH_TOKENS
+            .iter()
+            .any(|token| normalized_path.contains(token))
+        {
+            return true;
+        }
         return false;
     }
 
@@ -758,6 +874,120 @@ fn link_preview_is_low_signal(href: &str, text: &str, path: &str) -> bool {
         });
 
     (!has_word && only_marker_chars) || path.contains("> sup:nth-of-type(")
+}
+
+fn count_meaningful_links(element: &ElementRef<'_>, selector: &Selector) -> usize {
+    element
+        .select(selector)
+        .filter(|candidate| {
+            if element_looks_like_utility_chrome(candidate) {
+                return false;
+            }
+            if element_has_utility_chrome_ancestor(candidate) {
+                return false;
+            }
+
+            let Some(href) = candidate
+                .value()
+                .attr("href")
+                .map(str::trim)
+                .filter(|value| href_is_meaningful_destination(value))
+            else {
+                return false;
+            };
+            let text =
+                render_html_as_text(&serialize_children(candidate), WhitespaceMode::Normalize);
+            if text.is_empty() {
+                return false;
+            }
+            if link_preview_is_low_signal(href, &text, &path_hint_for_link(candidate)) {
+                return false;
+            }
+            true
+        })
+        .count()
+}
+
+fn narrative_block_count(prose_paragraph_count: usize, list_item_count: usize) -> usize {
+    prose_paragraph_count + list_item_count.div_ceil(3).min(6)
+}
+
+fn candidate_has_readable_density(
+    tag_name: &str,
+    text_char_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    body_block_count: usize,
+    prose_paragraph_count: usize,
+) -> bool {
+    if text_char_count < 20 {
+        return false;
+    }
+
+    if !matches!(tag_name, "article" | "main") && body_block_count == 0 && text_char_count < 120 {
+        return false;
+    }
+
+    let chars_per_heading = text_char_count
+        .checked_div(heading_count)
+        .unwrap_or(usize::MAX);
+    let chars_per_link = text_char_count
+        .checked_div(link_count)
+        .unwrap_or(usize::MAX);
+
+    if prose_paragraph_count == 0 && body_block_count <= 2 && text_char_count < 220 {
+        return chars_per_heading >= 24 && chars_per_link >= 18;
+    }
+
+    if text_char_count < 4_000 && heading_count > body_block_count.saturating_mul(3).max(12) {
+        return false;
+    }
+
+    if text_char_count < 4_000 && link_count > body_block_count.saturating_mul(5).max(18) {
+        return false;
+    }
+    true
+}
+
+fn same_page_url(candidate: &str, current: &str) -> bool {
+    let Ok(mut candidate_url) = url::Url::parse(candidate) else {
+        return false;
+    };
+    let Ok(mut current_url) = url::Url::parse(current) else {
+        return false;
+    };
+
+    candidate_url.set_fragment(None);
+    current_url.set_fragment(None);
+    candidate_url == current_url
+}
+
+fn prepend_document_title_heading_if_missing(
+    document: &Html,
+    sample_limit: usize,
+    headings: &mut Vec<HeadingInspection>,
+) {
+    if sample_limit == 0 || headings.iter().any(|heading| heading.level == 1) {
+        return;
+    }
+
+    let selector = Selector::parse("h1").expect("h1 selector");
+    let mut seen_paths = headings
+        .iter()
+        .map(|heading| heading.path.clone())
+        .collect::<BTreeSet<_>>();
+    let Some(document_heading) =
+        sample_headings_from_scope(document, None, 1, &selector, &mut seen_paths)
+            .into_iter()
+            .next()
+    else {
+        return;
+    };
+
+    headings.insert(0, document_heading);
+    if headings.len() > sample_limit {
+        headings.truncate(sample_limit);
+    }
 }
 
 fn select_elements_in_scope<'a>(
@@ -772,22 +1002,79 @@ fn select_elements_in_scope<'a>(
     Box::new(document.select(selector))
 }
 
+fn element_attr_equals_ignore_ascii_case(
+    element: &ElementRef<'_>,
+    attribute_name: &str,
+    expected_value: &str,
+) -> bool {
+    match element.value().attr(attribute_name) {
+        Some(value) => value.eq_ignore_ascii_case(expected_value),
+        None => false,
+    }
+}
+
 fn is_content_candidate_container(element: &ElementRef<'_>, positive_signal_count: usize) -> bool {
     match element.value().name() {
         "main" | "article" => true,
-        "section" | "div" => {
-            positive_signal_count > 0
-                || element
-                    .value()
-                    .attr("role")
-                    .is_some_and(|role| role.eq_ignore_ascii_case("main"))
-                || element
-                    .value()
-                    .attr("itemprop")
-                    .is_some_and(|value| value.eq_ignore_ascii_case("articleBody"))
+        "section" => {
+            if positive_signal_count > 0 {
+                return true;
+            }
+            if element_attr_equals_ignore_ascii_case(element, "role", "main") {
+                return true;
+            }
+            if element_attr_equals_ignore_ascii_case(element, "itemprop", "articleBody") {
+                return true;
+            }
+            element_has_narrative_section_shape(element)
+        }
+        "div" => {
+            if positive_signal_count > 0 {
+                return true;
+            }
+            if element_attr_equals_ignore_ascii_case(element, "role", "main") {
+                return true;
+            }
+            if element_attr_equals_ignore_ascii_case(element, "itemprop", "articleBody") {
+                return true;
+            }
+            false
         }
         _ => false,
     }
+}
+
+fn element_has_narrative_section_shape(element: &ElementRef<'_>) -> bool {
+    let mut paragraph_like = 0usize;
+    let mut heading_like = 0usize;
+    let mut list_like = 0usize;
+
+    for descendant in element.descendants().filter_map(ElementRef::wrap) {
+        if descendant.id() == element.id() {
+            continue;
+        }
+
+        match descendant.value().name() {
+            "p" => paragraph_like += 1,
+            "h1" | "h2" | "h3" => heading_like += 1,
+            "li" => list_like += 1,
+            _ => {}
+        }
+
+        if paragraph_like >= 3 {
+            return true;
+        }
+        if paragraph_like >= 2 {
+            if heading_like >= 1 {
+                return true;
+            }
+            if list_like >= 2 {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -1038,9 +1325,23 @@ fn promote_precise_reading_descendant_candidate(
                 candidate.inspection.path.starts_with(&descendant_prefix)
                     && candidate.inspection.text_char_count * 100
                         >= reading_top.inspection.text_char_count * 92
-                    && candidate.inspection.heading_count + 2
+                    && ((candidate.inspection.heading_count + 2
                         >= reading_top.inspection.heading_count
-                    && candidate.inspection.link_count <= reading_top.inspection.link_count
+                        && candidate.inspection.link_count <= reading_top.inspection.link_count)
+                        || outer_wrapper_adds_heading_shell(
+                            HeadingShellCandidate {
+                                text_char_count: reading_top.inspection.text_char_count,
+                                heading_count: reading_top.inspection.heading_count,
+                                link_count: reading_top.inspection.link_count,
+                                selector: &reading_top.inspection.selector,
+                            },
+                            HeadingShellCandidate {
+                                text_char_count: candidate.inspection.text_char_count,
+                                heading_count: candidate.inspection.heading_count,
+                                link_count: candidate.inspection.link_count,
+                                selector: &candidate.inspection.selector,
+                            },
+                        ))
             })
             .max_by(|left, right| {
                 content_tag_rank(&left.inspection.tag_name)
@@ -1070,8 +1371,22 @@ fn promote_precise_reading_descendant_candidate(
                 candidate.inspection.path.starts_with(&descendant_prefix)
                     && candidate.inspection.text_char_count * 100
                         >= current_extraction.inspection.text_char_count * 90
-                    && current_extraction.inspection.link_count
+                    && (current_extraction.inspection.link_count
                         >= candidate.inspection.link_count + 20
+                        || outer_wrapper_adds_heading_shell(
+                            HeadingShellCandidate {
+                                text_char_count: current_extraction.inspection.text_char_count,
+                                heading_count: current_extraction.inspection.heading_count,
+                                link_count: current_extraction.inspection.link_count,
+                                selector: &current_extraction.inspection.selector,
+                            },
+                            HeadingShellCandidate {
+                                text_char_count: candidate.inspection.text_char_count,
+                                heading_count: candidate.inspection.heading_count,
+                                link_count: candidate.inspection.link_count,
+                                selector: &candidate.inspection.selector,
+                            },
+                        ))
                     && selector_stability_rank(&candidate.inspection.selector) >= 2
             })
             .max_by(|left, right| {
@@ -1450,6 +1765,18 @@ fn drops_outer_title_signal(
                 if has_shallow_primary_heading(inner_level, Some(inner_depth))
         )
     }
+}
+
+fn outer_wrapper_adds_heading_shell(
+    outer: HeadingShellCandidate<'_>,
+    inner: HeadingShellCandidate<'_>,
+) -> bool {
+    inner.heading_count >= 2
+        && inner.text_char_count * 100 >= outer.text_char_count * 94
+        && outer.heading_count >= inner.heading_count.saturating_add(24)
+        && outer.heading_count >= inner.heading_count.saturating_mul(2)
+        && outer.link_count <= inner.link_count.saturating_add(12)
+        && selector_stability_rank(inner.selector) >= selector_stability_rank(outer.selector)
 }
 
 fn descendant_element_depth(
@@ -2574,6 +2901,45 @@ mod tests {
             )
             .is_empty()
         );
+        let same_page_link_document = parse_document_node(
+            "<article><a href=\"https://example.test/guide#overview\">Overview</a><a href=\"/next\">Next</a></article>",
+        );
+        let same_page_links = sample_links_from_scope(
+            &same_page_link_document,
+            Some("https://example.test/guide"),
+            None,
+            4,
+            &link_selector,
+            &mut BTreeSet::new(),
+        );
+        assert_eq!(same_page_links.len(), 1);
+        assert_eq!(same_page_links[0].href.as_deref(), Some("/next"));
+        let meaningful_link_document = parse_document_node(
+            "<section>\
+                <nav><a href=\"/ignore\">Ignore</a></nav>\
+                <a href=\"https://example.test/guide#overview\">Overview</a>\
+                <a href=\"/terms\">Terms apply</a>\
+                <a href=\"/article\">Article link</a>\
+                <a href=\"/image-only\"><img alt=\"\" src=\"hero.png\"></a>\
+            </section>",
+        );
+        assert_eq!(
+            count_meaningful_links(
+                &select_first(&meaningful_link_document, "section").expect("section"),
+                &link_selector,
+            ),
+            2
+        );
+        let utility_count_document = parse_document_node(
+            "<section><a class=\"editsection\" href=\"/ignore\">Ignore</a><a href=\"/article\">Article link</a></section>",
+        );
+        assert_eq!(
+            count_meaningful_links(
+                &select_first(&utility_count_document, "section").expect("section"),
+                &link_selector,
+            ),
+            1
+        );
 
         assert_eq!(
             select_elements_in_scope(&document, Some("missing-scope"), &link_selector).count(),
@@ -2672,6 +3038,16 @@ mod tests {
         let role_and_itemprop_document = parse_document_node(
             "<div role=\"main\"></div><section itemprop=\"articleBody\"></section>",
         );
+        assert!(element_attr_equals_ignore_ascii_case(
+            &select_first(&role_and_itemprop_document, "div").expect("role main"),
+            "role",
+            "main",
+        ));
+        assert!(!element_attr_equals_ignore_ascii_case(
+            &select_first(&role_and_itemprop_document, "div").expect("role main"),
+            "itemprop",
+            "articleBody",
+        ));
         assert!(is_content_candidate_container(
             &select_first(&role_and_itemprop_document, "div").expect("role main"),
             0,
@@ -2680,6 +3056,29 @@ mod tests {
             &select_first(&role_and_itemprop_document, "section").expect("article body"),
             0,
         ));
+        assert!(element_attr_equals_ignore_ascii_case(
+            &select_first(&role_and_itemprop_document, "section").expect("article body"),
+            "itemprop",
+            "articleBody",
+        ));
+        assert!(!element_attr_equals_ignore_ascii_case(
+            &select_first(&role_and_itemprop_document, "section").expect("article body"),
+            "role",
+            "main",
+        ));
+        let narrative_section_document = parse_document_node(
+            "<section><h2>Design</h2><p>All-screen front.</p><p>Durable body.</p><ul><li>Feature one</li><li>Feature two</li></ul></section>",
+        );
+        let narrative_section =
+            select_first(&narrative_section_document, "section").expect("narrative section");
+        assert!(element_has_narrative_section_shape(&narrative_section));
+        assert!(is_content_candidate_container(&narrative_section, 0));
+        let shallow_section_document =
+            parse_document_node("<section><h2>Design</h2><p>Single paragraph.</p></section>");
+        let shallow_section =
+            select_first(&shallow_section_document, "section").expect("shallow section");
+        assert!(!element_has_narrative_section_shape(&shallow_section));
+        assert!(!is_content_candidate_container(&shallow_section, 0));
 
         assert_eq!(descendant_element_depth(&main, &main), Some(0));
         let main_heading = select_first(&document, "#main-content h1").expect("heading");
@@ -4727,6 +5126,181 @@ mod tests {
             "*",
             "article > sup:nth-of-type(2)"
         ));
+        assert!(link_preview_is_low_signal(
+            "/privacy/terms",
+            "Guide",
+            "article > p > a"
+        ));
+        assert!(link_preview_is_low_signal(
+            "/guide",
+            "Terms apply",
+            "article > p > a"
+        ));
+        assert!(link_preview_is_low_signal(
+            "/guide",
+            "Guide",
+            "article > footer.related > a"
+        ));
+        assert!(same_page_url(
+            "https://example.test/guide#fragment",
+            "https://example.test/guide"
+        ));
+        assert!(!same_page_url(
+            "https://example.test/guide",
+            "not a valid url"
+        ));
+    }
+
+    #[test]
+    fn density_and_heading_helpers_cover_link_penalties_and_title_insertion() {
+        assert!(!candidate_has_readable_density(
+            "section", 1_500, 1, 25, 3, 3
+        ));
+        assert!(!candidate_has_readable_density("section", 100, 1, 0, 0, 1));
+        assert!(candidate_has_readable_density("section", 180, 1, 1, 1, 0));
+        assert!(!candidate_has_readable_density("section", 180, 8, 5, 1, 0));
+        assert!(!candidate_has_readable_density("section", 180, 1, 20, 1, 0));
+        assert!(candidate_has_readable_density("section", 300, 1, 1, 3, 0));
+        assert!(candidate_has_readable_density("section", 220, 1, 1, 1, 0));
+        assert!(!candidate_has_readable_density("section", 500, 20, 0, 2, 3));
+        assert!(!candidate_has_readable_density("section", 500, 1, 30, 2, 3));
+        assert!(candidate_has_readable_density(
+            "section", 4_000, 20, 0, 2, 3
+        ));
+        assert!(candidate_has_readable_density(
+            "section", 4_000, 1, 30, 2, 3
+        ));
+        let section_with_itemprop =
+            parse_document_node("<section itemprop=\"articleBody\"><p>Alpha</p></section>");
+        assert!(is_content_candidate_container(
+            &select_first(&section_with_itemprop, "section").expect("section"),
+            0,
+        ));
+        let section_with_role_main =
+            parse_document_node("<section role=\"main\"><p>Alpha</p></section>");
+        assert!(is_content_candidate_container(
+            &select_first(&section_with_role_main, "section").expect("section"),
+            0,
+        ));
+        let div_with_role = parse_document_node("<div role=\"main\"><p>Alpha</p></div>");
+        assert!(is_content_candidate_container(
+            &select_first(&div_with_role, "div").expect("div"),
+            0,
+        ));
+        let div_with_itemprop =
+            parse_document_node("<div itemprop=\"articleBody\"><p>Alpha</p></div>");
+        assert!(is_content_candidate_container(
+            &select_first(&div_with_itemprop, "div").expect("div"),
+            0,
+        ));
+        let section_with_three_paragraphs =
+            parse_document_node("<section><p>Alpha</p><p>Beta</p><p>Gamma</p></section>");
+        assert!(element_has_narrative_section_shape(
+            &select_first(&section_with_three_paragraphs, "section").expect("section"),
+        ));
+        let section_with_heading_and_list = parse_document_node(
+            "<section><h2>Body</h2><p>Alpha</p><p>Beta</p><ul><li>One</li><li>Two</li></ul></section>",
+        );
+        assert!(element_has_narrative_section_shape(
+            &select_first(&section_with_heading_and_list, "section").expect("section"),
+        ));
+        let section_with_list_shape = parse_document_node(
+            "<section><p>Alpha</p><p>Beta</p><ul><li>One</li><li>Two</li></ul></section>",
+        );
+        assert!(element_has_narrative_section_shape(
+            &select_first(&section_with_list_shape, "section").expect("section"),
+        ));
+
+        let document = parse_document_node(
+            "<html><body><h1>Document Title</h1><section><h2>Body</h2><p>Alpha beta gamma delta epsilon zeta eta theta iota.</p></section></body></html>",
+        );
+        let mut zero_limit_headings = vec![HeadingInspection {
+            level: 2,
+            text: "Body".to_owned(),
+            path: "html > body > section > h2".to_owned(),
+        }];
+        prepend_document_title_heading_if_missing(&document, 0, &mut zero_limit_headings);
+        assert_eq!(zero_limit_headings[0].level, 2);
+        let mut existing_h1 = vec![HeadingInspection {
+            level: 1,
+            text: "Document Title".to_owned(),
+            path: "html > body > h1".to_owned(),
+        }];
+        prepend_document_title_heading_if_missing(&document, 3, &mut existing_h1);
+        assert_eq!(existing_h1.len(), 1);
+        let mut headings = vec![HeadingInspection {
+            level: 2,
+            text: "Body".to_owned(),
+            path: "html > body > section > h2".to_owned(),
+        }];
+        let mut unconstrained_headings = headings.clone();
+        prepend_document_title_heading_if_missing(&document, 3, &mut unconstrained_headings);
+        assert_eq!(unconstrained_headings.len(), 2);
+        assert_eq!(unconstrained_headings[0].level, 1);
+        prepend_document_title_heading_if_missing(&document, 1, &mut headings);
+        assert_eq!(headings.len(), 1);
+        assert_eq!(headings[0].level, 1);
+        assert_eq!(headings[0].text, "Document Title");
+
+        let extraction_penalized = content_candidate_score_for(
+            &ContentCandidateScoreInputs {
+                tag_name: "section",
+                has_main_role: false,
+                has_article_body_itemprop: false,
+                text_char_count: 300,
+                heading_count: 1,
+                link_count: 0,
+                paragraph_count: 0,
+                positive_signal_count: 0,
+                negative_signal_count: 0,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 0,
+                uses_exact_path_selector: false,
+            },
+            CandidatePreference::Extraction,
+        );
+        let reading_penalized = content_candidate_score_for(
+            &ContentCandidateScoreInputs {
+                tag_name: "section",
+                has_main_role: false,
+                has_article_body_itemprop: false,
+                text_char_count: 220,
+                heading_count: 1,
+                link_count: 0,
+                paragraph_count: 0,
+                positive_signal_count: 0,
+                negative_signal_count: 0,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 0,
+                uses_exact_path_selector: false,
+            },
+            CandidatePreference::Reading,
+        );
+        let article_baseline = content_candidate_score_for(
+            &ContentCandidateScoreInputs {
+                tag_name: "article",
+                has_main_role: false,
+                has_article_body_itemprop: false,
+                text_char_count: 220,
+                heading_count: 1,
+                link_count: 0,
+                paragraph_count: 2,
+                positive_signal_count: 0,
+                negative_signal_count: 0,
+                primary_heading_level: Some(1),
+                primary_heading_count: 1,
+                primary_heading_depth: Some(1),
+                utility_descendant_count: 0,
+                uses_exact_path_selector: false,
+            },
+            CandidatePreference::Reading,
+        );
+        assert!(extraction_penalized < article_baseline);
+        assert!(reading_penalized < article_baseline);
     }
 
     #[test]
@@ -4983,5 +5557,252 @@ mod tests {
             &cleaner_heading_reading,
         );
         assert_eq!(cleaner_heading_gap[0].inspection.selector, "#content");
+    }
+
+    #[test]
+    fn heading_shell_bias_helper_requires_extreme_heading_noise() {
+        assert!(outer_wrapper_adds_heading_shell(
+            HeadingShellCandidate {
+                text_char_count: 23_197,
+                heading_count: 215,
+                link_count: 174,
+                selector: "#repo-content-pjax-container",
+            },
+            HeadingShellCandidate {
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 172,
+                selector: "#wiki-body",
+            },
+        ));
+        assert!(!outer_wrapper_adds_heading_shell(
+            HeadingShellCandidate {
+                text_char_count: 1_000,
+                heading_count: 10,
+                link_count: 8,
+                selector: "#content",
+            },
+            HeadingShellCandidate {
+                text_char_count: 930,
+                heading_count: 5,
+                link_count: 6,
+                selector: "article.story",
+            },
+        ));
+        assert!(!outer_wrapper_adds_heading_shell(
+            HeadingShellCandidate {
+                text_char_count: 1_000,
+                heading_count: 64,
+                link_count: 8,
+                selector: "#content",
+            },
+            HeadingShellCandidate {
+                text_char_count: 950,
+                heading_count: 40,
+                link_count: 6,
+                selector: "article.story",
+            },
+        ));
+        assert!(!outer_wrapper_adds_heading_shell(
+            HeadingShellCandidate {
+                text_char_count: 1_000,
+                heading_count: 80,
+                link_count: 24,
+                selector: "#content",
+            },
+            HeadingShellCandidate {
+                text_char_count: 950,
+                heading_count: 40,
+                link_count: 6,
+                selector: "article.story",
+            },
+        ));
+    }
+
+    #[test]
+    fn nested_bias_prefers_inner_candidate_when_outer_wrapper_only_adds_heading_shell() {
+        let extraction_outer = ranked_bias_candidate(BiasFixture {
+            selector: "#repo-content-pjax-container",
+            path: "html > body > main#repo-content-pjax-container",
+            tag_name: "main",
+            text_char_count: 23_197,
+            heading_count: 215,
+            link_count: 174,
+            paragraph_count: 7,
+            primary_heading_level: Some(1),
+            primary_heading_count: 1,
+            primary_heading_depth: Some(1),
+            utility_descendant_count: 0,
+            score: 120,
+        });
+        let extraction_inner = ranked_bias_candidate(BiasFixture {
+            selector: "#wiki-body",
+            path: "html > body > main#repo-content-pjax-container > div#wiki-body",
+            tag_name: "div",
+            text_char_count: 23_026,
+            heading_count: 53,
+            link_count: 172,
+            paragraph_count: 7,
+            primary_heading_level: None,
+            primary_heading_count: 0,
+            primary_heading_depth: None,
+            utility_descendant_count: 0,
+            score: 80,
+        });
+        let mut extraction_candidates = vec![extraction_outer.clone(), extraction_inner.clone()];
+        apply_nested_content_candidate_bias_for(
+            &mut extraction_candidates,
+            CandidatePreference::Extraction,
+        );
+        assert!(extraction_candidates[1].score > extraction_candidates[0].score);
+
+        let mut reading_candidates = vec![extraction_outer, extraction_inner];
+        apply_nested_content_candidate_bias_for(
+            &mut reading_candidates,
+            CandidatePreference::Reading,
+        );
+        assert!(reading_candidates[1].score > reading_candidates[0].score);
+    }
+
+    #[test]
+    fn precise_descendant_promotion_uses_heading_shell_signal_when_link_gap_is_small() {
+        let mut extraction_candidates = vec![ranked_content_candidate(PromotionFixture {
+            selector: "#js-repo-pjax-container",
+            path: "html > body > main#js-repo-pjax-container",
+            tag_name: "main",
+            text_char_count: 23_197,
+            heading_count: 215,
+            link_count: 174,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        })];
+        let reading_candidates = vec![
+            ranked_content_candidate(PromotionFixture {
+                selector: "#wiki-body",
+                path: "html > body > main#js-repo-pjax-container > div#repo-content-pjax-container > div#wiki-wrapper > div#wiki-content > div#wiki-body",
+                tag_name: "div",
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 172,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+            extraction_candidates[0].clone(),
+        ];
+
+        promote_precise_reading_descendant_candidate(
+            &mut extraction_candidates,
+            &reading_candidates,
+        );
+
+        assert_eq!(extraction_candidates[0].inspection.selector, "#wiki-body");
+    }
+
+    #[test]
+    fn precise_descendant_promotion_uses_heading_shell_signal_when_reading_top_is_current() {
+        let extraction = ranked_content_candidate(PromotionFixture {
+            selector: "#repo-content-pjax-container",
+            path: "html > body > main#repo-content-pjax-container",
+            tag_name: "main",
+            text_char_count: 23_049,
+            heading_count: 214,
+            link_count: 172,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        });
+        let mut extraction_candidates = vec![extraction.clone()];
+        let reading_candidates = vec![
+            extraction,
+            ranked_content_candidate(PromotionFixture {
+                selector: "#wiki-body",
+                path: "html > body > main#repo-content-pjax-container > div#wiki-wrapper > div#wiki-content > div#wiki-body",
+                tag_name: "div",
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 172,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+
+        promote_precise_reading_descendant_candidate(
+            &mut extraction_candidates,
+            &reading_candidates,
+        );
+
+        assert_eq!(extraction_candidates[0].inspection.selector, "#wiki-body");
+    }
+
+    #[test]
+    fn precise_descendant_promotion_rejects_unstable_heading_shell_descendants() {
+        let extraction = ranked_content_candidate(PromotionFixture {
+            selector: "#repo-content-pjax-container",
+            path: "html > body > main#repo-content-pjax-container",
+            tag_name: "main",
+            text_char_count: 23_049,
+            heading_count: 214,
+            link_count: 172,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        });
+        let mut extraction_candidates = vec![extraction.clone()];
+        let reading_candidates = vec![
+            extraction,
+            ranked_content_candidate(PromotionFixture {
+                selector: "div.markdown-body:nth-of-type(2)",
+                path: "html > body > main#repo-content-pjax-container > div#wiki-wrapper > div#wiki-content > div#wiki-body > div.markdown-body:nth-of-type(2)",
+                tag_name: "div",
+                text_char_count: 23_026,
+                heading_count: 53,
+                link_count: 172,
+                primary_heading_level: None,
+                primary_heading_depth: None,
+            }),
+        ];
+
+        promote_precise_reading_descendant_candidate(
+            &mut extraction_candidates,
+            &reading_candidates,
+        );
+
+        assert_eq!(
+            extraction_candidates[0].inspection.selector,
+            "#repo-content-pjax-container"
+        );
+    }
+
+    #[test]
+    fn precise_descendant_promotion_rejects_descendants_with_extra_links_without_shell_signal() {
+        let extraction = ranked_content_candidate(PromotionFixture {
+            selector: "#content",
+            path: "html > body > main#content",
+            tag_name: "main",
+            text_char_count: 1_000,
+            heading_count: 10,
+            link_count: 10,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(1),
+        });
+        let mut extraction_candidates = vec![extraction.clone()];
+        let reading_candidates = vec![
+            extraction,
+            ranked_content_candidate(PromotionFixture {
+                selector: "article.story",
+                path: "html > body > main#content > article.story",
+                tag_name: "article",
+                text_char_count: 960,
+                heading_count: 8,
+                link_count: 11,
+                primary_heading_level: Some(2),
+                primary_heading_depth: Some(2),
+            }),
+        ];
+
+        promote_precise_reading_descendant_candidate(
+            &mut extraction_candidates,
+            &reading_candidates,
+        );
+
+        assert_eq!(extraction_candidates[0].inspection.selector, "#content");
     }
 }

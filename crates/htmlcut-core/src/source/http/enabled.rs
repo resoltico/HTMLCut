@@ -199,9 +199,9 @@ pub(crate) fn build_http_agent(
         .http_status_as_error(false)
         .tls_config(tls_config)
         .timeout_connect(Some(Duration::from_millis(
-            runtime.fetch_connect_timeout.get(),
+            runtime.fetch_connect_timeout_ms.get(),
         )))
-        .timeout_global(Some(Duration::from_millis(runtime.fetch_timeout.get())))
+        .timeout_global(Some(Duration::from_millis(runtime.fetch_timeout_ms.get())))
         .build()
         .into())
 }
@@ -366,11 +366,7 @@ fn content_type_is_obviously_non_html(content_type: &str) -> bool {
         .trim()
         .to_ascii_lowercase();
 
-    !(normalized.is_empty()
-        || normalized == "text/html"
-        || normalized == "application/xhtml+xml"
-        || normalized.ends_with("+xml")
-        || normalized.ends_with("+html"))
+    !(normalized.is_empty() || normalized == "text/html" || normalized == "application/xhtml+xml")
 }
 
 #[cfg(test)]
@@ -463,7 +459,7 @@ mod tests {
         assert_eq!(
             custom_agent.config().timeouts().global,
             Some(Duration::from_millis(
-                RuntimeOptions::default().fetch_timeout.get()
+                RuntimeOptions::default().fetch_timeout_ms.get()
             ))
         );
     }
