@@ -62,6 +62,20 @@ fn command_uses_managed_coverage_artifacts(command: &CommandSpec) -> bool {
     )
 }
 
+fn with_isolated_managed_workspace_artifacts<T>(
+    operation: impl FnOnce(&Path, PathBuf, PathBuf) -> T,
+) -> T {
+    let repo_root = tempdir().expect("tempdir");
+    let target_dir = repo_root.path().join(".managed-artifacts").join("target");
+    let build_dir = repo_root.path().join(".managed-artifacts").join("build");
+
+    crate::plan::with_cargo_artifact_dir_overrides_for_tests(
+        target_dir.clone(),
+        build_dir.clone(),
+        || operation(repo_root.path(), target_dir, build_dir),
+    )
+}
+
 fn write_repo_scaffold(repo_root: &Path) {
     fs::write(
         repo_root.join("Cargo.toml"),

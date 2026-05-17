@@ -69,7 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The contributor devcontainer release gate now survives single-ref and shallow CI checkouts
   cleanly: the watched-path probe falls back to `HEAD` when `origin/main` is absent locally, and
   the shared shell helpers no longer trip ShellCheck on their Cargo-metadata fallback path during
-  the maintainer gate.
+  the maintainer gate. The `xtask` command-execution proofs now run against isolated managed test
+  artifact roots instead of assuming the repo's sibling cache root is writable, so contributor CI
+  and local maintainer runs verify the same artifact-layout contract.
 
 ## [10.0.0] - 2026-05-14
 

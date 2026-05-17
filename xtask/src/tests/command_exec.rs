@@ -2,75 +2,86 @@ use super::*;
 
 #[test]
 fn run_spec_executes_successfully_with_and_without_clang_override() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root");
+    with_isolated_managed_workspace_artifacts(|repo_root, target_dir, build_dir| {
+        run_spec(
+            repo_root,
+            &test_command_spec("cargo", ["--version"], true, false),
+        )
+        .expect("plain command");
+        run_spec(
+            repo_root,
+            &test_command_spec("cargo", ["--version"], true, false)
+                .with_stderr(CommandStderr::Quiet),
+        )
+        .expect("stderr-quiet command");
+        run_spec(
+            repo_root,
+            &test_command_spec("cargo", ["--version"], true, true),
+        )
+        .expect("clang-forced command");
+        run_spec(
+            repo_root,
+            &test_command_spec("cargo", ["--version"], false, false),
+        )
+        .expect("stdout inherited command");
 
-    run_spec(
-        repo_root,
-        &test_command_spec("cargo", ["--version"], true, false),
-    )
-    .expect("plain command");
-    run_spec(
-        repo_root,
-        &test_command_spec("cargo", ["--version"], true, false).with_stderr(CommandStderr::Quiet),
-    )
-    .expect("stderr-quiet command");
-    run_spec(
-        repo_root,
-        &test_command_spec("cargo", ["--version"], true, true),
-    )
-    .expect("clang-forced command");
-    run_spec(
-        repo_root,
-        &test_command_spec("cargo", ["--version"], false, false),
-    )
-    .expect("stdout inherited command");
+        for managed_root in [target_dir, build_dir] {
+            assert!(
+                managed_root.is_dir(),
+                "{} should exist",
+                managed_root.display()
+            );
+            assert!(managed_root.join("CACHEDIR.TAG").is_file());
+            assert!(managed_root.join(".htmlcut-artifact.toml").is_file());
+        }
+    });
 }
 
 #[test]
 fn run_spec_reports_non_zero_status() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root");
-    let error = run_spec(
-        repo_root,
-        &test_command_spec(
-            "cargo",
-            ["__definitely_not_a_real_subcommand__"],
-            true,
-            false,
-        ),
-    )
-    .expect_err("failing command");
+    with_isolated_managed_workspace_artifacts(|repo_root, target_dir, build_dir| {
+        let error = run_spec(
+            repo_root,
+            &test_command_spec(
+                "cargo",
+                ["__definitely_not_a_real_subcommand__"],
+                true,
+                false,
+            ),
+        )
+        .expect_err("failing command");
 
-    assert!(error.to_string().contains("command failed with status"));
+        assert!(error.to_string().contains("command failed with status"));
+        assert!(target_dir.is_dir());
+        assert!(build_dir.is_dir());
+    });
 }
 
 #[test]
 fn capture_command_output_returns_stdout_and_reports_failure() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root");
+    with_isolated_managed_workspace_artifacts(|repo_root, target_dir, build_dir| {
+        let output = capture_command_output(
+            repo_root,
+            &test_command_spec("cargo", ["--version"], false, true)
+                .with_stderr(CommandStderr::Quiet),
+        )
+        .expect("stdout");
+        assert!(String::from_utf8(output).expect("utf8").contains("cargo"));
 
-    let output = capture_command_output(
-        repo_root,
-        &test_command_spec("cargo", ["--version"], false, true).with_stderr(CommandStderr::Quiet),
-    )
-    .expect("stdout");
-    assert!(String::from_utf8(output).expect("utf8").contains("cargo"));
-
-    let error = capture_command_output(
-        repo_root,
-        &test_command_spec(
-            "cargo",
-            ["__definitely_not_a_real_subcommand__"],
-            false,
-            false,
-        ),
-    )
-    .expect_err("failing command");
-    assert!(error.to_string().contains("command failed with status"));
+        let error = capture_command_output(
+            repo_root,
+            &test_command_spec(
+                "cargo",
+                ["__definitely_not_a_real_subcommand__"],
+                false,
+                false,
+            ),
+        )
+        .expect_err("failing command");
+        assert!(error.to_string().contains("command failed with status"));
+        assert!(target_dir.is_dir());
+        assert!(build_dir.is_dir());
+    });
 }
 
 #[test]
