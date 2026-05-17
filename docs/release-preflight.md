@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "10.1.0"
 domain: RELEASE
-updated: "2026-05-16"
+updated: "2026-05-17"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
@@ -104,10 +104,10 @@ Run the single local quality gate first:
 ./check.sh
 ```
 
-or equivalently:
+The stable repo-owned launcher behind that wrapper is:
 
 ```bash
-cargo xtask check
+./scripts/xtask.sh check
 ```
 
 That gate must succeed before any release commit or tag. The maintained definition of that gate

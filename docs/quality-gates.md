@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "10.1.0"
 domain: QUALITY
-updated: "2026-05-16"
+updated: "2026-05-17"
 route:
   keywords: [quality gates, cargo xtask, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-safety Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
@@ -10,7 +10,9 @@ route:
 
 # Quality Gates
 
-HTMLCut uses `cargo xtask` as the maintainer gate surface.
+HTMLCut uses `xtask` as the maintainer gate surface. `cargo xtask ...` is the native subcommand
+interface, and `./scripts/xtask.sh ...` is the stable repo-owned launcher for maintained workflows
+that must run outside Cargo's mutable artifact roots.
 
 Contributor workflow lives in [../CONTRIBUTING.md](../CONTRIBUTING.md). Contract-versioning policy
 lives in [versioning-policy.md](versioning-policy.md).
@@ -42,42 +44,46 @@ Run the full maintainer gate through the repo wrapper:
 ./check.sh
 ```
 
-The wrapper delegates to `cargo xtask check`. Running xtask directly is equivalent:
+The stable repo-owned launcher behind that wrapper is:
 
 ```bash
-cargo xtask check
+./scripts/xtask.sh check
 ```
 
 Run the curated cross-platform CI Rust subset locally:
 
 ```bash
-cargo xtask ci-rust-gate
+./scripts/xtask.sh ci-rust-gate
 ```
 
 Run only coverage:
 
 ```bash
-cargo xtask coverage
+./scripts/xtask.sh coverage
 ```
 
 Run only the strict-provenance selector-safety Miri proof:
 
 ```bash
-cargo xtask miri
+./scripts/xtask.sh miri
 ```
 
 Run only the maintained dependency-freshness gate:
 
 ```bash
-cargo xtask outdated-check
+./scripts/xtask.sh outdated-check
 ```
 
 Inspect or repair artifact hygiene:
 
 ```bash
-cargo xtask hygiene report
-cargo xtask hygiene clean --mode rebuildable
+./scripts/xtask.sh hygiene report
+./scripts/xtask.sh hygiene clean --mode rebuildable
 ```
+
+Direct `cargo xtask ...` remains useful for interactive work on `xtask` itself, but the
+maintained gate, CI, and release protocol use `./scripts/xtask.sh ...` so the driver process never
+holds a live executable lock inside the managed Cargo artifact tree.
 
 The hygiene contract is repo-owned: `cargo xtask` resolves managed artifact roots from the
 committed `.cargo/config.toml`, not from ambient caller overrides. The coverage gate also manages
@@ -145,9 +151,9 @@ coverage prerequisites. If the pinned compiler itself is missing, if its require
 coverage prerequisites are absent, the gate stops immediately with the exact repair command
 instead of failing later inside the Rust gate.
 
-The cross-platform CI Rust lane uses `cargo xtask ci-rust-gate`, which is built from the same
-`xtask` command-plan module as the local gate instead of maintaining a second hard-coded command
-inventory in GitHub Actions.
+The cross-platform CI Rust lane uses `./scripts/xtask.sh ci-rust-gate`, which still delegates to
+the same `xtask` command-plan module as the local gate instead of maintaining a second hard-coded
+command inventory in GitHub Actions.
 
 The same preflight also refuses to run semver checks against a dirty
 `semver-baseline/htmlcut-core` tree. That baseline is the frozen last-published API snapshot, so
@@ -180,10 +186,9 @@ The gate also treats artifact hygiene as a maintained invariant:
 - the coverage gate uses its own sibling managed coverage roots instead of nesting inside the main
   workspace artifact trees
 - semver scratch is pruned before and after the semver step
-- `cargo xtask check`, `cargo xtask ci-rust-gate`, and `cargo xtask semver-check` run a safe
-  hygiene cleanup plus a hygiene verification pass before and after the command plan
-- `cargo xtask coverage`, `cargo xtask miri`, and `cargo xtask fuzz-smoke` also run the same safe
-  cleanup and verification passes before and after their maintained execution flow
+- `xtask`'s maintained gate commands run a safe hygiene cleanup plus a hygiene verification pass
+  before and after their command plans, regardless of whether you entered through `cargo xtask ...`
+  or the stable `./scripts/xtask.sh ...` launcher
 
 Use [hygiene.md](hygiene.md) for the artifact-root inventory, cleanup modes, and disk-usage
 workflow.
@@ -197,7 +202,7 @@ Short live libFuzzer smoke is intentionally a separate maintainer step rather th
 `cargo xtask check`:
 
 ```bash
-cargo xtask fuzz-smoke
+./scripts/xtask.sh fuzz-smoke
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
@@ -218,8 +223,9 @@ dedicated `dist` profile that inherits `release` and then hardens it for shipped
 Local maintainer smoke stays host-native. The full public standalone artifact matrix is built by
 the release workflow as defined in [platform-support.md](platform-support.md).
 
-The repo-root `./check.sh` wrapper is shell-linted alongside the `scripts/` directory so the
-documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
+The repo-root `./check.sh` wrapper and `./scripts/xtask.sh` stable launcher are shell-linted
+alongside the `scripts/` directory so the documented maintainer entrypoints cannot silently diverge
+from the actual Rust gate.
 
 Contributor-container validation is a separate companion gate on purpose. It builds the committed
 Ubuntu `24.04` contributor image, validates the committed devcontainer JSON contract, repairs and
@@ -247,6 +253,7 @@ the environment itself changes — specifically when any of these paths are touc
 - `scripts/devcontainer-bootstrap.sh`
 - `scripts/devcontainer-cli-helper.Dockerfile`
 - `scripts/common.sh`
+- `scripts/xtask.sh`
 - `check.sh` — the script the gate runs inside the container
 
 A `devcontainer-changes` detection job computes a git diff of the PR's changed files against those
@@ -259,20 +266,21 @@ coverage gap.
 The cross-platform Rust gate assigns separate timeout budgets per runner — `30` minutes for macOS
 arm64 and `150` minutes for Windows x64 — so the Windows lane can finish a cold `cargo nextest`
 build plus dependency-policy and semver verification without expiring mid-run. The Windows runner
-also excludes its `target/` build directory from Windows Defender before any Cargo operations
-begin, removing the antivirus overhead that otherwise scans every file write during compilation.
-Both runners use `Swatinem/rust-cache` with a per-platform key to persist the Cargo registry and
-incremental build artifacts across runs.
+also excludes the managed sibling Cargo artifact roots (`../.htmlcut-artifacts/target` and
+`../.htmlcut-artifacts/build`) from Windows Defender before any Cargo operations begin, removing
+the antivirus overhead that otherwise scans every file write during compilation. Both runners use
+`Swatinem/rust-cache` with a per-platform key to persist the Cargo registry and incremental build
+artifacts across runs.
 
 GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
 the built release packages, checking that the packaged README stays package-specific, and
 executing one real extraction-plus-request-replay flow before the aggregate required check reports
 success. The release packaging and smoke scripts resolve compiled binaries from Cargo's canonical
 target directory, so the matrix follows the same managed artifact-root contract as the rest of the
-repo instead of assuming a repo-local `target/` tree. The `cargo xtask` entrypoint also re-launches
-itself from a detached temporary copy when the live maintainer driver binary sits under the managed
-Cargo artifact roots, so cross-platform CI and local Windows runs do not fail when Cargo rebuilds
-`xtask` while the original executable is still running.
+repo instead of assuming a repo-local `target/` tree. The stable `./scripts/xtask.sh` launcher
+builds `xtask`, copies the host binary into a temporary directory outside the managed Cargo
+artifact roots, and runs that detached copy, so cross-platform CI and local Windows runs do not
+deadlock when Cargo needs to rebuild `xtask`.
 
 GitHub CI runs the Linux maintainer gate through the committed contributor devcontainer, alongside
 the separate cross-platform Rust jobs and the release-target smoke matrix, before the aggregate
@@ -280,7 +288,7 @@ required `Check` result reports success. `Check` uses `if: always()` with explic
 `${{ toJSON(needs.*.result) }}` inspection so a skipped `contributor-devcontainer` gate — the
 correct outcome when no devcontainer-relevant files changed — does not prevent `Check` from being
 reported or block merge.
-`cargo xtask check` now mirrors the raw contributor-devcontainer validator automatically when the
+`xtask check` now mirrors the raw contributor-devcontainer validator automatically when the
 current branch differs from `origin/main` under the devcontainer gate's watched paths, so local
 maintainer verification catches bootstrap and devcontainer-contract regressions before PR CI does.
 The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you

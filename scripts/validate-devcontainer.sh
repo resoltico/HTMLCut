@@ -232,7 +232,7 @@ docker run --rm \
             full)
                 export CARGO_TARGET_DIR=/tmp/htmlcut-artifacts/target
                 export CARGO_BUILD_BUILD_DIR=/tmp/htmlcut-artifacts/build
-                cargo xtask --help >/dev/null
+                ./scripts/xtask.sh --help >/dev/null
                 cargo run --quiet -- --help >/dev/null
                 ;;
             skip) ;;

@@ -21,6 +21,7 @@ const DEVCONTAINER_RELEVANT_PATHS: &[&str] = &[
     "scripts/devcontainer-bootstrap.sh",
     "scripts/devcontainer-cli-helper.Dockerfile",
     "scripts/common.sh",
+    "scripts/xtask.sh",
     "check.sh",
 ];
 

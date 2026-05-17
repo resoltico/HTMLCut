@@ -67,6 +67,7 @@ jobs:
             'scripts/devcontainer-bootstrap.sh' \
             'scripts/devcontainer-cli-helper.Dockerfile' \
             'scripts/common.sh' \
+            'scripts/xtask.sh' \
             'check.sh')
           if [[ -n "$changed" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -155,11 +156,13 @@ jobs:
       - name: Exclude build directory from Windows Defender
         if: runner.os == 'Windows'
         shell: powershell
-        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\target"
+        run: |
+          $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path "${{ github.workspace }}" "..\.htmlcut-artifacts"))
+          Add-MpPreference -ExclusionPath (Join-Path $artifactRoot "target"), (Join-Path $artifactRoot "build")
 
       - name: Run cross-platform Rust gate
         shell: bash
-        run: cargo xtask ci-rust-gate
+        run: ./scripts/xtask.sh ci-rust-gate
 
   release-target-smoke:
     name: Release target smoke ${{ matrix.id }}

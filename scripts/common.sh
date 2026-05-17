@@ -131,3 +131,22 @@ htmlcut_cargo_compiled_binary_path() {
     cargo_target_dir="$(htmlcut_cargo_target_dir "${helper_repo_root}")"
     printf '%s/%s/%s/%s\n' "${cargo_target_dir%/}" "${target_triple}" "${cargo_profile}" "${binary_name}"
 }
+
+htmlcut_host_executable_suffix() {
+    case "${OS:-$(uname -s)}" in
+        Windows_NT|CYGWIN*|MSYS*|MINGW*) printf '.exe\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+
+htmlcut_cargo_host_binary_path() {
+    local helper_repo_root="$1"
+    local cargo_profile="$2"
+    local binary_name="$3"
+    local cargo_target_dir
+    local executable_suffix
+
+    cargo_target_dir="$(htmlcut_cargo_target_dir "${helper_repo_root}")"
+    executable_suffix="$(htmlcut_host_executable_suffix)"
+    printf '%s/%s/%s%s\n' "${cargo_target_dir%/}" "${cargo_profile}" "${binary_name}" "${executable_suffix}"
+}

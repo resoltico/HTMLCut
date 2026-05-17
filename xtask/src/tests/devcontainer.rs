@@ -102,6 +102,8 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
         bootstrap
             .contains("retry_command 3 5 htmlcut_contributor_install_stable_toolchain_components")
     );
+    assert!(validator.contains("./scripts/xtask.sh --help >/dev/null"));
+    assert!(!validator.contains("cargo xtask --help >/dev/null"));
     assert!(bootstrap.contains("cargo +nightly miri --version >/dev/null"));
     assert_eq!(
         validator

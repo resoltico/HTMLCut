@@ -329,6 +329,7 @@ fn check_plan_runs_devcontainer_validation_when_branch_diff_touches_gate_inputs(
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {
@@ -399,6 +400,7 @@ fn check_plan_skips_devcontainer_validation_when_branch_diff_is_clean() {
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {
@@ -418,6 +420,7 @@ fn check_plan_skips_devcontainer_validation_when_branch_diff_is_clean() {
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {
@@ -478,6 +481,7 @@ fn devcontainer_changed_file_args_fall_back_to_head_when_merge_base_is_unavailab
             "scripts/devcontainer-bootstrap.sh".to_owned(),
             "scripts/devcontainer-cli-helper.Dockerfile".to_owned(),
             "scripts/common.sh".to_owned(),
+            "scripts/xtask.sh".to_owned(),
             "check.sh".to_owned(),
         ]
     );
@@ -510,6 +514,7 @@ fn should_run_devcontainer_validation_checks_untracked_gate_inputs_when_diff_is_
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {
@@ -554,6 +559,7 @@ fn should_run_devcontainer_validation_propagates_changed_scan_failures() {
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {
@@ -595,6 +601,7 @@ fn should_run_devcontainer_validation_propagates_untracked_scan_failures() {
                     "scripts/devcontainer-bootstrap.sh",
                     "scripts/devcontainer-cli-helper.Dockerfile",
                     "scripts/common.sh",
+                    "scripts/xtask.sh",
                     "check.sh",
                 ]
             {

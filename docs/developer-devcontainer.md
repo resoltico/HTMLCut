@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "10.1.0"
 domain: SETUP
-updated: "2026-05-16"
+updated: "2026-05-17"
 route:
   keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check, miri]
   questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "does the HTMLCut devcontainer install the nightly Miri proof too?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
@@ -181,7 +181,7 @@ That validator:
 - verifies the required system tools are present
 - proves the user-home repair script can recover root-owned cache and toolchain volumes
 - runs the Rust bootstrap against fresh named volumes
-- proves `cargo xtask --help` and repo-root `cargo run -- --help` start from inside the raw contributor image
+- proves `./scripts/xtask.sh --help` and repo-root `cargo run -- --help` start from inside the raw contributor image
 - proves the real devcontainer-client path can materialize the committed spec and run `devcontainer exec`
 
 The host-side `./scripts/devcontainer-check.sh` wrapper then replays the same contributor image,
@@ -201,6 +201,7 @@ set that triggers it:
 - `scripts/devcontainer-bootstrap.sh`
 - `scripts/devcontainer-cli-helper.Dockerfile`
 - `scripts/common.sh`
+- `scripts/xtask.sh`
 - `check.sh` — the script the gate runs inside the container
 
 PRs that touch only application code, documentation, or tests do not trigger the devcontainer gate.

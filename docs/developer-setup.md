@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "10.1.0"
 domain: SETUP
-updated: "2026-05-16"
+updated: "2026-05-17"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-miri, macOS clang, CC override, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run the HTMLCut strict-provenance selector-safety Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
@@ -182,17 +182,25 @@ Then run one maintained gate entrypoint:
 ./check.sh
 ```
 
-`cargo xtask check` is the equivalent direct invocation if you want to bypass the shell wrapper.
-The curated cross-platform CI Rust lane runs `cargo xtask ci-rust-gate`, which comes from the
-same `xtask` plan instead of duplicating a second command inventory in GitHub Actions.
-For the maintained selector-safety proof in isolation, use `cargo xtask miri`.
-For the maintained dependency-freshness gate in isolation, use `cargo xtask outdated-check`.
+The stable repo-owned maintainer launcher is `./scripts/xtask.sh`. Use it when you want the
+supported gate path outside Cargo's mutable artifact roots:
+
+```bash
+./scripts/xtask.sh ci-rust-gate
+./scripts/xtask.sh miri
+./scripts/xtask.sh outdated-check
+./scripts/xtask.sh fuzz-smoke
+```
+
+The curated cross-platform CI Rust lane runs `./scripts/xtask.sh ci-rust-gate`, which still comes
+from the same `xtask` plan instead of duplicating a second command inventory in GitHub Actions.
+Direct `cargo xtask ...` remains useful for interactive local work on `xtask` itself.
 For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
-`cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,
+`./scripts/xtask.sh fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,
 then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
 prerequisites fail fast with one actionable message and broad default Cargo test loops stay
 finite.
-The main `cargo xtask check` gate likewise preflights the exact stable pin from
+The main `xtask check` gate likewise preflights the exact stable pin from
 `rust-toolchain.toml`, its required `clippy`/`rustfmt` components, the nightly Miri prerequisites,
 and the nightly coverage prerequisites before the Rust gate starts, including direct probes that
 verify the tool binaries are actually runnable.
