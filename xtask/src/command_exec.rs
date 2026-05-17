@@ -9,7 +9,7 @@ use htmlcut_tempdir::tempdir;
 use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
 use crate::{cargo_build_dir, cargo_target_dir, prepare_artifact_layout};
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 use std::cell::RefCell;
 
 const DETACHED_LAUNCHER_ENV: &str = "HTMLCUT_XTASK_DETACHED_LAUNCHER";
