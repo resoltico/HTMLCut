@@ -21,7 +21,10 @@ mod release;
 mod tests;
 mod toolchain;
 
-pub use command_exec::{capture_command_output, remove_dir_if_exists, repo_root, run_spec};
+pub use command_exec::{
+    capture_command_output, remove_dir_if_exists, repo_root, run_from_detached_launcher_if_needed,
+    run_spec,
+};
 pub use coverage::{
     coverage_clean_command, coverage_command, coverage_output_path, coverage_preflight_failures,
     coverage_preflight_message, ensure_coverage_output_dir, evaluate_coverage_report,
@@ -80,7 +83,13 @@ pub use toolchain::{
 
 /// Runs `cargo xtask` using the current process arguments at the repository root.
 pub fn main_entry() -> DynResult<()> {
-    match app::main_entry_with(&repo_root(), std::env::args_os()) {
+    let repo_root = repo_root();
+    let args = std::env::args_os().collect::<Vec<_>>();
+    if run_from_detached_launcher_if_needed(&repo_root, &args)? {
+        return Ok(());
+    }
+
+    match app::main_entry_with(&repo_root, args) {
         Ok(()) => Ok(()),
         Err(XtaskError::Clap(clap_error)) => clap_error.exit(),
         Err(error) => Err(error),

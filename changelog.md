@@ -48,8 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of listing `servo_arc` under the MPL-only Servo crates.
 - Standalone release packaging now resolves compiled binaries from Cargo's canonical target
   directory instead of hardcoding repo-local `target/` paths, so the release smoke matrix stays in
-  lockstep with the managed artifact-root contract and the Windows cross-platform Rust gate no
-  longer trips over Unix-only hygiene test helpers.
+  lockstep with the managed artifact-root contract, the Windows cross-platform Rust gate no longer
+  trips over Unix-only hygiene test helpers, and `cargo xtask` now re-launches itself outside the
+  mutable Cargo artifact roots before it asks Cargo to rebuild the workspace, so Windows does not
+  deadlock on a live `xtask.exe` file lock.
 - Text extraction for explicit selections no longer discards the selected root merely because its
   tag, role, or class looks like utility chrome, so `select` and `slice` now return readable text
   for intentionally selected fragments such as status or pricing blocks while preserving reader-

@@ -269,7 +269,10 @@ the built release packages, checking that the packaged README stays package-spec
 executing one real extraction-plus-request-replay flow before the aggregate required check reports
 success. The release packaging and smoke scripts resolve compiled binaries from Cargo's canonical
 target directory, so the matrix follows the same managed artifact-root contract as the rest of the
-repo instead of assuming a repo-local `target/` tree.
+repo instead of assuming a repo-local `target/` tree. The `cargo xtask` entrypoint also re-launches
+itself from a detached temporary copy when the live maintainer driver binary sits under the managed
+Cargo artifact roots, so cross-platform CI and local Windows runs do not fail when Cargo rebuilds
+`xtask` while the original executable is still running.
 
 GitHub CI runs the Linux maintainer gate through the committed contributor devcontainer, alongside
 the separate cross-platform Rust jobs and the release-target smoke matrix, before the aggregate
