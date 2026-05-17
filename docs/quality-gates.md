@@ -275,3 +275,8 @@ required `Check` result reports success. `Check` uses `if: always()` with explic
 `${{ toJSON(needs.*.result) }}` inspection so a skipped `contributor-devcontainer` gate — the
 correct outcome when no devcontainer-relevant files changed — does not prevent `Check` from being
 reported or block merge.
+`cargo xtask check` now mirrors the raw contributor-devcontainer validator automatically when the
+current branch differs from `origin/main` under the devcontainer gate's watched paths, so local
+maintainer verification catches bootstrap and devcontainer-contract regressions before PR CI does.
+The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you
+want to run the full maintainer gate through the committed contributor container.

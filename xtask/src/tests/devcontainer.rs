@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn devcontainer_check_routes_cargo_target_into_the_writable_cache_mount() {
@@ -48,6 +49,37 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
     assert!(script.contains("\"miri\""));
     assert!(script.contains("\"rust-src\""));
     assert!(script.contains("htmlcut_contributor_rustup_toolchain_install()"));
+}
+
+#[test]
+fn contributor_rust_tools_script_is_safe_to_source_under_readonly_shell_locals() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let output = Command::new("bash")
+        .current_dir(repo_root)
+        .arg("-lc")
+        .arg(
+            r#"
+                set -euo pipefail
+                script_dir=/tmp/htmlcut-readonly-script-dir
+                readonly script_dir
+                repo_root=/tmp/htmlcut-readonly-repo-root
+                readonly repo_root
+                source ./scripts/contributor-rust-tools.sh
+                [[ -n "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" ]]
+                [[ -n "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" ]]
+            "#,
+        )
+        .output()
+        .expect("run contributor-rust-tools source-safety probe");
+
+    assert!(
+        output.status.success(),
+        "expected contributor-rust-tools.sh to source cleanly under readonly shell locals\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

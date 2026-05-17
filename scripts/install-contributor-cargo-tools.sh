@@ -3,13 +3,17 @@
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+htmlcut_install_contributor_cargo_tools_script_dir="$(
+    cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd
+)"
 # shellcheck source=scripts/common.sh
-. "${script_dir}/common.sh"
-script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
-readonly script_dir
+. "${htmlcut_install_contributor_cargo_tools_script_dir}/common.sh"
+htmlcut_install_contributor_cargo_tools_script_dir="$(
+    htmlcut_resolve_script_dir "${BASH_SOURCE[0]}"
+)"
+readonly htmlcut_install_contributor_cargo_tools_script_dir
 # shellcheck source=/dev/null
-source "${script_dir}/contributor-rust-tools.sh"
+source "${htmlcut_install_contributor_cargo_tools_script_dir}/contributor-rust-tools.sh"
 
 export HOME="${HOME:-/home/$(id -un)}"
 export CARGO_HOME="${CARGO_HOME:-${HOME}/.cargo}"

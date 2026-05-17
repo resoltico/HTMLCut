@@ -2,13 +2,17 @@
 # Canonical contributor Rust toolchain and cargo-tool inventory shared by bootstrap scripts, docs,
 # and CI.
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+htmlcut_contributor_rust_tools_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
-. "${script_dir}/common.sh"
-repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
+. "${htmlcut_contributor_rust_tools_script_dir}/common.sh"
+readonly htmlcut_contributor_rust_tools_script_dir
+htmlcut_contributor_rust_tools_repo_root="$(
+    htmlcut_repo_root_from_script_dir "${htmlcut_contributor_rust_tools_script_dir}"
+)"
+readonly htmlcut_contributor_rust_tools_repo_root
 
 HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN="$(
-    python3 - <<'PY' "${repo_root}/rust-toolchain.toml"
+    python3 - <<'PY' "${htmlcut_contributor_rust_tools_repo_root}/rust-toolchain.toml"
 import pathlib
 import re
 import sys

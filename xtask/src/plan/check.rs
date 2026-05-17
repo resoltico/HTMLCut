@@ -13,6 +13,17 @@ use crate::{
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
 use super::semver::semver_release_type;
 
+const DEVCONTAINER_RELEVANT_PATHS: &[&str] = &[
+    ".devcontainer",
+    "scripts/validate-devcontainer.sh",
+    "scripts/devcontainer-check.sh",
+    "scripts/devcontainer-prepare-user-home.sh",
+    "scripts/devcontainer-bootstrap.sh",
+    "scripts/devcontainer-cli-helper.Dockerfile",
+    "scripts/common.sh",
+    "check.sh",
+];
+
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     ensure_clean_semver_baseline(repo_root)?;
@@ -33,6 +44,10 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         ));
+    }
+
+    if should_run_devcontainer_validation(repo_root)? {
+        plan.push(devcontainer_validation_command(repo_root));
     }
 
     plan.push(format_check_command());
@@ -240,6 +255,93 @@ fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
     paths.iter().map(|path| path.to_string_lossy().into_owned())
 }
 
+fn devcontainer_validation_command(repo_root: &Path) -> CommandSpec {
+    CommandSpec::new(
+        "bash",
+        [repo_root
+            .join("scripts")
+            .join("validate-devcontainer.sh")
+            .to_string_lossy()
+            .into_owned()],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+}
+
+fn should_run_devcontainer_validation(repo_root: &Path) -> DynResult<bool> {
+    if !repo_root.join(".git").exists() {
+        return Ok(false);
+    }
+
+    let changed_output = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            devcontainer_changed_file_args(repo_root)?,
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        ),
+    )?;
+    if !changed_output.is_empty() {
+        return Ok(true);
+    }
+
+    let untracked_output = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            devcontainer_untracked_file_args(),
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        ),
+    )?;
+    Ok(!untracked_output.is_empty())
+}
+
+fn devcontainer_changed_file_args(repo_root: &Path) -> DynResult<Vec<String>> {
+    let merge_base_spec = CommandSpec::new(
+        "git",
+        ["merge-base", "HEAD", "origin/main"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    );
+    let merge_base = capture_command_output(repo_root, &merge_base_spec)
+        .ok()
+        .and_then(|output| String::from_utf8(output).ok())
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+
+    let mut args = vec!["diff".to_owned(), "--name-only".to_owned(), "-z".to_owned()];
+    if let Some(merge_base) = merge_base {
+        args.push(merge_base);
+    } else {
+        args.push("HEAD".to_owned());
+    }
+    args.push("--".to_owned());
+    args.extend(
+        DEVCONTAINER_RELEVANT_PATHS
+            .iter()
+            .map(|path| (*path).to_owned()),
+    );
+    Ok(args)
+}
+
+fn devcontainer_untracked_file_args() -> Vec<String> {
+    let mut args = vec![
+        "ls-files".to_owned(),
+        "--others".to_owned(),
+        "--exclude-standard".to_owned(),
+        "-z".to_owned(),
+        "--".to_owned(),
+    ];
+    args.extend(
+        DEVCONTAINER_RELEVANT_PATHS
+            .iter()
+            .map(|path| (*path).to_owned()),
+    );
+    args
+}
+
 fn format_check_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
@@ -368,4 +470,9 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path) -> bool {
     is_maintained_shell_script(repo_root, path)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_validation_command_for_tests(repo_root: &Path) -> CommandSpec {
+    devcontainer_validation_command(repo_root)
 }

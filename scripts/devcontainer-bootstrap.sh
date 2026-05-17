@@ -3,13 +3,13 @@
 
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+htmlcut_devcontainer_bootstrap_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
-. "${script_dir}/common.sh"
-script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
-readonly script_dir
+. "${htmlcut_devcontainer_bootstrap_script_dir}/common.sh"
+htmlcut_devcontainer_bootstrap_script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
+readonly htmlcut_devcontainer_bootstrap_script_dir
 # shellcheck source=/dev/null
-source "${script_dir}/contributor-rust-tools.sh"
+source "${htmlcut_devcontainer_bootstrap_script_dir}/contributor-rust-tools.sh"
 
 export HOME="${HOME:-/home/$(id -un)}"
 export CARGO_HOME="${CARGO_HOME:-${HOME}/.cargo}"
@@ -46,7 +46,7 @@ ensure_toolchains() {
 install_rustup_if_missing
 ensure_toolchains
 printf 'devcontainer bootstrap: installing contributor cargo QA tools\n'
-"${script_dir}/install-contributor-cargo-tools.sh"
+"${htmlcut_devcontainer_bootstrap_script_dir}/install-contributor-cargo-tools.sh"
 
 printf 'devcontainer bootstrap: validating installed toolchain surfaces\n'
 rustc --version >/dev/null

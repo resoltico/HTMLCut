@@ -296,6 +296,160 @@ fn check_plan_includes_all_strict_gates() {
 }
 
 #[test]
+fn check_plan_runs_devcontainer_validation_when_branch_diff_touches_gate_inputs() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+    let validator = repo_root
+        .path()
+        .join("scripts")
+        .join("validate-devcontainer.sh")
+        .to_string_lossy()
+        .into_owned();
+
+    let plan = crate::command_exec::with_capture_command_output_override(
+        move |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args == ["merge-base", "HEAD", "origin/main"] {
+                return Some(Ok(b"abc123\n".to_vec()));
+            }
+            if spec.args
+                == [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "abc123",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Ok(b"scripts/devcontainer-bootstrap.sh\0".to_vec()));
+            }
+            if spec.args
+                == [
+                    "status",
+                    "--porcelain=1",
+                    "--untracked-files=all",
+                    "--",
+                    "semver-baseline/htmlcut-core",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            Some(Ok(b"check.sh\0scripts/release-targets.sh\0".to_vec()))
+        },
+        || check_plan(repo_root.path()),
+    )
+    .expect("check plan");
+
+    assert!(
+        plan.iter().any(|spec| {
+            *spec == crate::plan::devcontainer_validation_command_for_tests(repo_root.path())
+        }),
+        "expected devcontainer validation to be part of the local maintainer gate when relevant files changed"
+    );
+    assert_eq!(
+        plan[2],
+        crate::plan::devcontainer_validation_command_for_tests(repo_root.path())
+    );
+    assert_eq!(
+        plan[3],
+        test_command_spec("cargo", ["fmt", "--check"], false, false)
+    );
+    assert_eq!(
+        plan[2],
+        test_command_spec("bash", [validator], false, false)
+    );
+}
+
+#[test]
+fn check_plan_skips_devcontainer_validation_when_branch_diff_is_clean() {
+    let repo_root = tempdir().expect("tempdir");
+    write_repo_scaffold(repo_root.path());
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let plan = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args == ["merge-base", "HEAD", "origin/main"] {
+                return Some(Ok(b"abc123\n".to_vec()));
+            }
+            if spec.args
+                == [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "abc123",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            if spec.args
+                == [
+                    "ls-files",
+                    "--others",
+                    "--exclude-standard",
+                    "-z",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            if spec.args
+                == [
+                    "status",
+                    "--porcelain=1",
+                    "--untracked-files=all",
+                    "--",
+                    "semver-baseline/htmlcut-core",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            Some(Ok(b"check.sh\0scripts/release-targets.sh\0".to_vec()))
+        },
+        || check_plan(repo_root.path()),
+    )
+    .expect("check plan");
+
+    assert!(!plan.iter().any(|spec| {
+        *spec == crate::plan::devcontainer_validation_command_for_tests(repo_root.path())
+    }));
+    assert_eq!(
+        plan[2],
+        test_command_spec("cargo", ["fmt", "--check"], false, false)
+    );
+}
+
+#[test]
 fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());

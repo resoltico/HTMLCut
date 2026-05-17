@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The coverage gate now distinguishes declarative Rust sources from executable modules by parsing
   tracked file shape, so module routers and constant vocabulary files remain part of the
   maintained source inventory without being falsely reported as missing executable coverage.
+- `cargo xtask check` now mirrors the raw contributor-devcontainer validator automatically when
+  the current branch differs from `origin/main` under the devcontainer gate's watched paths, so
+  local maintainer verification catches contributor-container regressions before PR CI does while
+  `./scripts/devcontainer-check.sh` remains the dedicated full host-side container proof.
 
 ### Fixed
 - The shipped selector-validation and selector-execution path no longer relies on the known Miri
@@ -46,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag, role, or class looks like utility chrome, so `select` and `slice` now return readable text
   for intentionally selected fragments such as status or pricing blocks while preserving reader-
   cleanup behavior for descendants and whole-document review.
+- The contributor devcontainer bootstrap no longer fails when one sourced shell helper inherits
+  readonly `script_dir` or `repo_root` bindings from another, because the shared Rust tooling
+  helper now keeps its internal path state namespaced instead of colliding with caller shell
+  locals during release and CI validation.
 
 ## [10.0.0] - 2026-05-14
 

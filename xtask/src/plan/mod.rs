@@ -147,6 +147,11 @@ pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path
 }
 
 #[cfg(test)]
+pub(crate) fn devcontainer_validation_command_for_tests(repo_root: &Path) -> CommandSpec {
+    check::devcontainer_validation_command_for_tests(repo_root)
+}
+
+#[cfg(test)]
 pub(crate) fn with_cargo_artifact_dir_overrides_for_tests<T>(
     target_dir: PathBuf,
     build_dir: PathBuf,
