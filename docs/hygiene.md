@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "10.1.0"
 domain: OPERATIONS
-updated: "2026-05-14"
+updated: "2026-05-17"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, xtask hygiene, cache cleanup, managed build artifacts]
   questions: ["where do HTMLCut build artifacts live?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "why is repo-local target considered legacy in HTMLCut?", "which artifact roots are managed and disposable?"]
@@ -60,10 +60,10 @@ HTMLCut enforces these hygiene rules:
 
 The contributor-container host helpers intentionally export `CARGO_TARGET_DIR` and
 `CARGO_BUILD_BUILD_DIR` when they launch Cargo so the container path keeps heavy artifacts on its
-mounted cache volume instead of the container filesystem. Those env vars are launch-time command
-inputs, not the repository's source of truth. The committed `.cargo/config.toml` remains the
-canonical owner for HTMLCut's artifact layout, and `cargo xtask hygiene` evaluates the repo-owned
-paths rather than ambient caller overrides.
+mounted cache volume instead of the container filesystem. Those env vars are explicit launch-time
+overrides. `cargo xtask` honors them when a caller deliberately supplies them, while the committed
+`.cargo/config.toml` remains the default repo-owned layout for ordinary host-native commands and
+for hygiene reporting.
 
 ## Commands
 

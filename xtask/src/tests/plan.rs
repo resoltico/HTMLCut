@@ -32,6 +32,74 @@ fn shell_script_paths_returns_empty_when_scripts_dir_is_missing() {
 }
 
 #[test]
+fn cargo_target_dir_prefers_explicit_environment_over_repo_config() {
+    let repo_root = tempdir().expect("tempdir");
+    let env_target = Path::new("tmp/managed-target");
+    let config_target = Path::new("../.managed-artifacts/target");
+
+    let resolved = crate::plan::cargo_target_dir_from_sources_for_tests(
+        repo_root.path(),
+        Some(env_target),
+        Some(config_target),
+    );
+
+    assert_eq!(resolved, repo_root.path().join(env_target));
+}
+
+#[test]
+fn cargo_build_dir_prefers_explicit_environment_over_repo_config() {
+    let repo_root = tempdir().expect("tempdir");
+    let env_target = Path::new("tmp/managed-target");
+    let config_target = Path::new("../.managed-artifacts/target");
+    let env_build = Path::new("tmp/managed-build");
+    let config_build = Path::new("../.managed-artifacts/build");
+
+    let resolved = crate::plan::cargo_build_dir_from_sources_for_tests(
+        repo_root.path(),
+        Some(env_target),
+        Some(config_target),
+        Some(env_build),
+        Some(config_build),
+    );
+
+    assert_eq!(resolved, repo_root.path().join(env_build));
+}
+
+#[test]
+fn cargo_build_dir_follows_environment_target_when_no_build_dir_override_exists() {
+    let repo_root = tempdir().expect("tempdir");
+    let env_target = Path::new("tmp/managed-target");
+    let config_target = Path::new("../.managed-artifacts/target");
+    let config_build = Path::new("../.managed-artifacts/build");
+
+    let resolved = crate::plan::cargo_build_dir_from_sources_for_tests(
+        repo_root.path(),
+        Some(env_target),
+        Some(config_target),
+        None,
+        Some(config_build),
+    );
+
+    assert_eq!(resolved, repo_root.path().join(config_build));
+}
+
+#[test]
+fn cargo_path_helpers_can_opt_into_process_env_lookup_without_changing_defaults() {
+    let repo_root = tempdir().expect("tempdir");
+    let expected_target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo_root.path().join("target"));
+    let expected_build = std::env::var_os("CARGO_BUILD_BUILD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| expected_target.clone());
+
+    crate::plan::with_process_env_passthrough_for_tests(|| {
+        assert_eq!(cargo_target_dir(repo_root.path()), expected_target);
+        assert_eq!(cargo_build_dir(repo_root.path()), expected_build);
+    });
+}
+
+#[test]
 fn shell_script_paths_use_git_inventory_when_available() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");

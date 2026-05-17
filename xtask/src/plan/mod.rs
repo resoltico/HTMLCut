@@ -116,6 +116,32 @@ pub(crate) fn cargo_build_dir_for_tests(repo_root: &Path, build_dir: Option<&Pat
 }
 
 #[cfg(test)]
+pub(crate) fn cargo_target_dir_from_sources_for_tests(
+    repo_root: &Path,
+    env_target_dir: Option<&Path>,
+    config_target_dir: Option<&Path>,
+) -> PathBuf {
+    paths::cargo_target_dir_from_sources_for_tests(repo_root, env_target_dir, config_target_dir)
+}
+
+#[cfg(test)]
+pub(crate) fn cargo_build_dir_from_sources_for_tests(
+    repo_root: &Path,
+    env_target_dir: Option<&Path>,
+    config_target_dir: Option<&Path>,
+    env_build_dir: Option<&Path>,
+    config_build_dir: Option<&Path>,
+) -> PathBuf {
+    paths::cargo_build_dir_from_sources_for_tests(
+        repo_root,
+        env_target_dir,
+        config_target_dir,
+        env_build_dir,
+        config_build_dir,
+    )
+}
+
+#[cfg(test)]
 pub(crate) fn release_binary_path_for_tests(
     repo_root: &Path,
     target_dir: Option<&Path>,
@@ -173,6 +199,11 @@ pub(crate) fn with_cargo_artifact_dir_overrides_for_tests<T>(
     operation: impl FnOnce() -> T,
 ) -> T {
     paths::with_cargo_artifact_dir_overrides(target_dir, build_dir, operation)
+}
+
+#[cfg(test)]
+pub(crate) fn with_process_env_passthrough_for_tests<T>(operation: impl FnOnce() -> T) -> T {
+    paths::with_process_env_passthrough_for_tests(operation)
 }
 
 #[cfg(test)]

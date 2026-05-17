@@ -189,6 +189,11 @@ named volume contract, lifecycle scripts, and `./check.sh` entrypoint to run the
 gate without requiring devcontainer-client orchestration for the long-running step. Use both host
 commands when you are changing the contributor-container surface itself.
 
+That host-side gate intentionally exports `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` into the
+container shell so heavyweight Cargo artifacts stay on the mounted cache volume. The maintained
+`cargo xtask` flows honor those explicit caller-managed overrides inside the container instead of
+silently snapping back to the host-default sibling artifact root.
+
 ## CI Gate Behavior
 
 The `contributor-devcontainer` CI job fires only when devcontainer-relevant files change. The path

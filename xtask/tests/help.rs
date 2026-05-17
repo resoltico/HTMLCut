@@ -1,5 +1,8 @@
+use std::fs;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde_json::Value;
 use xtask::{assert_known_fuzz_target, fuzz_smoke_targets};
 
 fn run_xtask_help(args: &[&str]) -> String {
@@ -138,4 +141,53 @@ fn invalid_fuzz_target_errors_readably_without_debug_quotes() {
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
     assert!(stderr.contains("xtask: unknown fuzz target `not-real`"));
     assert!(!stderr.contains("xtask: \"unknown fuzz target"));
+}
+
+#[test]
+fn hygiene_report_honors_explicit_cargo_artifact_env_overrides() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let override_root = std::env::temp_dir().join(format!("htmlcut-xtask-artifacts-{nonce}"));
+    fs::create_dir_all(&override_root).expect("create artifact override tempdir");
+    let target_dir = override_root.join("managed-target");
+    let build_dir = override_root.join("managed-build");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["hygiene", "report", "--format", "json"])
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("CARGO_BUILD_BUILD_DIR", &build_dir)
+        .output()
+        .expect("run xtask hygiene report");
+
+    assert!(
+        output.status.success(),
+        "xtask hygiene report failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report = serde_json::from_slice::<Value>(&output.stdout).expect("json hygiene report");
+    let entries = report["entries"].as_array().expect("report entries");
+
+    let managed_target = entries
+        .iter()
+        .find(|entry| entry["id"] == "managed-workspace-target")
+        .expect("managed target entry");
+    let managed_build = entries
+        .iter()
+        .find(|entry| entry["id"] == "managed-workspace-build")
+        .expect("managed build entry");
+
+    assert_eq!(
+        managed_target["path"].as_str(),
+        Some(target_dir.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        managed_build["path"].as_str(),
+        Some(build_dir.to_string_lossy().as_ref())
+    );
+
+    fs::remove_dir_all(&override_root).expect("remove artifact override tempdir");
 }

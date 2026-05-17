@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper now keeps its internal path state namespaced instead of colliding with caller shell
   locals during release and CI validation, and the bootstrap now retries transient Rustup network
   failures instead of treating one dropped TLS connection as a hard gate failure.
+- The contributor devcontainer maintainer gate now keeps `cargo xtask` on the same cache-root
+  contract as the surrounding container shell: explicit `CARGO_TARGET_DIR` and
+  `CARGO_BUILD_BUILD_DIR` overrides from the container entrypoint now win over the repo-default
+  sibling artifact layout, so the strict-provenance Miri preflight no longer falls back to an
+  unwritable sibling root during release and CI container runs.
 
 ## [10.0.0] - 2026-05-14
 

@@ -85,10 +85,11 @@ Direct `cargo xtask ...` remains useful for interactive work on `xtask` itself, 
 maintained gate, CI, and release protocol use `./scripts/xtask.sh ...` so the driver process never
 holds a live executable lock inside the managed Cargo artifact tree.
 
-The hygiene contract is repo-owned: `cargo xtask` resolves managed artifact roots from the
-committed `.cargo/config.toml`, not from ambient caller overrides. The coverage gate also manages
-and tags the nested `llvm-cov-target` worktrees that `cargo llvm-cov` creates inside the sibling
-coverage roots.
+The hygiene contract is repo-owned: the committed `.cargo/config.toml` defines the default
+artifact layout, and `cargo xtask` honors explicit caller-managed `CARGO_TARGET_DIR` /
+`CARGO_BUILD_BUILD_DIR` overrides only when the caller intentionally sets them for a boundary such
+as the contributor container. The coverage gate also manages and tags the nested
+`llvm-cov-target` worktrees that `cargo llvm-cov` creates inside the sibling coverage roots.
 
 Validate the committed contributor devcontainer:
 
