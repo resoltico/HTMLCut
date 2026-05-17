@@ -94,6 +94,14 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
 
     assert!(bootstrap.contains("htmlcut_contributor_install_nightly_toolchain"));
     assert!(bootstrap.contains("htmlcut_contributor_install_stable_toolchain_components"));
+    assert!(bootstrap.contains("retry_command()"));
+    assert!(bootstrap.contains("retry_command 3 5 install_rustup_once"));
+    assert!(bootstrap.contains("retry_command 3 5 rustup toolchain install"));
+    assert!(bootstrap.contains("retry_command 3 5 htmlcut_contributor_install_nightly_toolchain"));
+    assert!(
+        bootstrap
+            .contains("retry_command 3 5 htmlcut_contributor_install_stable_toolchain_components")
+    );
     assert!(bootstrap.contains("cargo +nightly miri --version >/dev/null"));
     assert_eq!(
         validator

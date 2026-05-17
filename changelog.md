@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provenance failures in upstream `servo_arc 0.4.3` and `tendril 0.5.0`, the maintained proof now
   runs under strict provenance, and `NOTICE` now reflects the local patched dependencies truthfully
   instead of listing `servo_arc` under the MPL-only Servo crates.
+- Standalone release packaging now resolves compiled binaries from Cargo's canonical target
+  directory instead of hardcoding repo-local `target/` paths, so the release smoke matrix stays in
+  lockstep with the managed artifact-root contract and the Windows cross-platform Rust gate no
+  longer trips over Unix-only hygiene test helpers.
 - Text extraction for explicit selections no longer discards the selected root merely because its
   tag, role, or class looks like utility chrome, so `select` and `slice` now return readable text
   for intentionally selected fragments such as status or pricing blocks while preserving reader-
@@ -53,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The contributor devcontainer bootstrap no longer fails when one sourced shell helper inherits
   readonly `script_dir` or `repo_root` bindings from another, because the shared Rust tooling
   helper now keeps its internal path state namespaced instead of colliding with caller shell
-  locals during release and CI validation.
+  locals during release and CI validation, and the bootstrap now retries transient Rustup network
+  failures instead of treating one dropped TLS connection as a hard gate failure.
 
 ## [10.0.0] - 2026-05-14
 

@@ -242,7 +242,14 @@ main() {
     local packaged_binary_command
     packaged_binary_command="$(packaged_binary_invocation "${compiled_binary_name}")"
     readonly packaged_binary_command
-    local compiled_binary_path="${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
+    local compiled_binary_path
+    compiled_binary_path="$(
+        htmlcut_cargo_compiled_binary_path \
+            "${repo_root}" \
+            "${target_triple}" \
+            "${cargo_profile}" \
+            "${compiled_binary_name}"
+    )"
     readonly compiled_binary_path
     local temp_root
     temp_root="$(htmlcut_temp_root)"

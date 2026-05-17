@@ -267,7 +267,9 @@ incremental build artifacts across runs.
 GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
 the built release packages, checking that the packaged README stays package-specific, and
 executing one real extraction-plus-request-replay flow before the aggregate required check reports
-success.
+success. The release packaging and smoke scripts resolve compiled binaries from Cargo's canonical
+target directory, so the matrix follows the same managed artifact-root contract as the rest of the
+repo instead of assuming a repo-local `target/` tree.
 
 GitHub CI runs the Linux maintainer gate through the committed contributor devcontainer, alongside
 the separate cross-platform Rust jobs and the release-target smoke matrix, before the aggregate

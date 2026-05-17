@@ -208,6 +208,121 @@ source "{repo_root}/scripts/common.sh"
 }
 
 #[test]
+fn release_shell_helpers_resolve_the_configured_cargo_target_dir() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::create_dir_all(repo_root.path().join("src")).expect("create src dir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-release-helper-smoke\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        repo_root.path().join("src").join("main.rs"),
+        "fn main() {}\n",
+    )
+    .expect("write main.rs");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let canonical_repo_root = fs::canonicalize(repo_root.path()).expect("canonicalize temp repo");
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+unset CARGO_TARGET_DIR
+source "{helper_repo_root}/scripts/common.sh"
+[[ "$(htmlcut_cargo_target_dir "{repo_root}")" == "{expected_target}" ]]
+[[ "$(htmlcut_cargo_compiled_binary_path "{repo_root}" "aarch64-apple-darwin" "dist" "htmlcut")" == "{expected_binary}" ]]
+"#,
+            helper_repo_root = helper_repo_root_for_bash,
+            repo_root = repo_root_for_bash,
+            expected_target = crate::release::bash_source_argument_for_tests(
+                &canonical_repo_root.join("../.managed-artifacts/target")
+            ),
+            expected_binary = crate::release::bash_source_argument_for_tests(
+                &canonical_repo_root
+                    .join("../.managed-artifacts/target")
+                    .join("aarch64-apple-darwin")
+                    .join("dist")
+                    .join("htmlcut"),
+            ),
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run cargo target helper smoke");
+
+    assert!(
+        output.status.success(),
+        "cargo target helper smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn release_shell_helpers_prefer_cargo_target_dir_environment_overrides() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::create_dir_all(repo_root.path().join("src")).expect("create src dir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-release-helper-smoke\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        repo_root.path().join("src").join("main.rs"),
+        "fn main() {}\n",
+    )
+    .expect("write main.rs");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+export CARGO_TARGET_DIR="./tmp/override-target"
+source "{helper_repo_root}/scripts/common.sh"
+[[ "$(htmlcut_cargo_target_dir "{repo_root}")" == "{expected_target}" ]]
+"#,
+            helper_repo_root = helper_repo_root_for_bash,
+            repo_root = repo_root_for_bash,
+            expected_target = crate::release::bash_source_argument_for_tests(
+                &repo_root.path().join("./tmp/override-target")
+            ),
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run cargo target env-override smoke");
+
+    assert!(
+        output.status.success(),
+        "cargo target env-override smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn release_shell_helpers_normalize_windows_source_paths() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -462,8 +577,14 @@ fn release_build_script_generates_a_package_specific_readme() {
         .expect("read build-release-artifact.sh");
 
     assert!(script.contains("write_packaged_readme"));
+    assert!(script.contains("htmlcut_cargo_compiled_binary_path"));
     assert!(script.contains("package-specific install and verification guide"));
     assert!(!script.contains("sed '/^<!--$/,/^-->$/d' \"${repo_root}/README.md\""));
+    assert!(
+        !script.contains(
+            "${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
+        )
+    );
 }
 
 #[test]

@@ -16,6 +16,33 @@ export CARGO_HOME="${CARGO_HOME:-${HOME}/.cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-${HOME}/.rustup}"
 export PATH="${CARGO_HOME}/bin:${PATH}"
 
+retry_command() {
+    local attempts="$1"
+    local delay_seconds="$2"
+    shift 2
+
+    local attempt=1
+    until "$@"; do
+        if (( attempt >= attempts )); then
+            return 1
+        fi
+
+        printf 'devcontainer bootstrap: retrying failed command (%s/%s) in %ss: %s\n' \
+            "${attempt}" \
+            "${attempts}" \
+            "${delay_seconds}" \
+            "$*" >&2
+        sleep "${delay_seconds}"
+        attempt=$((attempt + 1))
+    done
+}
+
+install_rustup_once() {
+    export RUSTUP_INIT_SKIP_PATH_CHECK=yes
+    curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf \
+        | sh -s -- -y --profile minimal --default-toolchain none
+}
+
 install_rustup_if_missing() {
     if command -v rustup >/dev/null 2>&1; then
         printf 'devcontainer bootstrap: rustup already available\n'
@@ -23,22 +50,20 @@ install_rustup_if_missing() {
     fi
 
     printf 'devcontainer bootstrap: installing rustup\n'
-    export RUSTUP_INIT_SKIP_PATH_CHECK=yes
-    curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf \
-        | sh -s -- -y --profile minimal --default-toolchain none
+    retry_command 3 5 install_rustup_once
 }
 
 ensure_toolchains() {
     printf 'devcontainer bootstrap: installing stable toolchain %s\n' "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
-    rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+    retry_command 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
     printf 'devcontainer bootstrap: installing nightly toolchain %s with %s\n' \
         "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" \
         "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS[*]}"
-    htmlcut_contributor_install_nightly_toolchain
+    retry_command 3 5 htmlcut_contributor_install_nightly_toolchain
     printf 'devcontainer bootstrap: adding %s to %s\n' \
         "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[*]}" \
         "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
-    htmlcut_contributor_install_stable_toolchain_components
+    retry_command 3 5 htmlcut_contributor_install_stable_toolchain_components
     printf 'devcontainer bootstrap: setting default toolchain to %s\n' "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
     rustup default "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
 }

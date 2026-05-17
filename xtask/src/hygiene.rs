@@ -762,17 +762,17 @@ pub(crate) fn format_bytes_for_tests(bytes: u64) -> String {
     format_bytes(bytes)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn dir_size_bytes_for_tests(path: &Path) -> u64 {
     dir_size_bytes(path).expect("dir size bytes")
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn dir_size_bytes_result_for_tests(path: &Path) -> DynResult<u64> {
     dir_size_bytes(path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn aggregate_entry_for_tests(path: &Path, roots: &[PathBuf]) -> DynResult<HygieneEntry> {
     aggregate_entry(
         "test-aggregate",
