@@ -9,7 +9,7 @@ use htmlcut_tempdir::tempdir;
 use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
 use crate::{cargo_build_dir, cargo_target_dir, prepare_artifact_layout};
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use std::cell::RefCell;
 
 const DETACHED_LAUNCHER_ENV: &str = "HTMLCUT_XTASK_DETACHED_LAUNCHER";
@@ -23,8 +23,12 @@ type RunSpecOverride = dyn FnMut(&Path, &CommandSpec) -> Option<DynResult<()>>;
 thread_local! {
     static CAPTURE_OVERRIDE: RefCell<Option<Box<CaptureOverride>>> = RefCell::new(None);
     static RUN_SPEC_OVERRIDE: RefCell<Option<Box<RunSpecOverride>>> = RefCell::new(None);
-    static CURRENT_EXECUTABLE_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static DETACHED_LAUNCHER_ENV_OVERRIDE: RefCell<Option<bool>> = const { RefCell::new(None) };
+}
+
+#[cfg(all(test, unix))]
+thread_local! {
+    static CURRENT_EXECUTABLE_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 /// Executes one maintainer command against the repository root.
@@ -158,7 +162,7 @@ pub fn run_from_detached_launcher_if_needed(
 }
 
 fn current_executable_path() -> DynResult<PathBuf> {
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     if let Some(override_path) = test_current_executable_override() {
         return Ok(override_path);
     }
@@ -333,12 +337,12 @@ pub(crate) fn launcher_requires_detach_for_tests(repo_root: &Path, executable_pa
     launcher_requires_detach(repo_root, executable_path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn current_executable_path_for_tests() -> DynResult<PathBuf> {
     current_executable_path()
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn prepare_detached_executable_copy_for_tests(
     current_executable: &Path,
     detached_root: &Path,
@@ -346,7 +350,7 @@ pub(crate) fn prepare_detached_executable_copy_for_tests(
     prepare_detached_executable_copy(current_executable, detached_root)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn with_current_executable_override<T>(
     override_path: PathBuf,
     operation: impl FnOnce() -> T,
@@ -368,7 +372,7 @@ pub(crate) fn with_current_executable_override<T>(
     outcome
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn test_current_executable_override() -> Option<PathBuf> {
     CURRENT_EXECUTABLE_OVERRIDE.with_borrow(|slot| slot.clone())
 }
