@@ -8,6 +8,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
     assert_eq!(probe.program, PathBuf::from("cargo"));
     assert_eq!(probe.args, vec!["+nightly", "miri", "--version"]);
     assert!(command_is_quiet(&probe));
+    assert!(command_quiets_stderr(&probe));
     assert!(!command_forces_clang(&probe));
     assert!(command_uses_managed_workspace_artifacts(&probe));
 

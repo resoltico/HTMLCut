@@ -40,6 +40,10 @@ fn command_is_quiet(command: &CommandSpec) -> bool {
     matches!(command.stdout, CommandStdout::Quiet)
 }
 
+fn command_quiets_stderr(command: &CommandSpec) -> bool {
+    matches!(command.stderr, CommandStderr::Quiet)
+}
+
 fn command_forces_clang(command: &CommandSpec) -> bool {
     matches!(command.toolchain_env, CommandToolchainEnv::ForceClang)
 }

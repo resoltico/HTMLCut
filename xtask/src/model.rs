@@ -191,6 +191,15 @@ pub enum CommandStdout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Stderr handling for one external maintainer command.
+pub enum CommandStderr {
+    /// Stream stderr directly to the terminal.
+    Inherit,
+    /// Suppress stderr unless the command fails.
+    Quiet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Environment policy for one external maintainer command.
 pub enum CommandToolchainEnv {
     /// Run with the ambient process environment.
@@ -219,6 +228,8 @@ pub struct CommandSpec {
     pub args: Vec<String>,
     /// Stdout handling for the command.
     pub stdout: CommandStdout,
+    /// Stderr handling for the command.
+    pub stderr: CommandStderr,
     /// Environment policy for the command.
     pub toolchain_env: CommandToolchainEnv,
     /// Artifact-root policy for the command.
@@ -243,10 +254,17 @@ impl CommandSpec {
             program: program.into(),
             args: args.into_iter().map(Into::into).collect(),
             stdout,
+            stderr: CommandStderr::Inherit,
             toolchain_env,
             artifact_layout: CommandArtifactLayout::Inherit,
             env: BTreeMap::new(),
         }
+    }
+
+    /// Overrides the default stderr handling for the command.
+    pub fn with_stderr(mut self, stderr: CommandStderr) -> Self {
+        self.stderr = stderr;
+        self
     }
 
     /// Overrides the default artifact-root policy for the command.

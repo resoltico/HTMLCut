@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, DynResult,
-    MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
+    DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 
 const FUZZ_SMOKE_TARGETS: [&str; 5] = [
@@ -126,6 +126,7 @@ pub fn cargo_fuzz_probe_command() -> CommandSpec {
         CommandToolchainEnv::Inherit,
     )
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    .with_stderr(CommandStderr::Quiet)
 }
 
 /// Builds the non-mutating `cargo fuzz run` command used by the smoke workflow.

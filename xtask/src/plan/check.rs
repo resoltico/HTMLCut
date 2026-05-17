@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::command_exec::{capture_command_output, repo_worktree_files};
 use crate::model::{
-    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, DynResult,
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
+    DynResult,
 };
 use crate::{
     deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_selector_command, outdated_check_command,
@@ -305,7 +306,8 @@ fn devcontainer_changed_file_args(repo_root: &Path) -> DynResult<Vec<String>> {
         ["merge-base", "HEAD", "origin/main"],
         CommandStdout::Quiet,
         CommandToolchainEnv::Inherit,
-    );
+    )
+    .with_stderr(CommandStderr::Quiet);
     let merge_base = capture_command_output(repo_root, &merge_base_spec)
         .ok()
         .and_then(|output| String::from_utf8(output).ok())

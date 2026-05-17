@@ -1,5 +1,5 @@
 use crate::model::{
-    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv,
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
     MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME, MiriPreflightFailure,
 };
 
@@ -15,6 +15,7 @@ pub fn miri_probe_command() -> CommandSpec {
         CommandToolchainEnv::Inherit,
     )
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    .with_stderr(CommandStderr::Quiet)
 }
 
 /// Builds the maintained strict-provenance selector-safety Miri proof command.

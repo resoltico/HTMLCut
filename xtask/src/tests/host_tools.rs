@@ -7,6 +7,7 @@ fn host_tool_probe_command_uses_version_and_stays_quiet() {
     assert_eq!(command.program, PathBuf::from("clang"));
     assert_eq!(command.args, vec!["--version"]);
     assert!(command_is_quiet(&command));
+    assert!(command_quiets_stderr(&command));
     assert!(!command_forces_clang(&command));
 }
 

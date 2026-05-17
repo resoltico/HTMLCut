@@ -13,6 +13,11 @@ fn run_spec_executes_successfully_with_and_without_clang_override() {
     .expect("plain command");
     run_spec(
         repo_root,
+        &test_command_spec("cargo", ["--version"], true, false).with_stderr(CommandStderr::Quiet),
+    )
+    .expect("stderr-quiet command");
+    run_spec(
+        repo_root,
         &test_command_spec("cargo", ["--version"], true, true),
     )
     .expect("clang-forced command");
@@ -50,7 +55,7 @@ fn capture_command_output_returns_stdout_and_reports_failure() {
 
     let output = capture_command_output(
         repo_root,
-        &test_command_spec("cargo", ["--version"], false, true),
+        &test_command_spec("cargo", ["--version"], false, true).with_stderr(CommandStderr::Quiet),
     )
     .expect("stdout");
     assert!(String::from_utf8(output).expect("utf8").contains("cargo"));
@@ -71,6 +76,7 @@ fn capture_command_output_returns_stdout_and_reports_failure() {
 #[test]
 fn command_environment_for_tests_applies_explicit_overrides() {
     let spec = test_command_spec("cargo", ["--version"], true, false)
+        .with_stderr(CommandStderr::Quiet)
         .with_env("MIRIFLAGS", "-Zmiri-strict-provenance");
 
     let env_pairs = crate::command_exec::command_environment_for_tests(&spec);
@@ -80,6 +86,7 @@ fn command_environment_for_tests_applies_explicit_overrides() {
         .and_then(|(_, value)| value)
         .expect("MIRIFLAGS override");
     assert_eq!(miriflags, "-Zmiri-strict-provenance");
+    assert!(command_quiets_stderr(&spec));
 }
 
 #[test]

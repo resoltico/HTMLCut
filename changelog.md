@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CARGO_BUILD_BUILD_DIR` overrides from the container entrypoint now win over the repo-default
   sibling artifact layout, so the strict-provenance Miri preflight no longer falls back to an
   unwritable sibling root during release and CI container runs.
+- The contributor devcontainer release gate now survives single-ref and shallow CI checkouts
+  cleanly: the watched-path probe falls back to `HEAD` when `origin/main` is absent locally, and
+  the shared shell helpers no longer trip ShellCheck on their Cargo-metadata fallback path during
+  the maintainer gate.
 
 ## [10.0.0] - 2026-05-14
 

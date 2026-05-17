@@ -104,8 +104,9 @@ htmlcut_cargo_target_dir() {
     if [[ -f "${helper_repo_root}/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         local cargo_metadata_json
         cargo_metadata_json="$(
-            cd "${helper_repo_root}" &&
+            if cd "${helper_repo_root}"; then
                 cargo metadata --format-version 1 --no-deps 2>/dev/null || true
+            fi
         )"
         local cargo_metadata_target_dir
         cargo_metadata_target_dir="$(

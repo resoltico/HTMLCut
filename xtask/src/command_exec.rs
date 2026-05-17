@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
+use crate::model::{CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv, DynResult};
 use crate::prepare_artifact_layout;
 
 #[cfg(test)]
@@ -36,7 +36,7 @@ pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     } else {
         command.stdout(Stdio::inherit());
     }
-    command.stderr(Stdio::inherit());
+    apply_stderr_policy(&mut command, spec);
     apply_clang_override(&mut command, spec);
     apply_artifact_layout(&mut command, repo_root, spec)?;
     apply_command_environment(&mut command, spec);
@@ -61,7 +61,7 @@ pub fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult
     command.args(&spec.args);
     command.stdin(Stdio::null());
     command.stdout(Stdio::piped());
-    command.stderr(Stdio::inherit());
+    apply_stderr_policy(&mut command, spec);
     apply_clang_override(&mut command, spec);
     apply_artifact_layout(&mut command, repo_root, spec)?;
     apply_command_environment(&mut command, spec);
@@ -133,6 +133,14 @@ fn apply_clang_override(command: &mut Command, spec: &CommandSpec) {
     if spec.toolchain_env == CommandToolchainEnv::ForceClang {
         command.env("CC", "clang");
         command.env("CXX", "clang++");
+    }
+}
+
+fn apply_stderr_policy(command: &mut Command, spec: &CommandSpec) {
+    if spec.stderr == CommandStderr::Quiet {
+        command.stderr(Stdio::null());
+    } else {
+        command.stderr(Stdio::inherit());
     }
 }
 

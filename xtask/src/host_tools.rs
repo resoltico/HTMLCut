@@ -1,4 +1,4 @@
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv};
+use crate::model::{CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv};
 
 /// One actionable prerequisite that a host-tool-dependent maintainer flow checks before launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +15,7 @@ pub fn host_tool_probe_command(tool: &str) -> CommandSpec {
         CommandStdout::Quiet,
         CommandToolchainEnv::Inherit,
     )
+    .with_stderr(CommandStderr::Quiet)
 }
 
 /// Returns missing host tools for one maintained command.

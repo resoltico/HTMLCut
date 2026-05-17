@@ -523,17 +523,24 @@ fn check_plan_skips_devcontainer_validation_when_branch_diff_is_clean() {
 #[test]
 fn devcontainer_changed_file_args_fall_back_to_head_when_merge_base_is_unavailable() {
     let repo_root = tempdir().expect("tempdir");
+    let seen_quiet_stderr = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen_quiet_stderr_for_probe = std::rc::Rc::clone(&seen_quiet_stderr);
 
     let args = crate::command_exec::with_capture_command_output_override(
-        |_, spec| {
-            (spec.program == std::path::Path::new("git")
-                && spec.args == ["merge-base", "HEAD", "origin/main"])
-            .then(|| Err("merge-base unavailable".into()))
+        move |_, spec| {
+            if spec.program == std::path::Path::new("git")
+                && spec.args == ["merge-base", "HEAD", "origin/main"]
+            {
+                seen_quiet_stderr_for_probe.set(command_quiets_stderr(spec));
+                return Some(Err("merge-base unavailable".into()));
+            }
+            None
         },
         || crate::plan::devcontainer_changed_file_args_for_tests(repo_root.path()),
     )
     .expect("changed file args");
 
+    assert!(seen_quiet_stderr.get());
     assert_eq!(
         args,
         vec![

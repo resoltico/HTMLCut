@@ -193,6 +193,9 @@ That host-side gate intentionally exports `CARGO_TARGET_DIR` and `CARGO_BUILD_BU
 container shell so heavyweight Cargo artifacts stay on the mounted cache volume. The maintained
 `cargo xtask` flows honor those explicit caller-managed overrides inside the container instead of
 silently snapping back to the host-default sibling artifact root.
+Its watched-path probe also tolerates shallow or single-ref Git checkouts by falling back to
+`HEAD` when `origin/main` is not present locally, so contributor CI failures stay tied to the
+actual maintainer gate result instead of an incidental missing-ref warning.
 
 ## CI Gate Behavior
 

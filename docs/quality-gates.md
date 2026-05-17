@@ -292,5 +292,8 @@ reported or block merge.
 `xtask check` now mirrors the raw contributor-devcontainer validator automatically when the
 current branch differs from `origin/main` under the devcontainer gate's watched paths, so local
 maintainer verification catches bootstrap and devcontainer-contract regressions before PR CI does.
+When a checkout does not have a local `origin/main` ref — for example inside shallow or
+single-ref CI worktrees — the watched-path probe falls back cleanly to `HEAD` instead of
+misreporting a Git-ref failure as the real gate result.
 The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you
 want to run the full maintainer gate through the committed contributor container.

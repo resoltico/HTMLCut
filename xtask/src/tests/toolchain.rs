@@ -133,12 +133,29 @@ fn repo_toolchain_component_probe_commands_stay_in_sync_with_known_tools() {
         clippy_probe.args,
         vec!["run", "1.95.0", "cargo-clippy", "-V"]
     );
+    assert!(command_quiets_stderr(&clippy_probe));
     assert_eq!(rustfmt_probe.program, PathBuf::from("rustup"));
     assert_eq!(
         rustfmt_probe.args,
         vec!["run", "1.95.0", "rustfmt", "--version"]
     );
+    assert!(command_quiets_stderr(&rustfmt_probe));
     assert!(repo_toolchain_component_probe_command(&toolchain, "rust-docs").is_none());
+}
+
+#[test]
+fn repo_toolchain_probe_command_stays_quiet_on_both_streams() {
+    let toolchain = RepoToolchain {
+        channel: "1.95.0".to_owned(),
+        components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
+    };
+
+    let probe = repo_toolchain_probe_command(&toolchain);
+
+    assert_eq!(probe.program, PathBuf::from("rustup"));
+    assert_eq!(probe.args, vec!["run", "1.95.0", "rustc", "-Vv"]);
+    assert!(command_is_quiet(&probe));
+    assert!(command_quiets_stderr(&probe));
 }
 
 #[test]
