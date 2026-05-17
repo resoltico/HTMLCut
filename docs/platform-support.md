@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "10.0.0"
+version: "10.1.0"
 domain: PLATFORM
 updated: "2026-05-02"
 route:

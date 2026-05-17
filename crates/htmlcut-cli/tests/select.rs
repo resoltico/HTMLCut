@@ -21,6 +21,21 @@ fn select_text_output_extracts_text_for_humans() {
 }
 
 #[test]
+fn select_accepts_inline_html_as_a_first_class_source() {
+    let mut command = Command::cargo_bin("htmlcut").expect("binary");
+    command
+        .args([
+            "select",
+            "--input-html",
+            "<article><p>Hello <strong>world</strong></p></article>",
+        ])
+        .args(["--css", "article"])
+        .assert()
+        .success()
+        .stdout("Hello world\n");
+}
+
+#[test]
 fn select_text_output_preserves_ordered_lists_and_image_alt_text() {
     let tempdir = tempdir().expect("tempdir");
     let input_path = write_fixture(
@@ -69,6 +84,38 @@ fn select_text_output_honors_selected_element_semantics() {
         .assert()
         .success()
         .stdout("line 1\n  line 2\n");
+}
+
+#[test]
+fn select_text_output_preserves_selected_roots_that_only_look_like_utility_chrome() {
+    let tempdir = tempdir().expect("tempdir");
+    let status_path = write_fixture(
+        tempdir.path(),
+        "selected-status.html",
+        "<p class=\"status pricing report\">All Systems Operational</p>",
+    );
+    let nav_path = write_fixture(
+        tempdir.path(),
+        "selected-nav.html",
+        "<nav><a href=\"/docs\">Docs</a></nav>",
+    );
+
+    let mut status = Command::cargo_bin("htmlcut").expect("binary");
+    status
+        .args(["select"])
+        .arg(&status_path)
+        .args(["--css", "p"])
+        .assert()
+        .success()
+        .stdout("All Systems Operational\n");
+
+    let mut nav = Command::cargo_bin("htmlcut").expect("binary");
+    nav.args(["select"])
+        .arg(&nav_path)
+        .args(["--css", "nav"])
+        .assert()
+        .success()
+        .stdout("Docs [/docs]\n");
 }
 
 #[test]

@@ -6,6 +6,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
 
     let get_only_runtime = build_runtime(&SourceArgs {
         input: Some(fixture.input.clone()),
+        input_html: None,
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -23,6 +24,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     assert_eq!(
         build_source_request(&SourceArgs {
             input: None,
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -35,9 +37,29 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
         .code,
         "CLI_REQUIRED_PARAMETER_MISSING"
     );
+    assert_eq!(
+        build_source_request(&SourceArgs {
+            input: None,
+            input_html: Some("<article>Hello</article>".to_owned()),
+            base_url: None,
+            max_bytes: DEFAULT_MAX_BYTES.to_string(),
+            fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+            tls_trust: CliTlsTrustMode::WebPki,
+            tls_ca_bundle: None,
+            fetch_preflight: CliFetchPreflightMode::HeadFirst,
+        })
+        .expect("inline html source")
+        .input,
+        htmlcut_core::SourceInput::Memory {
+            label: "inline-html".to_owned(),
+            text: "<article>Hello</article>".to_owned(),
+        }
+    );
 
     let platform_runtime = build_runtime(&SourceArgs {
         input: Some(fixture.input.clone()),
+        input_html: None,
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -52,6 +74,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     let custom_bundle = fixture.tempdir.path().join("roots.pem");
     let custom_runtime = build_runtime(&SourceArgs {
         input: Some(fixture.input.clone()),
+        input_html: None,
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -71,6 +94,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     assert_eq!(
         build_runtime(&SourceArgs {
             input: Some(fixture.input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: 0,
@@ -86,6 +110,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     assert_eq!(
         build_runtime(&SourceArgs {
             input: Some(fixture.input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -101,6 +126,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     assert_eq!(
         build_runtime(&SourceArgs {
             input: Some(fixture.input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -116,6 +142,7 @@ fn request_file_runtime_builders_cover_get_only_and_missing_input() {
     assert_eq!(
         build_runtime(&SourceArgs {
             input: Some(fixture.input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

@@ -5,10 +5,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.1.0] - 2026-05-17
+
 ### Changed
 - Tightened the maintainer release protocol so release PR merge handoff no longer relies on
   `gh pr merge --delete-branch` from a disposable checked-out release worktree, avoiding false
   local merge-failure reports after a successful remote merge and branch deletion.
+- Promoted build-artifact hygiene to a first-class maintained system: Cargo now routes normal
+  workspace artifacts outside the repo root through committed `build.target-dir` and
+  `build.build-dir` ownership, `cargo xtask` gained `hygiene report|verify|clean` subcommands,
+  the maintainer Rust gates now enforce repo-local artifact hygiene before and after the command
+  plan, coverage now uses separate sibling managed roots instead of nesting inside the main Cargo
+  trees, hygiene reports count unique artifact bytes without double-counting diagnostic aggregates,
+  nested `cargo llvm-cov` worktrees are tagged and verified as managed coverage artifacts too,
+  ambient caller Cargo env no longer overrides the repo-owned artifact layout truth, and the
+  docs/devcontainer helpers now describe and honor the same artifact policy.
+- HTMLCut now canonically vendors the unreleased `servo_arc 0.4.3` and `tendril 0.5.0` selector
+  and parser-stack safety fixes inside `patches/rust`, `cargo xtask` gained a maintained strict-
+  provenance `miri` command plus a selector-safety Miri proof inside the main `check` gate, and
+  the contributor/devcontainer bootstrap now installs and validates the nightly `miri` and
+  `rust-src` components as part of the repository-owned maintainer toolchain contract.
+- The document text renderer now lives behind an explicit `document::text` subsystem with shared
+  structural vocabularies plus a dedicated reader-cleanup policy layer, and the CLI now exposes
+  in-memory HTML as a first-class `--input-html <HTML>` source instead of forcing literal-source
+  workflows through stdin.
+- `cargo xtask check` now treats the final coverage pass as the canonical maintained Rust package
+  execution owner, so `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` test targets
+  run once under coverage instead of being replayed earlier in the gate and then rerun again for
+  scoring.
+- The coverage gate now distinguishes declarative Rust sources from executable modules by parsing
+  tracked file shape, so module routers and constant vocabulary files remain part of the
+  maintained source inventory without being falsely reported as missing executable coverage.
+- `cargo xtask check` now mirrors the raw contributor-devcontainer validator automatically when
+  the current branch differs from `origin/main` under the devcontainer gate's watched paths, so
+  local maintainer verification catches contributor-container regressions before PR CI does while
+  `./scripts/devcontainer-check.sh` remains the dedicated full host-side container proof.
+
+### Fixed
+- The shipped selector-validation and selector-execution path no longer relies on the known Miri
+  provenance failures in upstream `servo_arc 0.4.3` and `tendril 0.5.0`, the maintained proof now
+  runs under strict provenance, and `NOTICE` now reflects the local patched dependencies truthfully
+  instead of listing `servo_arc` under the MPL-only Servo crates.
+- Standalone release packaging now resolves compiled binaries from Cargo's canonical target
+  directory instead of hardcoding repo-local `target/` paths, so the release smoke matrix stays in
+  lockstep with the managed artifact-root contract, the Windows cross-platform Rust gate no longer
+  trips over Unix-only hygiene test helpers, and the repo-owned `./scripts/xtask.sh` stable
+  launcher now builds `xtask`, copies the host binary outside the mutable Cargo artifact roots,
+  and runs that temporary copy so Windows does not deadlock on a live `xtask.exe` file lock.
+- Text extraction for explicit selections no longer discards the selected root merely because its
+  tag, role, or class looks like utility chrome, so `select` and `slice` now return readable text
+  for intentionally selected fragments such as status or pricing blocks while preserving reader-
+  cleanup behavior for descendants and whole-document review.
+- The contributor devcontainer bootstrap no longer fails when one sourced shell helper inherits
+  readonly `script_dir` or `repo_root` bindings from another, because the shared Rust tooling
+  helper now keeps its internal path state namespaced instead of colliding with caller shell
+  locals during release and CI validation, and the bootstrap now retries transient Rustup network
+  failures instead of treating one dropped TLS connection as a hard gate failure.
+- The contributor devcontainer maintainer gate now keeps `cargo xtask` on the same cache-root
+  contract as the surrounding container shell: explicit `CARGO_TARGET_DIR` and
+  `CARGO_BUILD_BUILD_DIR` overrides from the container entrypoint now win over the repo-default
+  sibling artifact layout, so the strict-provenance Miri preflight no longer falls back to an
+  unwritable sibling root during release and CI container runs.
+- The contributor devcontainer release gate now survives single-ref and shallow CI checkouts
+  cleanly: the watched-path probe falls back to `HEAD` when `origin/main` is absent locally, and
+  the shared shell helpers no longer trip ShellCheck on their Cargo-metadata fallback path during
+  the maintainer gate. The `xtask` command-execution proofs now run against isolated managed test
+  artifact roots instead of assuming the repo's sibling cache root is writable, so contributor CI
+  and local maintainer runs verify the same artifact-layout contract.
 
 ## [10.0.0] - 2026-05-14
 

@@ -55,6 +55,7 @@ validate_inner_runtime() {
     "${prepare_script}"
     rustc --version | grep -E '^rustc 1\.95\.0 '
     cargo +nightly llvm-cov --version >/dev/null
+    cargo +nightly miri --version >/dev/null
     cargo nextest --version >/dev/null
     cargo audit --version >/dev/null
     cargo deny --version >/dev/null
@@ -219,6 +220,7 @@ docker run --rm \
         touch /home/vscode/.cache/user-writable-marker
         rustc --version | grep -E "^rustc 1\\.95\\.0 "
         cargo +nightly llvm-cov --version >/dev/null
+        cargo +nightly miri --version >/dev/null
         cargo nextest --version >/dev/null
         cargo audit --version >/dev/null
         cargo deny --version >/dev/null
@@ -228,8 +230,9 @@ docker run --rm \
         cd /workspaces/htmlcut
         case "${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES}" in
             full)
-                export CARGO_TARGET_DIR=/tmp/htmlcut-target
-                cargo xtask --help >/dev/null
+                export CARGO_TARGET_DIR=/tmp/htmlcut-artifacts/target
+                export CARGO_BUILD_BUILD_DIR=/tmp/htmlcut-artifacts/build
+                ./scripts/xtask.sh --help >/dev/null
                 cargo run --quiet -- --help >/dev/null
                 ;;
             skip) ;;

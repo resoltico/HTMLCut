@@ -75,7 +75,8 @@ docker run "${docker_run_args[@]}" \
     "${image_tag}" bash -lc '
         set -euo pipefail
         ./scripts/devcontainer-prepare-user-home.sh
-        export CARGO_TARGET_DIR=/home/vscode/.cache/htmlcut-target
+        export CARGO_TARGET_DIR=/home/vscode/.cache/htmlcut-artifacts/target
+        export CARGO_BUILD_BUILD_DIR=/home/vscode/.cache/htmlcut-artifacts/build
         git config --global --add safe.directory /workspaces/htmlcut
         ./scripts/devcontainer-bootstrap.sh
         ./check.sh

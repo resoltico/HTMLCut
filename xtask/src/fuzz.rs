@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
+use crate::model::{
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
+    DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+};
 
 const FUZZ_SMOKE_TARGETS: [&str; 5] = [
     "parse_document_bytes",
@@ -77,7 +80,7 @@ pub fn fuzz_smoke_preflight_failures(
     let has_nightly_toolchain = toolchains_output
         .lines()
         .map(str::trim)
-        .any(|line| line.starts_with("nightly"));
+        .any(|line| line.starts_with(MAINTAINED_NIGHTLY_TOOLCHAIN_NAME));
 
     let mut failures = Vec::new();
     if !has_nightly_toolchain {
@@ -122,6 +125,8 @@ pub fn cargo_fuzz_probe_command() -> CommandSpec {
         CommandStdout::Quiet,
         CommandToolchainEnv::Inherit,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    .with_stderr(CommandStderr::Quiet)
 }
 
 /// Builds the non-mutating `cargo fuzz run` command used by the smoke workflow.
@@ -131,7 +136,7 @@ pub fn fuzz_smoke_command(target: &str, staged_corpus: &Path, runs: u32) -> DynR
     Ok(CommandSpec::new(
         "cargo",
         [
-            "+nightly".to_owned(),
+            MAINTAINED_NIGHTLY_TOOLCHAIN.to_owned(),
             "fuzz".to_owned(),
             "run".to_owned(),
             "--fuzz-dir".to_owned(),
@@ -145,7 +150,8 @@ pub fn fuzz_smoke_command(target: &str, staged_corpus: &Path, runs: u32) -> DynR
         ],
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
-    ))
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace))
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> DynResult<()> {

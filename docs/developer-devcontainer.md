@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.0.0"
+version: "10.1.0"
 domain: SETUP
-updated: "2026-05-13"
+updated: "2026-05-17"
 route:
-  keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check]
-  questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
+  keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check, miri]
+  questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "does the HTMLCut devcontainer install the nightly Miri proof too?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
 ---
 
 # Contributor Devcontainer Workflow
@@ -89,6 +89,7 @@ mounted-socket permission drift inside already-running editor sessions.
 ```bash
 rustc --version
 cargo nextest --version
+cargo +nightly miri --version
 ./scripts/validate-devcontainer.sh
 ./check.sh
 ```
@@ -97,6 +98,7 @@ Expected contributor shape:
 
 - `rustc --version` reports the exact stable pin from `rust-toolchain.toml` (currently `1.95.0`)
 - `cargo nextest --version` succeeds because the QA tool bootstrap completed
+- `cargo +nightly miri --version` succeeds because the nightly Miri components bootstrapped cleanly
 - `./scripts/validate-devcontainer.sh` succeeds
 - `./check.sh` succeeds from the container shell without requiring host-native Rust
 
@@ -134,7 +136,7 @@ One truthful workflow is:
 5. Verify the contributor shell:
 
    ```bash
-   devcontainer exec --workspace-folder . bash -lc 'rustc --version && cargo nextest --version && ./scripts/validate-devcontainer.sh'
+   devcontainer exec --workspace-folder . bash -lc 'rustc --version && cargo nextest --version && cargo +nightly miri --version && ./scripts/validate-devcontainer.sh'
    ```
 
 6. Run the full maintainer gate from the host through the committed contributor container:
@@ -179,13 +181,21 @@ That validator:
 - verifies the required system tools are present
 - proves the user-home repair script can recover root-owned cache and toolchain volumes
 - runs the Rust bootstrap against fresh named volumes
-- proves `cargo xtask --help` and repo-root `cargo run -- --help` start from inside the raw contributor image
+- proves `./scripts/xtask.sh --help` and repo-root `cargo run -- --help` start from inside the raw contributor image
 - proves the real devcontainer-client path can materialize the committed spec and run `devcontainer exec`
 
 The host-side `./scripts/devcontainer-check.sh` wrapper then replays the same contributor image,
 named volume contract, lifecycle scripts, and `./check.sh` entrypoint to run the full maintainer
 gate without requiring devcontainer-client orchestration for the long-running step. Use both host
 commands when you are changing the contributor-container surface itself.
+
+That host-side gate intentionally exports `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR` into the
+container shell so heavyweight Cargo artifacts stay on the mounted cache volume. The maintained
+`cargo xtask` flows honor those explicit caller-managed overrides inside the container instead of
+silently snapping back to the host-default sibling artifact root.
+Its watched-path probe also tolerates shallow or single-ref Git checkouts by falling back to
+`HEAD` when `origin/main` is not present locally, so contributor CI failures stay tied to the
+actual maintainer gate result instead of an incidental missing-ref warning.
 
 ## CI Gate Behavior
 
@@ -199,6 +209,7 @@ set that triggers it:
 - `scripts/devcontainer-bootstrap.sh`
 - `scripts/devcontainer-cli-helper.Dockerfile`
 - `scripts/common.sh`
+- `scripts/xtask.sh`
 - `check.sh` — the script the gate runs inside the container
 
 PRs that touch only application code, documentation, or tests do not trigger the devcontainer gate.

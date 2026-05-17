@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "10.0.0"
+version: "10.1.0"
 domain: INTEROP
 updated: "2026-05-05"
 route:
@@ -154,7 +154,8 @@ Every successful `htmlcut.result` carries one top-level `output` object that rec
 published output contract. Every `SelectedMatch` then carries:
 
 - `output_value` for the exact requested output payload
-- `text_output`
+- `text_output`, which uses the selected-match text projection rather than whole-document
+  reader cleanup for the selected root itself
 - `selected_html_output` when the strategy is `delimiter_pair`
 - `inner_html_output`, which for `delimiter_pair` means the HTML between the two matched
   boundaries

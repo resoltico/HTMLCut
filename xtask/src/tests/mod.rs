@@ -14,7 +14,7 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    CommandSpec::new(
+    let spec = CommandSpec::new(
         program,
         args,
         if quiet_stdout {
@@ -27,15 +27,53 @@ where
         } else {
             CommandToolchainEnv::Inherit
         },
-    )
+    );
+
+    if spec.program == Path::new("cargo") {
+        spec.with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    } else {
+        spec
+    }
 }
 
 fn command_is_quiet(command: &CommandSpec) -> bool {
     matches!(command.stdout, CommandStdout::Quiet)
 }
 
+fn command_quiets_stderr(command: &CommandSpec) -> bool {
+    matches!(command.stderr, CommandStderr::Quiet)
+}
+
 fn command_forces_clang(command: &CommandSpec) -> bool {
     matches!(command.toolchain_env, CommandToolchainEnv::ForceClang)
+}
+
+fn command_uses_managed_workspace_artifacts(command: &CommandSpec) -> bool {
+    matches!(
+        command.artifact_layout,
+        CommandArtifactLayout::ManagedWorkspace
+    )
+}
+
+fn command_uses_managed_coverage_artifacts(command: &CommandSpec) -> bool {
+    matches!(
+        command.artifact_layout,
+        CommandArtifactLayout::ManagedCoverage
+    )
+}
+
+fn with_isolated_managed_workspace_artifacts<T>(
+    operation: impl FnOnce(&Path, PathBuf, PathBuf) -> T,
+) -> T {
+    let repo_root = tempdir().expect("tempdir");
+    let target_dir = repo_root.path().join(".managed-artifacts").join("target");
+    let build_dir = repo_root.path().join(".managed-artifacts").join("build");
+
+    crate::plan::with_cargo_artifact_dir_overrides_for_tests(
+        target_dir.clone(),
+        build_dir.clone(),
+        || operation(repo_root.path(), target_dir, build_dir),
+    )
 }
 
 fn write_repo_scaffold(repo_root: &Path) {
@@ -128,6 +166,9 @@ mod devcontainer;
 mod docs;
 mod fuzz;
 mod host_tools;
+mod hygiene;
+mod miri;
+mod outdated;
 mod plan;
 mod policy;
 mod preflight;
@@ -135,7 +176,13 @@ mod release;
 mod toolchain;
 mod versions;
 
-fn seed_tracked_files(repo_root: &Path) -> BTreeMap<PathBuf, String> {
+fn write_executable_tracked_source(file_path: &Path) {
+    fs::create_dir_all(file_path.parent().expect("parent")).expect("create dir");
+    fs::write(file_path, "pub(crate) fn tracked() -> usize {\n    1\n}\n")
+        .expect("write tracked file");
+}
+
+fn seed_tracked_files(repo_root: &Path) -> BTreeMap<PathBuf, TrackedCoverageFile> {
     for relative_path in [
         "crates/htmlcut-core/src/catalog.rs",
         "crates/htmlcut-core/src/contracts/mod.rs",
@@ -147,18 +194,19 @@ fn seed_tracked_files(repo_root: &Path) -> BTreeMap<PathBuf, String> {
     .chain(COVERAGE_EXCLUDED_RELATIVE_PATHS.iter().copied())
     {
         let file_path = repo_root.join(relative_path);
-        fs::create_dir_all(file_path.parent().expect("parent")).expect("create dir");
-        fs::write(&file_path, "// tracked\n").expect("write tracked file");
+        write_executable_tracked_source(&file_path);
     }
 
     tracked_files(repo_root).expect("tracked files")
 }
 
-fn tracked_subset(repo_root: &Path, relative_paths: &[&str]) -> BTreeMap<PathBuf, String> {
+fn tracked_subset(
+    repo_root: &Path,
+    relative_paths: &[&str],
+) -> BTreeMap<PathBuf, TrackedCoverageFile> {
     for relative_path in relative_paths {
         let file_path = repo_root.join(relative_path);
-        fs::create_dir_all(file_path.parent().expect("parent")).expect("create dir");
-        fs::write(&file_path, "// tracked\n").expect("write tracked file");
+        write_executable_tracked_source(&file_path);
     }
 
     relative_paths
@@ -166,7 +214,7 @@ fn tracked_subset(repo_root: &Path, relative_paths: &[&str]) -> BTreeMap<PathBuf
         .map(|relative_path| {
             (
                 normalize_path(repo_root, &repo_root.join(relative_path)).expect("path"),
-                (*relative_path).to_owned(),
+                TrackedCoverageFile::executable(*relative_path),
             )
         })
         .collect()

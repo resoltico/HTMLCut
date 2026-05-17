@@ -4,11 +4,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::command_exec::repo_worktree_files;
-use crate::model::{COVERAGE_EXCLUDED_RELATIVE_PATHS, COVERAGE_SOURCE_ROOTS, DynResult};
+use crate::coverage::syntax::coverage_source_kind;
+use crate::model::{
+    COVERAGE_EXCLUDED_RELATIVE_PATHS, COVERAGE_SOURCE_ROOTS, CoverageSourceKind, DynResult,
+    TrackedCoverageFile,
+};
 use crate::plan::normalize_path;
 
 /// Loads the curated set of production files that the coverage gate tracks.
-pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, String>> {
+pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, TrackedCoverageFile>> {
     let mut tracked_files = BTreeMap::new();
     let excluded_paths = coverage_excluded_paths();
 
@@ -36,7 +40,7 @@ fn collect_tracked_files(
     repo_root: &Path,
     current_path: &Path,
     excluded_paths: &BTreeSet<&str>,
-    tracked_files: &mut BTreeMap<PathBuf, String>,
+    tracked_files: &mut BTreeMap<PathBuf, TrackedCoverageFile>,
 ) -> DynResult<()> {
     if !current_path.is_dir() {
         return Ok(());
@@ -62,7 +66,10 @@ fn collect_tracked_files(
             continue;
         }
 
-        tracked_files.insert(absolute_path, relative_path);
+        tracked_files.insert(
+            absolute_path.clone(),
+            tracked_coverage_file(&absolute_path, relative_path)?,
+        );
     }
 
     Ok(())
@@ -72,7 +79,7 @@ fn collect_inventory_tracked_files(
     repo_root: &Path,
     paths: &[PathBuf],
     excluded_paths: &BTreeSet<&str>,
-    tracked_files: &mut BTreeMap<PathBuf, String>,
+    tracked_files: &mut BTreeMap<PathBuf, TrackedCoverageFile>,
 ) -> DynResult<()> {
     for path in paths {
         if path.extension() != Some(OsStr::new("rs")) {
@@ -87,10 +94,23 @@ fn collect_inventory_tracked_files(
             continue;
         }
 
-        tracked_files.insert(absolute_path, relative_path);
+        tracked_files.insert(
+            absolute_path.clone(),
+            tracked_coverage_file(&absolute_path, relative_path)?,
+        );
     }
 
     Ok(())
+}
+
+fn tracked_coverage_file(
+    absolute_path: &Path,
+    display_path: String,
+) -> DynResult<TrackedCoverageFile> {
+    Ok(match coverage_source_kind(absolute_path)? {
+        CoverageSourceKind::Executable => TrackedCoverageFile::executable(display_path),
+        CoverageSourceKind::DeclarativeOnly => TrackedCoverageFile::declarative_only(display_path),
+    })
 }
 
 fn is_under_coverage_root(relative_path: &str) -> bool {

@@ -208,6 +208,300 @@ source "{repo_root}/scripts/common.sh"
 }
 
 #[test]
+fn release_shell_helpers_resolve_the_configured_cargo_target_dir() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::create_dir_all(repo_root.path().join("src")).expect("create src dir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-release-helper-smoke\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        repo_root.path().join("src").join("main.rs"),
+        "fn main() {}\n",
+    )
+    .expect("write main.rs");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let canonical_repo_root = fs::canonicalize(repo_root.path()).expect("canonicalize temp repo");
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+unset CARGO_TARGET_DIR
+source "{helper_repo_root}/scripts/common.sh"
+[[ "$(htmlcut_cargo_target_dir "{repo_root}")" == "{expected_target}" ]]
+[[ "$(htmlcut_cargo_compiled_binary_path "{repo_root}" "aarch64-apple-darwin" "dist" "htmlcut")" == "{expected_binary}" ]]
+"#,
+            helper_repo_root = helper_repo_root_for_bash,
+            repo_root = repo_root_for_bash,
+            expected_target = crate::release::bash_source_argument_for_tests(
+                &canonical_repo_root.join("../.managed-artifacts/target")
+            ),
+            expected_binary = crate::release::bash_source_argument_for_tests(
+                &canonical_repo_root
+                    .join("../.managed-artifacts/target")
+                    .join("aarch64-apple-darwin")
+                    .join("dist")
+                    .join("htmlcut"),
+            ),
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run cargo target helper smoke");
+
+    assert!(
+        output.status.success(),
+        "cargo target helper smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn release_shell_helpers_prefer_cargo_target_dir_environment_overrides() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::create_dir_all(repo_root.path().join("src")).expect("create src dir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-release-helper-smoke\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        repo_root.path().join("src").join("main.rs"),
+        "fn main() {}\n",
+    )
+    .expect("write main.rs");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+export CARGO_TARGET_DIR="./tmp/override-target"
+source "{helper_repo_root}/scripts/common.sh"
+[[ "$(htmlcut_cargo_target_dir "{repo_root}")" == "{expected_target}" ]]
+"#,
+            helper_repo_root = helper_repo_root_for_bash,
+            repo_root = repo_root_for_bash,
+            expected_target = crate::release::bash_source_argument_for_tests(
+                &repo_root.path().join("./tmp/override-target")
+            ),
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run cargo target env-override smoke");
+
+    assert!(
+        output.status.success(),
+        "cargo target env-override smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn release_shell_helpers_resolve_host_binary_paths_for_unix_and_windows() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::create_dir_all(repo_root.path().join("src")).expect("create src dir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[package]\nname = \"htmlcut-release-helper-smoke\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        repo_root.path().join("src").join("main.rs"),
+        "fn main() {}\n",
+    )
+    .expect("write main.rs");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let canonical_repo_root = fs::canonicalize(repo_root.path()).expect("canonicalize temp repo");
+    let unix_binary = canonical_repo_root
+        .join("../.managed-artifacts/target")
+        .join("debug")
+        .join("xtask");
+    let windows_binary = canonical_repo_root
+        .join("../.managed-artifacts/target")
+        .join("debug")
+        .join("xtask.exe");
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+source "{helper_repo_root}/scripts/common.sh"
+unset CARGO_TARGET_DIR
+unset OS
+[[ "$(htmlcut_cargo_host_binary_path "{repo_root}" "debug" "xtask")" == "{expected_unix}" ]]
+export OS=Windows_NT
+[[ "$(htmlcut_cargo_host_binary_path "{repo_root}" "debug" "xtask")" == "{expected_windows}" ]]
+"#,
+            helper_repo_root = helper_repo_root_for_bash,
+            repo_root = repo_root_for_bash,
+            expected_unix = crate::release::bash_source_argument_for_tests(&unix_binary),
+            expected_windows = crate::release::bash_source_argument_for_tests(&windows_binary),
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run host-binary helper smoke");
+
+    assert!(
+        output.status.success(),
+        "host-binary helper smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn stable_xtask_launcher_runs_a_temp_copy_outside_the_managed_target_root() {
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let repo_root = tempdir().expect("tempdir");
+    let scripts_dir = repo_root.path().join("scripts");
+    fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+    fs::create_dir_all(repo_root.path().join(".cargo")).expect("create .cargo dir");
+    fs::write(
+        repo_root.path().join(".cargo").join("config.toml"),
+        "[build]\ntarget-dir = \"../.managed-artifacts/target\"\n",
+    )
+    .expect("write cargo config");
+    fs::copy(
+        actual_repo_root.join("scripts").join("common.sh"),
+        scripts_dir.join("common.sh"),
+    )
+    .expect("copy common.sh");
+    fs::copy(
+        actual_repo_root.join("scripts").join("xtask.sh"),
+        scripts_dir.join("xtask.sh"),
+    )
+    .expect("copy xtask.sh");
+
+    let fake_bin = repo_root.path().join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("create fake-bin");
+    let log_path = repo_root.path().join("xtask-wrapper.log");
+    let args_path = repo_root.path().join("cargo-build.log");
+    let managed_target_root = fs::canonicalize(repo_root.path())
+        .expect("canonicalize repo root")
+        .join("../.managed-artifacts/target");
+    let managed_target_root_for_bash =
+        crate::release::bash_source_argument_for_tests(&managed_target_root);
+    let log_path_for_bash = crate::release::bash_source_argument_for_tests(&log_path);
+    let args_path_for_bash = crate::release::bash_source_argument_for_tests(&args_path);
+
+    fs::write(
+        fake_bin.join("cargo"),
+        format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" > "{args_path}"
+[[ "$1" == "build" ]]
+[[ "$2" == "-p" ]]
+[[ "$3" == "xtask" ]]
+[[ "$4" == "--locked" ]]
+target_root="{managed_target_root}"
+mkdir -p "${{target_root}}/debug"
+cat > "${{target_root}}/debug/xtask.exe" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == "ci-rust-gate" ]]
+case "$0" in
+  "{managed_target_root}"/*) exit 42 ;;
+esac
+printf '%s\n' "$0" > "{log_path}"
+EOF
+chmod +x "${{target_root}}/debug/xtask.exe"
+"#,
+            args_path = args_path_for_bash,
+            managed_target_root = managed_target_root_for_bash,
+            log_path = log_path_for_bash,
+        ),
+    )
+    .expect("write fake cargo");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(fake_bin.join("cargo"), fs::Permissions::from_mode(0o755))
+            .expect("chmod fake cargo");
+    }
+
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
+    let fake_bin_for_bash = crate::release::bash_source_argument_for_tests(&fake_bin);
+    let output = bash_command()
+        .arg("-c")
+        .arg(format!(
+            r#"set -euo pipefail
+export PATH="{fake_bin}:$PATH"
+export OS=Windows_NT
+export CARGO_TARGET_DIR="{managed_target_root}"
+cd "{repo_root}"
+bash ./scripts/xtask.sh ci-rust-gate
+"#,
+            fake_bin = fake_bin_for_bash,
+            managed_target_root = managed_target_root_for_bash,
+            repo_root = repo_root_for_bash,
+        ))
+        .current_dir(repo_root.path())
+        .output()
+        .expect("run stable xtask launcher smoke");
+
+    assert!(
+        output.status.success(),
+        "stable xtask launcher smoke failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&args_path).expect("read cargo args"),
+        "build -p xtask --locked\n"
+    );
+    let executed_path = fs::read_to_string(&log_path)
+        .expect("read executed path")
+        .trim()
+        .to_owned();
+    assert!(
+        !executed_path.starts_with(&format!("{}/", managed_target_root_for_bash)),
+        "stable xtask launcher must execute a temp copy outside the managed target root: {executed_path}"
+    );
+}
+
+#[test]
 fn release_shell_helpers_normalize_windows_source_paths() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -234,6 +528,23 @@ source "{repo_root}/scripts/common.sh"
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn maintained_gate_surfaces_use_the_stable_xtask_launcher() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let root_check = fs::read_to_string(repo_root.join("check.sh")).expect("read check.sh");
+    let workflow = fs::read_to_string(repo_root.join(".github").join("workflows").join("ci.yml"))
+        .expect("read ci.yml");
+
+    assert!(root_check.contains("./scripts/xtask.sh check"));
+    assert!(workflow.contains("./scripts/xtask.sh ci-rust-gate"));
+    assert!(workflow.contains("'scripts/xtask.sh'"));
+    assert!(workflow.contains("..\\.htmlcut-artifacts"));
+    assert!(workflow.contains("Join-Path $artifactRoot \"target\""));
+    assert!(workflow.contains("Join-Path $artifactRoot \"build\""));
 }
 
 #[test]
@@ -462,8 +773,14 @@ fn release_build_script_generates_a_package_specific_readme() {
         .expect("read build-release-artifact.sh");
 
     assert!(script.contains("write_packaged_readme"));
+    assert!(script.contains("htmlcut_cargo_compiled_binary_path"));
     assert!(script.contains("package-specific install and verification guide"));
     assert!(!script.contains("sed '/^<!--$/,/^-->$/d' \"${repo_root}/README.md\""));
+    assert!(
+        !script.contains(
+            "${repo_root}/target/${target_triple}/${cargo_profile}/${compiled_binary_name}"
+        )
+    );
 }
 
 #[test]

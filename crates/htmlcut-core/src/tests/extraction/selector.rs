@@ -103,6 +103,28 @@ fn selector_match_builder_renders_selected_element_semantics() {
 }
 
 #[test]
+fn selector_match_builder_preserves_selected_roots_that_only_look_like_utility_chrome() {
+    let request =
+        selector_request("<p class=\"status pricing report\">All Systems Operational</p>");
+    let document =
+        parse_document_node("<p class=\"status pricing report\">All Systems Operational</p>");
+    let node = select_first(&document, "p").expect("status");
+
+    let matched = build_selector_match(&request, &node, &node, 1, 1, 1, 1).expect("match");
+
+    assert_eq!(matched.value.as_str(), Some("All Systems Operational"));
+    assert_eq!(matched.text.as_deref(), Some("All Systems Operational"));
+
+    let nav_request = selector_request("<nav><a href=\"/docs\">Docs</a></nav>");
+    let nav_document = parse_document_node("<nav><a href=\"/docs\">Docs</a></nav>");
+    let nav = select_first(&nav_document, "nav").expect("nav");
+    let nav_match = build_selector_match(&nav_request, &nav, &nav, 1, 1, 1, 1).expect("nav");
+
+    assert_eq!(nav_match.value.as_str(), Some("Docs [/docs]"));
+    assert_eq!(nav_match.text.as_deref(), Some("Docs [/docs]"));
+}
+
+#[test]
 fn selector_match_builder_uses_resolved_links_for_text_projection() {
     let request = ExtractionRequest::new(
         SourceRequest::memory(

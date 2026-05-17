@@ -7,7 +7,8 @@ use crate::model::{
 use crate::{
     FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, cargo_fuzz_probe_command,
     coverage_preflight_failures, coverage_preflight_message, host_tool_preflight_failures,
-    host_tool_preflight_message, host_tool_probe_command, repo_toolchain,
+    host_tool_preflight_message, host_tool_probe_command, miri_preflight_failures,
+    miri_preflight_message, miri_probe_command, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
     repo_toolchain_preflight_message, repo_toolchain_probe_command,
 };
@@ -79,6 +80,39 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
     if let Some(message) = coverage_preflight_error(&toolchains, &components, |tool| {
         capture_command_output(repo_root, &host_tool_probe_command(tool)).is_ok()
     }) {
+        Err(message.into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Validates nightly plus Miri prerequisites before the maintained strict-provenance selector-safety proof starts.
+pub fn ensure_miri_prerequisites(repo_root: &Path) -> DynResult<()> {
+    let toolchains = capture_utf8(
+        repo_root,
+        &CommandSpec::new(
+            "rustup",
+            ["toolchain", "list"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
+        ),
+        "Miri preflight could not query rustup toolchains",
+        "Miri preflight received invalid rustup output",
+    )?;
+    let components = capture_utf8(
+        repo_root,
+        &CommandSpec::new(
+            "rustup",
+            ["component", "list", "--toolchain", "nightly", "--installed"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
+        ),
+        "Miri preflight could not query nightly components",
+        "Miri preflight received invalid component output",
+    )?;
+    let miri_binary_runs = capture_command_output(repo_root, &miri_probe_command()).is_ok();
+
+    if let Some(message) = miri_preflight_error(&toolchains, &components, miri_binary_runs) {
         Err(message.into())
     } else {
         Ok(())
@@ -182,6 +216,19 @@ where
     clang_toolchain_preflight_error("coverage", has_host_tool)
 }
 
+fn miri_preflight_error(
+    toolchains_output: &str,
+    installed_components_output: &str,
+    miri_binary_runs: bool,
+) -> Option<String> {
+    let failures = miri_preflight_failures(
+        toolchains_output,
+        installed_components_output,
+        miri_binary_runs,
+    );
+    (!failures.is_empty()).then(|| miri_preflight_message(&failures))
+}
+
 fn fuzz_smoke_preflight_error<F>(
     toolchains_output: &str,
     cargo_fuzz_installed: bool,
@@ -239,6 +286,19 @@ where
         toolchains_output,
         installed_components_output,
         has_host_tool,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn miri_preflight_error_for_tests(
+    toolchains_output: &str,
+    installed_components_output: &str,
+    miri_binary_runs: bool,
+) -> Option<String> {
+    miri_preflight_error(
+        toolchains_output,
+        installed_components_output,
+        miri_binary_runs,
     )
 }
 

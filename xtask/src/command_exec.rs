@@ -3,7 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
+use crate::model::{CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv, DynResult};
+use crate::prepare_artifact_layout;
 
 #[cfg(test)]
 use std::cell::RefCell;
@@ -35,8 +36,10 @@ pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     } else {
         command.stdout(Stdio::inherit());
     }
-    command.stderr(Stdio::inherit());
+    apply_stderr_policy(&mut command, spec);
     apply_clang_override(&mut command, spec);
+    apply_artifact_layout(&mut command, repo_root, spec)?;
+    apply_command_environment(&mut command, spec);
 
     let status = command.status()?;
     if status.success() {
@@ -58,8 +61,10 @@ pub fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult
     command.args(&spec.args);
     command.stdin(Stdio::null());
     command.stdout(Stdio::piped());
-    command.stderr(Stdio::inherit());
+    apply_stderr_policy(&mut command, spec);
     apply_clang_override(&mut command, spec);
+    apply_artifact_layout(&mut command, repo_root, spec)?;
+    apply_command_environment(&mut command, spec);
 
     let output = command.output()?;
     if output.status.success() {
@@ -129,6 +134,47 @@ fn apply_clang_override(command: &mut Command, spec: &CommandSpec) {
         command.env("CC", "clang");
         command.env("CXX", "clang++");
     }
+}
+
+fn apply_stderr_policy(command: &mut Command, spec: &CommandSpec) {
+    if spec.stderr == CommandStderr::Quiet {
+        command.stderr(Stdio::null());
+    } else {
+        command.stderr(Stdio::inherit());
+    }
+}
+
+fn apply_artifact_layout(
+    command: &mut Command,
+    repo_root: &Path,
+    spec: &CommandSpec,
+) -> DynResult<()> {
+    let Some((target_dir, build_dir)) = prepare_artifact_layout(repo_root, spec.artifact_layout)?
+    else {
+        return Ok(());
+    };
+
+    command.env("CARGO_TARGET_DIR", target_dir);
+    command.env("CARGO_BUILD_BUILD_DIR", build_dir);
+    Ok(())
+}
+
+fn apply_command_environment(command: &mut Command, spec: &CommandSpec) {
+    for (key, value) in &spec.env {
+        command.env(key, value);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn command_environment_for_tests(
+    spec: &CommandSpec,
+) -> Vec<(std::ffi::OsString, Option<std::ffi::OsString>)> {
+    let mut command = Command::new(&spec.program);
+    apply_command_environment(&mut command, spec);
+    command
+        .get_envs()
+        .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsString::from)))
+        .collect()
 }
 
 #[cfg(test)]

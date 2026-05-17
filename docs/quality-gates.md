@@ -1,16 +1,18 @@
 ---
 afad: "4.0"
-version: "10.0.0"
+version: "10.1.0"
 domain: QUALITY
-updated: "2026-05-13"
+updated: "2026-05-17"
 route:
-  keywords: [quality gates, cargo xtask, coverage, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check]
-  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?"]
+  keywords: [quality gates, cargo xtask, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
+  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-safety Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
 
-HTMLCut uses `cargo xtask` as the maintainer gate surface.
+HTMLCut uses `xtask` as the maintainer gate surface. `cargo xtask ...` is the native subcommand
+interface, and `./scripts/xtask.sh ...` is the stable repo-owned launcher for maintained workflows
+that must run outside Cargo's mutable artifact roots.
 
 Contributor workflow lives in [../CONTRIBUTING.md](../CONTRIBUTING.md). Contract-versioning policy
 lives in [versioning-policy.md](versioning-policy.md).
@@ -24,9 +26,10 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred con
 workflow on Ubuntu `24.04`.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
-Nightly is installed alongside it for the coverage gate and for live `cargo-fuzz` campaigns
-because `cargo +nightly llvm-cov --branch` and `cargo +nightly fuzz ...` both need nightly. The
-workspace manifest carries the published compatibility floor separately through
+Nightly is installed alongside it for the strict-provenance selector-safety Miri proof, the
+coverage gate, and live `cargo-fuzz` campaigns because `cargo xtask miri`, `cargo +nightly
+llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly. The workspace manifest carries the
+published compatibility floor separately through
 `[workspace.package] rust-version = "1.95"`.
 
 The LLVM-backed `cargo xtask coverage` and `cargo xtask fuzz-smoke` commands both launch Cargo
@@ -41,23 +44,52 @@ Run the full maintainer gate through the repo wrapper:
 ./check.sh
 ```
 
-The wrapper delegates to `cargo xtask check`. Running xtask directly is equivalent:
+The stable repo-owned launcher behind that wrapper is:
 
 ```bash
-cargo xtask check
+./scripts/xtask.sh check
 ```
 
 Run the curated cross-platform CI Rust subset locally:
 
 ```bash
-cargo xtask ci-rust-gate
+./scripts/xtask.sh ci-rust-gate
 ```
 
 Run only coverage:
 
 ```bash
-cargo xtask coverage
+./scripts/xtask.sh coverage
 ```
+
+Run only the strict-provenance selector-safety Miri proof:
+
+```bash
+./scripts/xtask.sh miri
+```
+
+Run only the maintained dependency-freshness gate:
+
+```bash
+./scripts/xtask.sh outdated-check
+```
+
+Inspect or repair artifact hygiene:
+
+```bash
+./scripts/xtask.sh hygiene report
+./scripts/xtask.sh hygiene clean --mode rebuildable
+```
+
+Direct `cargo xtask ...` remains useful for interactive work on `xtask` itself, but the
+maintained gate, CI, and release protocol use `./scripts/xtask.sh ...` so the driver process never
+holds a live executable lock inside the managed Cargo artifact tree.
+
+The hygiene contract is repo-owned: the committed `.cargo/config.toml` defines the default
+artifact layout, and `cargo xtask` honors explicit caller-managed `CARGO_TARGET_DIR` /
+`CARGO_BUILD_BUILD_DIR` overrides only when the caller intentionally sets them for a boundary such
+as the contributor container. The coverage gate also manages and tags the nested
+`llvm-cov-target` worktrees that `cargo llvm-cov` creates inside the sibling coverage roots.
 
 Validate the committed contributor devcontainer:
 
@@ -83,7 +115,9 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 
 - shell script syntax and `shellcheck`
 - `cargo fmt --check`
-- the full `xtask` library test suite, including docs-contract checks, gate-plan invariants, coverage-scoring invariants, release-target/asset doc drift against `scripts/release-targets.sh`, and workspace `rust-version` manifest enforcement
+- the final curated coverage pass, which is the canonical execution owner for the maintained
+  `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` package test targets instead of
+  replaying those same inventories earlier in `cargo xtask check`
 - recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields, version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
 - targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical registries
 - clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical `htmlcut_cli::contract` registry
@@ -92,18 +126,18 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   workspace build
 - `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
   URL requests fail cleanly unless the `http-client` feature is explicitly enabled
+- the maintained selector-validation and selector-execution safety proof through `cargo xtask
+  miri`, which runs `cargo +nightly miri test -p htmlcut-core --lib --no-default-features
+  --locked tests::extract_api::selector_contract_remains_miri_sound -- --exact` with
+  `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
-- direct dependency freshness across the workspace manifests
+- direct dependency freshness across the workspace manifests through `cargo xtask outdated-check`,
+  which materializes a sanitized temporary workspace so repo-owned local path patches do not break
+  the freshness check itself
 - RustSec advisory auditing with warnings denied
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `scripts/release-targets.sh` registry for the target list plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
-- the full `htmlcut-core` all-features library harness through `cargo test -p htmlcut-core
-  --lib --all-features --locked`, including public extraction examples, request/response contract
-  coverage, interop acceptance fixtures, and deterministic property tests without spawning
-  separate core test binaries
-- `htmlcut-cli` library/integration tests through deterministic package-level `cargo test`
-- `htmlcut-tempdir` library/integration tests through `cargo nextest`
 - workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v1.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
 - compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
 - distribution-profile CLI build-and-launch smoke
@@ -111,14 +145,16 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - CLI/core parity checks through a matrix-driven integration suite that compares CLI JSON reports with direct `htmlcut-core` results
 
 Before any of those gate steps begin, `cargo xtask check` preflights the exact repository
-toolchain declared in `rust-toolchain.toml`. If the pinned compiler itself is missing, if its
-required `clippy`/`rustfmt` components are absent, or if those binaries are still not runnable
-despite rustup claiming the components are installed, the gate stops immediately with the exact
-`rustup` repair command instead of failing later inside `cargo clippy` or `cargo fmt`.
+toolchain declared in `rust-toolchain.toml`, the nightly Miri prerequisites, and the nightly
+coverage prerequisites. If the pinned compiler itself is missing, if its required
+`clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if
+`cargo +nightly miri --version` is broken despite rustup reporting the components, or if the
+coverage prerequisites are absent, the gate stops immediately with the exact repair command
+instead of failing later inside the Rust gate.
 
-The cross-platform CI Rust lane uses `cargo xtask ci-rust-gate`, which is built from the same
-`xtask` command-plan module as the local gate instead of maintaining a second hard-coded command
-inventory in GitHub Actions.
+The cross-platform CI Rust lane uses `./scripts/xtask.sh ci-rust-gate`, which still delegates to
+the same `xtask` command-plan module as the local gate instead of maintaining a second hard-coded
+command inventory in GitHub Actions.
 
 The same preflight also refuses to run semver checks against a dirty
 `semver-baseline/htmlcut-core` tree. That baseline is the frozen last-published API snapshot, so
@@ -128,24 +164,35 @@ version for that snapshot in `semver-baseline/htmlcut-core/BASELINE.toml`.
 
 The coverage command fails before any coverage build starts if the nightly toolchain or
 `llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean
-`cargo llvm-cov` scratch tree, runs coverage against the maintained `htmlcut-core`,
-`htmlcut-cli`, and `xtask` packages directly, deduplicates duplicate branch spans emitted by Rust
-lowering, and then enforces the 100% line and branch bar across the maintained executable module
-set. That bar is intentional: HTMLCut treats those tracked files as contract-critical logic, not
-aspirational best effort. The tracked set is derived from the maintained non-ignored worktree
-inventory under the `htmlcut-core`, `htmlcut-cli`, and `xtask` source roots, with explicit
-exclusions for declarative/report-model modules, thin binary entrypoints, and internal test-only
-source trees. That keeps the gate aligned automatically when the maintained CLI/core seams split
-into new executable modules while keeping ignored scratch files and libFuzzer binaries out of the
-coverage runner.
+`cargo llvm-cov` scratch tree, executes the maintained `htmlcut-core`, `htmlcut-cli`,
+`htmlcut-tempdir`, and `xtask` package test targets once under coverage, deduplicates duplicate
+branch spans emitted by Rust lowering, and then enforces the 100% line and branch bar across the
+maintained executable module set. That bar is intentional: HTMLCut treats those tracked files as
+contract-critical logic, not aspirational best effort. The scored tracked set is derived from the
+maintained non-ignored worktree inventory under the `htmlcut-core`, `htmlcut-cli`, and `xtask`
+source roots, with explicit exclusions for declarative/report-model modules, thin binary
+entrypoints, and internal test-only source trees. `htmlcut-tempdir` participates in the canonical
+execution pass because it is a maintained support crate, even though its helper-only code does not
+add scored tracked modules to the 100% coverage ledger. That keeps the gate aligned automatically
+when the maintained CLI/core seams split into new executable modules while keeping ignored scratch
+files and libFuzzer binaries out of the coverage runner. The coverage scorer now also classifies
+tracked Rust sources by syntax shape, so declarative-only files such as module routers, pure type
+surfaces, and constant vocabularies stay in the maintained source inventory without being
+misreported as missing executable coverage.
 
-The gate also treats the heaviest scratch directories as disposable:
+The gate also treats artifact hygiene as a maintained invariant:
 
-- coverage work under `target/llvm-cov-target` is cleaned again after scoring completes
-- semver scratch under `target/semver-checks` is pruned before and after the semver step
+- Cargo's default workspace output is routed outside the repo root by the committed
+  [../.cargo/config.toml](../.cargo/config.toml)
+- the coverage gate uses its own sibling managed coverage roots instead of nesting inside the main
+  workspace artifact trees
+- semver scratch is pruned before and after the semver step
+- `xtask`'s maintained gate commands run a safe hygiene cleanup plus a hygiene verification pass
+  before and after their command plans, regardless of whether you entered through `cargo xtask ...`
+  or the stable `./scripts/xtask.sh ...` launcher
 
-Persistent `target/` growth should therefore come mostly from normal developer build caches rather
-than stale gate-specific scratch trees.
+Use [hygiene.md](hygiene.md) for the artifact-root inventory, cleanup modes, and disk-usage
+workflow.
 
 Default repository search also stays focused on maintained live code: `.ignore` excludes the frozen
 `semver-baseline/` snapshot from normal `rg`/`fd` discovery so symbol search does not mix the live
@@ -156,7 +203,7 @@ Short live libFuzzer smoke is intentionally a separate maintainer step rather th
 `cargo xtask check`:
 
 ```bash
-cargo xtask fuzz-smoke
+./scripts/xtask.sh fuzz-smoke
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
@@ -177,8 +224,9 @@ dedicated `dist` profile that inherits `release` and then hardens it for shipped
 Local maintainer smoke stays host-native. The full public standalone artifact matrix is built by
 the release workflow as defined in [platform-support.md](platform-support.md).
 
-The repo-root `./check.sh` wrapper is shell-linted alongside the `scripts/` directory so the
-documented maintainer entrypoint cannot silently diverge from the actual Rust gate.
+The repo-root `./check.sh` wrapper and `./scripts/xtask.sh` stable launcher are shell-linted
+alongside the `scripts/` directory so the documented maintainer entrypoints cannot silently diverge
+from the actual Rust gate.
 
 Contributor-container validation is a separate companion gate on purpose. It builds the committed
 Ubuntu `24.04` contributor image, validates the committed devcontainer JSON contract, repairs and
@@ -206,6 +254,7 @@ the environment itself changes — specifically when any of these paths are touc
 - `scripts/devcontainer-bootstrap.sh`
 - `scripts/devcontainer-cli-helper.Dockerfile`
 - `scripts/common.sh`
+- `scripts/xtask.sh`
 - `check.sh` — the script the gate runs inside the container
 
 A `devcontainer-changes` detection job computes a git diff of the PR's changed files against those
@@ -218,15 +267,21 @@ coverage gap.
 The cross-platform Rust gate assigns separate timeout budgets per runner — `30` minutes for macOS
 arm64 and `150` minutes for Windows x64 — so the Windows lane can finish a cold `cargo nextest`
 build plus dependency-policy and semver verification without expiring mid-run. The Windows runner
-also excludes its `target/` build directory from Windows Defender before any Cargo operations
-begin, removing the antivirus overhead that otherwise scans every file write during compilation.
-Both runners use `Swatinem/rust-cache` with a per-platform key to persist the Cargo registry and
-incremental build artifacts across runs.
+also excludes the managed sibling Cargo artifact roots (`../.htmlcut-artifacts/target` and
+`../.htmlcut-artifacts/build`) from Windows Defender before any Cargo operations begin, removing
+the antivirus overhead that otherwise scans every file write during compilation. Both runners use
+`Swatinem/rust-cache` with a per-platform key to persist the Cargo registry and incremental build
+artifacts across runs.
 
 GitHub CI also runs a release-target smoke matrix across the public standalone targets, unpacking
 the built release packages, checking that the packaged README stays package-specific, and
 executing one real extraction-plus-request-replay flow before the aggregate required check reports
-success.
+success. The release packaging and smoke scripts resolve compiled binaries from Cargo's canonical
+target directory, so the matrix follows the same managed artifact-root contract as the rest of the
+repo instead of assuming a repo-local `target/` tree. The stable `./scripts/xtask.sh` launcher
+builds `xtask`, copies the host binary into a temporary directory outside the managed Cargo
+artifact roots, and runs that detached copy, so cross-platform CI and local Windows runs do not
+deadlock when Cargo needs to rebuild `xtask`.
 
 GitHub CI runs the Linux maintainer gate through the committed contributor devcontainer, alongside
 the separate cross-platform Rust jobs and the release-target smoke matrix, before the aggregate
@@ -234,3 +289,11 @@ required `Check` result reports success. `Check` uses `if: always()` with explic
 `${{ toJSON(needs.*.result) }}` inspection so a skipped `contributor-devcontainer` gate — the
 correct outcome when no devcontainer-relevant files changed — does not prevent `Check` from being
 reported or block merge.
+`xtask check` now mirrors the raw contributor-devcontainer validator automatically when the
+current branch differs from `origin/main` under the devcontainer gate's watched paths, so local
+maintainer verification catches bootstrap and devcontainer-contract regressions before PR CI does.
+When a checkout does not have a local `origin/main` ref — for example inside shallow or
+single-ref CI worktrees — the watched-path probe falls back cleanly to `HEAD` instead of
+misreporting a Git-ref failure as the real gate result.
+The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you
+want to run the full maintainer gate through the committed contributor container.

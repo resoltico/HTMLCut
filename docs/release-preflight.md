@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.0.0"
+version: "10.1.0"
 domain: RELEASE
-updated: "2026-05-13"
+updated: "2026-05-17"
 route:
-  keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate]
-  questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "how do I open the HTMLCut release PR?"]
+  keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
+  questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
 ---
 
 # Release Preflight
@@ -94,8 +94,9 @@ Install the local maintainer toolchain if it is not already available by followi
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
-Nightly is installed alongside it for the coverage gate and for live `cargo-fuzz` campaigns,
-because `cargo +nightly llvm-cov --branch` and `cargo +nightly fuzz ...` both need nightly.
+Nightly is installed alongside it for the strict-provenance selector-safety Miri proof, the
+coverage gate, and live `cargo-fuzz` campaigns, because `cargo xtask miri`, `cargo +nightly
+llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly.
 
 Run the single local quality gate first:
 
@@ -103,10 +104,10 @@ Run the single local quality gate first:
 ./check.sh
 ```
 
-or equivalently:
+The stable repo-owned launcher behind that wrapper is:
 
 ```bash
-cargo xtask check
+./scripts/xtask.sh check
 ```
 
 That gate must succeed before any release commit or tag. The maintained definition of that gate
@@ -114,7 +115,7 @@ lives in [quality-gates.md](quality-gates.md).
 
 The gate verifies the maintained Markdown docs, the checked-in fuzz targets, the CLI/core
 contract-lint coverage, the exact pinned stable-toolchain prerequisites before the Rust gate
-starts, and the nightly coverage prerequisites before coverage work begins.
+starts, and the nightly Miri plus coverage prerequisites before those proofs begin.
 
 Then verify:
 
@@ -142,8 +143,8 @@ Then verify:
   merely unreleased work in progress
 - `README.md` still works as the short product-facing front window and still points at the quick
   start and full docs.
-- any local assets referenced by `README.md` such as `images/HTMLCut.png` are committed in the
-  tagged tree and render from a versioned checkout instead of depending on `main`.
+- any local assets referenced by `README.md` are committed in the tagged tree and render from a
+  versioned checkout instead of depending on `main`.
 - `docs/getting-started.md` still documents the current user-facing install flow and runnable
   first-use examples.
 - `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and

@@ -3,7 +3,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult, XtaskError};
+use crate::model::{
+    CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv, DynResult, XtaskError,
+};
 
 #[derive(Debug, Deserialize)]
 struct ToolchainManifest {
@@ -92,13 +94,15 @@ pub fn repo_toolchain_component_probe_command(
             ["run", toolchain.channel.as_str(), "cargo-clippy", "-V"],
             CommandStdout::Quiet,
             CommandToolchainEnv::Inherit,
-        ),
+        )
+        .with_stderr(CommandStderr::Quiet),
         "rustfmt" => CommandSpec::new(
             "rustup",
             ["run", toolchain.channel.as_str(), "rustfmt", "--version"],
             CommandStdout::Quiet,
             CommandToolchainEnv::Inherit,
-        ),
+        )
+        .with_stderr(CommandStderr::Quiet),
         _ => return None,
     };
 
@@ -113,6 +117,7 @@ pub fn repo_toolchain_probe_command(toolchain: &RepoToolchain) -> CommandSpec {
         CommandStdout::Quiet,
         CommandToolchainEnv::Inherit,
     )
+    .with_stderr(CommandStderr::Quiet)
 }
 
 /// Formats the actionable preflight error shown before the main Rust gate starts.

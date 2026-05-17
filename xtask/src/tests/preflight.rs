@@ -25,7 +25,7 @@ fn repo_toolchain_preflight_error_covers_missing_toolchain_and_broken_component(
 }
 
 #[test]
-fn coverage_and_fuzz_preflight_helpers_report_missing_prerequisites() {
+fn coverage_miri_and_fuzz_preflight_helpers_report_missing_prerequisites() {
     let missing_nightly = crate::preflight::coverage_preflight_error_for_tests("", "", |_| true)
         .expect("missing nightly");
     assert!(missing_nightly.contains("Install the nightly coverage toolchain"));
@@ -45,6 +45,28 @@ fn coverage_and_fuzz_preflight_helpers_report_missing_prerequisites() {
     )
     .expect("missing llvm-tools");
     assert!(missing_llvm_tools.contains("llvm-tools-preview"));
+
+    let missing_miri_toolchain = crate::preflight::miri_preflight_error_for_tests("", "", false)
+        .expect("missing nightly Miri toolchain");
+    assert!(missing_miri_toolchain.contains("Install the nightly Miri toolchain first"));
+
+    let missing_miri_components = crate::preflight::miri_preflight_error_for_tests(
+        "nightly-x86_64-unknown-linux-gnu\n",
+        "",
+        false,
+    )
+    .expect("missing nightly Miri components");
+    assert!(
+        missing_miri_components.contains("rustup component add miri rust-src --toolchain nightly")
+    );
+
+    let broken_miri = crate::preflight::miri_preflight_error_for_tests(
+        "nightly-x86_64-unknown-linux-gnu\n",
+        "miri-x86_64-unknown-linux-gnu (installed)\nrust-src (installed)\n",
+        false,
+    )
+    .expect("broken nightly Miri binary");
+    assert!(broken_miri.contains("cargo +nightly miri --version"));
 
     let missing_cargo_fuzz = crate::preflight::fuzz_smoke_preflight_error_for_tests(
         "nightly-x86_64-unknown-linux-gnu\n",
@@ -98,6 +120,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
         || {
             ensure_repo_toolchain_prerequisites(repo_root).expect("repo toolchain preflight");
             ensure_coverage_prerequisites(repo_root).expect("coverage preflight");
+            ensure_miri_prerequisites(repo_root).expect("Miri preflight");
             ensure_fuzz_smoke_prerequisites(repo_root).expect("fuzz preflight");
         },
     );
@@ -228,6 +251,43 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
 
     crate::command_exec::with_capture_command_output_override(
         move |_repo_root, spec| {
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["toolchain", "list"],
+                    false,
+                    false,
+                ))
+            {
+                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+            }
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    false,
+                    false,
+                ))
+            {
+                return Some(Ok(
+                    b"llvm-tools-preview-x86_64-apple-darwin (installed)\n".to_vec()
+                ));
+            }
+            None
+        },
+        || {
+            let error = ensure_miri_prerequisites(repo_root)
+                .expect_err("Miri should fail without components");
+            assert!(
+                error
+                    .to_string()
+                    .contains("rustup component add miri rust-src --toolchain nightly")
+            );
+        },
+    );
+
+    crate::command_exec::with_capture_command_output_override(
+        move |_repo_root, spec| {
             (command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
@@ -244,6 +304,28 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                 error
                     .to_string()
                     .contains("coverage preflight could not query rustup toolchains")
+            );
+        },
+    );
+
+    crate::command_exec::with_capture_command_output_override(
+        move |_repo_root, spec| {
+            (command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["toolchain", "list"],
+                    false,
+                    false,
+                )))
+            .then(|| Err("missing nightly".into()))
+        },
+        || {
+            let error =
+                ensure_miri_prerequisites(repo_root).expect_err("Miri toolchain query failure");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Miri preflight could not query rustup toolchains")
             );
         },
     );
@@ -277,6 +359,72 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     .to_string()
                     .contains("coverage preflight received invalid component output")
             );
+        },
+    );
+
+    crate::command_exec::with_capture_command_output_override(
+        move |_repo_root, spec| {
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["toolchain", "list"],
+                    false,
+                    false,
+                ))
+            {
+                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+            }
+            (command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    false,
+                    false,
+                )))
+            .then(|| Ok(vec![0xFF]))
+        },
+        || {
+            let error =
+                ensure_miri_prerequisites(repo_root).expect_err("Miri component decode failure");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Miri preflight received invalid component output")
+            );
+        },
+    );
+
+    crate::command_exec::with_capture_command_output_override(
+        move |_repo_root, spec| {
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["toolchain", "list"],
+                    false,
+                    false,
+                ))
+            {
+                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+            }
+            if command_signature(spec)
+                == command_signature(&test_command_spec(
+                    "rustup",
+                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    false,
+                    false,
+                ))
+            {
+                return Some(Ok(
+                    b"miri-x86_64-apple-darwin (installed)\nrust-src (installed)\n".to_vec(),
+                ));
+            }
+            (command_signature(spec) == command_signature(&miri_probe_command()))
+                .then(|| Err("broken nightly miri".into()))
+        },
+        || {
+            let error =
+                ensure_miri_prerequisites(repo_root).expect_err("broken nightly Miri binary");
+            assert!(error.to_string().contains("cargo +nightly miri --version"));
         },
     );
 
@@ -392,7 +540,13 @@ fn capture_override_fixture(
             false,
             false,
         )),
-        Ok(b"llvm-tools-x86_64-unknown-linux-gnu (installed)\n".to_vec()),
+        Ok(
+            b"llvm-tools-preview-x86_64-unknown-linux-gnu (installed)\nmiri-x86_64-unknown-linux-gnu (installed)\nrust-src (installed)\n".to_vec(),
+        ),
+    );
+    outputs.insert(
+        command_signature(&miri_probe_command()),
+        Ok(b"miri 0.1.0\n".to_vec()),
     );
     outputs.insert(
         command_signature(&cargo_fuzz_probe_command()),

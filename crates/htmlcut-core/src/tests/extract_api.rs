@@ -256,6 +256,22 @@ fn selector_reports_invalid_selector() {
 }
 
 #[test]
+fn selector_contract_remains_miri_sound() {
+    let invalid_request = ExtractionRequest::new(
+        SourceRequest::memory("inline", "<article>Hello</article>"),
+        ExtractionSpec::selector(SelectorQuery::new("[").expect("selector")),
+    );
+    let invalid_result = extract(&invalid_request, &RuntimeOptions::default());
+    assert!(!invalid_result.ok);
+    assert_eq!(invalid_result.diagnostics[0].code, "INVALID_SELECTOR");
+
+    let valid_request = selector_request("<article><p>Hello</p></article>", "article");
+    let valid_result = extract(&valid_request, &RuntimeOptions::default());
+    assert!(valid_result.ok);
+    assert_eq!(valid_result.matches[0].value.as_str(), Some("Hello"));
+}
+
+#[test]
 fn selector_reports_multiple_matches_as_warning_for_first() {
     let request = selector_request("<p>One</p><p>Two</p>", "p");
     let result = preview_extraction(&request, &RuntimeOptions::default());

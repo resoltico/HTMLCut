@@ -47,6 +47,10 @@ pub(crate) struct SourceArgs {
     #[arg(value_name = "INPUT")]
     pub(crate) input: Option<String>,
 
+    /// Inline HTML source text to load directly, without reading a file, URL, or stdin.
+    #[arg(long, value_name = "HTML", conflicts_with = "input")]
+    pub(crate) input_html: Option<String>,
+
     /// Override the input base URL used for relative-link resolution.
     ///
     /// When the document contains `<base href>`, that value is resolved against this URL and

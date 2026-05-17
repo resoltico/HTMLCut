@@ -8,8 +8,11 @@ mod coverage;
 mod docs;
 mod fuzz;
 mod host_tools;
+mod hygiene;
 mod manifest;
+mod miri;
 mod model;
+mod outdated;
 mod plan;
 mod policy;
 mod preflight;
@@ -34,24 +37,34 @@ pub use host_tools::{
     HostToolPreflightFailure, host_tool_preflight_failures, host_tool_preflight_message,
     host_tool_probe_command,
 };
+pub use hygiene::{
+    HygieneCleanMode, HygieneCleanResult, HygieneReport, HygieneReportFormat, clean_hygiene,
+    ensure_hygiene, hygiene_report, prepare_artifact_layout, render_hygiene_report,
+};
 pub use manifest::{
     package_version_from_manifest, workspace_rust_version, workspace_rust_version_from_manifest,
     workspace_version, workspace_version_from_manifest,
 };
-pub use model::{
-    CommandSpec, CommandStdout, CommandToolchainEnv, CoverageBranchRecord, CoverageCounter,
-    CoverageDataSet, CoverageFailure, CoverageFile, CoverageFileSummary, CoveragePreflightFailure,
-    CoverageReport, CoverageSummary, DynResult, XtaskError,
+pub use miri::{
+    miri_preflight_failures, miri_preflight_message, miri_probe_command, miri_selector_command,
 };
+pub use model::{
+    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, CoverageBranchRecord,
+    CoverageCounter, CoverageDataSet, CoverageFailure, CoverageFile, CoverageFileSummary,
+    CoveragePreflightFailure, CoverageReport, CoverageSourceKind, CoverageSummary, DynResult,
+    MiriPreflightFailure, TrackedCoverageFile, XtaskError,
+};
+pub use outdated::{outdated_check_command, run_outdated_check};
 pub use plan::{
-    binary_name, check_plan, ci_rust_gate_plan, core_manifest_path, is_semver_check_spec,
+    binary_name, cargo_build_dir, cargo_target_dir, check_plan, ci_rust_gate_plan,
+    core_manifest_path, coverage_build_dir, coverage_target_dir, is_semver_check_spec,
     normalize_path, release_binary_path, semver_baseline_path, semver_release_type,
     semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
     strip_dev_dependency_tables, with_workspace_stub,
 };
 pub use policy::{deny_check_command, deny_graph_targets};
 pub use preflight::{
-    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites,
+    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_miri_prerequisites,
     ensure_repo_toolchain_prerequisites,
 };
 pub use release::{
@@ -67,7 +80,10 @@ pub use toolchain::{
 
 /// Runs `cargo xtask` using the current process arguments at the repository root.
 pub fn main_entry() -> DynResult<()> {
-    match app::main_entry_with(&repo_root(), std::env::args_os()) {
+    let repo_root = repo_root();
+    let args = std::env::args_os().collect::<Vec<_>>();
+
+    match app::main_entry_with(&repo_root, args) {
         Ok(()) => Ok(()),
         Err(XtaskError::Clap(clap_error)) => clap_error.exit(),
         Err(error) => Err(error),

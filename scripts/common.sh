@@ -80,3 +80,74 @@ htmlcut_temp_root() {
 
     printf '%s\n' "${candidate}"
 }
+
+htmlcut_resolve_repo_path() {
+    local helper_repo_root="$1"
+    local candidate="$2"
+
+    candidate="$(htmlcut_normalize_bash_path "${candidate}")"
+    if [[ "${candidate}" == /* ]]; then
+        printf '%s\n' "${candidate}"
+    else
+        printf '%s\n' "${helper_repo_root}/${candidate}"
+    fi
+}
+
+htmlcut_cargo_target_dir() {
+    local helper_repo_root="$1"
+
+    if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+        htmlcut_resolve_repo_path "${helper_repo_root}" "${CARGO_TARGET_DIR}"
+        return
+    fi
+
+    if [[ -f "${helper_repo_root}/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+        local cargo_metadata_json
+        cargo_metadata_json="$(
+            if cd "${helper_repo_root}"; then
+                cargo metadata --format-version 1 --no-deps 2>/dev/null || true
+            fi
+        )"
+        local cargo_metadata_target_dir
+        cargo_metadata_target_dir="$(
+            printf '%s' "${cargo_metadata_json}" |
+                python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])' 2>/dev/null || true
+        )"
+        if [[ -n "${cargo_metadata_target_dir}" ]]; then
+            htmlcut_normalize_bash_path "${cargo_metadata_target_dir}"
+            return
+        fi
+    fi
+
+    printf '%s\n' "${helper_repo_root}/target"
+}
+
+htmlcut_cargo_compiled_binary_path() {
+    local helper_repo_root="$1"
+    local target_triple="$2"
+    local cargo_profile="$3"
+    local binary_name="$4"
+    local cargo_target_dir
+
+    cargo_target_dir="$(htmlcut_cargo_target_dir "${helper_repo_root}")"
+    printf '%s/%s/%s/%s\n' "${cargo_target_dir%/}" "${target_triple}" "${cargo_profile}" "${binary_name}"
+}
+
+htmlcut_host_executable_suffix() {
+    case "${OS:-$(uname -s)}" in
+        Windows_NT|CYGWIN*|MSYS*|MINGW*) printf '.exe\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+
+htmlcut_cargo_host_binary_path() {
+    local helper_repo_root="$1"
+    local cargo_profile="$2"
+    local binary_name="$3"
+    local cargo_target_dir
+    local executable_suffix
+
+    cargo_target_dir="$(htmlcut_cargo_target_dir "${helper_repo_root}")"
+    executable_suffix="$(htmlcut_host_executable_suffix)"
+    printf '%s/%s/%s%s\n' "${cargo_target_dir%/}" "${cargo_profile}" "${binary_name}" "${executable_suffix}"
+}

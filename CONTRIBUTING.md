@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "10.0.0"
+  version: "10.1.0"
   domain: MAINTAINER
-  updated: "2026-05-05"
+  updated: "2026-05-17"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
@@ -43,12 +43,12 @@ exists separately for the coverage gate plus live `cargo-fuzz` campaigns.
 or directly:
 
 ```bash
-cargo xtask check
+./scripts/xtask.sh check
 ```
 
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 For a short live libFuzzer pass that stages the checked-in corpora into disposable scratch, use
-`cargo xtask fuzz-smoke`.
+`./scripts/xtask.sh fuzz-smoke`.
 If you changed `.devcontainer/`, the contributor-container lifecycle scripts, or the contributor
 container docs, also run `./scripts/validate-devcontainer.sh` plus
 `./scripts/devcontainer-check.sh` from the host shell.

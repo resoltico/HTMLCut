@@ -462,6 +462,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
 
     let source = build_source_request(&SourceArgs {
         input: Some("https://example.com/docs/page.html".to_owned()),
+        input_html: None,
         base_url: Some("https://base.example/root/".to_owned()),
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -481,6 +482,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
     );
     let http_source = build_source_request(&SourceArgs {
         input: Some("http://example.com/docs/page.html".to_owned()),
+        input_html: None,
         base_url: None,
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -497,6 +499,7 @@ fn schema_execution_and_prepare_helpers_cover_remaining_branches() {
 
     let invalid_base_url = build_source_request(&SourceArgs {
         input: Some("-".to_owned()),
+        input_html: None,
         base_url: Some("ftp://example.com".to_owned()),
         max_bytes: DEFAULT_MAX_BYTES.to_string(),
         fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

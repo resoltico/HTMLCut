@@ -6,7 +6,7 @@ use ego_tree::NodeRef as DomNodeRef;
 use scraper::Node;
 use scraper::{ElementRef, Html, Selector};
 
-use super::render::render_element_children_as_text;
+use super::text::render_element_children_as_text;
 use super::urls::rewrite_attribute_value;
 use crate::contracts::WhitespaceMode;
 

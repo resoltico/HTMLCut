@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-cli"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "ego-tree",
  "htmlcut-tempdir",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-fuzz"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "arbitrary",
  "htmlcut-cli",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-tempdir"
-version = "10.0.0"
+version = "10.1.0"
 
 [[package]]
 name = "http"
@@ -1325,8 +1325,6 @@ dependencies = [
 [[package]]
 name = "servo_arc"
 version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "170fb83ab34de17dc69aa7c67482b22218ddb85da56546f9bd6b929e32a05930"
 dependencies = [
  "stable_deref_trait",
 ]
@@ -1439,8 +1437,6 @@ dependencies = [
 [[package]]
 name = "tendril"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4790fc369d5a530f4b544b094e31388b9b3a37c0f4652ade4505945f5660d24"
 dependencies = [
  "new_debug_unreachable",
  "utf-8",
@@ -1878,7 +1874,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xtask"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "clap",
  "htmlcut-cli",
@@ -1888,6 +1884,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-words",
+ "syn",
  "thiserror 2.0.18",
  "toml",
 ]

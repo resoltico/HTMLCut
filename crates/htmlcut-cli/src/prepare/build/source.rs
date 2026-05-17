@@ -17,25 +17,35 @@ const MEBIBYTE: u128 = KIBIBYTE * KIBIBYTE;
 const GIBIBYTE: u128 = MEBIBYTE * KIBIBYTE;
 
 pub(crate) fn build_source_request(args: &SourceArgs) -> Result<SourceRequest, CliError> {
-    let input = required_cli_value(args.input.clone(), "<INPUT>")?;
     let base_url = validate_base_url(args.base_url.as_deref())?;
-    let mut source = if input == "-" {
-        SourceRequest::stdin()
-    } else if input.starts_with("http://") || input.starts_with("https://") {
-        SourceRequest::url(validate_input_url(&input)?)
-    } else {
-        SourceRequest {
-            input: SourceInput::File {
-                path: PathBuf::from(input),
-            },
-            base_url: None,
-        }
-    };
+    let mut source = build_requested_source_input(args)?;
     if let Some(base_url) = base_url {
         source = source.with_base_url(base_url);
     }
 
     Ok(source)
+}
+
+fn build_requested_source_input(args: &SourceArgs) -> Result<SourceRequest, CliError> {
+    if let Some(input_html) = args.input_html.clone() {
+        return Ok(SourceRequest::memory("inline-html", input_html));
+    }
+
+    let input = required_cli_value(args.input.clone(), "<INPUT> or --input-html")?;
+    if input == "-" {
+        return Ok(SourceRequest::stdin());
+    }
+
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return Ok(SourceRequest::url(validate_input_url(&input)?));
+    }
+
+    Ok(SourceRequest {
+        input: SourceInput::File {
+            path: PathBuf::from(input),
+        },
+        base_url: None,
+    })
 }
 
 pub(crate) fn build_runtime(args: &SourceArgs) -> Result<RuntimeOptions, CliError> {
@@ -260,6 +270,7 @@ mod tests {
 
         let bundle_conflict = build_runtime(&SourceArgs {
             input: Some("https://example.com/input.html".to_owned()),
+            input_html: None,
             base_url: None,
             max_bytes: "64mib".to_owned(),
             fetch_timeout_ms: htmlcut_core::DEFAULT_FETCH_TIMEOUT_MS,

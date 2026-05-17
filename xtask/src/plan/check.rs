@@ -3,11 +3,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::command_exec::{capture_command_output, repo_worktree_files};
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
-use crate::{deny_check_command, fuzz::FUZZ_PACKAGE_NAME};
+use crate::model::{
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
+    DynResult,
+};
+use crate::{
+    deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_selector_command, outdated_check_command,
+};
 
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
 use super::semver::semver_release_type;
+
+const DEVCONTAINER_RELEVANT_PATHS: &[&str] = &[
+    ".devcontainer",
+    "scripts/validate-devcontainer.sh",
+    "scripts/devcontainer-check.sh",
+    "scripts/devcontainer-prepare-user-home.sh",
+    "scripts/devcontainer-bootstrap.sh",
+    "scripts/devcontainer-cli-helper.Dockerfile",
+    "scripts/common.sh",
+    "scripts/xtask.sh",
+    "check.sh",
+];
 
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
@@ -31,117 +48,105 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
         ));
     }
 
+    if should_run_devcontainer_validation(repo_root)? {
+        plan.push(devcontainer_validation_command(repo_root));
+    }
+
     plan.push(format_check_command());
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["nextest", "run", "-p", "xtask", "--tests", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::Inherit,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--locked",
-            "contract_lint",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "clippy",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--tests",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "test",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--no-default-features",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "-p",
-            "htmlcut-cli",
-            "--lib",
-            "--locked",
-            "contract_lint",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "clippy",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--tests",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "test",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--no-default-features",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(miri_selector_command());
     plan.push(workspace_clippy_command());
     plan.push(workspace_outdated_command());
     plan.push(workspace_audit_command());
     plan.push(deny_check_command(repo_root)?);
     plan.push(semver_check_command(repo_root, &semver_release_type));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "check",
-            "-p",
-            FUZZ_PACKAGE_NAME,
-            "--bins",
-            "--features",
-            "fuzzing",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.extend(full_suite_test_specs());
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["test", "--workspace", "--doc", "--all-features", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["doc", "--workspace", "--no-deps", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "build",
-            "--profile",
-            "dist",
-            "-p",
-            "htmlcut-cli",
-            "--bin",
-            "htmlcut",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "check",
+                "-p",
+                FUZZ_PACKAGE_NAME,
+                "--bins",
+                "--features",
+                "fuzzing",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            ["test", "--workspace", "--doc", "--all-features", "--locked"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            ["doc", "--workspace", "--no-deps", "--locked"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "build",
+                "--profile",
+                "dist",
+                "-p",
+                "htmlcut-cli",
+                "--bin",
+                "htmlcut",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
     plan.push(CommandSpec::new(
         release_binary_path(repo_root),
         ["--version"],
@@ -252,6 +257,94 @@ fn path_strings(paths: &[PathBuf]) -> impl Iterator<Item = String> + '_ {
     paths.iter().map(|path| path.to_string_lossy().into_owned())
 }
 
+fn devcontainer_validation_command(repo_root: &Path) -> CommandSpec {
+    CommandSpec::new(
+        "bash",
+        [repo_root
+            .join("scripts")
+            .join("validate-devcontainer.sh")
+            .to_string_lossy()
+            .into_owned()],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+}
+
+fn should_run_devcontainer_validation(repo_root: &Path) -> DynResult<bool> {
+    if !repo_root.join(".git").exists() {
+        return Ok(false);
+    }
+
+    let changed_output = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            devcontainer_changed_file_args(repo_root)?,
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        ),
+    )?;
+    if !changed_output.is_empty() {
+        return Ok(true);
+    }
+
+    let untracked_output = capture_command_output(
+        repo_root,
+        &CommandSpec::new(
+            "git",
+            devcontainer_untracked_file_args(),
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        ),
+    )?;
+    Ok(!untracked_output.is_empty())
+}
+
+fn devcontainer_changed_file_args(repo_root: &Path) -> DynResult<Vec<String>> {
+    let merge_base_spec = CommandSpec::new(
+        "git",
+        ["merge-base", "HEAD", "origin/main"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    )
+    .with_stderr(CommandStderr::Quiet);
+    let merge_base = capture_command_output(repo_root, &merge_base_spec)
+        .ok()
+        .and_then(|output| String::from_utf8(output).ok())
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+
+    let mut args = vec!["diff".to_owned(), "--name-only".to_owned(), "-z".to_owned()];
+    if let Some(merge_base) = merge_base {
+        args.push(merge_base);
+    } else {
+        args.push("HEAD".to_owned());
+    }
+    args.push("--".to_owned());
+    args.extend(
+        DEVCONTAINER_RELEVANT_PATHS
+            .iter()
+            .map(|path| (*path).to_owned()),
+    );
+    Ok(args)
+}
+
+fn devcontainer_untracked_file_args() -> Vec<String> {
+    let mut args = vec![
+        "ls-files".to_owned(),
+        "--others".to_owned(),
+        "--exclude-standard".to_owned(),
+        "-z".to_owned(),
+        "--".to_owned(),
+    ];
+    args.extend(
+        DEVCONTAINER_RELEVANT_PATHS
+            .iter()
+            .map(|path| (*path).to_owned()),
+    );
+    args
+}
+
 fn format_check_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
@@ -259,6 +352,7 @@ fn format_check_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn workspace_clippy_command() -> CommandSpec {
@@ -277,6 +371,7 @@ fn workspace_clippy_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn core_all_features_lib_test_command() -> CommandSpec {
@@ -293,21 +388,11 @@ fn core_all_features_lib_test_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn workspace_outdated_command() -> CommandSpec {
-    CommandSpec::new(
-        "cargo",
-        [
-            "outdated",
-            "--workspace",
-            "--root-deps-only",
-            "--exit-code",
-            "1",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::Inherit,
-    )
+    outdated_check_command()
 }
 
 fn workspace_audit_command() -> CommandSpec {
@@ -317,6 +402,7 @@ fn workspace_audit_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandSpec {
@@ -335,6 +421,7 @@ fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandS
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
@@ -363,7 +450,8 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
             ],
             CommandStdout::Inherit,
             CommandToolchainEnv::ForceClang,
-        ),
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
         CommandSpec::new(
             "cargo",
             [
@@ -377,15 +465,32 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
             ],
             CommandStdout::Inherit,
             CommandToolchainEnv::ForceClang,
-        ),
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     ]
-}
-
-fn full_suite_test_specs() -> Vec<CommandSpec> {
-    all_features_test_specs()
 }
 
 #[cfg(test)]
 pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path) -> bool {
     is_maintained_shell_script(repo_root, path)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_validation_command_for_tests(repo_root: &Path) -> CommandSpec {
+    devcontainer_validation_command(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn should_run_devcontainer_validation_for_tests(repo_root: &Path) -> DynResult<bool> {
+    should_run_devcontainer_validation(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_changed_file_args_for_tests(repo_root: &Path) -> DynResult<Vec<String>> {
+    devcontainer_changed_file_args(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_untracked_file_args_for_tests() -> Vec<String> {
+    devcontainer_untracked_file_args()
 }
