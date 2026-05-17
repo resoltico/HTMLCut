@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Canonical contributor Rust tool inventory shared by bootstrap scripts, docs, and CI.
+# Canonical contributor Rust toolchain and cargo-tool inventory shared by bootstrap scripts, docs,
+# and CI.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
@@ -47,6 +48,37 @@ HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly"
 export HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
+readonly -a HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS=("clippy" "rustfmt")
+readonly -a HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS=(
+    "llvm-tools-preview"
+    "miri"
+    "rust-src"
+)
+
+htmlcut_contributor_rustup_toolchain_install() {
+    local toolchain="$1"
+    shift
+
+    local rustup_args=("${toolchain}" "--profile" "minimal")
+    local component
+    for component in "$@"; do
+        rustup_args+=("--component" "${component}")
+    done
+
+    rustup toolchain install "${rustup_args[@]}"
+}
+
+htmlcut_contributor_install_nightly_toolchain() {
+    htmlcut_contributor_rustup_toolchain_install \
+        "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" \
+        "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS[@]}"
+}
+
+htmlcut_contributor_install_stable_toolchain_components() {
+    rustup component add \
+        "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}" \
+        --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
+}
 
 htmlcut_contributor_cargo_tool_inventory() {
     cat <<'EOF'

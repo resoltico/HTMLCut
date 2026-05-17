@@ -2,10 +2,10 @@
 afad: "4.0"
 version: "10.0.0"
 domain: SETUP
-updated: "2026-05-13"
+updated: "2026-05-16"
 route:
-  keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, macOS clang, CC override]
-  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "why does cargo install fail with a missing Homebrew clang path?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
+  keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-miri, macOS clang, CC override, artifact hygiene]
+  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run the HTMLCut strict-provenance selector-safety Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
 ---
 
 # Developer Setup
@@ -22,8 +22,9 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for that workflow.
 The rest of this document is the host-native Rust path.
 
 HTMLCut pins one exact stable toolchain through `rust-toolchain.toml` and installs nightly for the
-branch-coverage gate plus live `cargo-fuzz` campaigns. The maintainer workflow also depends on
-Rust-native QA commands plus `shellcheck` for shell-script checks.
+branch-coverage gate, the maintained strict-provenance selector-safety Miri proof, and live `cargo-fuzz`
+campaigns. The maintainer workflow also depends on Rust-native QA commands plus `shellcheck` for
+shell-script checks.
 
 The workspace manifest carries the published compatibility floor through
 `[workspace.package] rust-version = "1.95"`, while `rust-toolchain.toml` owns the exact
@@ -48,8 +49,8 @@ curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --profil
 source "$HOME/.cargo/env"
 source ./scripts/contributor-rust-tools.sh
 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" --profile minimal --component llvm-tools-preview
-rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
+htmlcut_contributor_install_nightly_toolchain
+htmlcut_contributor_install_stable_toolchain_components
 ```
 
 Why this shape:
@@ -61,7 +62,8 @@ Why this shape:
 - the workspace manifest carries the published compatibility floor separately through
   `[workspace.package] rust-version = "1.95"`.
 - `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
-  coverage gate, and because `cargo-fuzz` needs nightly for real fuzzing runs.
+  coverage gate, because `cargo xtask miri` now proves the selector-safety path under strict
+  provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
   actually uses.
 
@@ -104,8 +106,9 @@ source "$HOME/.cargo/env"
 
 LLVM-backed maintainer flows are a separate concern: `cargo xtask coverage` and
 `cargo xtask fuzz-smoke` both launch Cargo with `CC=clang CXX=clang++` so coverage and libFuzzer
-stay on the LLVM toolchain. Keep `clang` and `clang++` available on `PATH` on any host where you
-plan to run those maintained commands.
+stay on the LLVM toolchain. The strict-provenance selector-safety Miri proof does not need that compiler override,
+but it does require the nightly `miri` plus `rust-src` components. Keep `clang` and `clang++`
+available on `PATH` on any host where you plan to run the maintained coverage or fuzz commands.
 
 ## Install Host-Native ShellCheck
 
@@ -168,6 +171,7 @@ cargo deny --version
 cargo semver-checks --version
 cargo outdated --version
 cargo llvm-cov --version
+cargo +nightly miri --version
 cargo fuzz --version
 shellcheck --version
 ```
@@ -181,14 +185,17 @@ Then run one maintained gate entrypoint:
 `cargo xtask check` is the equivalent direct invocation if you want to bypass the shell wrapper.
 The curated cross-platform CI Rust lane runs `cargo xtask ci-rust-gate`, which comes from the
 same `xtask` plan instead of duplicating a second command inventory in GitHub Actions.
+For the maintained selector-safety proof in isolation, use `cargo xtask miri`.
+For the maintained dependency-freshness gate in isolation, use `cargo xtask outdated-check`.
 For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
 `cargo xtask fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,
 then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
 prerequisites fail fast with one actionable message and broad default Cargo test loops stay
 finite.
 The main `cargo xtask check` gate likewise preflights the exact stable pin from
-`rust-toolchain.toml` and its required `clippy`/`rustfmt` components before the Rust gate starts,
-including direct probes that verify the tool binaries are actually runnable.
+`rust-toolchain.toml`, its required `clippy`/`rustfmt` components, the nightly Miri prerequisites,
+and the nightly coverage prerequisites before the Rust gate starts, including direct probes that
+verify the tool binaries are actually runnable.
 
 If the gate fails, treat the first real failure as the next missing prerequisite and fix that root
 cause before rerunning.
@@ -199,25 +206,40 @@ If you are using the committed devcontainer instead of host-native Rust, use
 
 ## Disk Usage
 
-The Git repository itself is small. The multi-gigabyte footprint comes from build artifacts under
-`target/`, especially coverage workspaces such as `target/llvm-cov-target`, native dependency
-builds, semver-check scratch data, and compiled test binaries. Local fuzzing also uses a separate
-`fuzz/target/` tree unless you override Cargo's target directory for fuzz runs.
+HTMLCut now routes normal Cargo work outside the repo root through the committed
+[../.cargo/config.toml](../.cargo/config.toml):
 
-`cargo xtask check` treats the two worst offenders as ephemeral scratch:
+- final build artifacts live in `../.htmlcut-artifacts/target`
+- intermediate build cache lives in `../.htmlcut-artifacts/build`
 
-- `target/llvm-cov-target` is cleaned again after the coverage step finishes.
-- `target/semver-checks` is pruned before and after the semver gate runs.
+The maintainer coverage gate uses sibling disposable coverage roots
+(`../.htmlcut-artifacts/coverage-target` and `../.htmlcut-artifacts/coverage-build`), and the
+semver gate scratch stays disposable as well. `cargo llvm-cov` then places its nested
+`llvm-cov-target` worktrees inside those managed coverage roots, and HTMLCut tags those nested
+worktrees as disposable too.
 
-That means persistent growth should mostly come from normal Cargo developer caches such as
-`target/debug` and target-triple build outputs.
+That means a huge repo-local `target/` tree is a legacy spillover condition, not the intended live
+layout.
 
-If you need to reclaim space after running the maintainer gate:
+Start with the maintained report:
 
 ```bash
 source "$HOME/.cargo/env"
-cargo llvm-cov clean --workspace
-cargo clean
+cargo xtask hygiene report
 ```
 
-If you have been running libFuzzer locally, you may also want to remove `fuzz/target/`.
+If you need to reclaim space without deleting the main managed caches:
+
+```bash
+source "$HOME/.cargo/env"
+cargo xtask hygiene clean --mode safe
+```
+
+If you need to reclaim every rebuildable artifact root:
+
+```bash
+source "$HOME/.cargo/env"
+cargo xtask hygiene clean --mode rebuildable
+```
+
+Use [hygiene.md](hygiene.md) for the full artifact-lifecycle contract and the maintained policy.

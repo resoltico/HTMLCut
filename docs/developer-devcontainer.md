@@ -2,10 +2,10 @@
 afad: "4.0"
 version: "10.0.0"
 domain: SETUP
-updated: "2026-05-13"
+updated: "2026-05-16"
 route:
-  keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check]
-  questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
+  keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check, miri]
+  questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "does the HTMLCut devcontainer install the nightly Miri proof too?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
 ---
 
 # Contributor Devcontainer Workflow
@@ -89,6 +89,7 @@ mounted-socket permission drift inside already-running editor sessions.
 ```bash
 rustc --version
 cargo nextest --version
+cargo +nightly miri --version
 ./scripts/validate-devcontainer.sh
 ./check.sh
 ```
@@ -97,6 +98,7 @@ Expected contributor shape:
 
 - `rustc --version` reports the exact stable pin from `rust-toolchain.toml` (currently `1.95.0`)
 - `cargo nextest --version` succeeds because the QA tool bootstrap completed
+- `cargo +nightly miri --version` succeeds because the nightly Miri components bootstrapped cleanly
 - `./scripts/validate-devcontainer.sh` succeeds
 - `./check.sh` succeeds from the container shell without requiring host-native Rust
 
@@ -134,7 +136,7 @@ One truthful workflow is:
 5. Verify the contributor shell:
 
    ```bash
-   devcontainer exec --workspace-folder . bash -lc 'rustc --version && cargo nextest --version && ./scripts/validate-devcontainer.sh'
+   devcontainer exec --workspace-folder . bash -lc 'rustc --version && cargo nextest --version && cargo +nightly miri --version && ./scripts/validate-devcontainer.sh'
    ```
 
 6. Run the full maintainer gate from the host through the committed contributor container:

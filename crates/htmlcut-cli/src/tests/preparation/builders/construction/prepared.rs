@@ -13,6 +13,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
         },
         source: SourceArgs {
             input: Some(input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -49,6 +50,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
         },
         source: SourceArgs {
             input: Some(input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -89,6 +91,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
         },
         source: SourceArgs {
             input: Some(input.clone()),
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -128,6 +131,7 @@ fn prepared_builders_cover_select_slice_and_preview_variants() {
             },
             source: SourceArgs {
                 input: Some(input),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 
 mod commands;
 mod report;
+mod syntax;
 mod tracking;
 
 use crate::model::{
     CommandSpec, CoveragePreflightFailure, CoverageReport, CoverageSummary, DynResult,
+    TrackedCoverageFile,
 };
 
 /// Builds the cleanup command that clears stale `llvm-cov` state before measurement.
@@ -45,7 +47,7 @@ pub fn ensure_coverage_output_dir(repo_root: &Path) -> DynResult<()> {
 /// Scores one `llvm-cov` report against the tracked-file coverage policy.
 pub fn evaluate_coverage_report(
     repo_root: &Path,
-    tracked_files: &BTreeMap<PathBuf, String>,
+    tracked_files: &BTreeMap<PathBuf, TrackedCoverageFile>,
     report: CoverageReport,
 ) -> DynResult<CoverageSummary> {
     report::evaluate_coverage_report(repo_root, tracked_files, report)
@@ -57,7 +59,7 @@ pub fn read_coverage_report(path: &Path) -> DynResult<CoverageReport> {
 }
 
 /// Loads the curated set of production files that the coverage gate tracks.
-pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, String>> {
+pub fn tracked_files(repo_root: &Path) -> DynResult<BTreeMap<PathBuf, TrackedCoverageFile>> {
     tracking::tracked_files(repo_root)
 }
 
@@ -88,4 +90,11 @@ pub(crate) fn repo_relative_source_path_for_tests(
 #[cfg(test)]
 pub(crate) fn is_under_coverage_root_for_tests(relative_path: &str) -> bool {
     tracking::is_under_coverage_root_for_tests(relative_path)
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_source_kind_for_tests(
+    path: &Path,
+) -> DynResult<crate::model::CoverageSourceKind> {
+    syntax::coverage_source_kind(path)
 }

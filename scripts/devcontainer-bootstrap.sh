@@ -31,10 +31,14 @@ install_rustup_if_missing() {
 ensure_toolchains() {
     printf 'devcontainer bootstrap: installing stable toolchain %s\n' "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
     rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-    printf 'devcontainer bootstrap: installing nightly toolchain %s with llvm-tools-preview\n' "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}"
-    rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" --profile minimal --component llvm-tools-preview
-    printf 'devcontainer bootstrap: adding clippy and rustfmt to %s\n' "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
-    rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
+    printf 'devcontainer bootstrap: installing nightly toolchain %s with %s\n' \
+        "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" \
+        "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS[*]}"
+    htmlcut_contributor_install_nightly_toolchain
+    printf 'devcontainer bootstrap: adding %s to %s\n' \
+        "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[*]}" \
+        "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
+    htmlcut_contributor_install_stable_toolchain_components
     printf 'devcontainer bootstrap: setting default toolchain to %s\n' "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
     rustup default "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
 }
@@ -53,5 +57,6 @@ cargo deny --version >/dev/null
 cargo semver-checks --version >/dev/null
 cargo outdated --version >/dev/null
 cargo llvm-cov --version >/dev/null
+cargo +nightly miri --version >/dev/null
 cargo fuzz --version >/dev/null
 printf 'devcontainer bootstrap: ready\n'

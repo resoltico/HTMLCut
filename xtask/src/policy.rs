@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
+use crate::model::{
+    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, DynResult,
+};
 use crate::release_target_triples;
 
 /// Builds the strict dependency-policy command used by the maintainer gate.
@@ -32,7 +34,8 @@ pub fn deny_check_command(repo_root: &Path) -> DynResult<CommandSpec> {
         args,
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
-    ))
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace))
 }
 
 /// Reads the configured `cargo deny` graph targets from `deny.toml`.

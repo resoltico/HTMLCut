@@ -256,7 +256,7 @@ fn tracked_files_canonicalize_the_expected_maintained_sources() {
             normalize_path(repo_root.path(), &repo_root.path().join(relative_path)).expect("path");
         assert_eq!(
             tracked.get(&absolute_path),
-            Some(&relative_path.to_string())
+            Some(&TrackedCoverageFile::executable(relative_path))
         );
     }
 

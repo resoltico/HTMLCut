@@ -61,6 +61,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         InspectSourceArgs {
             source: SourceArgs {
                 input: Some(missing.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -87,6 +88,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
         InspectSourceArgs {
             source: SourceArgs {
                 input: Some(missing),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -121,6 +123,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -160,6 +163,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -203,6 +207,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -246,6 +251,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -288,6 +294,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -337,6 +344,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -377,6 +385,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -419,6 +428,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -558,6 +568,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
             InspectSourceArgs {
                 source: SourceArgs {
                     input: Some(missing.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -591,6 +602,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
             InspectSourceArgs {
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -622,6 +634,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -662,6 +675,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -702,6 +716,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 },
                 source: SourceArgs {
                     input: Some(input.clone()),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -743,6 +758,7 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
                 },
                 source: SourceArgs {
                     input: Some(input),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

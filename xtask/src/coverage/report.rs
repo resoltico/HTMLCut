@@ -3,15 +3,15 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::model::{
-    BranchCoverageByFile, CoverageCounter, CoverageFailure, CoverageReport, CoverageSummary,
-    DynResult,
+    BranchCoverageByFile, CoverageCounter, CoverageFailure, CoverageReport, CoverageSourceKind,
+    CoverageSummary, DynResult, TrackedCoverageFile,
 };
 use crate::plan::normalize_path;
 
 /// Scores one `llvm-cov` report against the tracked-file coverage policy.
 pub fn evaluate_coverage_report(
     repo_root: &Path,
-    tracked_files: &BTreeMap<PathBuf, String>,
+    tracked_files: &BTreeMap<PathBuf, TrackedCoverageFile>,
     report: CoverageReport,
 ) -> DynResult<CoverageSummary> {
     let mut coverage_by_file: BTreeMap<PathBuf, BTreeMap<u64, u64>> = BTreeMap::new();
@@ -78,13 +78,15 @@ pub fn evaluate_coverage_report(
     let mut tracked_line_count = 0usize;
     let mut tracked_branch_count = 0usize;
 
-    for (tracked_file, display_path) in tracked_files {
+    for (tracked_file, tracked_source) in tracked_files {
         let Some(line_counts) = coverage_by_file.get(tracked_file) else {
-            failures.push(CoverageFailure {
-                file: display_path.clone(),
-                uncovered_lines: vec!["<no executable lines found>".to_owned()],
-                uncovered_branch_count: 0,
-            });
+            if matches!(tracked_source.kind, CoverageSourceKind::Executable) {
+                failures.push(CoverageFailure {
+                    file: tracked_source.display_path.clone(),
+                    uncovered_lines: vec!["<no executable lines found>".to_owned()],
+                    uncovered_branch_count: 0,
+                });
+            }
             continue;
         };
 
@@ -117,7 +119,7 @@ pub fn evaluate_coverage_report(
 
         if !uncovered_lines.is_empty() || uncovered_branch_count > 0 {
             failures.push(CoverageFailure {
-                file: display_path.clone(),
+                file: tracked_source.display_path.clone(),
                 uncovered_lines,
                 uncovered_branch_count,
             });

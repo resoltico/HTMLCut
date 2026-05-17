@@ -2,10 +2,10 @@
 afad: "4.0"
 version: "10.0.0"
 domain: WORKSPACE
-updated: "2026-05-02"
+updated: "2026-05-14"
 route:
-  keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name]
-  questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where does the HTMLCut contributor devcontainer live?"]
+  keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
+  questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]
 ---
 
 # Workspace Layout
@@ -67,7 +67,10 @@ These paths matter, but they are not normal workspace members:
 - `.devcontainer/` owns the committed contributor-container contract and is backed by lifecycle
   scripts plus host-side entrypoints under `scripts/`.
 - `docs/` is the maintained Markdown contract set.
-- `dist/` and `target/` are generated artifact trees, not source-of-truth contract owners.
+- Cargo's managed build artifacts live in the sibling `../.htmlcut-artifacts/` tree, not in the
+  repo root. The coverage gate also owns nested `llvm-cov-target` worktrees inside its sibling
+  coverage roots. A repo-local `target/` tree is a legacy spillover condition that `cargo xtask
+  hygiene` can reclaim.
 
 ## Where To Go Next
 

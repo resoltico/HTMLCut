@@ -292,6 +292,62 @@ fn slice_match_builder_covers_inner_html_without_text_projection() {
     assert!(inner_html_match.html.is_none());
     assert!(inner_html_match.text.is_none());
 }
+
+#[test]
+fn slice_match_builder_preserves_selected_fragment_roots_that_only_look_like_utility_chrome() {
+    let mut request = ExtractionRequest::new(
+        memory_source(
+            "inline",
+            "START::<p class=\"status pricing report\">All Systems Operational</p>::END",
+        ),
+        ExtractionSpec::slice(
+            slice_spec("START::", "::END").with_boundary_retention(BoundaryRetention::ExcludeBoth),
+        )
+        .with_value(ValueSpec::Text),
+    );
+    request.output.rendering = RenderingOptions {
+        whitespace: WhitespaceMode::Rendered,
+        rewrite_urls: false,
+    };
+    let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
+    let candidate = extract_slice_candidates(
+        &loaded.text,
+        request.extraction.slice_spec().expect("slice spec"),
+    )
+    .expect("candidate")
+    .remove(0);
+
+    let text_match = build_slice_match(&request, None, &candidate, 1, 1, 1, 1).expect("text");
+    assert_eq!(text_match.value.as_str(), Some("All Systems Operational"));
+    assert_eq!(text_match.text.as_deref(), Some("All Systems Operational"));
+
+    let mut nav_request = ExtractionRequest::new(
+        memory_source(
+            "inline",
+            "START::<nav><a href=\"/docs\">Docs</a></nav>::END",
+        ),
+        ExtractionSpec::slice(
+            slice_spec("START::", "::END").with_boundary_retention(BoundaryRetention::ExcludeBoth),
+        )
+        .with_value(ValueSpec::Text),
+    );
+    nav_request.output.rendering = RenderingOptions {
+        whitespace: WhitespaceMode::Rendered,
+        rewrite_urls: false,
+    };
+    let nav_loaded = load_source(&nav_request.source, &RuntimeOptions::default()).expect("loaded");
+    let nav_candidate = extract_slice_candidates(
+        &nav_loaded.text,
+        nav_request.extraction.slice_spec().expect("slice spec"),
+    )
+    .expect("candidate")
+    .remove(0);
+
+    let nav_match = build_slice_match(&nav_request, None, &nav_candidate, 1, 1, 1, 1).expect("nav");
+    assert_eq!(nav_match.value.as_str(), Some("Docs [/docs]"));
+    assert_eq!(nav_match.text.as_deref(), Some("Docs [/docs]"));
+}
+
 #[test]
 fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
     let slice = slice_spec("<p>", "</p>");

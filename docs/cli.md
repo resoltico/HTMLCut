@@ -44,6 +44,7 @@ Every extraction and inspection command accepts one input:
 - a local file path
 - an `http://` or `https://` URL
 - `-` for stdin
+- `--input-html <HTML>` when the source bytes are already in memory
 
 `--base-url` sets the input base explicitly. For URL inputs, the request URL is the input base
 automatically. If the document contains `<base href>`, HTMLCut resolves it against the input base to
@@ -216,7 +217,7 @@ The `code` values in that error report are stable strings from one of two mainta
 
 It can be driven two ways:
 
-- inline flags such as `<INPUT>` plus `--css`
+- inline flags such as `<INPUT>` or `--input-html <HTML>` plus `--css`
 - `--request-file <PATH>` pointing at a serialized `ExtractionDefinition`
 
 Selection modes:
@@ -237,7 +238,9 @@ Value modes:
 `--value text` uses HTML-aware text rendering rather than raw descendant concatenation. That means
 heading boundaries, ordered-list numbering, nested-list indentation, image `alt` text, link
 targets, table captions and rows, compact label-value rows, and preformatted whitespace on the
-selected node are preserved in the extracted value.
+selected node are preserved in the extracted value. HTMLCut treats explicit selection as a strong
+signal: the selected root itself is rendered unless it is actually hidden or empty, while reader-
+cleanup heuristics remain available for descendants and whole-document review.
 The default `--whitespace rendered` preserves that rendered layout after HTML-aware rendering; it
 does not promise byte-for-byte source whitespace preservation.
 

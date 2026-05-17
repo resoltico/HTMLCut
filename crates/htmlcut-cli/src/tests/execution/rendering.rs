@@ -584,6 +584,7 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
         InspectSourceArgs {
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -620,6 +621,7 @@ fn skipped_load_traces_and_quiet_execution_cover_remaining_paths() {
                 },
                 source: SourceArgs {
                     input: Some(input),
+                    input_html: None,
                     base_url: None,
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

@@ -14,6 +14,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -62,6 +63,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -88,6 +90,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: Some("ftp://example.com".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -114,6 +117,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -140,6 +144,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -170,6 +175,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: Some("ftp://example.com".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -200,6 +206,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -226,6 +233,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
         PreparedSourceInspection::new(InspectSourceArgs {
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -247,6 +255,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
         PreparedSourceInspection::new(InspectSourceArgs {
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -272,6 +281,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input.clone()),
+                input_html: None,
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -307,6 +317,7 @@ fn builder_validation_edges_surface_cli_errors_and_invalid_inputs() {
             },
             source: SourceArgs {
                 input: Some(input),
+                input_html: None,
                 base_url: None,
                 max_bytes: "banana".to_owned(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

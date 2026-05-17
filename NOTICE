@@ -56,11 +56,24 @@ The following crates are licensed under the Mozilla Public License 2.0:
 
   cssparser     — Servo project, Mozilla
   selectors     — Servo project, Mozilla
-  servo_arc     — Servo project, Mozilla
 
 MPL-2.0 is a file-level copyleft license. HTMLCut uses these libraries
 unmodified. The MPL-2.0 license text and source for these crates are available
 at https://github.com/servo/servo and their respective crates.io pages.
+
+================================================================================
+Local patched dependencies — selector and parser safety
+================================================================================
+
+HTMLCut carries local vendored dependency patches under `patches/rust/servo_arc`
+and `patches/rust/tendril` to apply unreleased upstream safety fixes on the
+selector and HTML-parser stack used by `scraper`, `selectors`, `html5ever`,
+and `htmlcut-core`.
+
+The patched `servo_arc` and `tendril` sources keep their original upstream
+crate licenses: MIT OR Apache-2.0.
+
+Patch provenance, verification, and removal cues live in `patches/README.md`.
 
 ================================================================================
 ISC — ring and derived cryptographic code

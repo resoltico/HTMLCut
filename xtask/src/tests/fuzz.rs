@@ -111,6 +111,7 @@ fn cargo_fuzz_probe_command_stays_quiet_and_does_not_force_clang() {
     assert_eq!(command.args, vec!["fuzz", "--help"]);
     assert!(command_is_quiet(&command));
     assert!(!command_forces_clang(&command));
+    assert!(command_uses_managed_workspace_artifacts(&command));
 }
 
 #[test]

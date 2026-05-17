@@ -40,6 +40,7 @@ fn logging_aware_preparation_preserves_request_file_configuration() {
             },
             source: SourceArgs {
                 input: None,
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -81,6 +82,7 @@ fn logging_aware_preparation_preserves_request_file_configuration() {
         InspectSourceArgs {
             source: SourceArgs {
                 input: Some(input_path.to_string_lossy().into_owned()),
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -111,6 +113,7 @@ fn logging_aware_preparation_preserves_request_file_configuration() {
             },
             source: SourceArgs {
                 input: None,
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -155,6 +158,7 @@ fn logging_aware_preparation_preserves_request_file_configuration() {
             },
             source: SourceArgs {
                 input: None,
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

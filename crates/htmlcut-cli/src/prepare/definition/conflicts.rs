@@ -102,6 +102,7 @@ pub(in crate::prepare) fn ensure_inline_inspect_slice_request_is_default(
 fn collect_source_request_file_conflicts(source: &SourceArgs) -> Vec<&'static str> {
     let mut conflicts = Vec::new();
     push_conflict(&mut conflicts, source.input.is_some(), "<INPUT>");
+    push_conflict(&mut conflicts, source.input_html.is_some(), "--input-html");
     push_conflict(&mut conflicts, source.base_url.is_some(), "--base-url");
     push_conflict(
         &mut conflicts,

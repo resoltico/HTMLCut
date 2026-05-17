@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tightened the maintainer release protocol so release PR merge handoff no longer relies on
   `gh pr merge --delete-branch` from a disposable checked-out release worktree, avoiding false
   local merge-failure reports after a successful remote merge and branch deletion.
+- Promoted build-artifact hygiene to a first-class maintained system: Cargo now routes normal
+  workspace artifacts outside the repo root through committed `build.target-dir` and
+  `build.build-dir` ownership, `cargo xtask` gained `hygiene report|verify|clean` subcommands,
+  the maintainer Rust gates now enforce repo-local artifact hygiene before and after the command
+  plan, coverage now uses separate sibling managed roots instead of nesting inside the main Cargo
+  trees, hygiene reports count unique artifact bytes without double-counting diagnostic aggregates,
+  nested `cargo llvm-cov` worktrees are tagged and verified as managed coverage artifacts too,
+  ambient caller Cargo env no longer overrides the repo-owned artifact layout truth, and the
+  docs/devcontainer helpers now describe and honor the same artifact policy.
+- HTMLCut now canonically vendors the unreleased `servo_arc 0.4.3` and `tendril 0.5.0` selector
+  and parser-stack safety fixes inside `patches/rust`, `cargo xtask` gained a maintained strict-
+  provenance `miri` command plus a selector-safety Miri proof inside the main `check` gate, and
+  the contributor/devcontainer bootstrap now installs and validates the nightly `miri` and
+  `rust-src` components as part of the repository-owned maintainer toolchain contract.
+- The document text renderer now lives behind an explicit `document::text` subsystem with shared
+  structural vocabularies plus a dedicated reader-cleanup policy layer, and the CLI now exposes
+  in-memory HTML as a first-class `--input-html <HTML>` source instead of forcing literal-source
+  workflows through stdin.
+- `cargo xtask check` now treats the final coverage pass as the canonical maintained Rust package
+  execution owner, so `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` test targets
+  run once under coverage instead of being replayed earlier in the gate and then rerun again for
+  scoring.
+- The coverage gate now distinguishes declarative Rust sources from executable modules by parsing
+  tracked file shape, so module routers and constant vocabulary files remain part of the
+  maintained source inventory without being falsely reported as missing executable coverage.
+
+### Fixed
+- The shipped selector-validation and selector-execution path no longer relies on the known Miri
+  provenance failures in upstream `servo_arc 0.4.3` and `tendril 0.5.0`, the maintained proof now
+  runs under strict provenance, and `NOTICE` now reflects the local patched dependencies truthfully
+  instead of listing `servo_arc` under the MPL-only Servo crates.
+- Text extraction for explicit selections no longer discards the selected root merely because its
+  tag, role, or class looks like utility chrome, so `select` and `slice` now return readable text
+  for intentionally selected fragments such as status or pricing blocks while preserving reader-
+  cleanup behavior for descendants and whole-document review.
 
 ## [10.0.0] - 2026-05-14
 

@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::contracts::InspectionCount;
 
 use super::parse::text_from_title;
-use super::render::ELLIPSIS;
+use super::text::ELLIPSIS;
 
 pub(crate) fn build_preview(value: &Value, preview_chars: usize) -> String {
     let rendered = match value {

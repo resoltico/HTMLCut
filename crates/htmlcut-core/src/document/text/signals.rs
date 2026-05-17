@@ -1,165 +1,9 @@
 use scraper::{ElementRef, Node};
 
-const CONTENT_HINT_TOKENS: [&str; 8] = [
-    "article", "body", "content", "entry", "guide", "help", "main", "text",
-];
-const LAYOUT_SHELL_TOKENS: [&str; 7] = [
-    "column",
-    "columns",
-    "container",
-    "frame",
-    "grid",
-    "layout",
-    "wrapper",
-];
-const STRONG_UTILITY_CHROME_TOKENS: [&str; 34] = [
-    "accessories",
-    "affiliate",
-    "buy",
-    "carrier",
-    "compare",
-    "comparison",
-    "deal",
-    "deals",
-    "disambiguation",
-    "disclaimer",
-    "disclosure",
-    "environment",
-    "faq",
-    "hatnote",
-    "incentive",
-    "legal",
-    "modal",
-    "offer",
-    "offers",
-    "policy",
-    "pricing",
-    "promo",
-    "report",
-    "ribbon",
-    "shop",
-    "shopping",
-    "specialist",
-    "subjectpageheader",
-    "tag",
-    "tags",
-    "terms",
-    "trade",
-    "upgrade",
-    "values",
-];
-const UTILITY_CHROME_TOKENS: [&str; 100] = [
-    "ad",
-    "advert",
-    "affiliate",
-    "appearance",
-    "author",
-    "audio",
-    "bio",
-    "breadcrumb",
-    "buy",
-    "byline",
-    "categories",
-    "category",
-    "caption",
-    "carrier",
-    "catlinks",
-    "comment",
-    "comments",
-    "compare",
-    "comparison",
-    "copied",
-    "copy",
-    "control",
-    "controls",
-    "count",
-    "deal",
-    "deals",
-    "disambiguation",
-    "disclaimer",
-    "disclosure",
-    "dropdown",
-    "environment",
-    "eyebrow",
-    "edit",
-    "editsection",
-    "featured",
-    "export",
-    "faq",
-    "filter",
-    "filters",
-    "globalnav",
-    "hatnote",
-    "hidden",
-    "indicator",
-    "indicators",
-    "incentive",
-    "interface",
-    "kicker",
-    "lang",
-    "language",
-    "legal",
-    "localnav",
-    "meta",
-    "metadata",
-    "media",
-    "menu",
-    "modal",
-    "nav",
-    "newsletter",
-    "noprint",
-    "offer",
-    "offers",
-    "pending",
-    "pagination",
-    "player",
-    "policy",
-    "portlet",
-    "pricing",
-    "print",
-    "promo",
-    "report",
-    "reaction",
-    "reactions",
-    "recommend",
-    "recommended",
-    "related",
-    "revision",
-    "ribbon",
-    "share",
-    "shop",
-    "shopping",
-    "sidebar",
-    "social",
-    "specialist",
-    "status",
-    "subtitle",
-    "subscribe",
-    "subjectpageheader",
-    "tag",
-    "tags",
-    "feedback",
-    "terms",
-    "topic",
-    "topics",
-    "trade",
-    "upsell",
-    "upgrade",
-    "utility",
-    "values",
-    "video",
-    "widget",
-];
-const UI_ROLES: [&str; 8] = [
-    "complementary",
-    "dialog",
-    "menu",
-    "menubar",
-    "navigation",
-    "search",
-    "tablist",
-    "toolbar",
-];
+use super::vocabulary::{
+    LAYOUT_SHELL_TOKENS, PRIMARY_CONTENT_SURFACE_TOKENS, STRONG_UTILITY_CHROME_TOKENS, UI_ROLES,
+    UTILITY_CHROME_TOKENS,
+};
 
 pub(crate) fn structural_signal_tokens(element: &ElementRef<'_>) -> Vec<String> {
     let mut raw_values = vec![element.value().name().to_owned()];
@@ -230,7 +74,7 @@ pub(crate) fn element_looks_like_utility_chrome(element: &ElementRef<'_>) -> boo
     }
 
     let tokens = structural_signal_tokens(element);
-    let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
+    let content_count = token_match_count(&tokens, &PRIMARY_CONTENT_SURFACE_TOKENS);
     if !matches!(tag_name, "article" | "main")
         && token_match_count(&tokens, &STRONG_UTILITY_CHROME_TOKENS) > 0
     {
@@ -337,7 +181,7 @@ fn descendant_looks_like_primary_content_surface(element: &ElementRef<'_>) -> bo
     }
 
     let tokens = structural_signal_tokens(element);
-    let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
+    let content_count = token_match_count(&tokens, &PRIMARY_CONTENT_SURFACE_TOKENS);
     let utility_count = token_match_count(&tokens, &UTILITY_CHROME_TOKENS);
     let block_count = descendant_block_signal_count(element);
 
@@ -488,6 +332,18 @@ mod tests {
             vec!["livefeed42".to_owned()]
         );
         assert!(tokenize_structural_signal("!!!").is_empty());
+        let aria_labeled = parse_document_node(
+            "<div aria-label=\"Primary Status Panel\" data-controller=\"promoRail\"></div>",
+        );
+        let aria_labeled_element = select_first(&aria_labeled, "div").expect("aria labeled");
+        let aria_tokens = structural_signal_tokens(&aria_labeled_element);
+        assert!(aria_tokens.contains(&"aria".to_owned()));
+        assert!(aria_tokens.contains(&"label".to_owned()));
+        assert!(aria_tokens.contains(&"primary".to_owned()));
+        assert!(aria_tokens.contains(&"status".to_owned()));
+        assert!(aria_tokens.contains(&"panel".to_owned()));
+        assert!(aria_tokens.contains(&"promorail".to_owned()));
+        assert!(!aria_tokens.contains(&"data".to_owned()));
 
         let footer_wrapper =
             parse_document_node("<div class=\"printfooter articleFooterSection\">Help links</div>");

@@ -2,10 +2,10 @@
 afad: "4.0"
 version: "10.0.0"
 domain: INDEX
-updated: "2026-05-13"
+updated: "2026-05-14"
 route:
-  keywords: [docs index, documentation index, getting started, developer setup, devcontainer, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, tempdir helper]
-  questions: ["where is the HTMLCut documentation index?", "where is the complete list of Markdown docs under docs/?", "where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the htmlcut_tempdir helper documented?", "where is the HTMLCut devcontainer workflow documented?"]
+  keywords: [docs index, documentation index, getting started, developer setup, devcontainer, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, artifact hygiene, tempdir helper]
+  questions: ["where is the HTMLCut documentation index?", "where is the complete list of Markdown docs under docs/?", "where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the HTMLCut artifact hygiene guide?", "where is the htmlcut_tempdir helper documented?", "where is the HTMLCut devcontainer workflow documented?"]
 ---
 
 # Documentation Index
@@ -42,6 +42,7 @@ when they drift.
 ## Maintainer Workflow
 
 - [Quality Gates](quality-gates.md)
+- [Artifact Hygiene](hygiene.md)
 - [Release Protocol Overview](release-protocol.md)
 - [Release Preflight](release-preflight.md)
 - [Release Publishing](release-publishing.md)

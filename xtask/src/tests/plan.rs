@@ -164,40 +164,8 @@ fn check_plan_includes_all_strict_gates() {
     );
     assert!(
         plan.iter()
-            .any(|spec| { spec.args == ["nextest", "run", "-p", "xtask", "--tests", "--locked"] })
+            .any(|spec| spec.args == ["run", "-p", "xtask", "--", "outdated-check",])
     );
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-core",
-                "--lib",
-                "--locked",
-                "contract_lint",
-            ]
-    }));
-    assert!(plan.iter().any(|spec| {
-        spec.args
-            == [
-                "nextest",
-                "run",
-                "-p",
-                "htmlcut-cli",
-                "--lib",
-                "--locked",
-                "contract_lint",
-            ]
-    }));
-    assert!(plan.iter().any(|spec| spec.args
-        == [
-            "outdated",
-            "--workspace",
-            "--root-deps-only",
-            "--exit-code",
-            "1"
-        ]));
     assert!(
         plan.iter()
             .any(|spec| spec.args == ["audit", "-D", "warnings"])
@@ -226,7 +194,37 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
-    assert!(plan.iter().any(|spec| {
+    assert!(plan.iter().any(|spec| *spec == miri_selector_command()));
+    assert!(
+        !plan
+            .iter()
+            .any(|spec| { spec.args == ["nextest", "run", "-p", "xtask", "--tests", "--locked"] })
+    );
+    assert!(!plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--locked",
+                "contract_lint",
+            ]
+    }));
+    assert!(!plan.iter().any(|spec| {
+        spec.args
+            == [
+                "nextest",
+                "run",
+                "-p",
+                "htmlcut-cli",
+                "--lib",
+                "--locked",
+                "contract_lint",
+            ]
+    }));
+    assert!(!plan.iter().any(|spec| {
         spec.args
             == [
                 "nextest",
@@ -238,7 +236,7 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
-    assert!(plan.iter().any(|spec| {
+    assert!(!plan.iter().any(|spec| {
         spec.args
             == [
                 "test",
@@ -249,7 +247,7 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
-    assert!(plan.iter().any(|spec| {
+    assert!(!plan.iter().any(|spec| {
         spec.args
             == [
                 "test",
@@ -366,13 +364,7 @@ fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
             ),
             test_command_spec(
                 "cargo",
-                [
-                    "outdated",
-                    "--workspace",
-                    "--root-deps-only",
-                    "--exit-code",
-                    "1"
-                ],
+                ["run", "-p", "xtask", "--", "outdated-check",],
                 false,
                 false,
             ),
@@ -521,12 +513,13 @@ fn check_plan_keeps_the_cli_lib_gate_when_cli_test_targets_are_missing() {
     assert!(plan.iter().any(|spec| {
         spec.args
             == [
-                "test",
+                "build",
+                "--profile",
+                "dist",
                 "-p",
                 "htmlcut-cli",
-                "--lib",
-                "--tests",
-                "--all-features",
+                "--bin",
+                "htmlcut",
                 "--locked",
             ]
     }));
@@ -575,6 +568,7 @@ fn coverage_command_targets_repo_coverage_file() {
 
     assert_eq!(command.program, PathBuf::from("cargo"));
     assert!(command_forces_clang(&command));
+    assert!(command_uses_managed_coverage_artifacts(&command));
     assert_eq!(
         command.args,
         vec![
@@ -585,6 +579,8 @@ fn coverage_command_targets_repo_coverage_file() {
             "htmlcut-core".to_owned(),
             "-p".to_owned(),
             "htmlcut-cli".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-tempdir".to_owned(),
             "-p".to_owned(),
             "xtask".to_owned(),
             "--all-targets".to_owned(),
@@ -597,6 +593,7 @@ fn coverage_command_targets_repo_coverage_file() {
     );
     assert_eq!(clean.program, PathBuf::from("cargo"));
     assert!(!command_forces_clang(&clean));
+    assert!(command_uses_managed_coverage_artifacts(&clean));
     assert_eq!(
         clean.args,
         vec![
@@ -616,21 +613,31 @@ fn coverage_output_path_uses_the_configured_target_dir_layout() {
 
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(repo_root.path(), None),
-        repo_root.path().join("target").join("coverage.json")
+        repo_root
+            .path()
+            .join("coverage-target")
+            .join("coverage.json")
     );
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(
             repo_root.path(),
             Some(&absolute_target_dir),
         ),
-        absolute_target_dir.join("coverage.json")
+        absolute_target_dir
+            .parent()
+            .expect("absolute target parent")
+            .join("coverage-target")
+            .join("coverage.json")
     );
     assert_eq!(
         crate::coverage::coverage_output_path_for_tests(
             repo_root.path(),
             Some(Path::new("custom-target")),
         ),
-        repo_root.path().join("custom-target").join("coverage.json")
+        repo_root
+            .path()
+            .join("coverage-target")
+            .join("coverage.json")
     );
 }
 
@@ -639,20 +646,10 @@ fn semver_scratch_dir_uses_target_tree() {
     let repo_root = tempdir().expect("tempdir");
     let absolute_target_root = tempdir().expect("absolute target tempdir");
     let absolute_target_dir = absolute_target_root.path().join("htmlcut-gate");
-    let expected_live_target = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .map(|target_dir| {
-            if target_dir.is_absolute() {
-                target_dir
-            } else {
-                repo_root.path().join(target_dir)
-            }
-        })
-        .unwrap_or_else(|| repo_root.path().join("target"));
 
     assert_eq!(
         semver_scratch_dir(repo_root.path()),
-        expected_live_target.join("semver-checks")
+        repo_root.path().join("target").join("semver-checks")
     );
     assert_eq!(
         crate::plan::semver_scratch_dir_for_tests(repo_root.path(), None),

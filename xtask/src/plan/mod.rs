@@ -22,9 +22,14 @@ pub fn shell_script_paths(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
     check::shell_script_paths(repo_root)
 }
 
-/// Resolves the Cargo target directory, honoring `CARGO_TARGET_DIR` when present.
+/// Resolves the Cargo target directory owned by this repository.
 pub fn cargo_target_dir(repo_root: &Path) -> PathBuf {
     paths::cargo_target_dir(repo_root)
+}
+
+/// Resolves the Cargo build directory owned by this repository.
+pub fn cargo_build_dir(repo_root: &Path) -> PathBuf {
+    paths::cargo_build_dir(repo_root)
 }
 
 /// Canonicalizes a repo-relative or absolute path against the repository root.
@@ -50,6 +55,26 @@ pub fn semver_baseline_path(repo_root: &Path) -> PathBuf {
 /// Returns the semver-checks scratch directory under the Cargo target tree.
 pub fn semver_scratch_dir(repo_root: &Path) -> PathBuf {
     paths::semver_scratch_dir(repo_root)
+}
+
+/// Returns the isolated Cargo target directory used by the coverage gate.
+pub fn coverage_target_dir(repo_root: &Path) -> PathBuf {
+    paths::coverage_target_dir(repo_root)
+}
+
+/// Returns the isolated Cargo build directory used by the coverage gate.
+pub fn coverage_build_dir(repo_root: &Path) -> PathBuf {
+    paths::coverage_build_dir(repo_root)
+}
+
+/// Returns the nested Cargo target directory created by `cargo llvm-cov`.
+pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
+    paths::coverage_cargo_target_dir(repo_root)
+}
+
+/// Returns the nested Cargo build directory created by `cargo llvm-cov`.
+pub(crate) fn coverage_cargo_build_dir(repo_root: &Path) -> PathBuf {
+    paths::coverage_cargo_build_dir(repo_root)
 }
 
 /// Returns the platform-specific HTMLCut binary name.
@@ -86,6 +111,11 @@ pub(crate) fn cargo_target_dir_for_tests(repo_root: &Path, target_dir: Option<&P
 }
 
 #[cfg(test)]
+pub(crate) fn cargo_build_dir_for_tests(repo_root: &Path, build_dir: Option<&Path>) -> PathBuf {
+    paths::cargo_build_dir_for_tests(repo_root, build_dir)
+}
+
+#[cfg(test)]
 pub(crate) fn release_binary_path_for_tests(
     repo_root: &Path,
     target_dir: Option<&Path>,
@@ -99,14 +129,49 @@ pub(crate) fn semver_scratch_dir_for_tests(repo_root: &Path, target_dir: Option<
 }
 
 #[cfg(test)]
+pub(crate) fn coverage_target_dir_for_tests(
+    repo_root: &Path,
+    target_dir: Option<&Path>,
+) -> PathBuf {
+    paths::coverage_target_dir_for_tests(repo_root, target_dir)
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_build_dir_for_tests(repo_root: &Path, build_dir: Option<&Path>) -> PathBuf {
+    paths::coverage_build_dir_for_tests(repo_root, build_dir)
+}
+
+#[cfg(test)]
 pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path) -> bool {
     check::is_maintained_shell_script_for_tests(repo_root, path)
 }
 
 #[cfg(test)]
-pub(crate) fn with_cargo_target_dir_override_for_tests<T>(
+pub(crate) fn with_cargo_artifact_dir_overrides_for_tests<T>(
     target_dir: PathBuf,
+    build_dir: PathBuf,
     operation: impl FnOnce() -> T,
 ) -> T {
-    paths::with_cargo_target_dir_override(target_dir, operation)
+    paths::with_cargo_artifact_dir_overrides(target_dir, build_dir, operation)
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_cargo_target_dir_for_tests(
+    repo_root: &Path,
+    target_dir: Option<&Path>,
+) -> PathBuf {
+    paths::coverage_cargo_target_dir_for_tests(repo_root, target_dir)
+}
+
+#[cfg(test)]
+pub(crate) fn coverage_cargo_build_dir_for_tests(
+    repo_root: &Path,
+    build_dir: Option<&Path>,
+) -> PathBuf {
+    paths::coverage_cargo_build_dir_for_tests(repo_root, build_dir)
+}
+
+#[cfg(test)]
+pub(crate) fn sibling_artifact_dir_for_tests(path: &Path, sibling_name: &str) -> PathBuf {
+    paths::sibling_artifact_dir_for_tests(path, sibling_name)
 }

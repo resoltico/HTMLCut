@@ -12,6 +12,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
             },
             source: SourceArgs {
                 input: None,
+                input_html: None,
                 base_url: None,
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -63,6 +64,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
         },
         source: SourceArgs {
             input: None,
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -99,6 +101,7 @@ fn prepared_request_file_builders_load_selector_and_slice_definitions() {
         },
         source: SourceArgs {
             input: None,
+            input_html: None,
             base_url: None,
             max_bytes: DEFAULT_MAX_BYTES.to_string(),
             fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -146,6 +149,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 },
                 source: SourceArgs {
                     input: Some(fixture.input.clone()),
+                    input_html: None,
                     base_url: Some("https://example.com/base/".to_owned()),
                     max_bytes: DEFAULT_MAX_BYTES.to_string(),
                     fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -198,6 +202,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
             },
             source: SourceArgs {
                 input: Some(fixture.input.clone()),
+                input_html: None,
                 base_url: Some("https://example.com/base/".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
@@ -237,6 +242,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
             },
             source: SourceArgs {
                 input: Some(fixture.input),
+                input_html: None,
                 base_url: Some("https://example.com/base/".to_owned()),
                 max_bytes: DEFAULT_MAX_BYTES.to_string(),
                 fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,

@@ -69,6 +69,20 @@ fn capture_command_output_returns_stdout_and_reports_failure() {
 }
 
 #[test]
+fn command_environment_for_tests_applies_explicit_overrides() {
+    let spec = test_command_spec("cargo", ["--version"], true, false)
+        .with_env("MIRIFLAGS", "-Zmiri-strict-provenance");
+
+    let env_pairs = crate::command_exec::command_environment_for_tests(&spec);
+    let miriflags = env_pairs
+        .into_iter()
+        .find(|(key, _)| key == "MIRIFLAGS")
+        .and_then(|(_, value)| value)
+        .expect("MIRIFLAGS override");
+    assert_eq!(miriflags, "-Zmiri-strict-provenance");
+}
+
+#[test]
 fn remove_dir_if_exists_is_idempotent_and_repo_root_points_at_workspace() {
     let tempdir = tempdir().expect("tempdir");
     let removable = tempdir.path().join("scratch");

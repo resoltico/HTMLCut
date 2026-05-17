@@ -3,8 +3,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::command_exec::{capture_command_output, repo_worktree_files};
-use crate::model::{CommandSpec, CommandStdout, CommandToolchainEnv, DynResult};
-use crate::{deny_check_command, fuzz::FUZZ_PACKAGE_NAME};
+use crate::model::{
+    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, DynResult,
+};
+use crate::{
+    deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_selector_command, outdated_check_command,
+};
 
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
 use super::semver::semver_release_type;
@@ -32,116 +36,100 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     }
 
     plan.push(format_check_command());
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["nextest", "run", "-p", "xtask", "--tests", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::Inherit,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--locked",
-            "contract_lint",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "clippy",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--tests",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "test",
-            "-p",
-            "htmlcut-core",
-            "--lib",
-            "--no-default-features",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "nextest",
-            "run",
-            "-p",
-            "htmlcut-cli",
-            "--lib",
-            "--locked",
-            "contract_lint",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "clippy",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--tests",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "test",
+                "-p",
+                "htmlcut-core",
+                "--lib",
+                "--no-default-features",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(miri_selector_command());
     plan.push(workspace_clippy_command());
     plan.push(workspace_outdated_command());
     plan.push(workspace_audit_command());
     plan.push(deny_check_command(repo_root)?);
     plan.push(semver_check_command(repo_root, &semver_release_type));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "check",
-            "-p",
-            FUZZ_PACKAGE_NAME,
-            "--bins",
-            "--features",
-            "fuzzing",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.extend(full_suite_test_specs());
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["test", "--workspace", "--doc", "--all-features", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        ["doc", "--workspace", "--no-deps", "--locked"],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
-    plan.push(CommandSpec::new(
-        "cargo",
-        [
-            "build",
-            "--profile",
-            "dist",
-            "-p",
-            "htmlcut-cli",
-            "--bin",
-            "htmlcut",
-            "--locked",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
-    ));
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "check",
+                "-p",
+                FUZZ_PACKAGE_NAME,
+                "--bins",
+                "--features",
+                "fuzzing",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            ["test", "--workspace", "--doc", "--all-features", "--locked"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            ["doc", "--workspace", "--no-deps", "--locked"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
+    plan.push(
+        CommandSpec::new(
+            "cargo",
+            [
+                "build",
+                "--profile",
+                "dist",
+                "-p",
+                "htmlcut-cli",
+                "--bin",
+                "htmlcut",
+                "--locked",
+            ],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::ForceClang,
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+    );
     plan.push(CommandSpec::new(
         release_binary_path(repo_root),
         ["--version"],
@@ -259,6 +247,7 @@ fn format_check_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn workspace_clippy_command() -> CommandSpec {
@@ -277,6 +266,7 @@ fn workspace_clippy_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn core_all_features_lib_test_command() -> CommandSpec {
@@ -293,21 +283,11 @@ fn core_all_features_lib_test_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn workspace_outdated_command() -> CommandSpec {
-    CommandSpec::new(
-        "cargo",
-        [
-            "outdated",
-            "--workspace",
-            "--root-deps-only",
-            "--exit-code",
-            "1",
-        ],
-        CommandStdout::Inherit,
-        CommandToolchainEnv::Inherit,
-    )
+    outdated_check_command()
 }
 
 fn workspace_audit_command() -> CommandSpec {
@@ -317,6 +297,7 @@ fn workspace_audit_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandSpec {
@@ -335,6 +316,7 @@ fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandS
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
 fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
@@ -363,7 +345,8 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
             ],
             CommandStdout::Inherit,
             CommandToolchainEnv::ForceClang,
-        ),
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
         CommandSpec::new(
             "cargo",
             [
@@ -377,12 +360,9 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
             ],
             CommandStdout::Inherit,
             CommandToolchainEnv::ForceClang,
-        ),
+        )
+        .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     ]
-}
-
-fn full_suite_test_specs() -> Vec<CommandSpec> {
-    all_features_test_specs()
 }
 
 #[cfg(test)]

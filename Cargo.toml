@@ -47,6 +47,10 @@ toml = "0.8.23"
 ureq = { version = "3.3.0", default-features = false, features = ["gzip", "rustls", "platform-verifier"] }
 url = { version = "2.5.8", features = ["serde"] }
 
+[patch.crates-io]
+servo_arc = { path = "patches/rust/servo_arc" }
+tendril = { path = "patches/rust/tendril" }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"

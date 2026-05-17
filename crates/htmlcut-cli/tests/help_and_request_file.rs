@@ -74,6 +74,18 @@ fn subcommand_help_renders_canonical_contract_modes_and_notes() {
 }
 
 #[test]
+fn source_help_exposes_inline_html_as_a_first_class_contract() {
+    let select_help = normalize_whitespace(&help_output(&["select", "--help"]));
+    let inspect_help = normalize_whitespace(&help_output(&["inspect", "source", "--help"]));
+
+    assert!(select_help.contains("--input-html <HTML>"), "{select_help}");
+    assert!(
+        inspect_help.contains("--input-html <HTML>"),
+        "{inspect_help}"
+    );
+}
+
+#[test]
 fn missing_request_file_points_back_to_schema_and_catalog_contracts() {
     let tempdir = tempdir().expect("tempdir");
     let missing_path = tempdir.path().join("missing request [draft].json");

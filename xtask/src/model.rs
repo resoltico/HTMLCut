@@ -31,6 +31,9 @@ pub enum XtaskError {
         #[source]
         source: toml::de::Error,
     },
+    /// One repository-owned TOML document failed to serialize.
+    #[error(transparent)]
+    TomlSerialize(#[from] toml::ser::Error),
     /// One path-prefix operation failed.
     #[error(transparent)]
     StripPrefix(#[from] std::path::StripPrefixError),
@@ -80,9 +83,10 @@ pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, Br
 // tracked executable modules that define HTMLCut's maintained extraction, CLI
 // adapter, and maintainer-gate logic. The tracked set is derived from the
 // maintained worktree inventory so future seam splits are scored automatically
-// without letting ignored scratch files pollute the gate; declarative
-// clap/report-model surfaces and thin binary entrypoints stay on the explicit
-// exclusion list.
+// without letting ignored scratch files pollute the gate. Declarative module
+// surfaces and constant-only vocabulary files stay in the tracked inventory,
+// but the scoring pass treats them as non-executable-by-design instead of
+// pretending they should emit runnable line coverage.
 pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/htmlcut-core/src",
     "crates/htmlcut-cli/src",
@@ -113,10 +117,47 @@ pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
     "crates/htmlcut-core/src/wire/mod.rs",
     "xtask/src/lib.rs",
 ];
-// HTMLCut stays on stable for normal development. Coverage is the one place we
-// intentionally hop to nightly because `cargo llvm-cov --branch` requires it.
-pub(crate) const COVERAGE_TOOLCHAIN: &str = "+nightly";
-pub(crate) const COVERAGE_TOOLCHAIN_NAME: &str = "nightly";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Coverage scoring expectation for one tracked Rust source file.
+pub enum CoverageSourceKind {
+    /// The file contains executable Rust semantics and must satisfy the 100% coverage bar.
+    Executable,
+    /// The file is declarative-only and may legitimately emit no executable lines.
+    DeclarativeOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// One tracked Rust source file together with its repo-relative display path and scoring policy.
+pub struct TrackedCoverageFile {
+    /// Repo-relative path used in diagnostics and reports.
+    pub display_path: String,
+    /// Whether the source should contribute executable lines and branches to the coverage gate.
+    pub kind: CoverageSourceKind,
+}
+
+impl TrackedCoverageFile {
+    /// Builds one tracked executable source file record.
+    pub fn executable(display_path: impl Into<String>) -> Self {
+        Self {
+            display_path: display_path.into(),
+            kind: CoverageSourceKind::Executable,
+        }
+    }
+
+    /// Builds one tracked declarative-only source file record.
+    pub fn declarative_only(display_path: impl Into<String>) -> Self {
+        Self {
+            display_path: display_path.into(),
+            kind: CoverageSourceKind::DeclarativeOnly,
+        }
+    }
+}
+// HTMLCut stays on stable for normal development. The maintained safety and
+// coverage proofs intentionally hop to nightly because Miri, cargo-fuzz, and
+// `cargo llvm-cov --branch` still require it.
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Missing prerequisite for the branch-coverage gate.
@@ -125,6 +166,19 @@ pub enum CoveragePreflightFailure {
     MissingNightlyToolchain,
     /// Nightly exists, but it does not include `llvm-tools-preview`.
     MissingNightlyLlvmTools,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Missing prerequisite for the maintained strict-provenance selector-safety Miri proof.
+pub enum MiriPreflightFailure {
+    /// The nightly toolchain itself is not installed.
+    MissingNightlyToolchain,
+    /// Nightly exists, but it does not include the `miri` component.
+    MissingNightlyMiri,
+    /// Nightly exists, but it does not include the `rust-src` component.
+    MissingNightlyRustSrc,
+    /// `cargo +nightly miri --version` still does not run after rustup reports the components.
+    BrokenNightlyMiriBinary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +199,17 @@ pub enum CommandToolchainEnv {
     ForceClang,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Cargo artifact-root policy for one external maintainer command.
+pub enum CommandArtifactLayout {
+    /// Use the ambient Cargo artifact layout.
+    Inherit,
+    /// Route Cargo output into the maintained workspace artifact roots.
+    ManagedWorkspace,
+    /// Route Cargo output into the isolated maintained coverage artifact roots.
+    ManagedCoverage,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One external command that `cargo xtask` should execute as part of a gate.
 pub struct CommandSpec {
@@ -156,6 +221,10 @@ pub struct CommandSpec {
     pub stdout: CommandStdout,
     /// Environment policy for the command.
     pub toolchain_env: CommandToolchainEnv,
+    /// Artifact-root policy for the command.
+    pub artifact_layout: CommandArtifactLayout,
+    /// Explicit environment overrides for the command.
+    pub env: BTreeMap<String, String>,
 }
 
 impl CommandSpec {
@@ -175,7 +244,21 @@ impl CommandSpec {
             args: args.into_iter().map(Into::into).collect(),
             stdout,
             toolchain_env,
+            artifact_layout: CommandArtifactLayout::Inherit,
+            env: BTreeMap::new(),
         }
+    }
+
+    /// Overrides the default artifact-root policy for the command.
+    pub fn with_artifact_layout(mut self, artifact_layout: CommandArtifactLayout) -> Self {
+        self.artifact_layout = artifact_layout;
+        self
+    }
+
+    /// Adds one explicit environment override to the command.
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
     }
 }
 

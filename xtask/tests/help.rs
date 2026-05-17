@@ -42,7 +42,10 @@ fn root_help_describes_each_maintained_task() {
     assert!(help.contains("Run the full maintainer quality gate."));
     assert!(help.contains("Run the curated cross-platform Rust CI gate."));
     assert!(help.contains("Run only the curated 100% coverage gate."));
+    assert!(help.contains("Run the maintained strict-provenance selector-safety Miri proof."));
+    assert!(help.contains("Run the maintained dependency-freshness gate."));
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
+    assert!(help.contains("Inspect or repair the repository artifact hygiene policy."));
     assert!(help.contains("Refresh the checked-in htmlcut-core semver baseline."));
     assert!(help.contains("cargo xtask check"));
     assert!(help.contains("cargo xtask refresh-semver-baseline --git-ref v7.0.0"));
@@ -53,7 +56,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
     let help = run_xtask_help(&["--help"]);
     let examples = xtask_help_examples(&help);
 
-    assert_eq!(examples.len(), 6, "root help example inventory drifted");
+    assert_eq!(examples.len(), 10, "root help example inventory drifted");
 
     assert_eq!(
         examples
@@ -66,6 +69,10 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
             "cargo xtask ci-rust-gate",
             "cargo xtask semver-check",
             "cargo xtask coverage",
+            "cargo xtask miri",
+            "cargo xtask outdated-check",
+            "cargo xtask hygiene report",
+            "cargo xtask hygiene clean --mode rebuildable",
             "cargo xtask refresh-semver-baseline --git-ref v7.0.0",
         ]
     );
@@ -102,6 +109,15 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
 
     let coverage_help = run_xtask_help(&["coverage", "--help"]);
     assert!(coverage_help.contains("Run the curated 100% line-and-branch coverage gate"));
+
+    let miri_help = run_xtask_help(&["miri", "--help"]);
+    assert!(miri_help.contains("Run the maintained strict-provenance selector-safety Miri proof"));
+
+    let outdated_help = run_xtask_help(&["outdated-check", "--help"]);
+    assert!(outdated_help.contains("Run the maintained dependency-freshness gate"));
+
+    let hygiene_help = run_xtask_help(&["hygiene", "--help"]);
+    assert!(hygiene_help.contains("artifact hygiene policy"));
 
     let fuzz_help = run_xtask_help(&["fuzz-smoke", "--help"]);
     assert!(fuzz_help.contains("Run a short maintained libFuzzer smoke pass"));
