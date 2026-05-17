@@ -64,7 +64,7 @@ members = ["crates/htmlcut-core", "xtask"]
 resolver = "3"
 
 [workspace.package]
-version = "10.0.0"
+version = "10.1.0"
 
 [patch.crates-io]
 servo_arc = { path = "patches/rust/servo_arc" }
