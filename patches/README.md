@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "10.0.0"
+  version: "10.1.0"
   domain: DEPENDENCY
   updated: "2026-05-16"
 RETRIEVAL_HINTS:

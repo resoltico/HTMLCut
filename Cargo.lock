@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-cli"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "ego-tree",
  "htmlcut-tempdir",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-fuzz"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "arbitrary",
  "htmlcut-cli",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-tempdir"
-version = "10.0.0"
+version = "10.1.0"
 
 [[package]]
 name = "http"
@@ -1874,7 +1874,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xtask"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "clap",
  "htmlcut-cli",

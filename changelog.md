@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.1.0] - 2026-05-17
+
 ### Changed
 - Tightened the maintainer release protocol so release PR merge handoff no longer relies on
   `gh pr merge --delete-branch` from a disposable checked-out release worktree, avoiding false
