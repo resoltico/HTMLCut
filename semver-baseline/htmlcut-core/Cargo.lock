@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "10.0.0"
+version = "10.1.0"
 dependencies = [
  "ego-tree",
  "regex",

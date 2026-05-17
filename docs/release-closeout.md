@@ -120,6 +120,9 @@ cannot silently drift to unreleased local worktree state. The refresh flow strip
 maintainer helpers do not block the public-API baseline refresh. It also rewrites
 `semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref, package name, package
 version, and the exact refresh command so the checked-in snapshot carries its own provenance cue.
+The packaging step uses an isolated temp-owned Cargo target/build root rather than assuming the
+snapshot writes to `target/package`, so repo-owned Cargo artifact layout settings and ambient
+operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
 
 With the documented branch protection, that `git push` is an intentional maintainer-owned direct
 `main` closeout update and GitHub may report it as an admin bypass of the pull-request-only rule.

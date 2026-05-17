@@ -1,7 +1,6 @@
 mod parse;
-mod render;
-mod signals;
 mod summary;
+mod text;
 mod urls;
 
 pub(crate) use parse::parse_wrapped_fragment;
@@ -11,20 +10,20 @@ pub(crate) use parse::{
 };
 #[cfg(test)]
 pub(crate) use parse::{element_name, first_fragment_attributes, serialize_document};
+pub(crate) use summary::{build_preview, extract_document_title, heading_level, summarize_counts};
 #[cfg(test)]
-pub(crate) use render::{
+pub(crate) use text::{
     ELLIPSIS, collapse_blank_lines_for_tests, collapse_inline_whitespace, needs_space,
-    push_newline, render_node,
+    push_newline, render_document_body_as_text, render_node,
 };
-pub(crate) use render::{
-    apply_whitespace_mode, extract_heading_text, render_document_body_as_text,
-    render_element_as_text, render_html_as_text,
+pub(crate) use text::{
+    apply_whitespace_mode, extract_heading_text, render_element_as_text, render_html_as_text,
+    render_selected_document_body_as_text,
 };
-pub(crate) use signals::{
+pub(crate) use text::{
     element_has_utility_chrome_ancestor, element_looks_like_utility_chrome,
     structural_signal_tokens, token_match_count,
 };
-pub(crate) use summary::{build_preview, extract_document_title, heading_level, summarize_counts};
 #[cfg(test)]
 pub(crate) use urls::{
     attribute_supports_url_rewrite, rewrite_css_urls_for_tests, rewrite_srcset_for_tests,

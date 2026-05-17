@@ -5,6 +5,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `cargo xtask refresh-semver-baseline` now packages the published snapshot into an explicit
+  temp-owned Cargo target/build root instead of assuming `snapshot/target/package`, so release
+  closeout works correctly even when the released tree carries repo-owned Cargo artifact layout
+  settings or the operator has ambient Cargo artifact overrides.
+
 ## [10.1.0] - 2026-05-17
 
 ### Changed

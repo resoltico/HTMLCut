@@ -343,6 +343,8 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let snapshot = tempdir()?;
     let snapshot_root = snapshot.path().join("snapshot");
     let snapshot_archive = snapshot.path().join("snapshot.tar");
+    let package_target_root = snapshot.path().join("cargo-target");
+    let package_build_root = snapshot.path().join("cargo-build");
     fs::create_dir_all(&snapshot_root)?;
 
     let snapshot_archive_spec = snapshot_archive_command(&snapshot_archive, git_ref);
@@ -359,8 +361,7 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
         .join("crates")
         .join("htmlcut-core")
         .join("Cargo.toml");
-    let archive = snapshot_root
-        .join("target")
+    let archive = package_target_root
         .join("package")
         .join(format!("htmlcut-core-{version}.crate"));
 
@@ -368,7 +369,7 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let stripped_snapshot_cargo_toml = strip_dev_dependency_tables(&snapshot_cargo_toml);
     fs::write(&snapshot_manifest, stripped_snapshot_cargo_toml)?;
 
-    let package_snapshot_spec = package_snapshot_command();
+    let package_snapshot_spec = package_snapshot_command(&package_target_root, &package_build_root);
     run_spec(&snapshot_root, &package_snapshot_spec)?;
 
     if baseline_dir.exists() {
@@ -454,7 +455,7 @@ fn unpack_snapshot_command(snapshot_archive: &Path, snapshot_root: &Path) -> Com
     )
 }
 
-fn package_snapshot_command() -> CommandSpec {
+fn package_snapshot_command(target_root: &Path, build_root: &Path) -> CommandSpec {
     CommandSpec::new(
         "cargo",
         [
@@ -467,6 +468,8 @@ fn package_snapshot_command() -> CommandSpec {
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
+    .with_env("CARGO_TARGET_DIR", target_root.to_string_lossy())
+    .with_env("CARGO_BUILD_BUILD_DIR", build_root.to_string_lossy())
 }
 
 fn extract_baseline_command(archive: &Path, baseline_parent: &Path) -> CommandSpec {

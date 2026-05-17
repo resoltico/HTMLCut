@@ -172,6 +172,13 @@ fn with_isolated_target_dir<T>(repo_root: &Path, operation: impl FnOnce() -> T) 
     )
 }
 
+fn command_env_value<'a>(spec: &'a CommandSpec, key: &str) -> &'a str {
+    spec.env
+        .get(key)
+        .map(String::as_str)
+        .expect("command env value")
+}
+
 #[test]
 fn main_entry_with_runs_the_full_check_flow_and_cleans_semver_scratch() {
     let repo_root = tempdir().expect("repo tempdir");
@@ -652,7 +659,8 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                     "snapshot manifest should be stripped before packaging"
                 );
                 *packaged_manifest_for_override.borrow_mut() = manifest;
-                let archive = current_root.join("target/package/htmlcut-core-4.2.0.crate");
+                let archive = PathBuf::from(command_env_value(spec, "CARGO_TARGET_DIR"))
+                    .join("package/htmlcut-core-4.2.0.crate");
                 fs::create_dir_all(archive.parent().expect("archive parent"))
                     .expect("create archive parent");
                 fs::write(&archive, "crate archive").expect("write crate archive");
@@ -710,6 +718,20 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
             .any(|spec| spec.program == Path::new("git")),
         "refresh flow should archive the requested git ref"
     );
+    let package_spec = calls
+        .borrow()
+        .iter()
+        .find(|spec| spec.program == Path::new("cargo"))
+        .expect("package spec should be recorded")
+        .clone();
+    assert!(
+        command_env_value(&package_spec, "CARGO_TARGET_DIR").contains("cargo-target"),
+        "refresh packaging should use the isolated package target root"
+    );
+    assert!(
+        command_env_value(&package_spec, "CARGO_BUILD_BUILD_DIR").contains("cargo-build"),
+        "refresh packaging should use the isolated package build root"
+    );
 }
 
 #[test]
@@ -761,7 +783,8 @@ fn refresh_semver_baseline_for_tests_bootstraps_missing_baseline_dirs() {
                 *packaged_manifest_for_override.borrow_mut() =
                     fs::read_to_string(current_root.join("crates/htmlcut-core/Cargo.toml"))
                         .expect("read packaged manifest");
-                let archive = current_root.join("target/package/htmlcut-core-4.2.0.crate");
+                let archive = PathBuf::from(command_env_value(spec, "CARGO_TARGET_DIR"))
+                    .join("package/htmlcut-core-4.2.0.crate");
                 fs::create_dir_all(archive.parent().expect("archive parent"))
                     .expect("create archive parent");
                 fs::write(&archive, "crate archive").expect("write crate archive");
@@ -804,4 +827,112 @@ fn refresh_semver_baseline_for_tests_bootstraps_missing_baseline_dirs() {
     assert!(refreshed_manifest.contains("\n[workspace]\n"));
     assert!(refreshed_provenance.contains("package_version = \"4.2.0\""));
     assert!(refreshed_provenance.contains("source_git_ref = \"v4.2.0\""));
+}
+
+#[test]
+fn refresh_semver_baseline_for_tests_overrides_snapshot_cargo_target_layout() {
+    let repo_root = tempdir().expect("repo tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"3.0.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    let packaged_manifest = Rc::new(RefCell::new(String::new()));
+    let packaged_manifest_for_override = Rc::clone(&packaged_manifest);
+    let observed_target_dir = Rc::new(RefCell::new(None::<PathBuf>));
+    let observed_target_dir_for_override = Rc::clone(&observed_target_dir);
+    let repo_root_path = repo_root.path().to_path_buf();
+    let repo_root_path_for_override = repo_root_path.clone();
+
+    crate::command_exec::with_run_spec_override(
+        move |current_root, spec| {
+            let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
+
+            if spec.program == Path::new("tar")
+                && args.first() == Some(&"-xf")
+                && args.get(2) == Some(&"-C")
+            {
+                let snapshot_root = PathBuf::from(args[3]);
+                fs::create_dir_all(snapshot_root.join(".cargo")).expect("create snapshot .cargo dir");
+                fs::create_dir_all(snapshot_root.join("crates/htmlcut-core"))
+                    .expect("create snapshot crate dir");
+                fs::write(
+                    snapshot_root.join(".cargo/config.toml"),
+                    "[build]\ntarget-dir = \"../published-artifacts/target\"\nbuild-dir = \"../published-artifacts/build\"\n",
+                )
+                .expect("write snapshot cargo config");
+                fs::write(
+                    snapshot_root.join("Cargo.toml"),
+                    "[workspace.package]\nversion = \"4.2.0\"\n",
+                )
+                .expect("write snapshot workspace Cargo.toml");
+                fs::write(
+                    snapshot_root.join("crates/htmlcut-core/Cargo.toml"),
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n",
+                )
+                .expect("write snapshot crate manifest");
+                return Some(Ok(()));
+            }
+
+            if spec.program == Path::new("cargo")
+                && args[..5]
+                    == [
+                        "package",
+                        "--allow-dirty",
+                        "--no-verify",
+                        "-p",
+                        "htmlcut-core",
+                    ]
+            {
+                let target_dir = PathBuf::from(command_env_value(spec, "CARGO_TARGET_DIR"));
+                assert!(
+                    !target_dir.ends_with("published-artifacts/target"),
+                    "refresh packaging should not inherit the published snapshot target-dir"
+                );
+                *observed_target_dir_for_override.borrow_mut() = Some(target_dir.clone());
+                *packaged_manifest_for_override.borrow_mut() =
+                    fs::read_to_string(current_root.join("crates/htmlcut-core/Cargo.toml"))
+                        .expect("read packaged manifest");
+                let archive = target_dir.join("package/htmlcut-core-4.2.0.crate");
+                fs::create_dir_all(archive.parent().expect("archive parent"))
+                    .expect("create archive parent");
+                fs::write(&archive, "crate archive").expect("write crate archive");
+                return Some(Ok(()));
+            }
+
+            if spec.program == Path::new("tar")
+                && args.first() == Some(&"-xzf")
+                && args.get(2) == Some(&"-C")
+            {
+                let extracted_dir =
+                    repo_root_path_for_override.join("semver-baseline/htmlcut-core-4.2.0");
+                fs::create_dir_all(&extracted_dir).expect("create extracted dir");
+                fs::write(
+                    extracted_dir.join("Cargo.toml"),
+                    packaged_manifest_for_override.borrow().as_str(),
+                )
+                .expect("write extracted manifest");
+                return Some(Ok(()));
+            }
+
+            Some(Ok(()))
+        },
+        || refresh_semver_baseline_for_tests(repo_root.path(), "v4.2.0"),
+    )
+    .expect("refresh-semver-baseline should override the snapshot cargo target layout");
+
+    let observed_target_dir = observed_target_dir
+        .borrow()
+        .clone()
+        .expect("refresh packaging should set an explicit target dir");
+    assert!(
+        observed_target_dir.ends_with("cargo-target"),
+        "refresh packaging should use the temp-owned cargo-target root"
+    );
+    assert!(
+        repo_root_path
+            .join("semver-baseline/htmlcut-core/BASELINE.toml")
+            .exists(),
+        "refresh flow should still materialize the baseline provenance"
+    );
 }

@@ -565,6 +565,27 @@ fn rendering_and_url_helpers_cover_remaining_paths() {
         render_element_as_text(&selected_pre, WhitespaceMode::Rendered),
         "line 1\n  line 2"
     );
+    let utility_like_fragment =
+        parse_wrapped_fragment("<p class=\"status pricing report\">All Systems Operational</p>");
+    let utility_like_root = select_first(&utility_like_fragment, "p").expect("status root");
+    assert_eq!(
+        render_document_body_as_text(&utility_like_fragment, WhitespaceMode::Rendered),
+        ""
+    );
+    assert_eq!(
+        render_selected_document_body_as_text(&utility_like_fragment, WhitespaceMode::Rendered),
+        "All Systems Operational"
+    );
+    assert_eq!(
+        render_element_as_text(&utility_like_root, WhitespaceMode::Rendered),
+        "All Systems Operational"
+    );
+    let selected_nav_document = parse_document_node("<nav><a href=\"/docs\">Docs</a></nav>");
+    let selected_nav = select_first(&selected_nav_document, "nav").expect("nav");
+    assert_eq!(
+        render_element_as_text(&selected_nav, WhitespaceMode::Rendered),
+        "Docs [/docs]"
+    );
     let pre_document = parse_wrapped_fragment("<pre>  keep   spacing</pre>");
     let pre = select_first(&pre_document, "pre").expect("pre");
     let mut pre_output = String::new();

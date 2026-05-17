@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.95"
 name = "htmlcut-core"
-version = "10.0.0"
+version = "10.1.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false

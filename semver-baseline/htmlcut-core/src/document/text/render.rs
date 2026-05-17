@@ -3,12 +3,23 @@ use scraper::{ElementRef, Html, Node};
 
 use crate::contracts::WhitespaceMode;
 
-use super::parse::{first_body, parse_wrapped_fragment};
+use super::super::parse::{first_body, parse_wrapped_fragment};
+use super::super::summary::heading_level;
+use super::super::urls::href_is_meaningful_destination;
+#[cfg(test)]
+use super::policy::{
+    collect_notice_node_text, collect_notice_text, element_looks_like_auxiliary_section,
+    element_looks_like_brief_reader_notice, element_looks_like_reader_auxiliary,
+    element_looks_like_source_attribution, is_note_fragment_href, looks_like_note_fragment_anchor,
+    tokenize_notice_text,
+};
+use super::policy::{
+    element_has_hidden_style, element_should_skip_in_reader_text,
+    node_starts_terminal_non_narrative_section, should_skip_rendered_element,
+};
 use super::signals::{
     element_looks_like_utility_chrome, structural_signal_tokens, token_match_count,
 };
-use super::summary::heading_level;
-use super::urls::href_is_meaningful_destination;
 
 pub(crate) const ELLIPSIS: &str = "...";
 const BLOCK_TAGS: [&str; 21] = [
@@ -35,81 +46,12 @@ const BLOCK_TAGS: [&str; 21] = [
     "section",
 ];
 const SKIP_TAGS: [&str; 5] = ["head", "noscript", "script", "style", "template"];
-const READER_AUXILIARY_TOKENS: [&str; 20] = [
-    "backlink",
-    "bibliography",
-    "citation",
-    "citations",
-    "cite",
-    "disambiguation",
-    "editsection",
-    "footnote",
-    "footnotes",
-    "hatnote",
-    "noteref",
-    "reflist",
-    "reference",
-    "references",
-    "redirect",
-    "shortdescription",
-    "subjectbar",
-    "subjectpageheader",
-    "sister",
-    "toc",
-];
-const CONTENT_HINT_TOKENS: [&str; 6] = ["article", "body", "content", "main", "story", "text"];
-const READER_NOTICE_TOKENS: [&str; 14] = [
-    "advertising",
-    "affiliate",
-    "commission",
-    "copyright",
-    "cookie",
-    "cookies",
-    "disclosure",
-    "earn",
-    "links",
-    "policy",
-    "privacy",
-    "purchase",
-    "sponsored",
-    "terms",
-];
-const READER_NOTICE_PHRASES: [&str; 8] = [
-    "affiliate commission",
-    "fair use",
-    "here's how it works",
-    "how it works",
-    "terms apply",
-    "we may earn",
-    "when you purchase through links",
-    "when you purchase through links on our site",
-];
-const READER_NOTICE_STRONG_PHRASES: [&str; 4] = [
-    "copyright act",
-    "reviewed by an editor",
-    "this article was generated",
-    "used for the purpose of news reporting",
-];
-const AUXILIARY_SECTION_HEADINGS: [&str; 7] = [
-    "citations",
-    "external links",
-    "further reading",
-    "notes",
-    "other sources",
-    "references",
-    "see also",
-];
-const SOURCE_ATTRIBUTION_PREFIXES: [&str; 3] = ["source:", "sources:", "via:"];
-const NOTE_FRAGMENT_PREFIXES: [&str; 8] = [
-    "#bib",
-    "#cite",
-    "#fn",
-    "#footnote",
-    "#note",
-    "#ref",
-    "#refs",
-    "#r",
-];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextRenderIntent {
+    ReaderDocument,
+    SelectedFragment,
+}
 
 pub(crate) fn render_html_as_text(fragment: &str, whitespace: WhitespaceMode) -> String {
     let document = parse_wrapped_fragment(fragment);
@@ -117,10 +59,29 @@ pub(crate) fn render_html_as_text(fragment: &str, whitespace: WhitespaceMode) ->
 }
 
 pub(crate) fn render_document_body_as_text(document: &Html, whitespace: WhitespaceMode) -> String {
+    render_document_body_as_text_with_intent(document, whitespace, TextRenderIntent::ReaderDocument)
+}
+
+pub(crate) fn render_selected_document_body_as_text(
+    document: &Html,
+    whitespace: WhitespaceMode,
+) -> String {
+    render_document_body_as_text_with_intent(
+        document,
+        whitespace,
+        TextRenderIntent::SelectedFragment,
+    )
+}
+
+fn render_document_body_as_text_with_intent(
+    document: &Html,
+    whitespace: WhitespaceMode,
+    intent: TextRenderIntent,
+) -> String {
     if let Some(body) = first_body(document) {
-        render_children_as_text(body.children(), whitespace)
+        render_children_as_text(body.children(), whitespace, intent)
     } else {
-        render_children_as_text(document.root_element().children(), whitespace)
+        render_children_as_text(document.root_element().children(), whitespace, intent)
     }
 }
 
@@ -128,12 +89,23 @@ pub(crate) fn render_element_children_as_text(
     node: &ElementRef<'_>,
     whitespace: WhitespaceMode,
 ) -> String {
-    render_children_as_text(node.children(), whitespace)
+    render_children_as_text(
+        node.children(),
+        whitespace,
+        TextRenderIntent::ReaderDocument,
+    )
 }
 
 pub(crate) fn render_element_as_text(node: &ElementRef<'_>, whitespace: WhitespaceMode) -> String {
     let mut output = String::new();
-    render_node(**node, &mut output, false, false);
+    render_node_with_intent(
+        **node,
+        &mut output,
+        false,
+        false,
+        TextRenderIntent::SelectedFragment,
+        true,
+    );
     normalize_rendered_output(output, whitespace)
 }
 
@@ -150,9 +122,18 @@ pub(crate) fn extract_heading_text(node: &ElementRef<'_>) -> Option<String> {
 fn render_children_as_text<'a>(
     children: impl Iterator<Item = DomNodeRef<'a, Node>>,
     whitespace: WhitespaceMode,
+    intent: TextRenderIntent,
 ) -> String {
     let mut output = String::new();
-    render_child_nodes(children, &mut output, false, false, true);
+    render_child_nodes(
+        children,
+        &mut output,
+        false,
+        false,
+        true,
+        intent,
+        matches!(intent, TextRenderIntent::SelectedFragment),
+    );
 
     normalize_rendered_output(output, whitespace)
 }
@@ -169,11 +150,30 @@ fn normalize_rendered_output(output: String, whitespace: WhitespaceMode) -> Stri
     apply_whitespace_mode(normalized.trim_matches('\n'), whitespace)
 }
 
+#[cfg(test)]
 pub(crate) fn render_node(
     node: DomNodeRef<'_, Node>,
     output: &mut String,
     in_pre: bool,
     list_item: bool,
+) {
+    render_node_with_intent(
+        node,
+        output,
+        in_pre,
+        list_item,
+        TextRenderIntent::ReaderDocument,
+        false,
+    );
+}
+
+fn render_node_with_intent(
+    node: DomNodeRef<'_, Node>,
+    output: &mut String,
+    in_pre: bool,
+    list_item: bool,
+    intent: TextRenderIntent,
+    selected_root: bool,
 ) {
     match node.value() {
         Node::Text(contents) => {
@@ -209,11 +209,7 @@ pub(crate) fn render_node(
                 return;
             }
 
-            if element_should_skip_in_reader_text(&element) {
-                return;
-            }
-
-            if element_looks_like_utility_chrome(&element) {
+            if should_skip_rendered_element(&element, intent, selected_root) {
                 return;
             }
 
@@ -247,7 +243,7 @@ pub(crate) fn render_node(
             }
 
             if tag_name == "a" {
-                let rendered = render_anchor(node, in_pre);
+                let rendered = render_anchor(node, in_pre, intent);
                 if rendered.is_empty() {
                     return;
                 }
@@ -272,24 +268,26 @@ pub(crate) fn render_node(
                 return;
             }
 
-            if tag_name == "p" && paragraph_looks_like_shouty_link_banner(node, in_pre) {
+            if tag_name == "p"
+                && paragraph_looks_like_shouty_link_banner_with_intent(node, in_pre, intent)
+            {
                 return;
             }
 
             if tag_name == "ul" || tag_name == "ol" {
                 push_newline(output, 2);
-                render_child_nodes(node.children(), output, false, false, false);
+                render_child_nodes(node.children(), output, false, false, false, intent, false);
                 push_newline(output, 2);
                 return;
             }
 
             if tag_name == "li" {
-                render_list_item(node, output, in_pre);
+                render_list_item_with_intent(node, output, in_pre, intent);
                 return;
             }
 
             if tag_name == "code" && !in_pre {
-                let rendered = render_children_to_string(node, true, false);
+                let rendered = render_children_to_string(node, true, false, intent);
                 if rendered.trim().is_empty() {
                     return;
                 }
@@ -304,7 +302,7 @@ pub(crate) fn render_node(
 
             if tag_name == "blockquote" {
                 push_newline(output, 2);
-                let rendered = render_children_to_string(node, false, false);
+                let rendered = render_children_to_string(node, false, false, intent);
                 push_prefixed_block(output, rendered.trim(), "> ");
                 push_newline(output, 2);
                 return;
@@ -312,13 +310,13 @@ pub(crate) fn render_node(
 
             if tag_name == "dl" {
                 push_newline(output, 2);
-                render_child_nodes(node.children(), output, false, false, false);
+                render_child_nodes(node.children(), output, false, false, false, intent, false);
                 push_newline(output, 2);
                 return;
             }
 
             if tag_name == "table" {
-                let rendered = render_table(node, in_pre);
+                let rendered = render_table(node, in_pre, intent);
                 if rendered.is_empty() {
                     return;
                 }
@@ -330,7 +328,7 @@ pub(crate) fn render_node(
 
             if tag_name == "dt" {
                 push_newline(output, 2);
-                render_child_nodes(node.children(), output, false, false, false);
+                render_child_nodes(node.children(), output, false, false, false, intent, false);
                 push_newline(output, 1);
                 return;
             }
@@ -338,12 +336,13 @@ pub(crate) fn render_node(
             if tag_name == "dd" {
                 push_newline(output, 1);
                 output.push_str(": ");
-                render_child_nodes(node.children(), output, false, true, false);
+                render_child_nodes(node.children(), output, false, true, false, intent, false);
                 push_newline(output, 2);
                 return;
             }
 
-            if let Some(label_value_row) = render_label_value_row(node, in_pre) {
+            if let Some(label_value_row) = render_label_value_row_with_intent(node, in_pre, intent)
+            {
                 push_newline(output, 2);
                 output.push_str(&label_value_row);
                 push_newline(output, 2);
@@ -356,7 +355,15 @@ pub(crate) fn render_node(
             }
 
             let child_in_pre = in_pre || tag_name == "pre";
-            render_child_nodes(node.children(), output, child_in_pre, false, true);
+            render_child_nodes(
+                node.children(),
+                output,
+                child_in_pre,
+                false,
+                true,
+                intent,
+                false,
+            );
 
             if is_block {
                 push_newline(output, 2);
@@ -364,7 +371,7 @@ pub(crate) fn render_node(
         }
         _ => {
             for child in node.children() {
-                render_node(child, output, in_pre, list_item);
+                render_node_with_intent(child, output, in_pre, list_item, intent, false);
             }
         }
     }
@@ -485,8 +492,8 @@ fn render_heading_text_node(node: DomNodeRef<'_, Node>, output: &mut String, in_
     }
 }
 
-fn render_anchor(node: DomNodeRef<'_, Node>, in_pre: bool) -> String {
-    let label = render_children_to_string(node, in_pre, false);
+fn render_anchor(node: DomNodeRef<'_, Node>, in_pre: bool, intent: TextRenderIntent) -> String {
+    let label = render_children_to_string(node, in_pre, false, intent);
     let label = if in_pre {
         label.trim_matches('\n').to_owned()
     } else {
@@ -527,172 +534,14 @@ fn hidden_math_replacement(element: &ElementRef<'_>) -> Option<String> {
         .and_then(|math| render_math_element(&math))
 }
 
-fn element_has_hidden_style(element: &ElementRef<'_>) -> bool {
-    let Some(style) = element.value().attr("style") else {
-        return false;
-    };
-
-    style.split(';').any(|declaration| {
-        let Some((property, value)) = declaration.split_once(':') else {
-            return false;
-        };
-        let property = property.trim();
-        let value = value.trim().to_ascii_lowercase();
-        matches!(property, "display" | "visibility")
-            && (value.contains("none") || value.contains("hidden"))
-    })
-}
-
-fn element_looks_like_reader_auxiliary(element: &ElementRef<'_>) -> bool {
-    let tag_name = element.value().name();
-    let tokens = structural_signal_tokens(element);
-    let auxiliary_count = token_match_count(&tokens, &READER_AUXILIARY_TOKENS);
-    let content_count = token_match_count(&tokens, &CONTENT_HINT_TOKENS);
-
-    if auxiliary_count == 0 && !looks_like_note_fragment_anchor(element) {
-        return false;
-    }
-
-    if matches!(tag_name, "a" | "sup" | "sub" | "span") && looks_like_note_fragment_anchor(element)
-    {
-        return true;
-    }
-
-    if matches!(tag_name, "span" | "div") && token_match_count(&tokens, &["cite", "backlink"]) > 0 {
-        return true;
-    }
-
-    auxiliary_count > content_count
-        && matches!(
-            tag_name,
-            "a" | "aside"
-                | "div"
-                | "li"
-                | "nav"
-                | "ol"
-                | "p"
-                | "section"
-                | "span"
-                | "sub"
-                | "sup"
-                | "ul"
-        )
-}
-
-fn element_looks_like_brief_reader_notice(element: &ElementRef<'_>) -> bool {
-    if !matches!(
-        element.value().name(),
-        "aside" | "div" | "li" | "p" | "section" | "span"
-    ) {
-        return false;
-    }
-
-    let text = collect_notice_text(**element, 420);
-    if text.is_empty() {
-        return false;
-    }
-
-    let normalized = collapse_inline_whitespace(text.trim()).to_ascii_lowercase();
-    let strong_phrase_hit = READER_NOTICE_STRONG_PHRASES
-        .iter()
-        .any(|phrase| normalized.contains(phrase));
-    let character_count = normalized.chars().count();
-    if character_count > 420 {
-        return false;
-    }
-    if character_count > 240 && !strong_phrase_hit {
-        return false;
-    }
-
-    if normalized
-        .chars()
-        .filter(|character| character.is_alphabetic())
-        .count()
-        < 18
-    {
-        return false;
-    }
-
-    let token_hits = tokenize_notice_text(&normalized)
-        .into_iter()
-        .filter(|token| READER_NOTICE_TOKENS.contains(&token.as_str()))
-        .count();
-    let phrase_hit = READER_NOTICE_PHRASES
-        .iter()
-        .any(|phrase| normalized.contains(phrase));
-    let has_link = element
-        .descendants()
-        .filter_map(ElementRef::wrap)
-        .any(|descendant| descendant.value().name() == "a");
-
-    if !has_link {
-        return false;
-    }
-
-    strong_phrase_hit || phrase_hit || token_hits >= 3
-}
-
-fn element_should_skip_in_reader_text(element: &ElementRef<'_>) -> bool {
-    if element_has_hidden_style(element) {
-        return true;
-    }
-    if element_looks_like_reader_auxiliary(element) {
-        return true;
-    }
-    if element_looks_like_brief_reader_notice(element) {
-        return true;
-    }
-    if element_looks_like_source_attribution(element) {
-        return true;
-    }
-    if element_looks_like_auxiliary_section(element) {
-        return true;
-    }
-    false
-}
-
-fn element_looks_like_source_attribution(element: &ElementRef<'_>) -> bool {
-    if !matches!(
-        element.value().name(),
-        "div" | "li" | "p" | "section" | "span"
-    ) {
-        return false;
-    }
-
-    let text = collect_notice_text(**element, 220);
-    if text.is_empty() {
-        return false;
-    }
-
-    let normalized = collapse_inline_whitespace(text.trim()).to_ascii_lowercase();
-    let link_count = element
-        .descendants()
-        .filter_map(ElementRef::wrap)
-        .filter(|descendant| descendant.value().name() == "a")
-        .count();
-    link_count > 0
-        && normalized.chars().count() <= 220
-        && SOURCE_ATTRIBUTION_PREFIXES
-            .iter()
-            .any(|prefix| normalized.starts_with(prefix))
-}
-
-fn element_looks_like_auxiliary_section(element: &ElementRef<'_>) -> bool {
-    if !matches!(element.value().name(), "aside" | "div" | "nav" | "section") {
-        return false;
-    }
-
-    leading_section_heading(element)
-        .map(|heading| normalize_auxiliary_heading(&heading))
-        .is_some_and(|heading| AUXILIARY_SECTION_HEADINGS.contains(&heading.as_str()))
-}
-
 fn render_child_nodes<'a>(
     children: impl Iterator<Item = DomNodeRef<'a, Node>>,
     output: &mut String,
     in_pre: bool,
     list_item: bool,
     stop_at_terminal_auxiliary: bool,
+    intent: TextRenderIntent,
+    selected_root_children: bool,
 ) {
     let mut rendered_substantive = output.chars().any(|character| !character.is_whitespace());
     for child in children {
@@ -703,158 +552,18 @@ fn render_child_nodes<'a>(
             break;
         }
         let before_len = output.len();
-        render_node(child, output, in_pre, list_item);
+        render_node_with_intent(
+            child,
+            output,
+            in_pre,
+            list_item,
+            intent,
+            selected_root_children,
+        );
         if output.len() > before_len {
             rendered_substantive = true;
         }
     }
-}
-
-fn node_starts_terminal_non_narrative_section(node: DomNodeRef<'_, Node>) -> bool {
-    let Some(element) = ElementRef::wrap(node) else {
-        return false;
-    };
-
-    element_starts_terminal_utility_section(&element)
-        || leading_section_heading(&element)
-            .map(|heading| normalize_auxiliary_heading(&heading))
-            .is_some_and(|heading| AUXILIARY_SECTION_HEADINGS.contains(&heading.as_str()))
-}
-
-fn element_starts_terminal_utility_section(element: &ElementRef<'_>) -> bool {
-    matches!(element.value().name(), "aside" | "nav" | "section")
-        && element_looks_like_utility_chrome(element)
-}
-
-fn leading_section_heading(element: &ElementRef<'_>) -> Option<String> {
-    if let Some(heading) = heading_text_if_heading(element) {
-        return Some(heading);
-    }
-
-    for child in element.children().filter_map(ElementRef::wrap).take(4) {
-        if let Some(heading) = heading_text_if_heading(&child) {
-            return Some(heading);
-        }
-
-        if !matches!(child.value().name(), "div" | "header" | "section") {
-            continue;
-        }
-
-        for grandchild in child.children().filter_map(ElementRef::wrap).take(4) {
-            if let Some(heading) = heading_text_if_heading(&grandchild) {
-                return Some(heading);
-            }
-        }
-    }
-
-    None
-}
-
-fn heading_text_if_heading(element: &ElementRef<'_>) -> Option<String> {
-    heading_level(element.value().name())
-        .and_then(|_| extract_heading_text(element))
-        .filter(|heading| !heading.trim().is_empty())
-}
-
-fn looks_like_note_fragment_anchor(element: &ElementRef<'_>) -> bool {
-    if element
-        .value()
-        .attr("href")
-        .is_some_and(is_note_fragment_href)
-    {
-        return true;
-    }
-
-    element
-        .descendants()
-        .filter_map(ElementRef::wrap)
-        .filter(|descendant| descendant.id() != element.id())
-        .any(|descendant| {
-            descendant
-                .value()
-                .attr("href")
-                .is_some_and(is_note_fragment_href)
-        })
-}
-
-fn collect_notice_text(element: DomNodeRef<'_, Node>, limit: usize) -> String {
-    let mut rendered = String::new();
-    collect_notice_node_text(element, limit, &mut rendered);
-    collapse_inline_whitespace(rendered.trim())
-}
-
-fn collect_notice_node_text(node: DomNodeRef<'_, Node>, limit: usize, output: &mut String) {
-    if output.chars().count() >= limit {
-        return;
-    }
-
-    match node.value() {
-        Node::Text(contents) => {
-            let text = collapse_inline_whitespace(contents);
-            if text.is_empty() {
-                return;
-            }
-            if needs_space(output, &text) {
-                output.push(' ');
-            }
-            output.push_str(&text);
-        }
-        Node::Element(data) => {
-            if matches!(
-                data.name(),
-                "head" | "noscript" | "script" | "style" | "template"
-            ) {
-                return;
-            }
-
-            for child in node.children() {
-                collect_notice_node_text(child, limit, output);
-                if output.chars().count() >= limit {
-                    return;
-                }
-            }
-        }
-        _ => {
-            for child in node.children() {
-                collect_notice_node_text(child, limit, output);
-                if output.chars().count() >= limit {
-                    return;
-                }
-            }
-        }
-    }
-}
-
-fn tokenize_notice_text(input: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-
-    for character in input.chars() {
-        if character.is_ascii_alphanumeric() {
-            current.push(character.to_ascii_lowercase());
-        } else if !current.is_empty() {
-            tokens.push(std::mem::take(&mut current));
-        }
-    }
-
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-
-    tokens
-}
-
-fn normalize_auxiliary_heading(input: &str) -> String {
-    collapse_inline_whitespace(input.trim())
-        .trim_end_matches(':')
-        .to_ascii_lowercase()
-}
-
-fn is_note_fragment_href(href: &str) -> bool {
-    let href = href.trim().to_ascii_lowercase();
-    NOTE_FRAGMENT_PREFIXES
-        .iter()
-        .any(|prefix| href.starts_with(prefix))
 }
 
 fn render_math_element(element: &ElementRef<'_>) -> Option<String> {
@@ -1047,10 +756,10 @@ fn normalize_heading_text(rendered: &str) -> String {
     collapse_inline_whitespace(rendered.trim())
 }
 
-fn render_table(node: DomNodeRef<'_, Node>, in_pre: bool) -> String {
-    let caption = table_caption(node, in_pre);
+fn render_table(node: DomNodeRef<'_, Node>, in_pre: bool, intent: TextRenderIntent) -> String {
+    let caption = table_caption(node, in_pre, intent);
     let mut rows = Vec::<Vec<String>>::new();
-    collect_table_rows(node, in_pre, &mut rows);
+    collect_table_rows_with_intent(node, in_pre, intent, &mut rows);
     rows.retain(|row| row.iter().any(|cell| !cell.is_empty()));
     if rows.is_empty() {
         return caption.unwrap_or_default();
@@ -1127,7 +836,17 @@ fn image_has_caption_context(element: &ElementRef<'_>) -> bool {
     false
 }
 
+#[cfg(test)]
 fn collect_table_rows(node: DomNodeRef<'_, Node>, in_pre: bool, rows: &mut Vec<Vec<String>>) {
+    collect_table_rows_with_intent(node, in_pre, TextRenderIntent::ReaderDocument, rows);
+}
+
+fn collect_table_rows_with_intent(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    intent: TextRenderIntent,
+    rows: &mut Vec<Vec<String>>,
+) {
     let Some(element) = ElementRef::wrap(node) else {
         return;
     };
@@ -1137,7 +856,7 @@ fn collect_table_rows(node: DomNodeRef<'_, Node>, in_pre: bool, rows: &mut Vec<V
             let row = direct_child_elements(node)
                 .into_iter()
                 .filter(|cell| matches!(cell.value().name(), "td" | "th"))
-                .map(|cell| render_table_cell(cell, in_pre))
+                .map(|cell| render_table_cell(cell, in_pre, intent))
                 .collect::<Vec<_>>();
             if !row.is_empty() {
                 rows.push(row);
@@ -1145,24 +864,28 @@ fn collect_table_rows(node: DomNodeRef<'_, Node>, in_pre: bool, rows: &mut Vec<V
         }
         "table" | "thead" | "tbody" | "tfoot" => {
             for child in node.children() {
-                collect_table_rows(child, in_pre, rows);
+                collect_table_rows_with_intent(child, in_pre, intent, rows);
             }
         }
         _ => {}
     }
 }
 
-fn render_table_cell(cell: ElementRef<'_>, in_pre: bool) -> String {
-    let rendered = render_children_to_string(*cell, in_pre, false);
+fn render_table_cell(cell: ElementRef<'_>, in_pre: bool, intent: TextRenderIntent) -> String {
+    let rendered = render_children_to_string(*cell, in_pre, false, intent);
     normalize_table_cell_text(&rendered)
 }
 
-fn table_caption(node: DomNodeRef<'_, Node>, in_pre: bool) -> Option<String> {
+fn table_caption(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    intent: TextRenderIntent,
+) -> Option<String> {
     direct_child_elements(node)
         .into_iter()
         .find(|child| child.value().name() == "caption")
         .and_then(|caption| {
-            let rendered = render_children_to_string(*caption, in_pre, false);
+            let rendered = render_children_to_string(*caption, in_pre, false, intent);
             let normalized = collapse_blank_lines(&rendered)
                 .lines()
                 .map(normalize_structured_line)
@@ -1199,13 +922,27 @@ fn format_table_row(row: &[String], widths: &[usize]) -> String {
     line.trim_end().to_owned()
 }
 
+#[cfg(test)]
 fn paragraph_looks_like_shouty_link_banner(node: DomNodeRef<'_, Node>, in_pre: bool) -> bool {
+    paragraph_looks_like_shouty_link_banner_with_intent(
+        node,
+        in_pre,
+        TextRenderIntent::ReaderDocument,
+    )
+}
+
+fn paragraph_looks_like_shouty_link_banner_with_intent(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    intent: TextRenderIntent,
+) -> bool {
     let Some(anchor) = direct_anchor_child(node) else {
         return false;
     };
 
-    let anchor_text =
-        collapse_inline_whitespace(render_children_to_string(*anchor, in_pre, false).trim());
+    let anchor_text = collapse_inline_whitespace(
+        render_children_to_string(*anchor, in_pre, false, intent).trim(),
+    );
     !anchor_text.is_empty() && looks_like_shouty_banner(&anchor_text)
 }
 
@@ -1235,7 +972,16 @@ fn direct_child_elements(node: DomNodeRef<'_, Node>) -> Vec<ElementRef<'_>> {
     node.children().filter_map(ElementRef::wrap).collect()
 }
 
+#[cfg(test)]
 fn render_label_value_row(node: DomNodeRef<'_, Node>, in_pre: bool) -> Option<String> {
+    render_label_value_row_with_intent(node, in_pre, TextRenderIntent::ReaderDocument)
+}
+
+fn render_label_value_row_with_intent(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    intent: TextRenderIntent,
+) -> Option<String> {
     let element = ElementRef::wrap(node)?;
     if !matches!(element.value().name(), "div" | "section") || !direct_text_is_whitespace_only(node)
     {
@@ -1247,8 +993,8 @@ fn render_label_value_row(node: DomNodeRef<'_, Node>, in_pre: bool) -> Option<St
         return None;
     }
 
-    let left = render_compact_block_text(children[0], in_pre)?;
-    let right = render_compact_block_text(children[1], in_pre)?;
+    let left = render_compact_block_text(children[0], in_pre, intent)?;
+    let right = render_compact_block_text(children[1], in_pre, intent)?;
     if !left.ends_with(':')
         || left.chars().count() > 60
         || right.chars().count() > 160
@@ -1270,8 +1016,12 @@ fn direct_text_is_whitespace_only(node: DomNodeRef<'_, Node>) -> bool {
     })
 }
 
-fn render_compact_block_text(element: ElementRef<'_>, in_pre: bool) -> Option<String> {
-    let rendered = render_children_to_string(*element, in_pre, false);
+fn render_compact_block_text(
+    element: ElementRef<'_>,
+    in_pre: bool,
+    intent: TextRenderIntent,
+) -> Option<String> {
+    let rendered = render_children_to_string(*element, in_pre, false, intent);
     let compact = collapse_blank_lines(&rendered)
         .lines()
         .map(normalize_structured_line)
@@ -1297,7 +1047,17 @@ fn looks_like_shouty_banner(text: &str) -> bool {
     uppercase_letters >= 8 && lowercase_letters == 0
 }
 
+#[cfg(test)]
 fn render_list_item(node: DomNodeRef<'_, Node>, output: &mut String, in_pre: bool) {
+    render_list_item_with_intent(node, output, in_pre, TextRenderIntent::ReaderDocument)
+}
+
+fn render_list_item_with_intent(
+    node: DomNodeRef<'_, Node>,
+    output: &mut String,
+    in_pre: bool,
+    intent: TextRenderIntent,
+) {
     let indent = "    ".repeat(list_depth(node).saturating_sub(1));
     let marker = list_item_marker(node);
     let continuation = format!("{indent}{}", " ".repeat(marker.chars().count()));
@@ -1309,7 +1069,7 @@ fn render_list_item(node: DomNodeRef<'_, Node>, output: &mut String, in_pre: boo
     for child in node.children() {
         if is_list_container(child) {
             flush_list_item_inline_segment(&mut inline_segment, &mut body_segments);
-            let nested = render_node_to_string(child, false, false);
+            let nested = render_node_to_string(child, false, false, intent);
             let nested = nested.trim_matches('\n').to_owned();
             nested_lists.push(nested);
             continue;
@@ -1317,13 +1077,13 @@ fn render_list_item(node: DomNodeRef<'_, Node>, output: &mut String, in_pre: boo
 
         if is_list_item_block_segment(child) {
             flush_list_item_inline_segment(&mut inline_segment, &mut body_segments);
-            let rendered = render_node_to_string(child, in_pre, false);
+            let rendered = render_node_to_string(child, in_pre, false, intent);
             let rendered = rendered.trim_matches('\n').trim().to_owned();
             body_segments.push(rendered);
             continue;
         }
 
-        render_node(child, &mut inline_segment, in_pre, true);
+        render_node_with_intent(child, &mut inline_segment, in_pre, true, intent, false);
     }
 
     flush_list_item_inline_segment(&mut inline_segment, &mut body_segments);
@@ -1476,17 +1236,27 @@ pub(crate) fn apply_whitespace_mode(input: &str, whitespace: WhitespaceMode) -> 
     }
 }
 
-fn render_children_to_string(node: DomNodeRef<'_, Node>, in_pre: bool, list_item: bool) -> String {
+fn render_children_to_string(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    list_item: bool,
+    intent: TextRenderIntent,
+) -> String {
     let mut rendered = String::new();
     for child in node.children() {
-        render_node(child, &mut rendered, in_pre, list_item);
+        render_node_with_intent(child, &mut rendered, in_pre, list_item, intent, false);
     }
     rendered
 }
 
-fn render_node_to_string(node: DomNodeRef<'_, Node>, in_pre: bool, list_item: bool) -> String {
+fn render_node_to_string(
+    node: DomNodeRef<'_, Node>,
+    in_pre: bool,
+    list_item: bool,
+    intent: TextRenderIntent,
+) -> String {
     let mut rendered = String::new();
-    render_node(node, &mut rendered, in_pre, list_item);
+    render_node_with_intent(node, &mut rendered, in_pre, list_item, intent, false);
     rendered
 }
 
@@ -2089,6 +1859,9 @@ mod tests {
         assert!(element_looks_like_brief_reader_notice(
             &select_first(&long_strong_notice, "span").expect("strong notice")
         ));
+        assert!(element_should_skip_in_reader_text(
+            &select_first(&long_strong_notice, "span").expect("strong notice")
+        ));
         let source_attribution = parse_document_node(
             "<p>Source: <a href=\"https://example.test/feed\">Research Feed</a></p>",
         );
@@ -2111,6 +1884,16 @@ mod tests {
         assert!(element_should_skip_in_reader_text(
             &auxiliary_section_element
         ));
+        assert!(should_skip_rendered_element(
+            &source_attribution_element,
+            TextRenderIntent::ReaderDocument,
+            false,
+        ));
+        assert!(should_skip_rendered_element(
+            &auxiliary_section_element,
+            TextRenderIntent::ReaderDocument,
+            false,
+        ));
         assert_eq!(
             tokenize_notice_text("Terms apply; we may earn affiliate commission!"),
             vec![
@@ -2123,6 +1906,35 @@ mod tests {
                 "commission"
             ]
         );
+        let utility_heading =
+            parse_document_node("<h2><div class=\"status pricing report\">Status</div></h2>");
+        let mut utility_heading_rendered = String::new();
+        render_heading_text_node(
+            *select_first(&utility_heading, "div").expect("utility heading"),
+            &mut utility_heading_rendered,
+            false,
+        );
+        assert_eq!(utility_heading_rendered, "");
+        let selected_notice =
+            parse_document_node("<div class=\"status pricing report\">Selected body</div>");
+        let selected_notice_element = select_first(&selected_notice, "div").expect("notice");
+        assert!(!should_skip_rendered_element(
+            &selected_notice_element,
+            TextRenderIntent::SelectedFragment,
+            true,
+        ));
+        assert!(should_skip_rendered_element(
+            &selected_notice_element,
+            TextRenderIntent::SelectedFragment,
+            false,
+        ));
+        let hidden_selected = parse_document_node("<div hidden>Hidden body</div>");
+        let hidden_selected_element = select_first(&hidden_selected, "div").expect("hidden");
+        assert!(should_skip_rendered_element(
+            &hidden_selected_element,
+            TextRenderIntent::SelectedFragment,
+            true,
+        ));
         let nested_notice_document = parse_document_node(
             "<div><!--ignored--><script>skip</script><style>.x{}</style><template><span>Hidden</span></template><noscript>Fallback</noscript><span>Alpha</span><span>Beta</span></div>",
         );

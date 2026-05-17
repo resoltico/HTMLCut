@@ -10,7 +10,7 @@ use crate::diagnostics::{DiagnosticCode, error_diagnostic, unresolved_effective_
 use crate::document::{
     apply_whitespace_mode, build_preview, document_base_href, element_attributes,
     extract_document_title, first_body_child_element, parse_document_node, parse_wrapped_fragment,
-    render_document_body_as_text, resolve_document_base_url, rewrite_html_urls,
+    render_selected_document_body_as_text, resolve_document_base_url, rewrite_html_urls,
 };
 use crate::extract::select_candidates;
 use crate::source::LoadedSource;
@@ -177,8 +177,10 @@ pub(crate) fn build_slice_match(
         || text_document.get_or_init(|| parse_wrapped_fragment(&text_html_value()));
     let text = OnceCell::new();
     let text_value = || {
-        text.get_or_init(|| render_document_body_as_text(text_document_value(), whitespace))
-            .clone()
+        text.get_or_init(|| {
+            render_selected_document_body_as_text(text_document_value(), whitespace)
+        })
+        .clone()
     };
     let attribute_value = |attribute_name: &str| -> Result<Value, Diagnostic> {
         build_attribute_value(
