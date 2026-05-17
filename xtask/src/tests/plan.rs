@@ -450,6 +450,169 @@ fn check_plan_skips_devcontainer_validation_when_branch_diff_is_clean() {
 }
 
 #[test]
+fn devcontainer_changed_file_args_fall_back_to_head_when_merge_base_is_unavailable() {
+    let repo_root = tempdir().expect("tempdir");
+
+    let args = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            (spec.program == std::path::Path::new("git")
+                && spec.args == ["merge-base", "HEAD", "origin/main"])
+            .then(|| Err("merge-base unavailable".into()))
+        },
+        || crate::plan::devcontainer_changed_file_args_for_tests(repo_root.path()),
+    )
+    .expect("changed file args");
+
+    assert_eq!(
+        args,
+        vec![
+            "diff".to_owned(),
+            "--name-only".to_owned(),
+            "-z".to_owned(),
+            "HEAD".to_owned(),
+            "--".to_owned(),
+            ".devcontainer".to_owned(),
+            "scripts/validate-devcontainer.sh".to_owned(),
+            "scripts/devcontainer-check.sh".to_owned(),
+            "scripts/devcontainer-prepare-user-home.sh".to_owned(),
+            "scripts/devcontainer-bootstrap.sh".to_owned(),
+            "scripts/devcontainer-cli-helper.Dockerfile".to_owned(),
+            "scripts/common.sh".to_owned(),
+            "check.sh".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn should_run_devcontainer_validation_checks_untracked_gate_inputs_when_diff_is_clean() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let should_run = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args == ["merge-base", "HEAD", "origin/main"] {
+                return Some(Ok(b"abc123\n".to_vec()));
+            }
+            if spec.args
+                == [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "abc123",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            if spec.args == crate::plan::devcontainer_untracked_file_args_for_tests() {
+                return Some(Ok(b".devcontainer/devcontainer.json\0".to_vec()));
+            }
+            None
+        },
+        || crate::plan::should_run_devcontainer_validation_for_tests(repo_root.path()),
+    )
+    .expect("devcontainer decision");
+
+    assert!(should_run);
+}
+
+#[test]
+fn should_run_devcontainer_validation_propagates_changed_scan_failures() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let error = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args == ["merge-base", "HEAD", "origin/main"] {
+                return Some(Ok(b"abc123\n".to_vec()));
+            }
+            if spec.args
+                == [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "abc123",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Err("git diff failed".into()));
+            }
+            None
+        },
+        || crate::plan::should_run_devcontainer_validation_for_tests(repo_root.path()),
+    )
+    .expect_err("changed scan should surface failures");
+
+    assert!(error.to_string().contains("git diff failed"));
+}
+
+#[test]
+fn should_run_devcontainer_validation_propagates_untracked_scan_failures() {
+    let repo_root = tempdir().expect("tempdir");
+    fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");
+
+    let error = crate::command_exec::with_capture_command_output_override(
+        |_, spec| {
+            if spec.program != std::path::Path::new("git") {
+                return None;
+            }
+            if spec.args == ["merge-base", "HEAD", "origin/main"] {
+                return Some(Ok(b"abc123\n".to_vec()));
+            }
+            if spec.args
+                == [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "abc123",
+                    "--",
+                    ".devcontainer",
+                    "scripts/validate-devcontainer.sh",
+                    "scripts/devcontainer-check.sh",
+                    "scripts/devcontainer-prepare-user-home.sh",
+                    "scripts/devcontainer-bootstrap.sh",
+                    "scripts/devcontainer-cli-helper.Dockerfile",
+                    "scripts/common.sh",
+                    "check.sh",
+                ]
+            {
+                return Some(Ok(Vec::new()));
+            }
+            if spec.args == crate::plan::devcontainer_untracked_file_args_for_tests() {
+                return Some(Err("git ls-files failed".into()));
+            }
+            None
+        },
+        || crate::plan::should_run_devcontainer_validation_for_tests(repo_root.path()),
+    )
+    .expect_err("untracked scan should surface failures");
+
+    assert!(error.to_string().contains("git ls-files failed"));
+}
+
+#[test]
 fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());

@@ -476,3 +476,18 @@ pub(crate) fn is_maintained_shell_script_for_tests(repo_root: &Path, path: &Path
 pub(crate) fn devcontainer_validation_command_for_tests(repo_root: &Path) -> CommandSpec {
     devcontainer_validation_command(repo_root)
 }
+
+#[cfg(test)]
+pub(crate) fn should_run_devcontainer_validation_for_tests(repo_root: &Path) -> DynResult<bool> {
+    should_run_devcontainer_validation(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_changed_file_args_for_tests(repo_root: &Path) -> DynResult<Vec<String>> {
+    devcontainer_changed_file_args(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_untracked_file_args_for_tests() -> Vec<String> {
+    devcontainer_untracked_file_args()
+}

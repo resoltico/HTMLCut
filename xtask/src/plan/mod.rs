@@ -152,6 +152,21 @@ pub(crate) fn devcontainer_validation_command_for_tests(repo_root: &Path) -> Com
 }
 
 #[cfg(test)]
+pub(crate) fn should_run_devcontainer_validation_for_tests(repo_root: &Path) -> DynResult<bool> {
+    check::should_run_devcontainer_validation_for_tests(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_changed_file_args_for_tests(repo_root: &Path) -> DynResult<Vec<String>> {
+    check::devcontainer_changed_file_args_for_tests(repo_root)
+}
+
+#[cfg(test)]
+pub(crate) fn devcontainer_untracked_file_args_for_tests() -> Vec<String> {
+    check::devcontainer_untracked_file_args_for_tests()
+}
+
+#[cfg(test)]
 pub(crate) fn with_cargo_artifact_dir_overrides_for_tests<T>(
     target_dir: PathBuf,
     build_dir: PathBuf,
