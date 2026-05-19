@@ -346,6 +346,44 @@ serde = \"1\"
 }
 
 #[test]
+fn sanitize_snapshot_workspace_manifest_for_baseline_leaves_unrelated_shapes_untouched() {
+    let no_workspace = "[package]\nname = \"htmlcut-core\"";
+    let workspace_without_dependencies = "[workspace]\nresolver = \"3\"";
+    let incomplete_and_non_vendored = "\
+[workspace]
+resolver = \"3\"
+
+[workspace.dependencies]
+serde = \"1\"
+missing_package = { path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\" }
+missing_path = { package = \"htmlcut-scraper\", version = \"0.27.0-htmlcut.1\" }
+wrong_package = { package = \"scraper\", path = \"patches/rust/scraper\", version = \"0.27.0\" }
+wrong_path = { package = \"htmlcut-scraper\", path = \"vendor/scraper\", version = \"0.27.0-htmlcut.1\" }
+missing_version = { package = \"htmlcut-markup5ever\", path = \"patches/rust/markup5ever\" }";
+
+    assert_eq!(
+        sanitize_snapshot_workspace_manifest_for_baseline(no_workspace)
+            .expect("manifest without workspace should pass"),
+        no_workspace
+    );
+    assert_eq!(
+        sanitize_snapshot_workspace_manifest_for_baseline(workspace_without_dependencies)
+            .expect("workspace without dependencies should pass"),
+        workspace_without_dependencies
+    );
+
+    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(incomplete_and_non_vendored)
+        .expect("sanitize incomplete and non-vendored manifest");
+
+    assert!(sanitized.contains("serde = \"1\""));
+    assert!(sanitized.contains("package = \"htmlcut-scraper\""));
+    assert!(sanitized.contains("path = \"patches/rust/scraper\""));
+    assert!(sanitized.contains("package = \"scraper\""));
+    assert!(sanitized.contains("path = \"vendor/scraper\""));
+    assert!(sanitized.contains("[workspace.dependencies.missing_version]"));
+}
+
+#[test]
 fn strip_dev_dependency_tables_drops_root_and_target_specific_dev_dependencies() {
     let manifest = "\
 [package]
