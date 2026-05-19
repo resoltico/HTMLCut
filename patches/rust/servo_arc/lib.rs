@@ -18,6 +18,7 @@
 //! * We have support for thin arcs to unsized types (see ThinArc).
 //! * We have support for references to static data, which don't do any
 //!   refcounting.
+#![allow(clippy::all)]
 //!
 //! [1]: https://bugzilla.mozilla.org/show_bug.cgi?id=1360883
 
@@ -87,9 +88,6 @@ pub struct Arc<T: ?Sized> {
 /// Once the mutation is finished, you can call `.shareable()` and get a regular `Arc`
 /// out of it.
 ///
-/// Ignore the doctest below there's no way to skip building with refcount
-/// logging during doc tests (see rust-lang/rust#45599).
-///
 /// ```rust,ignore
 /// # use servo_arc::UniqueArc;
 /// let data = [1, 2, 3, 4, 5];
@@ -115,11 +113,14 @@ impl<T> UniqueArc<T> {
             let p = ptr::NonNull::new(ptr)
                 .unwrap_or_else(|| alloc::handle_alloc_error(layout))
                 .cast::<ArcInner<mem::MaybeUninit<T>>>();
-            ptr::write(ptr::addr_of_mut!((*p.as_ptr()).count), atomic::AtomicUsize::new(1));
+            ptr::write(
+                ptr::addr_of_mut!((*p.as_ptr()).count),
+                atomic::AtomicUsize::new(1),
+            );
             #[cfg(feature = "track_alloc_size")]
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).alloc_size), layout.size());
 
-            #[cfg(feature = "gecko_refcount_logging")]
+            #[cfg(any())]
             {
                 NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8)
             }
@@ -220,7 +221,7 @@ impl<T> Arc<T> {
             ptr
         };
 
-        #[cfg(feature = "gecko_refcount_logging")]
+        #[cfg(any())]
         unsafe {
             // FIXME(emilio): Would be so amazing to have
             // std::intrinsics::type_name() around, so that we could also report
@@ -340,7 +341,7 @@ impl<T: ?Sized> Arc<T> {
 
     #[inline(always)]
     fn record_drop(&self) {
-        #[cfg(feature = "gecko_refcount_logging")]
+        #[cfg(any())]
         unsafe {
             NS_LogDtor(self.ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8);
         }
@@ -388,7 +389,7 @@ impl<T: ?Sized> Arc<T> {
     }
 }
 
-#[cfg(feature = "gecko_refcount_logging")]
+#[cfg(any())]
 extern "C" {
     fn NS_LogCtor(
         aPtr: *mut std::os::raw::c_void,
@@ -742,7 +743,9 @@ impl<H, T> HeaderSlice<H, T> {
     #[cfg(not(miri))]
     #[inline(always)]
     fn data(&self) -> *const T {
-        unsafe { (ptr::from_ref(self) as *const u8).add(size_of::<HeaderSlice<H, T>>()) as *const T }
+        unsafe {
+            (ptr::from_ref(self) as *const u8).add(size_of::<HeaderSlice<H, T>>()) as *const T
+        }
     }
 
     #[cfg(not(miri))]
@@ -839,7 +842,10 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).data.header), header);
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).data.len), num_items);
             #[cfg(miri)]
-            ptr::write(ptr::addr_of_mut!((*p.as_ptr()).data.data_ptr), buffer.add(offset) as *mut T);
+            ptr::write(
+                ptr::addr_of_mut!((*p.as_ptr()).data.data_ptr),
+                buffer.add(offset) as *mut T,
+            );
             if num_items != 0 {
                 let mut current = buffer.add(offset) as *mut T;
                 for _ in 0..num_items {
@@ -864,7 +870,7 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
             );
             p
         };
-        #[cfg(feature = "gecko_refcount_logging")]
+        #[cfg(any())]
         unsafe {
             if !is_static {
                 // FIXME(emilio): Would be so amazing to have

@@ -41,6 +41,29 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
         "# example guide\n",
     )
     .expect("write example guide");
+    fs::create_dir_all(
+        repo_root
+            .path()
+            .join("patches")
+            .join("rust")
+            .join("scraper"),
+    )
+    .expect("create vendored patch docs dir");
+    fs::write(
+        repo_root.path().join("patches").join("README.md"),
+        "<!-- version: \"4.1.0\" -->\n",
+    )
+    .expect("write patches readme");
+    fs::write(
+        repo_root
+            .path()
+            .join("patches")
+            .join("rust")
+            .join("scraper")
+            .join("README.md"),
+        "# vendored upstream doc\n",
+    )
+    .expect("write vendored scraper readme");
     fs::create_dir_all(repo_root.path().join("tmp")).expect("create tmp dir");
     fs::write(repo_root.path().join("tmp").join("notes.md"), "# ignore\n").expect("write tmp");
     fs::create_dir_all(repo_root.path().join(".codex")).expect("create .codex dir");
@@ -78,6 +101,7 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
                 .join("guide.md"),
             repo_root.path().join("examples").join("guide.md"),
             repo_root.path().join("fuzz").join("README.md"),
+            repo_root.path().join("patches").join("README.md"),
         ]
     );
 }
@@ -227,13 +251,36 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
         "---\nversion: \"4.1.0\"\n---\n",
     )
     .expect("write guide");
+    fs::create_dir_all(
+        repo_root
+            .path()
+            .join("patches")
+            .join("rust")
+            .join("scraper"),
+    )
+    .expect("create vendored docs dir");
+    fs::write(
+        repo_root.path().join("patches").join("README.md"),
+        "<!-- version: \"4.1.0\" -->\n",
+    )
+    .expect("write patches readme");
+    fs::write(
+        repo_root
+            .path()
+            .join("patches")
+            .join("rust")
+            .join("scraper")
+            .join("README.md"),
+        "# vendored upstream doc\n",
+    )
+    .expect("write vendored scraper readme");
     fs::create_dir_all(repo_root.path().join("tmp")).expect("create tmp dir");
     fs::write(repo_root.path().join("tmp").join("notes.md"), "# ignore\n").expect("write tmp");
 
     let docs = crate::command_exec::with_capture_command_output_override(
         |_, spec| {
             (spec.program == Path::new("git")).then(|| {
-                Ok(b"README.md\0AGENTS.md\0docs/guide.md\0.codex/AGENTS.md\0tmp/notes.md\0docs/missing.md\0".to_vec())
+                Ok(b"README.md\0AGENTS.md\0docs/guide.md\0patches/README.md\0patches/rust/scraper/README.md\0.codex/AGENTS.md\0tmp/notes.md\0docs/missing.md\0".to_vec())
             })
         },
         || markdown_doc_paths(repo_root.path()),
@@ -245,6 +292,7 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
         vec![
             repo_root.path().join("README.md"),
             repo_root.path().join("docs").join("guide.md"),
+            repo_root.path().join("patches").join("README.md"),
         ]
     );
 }

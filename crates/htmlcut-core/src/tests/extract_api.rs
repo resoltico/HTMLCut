@@ -8,11 +8,12 @@ use std::thread;
 #[cfg(feature = "http-client")]
 use std::time::{Duration, Instant};
 
+use crate::result::ParsedDocument;
 use crate::{
     AttributeName, BoundaryRetention, ExtractionRequest, ExtractionSpec, FetchTimeoutMs, HttpUrl,
-    MaxBytes, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
-    SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, format_byte_size,
-    parse_document, preview_extraction,
+    MaxBytes, OutputOptions, ParseDocumentResult, RenderingOptions, RuntimeOptions, SelectionSpec,
+    SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
+    format_byte_size, parse_document, preview_extraction,
 };
 
 fn output_options(preview_chars: usize) -> OutputOptions {
@@ -64,6 +65,14 @@ fn parse_document_reads_memory_source() {
     let parsed = parse_document(&source, &RuntimeOptions::default());
     assert!(parsed.ok);
     assert!(parsed.document.is_some());
+}
+
+#[test]
+fn parse_document_contract_types_remain_unwind_safe() {
+    fn assert_unwind_safe<T: std::panic::RefUnwindSafe + std::panic::UnwindSafe>() {}
+
+    assert_unwind_safe::<ParsedDocument>();
+    assert_unwind_safe::<ParseDocumentResult>();
 }
 
 #[test]
@@ -256,7 +265,7 @@ fn selector_reports_invalid_selector() {
 }
 
 #[test]
-fn selector_contract_remains_miri_sound() {
+fn selector_and_slice_contract_remain_miri_sound() {
     let invalid_request = ExtractionRequest::new(
         SourceRequest::memory("inline", "<article>Hello</article>"),
         ExtractionSpec::selector(SelectorQuery::new("[").expect("selector")),
@@ -269,6 +278,28 @@ fn selector_contract_remains_miri_sound() {
     let valid_result = extract(&valid_request, &RuntimeOptions::default());
     assert!(valid_result.ok);
     assert_eq!(valid_result.matches[0].value.as_str(), Some("Hello"));
+
+    let mut slice_request = slice_request(
+        "<html><head><title>Release Notes</title></head><body><main>IGNORE BEGIN PAYLOAD Release 7.0.0 END PAYLOAD IGNORE</main></body></html>",
+        "BEGIN PAYLOAD",
+        "END PAYLOAD",
+    );
+    slice_request.output.rendering = RenderingOptions {
+        whitespace: WhitespaceMode::Normalize,
+        rewrite_urls: false,
+    };
+
+    let slice_result = extract(&slice_request, &RuntimeOptions::default());
+    assert!(slice_result.ok);
+    assert_eq!(
+        slice_result.document_title.as_deref(),
+        Some("Release Notes")
+    );
+    assert_eq!(slice_result.stats.match_count, 1);
+    assert_eq!(
+        slice_result.matches[0].value.as_str(),
+        Some("Release 7.0.0")
+    );
 }
 
 #[test]

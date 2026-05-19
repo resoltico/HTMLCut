@@ -126,8 +126,70 @@ fn strip_patch_crates_io(manifest: &str) -> DynResult<String> {
                 .remove("patch");
         }
     }
+    sanitize_repo_owned_workspace_dependencies(&mut value);
 
     Ok(toml::to_string(&value)?)
+}
+
+fn sanitize_repo_owned_workspace_dependencies(value: &mut toml::Value) {
+    let Some(workspace_table) = value
+        .get_mut("workspace")
+        .and_then(toml::Value::as_table_mut)
+    else {
+        return;
+    };
+    let Some(dependencies_table) = workspace_table
+        .get_mut("dependencies")
+        .and_then(toml::Value::as_table_mut)
+    else {
+        return;
+    };
+
+    for (dependency_name, dependency_value) in dependencies_table.iter_mut() {
+        sanitize_repo_owned_dependency(dependency_name, dependency_value);
+    }
+}
+
+fn sanitize_repo_owned_dependency(_dependency_name: &str, dependency_value: &mut toml::Value) {
+    let Some(dependency_table) = dependency_value.as_table_mut() else {
+        return;
+    };
+    let Some(package_name) = dependency_table
+        .get("package")
+        .and_then(toml::Value::as_str)
+    else {
+        return;
+    };
+    let Some(path) = dependency_table.get("path").and_then(toml::Value::as_str) else {
+        return;
+    };
+    let Some(version) = dependency_table
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+
+    if !package_name.starts_with("htmlcut-")
+        || !path.starts_with("patches/rust/")
+        || !version.contains("-htmlcut.")
+    {
+        return;
+    }
+
+    dependency_table.remove("package");
+    dependency_table.remove("path");
+    dependency_table.insert(
+        "version".to_owned(),
+        toml::Value::String(version_base(&version).to_owned()),
+    );
+}
+
+fn version_base(version: &str) -> &str {
+    version
+        .split_once("-htmlcut.")
+        .map_or(version, |(base, _)| base)
 }
 
 #[cfg(test)]
@@ -141,6 +203,11 @@ pub(crate) fn materialize_outdated_workspace_for_tests(
 #[cfg(test)]
 pub(crate) fn strip_patch_crates_io_for_tests(manifest: &str) -> DynResult<String> {
     strip_patch_crates_io(manifest)
+}
+
+#[cfg(test)]
+pub(crate) fn sanitize_repo_owned_workspace_dependencies_for_tests(value: &mut toml::Value) {
+    sanitize_repo_owned_workspace_dependencies(value);
 }
 
 #[cfg(test)]

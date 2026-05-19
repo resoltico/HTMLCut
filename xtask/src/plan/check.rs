@@ -8,7 +8,7 @@ use crate::model::{
     DynResult,
 };
 use crate::{
-    deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_selector_command, outdated_check_command,
+    deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_contract_command, outdated_check_command,
 };
 
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
@@ -63,6 +63,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "--lib",
                 "--tests",
                 "--locked",
+                "--no-deps",
                 "--",
                 "-D",
                 "warnings",
@@ -88,7 +89,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
-    plan.push(miri_selector_command());
+    plan.push(miri_contract_command());
     plan.push(workspace_clippy_command());
     plan.push(workspace_outdated_command());
     plan.push(workspace_audit_command());
@@ -364,6 +365,7 @@ fn workspace_clippy_command() -> CommandSpec {
             "--all-targets",
             "--all-features",
             "--locked",
+            "--no-deps",
             "--",
             "-D",
             "warnings",

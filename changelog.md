@@ -5,11 +5,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.2.0] - 2026-05-19
+
+### Changed
+- HTMLCut now vendors the full downstream-safe selector/parser stack under `patches/rust/`
+  (`scraper`, `selectors`, `html5ever`, `markup5ever`, `servo_arc`, and `tendril`) so git/path
+  consumers inherit the same strict-provenance dependency graph that `htmlcut-core` verifies
+  locally instead of relying on root-only `[patch.crates-io]` overrides that downstream Cargo
+  builds do not see.
+- The vendored runtime stack now trims upstream-only cargo surfaces that HTMLCut does not ship
+  (`selectors` bench/shared-memory hooks and `servo_arc` Gecko refcount logging), so the
+  maintained `--all-features` gate, doctests, and downstream consumers all verify the same
+  supported dependency contract instead of accidentally exercising integration-only feature flags.
+- Release preflight now states the missing but required maintainer step explicitly: if the
+  version-bearing release surface changes after the first gate pass, rerun the full gate before
+  cutting or pushing the release branch so the shipped candidate is the exact verified tree.
+
 ### Fixed
 - `cargo xtask refresh-semver-baseline` now packages the published snapshot into an explicit
   temp-owned Cargo target/build root instead of assuming `snapshot/target/package`, so release
   closeout works correctly even when the released tree carries repo-owned Cargo artifact layout
   settings or the operator has ambient Cargo artifact overrides.
+- `cargo xtask miri` now proves both selector validation and delimiter slice extraction, including
+  document-title parsing on the slice path, and `cargo xtask outdated-check` now rewrites the
+  repo-owned vendored selector/parser dependencies back to registry coordinates inside its
+  temporary workspace so dependency-freshness checks keep working after the downstream-safe stack
+  moved out of root-only patch tables.
+- `ParsedDocument` and `ParseDocumentResult` now preserve their historical unwind-safety contract
+  explicitly, so the downstream-safe vendored parser stack does not force a semver-breaking change
+  onto the public `parse_document` wrapper types.
 
 ## [10.1.0] - 2026-05-17
 

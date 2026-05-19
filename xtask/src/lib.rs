@@ -46,7 +46,7 @@ pub use manifest::{
     workspace_version, workspace_version_from_manifest,
 };
 pub use miri::{
-    miri_preflight_failures, miri_preflight_message, miri_probe_command, miri_selector_command,
+    miri_contract_command, miri_preflight_failures, miri_preflight_message, miri_probe_command,
 };
 pub use model::{
     CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, CoverageBranchRecord,

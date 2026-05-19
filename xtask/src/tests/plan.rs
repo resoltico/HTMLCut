@@ -262,7 +262,7 @@ fn check_plan_includes_all_strict_gates() {
                 "--locked",
             ]
     }));
-    assert!(plan.iter().any(|spec| *spec == miri_selector_command()));
+    assert!(plan.iter().any(|spec| *spec == miri_contract_command()));
     assert!(
         !plan
             .iter()
@@ -713,6 +713,7 @@ fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
                     "--all-targets",
                     "--all-features",
                     "--locked",
+                    "--no-deps",
                     "--",
                     "-D",
                     "warnings",

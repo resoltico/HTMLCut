@@ -57,21 +57,34 @@ The following crates are licensed under the Mozilla Public License 2.0:
   cssparser     — Servo project, Mozilla
   selectors     — Servo project, Mozilla
 
-MPL-2.0 is a file-level copyleft license. HTMLCut uses these libraries
-unmodified. The MPL-2.0 license text and source for these crates are available
-at https://github.com/servo/servo and their respective crates.io pages.
+MPL-2.0 is a file-level copyleft license. HTMLCut carries the `selectors`
+source under `patches/rust/selectors/` so the downstream-safe selector stack
+travels with `htmlcut-core`; the vendored copy keeps the upstream MPL-2.0
+license and only rewires manifest dependencies onto the paired local crates.
+The MPL-2.0 license text and source are available at
+https://github.com/servo/servo and the corresponding crates.io pages.
 
 ================================================================================
 Local patched dependencies — selector and parser safety
 ================================================================================
 
-HTMLCut carries local vendored dependency patches under `patches/rust/servo_arc`
-and `patches/rust/tendril` to apply unreleased upstream safety fixes on the
-selector and HTML-parser stack used by `scraper`, `selectors`, `html5ever`,
-and `htmlcut-core`.
+HTMLCut carries a vendored downstream-safe selector/parser stack under:
 
-The patched `servo_arc` and `tendril` sources keep their original upstream
-crate licenses: MIT OR Apache-2.0.
+  patches/rust/scraper
+  patches/rust/selectors
+  patches/rust/html5ever
+  patches/rust/markup5ever
+  patches/rust/servo_arc
+  patches/rust/tendril
+
+These local copies exist so git/path consumers of `htmlcut-core` inherit the
+same strict-provenance fixes that HTMLCut verifies under Miri. Their upstream
+licenses remain unchanged:
+
+  scraper                           — ISC
+  selectors                         — MPL-2.0
+  html5ever, markup5ever,
+  servo_arc, tendril                — MIT OR Apache-2.0
 
 Patch provenance, verification, and removal cues live in `patches/README.md`.
 

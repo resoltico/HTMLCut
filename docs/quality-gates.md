@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.1.0"
+version: "10.2.0"
 domain: QUALITY
-updated: "2026-05-17"
+updated: "2026-05-19"
 route:
   keywords: [quality gates, cargo xtask, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
-  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-safety Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
+  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
@@ -26,7 +26,7 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred con
 workflow on Ubuntu `24.04`.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
-Nightly is installed alongside it for the strict-provenance selector-safety Miri proof, the
+Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
 coverage gate, and live `cargo-fuzz` campaigns because `cargo xtask miri`, `cargo +nightly
 llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly. The workspace manifest carries the
 published compatibility floor separately through
@@ -62,7 +62,7 @@ Run only coverage:
 ./scripts/xtask.sh coverage
 ```
 
-Run only the strict-provenance selector-safety Miri proof:
+Run only the strict-provenance selector-and-slice Miri proof:
 
 ```bash
 ./scripts/xtask.sh miri
@@ -126,14 +126,15 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   workspace build
 - `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
   URL requests fail cleanly unless the `http-client` feature is explicitly enabled
-- the maintained selector-validation and selector-execution safety proof through `cargo xtask
+- the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
   miri`, which runs `cargo +nightly miri test -p htmlcut-core --lib --no-default-features
-  --locked tests::extract_api::selector_contract_remains_miri_sound -- --exact` with
+  --locked tests::extract_api::selector_and_slice_contract_remain_miri_sound -- --exact` with
   `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - direct dependency freshness across the workspace manifests through `cargo xtask outdated-check`,
-  which materializes a sanitized temporary workspace so repo-owned local path patches do not break
-  the freshness check itself
+  which materializes a sanitized temporary workspace, strips root patch tables, and rewrites the
+  repo-owned vendored selector/parser dependencies back to registry coordinates so freshness checks
+  do not break on the downstream-safe local stack
 - RustSec advisory auditing with warnings denied
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `scripts/release-targets.sh` registry for the target list plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline

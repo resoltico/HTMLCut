@@ -297,7 +297,7 @@ mod tests {
         ExtractionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "10.1.0".to_owned(),
+            version: "10.2.0".to_owned(),
             schema_name: "htmlcut.extraction_report".to_owned(),
             schema_version: 6,
             command: "inspect select".to_owned(),

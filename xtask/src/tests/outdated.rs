@@ -20,9 +20,8 @@ resolver = "3"
 [workspace.package]
 version = "10.1.0"
 
-[patch.crates-io]
-servo_arc = { path = "patches/rust/servo_arc" }
-tendril = { path = "patches/rust/tendril" }
+[workspace.dependencies]
+scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.1", default-features = false, features = ["errors"] }
 "#,
     )
     .expect("write root Cargo.toml");
@@ -142,6 +141,113 @@ custom = { path = "vendor/custom" }
 }
 
 #[test]
+fn strip_patch_crates_io_for_tests_drops_the_patch_table_when_crates_io_was_the_only_entry() {
+    let sanitized = crate::outdated::strip_patch_crates_io_for_tests(
+        r#"[workspace]
+members = ["crates/htmlcut-core"]
+
+[patch.crates-io]
+servo_arc = { path = "patches/rust/servo_arc" }
+"#,
+    )
+    .expect("sanitize manifest");
+    let parsed = toml::from_str::<toml::Value>(&sanitized).expect("parse sanitized manifest");
+
+    assert!(parsed.get("patch").is_none());
+}
+
+#[test]
+fn sanitize_repo_owned_workspace_dependencies_rewrites_vendored_packages_to_registry_shape() {
+    let mut manifest = toml::from_str::<toml::Value>(
+        r#"[workspace]
+members = ["crates/htmlcut-core"]
+
+[workspace.dependencies]
+scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.1", default-features = false, features = ["errors"] }
+regex = "1.12.3"
+"#,
+    )
+    .expect("parse manifest");
+
+    crate::outdated::sanitize_repo_owned_workspace_dependencies_for_tests(&mut manifest);
+
+    let dependencies = manifest["workspace"]["dependencies"]
+        .as_table()
+        .expect("workspace dependencies");
+    let scraper = dependencies["scraper"]
+        .as_table()
+        .expect("scraper dependency");
+    assert_eq!(
+        scraper.get("version").and_then(toml::Value::as_str),
+        Some("0.27.0")
+    );
+    assert!(!scraper.contains_key("package"));
+    assert!(!scraper.contains_key("path"));
+    assert_eq!(
+        scraper
+            .get("default-features")
+            .and_then(toml::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(dependencies["regex"].as_str(), Some("1.12.3"));
+}
+
+#[test]
+fn sanitize_repo_owned_workspace_dependencies_ignores_manifests_without_a_workspace_table() {
+    let original = toml::from_str::<toml::Value>(
+        r#"[package]
+name = "demo"
+version = "1.0.0"
+"#,
+    )
+    .expect("parse manifest");
+    let mut sanitized = original.clone();
+
+    crate::outdated::sanitize_repo_owned_workspace_dependencies_for_tests(&mut sanitized);
+
+    assert_eq!(sanitized, original);
+}
+
+#[test]
+fn sanitize_repo_owned_workspace_dependencies_ignores_workspaces_without_dependencies() {
+    let original = toml::from_str::<toml::Value>(
+        r#"[workspace]
+members = ["crates/htmlcut-core"]
+"#,
+    )
+    .expect("parse manifest");
+    let mut sanitized = original.clone();
+
+    crate::outdated::sanitize_repo_owned_workspace_dependencies_for_tests(&mut sanitized);
+
+    assert_eq!(sanitized, original);
+}
+
+#[test]
+fn sanitize_repo_owned_workspace_dependencies_leaves_non_vendored_or_incomplete_entries_untouched()
+{
+    let original = toml::from_str::<toml::Value>(
+        r#"[workspace]
+members = ["crates/htmlcut-core"]
+
+[workspace.dependencies]
+missing_package = { path = "patches/rust/scraper", version = "0.27.0-htmlcut.1" }
+missing_path = { package = "htmlcut-scraper", version = "0.27.0-htmlcut.1" }
+missing_version = { package = "htmlcut-scraper", path = "patches/rust/scraper" }
+wrong_package = { package = "scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.1" }
+wrong_path = { package = "htmlcut-scraper", path = "vendor/scraper", version = "0.27.0-htmlcut.1" }
+wrong_version = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0" }
+"#,
+    )
+    .expect("parse manifest");
+    let mut sanitized = original.clone();
+
+    crate::outdated::sanitize_repo_owned_workspace_dependencies_for_tests(&mut sanitized);
+
+    assert_eq!(sanitized, original);
+}
+
+#[test]
 fn strip_patch_crates_io_for_tests_leaves_manifests_without_patch_tables_untouched() {
     let manifest = "[workspace]\nmembers = [\"crates/htmlcut-core\"]\n";
 
@@ -167,7 +273,23 @@ fn materialize_outdated_workspace_copies_member_manifests_and_sanitizes_root() {
 
     let root_manifest =
         fs::read_to_string(snapshot_root.path().join("Cargo.toml")).expect("read root manifest");
+    let root_manifest_value =
+        toml::from_str::<toml::Value>(&root_manifest).expect("parse root manifest");
     assert!(!root_manifest.contains("[patch.crates-io]"));
+    assert!(!root_manifest.contains("htmlcut-scraper"));
+    assert!(!root_manifest.contains("patches/rust/scraper"));
+    let root_dependencies = root_manifest_value["workspace"]["dependencies"]
+        .as_table()
+        .expect("root workspace dependencies");
+    let scraper = root_dependencies["scraper"]
+        .as_table()
+        .expect("root scraper dependency");
+    assert_eq!(
+        scraper.get("version").and_then(toml::Value::as_str),
+        Some("0.27.0")
+    );
+    assert!(!scraper.contains_key("package"));
+    assert!(!scraper.contains_key("path"));
     assert!(
         snapshot_root
             .path()

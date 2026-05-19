@@ -169,7 +169,7 @@ pub enum CoveragePreflightFailure {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Missing prerequisite for the maintained strict-provenance selector-safety Miri proof.
+/// Missing prerequisite for the maintained strict-provenance selector-and-slice Miri proof.
 pub enum MiriPreflightFailure {
     /// The nightly toolchain itself is not installed.
     MissingNightlyToolchain,

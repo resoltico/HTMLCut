@@ -107,7 +107,7 @@ unsafe fn decode(buf: &[u8]) -> Option<Meaning> {
             if n < 0x80 {
                 return None;
             } // Overlong
-        },
+        }
         3 => {
             n = ((*buf.get_unchecked(0) & 0b1111) as u32) << 12
                 | ((*buf.get_unchecked(1) & 0x3F) as u32) << 6
@@ -116,9 +116,9 @@ unsafe fn decode(buf: &[u8]) -> Option<Meaning> {
                 0x0000..=0x07FF => return None, // Overlong
                 0xD800..=0xDBFF => return Some(Meaning::LeadSurrogate(n as u16 - 0xD800)),
                 0xDC00..=0xDFFF => return Some(Meaning::TrailSurrogate(n as u16 - 0xDC00)),
-                _ => {},
+                _ => {}
             }
-        },
+        }
         4 => {
             n = ((*buf.get_unchecked(0) & 0b111) as u32) << 18
                 | ((*buf.get_unchecked(1) & 0x3F) as u32) << 12
@@ -127,7 +127,7 @@ unsafe fn decode(buf: &[u8]) -> Option<Meaning> {
             if n < 0x1_0000 {
                 return None;
             } // Overlong
-        },
+        }
         _ => debug_unreachable!(),
     }
 
@@ -180,7 +180,7 @@ pub fn classify<'a>(buf: &'a [u8], idx: usize) -> Option<Codepoint<'a>> {
                         meaning: Meaning::Prefix(n - avail),
                     })
                 }
-            },
+            }
             Byte::Cont => {
                 let mut start = idx;
                 let mut checked = 0;
@@ -220,7 +220,7 @@ pub fn classify<'a>(buf: &'a [u8], idx: usize) -> Option<Codepoint<'a>> {
                                     meaning: Meaning::Prefix(n - avail),
                                 });
                             }
-                        },
+                        }
                         _ => return None,
                     }
 
@@ -230,7 +230,7 @@ pub fn classify<'a>(buf: &'a [u8], idx: usize) -> Option<Codepoint<'a>> {
                         return None;
                     }
                 }
-            },
+            }
         }
     }
 }

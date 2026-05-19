@@ -14,7 +14,7 @@ use crate::{
     ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_hygiene,
     ensure_miri_prerequisites, ensure_repo_toolchain_prerequisites, evaluate_coverage_report,
     fuzz_smoke_command, fuzz_smoke_targets, hygiene_report, is_semver_check_spec,
-    miri_selector_command, prepare_artifact_layout, read_coverage_report, remove_dir_if_exists,
+    miri_contract_command, prepare_artifact_layout, read_coverage_report, remove_dir_if_exists,
     render_hygiene_report, run_outdated_check, run_spec, semver_scratch_dir, stage_fuzz_corpus,
     strip_dev_dependency_tables, tracked_files, with_workspace_stub, workspace_version,
 };
@@ -49,8 +49,8 @@ enum Task {
     )]
     Coverage,
     #[command(
-        about = "Run the maintained strict-provenance selector-safety Miri proof.",
-        long_about = "Run the maintained strict-provenance selector-safety Miri proof against htmlcut-core's selector validation and execution path."
+        about = "Run the maintained strict-provenance selector-and-slice Miri proof.",
+        long_about = "Run the maintained strict-provenance selector-and-slice Miri proof against htmlcut-core's selector validation plus delimiter slice execution path."
     )]
     Miri,
     #[command(
@@ -196,8 +196,8 @@ fn run_miri(repo_root: &Path) -> DynResult<()> {
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
     prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
     ensure_hygiene(repo_root)?;
-    println!("==> Strict-provenance selector-safety Miri proof");
-    run_spec(repo_root, &miri_selector_command())?;
+    println!("==> Strict-provenance selector-and-slice Miri proof");
+    run_spec(repo_root, &miri_contract_command())?;
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
     ensure_hygiene(repo_root)
 }

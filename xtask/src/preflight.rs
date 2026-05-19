@@ -86,7 +86,7 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
     }
 }
 
-/// Validates nightly plus Miri prerequisites before the maintained strict-provenance selector-safety proof starts.
+/// Validates nightly plus Miri prerequisites before the maintained strict-provenance selector-and-slice proof starts.
 pub fn ensure_miri_prerequisites(repo_root: &Path) -> DynResult<()> {
     let toolchains = capture_utf8(
         repo_root,

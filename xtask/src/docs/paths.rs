@@ -46,8 +46,14 @@ fn collect_markdown_doc_paths(
     Ok(())
 }
 
-fn should_skip_dir(_repo_root: &Path, path: &Path) -> bool {
-    should_skip_component(path.file_name().and_then(|name| name.to_str()))
+fn should_skip_dir(repo_root: &Path, path: &Path) -> bool {
+    if should_skip_component(path.file_name().and_then(|name| name.to_str())) {
+        return true;
+    }
+
+    path.strip_prefix(repo_root)
+        .map(|relative| relative.starts_with(Path::new("patches").join("rust")))
+        .unwrap_or(true)
 }
 
 fn should_skip_component(name: Option<&str>) -> bool {
@@ -71,6 +77,9 @@ fn is_maintained_markdown_doc(repo_root: &Path, path: &Path) -> bool {
     let Ok(relative) = path.strip_prefix(repo_root) else {
         return false;
     };
+    if relative.starts_with(Path::new("patches").join("rust")) {
+        return false;
+    }
 
     relative
         .parent()
