@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn miri_commands_use_the_managed_workspace_layout() {
     let probe = miri_probe_command();
-    let test = miri_selector_command();
+    let test = miri_contract_command();
 
     assert_eq!(probe.program, PathBuf::from("cargo"));
     assert_eq!(probe.args, vec!["+nightly", "miri", "--version"]);
@@ -24,7 +24,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
             "--lib",
             "--no-default-features",
             "--locked",
-            "tests::extract_api::selector_contract_remains_miri_sound",
+            "tests::extract_api::selector_and_slice_contract_remain_miri_sound",
             "--",
             "--exact",
         ]
@@ -80,7 +80,7 @@ fn miri_preflight_message_is_actionable() {
         MiriPreflightFailure::MissingNightlyMiri,
         MiriPreflightFailure::MissingNightlyRustSrc,
     ]);
-    assert!(missing_nightly.contains("selector-safety proof"));
+    assert!(missing_nightly.contains("selector-and-slice proof"));
     assert!(missing_nightly.contains(
         "rustup toolchain install nightly --profile minimal --component miri --component rust-src"
     ));

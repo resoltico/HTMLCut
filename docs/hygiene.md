@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.1.0"
+version: "10.2.0"
 domain: OPERATIONS
-updated: "2026-05-17"
+updated: "2026-05-19"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, xtask hygiene, cache cleanup, managed build artifacts]
   questions: ["where do HTMLCut build artifacts live?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "why is repo-local target considered legacy in HTMLCut?", "which artifact roots are managed and disposable?"]

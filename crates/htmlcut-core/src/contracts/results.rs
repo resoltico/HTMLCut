@@ -387,6 +387,12 @@ pub struct ParsedDocument {
     pub document: Html,
 }
 
+// Parsed documents are immutable post-parse snapshots at the HTMLCut contract boundary.
+// Keep the historical catch_unwind friendliness of the wrapper stable even though the
+// vendored parser stack now uses local package identities internally.
+impl std::panic::RefUnwindSafe for ParsedDocument {}
+impl std::panic::UnwindSafe for ParsedDocument {}
+
 /// Parse-only result produced by [`crate::parse_document`].
 #[derive(Clone, Debug)]
 pub struct ParseDocumentResult {
@@ -401,6 +407,9 @@ pub struct ParseDocumentResult {
     /// The parsed document tree when parsing succeeded.
     pub document: Option<ParsedDocument>,
 }
+
+impl std::panic::RefUnwindSafe for ParseDocumentResult {}
+impl std::panic::UnwindSafe for ParseDocumentResult {}
 
 /// Half-open source range using byte offsets.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

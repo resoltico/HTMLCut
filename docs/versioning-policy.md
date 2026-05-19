@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.1.0"
+version: "10.2.0"
 domain: MAINTAINER
-updated: "2026-05-02"
+updated: "2026-05-19"
 route:
   keywords: [versioning policy, interop profile, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]

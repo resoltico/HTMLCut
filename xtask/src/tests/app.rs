@@ -66,9 +66,8 @@ resolver = "3"
 [workspace.package]
 version = "10.1.0"
 
-[patch.crates-io]
-servo_arc = { path = "patches/rust/servo_arc" }
-tendril = { path = "patches/rust/tendril" }
+[workspace.dependencies]
+scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.1", default-features = false, features = ["errors"] }
 "#,
     )
     .expect("write root Cargo.toml");
@@ -219,8 +218,8 @@ fn main_entry_with_runs_the_full_check_flow_and_cleans_semver_scratch() {
             calls
                 .borrow()
                 .iter()
-                .any(|spec| *spec == miri_selector_command()),
-            "check flow should include the strict-provenance selector-safety Miri proof"
+                .any(|spec| *spec == miri_contract_command()),
+            "check flow should include the strict-provenance selector-and-slice Miri proof"
         );
         assert_eq!(
             calls
@@ -448,7 +447,7 @@ fn run_coverage_for_tests_reports_line_only_failures() {
 }
 
 #[test]
-fn main_entry_with_runs_the_selector_miri_proof() {
+fn main_entry_with_runs_the_contract_miri_proof() {
     let repo_root = tempdir().expect("repo tempdir");
     with_isolated_target_dir(repo_root.path(), || {
         write_repo_scaffold(repo_root.path());
@@ -467,7 +466,7 @@ fn main_entry_with_runs_the_selector_miri_proof() {
         })
         .expect("xtask miri should pass");
 
-        assert_eq!(calls.borrow().as_slice(), &[miri_selector_command()]);
+        assert_eq!(calls.borrow().as_slice(), &[miri_contract_command()]);
     });
 }
 

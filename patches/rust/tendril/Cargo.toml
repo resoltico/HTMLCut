@@ -12,8 +12,8 @@
 [package]
 edition = "2021"
 rust-version = "1.71.0"
-name = "tendril"
-version = "0.5.0"
+name = "htmlcut-tendril"
+version = "0.5.0-htmlcut.1"
 authors = [
     "Keegan McAllister <mcallister.keegan@gmail.com>",
     "Simon Sapin <simon.sapin@exyr.org>",
@@ -36,20 +36,6 @@ encoding_rs = ["dep:encoding_rs"]
 [lib]
 name = "tendril"
 path = "src/lib.rs"
-
-[[example]]
-name = "fuzz"
-path = "examples/fuzz.rs"
-
-[[bench]]
-name = "futf"
-path = "benches/futf.rs"
-harness = false
-
-[[bench]]
-name = "tendril"
-path = "benches/tendril.rs"
-harness = false
 
 [dependencies.encoding_rs]
 version = "0.8.12"

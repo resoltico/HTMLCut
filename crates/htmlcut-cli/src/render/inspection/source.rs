@@ -451,7 +451,7 @@ mod tests {
         ExtractionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "10.1.0".to_owned(),
+            version: "10.2.0".to_owned(),
             schema_name: "htmlcut.extraction_report".to_owned(),
             schema_version: 6,
             command: "select".to_owned(),
@@ -522,7 +522,7 @@ mod tests {
         let report = SourceInspectionCommandReport {
             tool: "htmlcut".to_owned(),
             engine: "htmlcut-core".to_owned(),
-            version: "10.1.0".to_owned(),
+            version: "10.2.0".to_owned(),
             schema_name: "htmlcut.source_inspection_report".to_owned(),
             schema_version: 5,
             command: "inspect source".to_owned(),

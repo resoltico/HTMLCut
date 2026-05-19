@@ -5,6 +5,7 @@
 // except according to those terms.
 
 //#![cfg_attr(test, deny(warnings))]
+#![allow(clippy::all)]
 #![allow(clippy::result_unit_err)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::missing_transmute_annotations)]

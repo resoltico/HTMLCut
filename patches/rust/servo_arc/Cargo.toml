@@ -11,8 +11,8 @@
 
 [package]
 edition = "2021"
-name = "servo_arc"
-version = "0.4.3"
+name = "htmlcut-servo-arc"
+version = "0.4.3-htmlcut.1"
 authors = ["The Servo Project Developers"]
 build = false
 autolib = false
@@ -38,7 +38,6 @@ version = "1.0.0"
 
 [features]
 default = ["track_alloc_size"]
-gecko_refcount_logging = []
 servo = [
     "serde",
     "track_alloc_size",

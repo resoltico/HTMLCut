@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.1.0"
+version: "10.2.0"
 domain: WORKSPACE
-updated: "2026-05-14"
+updated: "2026-05-19"
 route:
   keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
   questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]

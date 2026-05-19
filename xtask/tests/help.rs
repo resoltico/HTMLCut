@@ -45,7 +45,7 @@ fn root_help_describes_each_maintained_task() {
     assert!(help.contains("Run the full maintainer quality gate."));
     assert!(help.contains("Run the curated cross-platform Rust CI gate."));
     assert!(help.contains("Run only the curated 100% coverage gate."));
-    assert!(help.contains("Run the maintained strict-provenance selector-safety Miri proof."));
+    assert!(help.contains("Run the maintained strict-provenance selector-and-slice Miri proof."));
     assert!(help.contains("Run the maintained dependency-freshness gate."));
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
     assert!(help.contains("Inspect or repair the repository artifact hygiene policy."));
@@ -114,7 +114,9 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
     assert!(coverage_help.contains("Run the curated 100% line-and-branch coverage gate"));
 
     let miri_help = run_xtask_help(&["miri", "--help"]);
-    assert!(miri_help.contains("Run the maintained strict-provenance selector-safety Miri proof"));
+    assert!(
+        miri_help.contains("Run the maintained strict-provenance selector-and-slice Miri proof")
+    );
 
     let outdated_help = run_xtask_help(&["outdated-check", "--help"]);
     assert!(outdated_help.contains("Run the maintained dependency-freshness gate"));

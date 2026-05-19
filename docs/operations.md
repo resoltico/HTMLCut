@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.1.0"
+version: "10.2.0"
 domain: OPERATIONS
-updated: "2026-05-13"
+updated: "2026-05-19"
 route:
   keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
   questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]

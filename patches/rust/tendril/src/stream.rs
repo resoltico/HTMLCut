@@ -92,8 +92,8 @@ where
                         tendril.pop_back(BUFFER_SIZE - n as u32);
                         self.process(tendril);
                         break;
-                    },
-                    Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
                     Err(e) => return Err(e),
                 }
             }
@@ -160,7 +160,7 @@ where
                         self.inner_sink.error("invalid byte sequence".into());
                         self.inner_sink
                             .process(Tendril::from_slice(utf8::REPLACEMENT_CHARACTER));
-                    },
+                    }
                 }
                 t.len() - rest.len()
             });
@@ -168,7 +168,7 @@ where
                 None => {
                     self.incomplete = Some(incomplete);
                     return;
-                },
+                }
                 Some(resume_at) => t.pop_front(resume_at as u32),
             }
         }
@@ -178,7 +178,7 @@ where
                     debug_assert!(s.as_ptr() == t.as_ptr());
                     debug_assert!(s.len() == t.len());
                     Ok(())
-                },
+                }
                 Err(utf8::DecodeError::Invalid {
                     valid_prefix,
                     invalid_sequence,
@@ -190,7 +190,7 @@ where
                         valid_prefix.len(),
                         Err(valid_prefix.len() + invalid_sequence.len()),
                     ))
-                },
+                }
                 Err(utf8::DecodeError::Incomplete {
                     valid_prefix,
                     incomplete_suffix,
@@ -198,13 +198,13 @@ where
                     debug_assert!(valid_prefix.as_ptr() == t.as_ptr());
                     debug_assert!(valid_prefix.len() <= t.len());
                     Err((valid_prefix.len(), Ok(incomplete_suffix)))
-                },
+                }
             };
             match unborrowed_result {
                 Ok(()) => {
                     unsafe { self.inner_sink.process(t.reinterpret_without_validating()) }
                     return;
-                },
+                }
                 Err((valid_len, and_then)) => {
                     if valid_len > 0 {
                         let subtendril = t.subtendril(0, valid_len as u32);
@@ -217,15 +217,15 @@ where
                         Ok(incomplete) => {
                             self.incomplete = Some(incomplete);
                             return;
-                        },
+                        }
                         Err(offset) => {
                             self.inner_sink.error("invalid byte sequence".into());
                             self.inner_sink
                                 .process(Tendril::from_slice(utf8::REPLACEMENT_CHARACTER));
                             t.pop_front(offset as u32);
-                        },
+                        }
                     }
-                },
+                }
             }
         }
     }
@@ -350,7 +350,7 @@ where
                     return;
                 }
                 decode_to_sink(t, decoder, sink, false);
-            },
+            }
         }
     }
 
@@ -373,7 +373,7 @@ where
             LossyDecoderInner::EncodingRs(mut decoder, mut sink) => {
                 decode_to_sink(Tendril::new(), &mut decoder, &mut sink, true);
                 sink.finish()
-            },
+            }
         }
     }
 }
@@ -406,11 +406,11 @@ fn decode_to_sink<Sink, A>(
         }
         match result {
             DecoderResult::InputEmpty => return,
-            DecoderResult::OutputFull => {},
+            DecoderResult::OutputFull => {}
             DecoderResult::Malformed(_, _) => {
                 sink.error(Cow::Borrowed("invalid sequence"));
                 sink.process("\u{FFFD}".into());
-            },
+            }
         }
         t.pop_front(bytes_read as u32);
         if t.is_empty() {
