@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   temp-owned Cargo target/build root instead of assuming `snapshot/target/package`, so release
   closeout works correctly even when the released tree carries repo-owned Cargo artifact layout
   settings or the operator has ambient Cargo artifact overrides.
+- The ordinary maintainer and cross-platform CI Rust gates no longer inject `CC=clang
+  CXX=clang++` into every Cargo command, so Windows CI keeps using its native MSVC toolchain for
+  normal builds while the dedicated LLVM-backed coverage and fuzz flows retain the explicit clang
+  override they actually need.
 - `cargo xtask miri` now proves both selector validation and delimiter slice extraction, including
   document-title parsing on the slice path, and `cargo xtask outdated-check` now rewrites the
   repo-owned vendored selector/parser dependencies back to registry coordinates inside its

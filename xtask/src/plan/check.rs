@@ -69,7 +69,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "warnings",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -85,7 +85,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "--locked",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -108,7 +108,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "--locked",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -117,7 +117,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "cargo",
             ["test", "--workspace", "--doc", "--all-features", "--locked"],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -126,7 +126,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             "cargo",
             ["doc", "--workspace", "--no-deps", "--locked"],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -144,7 +144,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
                 "--locked",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
@@ -371,7 +371,7 @@ fn workspace_clippy_command() -> CommandSpec {
             "warnings",
         ],
         CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
+        CommandToolchainEnv::Inherit,
     )
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
@@ -388,7 +388,7 @@ fn core_all_features_lib_test_command() -> CommandSpec {
             "--locked",
         ],
         CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
+        CommandToolchainEnv::Inherit,
     )
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
@@ -421,7 +421,7 @@ fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandS
             "--all-features",
         ],
         CommandStdout::Inherit,
-        CommandToolchainEnv::ForceClang,
+        CommandToolchainEnv::Inherit,
     )
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
@@ -451,7 +451,7 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
                 "--locked",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
         CommandSpec::new(
@@ -466,7 +466,7 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
                 "--locked",
             ],
             CommandStdout::Inherit,
-            CommandToolchainEnv::ForceClang,
+            CommandToolchainEnv::Inherit,
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     ]
