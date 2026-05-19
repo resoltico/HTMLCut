@@ -323,6 +323,29 @@ fn with_workspace_stub_appends_once() {
 }
 
 #[test]
+fn sanitize_snapshot_workspace_manifest_for_baseline_rewrites_vendored_dependencies() {
+    let manifest = "\
+[workspace]
+resolver = \"3\"
+
+[workspace.dependencies]
+scraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }
+serde = \"1\"
+";
+
+    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(manifest)
+        .expect("sanitize vendored workspace manifest");
+
+    assert!(sanitized.contains("[workspace.dependencies.scraper]"));
+    assert!(sanitized.contains("version = \"0.27.0\""));
+    assert!(sanitized.contains("default-features = false"));
+    assert!(sanitized.contains("features = [\"errors\"]"));
+    assert!(sanitized.contains("serde = \"1\""));
+    assert!(!sanitized.contains("htmlcut-scraper"));
+    assert!(!sanitized.contains("patches/rust/scraper"));
+}
+
+#[test]
 fn strip_dev_dependency_tables_drops_root_and_target_specific_dev_dependencies() {
     let manifest = "\
 [package]

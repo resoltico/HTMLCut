@@ -5,6 +5,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Release closeout now says the quiet but required sequencing step explicitly: when the session
+  itself changes maintainer tooling or release docs after publication, commit the refreshed
+  `semver-baseline/htmlcut-core` snapshot first and rerun the full maintainer gate from that
+  committed `main` tree, because `cargo xtask check` intentionally rejects a dirty checked-in
+  semver baseline.
+
+### Fixed
+- `cargo xtask refresh-semver-baseline --git-ref ...` now rewrites the released workspace's
+  vendored selector/parser dependency aliases back to registry coordinates before packaging the
+  checked-in baseline snapshot, so post-release semver closeout works even though downstream
+  git/path consumers intentionally ship the patched `htmlcut-*` crates instead of root-only patch
+  overrides.
+
 ## [10.2.0] - 2026-05-19
 
 ### Changed

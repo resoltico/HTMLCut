@@ -117,17 +117,27 @@ git push
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
 cannot silently drift to unreleased local worktree state. The refresh flow strips test-only
 `dev-dependencies` tables from the released snapshot before packaging, so workspace-local
-maintainer helpers do not block the public-API baseline refresh. It also rewrites
-`semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref, package name, package
-version, and the exact refresh command so the checked-in snapshot carries its own provenance cue.
-The packaging step uses an isolated temp-owned Cargo target/build root rather than assuming the
-snapshot writes to `target/package`, so repo-owned Cargo artifact layout settings and ambient
-operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
+maintainer helpers do not block the public-API baseline refresh. Because the released workspace
+ships repo-owned vendored selector/parser crates for downstream git consumers, the refresh flow
+also rewrites those temporary snapshot dependency coordinates back to registry identities before
+packaging so the isolated semver baseline remains buildable as a standalone published crate
+snapshot. It rewrites `semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref,
+package name, package version, and the exact refresh command so the checked-in snapshot carries
+its own provenance cue. The packaging step uses an isolated temp-owned Cargo target/build root
+rather than assuming the snapshot writes to `target/package`, so repo-owned Cargo artifact layout
+settings and ambient operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
 
 With the documented branch protection, that `git push` is an intentional maintainer-owned direct
 `main` closeout update and GitHub may report it as an admin bypass of the pull-request-only rule.
 If the push is rejected because admins are now enforced or a new review rule was added, repository
 settings have drifted away from this protocol and must be corrected before the closeout continues.
+
+If the release session itself changed maintainer tooling, release docs, or any other checked-in
+surface after the published tag, commit the semver-baseline refresh first and then rerun the full
+maintainer gate from that committed post-refresh `main` tree before the final push. `cargo xtask
+check` intentionally rejects a dirty checked-in baseline snapshot, so the end-of-session proof
+must execute against the committed closeout state rather than while
+`semver-baseline/htmlcut-core` is still an uncommitted diff.
 
 ## 12. Reconcile The Primary Checkout
 

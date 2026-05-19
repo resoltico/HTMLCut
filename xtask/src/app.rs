@@ -15,7 +15,8 @@ use crate::{
     ensure_miri_prerequisites, ensure_repo_toolchain_prerequisites, evaluate_coverage_report,
     fuzz_smoke_command, fuzz_smoke_targets, hygiene_report, is_semver_check_spec,
     miri_contract_command, prepare_artifact_layout, read_coverage_report, remove_dir_if_exists,
-    render_hygiene_report, run_outdated_check, run_spec, semver_scratch_dir, stage_fuzz_corpus,
+    render_hygiene_report, run_outdated_check, run_spec,
+    sanitize_snapshot_workspace_manifest_for_baseline, semver_scratch_dir, stage_fuzz_corpus,
     strip_dev_dependency_tables, tracked_files, with_workspace_stub, workspace_version,
 };
 
@@ -357,6 +358,7 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let baseline_parent = repo_root.join("semver-baseline");
     let baseline_dir = baseline_parent.join("htmlcut-core");
     let extracted_dir = baseline_parent.join(format!("htmlcut-core-{version}"));
+    let snapshot_workspace_manifest = snapshot_root.join("Cargo.toml");
     let snapshot_manifest = snapshot_root
         .join("crates")
         .join("htmlcut-core")
@@ -364,6 +366,14 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let archive = package_target_root
         .join("package")
         .join(format!("htmlcut-core-{version}.crate"));
+
+    let snapshot_workspace_cargo_toml = fs::read_to_string(&snapshot_workspace_manifest)?;
+    let sanitized_snapshot_workspace_cargo_toml =
+        sanitize_snapshot_workspace_manifest_for_baseline(&snapshot_workspace_cargo_toml)?;
+    fs::write(
+        &snapshot_workspace_manifest,
+        sanitized_snapshot_workspace_cargo_toml,
+    )?;
 
     let snapshot_cargo_toml = fs::read_to_string(&snapshot_manifest)?;
     let stripped_snapshot_cargo_toml = strip_dev_dependency_tables(&snapshot_cargo_toml);

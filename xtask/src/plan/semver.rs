@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::{model::DynResult, package_version_from_manifest, workspace_version};
+use toml::Value;
 
 use super::paths::semver_baseline_path;
 
@@ -38,6 +39,36 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
     format!("{cargo_toml}\n[workspace]\n")
 }
 
+/// Rewrites repo-owned vendored selector/parser dependencies back to registry coordinates for
+/// semver-baseline packaging.
+pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> DynResult<String> {
+    let mut manifest = cargo_toml
+        .parse::<Value>()
+        .map_err(|error| crate::model::XtaskError::invalid_toml("snapshot Cargo.toml", error))?;
+    let Some(workspace) = manifest.get_mut("workspace").and_then(Value::as_table_mut) else {
+        return Ok(cargo_toml.to_owned());
+    };
+    let Some(dependencies) = workspace
+        .get_mut("dependencies")
+        .and_then(Value::as_table_mut)
+    else {
+        return Ok(cargo_toml.to_owned());
+    };
+
+    for (_, dependency) in dependencies.iter_mut() {
+        let Some(table) = dependency.as_table_mut() else {
+            continue;
+        };
+        sanitize_vendored_workspace_dependency_table(table);
+    }
+
+    let mut sanitized = toml::to_string_pretty(&manifest)?;
+    if cargo_toml.ends_with('\n') && !sanitized.ends_with('\n') {
+        sanitized.push('\n');
+    }
+    Ok(sanitized)
+}
+
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.
 pub fn strip_dev_dependency_tables(cargo_toml: &str) -> String {
     let mut sanitized = Vec::new();
@@ -62,4 +93,37 @@ pub fn strip_dev_dependency_tables(cargo_toml: &str) -> String {
         result.push('\n');
     }
     result
+}
+
+fn sanitize_vendored_workspace_dependency_table(table: &mut toml::Table) {
+    let package_name = table.get("package").and_then(Value::as_str);
+    let path = table.get("path").and_then(Value::as_str);
+    let Some(package_name) = package_name else {
+        return;
+    };
+    let Some(path) = path else {
+        return;
+    };
+
+    if !package_name.starts_with("htmlcut-") || !path.starts_with("patches/rust/") {
+        return;
+    }
+
+    table.remove("package");
+    table.remove("path");
+
+    if let Some(version) = table.get("version").and_then(Value::as_str) {
+        table.insert(
+            "version".to_owned(),
+            Value::String(unvendor_dependency_version(version)),
+        );
+    }
+}
+
+fn unvendor_dependency_version(version: &str) -> String {
+    version
+        .split("-htmlcut.")
+        .next()
+        .unwrap_or(version)
+        .to_owned()
 }

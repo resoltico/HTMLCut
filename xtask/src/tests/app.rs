@@ -639,7 +639,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                     .expect("create snapshot crate dir");
                 fs::write(
                     snapshot_root.join("Cargo.toml"),
-                    "[workspace.package]\nversion = \"4.2.0\"\n",
+                    "[workspace]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }\n",
                 )
                 .expect("write snapshot workspace Cargo.toml");
                 fs::write(
@@ -651,6 +651,21 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
             }
 
             if spec.program == Path::new("cargo") && args[..5] == ["package", "--allow-dirty", "--no-verify", "-p", "htmlcut-core"] {
+                let workspace_manifest =
+                    fs::read_to_string(current_root.join("Cargo.toml"))
+                        .expect("read sanitized workspace manifest");
+                assert!(
+                    !workspace_manifest.contains("htmlcut-scraper"),
+                    "refresh packaging should rewrite vendored package aliases back to registry coordinates"
+                );
+                assert!(
+                    !workspace_manifest.contains("patches/rust/scraper"),
+                    "refresh packaging should drop repo-owned patch paths from the packaged snapshot workspace"
+                );
+                assert!(
+                    workspace_manifest.contains("version = \"0.27.0\""),
+                    "refresh packaging should keep the upstream dependency version in the sanitized workspace manifest"
+                );
                 let manifest = fs::read_to_string(current_root.join("crates/htmlcut-core/Cargo.toml"))
                     .expect("read stripped snapshot manifest");
                 assert!(

@@ -100,6 +100,11 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
     semver::with_workspace_stub(cargo_toml)
 }
 
+/// Rewrites vendored workspace dependencies back to registry coordinates for semver packaging.
+pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> DynResult<String> {
+    semver::sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml)
+}
+
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.
 pub fn strip_dev_dependency_tables(cargo_toml: &str) -> String {
     semver::strip_dev_dependency_tables(cargo_toml)
