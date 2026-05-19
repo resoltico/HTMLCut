@@ -62,11 +62,7 @@ pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> Dy
         sanitize_vendored_workspace_dependency_table(table);
     }
 
-    let mut sanitized = toml::to_string_pretty(&manifest)?;
-    if cargo_toml.ends_with('\n') && !sanitized.ends_with('\n') {
-        sanitized.push('\n');
-    }
-    Ok(sanitized)
+    Ok(toml::to_string_pretty(&manifest)?)
 }
 
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.
@@ -112,12 +108,13 @@ fn sanitize_vendored_workspace_dependency_table(table: &mut toml::Table) {
     table.remove("package");
     table.remove("path");
 
-    if let Some(version) = table.get("version").and_then(Value::as_str) {
-        table.insert(
-            "version".to_owned(),
-            Value::String(unvendor_dependency_version(version)),
-        );
-    }
+    let version = table
+        .get("version")
+        .and_then(Value::as_str)
+        .map(unvendor_dependency_version);
+    version.into_iter().for_each(|version| {
+        table.insert("version".to_owned(), Value::String(version));
+    });
 }
 
 fn unvendor_dependency_version(version: &str) -> String {

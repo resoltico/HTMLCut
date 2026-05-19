@@ -368,12 +368,9 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
         .join(format!("htmlcut-core-{version}.crate"));
 
     let snapshot_workspace_cargo_toml = fs::read_to_string(&snapshot_workspace_manifest)?;
-    let sanitized_snapshot_workspace_cargo_toml =
+    let sanitized_workspace_manifest =
         sanitize_snapshot_workspace_manifest_for_baseline(&snapshot_workspace_cargo_toml)?;
-    fs::write(
-        &snapshot_workspace_manifest,
-        sanitized_snapshot_workspace_cargo_toml,
-    )?;
+    fs::write(&snapshot_workspace_manifest, sanitized_workspace_manifest)?;
 
     let snapshot_cargo_toml = fs::read_to_string(&snapshot_manifest)?;
     let stripped_snapshot_cargo_toml = strip_dev_dependency_tables(&snapshot_cargo_toml);

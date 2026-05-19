@@ -384,6 +384,24 @@ missing_version = { package = \"htmlcut-markup5ever\", path = \"patches/rust/mar
 }
 
 #[test]
+fn sanitize_snapshot_workspace_manifest_for_baseline_drops_vendored_aliases_without_version() {
+    let manifest = "\
+[workspace]
+resolver = \"3\"
+
+[workspace.dependencies]
+markup5ever = { package = \"htmlcut-markup5ever\", path = \"patches/rust/markup5ever\" }
+";
+
+    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(manifest)
+        .expect("sanitize vendored dependency without version");
+
+    assert!(sanitized.contains("[workspace.dependencies.markup5ever]"));
+    assert!(!sanitized.contains("htmlcut-markup5ever"));
+    assert!(!sanitized.contains("patches/rust/markup5ever"));
+}
+
+#[test]
 fn strip_dev_dependency_tables_drops_root_and_target_specific_dev_dependencies() {
     let manifest = "\
 [package]
