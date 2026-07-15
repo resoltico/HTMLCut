@@ -67,6 +67,7 @@ pub(crate) use document::{
     render_document_body_as_text, render_selected_document_body_as_text,
     rewrite_urls_in_document_with_node_ids_for_tests,
 };
+pub(crate) use extract::{SelectorDomCanonicalization, extract_with_selector_dom_canonicalization};
 pub use extract::{extract, inspect_source, parse_document, preview_extraction};
 pub use fmt::format_byte_size;
 pub use schema::{

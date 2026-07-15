@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.3.1"
+version: "11.0.0"
 domain: INTEROP
 updated: "2026-07-15"
 route:
-  keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, interop profile]
-  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?", "where is the candidate count on an htmlcut interop error?"]
+  keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, dom_canonicalization, comparison_text_output, interop profile]
+  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?", "where is the candidate count on an htmlcut interop error?", "how does HTMLCut canonicalize a selected DOM subtree without changing raw evidence?"]
 ---
 
 # HTMLCut Interop v1 Guide
@@ -62,14 +62,14 @@ Main types:
 - `CssSelectorText`
 - `DelimiterBoundaryText`
 - `Output`
+- `DomCanonicalization`
 - `InteropDiagnostic`
 - `ByteRange`
 
 Validator discovery:
 
-- `htmlcut schema --name htmlcut.plan --schema-version 4 --output json`
-- `htmlcut schema --name htmlcut.plan --schema-version 5 --output json`
-- `htmlcut schema --name htmlcut.result --schema-version 6 --output json`
+- `htmlcut schema --name htmlcut.plan --schema-version 7 --output json`
+- `htmlcut schema --name htmlcut.result --schema-version 7 --output json`
 - `htmlcut schema --name htmlcut.error --schema-version 2 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
@@ -125,6 +125,7 @@ It owns its own published language:
 - selector text: `CssSelectorText`
 - delimiter boundary text: `DelimiterBoundaryText`
 - output contract: `Output`
+- detached-clone canonicalization: `DomCanonicalization`
 - diagnostics: `InteropDiagnostic`
 - byte ranges: `ByteRange`
 
@@ -159,6 +160,7 @@ published output contract. Every `SelectedMatch` then carries:
 - `output_value` for the exact requested output payload
 - `text_output`, which uses the selected-match text projection rather than whole-document
   reader cleanup for the selected root itself
+- `comparison_text_output` when a text-semantic CSS plan canonicalizes a detached selected clone
 - `selected_html_output` when the strategy is `delimiter_pair`
 - `inner_html_output`, which for `delimiter_pair` means the HTML between the two matched
   boundaries
@@ -171,6 +173,44 @@ Core execution errors preserve the upstream diagnostic without collapsing its me
 selection. This includes `NO_MATCH`, for which the count is `0`; other core diagnostic details
 remain alongside it in `core_details`.
 
+## DOM Canonicalization
+
+Construct a `DomCanonicalization` policy, then pass it to a CSS-selector plan with
+`Plan::with_dom_canonicalization`:
+
+```rust
+use htmlcut_core::interop::v1::{AttributeName, DomCanonicalization};
+
+let canonicalization = DomCanonicalization::new(
+    [AttributeName::new("data-nonce").unwrap()], true,
+);
+```
+
+The policy has two effective fields:
+
+- `ignore_attributes`: no attributes are ignored unless the plan names them
+- `strip_whitespace_nodes`
+
+DOM canonicalization is valid only for CSS `Output::text` and `Output::structured` plans.
+Execution is deliberately ordered: HTMLCut selects candidates on the original parsed DOM, retains
+the original `text_output`, HTML fields, candidate count, path, diagnostics, and metadata, then
+clones the selected subtree. Only that detached clone is canonicalized and rendered into
+`SelectedMatch.comparison_text_output`.
+
+For `Output::text`, `output_value` is the comparison text when canonicalization is configured;
+the original text remains in `text_output` as evidence. `Output::structured` preserves the raw
+structured selected payload and exposes the clone rendering through the selected match's
+`comparison_text_output` field. `Output::inner_html`, `Output::outer_html`, and direct attributes
+retain original evidence and reject `dom_canonicalization`, rather than accepting an inert policy.
+`Output::selected_html` belongs to `delimiter_pair`, for which canonicalization is also rejected.
+
+`Output::attribute { name }` reads the original CSS match-metadata attribute map. A plan that both
+ignores and measures the same attribute, including ASCII case variants such as `href` and `HREF`,
+retains its specific `plan_invalid` error; any other direct-attribute canonicalization is likewise
+rejected as inert. The result validator rejects `comparison_text_output` for direct-attribute and
+raw-HTML output kinds; requires text `output_value` to equal `comparison_text_output` when present
+(otherwise `text_output`); and rejects `comparisonTextOutput` inside structured raw evidence.
+
 ## Determinism Rules
 
 The interop surface is versioned around:
@@ -178,13 +218,18 @@ The interop surface is versioned around:
 - `stable_json_v1`
 - SHA-256 digests over canonical JSON
 - fixture-backed acceptance coverage
-- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`, currently `2`
+- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`, currently `3`
 
 `HtmlInput::extraction_identity_sha256(&Plan)` is the canonical identity for one extraction. It
 binds every `HtmlInput` field (including the decoded HTML bytes, logical label, and optional input
 base URL), the complete `Plan` including a plan that yields a diagnostic, and
 `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`. HTMLCut owns the
 identity algorithm so downstream consumers do not reimplement or omit part of its input.
+
+`dom_canonicalization` is part of the serialized `Plan`, so it participates directly in
+`plan_digest_sha256` and extraction identity. The counter is `3`: a fixed CSS raw-output plan that
+carried this policy now correctly produces `plan_invalid` instead of silently ignoring it. A fixed
+pre-H5 plan has no policy and retains its previous projection and diagnostics.
 
 Increment `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` only when fixed complete input and plan could
 produce a different projection or diagnostic. Do not derive it from the HTMLCut crate version, the
@@ -220,5 +265,6 @@ These are intentionally not part of `htmlcut-v1`:
 
 When `Plan`, `InteropResult`, or `InteropError` changes shape, update the corresponding integer
 schema version, refresh the acceptance fixtures, and ship the docs change in the same release
-slice.
+slice. DOM canonicalization is represented by `htmlcut.plan@7` and its comparison output by
+`htmlcut.result@7`.
 The maintained policy details live in [versioning-policy.md](versioning-policy.md).

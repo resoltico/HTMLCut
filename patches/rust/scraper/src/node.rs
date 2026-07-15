@@ -318,6 +318,23 @@ impl Element {
             inner: self.attrs.iter(),
         }
     }
+
+    /// Retains only attributes accepted by `predicate` and invalidates attribute-derived caches.
+    pub fn retain_attributes(&mut self, mut predicate: impl FnMut(&str) -> bool) {
+        #[cfg(feature = "deterministic")]
+        self.attrs.retain(|name, _| predicate(name.local.as_ref()));
+
+        #[cfg(not(feature = "deterministic"))]
+        self.attrs
+            .retain(|(name, _)| predicate(name.local.as_ref()));
+
+        self.reset_attribute_caches();
+    }
+
+    fn reset_attribute_caches(&mut self) {
+        self.id = OnceCell::new();
+        self.classes = OnceCell::new();
+    }
 }
 
 /// Iterator over classes.

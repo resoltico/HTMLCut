@@ -1,0 +1,1 @@
+{"dom_canonicalization":{"ignore_attributes":["href"],"strip_whitespace_nodes":false},"interop_profile":"htmlcut-v1","output":{"kind":"structured"},"rendering":{"rewrite_urls":false,"whitespace":"normalize"},"schema_name":"htmlcut.plan","schema_version":7,"selection":{"mode":"single"},"strategy":{"kind":"css_selector","selector":"article.measurement a"}}

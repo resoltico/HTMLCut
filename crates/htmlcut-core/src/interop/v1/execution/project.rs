@@ -19,6 +19,7 @@ pub(super) struct ProjectedStructuredMatch {
     candidate_index: NonZeroUsize,
     structured_output: Value,
     text_output: String,
+    comparison_text_output: Option<String>,
     selected_html_output: Option<String>,
     inner_html_output: String,
     outer_html_output: String,
@@ -85,6 +86,7 @@ pub(super) fn adapt_successful_extraction(
                 candidate_index: projected.candidate_index,
                 output_value,
                 text_output: projected.text_output,
+                comparison_text_output: projected.comparison_text_output,
                 selected_html_output: projected.selected_html_output,
                 inner_html_output: projected.inner_html_output,
                 outer_html_output: projected.outer_html_output,
@@ -143,9 +145,23 @@ pub(super) fn project_structured_match(
                 strategy_kind,
                 diagnostics,
             )?;
+            let comparison_text_output = optional_string_field(
+                structured,
+                "comparisonTextOutput",
+                plan_digest_sha256,
+                strategy_kind,
+                diagnostics,
+            )?;
+            // The core structured payload transports this interop-only projection, but structured
+            // output is raw evidence and must never expose it as part of that payload.
+            let mut structured_output = matched.value.clone();
+            structured_output
+                .as_object_mut()
+                .expect("validated structured core match payload must stay an object")
+                .remove("comparisonTextOutput");
             Ok(ProjectedStructuredMatch {
                 candidate_index,
-                structured_output: matched.value.clone(),
+                structured_output,
                 text_output: required_string_field(
                     structured,
                     "textOutput",
@@ -153,6 +169,7 @@ pub(super) fn project_structured_match(
                     strategy_kind,
                     diagnostics,
                 )?,
+                comparison_text_output,
                 selected_html_output: None,
                 inner_html_output: required_string_field(
                     structured,
@@ -195,6 +212,7 @@ pub(super) fn project_structured_match(
                     strategy_kind,
                     diagnostics,
                 )?,
+                comparison_text_output: None,
                 selected_html_output: Some(required_string_field(
                     structured,
                     "selectedHtmlOutput",
@@ -247,7 +265,13 @@ fn project_output_value(
     diagnostics: &[Diagnostic],
 ) -> Result<Value, Box<InteropError>> {
     match output {
-        Output::Text => Ok(Value::String(projected.text_output.clone())),
+        Output::Text => Ok(Value::String(
+            projected
+                .comparison_text_output
+                .as_ref()
+                .unwrap_or(&projected.text_output)
+                .clone(),
+        )),
         Output::InnerHtml => Ok(Value::String(projected.inner_html_output.clone())),
         Output::OuterHtml => Ok(Value::String(projected.outer_html_output.clone())),
         Output::SelectedHtml => projected
@@ -289,6 +313,30 @@ fn project_output_value(
                 )
             }),
         Output::Structured => Ok(projected.structured_output.clone()),
+    }
+}
+
+fn optional_string_field(
+    structured: &serde_json::Map<String, Value>,
+    field: &'static str,
+    plan_digest_sha256: &str,
+    strategy_kind: StrategyKind,
+    diagnostics: &[Diagnostic],
+) -> Result<Option<String>, Box<InteropError>> {
+    match structured.get(field) {
+        None => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => {
+            let mut details = BTreeMap::new();
+            details.insert("field".to_owned(), Value::from(field));
+            Err(Box::new(internal_adapter_error(
+                plan_digest_sha256,
+                Some(strategy_kind),
+                format!("execution produced a non-string structured field {field:?}"),
+                details,
+                diagnostics,
+            )))
+        }
     }
 }
 

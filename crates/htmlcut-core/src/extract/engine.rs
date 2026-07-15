@@ -20,8 +20,8 @@ use crate::source::{empty_source_metadata, load_source, source_metadata};
 
 use super::slice::CompiledSlicePatterns;
 use super::{
-    FinalizedExtraction, run_validated_selector_extraction, run_validated_slice_extraction,
-    validate_selector_query,
+    FinalizedExtraction, SelectorDomCanonicalization, run_validated_selector_extraction,
+    run_validated_slice_extraction, validate_selector_query,
 };
 
 #[derive(Debug)]
@@ -126,12 +126,21 @@ pub fn preview_extraction(
     request: &ExtractionRequest,
     runtime: &RuntimeOptions,
 ) -> ExtractionResult {
-    run_extraction(request, runtime, true)
+    run_extraction(request, runtime, true, None)
 }
 
 /// Executes the extraction request and returns the final structured extraction result.
 pub fn extract(request: &ExtractionRequest, runtime: &RuntimeOptions) -> ExtractionResult {
-    run_extraction(request, runtime, false)
+    run_extraction(request, runtime, false, None)
+}
+
+/// Executes selector extraction with an interop-owned detached-clone canonicalization policy.
+pub(crate) fn extract_with_selector_dom_canonicalization(
+    request: &ExtractionRequest,
+    runtime: &RuntimeOptions,
+    dom_canonicalization: Option<&SelectorDomCanonicalization>,
+) -> ExtractionResult {
+    run_extraction(request, runtime, false, dom_canonicalization)
 }
 
 const fn extraction_operation_id(strategy: ExtractionStrategy, preview: bool) -> OperationId {
@@ -147,6 +156,7 @@ pub(crate) fn run_extraction(
     request: &ExtractionRequest,
     runtime: &RuntimeOptions,
     preview: bool,
+    dom_canonicalization: Option<&SelectorDomCanonicalization>,
 ) -> ExtractionResult {
     let started_at = Instant::now();
     let prepared = match validate_request(request) {
@@ -190,7 +200,7 @@ pub(crate) fn run_extraction(
 
     let extraction = match &prepared {
         PreparedExtraction::Selector(selector) => {
-            run_validated_selector_extraction(request, &loaded, selector)
+            run_validated_selector_extraction(request, &loaded, selector, dom_canonicalization)
         }
         PreparedExtraction::Slice { slice, patterns } => {
             run_validated_slice_extraction(request, &loaded, slice, patterns)

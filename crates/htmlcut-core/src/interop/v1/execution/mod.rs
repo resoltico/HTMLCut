@@ -6,9 +6,9 @@ use compile::{compile_request, default_runtime_options, exact_plan_digest_sha256
 use errors::{core_execution_error, plan_digest_error, plan_invalid_error};
 use project::adapt_successful_extraction;
 
-use crate::extract;
+use crate::{SelectorDomCanonicalization, extract_with_selector_dom_canonicalization};
 
-use super::{HtmlInput, InteropError, InteropResult, Plan};
+use super::{HtmlInput, InteropError, InteropResult, Output, Plan};
 
 #[cfg(test)]
 const TEST_PLAN_DIGEST_SHA256: &str =
@@ -53,7 +53,28 @@ pub fn execute_validated_plan(
 ) -> Result<InteropResult, Box<InteropError>> {
     let request = compile_request(source, validated_plan.plan());
     let runtime = default_runtime_options();
-    let extraction = extract(&request, &runtime);
+    let dom_canonicalization = match &validated_plan.plan().output {
+        Output::Text | Output::Structured => validated_plan
+            .plan()
+            .dom_canonicalization
+            .as_ref()
+            .map(|canonicalization| {
+                SelectorDomCanonicalization::new(
+                    canonicalization
+                        .ignore_attributes
+                        .iter()
+                        .map(ToString::to_string),
+                    canonicalization.strip_whitespace_nodes,
+                )
+            }),
+        Output::InnerHtml | Output::OuterHtml | Output::Attribute { .. } => None,
+        Output::SelectedHtml => None,
+    };
+    let extraction = extract_with_selector_dom_canonicalization(
+        &request,
+        &runtime,
+        dom_canonicalization.as_ref(),
+    );
 
     if !extraction.ok {
         return Err(Box::new(core_execution_error(
@@ -84,6 +105,13 @@ pub(crate) fn compile_request_for_tests(
     plan: &Plan,
 ) -> crate::ExtractionRequest {
     compile::compile_request(source, plan)
+}
+
+#[cfg(test)]
+pub(crate) fn exact_plan_digest_sha256_for_tests(
+    plan: &Plan,
+) -> Result<String, super::ContractError> {
+    exact_plan_digest_sha256(plan)
 }
 
 #[cfg(test)]

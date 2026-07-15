@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "10.3.1"
+  version: "11.0.0"
   domain: MAINTAINER
   updated: "2026-07-15"
 RETRIEVAL_HINTS:

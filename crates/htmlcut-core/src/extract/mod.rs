@@ -7,16 +7,18 @@ use crate::catalog::OperationId;
 use crate::contracts::{Diagnostic, ExtractionMatch, SourceMetadata};
 use crate::result::Range;
 
-pub(crate) use engine::ExtractionRun;
 #[cfg(test)]
 pub(crate) use engine::validate_request;
+pub(crate) use engine::{ExtractionRun, extract_with_selector_dom_canonicalization};
 pub use engine::{extract, inspect_source, parse_document, preview_extraction};
 pub(crate) use selection::select_candidates;
 #[cfg(test)]
 pub(crate) use selector::build_selector_match;
 #[cfg(test)]
 pub(crate) use selector::run_selector_extraction;
-pub(crate) use selector::{run_validated_selector_extraction, validate_selector_query};
+pub(crate) use selector::{
+    SelectorDomCanonicalization, run_validated_selector_extraction, validate_selector_query,
+};
 #[cfg(test)]
 pub(crate) use slice::run_slice_extraction;
 pub(crate) use slice::run_validated_slice_extraction;

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::num::NonZeroUsize;
 
@@ -434,6 +434,41 @@ impl Rendering {
     }
 }
 
+/// DOM transformations applied only to a detached CSS-selected comparison clone.
+///
+/// This policy never changes candidate selection, raw selected output, or CSS match metadata.
+/// Attribute names are matched case-insensitively because HTML attribute names are ASCII
+/// case-insensitive.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DomCanonicalization {
+    /// Attribute names removed from the detached comparison clone.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub ignore_attributes: BTreeSet<AttributeName>,
+    /// Whether whitespace-only text nodes are removed from the detached comparison clone.
+    #[serde(default)]
+    pub strip_whitespace_nodes: bool,
+}
+
+impl DomCanonicalization {
+    /// Builds one detached-clone canonicalization policy.
+    pub fn new(
+        ignore_attributes: impl IntoIterator<Item = AttributeName>,
+        strip_whitespace_nodes: bool,
+    ) -> Self {
+        Self {
+            ignore_attributes: ignore_attributes.into_iter().collect(),
+            strip_whitespace_nodes,
+        }
+    }
+
+    pub(super) fn ignores_attribute(&self, name: &str) -> bool {
+        self.ignore_attributes
+            .iter()
+            .any(|ignored| ignored.as_str().eq_ignore_ascii_case(name))
+    }
+}
+
 /// Versioned extraction plan owned by HTMLCut.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -452,6 +487,9 @@ pub struct Plan {
     pub output: Output,
     /// Rendering policy for extracted values.
     pub rendering: Rendering,
+    /// Optional transformations applied only to a detached CSS-selected comparison clone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dom_canonicalization: Option<DomCanonicalization>,
     /// Reserved extension object ignored by v1 consumers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<BTreeMap<String, Value>>,
@@ -473,8 +511,15 @@ impl Plan {
             selection,
             output,
             rendering,
+            dom_canonicalization: None,
             extensions: None,
         }
+    }
+
+    /// Sets the detached-clone canonicalization policy for this CSS-selector plan.
+    pub fn with_dom_canonicalization(mut self, dom_canonicalization: DomCanonicalization) -> Self {
+        self.dom_canonicalization = Some(dom_canonicalization);
+        self
     }
 
     /// Validates the schema identity and semantic invariants for this plan.
@@ -488,7 +533,36 @@ impl Plan {
             INTEROP_V1_PROFILE,
         )?;
         self.strategy.validate()?;
-        self.output.validate_for_strategy(self.strategy.kind())
+        self.output.validate_for_strategy(self.strategy.kind())?;
+        self.validate_dom_canonicalization()
+    }
+
+    fn validate_dom_canonicalization(&self) -> Result<(), ContractError> {
+        let Some(dom_canonicalization) = &self.dom_canonicalization else {
+            return Ok(());
+        };
+
+        if self.strategy.kind() != StrategyKind::CssSelector {
+            return Err(ContractError::DomCanonicalizationRequiresCssSelector);
+        }
+
+        if let Output::Attribute { name } = &self.output
+            && dom_canonicalization.ignores_attribute(name.as_str())
+        {
+            return Err(ContractError::DomCanonicalizationIgnoresMeasuredAttribute {
+                attribute: name.as_str().to_owned(),
+            });
+        }
+
+        if !matches!(self.output, Output::Text | Output::Structured) {
+            return Err(
+                ContractError::DomCanonicalizationRequiresComparisonTextOutput {
+                    output_kind: self.output.kind(),
+                },
+            );
+        }
+
+        Ok(())
     }
 
     /// Serializes this plan with the stable JSON profile.

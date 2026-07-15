@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "10.3.1"
+version: "11.0.0"
 domain: ARCHITECTURE
 updated: "2026-07-15"
 route:
@@ -84,6 +84,8 @@ broader `htmlcut-core` API, and not a CLI command.
 - plan-to-core-request compilation for `htmlcut-v1`
 - typed interop result and error documents
 - stable JSON and digest helpers for the interop profile
+- CSS-only detached-clone canonicalization after source-DOM candidate selection, with raw evidence
+  preserved separately from comparison text
 
 Those owners are maintained as focused domain modules, not giant mixed-role files. In practice that
 means HTMLCut keeps request contracts, source loading, document handling, extraction execution, and
