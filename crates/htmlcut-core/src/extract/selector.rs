@@ -1,6 +1,8 @@
 use std::cell::OnceCell;
+use std::collections::BTreeSet;
 
-use scraper::{ElementRef, Selector};
+use ego_tree::NodeId;
+use scraper::{ElementRef, Html, Node, Selector};
 use serde_json::{Value, json};
 
 use crate::contracts::{
@@ -16,6 +18,32 @@ use crate::document::{
 use crate::source::LoadedSource;
 
 use super::{ExtractionRun, select_candidates};
+
+/// Canonicalization policy applied only to a detached selector-match clone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SelectorDomCanonicalization {
+    ignored_attributes: BTreeSet<String>,
+    strip_whitespace_nodes: bool,
+}
+
+impl SelectorDomCanonicalization {
+    /// Builds one selector-only detached-clone canonicalization policy.
+    pub(crate) fn new(
+        ignored_attributes: impl IntoIterator<Item = String>,
+        strip_whitespace_nodes: bool,
+    ) -> Self {
+        Self {
+            ignored_attributes: ignored_attributes.into_iter().collect(),
+            strip_whitespace_nodes,
+        }
+    }
+
+    fn ignores_attribute(&self, name: &str) -> bool {
+        self.ignored_attributes
+            .iter()
+            .any(|ignored| ignored.eq_ignore_ascii_case(name))
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn run_selector_extraction(
@@ -48,13 +76,14 @@ pub(crate) fn run_selector_extraction(
         }
     };
 
-    run_validated_selector_extraction(request, source, &parsed_selector)
+    run_validated_selector_extraction(request, source, &parsed_selector, None)
 }
 
 pub(crate) fn run_validated_selector_extraction(
     request: &ExtractionRequest,
     source: &LoadedSource,
     parsed_selector: &Selector,
+    dom_canonicalization: Option<&SelectorDomCanonicalization>,
 ) -> ExtractionRun {
     let document = parse_document_node(&source.text);
     let effective_base_url = resolve_document_base_url(&document, source.input_base_url.as_deref());
@@ -83,6 +112,14 @@ pub(crate) fn run_validated_selector_extraction(
         rewrite_urls_in_document(&mut text_projection, base_url);
         text_projection_document = Some(text_projection);
     }
+    // Clone the same DOM that supplies raw text projection before adding detached selected
+    // subtrees. Candidate matching remains exclusively anchored to `document` above.
+    let mut canonicalization_document = dom_canonicalization.map(|_| {
+        text_projection_document
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| document.clone())
+    });
     let candidate_count = candidates.len();
     let (selected, selection_diagnostics) =
         select_candidates(&candidates, request.extraction.selection());
@@ -101,14 +138,29 @@ pub(crate) fn run_validated_selector_extraction(
             .and_then(|rewritten| rewritten.tree.get(selected_candidate.candidate.id()))
             .and_then(ElementRef::wrap)
             .unwrap_or(rendered_candidate);
-        let built_match = build_selector_match(
+        let comparison_text_output =
+            match (dom_canonicalization, canonicalization_document.as_mut()) {
+                (Some(canonicalization), Some(canonicalization_document)) => {
+                    Some(render_canonicalized_selected_clone(
+                        canonicalization_document,
+                        selected_candidate.candidate.id(),
+                        canonicalization,
+                        request.output.rendering.whitespace,
+                    ))
+                }
+                _ => None,
+            };
+        let built_match = build_selector_match_with_comparison(
             request,
             &rendered_candidate,
             &text_projection_candidate,
-            position + 1,
-            match_count,
-            selected_candidate.candidate_index,
-            candidate_count,
+            SelectorMatchDetails {
+                match_index: position + 1,
+                match_count,
+                candidate_index: selected_candidate.candidate_index,
+                candidate_count,
+                comparison_text_output,
+            },
         );
 
         match built_match {
@@ -139,6 +191,7 @@ pub(crate) fn validate_selector_query(selector: &SelectorQuery) -> Result<Select
     })
 }
 
+#[cfg(test)]
 pub(crate) fn build_selector_match(
     request: &ExtractionRequest,
     node: &ElementRef<'_>,
@@ -148,6 +201,41 @@ pub(crate) fn build_selector_match(
     candidate_index: usize,
     candidate_count: usize,
 ) -> Result<ExtractionMatch, Diagnostic> {
+    build_selector_match_with_comparison(
+        request,
+        node,
+        text_node,
+        SelectorMatchDetails {
+            match_index,
+            match_count,
+            candidate_index,
+            candidate_count,
+            comparison_text_output: None,
+        },
+    )
+}
+
+struct SelectorMatchDetails {
+    match_index: usize,
+    match_count: usize,
+    candidate_index: usize,
+    candidate_count: usize,
+    comparison_text_output: Option<String>,
+}
+
+fn build_selector_match_with_comparison(
+    request: &ExtractionRequest,
+    node: &ElementRef<'_>,
+    text_node: &ElementRef<'_>,
+    details: SelectorMatchDetails,
+) -> Result<ExtractionMatch, Diagnostic> {
+    let SelectorMatchDetails {
+        match_index,
+        match_count,
+        candidate_index,
+        candidate_count,
+        comparison_text_output,
+    } = details;
     let value_spec = request.extraction.value();
     let path = build_node_path(node);
     let tag_name = node.value().name().to_owned();
@@ -199,18 +287,24 @@ pub(crate) fn build_selector_match(
                 request.output.rendering.whitespace,
             ))
         }
-        ValueSpec::Structured => json!({
-            "matchIndex": match_index,
-            "matchCount": match_count,
-            "candidateIndex": candidate_index,
-            "candidateCount": candidate_count,
-            "tagName": tag_name.clone(),
-            "path": path.clone(),
-            "textOutput": text_value(),
-            "innerHtmlOutput": inner_html_value(),
-            "outerHtmlOutput": outer_html_value(),
-            "attributes": attributes_value(),
-        }),
+        ValueSpec::Structured => {
+            let mut structured = json!({
+                "matchIndex": match_index,
+                "matchCount": match_count,
+                "candidateIndex": candidate_index,
+                "candidateCount": candidate_count,
+                "tagName": tag_name.clone(),
+                "path": path.clone(),
+                "textOutput": text_value(),
+                "innerHtmlOutput": inner_html_value(),
+                "outerHtmlOutput": outer_html_value(),
+                "attributes": attributes_value(),
+            });
+            if let Some(comparison_text_output) = &comparison_text_output {
+                structured["comparisonTextOutput"] = Value::String(comparison_text_output.clone());
+            }
+            structured
+        }
     };
 
     let preview = build_preview(&value, request.output.preview_chars.get());
@@ -237,4 +331,115 @@ pub(crate) fn build_selector_match(
             attributes: attributes_value(),
         }),
     })
+}
+
+fn render_canonicalized_selected_clone(
+    document: &mut Html,
+    selected_node_id: NodeId,
+    canonicalization: &SelectorDomCanonicalization,
+    whitespace: crate::WhitespaceMode,
+) -> String {
+    let detached_clone_id = document
+        .tree
+        .get_mut(selected_node_id)
+        .expect("selected node IDs must survive an HTML clone")
+        .clone_subtree()
+        .id();
+    canonicalize_detached_subtree(document, detached_clone_id, canonicalization);
+    let detached_clone = document
+        .tree
+        .get(detached_clone_id)
+        .and_then(ElementRef::wrap)
+        .expect("cloned selected element must remain an element");
+    render_element_as_text(&detached_clone, whitespace)
+}
+
+fn canonicalize_detached_subtree(
+    document: &mut Html,
+    detached_root_id: NodeId,
+    canonicalization: &SelectorDomCanonicalization,
+) {
+    let mut node_ids = vec![detached_root_id];
+    node_ids.extend(
+        document
+            .tree
+            .get(detached_root_id)
+            .expect("detached clone root must survive canonicalization")
+            .descendants()
+            .map(|node| node.id()),
+    );
+
+    for node_id in node_ids {
+        let remove_node = document
+            .tree
+            .get(node_id)
+            .is_some_and(|node| match node.value() {
+                Node::Text(text) => {
+                    canonicalization.strip_whitespace_nodes && text.trim().is_empty()
+                }
+                _ => false,
+            });
+        if remove_node {
+            document
+                .tree
+                .get_mut(node_id)
+                .expect("cloned node must survive canonicalization")
+                .detach();
+            continue;
+        }
+
+        let mut node = document
+            .tree
+            .get_mut(node_id)
+            .expect("cloned node must survive canonicalization");
+        let Node::Element(element) = node.value() else {
+            continue;
+        };
+        if !canonicalization.ignored_attributes.is_empty() {
+            element.retain_attributes(|name| !canonicalization.ignores_attribute(name));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::select_first;
+
+    #[test]
+    fn detached_clone_canonicalization_never_mutates_the_selected_source_subtree() {
+        let mut document = parse_document_node(
+            "<article z=\"1\" data-nonce=\"volatile\" a=\"2\"><!-- transient --><span>Guide</span>  \n</article>",
+        );
+        let selected_node_id = select_first(&document, "article")
+            .expect("selected article")
+            .id();
+        let detached_clone_id = document
+            .tree
+            .get_mut(selected_node_id)
+            .expect("selected node")
+            .clone_subtree()
+            .id();
+        let canonicalization = SelectorDomCanonicalization::new(["data-nonce".to_owned()], true);
+
+        canonicalize_detached_subtree(&mut document, detached_clone_id, &canonicalization);
+
+        let original = document
+            .tree
+            .get(selected_node_id)
+            .and_then(ElementRef::wrap)
+            .expect("original selected element");
+        let canonical = document
+            .tree
+            .get(detached_clone_id)
+            .and_then(ElementRef::wrap)
+            .expect("detached canonical clone");
+        assert!(serialize_element(&original).contains("data-nonce=\"volatile\""));
+        assert!(serialize_element(&original).contains("<!-- transient -->"));
+        assert_eq!(canonical.value().attr("data-nonce"), None);
+        assert_eq!(canonical.value().attr("a"), Some("2"));
+        assert_eq!(canonical.value().attr("z"), Some("1"));
+        let canonical_html = serialize_element(&canonical);
+        assert!(!canonical_html.contains("  \n"));
+    }
 }

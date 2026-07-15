@@ -29,6 +29,10 @@ htmlcut select --request-file ./article-link.request.json
 The first command writes a reusable extraction definition. The second command reruns that saved
 definition, so you get the same selector and output settings without repeating the inline flags.
 
+## Embed Deterministic Extraction
+
+Rust applications can use `htmlcut_core::interop::v1` to prepare typed extraction plans, execute them against application-owned HTML, and persist deterministic result and error documents. See the [Interop v1 Guide](docs/interop-v1.md) for the contract boundary and integration API.
+
 ## Documentation Index
 
 The complete index of Markdown documentation under `docs/` lives in [docs/README.md](docs/README.md).

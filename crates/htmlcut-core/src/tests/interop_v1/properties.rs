@@ -354,6 +354,7 @@ impl CaseGenerator {
             candidate_index,
             output_value,
             text_output,
+            comparison_text_output: None,
             selected_html_output,
             inner_html_output,
             outer_html_output,

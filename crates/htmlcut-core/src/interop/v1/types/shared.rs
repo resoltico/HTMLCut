@@ -9,9 +9,9 @@ pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
 /// Schema name for the extraction error.
 pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
-pub const PLAN_SCHEMA_VERSION: u32 = 5;
+pub const PLAN_SCHEMA_VERSION: u32 = 7;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 6;
+pub const RESULT_SCHEMA_VERSION: u32 = 7;
 /// Schema version for the extraction error.
 pub const ERROR_SCHEMA_VERSION: u32 = 2;
 
@@ -82,6 +82,23 @@ pub enum ContractError {
         /// Output kind declared by the plan or result.
         output_kind: super::plan::OutputKind,
     },
+    /// DOM canonicalization was requested for a non-CSS strategy.
+    #[error("dom_canonicalization is only valid for css_selector strategies")]
+    DomCanonicalizationRequiresCssSelector,
+    /// DOM canonicalization was requested for an output that has no comparison-text projection.
+    #[error(
+        "dom_canonicalization requires css_selector text or structured output; output kind {output_kind:?} does not expose comparison text"
+    )]
+    DomCanonicalizationRequiresComparisonTextOutput {
+        /// Output kind that cannot expose a detached-clone text projection.
+        output_kind: super::plan::OutputKind,
+    },
+    /// DOM canonicalization ignored the attribute selected for direct measurement.
+    #[error("dom_canonicalization cannot ignore measured attribute {attribute:?}")]
+    DomCanonicalizationIgnoresMeasuredAttribute {
+        /// Attribute that both canonicalization ignored and output requested.
+        attribute: String,
+    },
     /// A successful result claimed to select zero candidates.
     #[error("successful extraction results must report at least one candidate")]
     ZeroCandidateCount,
@@ -122,6 +139,25 @@ pub enum ContractError {
     /// A delimiter-pair result omitted its selected-html alternate output.
     #[error("delimiter_pair selected matches must carry selected_html_output")]
     MissingSelectedHtmlOutput,
+    /// A non-CSS result unexpectedly carried a detached-clone comparison text projection.
+    #[error("delimiter_pair selected matches must not carry comparison_text_output")]
+    UnexpectedComparisonTextOutput,
+    /// A raw CSS output kind unexpectedly carried a detached-clone comparison text projection.
+    #[error(
+        "selected matches for output kind {output_kind:?} must not carry comparison_text_output"
+    )]
+    UnexpectedComparisonTextOutputForOutput {
+        /// Output kind declared by the result.
+        output_kind: super::plan::OutputKind,
+    },
+    /// A text result's exact output did not agree with its authoritative text projection.
+    #[error(
+        "text output_value must equal comparison_text_output when present, otherwise text_output"
+    )]
+    TextOutputValueMismatch,
+    /// Raw structured evidence leaked the interop-only clone comparison projection.
+    #[error("structured output_value must not contain comparisonTextOutput")]
+    StructuredOutputContainsComparisonText,
     /// Result metadata did not describe the same strategy kind as the top-level result.
     #[error(
         "selected match metadata kind {metadata_kind:?} does not match result strategy kind {strategy_kind:?}"

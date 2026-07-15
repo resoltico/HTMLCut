@@ -2,11 +2,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::http_url;
-use crate::interop::v1::{HtmlInput, InteropError, InteropResult, Plan, execute_plan};
+use crate::interop::v1::{
+    HtmlInput, InteropError, InteropResult, Plan, exact_plan_digest_sha256_for_tests, execute_plan,
+    stable_json_v1,
+};
 
+#[derive(Clone, Copy)]
 enum ExpectedDocumentKind {
     Result,
     Error,
+    PlanError,
 }
 
 struct AcceptanceCase {
@@ -38,6 +43,48 @@ const ACCEPTANCE_CASES: &[AcceptanceCase] = &[
     AcceptanceCase {
         name: "css_selector_structured_ok",
         label: "target-story",
+        input_base_url: Some("https://example.com/docs/start.html"),
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_nonce_unchanged",
+        label: "target-canonicalization",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_meaningful_attribute",
+        label: "target-canonicalization",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_structured_raw",
+        label: "target-canonicalization",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_attribute_original",
+        label: "target-canonicalization",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::PlanError,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_all",
+        label: "target-canonicalization-all",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_whitespace_projection",
+        label: "target-canonical-whitespace",
+        input_base_url: None,
+        expected_kind: ExpectedDocumentKind::Result,
+    },
+    AcceptanceCase {
+        name: "css_selector_dom_canonicalization_rewritten_metadata",
+        label: "target-canonical-rewritten-metadata",
         input_base_url: Some("https://example.com/docs/start.html"),
         expected_kind: ExpectedDocumentKind::Result,
     },
@@ -123,12 +170,23 @@ fn load_source(case: &AcceptanceCase) -> HtmlInput {
     }
 }
 
+fn canonical_plan_json(case: &AcceptanceCase, plan: &Plan) -> String {
+    match case.expected_kind {
+        ExpectedDocumentKind::PlanError => {
+            stable_json_v1(plan).expect("invalid plan fixture stable json")
+        }
+        ExpectedDocumentKind::Result | ExpectedDocumentKind::Error => {
+            plan.stable_json().expect("plan stable json")
+        }
+    }
+}
+
 fn load_plan(case: &AcceptanceCase) -> (Plan, String) {
     let path = fixture_dir(case).join("plan.json");
     let stable_json = fixture_text(&path);
     let plan: Plan = serde_json::from_str(&stable_json).expect("fixture plan");
     assert_eq!(
-        plan.stable_json().expect("plan stable json"),
+        canonical_plan_json(case, &plan),
         stable_json,
         "{} plan fixture must already be canonical stable JSON",
         case.name
@@ -158,7 +216,7 @@ fn update_fixtures() {
         let source = load_source(case);
         let plan_path = fixture_dir(case).join("plan.json");
         let (plan, _) = load_plan(case);
-        let new_plan_json = plan.stable_json().expect("plan stable json");
+        let new_plan_json = canonical_plan_json(case, &plan);
         fs::write(&plan_path, format!("{new_plan_json}\n")).expect("write plan");
 
         match case.expected_kind {
@@ -168,7 +226,7 @@ fn update_fixtures() {
                 let result_path = fixture_dir(case).join("expected_result.json");
                 fs::write(&result_path, format!("{result_json}\n")).expect("write result");
             }
-            ExpectedDocumentKind::Error => {
+            ExpectedDocumentKind::Error | ExpectedDocumentKind::PlanError => {
                 let err = execute_plan(&source, &plan).expect_err("execute plan error");
                 let err_json = err.stable_json().expect("error stable json");
                 let err_path = fixture_dir(case).join("expected_error.json");
@@ -237,7 +295,7 @@ fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                     case.name
                 );
             }
-            ExpectedDocumentKind::Error => {
+            ExpectedDocumentKind::Error | ExpectedDocumentKind::PlanError => {
                 let expected_path = fixture_dir(case).join("expected_error.json");
                 let expected_json = fixture_text(&expected_path);
                 let expected: InteropError =
@@ -249,11 +307,18 @@ fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                     case.name
                 );
                 assert_eq!(
-                    plan.digest_sha256().expect("plan digest"),
+                    exact_plan_digest_sha256_for_tests(&plan).expect("exact plan digest"),
                     expected.plan_digest_sha256,
                     "{} plan digest must stay frozen",
                     case.name
                 );
+                if matches!(case.expected_kind, ExpectedDocumentKind::PlanError) {
+                    assert!(
+                        plan.validate().is_err(),
+                        "{} plan must be invalid",
+                        case.name
+                    );
+                }
 
                 let actual = execute_plan(&source, &plan).expect_err("fixture error");
                 let repeated = execute_plan(&source, &plan).expect_err("repeated fixture error");
@@ -283,7 +348,7 @@ fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                     case.name
                 );
                 assert_eq!(
-                    plan.stable_json().expect("plan stable json"),
+                    canonical_plan_json(case, &plan),
                     plan_json,
                     "{} plan JSON mismatch",
                     case.name

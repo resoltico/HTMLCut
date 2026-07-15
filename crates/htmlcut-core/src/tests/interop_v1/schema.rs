@@ -1,5 +1,248 @@
 use super::*;
 use crate::ContractValueError;
+use crate::interop::v1::DomCanonicalization;
+use serde_json::json;
+
+fn interop_schema_accepts(schema_name: &str, schema_version: u32, document: &Value) -> bool {
+    let schema = (crate::schema_descriptor(schema_name, schema_version)
+        .expect("interop schema descriptor")
+        .json_schema)()
+    .expect("interop JSON schema");
+    let schema_location =
+        format!("https://schemas.htmlcut.invalid/{schema_name}/{schema_version}.json");
+    let mut schemas = boon::Schemas::new();
+    let mut compiler = boon::Compiler::new();
+    compiler
+        .add_resource(&schema_location, schema)
+        .expect("published schema location");
+    let schema_index = compiler
+        .compile(&schema_location, &mut schemas)
+        .expect("published schema must compile in an independent JSON Schema validator");
+
+    schemas.validate(document, schema_index).is_ok()
+}
+
+fn canonicalization(ignored_attributes: &[&str]) -> DomCanonicalization {
+    DomCanonicalization::new(
+        ignored_attributes
+            .iter()
+            .map(|name| AttributeName::new(*name).expect("canonicalized attribute name")),
+        true,
+    )
+}
+
+fn result_source() -> ResultSource {
+    ResultSource {
+        input_base_url: None,
+        effective_base_url: None,
+        document_title: None,
+    }
+}
+
+fn css_result(output: Output, selected: SelectedMatch) -> InteropResult {
+    InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            output,
+            1,
+        ),
+        result_source(),
+        vec![selected],
+        Vec::new(),
+    )
+}
+
+#[test]
+fn interop_plan_schema_enforces_h5_canonicalization_shape_and_relationships() {
+    let text_plan = selector_plan().with_dom_canonicalization(canonicalization(&["data-nonce"]));
+    let text_document = serde_json::to_value(&text_plan).expect("text plan JSON");
+    assert!(interop_schema_accepts(
+        v1::PLAN_SCHEMA_NAME,
+        v1::PLAN_SCHEMA_VERSION,
+        &text_document,
+    ));
+    assert!(text_plan.validate().is_ok());
+
+    let structured_plan = Plan::new(
+        PlanStrategy::css_selector(css_selector("article")),
+        Selection::single(),
+        Output::structured(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    )
+    .with_dom_canonicalization(canonicalization(&["data-nonce"]));
+    let structured_document = serde_json::to_value(&structured_plan).expect("structured plan JSON");
+    assert!(interop_schema_accepts(
+        v1::PLAN_SCHEMA_NAME,
+        v1::PLAN_SCHEMA_VERSION,
+        &structured_document,
+    ));
+    assert!(structured_plan.validate().is_ok());
+
+    for output in [
+        Output::inner_html(),
+        Output::outer_html(),
+        Output::attribute(output_attribute_name("href")),
+    ] {
+        let plan = Plan::new(
+            PlanStrategy::css_selector(css_selector("article")),
+            Selection::single(),
+            output.clone(),
+            Rendering::new(TextWhitespace::Normalize, false),
+        )
+        .with_dom_canonicalization(canonicalization(&["data-nonce"]));
+        let document = serde_json::to_value(&plan).expect("raw output plan JSON");
+
+        assert!(
+            !interop_schema_accepts(v1::PLAN_SCHEMA_NAME, v1::PLAN_SCHEMA_VERSION, &document),
+            "the plan schema must reject canonicalization for {} output",
+            output.kind(),
+        );
+        assert!(matches!(
+            plan.validate(),
+            Err(ContractError::DomCanonicalizationRequiresComparisonTextOutput { output_kind })
+                if output_kind == output.kind()
+        ));
+    }
+
+    let non_css_plan = Plan::new(
+        PlanStrategy::delimiter_pair(
+            delimiter_boundary("<article>"),
+            delimiter_boundary("</article>"),
+            DelimiterMode::Literal,
+            DelimiterBoundaryRetention::ExcludeBoth,
+            Vec::new(),
+        ),
+        Selection::single(),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    )
+    .with_dom_canonicalization(canonicalization(&["data-nonce"]));
+    let non_css_document = serde_json::to_value(&non_css_plan).expect("non-CSS plan JSON");
+    assert!(!interop_schema_accepts(
+        v1::PLAN_SCHEMA_NAME,
+        v1::PLAN_SCHEMA_VERSION,
+        &non_css_document,
+    ));
+    assert!(matches!(
+        non_css_plan.validate(),
+        Err(ContractError::DomCanonicalizationRequiresCssSelector)
+    ));
+
+    for removed_control in ["sort_attributes", "strip_comments"] {
+        let mut document = text_document.clone();
+        document["dom_canonicalization"]
+            .as_object_mut()
+            .expect("canonicalization object")
+            .insert(removed_control.to_owned(), json!(true));
+
+        assert!(
+            !interop_schema_accepts(v1::PLAN_SCHEMA_NAME, v1::PLAN_SCHEMA_VERSION, &document),
+            "the plan schema must reject removed {removed_control} control",
+        );
+        assert!(serde_json::from_value::<Plan>(document).is_err());
+    }
+}
+
+#[test]
+fn interop_result_schema_enforces_h5_evidence_boundaries_and_marks_the_runtime_boundary() {
+    let mut canonical_text_match = selector_selected_match();
+    canonical_text_match.comparison_text_output = Some("Canonical text".to_owned());
+    canonical_text_match.output_value = json!("Canonical text");
+    let canonical_text_result = css_result(Output::text(), canonical_text_match)
+        .with_computed_digest()
+        .expect("valid canonical text result");
+    let canonical_text_document =
+        serde_json::to_value(&canonical_text_result).expect("canonical text result JSON");
+    assert!(interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &canonical_text_document,
+    ));
+    assert!(canonical_text_result.validate().is_ok());
+
+    let mut raw_output_result = canonical_text_result.clone();
+    raw_output_result.output = Output::attribute(output_attribute_name("href"));
+    let raw_output_document =
+        serde_json::to_value(&raw_output_result).expect("raw output result JSON");
+    assert!(!interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &raw_output_document,
+    ));
+    assert!(matches!(
+        raw_output_result.validate(),
+        Err(ContractError::UnexpectedComparisonTextOutputForOutput {
+            output_kind: OutputKind::Attribute
+        })
+    ));
+
+    let mut raw_value_result = css_result(Output::inner_html(), selector_selected_match());
+    raw_value_result.selected_matches[0].output_value = json!({ "invented": "object" });
+    let raw_value_document =
+        serde_json::to_value(&raw_value_result).expect("raw value result JSON");
+    assert!(!interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &raw_value_document,
+    ));
+    assert!(matches!(
+        raw_value_result.validate(),
+        Err(ContractError::NonStringOutputValue {
+            output_kind: OutputKind::InnerHtml
+        })
+    ));
+
+    let mut structured_match = selector_selected_match();
+    structured_match.comparison_text_output = Some("Canonical text".to_owned());
+    structured_match.output_value = json!({ "textOutput": "raw text" });
+    let structured_result = css_result(Output::structured(), structured_match)
+        .with_computed_digest()
+        .expect("valid structured result");
+    let structured_document =
+        serde_json::to_value(&structured_result).expect("structured result JSON");
+    assert!(interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &structured_document,
+    ));
+    assert!(structured_result.validate().is_ok());
+
+    let mut structured_leak = structured_result.clone();
+    structured_leak.selected_matches[0].output_value = json!({
+        "textOutput": "raw text",
+        "comparisonTextOutput": "invented clone text"
+    });
+    let structured_leak_document =
+        serde_json::to_value(&structured_leak).expect("structured leak result JSON");
+    assert!(!interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &structured_leak_document,
+    ));
+    assert!(matches!(
+        structured_leak.validate(),
+        Err(ContractError::StructuredOutputContainsComparisonText)
+    ));
+
+    let mut text_value_mismatch = canonical_text_result.clone();
+    text_value_mismatch.selected_matches[0].output_value = json!("Invented output");
+    let text_value_mismatch_document =
+        serde_json::to_value(&text_value_mismatch).expect("text mismatch result JSON");
+    assert!(
+        interop_schema_accepts(
+            v1::RESULT_SCHEMA_NAME,
+            v1::RESULT_SCHEMA_VERSION,
+            &text_value_mismatch_document,
+        ),
+        "standard JSON Schema cannot compare output_value with comparison_text_output",
+    );
+    assert!(matches!(
+        text_value_mismatch.validate(),
+        Err(ContractError::TextOutputValueMismatch)
+    ));
+}
 
 #[test]
 fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {

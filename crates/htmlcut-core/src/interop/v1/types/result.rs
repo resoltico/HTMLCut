@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::super::stable_json::digest_stable_json_omitting_field;
-use super::plan::{Output, OutputKind, SelectionMode, StrategyKind};
+use super::plan::{Output, SelectionMode, StrategyKind};
 use super::shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
     RESULT_SCHEMA_VERSION, validate_schema_identity, validate_sha256_hex,
@@ -322,6 +322,9 @@ pub struct SelectedMatch {
     pub output_value: Value,
     /// Text HTMLCut would return for text output.
     pub text_output: String,
+    /// Text rendered from the detached canonicalized CSS-selected clone when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comparison_text_output: Option<String>,
     /// Exact selected HTML fragment when the strategy supports it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_html_output: Option<String>,
@@ -465,16 +468,43 @@ impl InteropResult {
                     if selected_match.selected_html_output.is_none() {
                         return Err(ContractError::MissingSelectedHtmlOutput);
                     }
+                    if selected_match.comparison_text_output.is_some() {
+                        return Err(ContractError::UnexpectedComparisonTextOutput);
+                    }
                 }
             }
 
-            match output_kind {
-                OutputKind::Structured => {
-                    if !selected_match.output_value.is_object() {
-                        return Err(ContractError::NonObjectStructuredOutputValue);
+            if selected_match.comparison_text_output.is_some()
+                && !matches!(self.output, Output::Text | Output::Structured)
+            {
+                return Err(ContractError::UnexpectedComparisonTextOutputForOutput { output_kind });
+            }
+
+            match &self.output {
+                Output::Text => {
+                    let Some(output_value) = selected_match.output_value.as_str() else {
+                        return Err(ContractError::NonStringOutputValue { output_kind });
+                    };
+                    let expected_text = selected_match
+                        .comparison_text_output
+                        .as_deref()
+                        .unwrap_or(&selected_match.text_output);
+                    if output_value != expected_text {
+                        return Err(ContractError::TextOutputValueMismatch);
                     }
                 }
-                _ => {
+                Output::Structured => {
+                    let Some(structured_output) = selected_match.output_value.as_object() else {
+                        return Err(ContractError::NonObjectStructuredOutputValue);
+                    };
+                    if structured_output.contains_key("comparisonTextOutput") {
+                        return Err(ContractError::StructuredOutputContainsComparisonText);
+                    }
+                }
+                Output::SelectedHtml
+                | Output::InnerHtml
+                | Output::OuterHtml
+                | Output::Attribute { .. } => {
                     if !selected_match.output_value.is_string() {
                         return Err(ContractError::NonStringOutputValue { output_kind });
                     }

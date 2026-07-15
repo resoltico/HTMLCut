@@ -26,6 +26,7 @@ ureq = { workspace = true, optional = true }
 url.workspace = true
 
 [dev-dependencies]
+boon.workspace = true
 htmlcut-tempdir.workspace = true
 
 [lints]
