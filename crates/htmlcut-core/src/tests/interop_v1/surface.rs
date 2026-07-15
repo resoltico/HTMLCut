@@ -113,10 +113,10 @@ fn html_input_extraction_identity_binds_complete_input_plan_and_semantics_versio
         .extraction_identity_sha256(&plan)
         .expect("extraction identity");
 
-    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 1);
+    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 2);
     assert_eq!(
         identity,
-        "2b1c3553d48309bc783faa1b4efae7195c8868fd7c5c599f945ef20e444ef069"
+        "d60a0092511ea8df459efe387b61cc4a26781a8acb93d3660190ed22f397bf25"
     );
     assert_eq!(
         source
@@ -190,7 +190,7 @@ fn html_input_extraction_identity_binds_invalid_plans_for_diagnostics() {
 
     assert_eq!(
         identity,
-        "8e6a956157b047902a826b5b74582fd92bf78fff3decbb0a3e95548c355bf616"
+        "eb15d80706ad9a051348defbb82a205a0bf1bb311fd6a2fc81e8fa431832dfe5"
     );
     assert_eq!(
         prepare_plan(&plan)
@@ -642,4 +642,22 @@ fn execute_plan_maps_ambiguous_single_to_ambiguous_match_error() {
     assert_eq!(error.error_digest_sha256.len(), 64);
     assert_eq!(error.diagnostics[0].code, "AMBIGUOUS_MATCH");
     assert!(error.message.contains("exactly one candidate"));
+}
+
+#[test]
+fn execute_plan_retains_no_match_candidate_count_in_the_interop_error_details() {
+    let source = HtmlInput::new("target-news", "<article>One</article>").expect("source");
+    let plan = Plan::new(
+        PlanStrategy::css_selector(css_selector(".missing")),
+        Selection::single(),
+        Output::structured(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+
+    let error = execute_plan(&source, &plan).expect_err("no matching candidate");
+
+    assert_eq!(error.error_code, ErrorCode::NoMatch);
+    assert_eq!(error.diagnostics[0].code, InteropDiagnosticCode::NoMatch);
+    assert_eq!(error.details["core_diagnostic_code"], "NO_MATCH");
+    assert_eq!(error.details["core_details"]["candidateCount"], 0);
 }

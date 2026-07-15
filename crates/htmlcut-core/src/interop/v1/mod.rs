@@ -12,7 +12,7 @@ mod types;
 ///
 /// [`HtmlInput::extraction_identity_sha256`] includes this counter in the identity that
 /// downstream consumers persist for one extraction.
-pub const HTMLCUT_EXTRACTION_SEMANTICS_VERSION: u32 = 1;
+pub const HTMLCUT_EXTRACTION_SEMANTICS_VERSION: u32 = 2;
 
 pub use execution::{ValidatedPlan, execute_plan, execute_validated_plan, prepare_plan};
 #[cfg(test)]

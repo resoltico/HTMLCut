@@ -59,6 +59,7 @@ pub fn execute_validated_plan(
         return Err(Box::new(core_execution_error(
             validated_plan.plan(),
             validated_plan.plan_digest_sha256(),
+            extraction.stats.candidate_count,
             &extraction.diagnostics,
         )));
     }
@@ -121,7 +122,7 @@ pub(crate) fn core_execution_error_for_tests(
     diagnostics: &[crate::Diagnostic],
 ) -> InteropError {
     let plan_digest_sha256 = exact_plan_digest_sha256(plan).expect("plan digest");
-    errors::core_execution_error(plan, &plan_digest_sha256, diagnostics)
+    errors::core_execution_error(plan, &plan_digest_sha256, 0, diagnostics)
 }
 
 #[cfg(test)]

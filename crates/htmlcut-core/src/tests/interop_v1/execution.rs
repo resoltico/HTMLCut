@@ -474,6 +474,10 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         }],
     );
     assert_eq!(no_match_error.error_code, ErrorCode::NoMatch);
+    assert_eq!(
+        no_match_error.details["core_details"]["candidateCount"],
+        json!(0)
+    );
 
     let ambiguous_error = v1::core_execution_error_for_tests(
         &selector_plan(),
@@ -486,6 +490,24 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
     );
     assert_eq!(ambiguous_error.error_code, ErrorCode::AmbiguousMatch);
     assert!(ambiguous_error.details.contains_key("core_details"));
+
+    let scalar_details_error = v1::core_execution_error_for_tests(
+        &selector_plan(),
+        &[Diagnostic {
+            level: DiagnosticLevel::Error,
+            code: DiagnosticCode::NoMatch,
+            message: "no match with scalar details".to_owned(),
+            details: Some(json!("legacy scalar detail")),
+        }],
+    );
+    assert_eq!(
+        scalar_details_error.details["core_details"]["diagnostic_details"],
+        json!("legacy scalar detail")
+    );
+    assert_eq!(
+        scalar_details_error.details["core_details"]["candidateCount"],
+        json!(0)
+    );
 
     let missing_attribute_core_error = v1::core_execution_error_for_tests(
         &Plan::new(

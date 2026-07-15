@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "10.3.0"
+version: "10.3.1"
 domain: SETUP
 updated: "2026-07-15"
 route:
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=10.3.0
+VERSION=10.3.1
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "10.3.0"
+$Version = "10.3.1"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"

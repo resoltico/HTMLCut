@@ -15,7 +15,7 @@ exclude = ["semver-baseline/htmlcut-core"]
 resolver = "3"
 
 [workspace.package]
-version = "10.3.0"
+version = "10.3.1"
 edition = "2024"
 rust-version = "1.97"
 description = "Extract and inspect HTML from files, HTTP(S) URLs, or stdin with CSS selectors, literal or regex slicing, reusable request files, and JSON reports."
@@ -29,9 +29,9 @@ arbitrary = { version = "1.4.2", features = ["derive"] }
 assert_cmd = "2.2.2"
 clap = { version = "4.6.1", features = ["derive"] }
 ego-tree = "0.11.0"
-htmlcut-cli = { path = "crates/htmlcut-cli", version = "10.3.0" }
-htmlcut-core = { path = "crates/htmlcut-core", version = "10.3.0" }
-htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "10.3.0" }
+htmlcut-cli = { path = "crates/htmlcut-cli", version = "10.3.1" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "10.3.1" }
+htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "10.3.1" }
 libfuzzer-sys = "0.4.13"
 predicates = "3.1.4"
 regex = "1.13.0"
