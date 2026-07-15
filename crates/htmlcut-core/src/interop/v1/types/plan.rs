@@ -505,7 +505,7 @@ impl Plan {
 }
 
 /// HTML source input handed into HTMLCut after fetch and decode.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct HtmlInput {
     /// Logical label for the fetched HTML source.
     pub label: String,
@@ -535,4 +535,27 @@ impl HtmlInput {
         self.input_base_url = Some(input_base_url);
         self
     }
+
+    /// Computes the canonical SHA-256 identity for this complete input and one plan.
+    ///
+    /// The identity binds every field on this `HtmlInput`, including the decoded HTML bytes and
+    /// optional input base URL, the complete plan, and
+    /// [`HTMLCUT_EXTRACTION_SEMANTICS_VERSION`](super::super::HTMLCUT_EXTRACTION_SEMANTICS_VERSION).
+    /// It is the identity a downstream consumer persists when it needs to determine whether a
+    /// fixed extraction would have the same projection and diagnostics.
+    pub fn extraction_identity_sha256(&self, plan: &Plan) -> Result<String, ContractError> {
+        digest_stable_json(&ExtractionIdentity {
+            html_input: self,
+            plan,
+            htmlcut_extraction_semantics_version:
+                super::super::HTMLCUT_EXTRACTION_SEMANTICS_VERSION,
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct ExtractionIdentity<'a> {
+    html_input: &'a HtmlInput,
+    plan: &'a Plan,
+    htmlcut_extraction_semantics_version: u32,
 }

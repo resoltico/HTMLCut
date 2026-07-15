@@ -42,7 +42,7 @@ allow = []
 allow-workspace = false
 deny = []
 skip = [
-    { crate = "getrandom@0.3.4", reason = "Windows release-target graphs currently need build-only getrandom 0.3 via cc/jobserver while rustls/ring still pull runtime getrandom 0.2; keep the duplicate exception exact and narrow until that upstream ecosystem split closes." },
+    { crate = "getrandom@0.4.3", reason = "Windows release-target graphs currently need build-only getrandom 0.4 via cc/jobserver while rustls/ring still pull runtime getrandom 0.2; keep the duplicate exception exact and narrow until that upstream ecosystem split closes." },
 ]
 skip-tree = []
 

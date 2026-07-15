@@ -204,11 +204,24 @@ fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                 );
 
                 let actual = execute_plan(&source, &plan).expect("fixture result");
+                let repeated = execute_plan(&source, &plan).expect("repeated fixture result");
                 assert_eq!(actual, expected, "{} result document mismatch", case.name);
                 assert_eq!(
                     actual.stable_json().expect("actual result stable json"),
                     expected_json,
                     "{} result JSON mismatch",
+                    case.name
+                );
+                assert_eq!(
+                    repeated.stable_json().expect("repeated result stable json"),
+                    expected_json,
+                    "{} repeated result JSON mismatch",
+                    case.name
+                );
+                assert_eq!(
+                    actual.stable_json().expect("actual result stable json"),
+                    repeated.stable_json().expect("repeated result stable json"),
+                    "{} repeated result JSON must be byte-identical",
                     case.name
                 );
                 assert_eq!(
@@ -243,11 +256,24 @@ fn htmlcut_v1_acceptance_fixtures_are_canonical_and_deterministic() {
                 );
 
                 let actual = execute_plan(&source, &plan).expect_err("fixture error");
+                let repeated = execute_plan(&source, &plan).expect_err("repeated fixture error");
                 assert_eq!(*actual, expected, "{} error document mismatch", case.name);
                 assert_eq!(
                     actual.stable_json().expect("actual error stable json"),
                     expected_json,
                     "{} error JSON mismatch",
+                    case.name
+                );
+                assert_eq!(
+                    repeated.stable_json().expect("repeated error stable json"),
+                    expected_json,
+                    "{} repeated error JSON mismatch",
+                    case.name
+                );
+                assert_eq!(
+                    actual.stable_json().expect("actual error stable json"),
+                    repeated.stable_json().expect("repeated error stable json"),
+                    "{} repeated error JSON must be byte-identical",
                     case.name
                 );
                 assert_eq!(

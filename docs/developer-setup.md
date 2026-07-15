@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: SETUP
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-miri, macOS clang, CC override, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
@@ -27,8 +27,8 @@ campaigns. The maintainer workflow also depends on Rust-native QA commands plus 
 shell-script checks.
 
 The workspace manifest carries the published compatibility floor through
-`[workspace.package] rust-version = "1.95"`, while `rust-toolchain.toml` owns the exact
-day-to-day repository pin (currently `1.95.0`).
+`[workspace.package] rust-version = "1.97"`, while `rust-toolchain.toml` owns the exact
+day-to-day repository pin (currently `1.97.0`).
 
 Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit control over
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
@@ -58,9 +58,9 @@ Why this shape:
 - `./scripts/contributor-rust-tools.sh` is the canonical owner for the exact stable/nightly
   bootstrap values shared by docs, bootstrap scripts, and CI.
 - `rust-toolchain.toml` owns the exact stable repository pin for day-to-day work. Right now that
-  resolves to `1.95.0`.
+  resolves to `1.97.0`.
 - the workspace manifest carries the published compatibility floor separately through
-  `[workspace.package] rust-version = "1.95"`.
+  `[workspace.package] rust-version = "1.97"`.
 - `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
   coverage gate, because `cargo xtask miri` now proves the selector and delimiter-slice paths
   under strict provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.

@@ -5,12 +5,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.3.0] - 2026-07-15
+
 ### Changed
+- HTMLCut now publishes an independently versioned extraction-semantics identity for interop
+  consumers: `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` and
+  `HtmlInput::extraction_identity_sha256(&Plan)` bind the complete input, complete plan, and the
+  monotonic semantics counter without coupling persisted identity to crate, core-specification, or
+  dependency versions.
+- Raised every shipped crate's published Rust floor and the pinned stable toolchain to Rust
+  `1.97`/`1.97.0`; refreshed the Cargo graph, QA tools, and immutable GitHub Actions pins.
 - Release closeout now says the quiet but required sequencing step explicitly: when the session
   itself changes maintainer tooling or release docs after publication, commit the refreshed
   `semver-baseline/htmlcut-core` snapshot first and rerun the full maintainer gate from that
   committed `main` tree, because `cargo xtask check` intentionally rejects a dirty checked-in
   semver baseline.
+- Release publication now uses annotated tags pinned to the merged `origin/main` commit, and
+  post-tag reruns derive their version and asset inventory from the immutable tagged manifest
+  rather than from potentially newer `main` release tooling.
 
 ### Fixed
 - `cargo xtask refresh-semver-baseline --git-ref ...` now rewrites the released workspace's

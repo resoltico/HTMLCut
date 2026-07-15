@@ -241,9 +241,8 @@ fn check_plan_includes_all_strict_gates() {
     assert!(plan.iter().any(|spec| {
         spec.program == std::path::Path::new("cargo")
             && spec.args.first().map(String::as_str) == Some("deny")
-            && spec.args.iter().any(|arg| arg == "--target")
-            && spec.args.iter().any(|arg| arg == "x86_64-pc-windows-msvc")
             && spec.args.iter().any(|arg| arg == "check")
+            && !spec.args.iter().any(|arg| arg == "--target")
     }));
     assert!(plan.iter().any(|spec| {
         spec.args

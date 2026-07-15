@@ -20,7 +20,7 @@ Print the [workspace.package] version from one Cargo manifest.
 
 Inputs:
   manifest-path        Optional path to a Cargo.toml file. Defaults to ./Cargo.toml at the
-                       repository root.
+                       repository root. Use - to read the manifest from standard input.
 EOF
 }
 
@@ -36,26 +36,35 @@ main() {
     repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
     manifest_path="${1:-${repo_root}/Cargo.toml}"
 
-    python3 - <<'PY' "${manifest_path}"
+    python3 - "${manifest_path}" 3<&0 <<'PY'
+import io
+import os
 import pathlib
 import re
 import sys
 
-manifest_path = pathlib.Path(sys.argv[1])
+manifest_input = sys.argv[1]
+if manifest_input == "-":
+    manifest_bytes = os.fdopen(3, "rb").read()
+    manifest_display_path = "standard input"
+else:
+    manifest_path = pathlib.Path(manifest_input)
+    manifest_bytes = manifest_path.read_bytes()
+    manifest_display_path = str(manifest_path)
+
 try:
     import tomllib
 except ModuleNotFoundError:
     tomllib = None
 
 if tomllib is not None:
-    with manifest_path.open("rb") as handle:
-        manifest = tomllib.load(handle)
+    manifest = tomllib.load(io.BytesIO(manifest_bytes))
     workspace = manifest.get("workspace", {})
     workspace_package = workspace.get("package", {})
     version = workspace_package.get("version")
     if not version:
         print(
-            f"error: [workspace.package] version not found in {manifest_path}",
+            f"error: [workspace.package] version not found in {manifest_display_path}",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -64,7 +73,7 @@ if tomllib is not None:
 
 workspace_package_section = False
 version_pattern = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$')
-for raw_line in manifest_path.read_text(encoding="utf-8").splitlines():
+for raw_line in manifest_bytes.decode("utf-8").splitlines():
     stripped = raw_line.strip()
     if stripped.startswith("[") and stripped.endswith("]"):
         workspace_package_section = stripped == "[workspace.package]"
@@ -77,7 +86,7 @@ for raw_line in manifest_path.read_text(encoding="utf-8").splitlines():
         raise SystemExit(0)
 
 print(
-    f"error: [workspace.package] version not found in {manifest_path}",
+    f"error: [workspace.package] version not found in {manifest_display_path}",
     file=sys.stderr,
 )
 raise SystemExit(1)

@@ -21,7 +21,7 @@ Usage: ${command_name} [tag-name]
 Verify the published GitHub release object for one maintained HTMLCut tag.
 
 Inputs:
-  tag-name             Optional release tag such as v${version}. Defaults to
+  tag-name             Optional release tag such as vX.Y.Z. Defaults to
                        RELEASE_TAG, then GITHUB_REF_NAME.
 
 Required environment:
@@ -37,9 +37,6 @@ main() {
     readonly repo_root
     # shellcheck disable=SC1091
     . "${script_dir}/release-targets.sh"
-    version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
-    readonly version
-
     if htmlcut_is_help_flag "${1:-}"; then
         print_usage "${command_name}"
         return 0
@@ -47,6 +44,8 @@ main() {
 
     tag_name="$(htmlcut_resolve_release_tag "${1:-${RELEASE_TAG:-${GITHUB_REF_NAME:-}}}")"
     readonly tag_name
+    version="$(htmlcut_release_version_for_tag "${script_dir}" "${repo_root}" "${tag_name}")"
+    readonly version
 
     [[ -n "${GH_TOKEN:-}" ]] || htmlcut_die "GH_TOKEN is required"
     htmlcut_assert_release_tag_matches_workspace_version "${tag_name}" "${version}"

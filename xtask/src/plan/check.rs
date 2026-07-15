@@ -8,7 +8,8 @@ use crate::model::{
     DynResult,
 };
 use crate::{
-    deny_check_command, fuzz::FUZZ_PACKAGE_NAME, miri_contract_command, outdated_check_command,
+    deny_check_command, ensure_deny_targets_match_release_targets, fuzz::FUZZ_PACKAGE_NAME,
+    miri_contract_command, outdated_check_command,
 };
 
 use super::paths::{core_manifest_path, release_binary_path, semver_baseline_path};
@@ -29,24 +30,23 @@ const DEVCONTAINER_RELEVANT_PATHS: &[&str] = &[
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     ensure_clean_semver_baseline(repo_root)?;
+    ensure_deny_targets_match_release_targets(repo_root)?;
     let scripts = shell_script_paths(repo_root)?;
     let semver_release_type = semver_release_type(repo_root)?;
     let mut plan = Vec::new();
 
-    if !scripts.is_empty() {
-        plan.push(CommandSpec::new(
-            "bash",
-            std::iter::once("-n".to_owned()).chain(path_strings(&scripts)),
-            CommandStdout::Inherit,
-            CommandToolchainEnv::Inherit,
-        ));
-        plan.push(CommandSpec::new(
-            "shellcheck",
-            path_strings(&scripts),
-            CommandStdout::Inherit,
-            CommandToolchainEnv::Inherit,
-        ));
-    }
+    plan.push(CommandSpec::new(
+        "bash",
+        std::iter::once("-n".to_owned()).chain(path_strings(&scripts)),
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    ));
+    plan.push(CommandSpec::new(
+        "shellcheck",
+        path_strings(&scripts),
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    ));
 
     if should_run_devcontainer_validation(repo_root)? {
         plan.push(devcontainer_validation_command(repo_root));
@@ -161,6 +161,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
 /// Builds the curated Rust gate executed by cross-platform CI jobs.
 pub fn ci_rust_gate_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     ensure_clean_semver_baseline(repo_root)?;
+    ensure_deny_targets_match_release_targets(repo_root)?;
     let semver_release_type = semver_release_type(repo_root)?;
 
     let mut plan = vec![format_check_command(), workspace_clippy_command()];

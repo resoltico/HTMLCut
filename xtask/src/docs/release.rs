@@ -17,6 +17,7 @@ pub(super) fn release_doc_errors(repo_root: &Path, display_path: &str, text: &st
 
     if display_path == "docs/release-publishing.md" {
         errors.extend(version_banner_check_errors(display_path, text));
+        errors.extend(annotated_tag_errors(display_path, text));
     }
 
     if display_path == "docs/getting-started.md" {
@@ -221,6 +222,21 @@ fn version_banner_check_errors(display_path: &str, text: &str) -> Vec<String> {
     errors
 }
 
+fn annotated_tag_errors(display_path: &str, text: &str) -> Vec<String> {
+    [
+        "git tag -a",
+        "git rev-parse origin/main",
+        "git cat-file -t",
+        "git rev-parse \"$RELEASE_TAG^{commit}\"",
+    ]
+    .into_iter()
+    .filter(|required| !text.contains(required))
+    .map(|required| {
+        format!("{display_path} is missing the annotated-tag release identity check: {required}")
+    })
+    .collect()
+}
+
 fn missing_literals(
     display_path: &str,
     text: &str,
@@ -278,6 +294,28 @@ mod tests {
                 "docs/platform-support.md could not load canonical macOS deployment floor",
             )
         }));
+    }
+
+    #[test]
+    fn release_publishing_requires_an_annotated_tag_for_the_merged_main_commit() {
+        let errors = release_doc_errors(
+            Path::new("."),
+            "docs/release-publishing.md",
+            "# Release Publishing\n",
+        );
+
+        assert!(errors.iter().any(|error| error.contains("git tag -a")));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("git rev-parse origin/main"))
+        );
+        assert!(errors.iter().any(|error| error.contains("git cat-file -t")));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("$RELEASE_TAG^{commit}"))
+        );
     }
 
     #[test]

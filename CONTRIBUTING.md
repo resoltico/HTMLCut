@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "10.2.0"
+  version: "10.3.0"
   domain: MAINTAINER
-  updated: "2026-05-19"
+  updated: "2026-07-15"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
@@ -26,7 +26,7 @@ compiler-override commands plus the reasoning behind them.
 Use [docs/workspace-layout.md](docs/workspace-layout.md) when you need the current workspace-member
 map or the package-name versus Rust-path naming rule.
 
-Rust `1.95.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
+Rust `1.97.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
 manifest mirrors that compiler contract through `[workspace.package] rust-version`, and nightly
 exists separately for the coverage gate plus live `cargo-fuzz` campaigns.
 

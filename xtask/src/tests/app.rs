@@ -111,7 +111,7 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                 ));
             }
             if spec.program == Path::new("rustup") && args == ["run", "stable", "rustc", "-Vv"] {
-                return Some(Ok(b"rustc 1.95.0\n".to_vec()));
+                return Some(Ok(b"rustc 1.97.0\n".to_vec()));
             }
             if spec.program == Path::new("rustup")
                 && args == ["component", "list", "--toolchain", "stable", "--installed"]

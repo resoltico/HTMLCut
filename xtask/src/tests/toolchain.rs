@@ -3,11 +3,11 @@ use super::*;
 #[test]
 fn repo_toolchain_from_manifest_extracts_channel_and_components() {
     let toolchain = repo_toolchain_from_manifest(
-        "[toolchain]\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
+        "[toolchain]\nchannel = \"1.97.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
     )
     .expect("repo toolchain");
 
-    assert_eq!(toolchain.channel, "1.95.0");
+    assert_eq!(toolchain.channel, "1.97.0");
     assert_eq!(toolchain.components, vec!["clippy", "rustfmt"]);
 }
 
@@ -16,13 +16,13 @@ fn repo_toolchain_reads_from_repo_file_and_ignores_other_sections() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join("rust-toolchain.toml"),
-        "[workspace.package]\nversion = \"4.4.0\"\n\n[toolchain]\n# pinned here\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
+        "[workspace.package]\nversion = \"4.4.0\"\n\n[toolchain]\n# pinned here\nchannel = \"1.97.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
     )
     .expect("write rust-toolchain.toml");
 
     let toolchain = repo_toolchain(repo_root.path()).expect("repo toolchain");
 
-    assert_eq!(toolchain.channel, "1.95.0");
+    assert_eq!(toolchain.channel, "1.97.0");
     assert_eq!(toolchain.components, vec!["clippy", "rustfmt"]);
 }
 
@@ -30,7 +30,7 @@ fn repo_toolchain_reads_from_repo_file_and_ignores_other_sections() {
 fn repo_toolchain_from_manifest_requires_channel_and_components() {
     let missing_channel = repo_toolchain_from_manifest("[toolchain]\ncomponents = [\"clippy\"]\n")
         .expect_err("missing channel should fail");
-    let missing_components = repo_toolchain_from_manifest("[toolchain]\nchannel = \"1.95.0\"\n")
+    let missing_components = repo_toolchain_from_manifest("[toolchain]\nchannel = \"1.97.0\"\n")
         .expect_err("missing components should fail");
 
     assert_eq!(
@@ -53,7 +53,7 @@ fn repo_toolchain_from_manifest_requires_channel_and_components() {
 #[test]
 fn repo_toolchain_from_manifest_rejects_malformed_component_arrays() {
     let error = repo_toolchain_from_manifest(
-        "[toolchain]\nchannel = \"1.95.0\"\ncomponents = [clippy, \"rustfmt\"]\n",
+        "[toolchain]\nchannel = \"1.97.0\"\ncomponents = [clippy, \"rustfmt\"]\n",
     )
     .expect_err("malformed components should fail");
 
@@ -67,7 +67,7 @@ fn repo_toolchain_from_manifest_rejects_malformed_component_arrays() {
 #[test]
 fn repo_toolchain_from_manifest_rejects_malformed_headers_before_valid_toolchain_data() {
     let error = repo_toolchain_from_manifest(
-        "[toolchain\nchannel = \"0.0.0\"\ncomponents = [\"broken\"]\n[toolchain]\nchannel = \"1.95.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
+        "[toolchain\nchannel = \"0.0.0\"\ncomponents = [\"broken\"]\n[toolchain]\nchannel = \"1.97.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
     )
     .expect_err("malformed header should fail");
 
@@ -81,7 +81,7 @@ fn repo_toolchain_from_manifest_rejects_malformed_headers_before_valid_toolchain
 #[test]
 fn repo_toolchain_preflight_requires_the_pinned_toolchain_first() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let failures = repo_toolchain_preflight_failures(false, "", &toolchain);
@@ -92,14 +92,14 @@ fn repo_toolchain_preflight_requires_the_pinned_toolchain_first() {
     );
     assert!(
         repo_toolchain_preflight_message(&failures, &toolchain)
-            .contains("rustup toolchain install 1.95.0 --profile minimal")
+            .contains("rustup toolchain install 1.97.0 --profile minimal")
     );
 }
 
 #[test]
 fn repo_toolchain_preflight_requires_missing_components() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let failures =
@@ -113,14 +113,14 @@ fn repo_toolchain_preflight_requires_missing_components() {
     );
     assert!(
         repo_toolchain_preflight_message(&failures, &toolchain)
-            .contains("rustup component add rustfmt --toolchain 1.95.0")
+            .contains("rustup component add rustfmt --toolchain 1.97.0")
     );
 }
 
 #[test]
 fn repo_toolchain_component_probe_commands_stay_in_sync_with_known_tools() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let clippy_probe =
@@ -131,13 +131,13 @@ fn repo_toolchain_component_probe_commands_stay_in_sync_with_known_tools() {
     assert_eq!(clippy_probe.program, PathBuf::from("rustup"));
     assert_eq!(
         clippy_probe.args,
-        vec!["run", "1.95.0", "cargo-clippy", "-V"]
+        vec!["run", "1.97.0", "cargo-clippy", "-V"]
     );
     assert!(command_quiets_stderr(&clippy_probe));
     assert_eq!(rustfmt_probe.program, PathBuf::from("rustup"));
     assert_eq!(
         rustfmt_probe.args,
-        vec!["run", "1.95.0", "rustfmt", "--version"]
+        vec!["run", "1.97.0", "rustfmt", "--version"]
     );
     assert!(command_quiets_stderr(&rustfmt_probe));
     assert!(repo_toolchain_component_probe_command(&toolchain, "rust-docs").is_none());
@@ -146,14 +146,14 @@ fn repo_toolchain_component_probe_commands_stay_in_sync_with_known_tools() {
 #[test]
 fn repo_toolchain_probe_command_stays_quiet_on_both_streams() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
 
     let probe = repo_toolchain_probe_command(&toolchain);
 
     assert_eq!(probe.program, PathBuf::from("rustup"));
-    assert_eq!(probe.args, vec!["run", "1.95.0", "rustc", "-Vv"]);
+    assert_eq!(probe.args, vec!["run", "1.97.0", "rustc", "-Vv"]);
     assert!(command_is_quiet(&probe));
     assert!(command_quiets_stderr(&probe));
 }
@@ -161,7 +161,7 @@ fn repo_toolchain_probe_command_stays_quiet_on_both_streams() {
 #[test]
 fn repo_toolchain_preflight_message_reports_broken_component_binaries() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let failures = vec![RepoToolchainPreflightFailure::BrokenComponentBinary(
@@ -171,14 +171,14 @@ fn repo_toolchain_preflight_message_reports_broken_component_binaries() {
     let message = repo_toolchain_preflight_message(&failures, &toolchain);
 
     assert!(message.contains("component binaries are present in rustup metadata"));
-    assert!(message.contains("rustup toolchain uninstall 1.95.0"));
-    assert!(message.contains("rustup component add clippy rustfmt --toolchain 1.95.0"));
+    assert!(message.contains("rustup toolchain uninstall 1.97.0"));
+    assert!(message.contains("rustup component add clippy rustfmt --toolchain 1.97.0"));
 }
 
 #[test]
 fn repo_toolchain_preflight_passes_when_the_pinned_toolchain_is_ready() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
     let failures = repo_toolchain_preflight_failures(

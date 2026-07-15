@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: INTEROP
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
-  keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, interop profile]
-  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?"]
+  keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, interop profile]
+  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?"]
 ---
 
 # HTMLCut Interop v1 Guide
@@ -42,6 +42,7 @@ HTMLCut owns:
 - typed result and error documents
 - stable JSON serialization
 - deterministic digests
+- extraction-semantics identity
 
 ## Public API
 
@@ -76,6 +77,8 @@ Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descripto
 Deterministic JSON and digest helpers:
 
 - `Plan::stable_json()` / `Plan::digest_sha256()`
+- `HtmlInput::extraction_identity_sha256(&Plan)` for the complete-input extraction identity
+- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` for the independently versioned extraction semantics
 - `InteropResult::stable_json()` / `InteropResult::digest_sha256()` / `InteropResult::with_computed_digest()`
 - `InteropError::stable_json()` / `InteropError::digest_sha256()` / `InteropError::with_computed_digest()`
 - `stable_json_v1(...)` for the frozen canonical serializer itself
@@ -169,14 +172,27 @@ The interop surface is versioned around:
 - `stable_json_v1`
 - SHA-256 digests over canonical JSON
 - fixture-backed acceptance coverage
+- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`, starting at `1`
+
+`HtmlInput::extraction_identity_sha256(&Plan)` is the canonical identity for one extraction. It
+binds every `HtmlInput` field (including the decoded HTML bytes, logical label, and optional input
+base URL), the complete `Plan` including a plan that yields a diagnostic, and
+`HTMLCUT_EXTRACTION_SEMANTICS_VERSION`. HTMLCut owns the
+identity algorithm so downstream consumers do not reimplement or omit part of its input.
+
+Increment `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` only when fixed complete input and plan could
+produce a different projection or diagnostic. Do not derive it from the HTMLCut crate version, the
+core specification version, or dependency versions. The counter is intentionally an identity
+input, not a field that every `InteropResult` or `InteropError` must carry.
 
 The acceptance corpus lives under:
 
 `crates/htmlcut-core/tests/fixtures/htmlcut-v1/`
 
-The acceptance runner that freezes the profile lives in:
+The acceptance runner that freezes the profile and proves repeated executions are byte-identical
+to the golden documents lives in:
 
-`crates/htmlcut-core/tests/v1_acceptance.rs`
+`crates/htmlcut-core/src/tests/interop_v1/acceptance.rs`
 
 ## Important v1 Limits
 

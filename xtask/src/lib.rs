@@ -62,7 +62,9 @@ pub use plan::{
     semver_baseline_path, semver_release_type, semver_release_type_from_versions,
     semver_scratch_dir, shell_script_paths, strip_dev_dependency_tables, with_workspace_stub,
 };
-pub use policy::{deny_check_command, deny_graph_targets};
+pub use policy::{
+    deny_check_command, deny_graph_targets, ensure_deny_targets_match_release_targets,
+};
 pub use preflight::{
     ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_miri_prerequisites,
     ensure_repo_toolchain_prerequisites,

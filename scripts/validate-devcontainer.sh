@@ -12,12 +12,17 @@ repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
 readonly repo_root
 readonly dockerfile_path="${repo_root}/.devcontainer/Dockerfile"
 readonly config_path="${repo_root}/.devcontainer/devcontainer.json"
+readonly stable_toolchain_manifest="${repo_root}/rust-toolchain.toml"
 readonly helper_dockerfile_path="${repo_root}/scripts/devcontainer-cli-helper.Dockerfile"
 readonly bootstrap_script="${repo_root}/scripts/devcontainer-bootstrap.sh"
 readonly prepare_script="${repo_root}/scripts/devcontainer-prepare-user-home.sh"
 readonly helper_image_tag="htmlcut-devcontainer-cli-helper:local"
 readonly volume_mode="${HTMLCUT_DEVCONTAINER_VOLUME_MODE:-isolated}"
 readonly repo_command_probe_mode="${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES:-full}"
+
+stable_toolchain_channel="$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "${stable_toolchain_manifest}")"
+[[ -n "${stable_toolchain_channel}" ]] || htmlcut_die "missing pinned Rust channel in ${stable_toolchain_manifest}"
+readonly stable_toolchain_channel
 
 assert_repo_command_probe_mode() {
     case "${repo_command_probe_mode}" in
@@ -53,7 +58,7 @@ validate_inner_runtime() {
     cd "${repo_root}"
     [[ -f Cargo.toml ]] || htmlcut_die "inner runtime probe requires the HTMLCut workspace checkout"
     "${prepare_script}"
-    rustc --version | grep -E '^rustc 1\.95\.0 '
+    rustc --version | grep -F "rustc ${stable_toolchain_channel} " >/dev/null
     cargo +nightly llvm-cov --version >/dev/null
     cargo +nightly miri --version >/dev/null
     cargo nextest --version >/dev/null
@@ -210,6 +215,7 @@ docker run --rm \
     --volume "${cargo_volume}:/home/vscode/.cargo" \
     --volume "${rustup_volume}:/home/vscode/.rustup" \
     --volume "${cache_volume}:/home/vscode/.cache" \
+    --env HTMLCUT_STABLE_TOOLCHAIN="${stable_toolchain_channel}" \
     --env HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES="${repo_command_probe_mode}" \
     "${image_tag}" bash -lc '
         set -euo pipefail
@@ -218,7 +224,7 @@ docker run --rm \
         touch /home/vscode/.cargo/user-writable-marker
         touch /home/vscode/.rustup/user-writable-marker
         touch /home/vscode/.cache/user-writable-marker
-        rustc --version | grep -E "^rustc 1\\.95\\.0 "
+        rustc --version | grep -F "rustc ${HTMLCUT_STABLE_TOOLCHAIN} " >/dev/null
         cargo +nightly llvm-cov --version >/dev/null
         cargo +nightly miri --version >/dev/null
         cargo nextest --version >/dev/null

@@ -86,13 +86,13 @@ htmlcut_contributor_install_stable_toolchain_components() {
 
 htmlcut_contributor_cargo_tool_inventory() {
     cat <<'EOF'
-cargo-nextest 0.9.133 cargo-nextest
-cargo-audit 0.22.1 cargo-audit
-cargo-deny 0.19.4 cargo-deny
-cargo-semver-checks 0.47.0 cargo-semver-checks
+cargo-nextest 0.9.140 cargo-nextest
+cargo-audit 0.22.2 cargo-audit
+cargo-deny 0.20.2 cargo-deny
+cargo-semver-checks 0.48.0 cargo-semver-checks
 cargo-outdated 0.19.0 cargo-outdated
-cargo-llvm-cov 0.8.5 cargo-llvm-cov
-cargo-fuzz 0.13.1 cargo-fuzz
+cargo-llvm-cov 0.8.7 cargo-llvm-cov
+cargo-fuzz 0.13.2 cargo-fuzz
 EOF
 }
 

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: PLATFORM
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 24.04]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]

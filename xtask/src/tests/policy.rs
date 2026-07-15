@@ -12,14 +12,6 @@ fn deny_check_command_denies_warnings() {
             "cargo",
             [
                 "deny",
-                "--target",
-                "aarch64-apple-darwin",
-                "--target",
-                "x86_64-apple-darwin",
-                "--target",
-                "x86_64-unknown-linux-musl",
-                "--target",
-                "x86_64-pc-windows-msvc",
                 "check",
                 "-D",
                 "warnings",
@@ -117,5 +109,29 @@ fn deny_graph_targets_track_the_release_target_registry() {
     assert_eq!(
         deny_graph_targets(repo_root).expect("deny targets"),
         release_target_triples(repo_root).expect("release targets")
+    );
+    ensure_deny_targets_match_release_targets(repo_root)
+        .expect("deny targets should match release targets");
+}
+
+#[test]
+fn deny_target_registry_mismatch_is_rejected() {
+    let repo_root = tempdir().expect("tempdir");
+    write_empty_release_targets_script(repo_root.path());
+    fs::write(
+        repo_root.path().join("deny.toml"),
+        r#"
+[graph]
+targets = ["aarch64-apple-darwin"]
+"#,
+    )
+    .expect("write deny.toml");
+
+    let error = ensure_deny_targets_match_release_targets(repo_root.path())
+        .expect_err("mismatched target registries should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("deny.toml graph targets do not match")
     );
 }
