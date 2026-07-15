@@ -23,14 +23,25 @@ htmlcut_release_version_for_tag() {
     local tag_version_repo_root="$2"
     local tag_version_tag_name="$3"
     local tag_version_commit
+    local tag_version_manifest
+    local tag_version_result
 
     git -C "${tag_version_repo_root}" check-ref-format --allow-onelevel "${tag_version_tag_name}" || htmlcut_die \
         "invalid release tag name: ${tag_version_tag_name}"
     tag_version_commit="$(git -C "${tag_version_repo_root}" rev-parse --verify --quiet "refs/tags/${tag_version_tag_name}^{commit}")" || htmlcut_die \
         "release tag ${tag_version_tag_name} does not resolve to a commit"
 
-    git -C "${tag_version_repo_root}" show "${tag_version_commit}:Cargo.toml" | \
-        "${tag_version_script_dir}/workspace-version.sh" -
+    tag_version_manifest="$(mktemp "${TMPDIR:-/tmp}/htmlcut-release-manifest.XXXXXX")"
+    if ! git -C "${tag_version_repo_root}" show "${tag_version_commit}:Cargo.toml" >"${tag_version_manifest}"; then
+        rm -f -- "${tag_version_manifest}"
+        htmlcut_die "cannot read Cargo.toml from release tag ${tag_version_tag_name}"
+    fi
+    if ! tag_version_result="$("${tag_version_script_dir}/workspace-version.sh" "${tag_version_manifest}")"; then
+        rm -f -- "${tag_version_manifest}"
+        return 1
+    fi
+    rm -f -- "${tag_version_manifest}"
+    printf '%s\n' "${tag_version_result}"
 }
 
 print_usage() {
