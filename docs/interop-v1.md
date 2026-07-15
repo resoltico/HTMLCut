@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "10.3.0"
+version: "10.3.1"
 domain: INTEROP
 updated: "2026-07-15"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, interop profile]
-  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?"]
+  questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?", "where is the candidate count on an htmlcut interop error?"]
 ---
 
 # HTMLCut Interop v1 Guide
@@ -165,6 +165,12 @@ published output contract. Every `SelectedMatch` then carries:
 - `outer_html_output`
 - typed `metadata`
 
+Core execution errors preserve the upstream diagnostic without collapsing its measurement context.
+`InteropError.details.core_diagnostic_code` is the exact uppercase HTMLCut diagnostic code, and
+`InteropError.details.core_details.candidateCount` is always the number of candidates found before
+selection. This includes `NO_MATCH`, for which the count is `0`; other core diagnostic details
+remain alongside it in `core_details`.
+
 ## Determinism Rules
 
 The interop surface is versioned around:
@@ -172,7 +178,7 @@ The interop surface is versioned around:
 - `stable_json_v1`
 - SHA-256 digests over canonical JSON
 - fixture-backed acceptance coverage
-- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`, starting at `1`
+- `HTMLCUT_EXTRACTION_SEMANTICS_VERSION`, currently `2`
 
 `HtmlInput::extraction_identity_sha256(&Plan)` is the canonical identity for one extraction. It
 binds every `HtmlInput` field (including the decoded HTML bytes, logical label, and optional input

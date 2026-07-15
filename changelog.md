@@ -5,6 +5,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.3.1] - 2026-07-15
+
+### Fixed
+- Interop extraction errors now always retain the pre-selection `candidateCount` in
+  `details.core_details`, including `NO_MATCH`, so downstream policy engines can persist the
+  exact candidate count together with HTMLCut's diagnostic reason.
+
 ## [10.3.0] - 2026-07-15
 
 ### Changed

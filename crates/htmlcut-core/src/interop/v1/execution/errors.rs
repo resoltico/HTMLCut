@@ -44,6 +44,7 @@ pub(super) fn plan_invalid_error(
 pub(super) fn core_execution_error(
     plan: &Plan,
     plan_digest_sha256: &str,
+    candidate_count: usize,
     diagnostics: &[Diagnostic],
 ) -> InteropError {
     let Some(primary) = diagnostics
@@ -73,9 +74,19 @@ pub(super) fn core_execution_error(
         "core_diagnostic_code".to_owned(),
         Value::from(InteropDiagnosticCode::from(primary.code).as_str()),
     );
-    if let Some(core_details) = &primary.details {
-        details.insert("core_details".to_owned(), core_details.clone());
-    }
+    let mut core_details = match primary.details.clone() {
+        Some(Value::Object(details)) => details,
+        Some(details) => {
+            let mut wrapped = serde_json::Map::new();
+            wrapped.insert("diagnostic_details".to_owned(), details);
+            wrapped
+        }
+        None => serde_json::Map::new(),
+    };
+    core_details
+        .entry("candidateCount".to_owned())
+        .or_insert_with(|| Value::from(candidate_count));
+    details.insert("core_details".to_owned(), Value::Object(core_details));
 
     finalize_error(InteropError::new(
         plan_digest_sha256.to_owned(),
