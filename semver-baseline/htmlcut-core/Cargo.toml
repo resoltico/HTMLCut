@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97"
 name = "htmlcut-core"
-version = "10.2.0"
+version = "10.3.0"
 authors = ["Ervins Strauhmanis"]
 build = false
 autolib = false
@@ -47,7 +47,7 @@ path = "examples/reusable_extraction_definition.rs"
 version = "0.11.0"
 
 [dependencies.regex]
-version = "1.12.3"
+version = "1.13.0"
 
 [dependencies.schemars]
 version = "1.2.1"
@@ -63,7 +63,7 @@ version = "1.0.228"
 features = ["derive"]
 
 [dependencies.serde_json]
-version = "1.0.149"
+version = "1.0.150"
 
 [dependencies.sha2]
 version = "0.11.0"

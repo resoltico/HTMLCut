@@ -5,12 +5,12 @@ use super::{displayed_http_url, http_url};
 use crate::DEFAULT_MAX_BYTES;
 use crate::interop::v1::{
     ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText,
-    DelimiterMode, ERROR_SCHEMA_NAME, ErrorCode, HtmlInput, InteropDiagnostic,
-    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputKind,
-    PLAN_SCHEMA_NAME, Plan, PlanStrategy, RESULT_SCHEMA_NAME, RegexFlag, Rendering,
-    ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode,
-    StrategyKind, TextWhitespace, execute_plan, execute_validated_plan, prepare_plan,
-    stable_json_v1,
+    DelimiterMode, ERROR_SCHEMA_NAME, ErrorCode, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, HtmlInput,
+    InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult,
+    Output, OutputKind, PLAN_SCHEMA_NAME, Plan, PlanStrategy, RESULT_SCHEMA_NAME, RegexFlag,
+    Rendering, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection,
+    SelectionMode, StrategyKind, TextWhitespace, execute_plan, execute_validated_plan,
+    prepare_plan, stable_json_v1,
 };
 use serde_json::json;
 
@@ -95,6 +95,133 @@ fn html_input_builds_memory_source_request() {
 fn html_input_rejects_blank_labels() {
     let error = HtmlInput::new("   ", "<article>Hello</article>").expect_err("blank label");
     assert!(matches!(error, ContractError::EmptySourceLabel));
+}
+
+#[test]
+fn html_input_extraction_identity_binds_complete_input_plan_and_semantics_version() {
+    let source = HtmlInput::new("target-news", "<article>Hello</article>")
+        .expect("source input")
+        .with_input_base_url(http_url("https://example.com/start.html"));
+    let plan = Plan::new(
+        PlanStrategy::css_selector(css_selector("article")),
+        Selection::single(),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+
+    let identity = source
+        .extraction_identity_sha256(&plan)
+        .expect("extraction identity");
+
+    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 1);
+    assert_eq!(
+        identity,
+        "2b1c3553d48309bc783faa1b4efae7195c8868fd7c5c599f945ef20e444ef069"
+    );
+    assert_eq!(
+        source
+            .extraction_identity_sha256(&plan)
+            .expect("repeated extraction identity"),
+        identity
+    );
+
+    let mut changed_label = source.clone();
+    changed_label.label = "target-news-revision".to_owned();
+    assert_ne!(
+        changed_label
+            .extraction_identity_sha256(&plan)
+            .expect("changed label identity"),
+        identity
+    );
+
+    let mut changed_html = source.clone();
+    changed_html.html = "<article>Hello, world</article>".to_owned();
+    assert_ne!(
+        changed_html
+            .extraction_identity_sha256(&plan)
+            .expect("changed HTML identity"),
+        identity
+    );
+
+    let mut changed_base_url = source.clone();
+    changed_base_url.input_base_url = Some(http_url("https://example.com/elsewhere.html"));
+    assert_ne!(
+        changed_base_url
+            .extraction_identity_sha256(&plan)
+            .expect("changed base URL identity"),
+        identity
+    );
+
+    let changed_plan = Plan::new(
+        PlanStrategy::css_selector(css_selector("article")),
+        Selection::first(),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+    assert_ne!(
+        source
+            .extraction_identity_sha256(&changed_plan)
+            .expect("changed plan identity"),
+        identity
+    );
+}
+
+#[test]
+fn html_input_extraction_identity_binds_invalid_plans_for_diagnostics() {
+    let source = HtmlInput::new("target-news", "<article>Hello</article>")
+        .expect("source input")
+        .with_input_base_url(http_url("https://example.com/start.html"));
+    let plan = Plan::new(
+        PlanStrategy::delimiter_pair(
+            delimiter_boundary("<article>"),
+            delimiter_boundary("</article>"),
+            DelimiterMode::Literal,
+            DelimiterBoundaryRetention::ExcludeBoth,
+            vec![RegexFlag::CaseInsensitive],
+        ),
+        Selection::single(),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+
+    let identity = source
+        .extraction_identity_sha256(&plan)
+        .expect("invalid-plan extraction identity");
+
+    assert_eq!(
+        identity,
+        "8e6a956157b047902a826b5b74582fd92bf78fff3decbb0a3e95548c355bf616"
+    );
+    assert_eq!(
+        prepare_plan(&plan)
+            .expect_err("invalid plan should produce a diagnostic")
+            .error_code,
+        ErrorCode::PlanInvalid
+    );
+    assert_eq!(
+        source
+            .extraction_identity_sha256(&plan)
+            .expect("repeated invalid-plan extraction identity"),
+        identity
+    );
+
+    let mut changed_source = source.clone();
+    changed_source.html = "<article>Changed</article>".to_owned();
+    assert_ne!(
+        changed_source
+            .extraction_identity_sha256(&plan)
+            .expect("changed source invalid-plan extraction identity"),
+        identity
+    );
+
+    let mut changed_plan = plan.clone();
+    changed_plan.schema_version = 0;
+    assert_ne!(
+        source
+            .extraction_identity_sha256(&changed_plan)
+            .expect("changed invalid-plan extraction identity"),
+        identity
+    );
 }
 
 #[test]
