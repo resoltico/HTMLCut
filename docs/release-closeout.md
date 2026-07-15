@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: RELEASE
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]

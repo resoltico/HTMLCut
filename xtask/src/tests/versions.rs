@@ -44,11 +44,11 @@ fn workspace_version_from_manifest_requires_a_version_line() {
 #[test]
 fn workspace_rust_version_from_manifest_extracts_workspace_package_floor() {
     let version = workspace_rust_version_from_manifest(
-        "[workspace.package]\nversion = \"3.1.4\"\nrust-version = \"1.95.0\"\nedition = \"2024\"\n",
+        "[workspace.package]\nversion = \"3.1.4\"\nrust-version = \"1.97.0\"\nedition = \"2024\"\n",
     )
     .expect("workspace rust-version");
 
-    assert_eq!(version, "1.95.0");
+    assert_eq!(version, "1.97.0");
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn workspace_version_reads_from_repo_manifest() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join("Cargo.toml"),
-        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.95.0\"\n",
+        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.97.0\"\n",
     )
     .expect("write Cargo.toml");
 
@@ -230,13 +230,13 @@ fn workspace_rust_version_reads_from_repo_manifest() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join("Cargo.toml"),
-        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.95.0\"\n",
+        "[workspace.package]\nversion = \"9.9.9\"\nrust-version = \"1.97.0\"\n",
     )
     .expect("write Cargo.toml");
 
     let version = workspace_rust_version(repo_root.path()).expect("workspace rust-version");
 
-    assert_eq!(version, "1.95.0");
+    assert_eq!(version, "1.97.0");
 }
 
 #[test]
@@ -260,9 +260,9 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
 
     assert_eq!(
         workspace_rust_version_from_manifest(&workspace_manifest).expect("workspace rust-version"),
-        "1.95"
+        "1.97"
     );
-    assert_eq!(repo_toolchain.channel, "1.95.0");
+    assert_eq!(repo_toolchain.channel, "1.97.0");
     assert_eq!(repo_toolchain.components, vec!["clippy", "rustfmt"]);
     assert!(core_manifest.contains("rust-version.workspace = true"));
     assert!(cli_manifest.contains("rust-version.workspace = true"));

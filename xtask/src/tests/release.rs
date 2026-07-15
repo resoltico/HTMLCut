@@ -106,13 +106,33 @@ esac
 
 #[test]
 fn release_shell_helpers_survive_readonly_caller_names() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
-    let scripts_dir = repo_root.join("scripts");
-    let version = workspace_version(repo_root).expect("workspace version");
+    let repo_root = tempdir().expect("release-tag repository");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"9.8.7\"\n",
+    )
+    .expect("write tagged manifest");
+    init_git_repo(repo_root.path());
+    git(repo_root.path(), &["add", "Cargo.toml"]);
+    git(repo_root.path(), &["commit", "-m", "release candidate"]);
+    git(
+        repo_root.path(),
+        &["tag", "-a", "v9.8.7", "-m", "HTMLCut 9.8.7"],
+    );
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"9.9.9\"\n",
+    )
+    .expect("write newer main manifest");
+
+    let scripts_dir = actual_repo_root.join("scripts");
     let scripts_dir = crate::release::bash_source_argument_for_tests(&scripts_dir);
-    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root);
+    let helper_repo_root_for_bash =
+        crate::release::bash_source_argument_for_tests(actual_repo_root);
+    let repo_root_for_bash = crate::release::bash_source_argument_for_tests(repo_root.path());
     let script = format!(
         r#"set -euo pipefail
 script_dir="{scripts_dir}"
@@ -121,31 +141,33 @@ script_dir="{scripts_dir}"
 
 script_dir="$(htmlcut_resolve_script_dir "$script_dir/release-tag.sh")"
 readonly script_dir
-repo_root="{repo_root}"
-readonly repo_root
-tag_name="v{version}"
+helper_repo_root="{helper_repo_root}"
+readonly helper_repo_root
+release_repo_root="{release_repo_root}"
+readonly release_repo_root
+tag_name="v9.8.7"
 readonly tag_name
 
 resolved_root="$(htmlcut_repo_root_from_script_dir "$script_dir")"
-[[ "$resolved_root" == "$repo_root" ]]
-
-resolved_version="$(htmlcut_workspace_version "$script_dir" "$repo_root")"
-[[ "$resolved_version" == "{version}" ]]
+[[ "$resolved_root" == "$helper_repo_root" ]]
 
 resolved_tag="$(htmlcut_resolve_release_tag "$tag_name")"
 [[ "$resolved_tag" == "$tag_name" ]]
 
+resolved_version="$(htmlcut_release_version_for_tag "$script_dir" "$release_repo_root" "$resolved_tag")"
+[[ "$resolved_version" == "9.8.7" ]]
+
 htmlcut_assert_release_tag_matches_workspace_version "$resolved_tag" "$resolved_version"
 "#,
         scripts_dir = scripts_dir,
-        repo_root = repo_root_for_bash,
-        version = version,
+        helper_repo_root = helper_repo_root_for_bash,
+        release_repo_root = repo_root_for_bash,
     );
 
     let output = bash_command()
         .arg("-c")
         .arg(script)
-        .current_dir(repo_root)
+        .current_dir(repo_root.path())
         .output()
         .expect("run helper smoke");
 
@@ -784,6 +806,28 @@ fn release_build_script_generates_a_package_specific_readme() {
 }
 
 #[test]
+fn release_workflow_uses_immutable_tag_identity_for_all_publication_side_effects() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let workflow = fs::read_to_string(repo_root.join(".github/workflows/release.yml"))
+        .expect("read release workflow");
+    let checksum_script = fs::read_to_string(repo_root.join("scripts/build-release-checksums.sh"))
+        .expect("read checksum script");
+    let publish_script = fs::read_to_string(repo_root.join("scripts/publish-github-release.sh"))
+        .expect("read publication script");
+    let verify_script = fs::read_to_string(repo_root.join("scripts/verify-github-release.sh"))
+        .expect("read verification script");
+
+    assert!(workflow.contains("immutable tag manifest"));
+    assert!(workflow.contains("RELEASE_TAG: ${{ steps.release.outputs.tag }}"));
+    for script in [checksum_script, publish_script, verify_script] {
+        assert!(script.contains("htmlcut_release_version_for_tag"));
+        assert!(!script.contains("htmlcut_workspace_version \"${script_dir}\" \"${repo_root}\""));
+    }
+}
+
+#[test]
 fn maintained_release_shell_entrypoints_are_self_describing() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -804,7 +848,7 @@ fn maintained_release_shell_entrypoints_are_self_describing() {
         ),
         (
             "release-tag.sh",
-            "Validate one release tag against the current workspace version",
+            "Validate one release tag against the tagged workspace manifest",
         ),
         (
             "release-targets.sh",

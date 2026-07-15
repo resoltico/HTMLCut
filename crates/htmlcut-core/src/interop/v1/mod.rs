@@ -4,6 +4,16 @@ mod execution;
 mod stable_json;
 mod types;
 
+/// Monotonic identity for HTMLCut extraction semantics.
+///
+/// Increment this counter whenever the same complete [`HtmlInput`] and [`Plan`] could
+/// produce a different projected result or diagnostic. It is deliberately independent of the
+/// HTMLCut crate version, the core specification version, and dependency versions.
+///
+/// [`HtmlInput::extraction_identity_sha256`] includes this counter in the identity that
+/// downstream consumers persist for one extraction.
+pub const HTMLCUT_EXTRACTION_SEMANTICS_VERSION: u32 = 1;
+
 pub use execution::{ValidatedPlan, execute_plan, execute_validated_plan, prepare_plan};
 #[cfg(test)]
 pub(crate) use execution::{

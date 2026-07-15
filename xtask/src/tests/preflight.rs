@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn repo_toolchain_preflight_error_covers_missing_toolchain_and_broken_component() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
 
@@ -180,7 +180,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             if command_signature(spec)
                 == command_signature(&repo_toolchain_probe_command(&decode_probe_toolchain))
             {
-                return Some(Ok(b"rustc 1.95.0\n".to_vec()));
+                return Some(Ok(b"rustc 1.97.0\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -480,7 +480,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
 #[test]
 fn repo_toolchain_preflight_error_reports_missing_components() {
     let toolchain = RepoToolchain {
-        channel: "1.95.0".to_owned(),
+        channel: "1.97.0".to_owned(),
         components: vec!["clippy".to_owned(), "rustfmt".to_owned()],
     };
 
@@ -516,7 +516,7 @@ fn capture_override_fixture(
             false,
             false,
         )),
-        Ok(b"rustc 1.95.0\n".to_vec()),
+        Ok(b"rustc 1.97.0\n".to_vec()),
     );
     outputs.insert(
         command_signature(&test_command_spec(
@@ -550,7 +550,7 @@ fn capture_override_fixture(
     );
     outputs.insert(
         command_signature(&cargo_fuzz_probe_command()),
-        Ok(b"cargo-fuzz 0.13.1\n".to_vec()),
+        Ok(b"cargo-fuzz 0.13.2\n".to_vec()),
     );
     outputs.insert(
         command_signature(&host_tool_probe_command("clang")),

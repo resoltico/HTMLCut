@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: RELEASE
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
   questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]
@@ -36,6 +36,11 @@ Release choreography lives in this document set. Contract-versioning policy live
   rerun the full local maintainer gate from the release worktree before pushing the follow-up
   commit.
 - Tag publication is authoritative for release automation. PR merge alone does not publish.
+- Release tags are annotated, immutable records pointing at the merged `origin/main` commit; a
+  release tag must never be created from an ambiguous local `HEAD`.
+- Every post-tag publication action derives the release version and asset names from the immutable
+  tagged `Cargo.toml`; a newer `main` checkout may supply repaired release tooling but must not
+  redefine an existing release's identity.
 - The GitHub release object and its asset inventory are the authoritative publication record.
 - The checked-in semver baseline is refreshed only after the corresponding release is published.
 - If a separate worktree is used, the primary checkout must still end the session truthful and

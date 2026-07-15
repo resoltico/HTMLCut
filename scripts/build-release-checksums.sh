@@ -9,6 +9,8 @@ fi
 script_dir="$(cd -- "$(dirname -- "${script_source}")" && pwd)"
 # shellcheck source=scripts/common.sh
 . "${script_dir}/common.sh"
+# shellcheck source=scripts/release-tag.sh
+. "${script_dir}/release-tag.sh"
 
 checksum_line() {
     local file_path="$1"
@@ -31,9 +33,13 @@ print_usage() {
     local command_name="$1"
 
     cat <<EOF
-Usage: ${command_name}
+Usage: ${command_name} [tag-name]
 
 Write the canonical SHA-256 checksum manifest for the maintained ./dist release assets.
+
+Inputs:
+  tag-name             Optional release tag such as vX.Y.Z. Defaults to RELEASE_TAG,
+                       then GITHUB_REF_NAME.
 EOF
 }
 
@@ -52,11 +58,15 @@ main() {
         print_usage "${command_name}"
         return 0
     fi
-    [[ $# -eq 0 ]] || htmlcut_usage_error "${command_name}" "this script does not accept arguments"
+    [[ $# -le 1 ]] || htmlcut_usage_error "${command_name}" "expected at most one tag name"
 
+    local tag_name
+    tag_name="$(htmlcut_resolve_release_tag "${1:-${RELEASE_TAG:-${GITHUB_REF_NAME:-}}}")"
+    readonly tag_name
     local version
-    version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
+    version="$(htmlcut_release_version_for_tag "${script_dir}" "${repo_root}" "${tag_name}")"
     readonly version
+    htmlcut_assert_release_tag_matches_workspace_version "${tag_name}" "${version}"
     local output_dir="${repo_root}/dist"
     readonly output_dir
     local manifest_name

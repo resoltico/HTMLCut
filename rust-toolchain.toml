@@ -3,5 +3,5 @@
 # release builds all converge on the same stable compiler surface. We install
 # nightly separately for branch coverage and live `cargo-fuzz` runs because
 # those maintained workflows still require it.
-channel = "1.95.0"
+channel = "1.97.0"
 components = ["clippy", "rustfmt"]

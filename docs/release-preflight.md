@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: RELEASE
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
@@ -93,7 +93,7 @@ Install the local maintainer toolchain if it is not already available by followi
 [developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
-`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.95.0`).
+`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.97.0`).
 Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
 coverage gate, and live `cargo-fuzz` campaigns, because `cargo xtask miri`, `cargo +nightly
 llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly.
@@ -136,7 +136,7 @@ full maintainer gate before cutting `release-prep/X.Y.Z`, creating `release/X.Y.
 any release branch. A pre-version gate pass is only the starting proof; the prepared release
 candidate itself must also be the exact gated tree that ships.
 - `Cargo.toml` `[workspace.package] rust-version` still carries the published compatibility floor
-  (`1.95` today), while `rust-toolchain.toml` continues to own the exact repository pin, and the
+  (`1.97` today), while `rust-toolchain.toml` continues to own the exact repository pin, and the
   workspace crates still inherit that floor through `rust-version.workspace = true`.
 - `Cargo.toml` `[workspace.package] description` still reflects the current product in task-facing
   language. `htmlcut-cli` inherits it for CLI help and for the second line of `htmlcut --version`.

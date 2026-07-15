@@ -83,6 +83,11 @@ fn write_repo_scaffold(repo_root: &Path) {
     )
     .expect("write Cargo.toml");
     fs::write(repo_root.join("changelog.md"), "## [Unreleased]\n").expect("write changelog.md");
+    fs::write(
+        repo_root.join("deny.toml"),
+        "[graph]\ntargets = [\n    \"aarch64-apple-darwin\",\n    \"x86_64-apple-darwin\",\n    \"x86_64-unknown-linux-musl\",\n    \"x86_64-pc-windows-msvc\",\n]\n",
+    )
+    .expect("write deny.toml");
     let baseline_dir = repo_root.join("semver-baseline").join("htmlcut-core");
     fs::create_dir_all(&baseline_dir).expect("create semver baseline dir");
     fs::write(

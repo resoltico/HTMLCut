@@ -104,6 +104,8 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
     );
     assert!(validator.contains("./scripts/xtask.sh --help >/dev/null"));
     assert!(!validator.contains("cargo xtask --help >/dev/null"));
+    assert!(validator.contains("HTMLCUT_STABLE_TOOLCHAIN"));
+    assert!(!validator.contains("rustc 1\\.95\\.0"));
     assert!(bootstrap.contains("cargo +nightly miri --version >/dev/null"));
     assert_eq!(
         validator

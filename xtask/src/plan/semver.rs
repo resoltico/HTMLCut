@@ -42,8 +42,7 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
 /// Rewrites repo-owned vendored selector/parser dependencies back to registry coordinates for
 /// semver-baseline packaging.
 pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> DynResult<String> {
-    let mut manifest = cargo_toml
-        .parse::<Value>()
+    let mut manifest = toml::from_str::<Value>(cargo_toml)
         .map_err(|error| crate::model::XtaskError::invalid_toml("snapshot Cargo.toml", error))?;
     let Some(workspace) = manifest.get_mut("workspace").and_then(Value::as_table_mut) else {
         return Ok(cargo_toml.to_owned());

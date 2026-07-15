@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "10.2.0"
+version: "10.3.0"
 domain: RELEASE
-updated: "2026-05-19"
+updated: "2026-07-15"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -21,14 +21,23 @@ locally before using a helper you do not already know.
 ## 5. Tag And Push
 
 ```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
+RELEASE_TAG=vX.Y.Z
+RELEASE_COMMIT=$(git rev-parse origin/main)
+git tag -a "$RELEASE_TAG" "$RELEASE_COMMIT" -m "HTMLCut ${RELEASE_TAG#v}"
+git push origin "$RELEASE_TAG"
+
+TAG_OBJECT_TYPE=$(git cat-file -t "$RELEASE_TAG")
+TAG_COMMIT=$(git rev-parse "$RELEASE_TAG^{commit}")
+[ "$TAG_OBJECT_TYPE" = "tag" ]
+[ "$TAG_COMMIT" = "$RELEASE_COMMIT" ]
 
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-gh api "repos/$REPO/git/ref/tags/vX.Y.Z"
+gh api "repos/$REPO/git/ref/tags/$RELEASE_TAG"
 ```
 
-Do not continue until the remote tag ref exists.
+Do not continue until the remote tag ref exists, the local tag is annotated, and its peeled commit
+is the exact merged `origin/main` commit. This prevents a release from being accidentally cut from
+an unmerged, detached, or stale local checkout.
 
 The tag push is what triggers `release.yml`. The PR merge alone does not publish anything.
 
@@ -40,7 +49,9 @@ gh workflow run release.yml -f release_tag=vX.Y.Z
 
 Never create a second tag or move an existing release tag just to retry publication.
 The rerun is expected to execute the maintained workflow and release scripts from `main`, while
-the build jobs still check out the existing tag payload identified by `release_tag`.
+the build jobs still check out the existing tag payload identified by `release_tag`. Publication
+scripts resolve the release version and asset inventory from that tag's `Cargo.toml`, rather than
+from the potentially newer `main` checkout that supplies repaired workflow logic.
 
 The release workflow follows a draft-first publication model: it creates or reuses a draft release,
 uploads the full maintained asset inventory, writes the checksum manifest, and only then publishes

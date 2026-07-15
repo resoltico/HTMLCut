@@ -6,28 +6,31 @@ use crate::model::{
 };
 use crate::release_target_triples;
 
+#[derive(serde::Deserialize)]
+struct DenyPolicy {
+    graph: DenyGraph,
+}
+
+#[derive(serde::Deserialize)]
+struct DenyGraph {
+    targets: Vec<String>,
+}
+
 /// Builds the strict dependency-policy command used by the maintainer gate.
-pub fn deny_check_command(repo_root: &Path) -> DynResult<CommandSpec> {
-    let mut args = vec!["deny".to_owned()];
-
-    for target in release_target_triples(repo_root)? {
-        args.push("--target".to_owned());
-        args.push(target);
-    }
-
-    args.extend(
-        [
-            "check",
-            "-D",
-            "warnings",
-            "advisories",
-            "bans",
-            "licenses",
-            "sources",
-        ]
-        .into_iter()
-        .map(str::to_owned),
-    );
+pub fn deny_check_command(_repo_root: &Path) -> DynResult<CommandSpec> {
+    let args: Vec<_> = [
+        "deny",
+        "check",
+        "-D",
+        "warnings",
+        "advisories",
+        "bans",
+        "licenses",
+        "sources",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
 
     Ok(CommandSpec::new(
         "cargo",
@@ -51,54 +54,24 @@ pub fn deny_graph_targets(repo_root: &Path) -> DynResult<Vec<String>> {
     })
 }
 
-fn parse_deny_graph_targets(policy: &str) -> Option<Vec<String>> {
-    let mut in_graph_section = false;
-    let mut collecting_targets = false;
-    let mut targets = Vec::new();
-
-    for raw_line in policy.lines() {
-        let line = raw_line.trim();
-
-        if line.starts_with('[') && line.ends_with(']') {
-            in_graph_section = line == "[graph]";
-            collecting_targets = false;
-            continue;
-        }
-
-        if !in_graph_section {
-            continue;
-        }
-
-        if !collecting_targets {
-            if let Some(rest) = line.strip_prefix("targets = [") {
-                collecting_targets = true;
-                collect_quoted_values(rest, &mut targets);
-                if rest.contains(']') {
-                    return Some(targets);
-                }
-            }
-            continue;
-        }
-
-        collect_quoted_values(line, &mut targets);
-        if line.contains(']') {
-            return Some(targets);
-        }
+/// Ensures `cargo deny` evaluates exactly the release target registry.
+pub fn ensure_deny_targets_match_release_targets(repo_root: &Path) -> DynResult<()> {
+    let release_targets = release_target_triples(repo_root)?;
+    let deny_targets = deny_graph_targets(repo_root)?;
+    if deny_targets == release_targets {
+        return Ok(());
     }
 
-    None
+    Err(format!(
+        "deny.toml graph targets do not match the canonical release target registry: deny={deny_targets:?}, release={release_targets:?}"
+    )
+    .into())
 }
 
-fn collect_quoted_values(line: &str, values: &mut Vec<String>) {
-    let mut cursor = line;
-    while let Some(start) = cursor.find('"') {
-        let after_start = &cursor[start + 1..];
-        let Some(end) = after_start.find('"') else {
-            break;
-        };
-        values.push(after_start[..end].to_owned());
-        cursor = &after_start[end + 1..];
-    }
+fn parse_deny_graph_targets(policy: &str) -> Option<Vec<String>> {
+    toml::from_str::<DenyPolicy>(policy)
+        .ok()
+        .map(|policy| policy.graph.targets)
 }
 
 #[cfg(test)]

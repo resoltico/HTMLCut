@@ -11,7 +11,7 @@
 
 [package]
 edition = "2021"
-rust-version = "1.71.0"
+rust-version = "1.97"
 name = "htmlcut-html5ever"
 version = "0.39.0-htmlcut.1"
 authors = ["The html5ever Project Developers"]
