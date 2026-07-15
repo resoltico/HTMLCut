@@ -30,6 +30,7 @@ fn selector_match() -> SelectedMatch {
         candidate_index: NonZeroUsize::new(1).expect("candidate index"),
         output_value: json!("<article>Hello</article>"),
         text_output: "Hello".to_owned(),
+        comparison_text_output: None,
         selected_html_output: None,
         inner_html_output: "Hello".to_owned(),
         outer_html_output: "<article>Hello</article>".to_owned(),
@@ -113,10 +114,10 @@ fn html_input_extraction_identity_binds_complete_input_plan_and_semantics_versio
         .extraction_identity_sha256(&plan)
         .expect("extraction identity");
 
-    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 2);
+    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 3);
     assert_eq!(
         identity,
-        "d60a0092511ea8df459efe387b61cc4a26781a8acb93d3660190ed22f397bf25"
+        "34bf7d47eefd8316dced5279c68f4e4260fd988020fc9a4c74546e272a5f8278"
     );
     assert_eq!(
         source
@@ -190,7 +191,7 @@ fn html_input_extraction_identity_binds_invalid_plans_for_diagnostics() {
 
     assert_eq!(
         identity,
-        "eb15d80706ad9a051348defbb82a205a0bf1bb311fd6a2fc81e8fa431832dfe5"
+        "affc732742023f4ed49e98b620067666051075b906b9db4ea838eab360bdaa51"
     );
     assert_eq!(
         prepare_plan(&plan)
@@ -365,6 +366,7 @@ fn interop_result_round_trips_through_stable_json() {
             candidate_index: NonZeroUsize::new(2).expect("candidate index"),
             output_value: json!("Hello"),
             text_output: "Hello".to_owned(),
+            comparison_text_output: None,
             selected_html_output: Some("Hello".to_owned()),
             inner_html_output: "Hello".to_owned(),
             outer_html_output: "<article>Hello</article>".to_owned(),

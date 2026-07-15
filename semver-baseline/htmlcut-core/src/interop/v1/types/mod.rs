@@ -4,9 +4,9 @@ mod shared;
 
 pub use crate::{AttributeName, DisplayedHttpUrl, HttpUrl};
 pub use plan::{
-    CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode, HtmlInput,
-    Output, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, Selection, SelectionMode,
-    StrategyKind, TextWhitespace,
+    CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode,
+    DomCanonicalization, HtmlInput, Output, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering,
+    Selection, SelectionMode, StrategyKind, TextWhitespace,
 };
 pub use result::{
     ByteRange, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel,

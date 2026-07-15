@@ -250,6 +250,131 @@ fn interop_result_validation_rejects_zero_counts_range_drift_and_metadata_mismat
 
     zero.result_digest_sha256 = "ignored".to_owned();
 }
+
+#[test]
+fn interop_result_validation_rejects_clone_text_for_raw_output_kinds() {
+    let mut result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        selector_selected_matches(),
+        Vec::new(),
+    )
+    .with_computed_digest()
+    .expect("valid text result");
+    result.output = Output::attribute(AttributeName::new("href").expect("attribute name"));
+    result.selected_matches[0].comparison_text_output = Some("canonical text".to_owned());
+
+    let error = result
+        .validate()
+        .expect_err("attribute results must not expose clone text");
+    assert!(matches!(
+        error,
+        ContractError::UnexpectedComparisonTextOutputForOutput {
+            output_kind: OutputKind::Attribute
+        }
+    ));
+}
+
+#[test]
+fn interop_result_validation_rejects_non_string_raw_output_values() {
+    let mut result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::inner_html(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        selector_selected_matches(),
+        Vec::new(),
+    );
+    result.selected_matches[0].output_value = serde_json::json!({"invented": "object"});
+
+    let error = result
+        .validate()
+        .expect_err("raw HTML output must remain a string");
+    assert!(matches!(
+        error,
+        ContractError::NonStringOutputValue {
+            output_kind: OutputKind::InnerHtml
+        }
+    ));
+}
+
+#[test]
+fn interop_result_validation_requires_text_output_to_match_its_comparison_projection() {
+    let mut result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        selector_selected_matches(),
+        Vec::new(),
+    );
+    result.selected_matches[0].comparison_text_output = Some("Canonical evidence".to_owned());
+    result.selected_matches[0].output_value = serde_json::json!("Invented output");
+
+    let error = result
+        .validate()
+        .expect_err("text output must agree with the comparison projection");
+    assert!(matches!(error, ContractError::TextOutputValueMismatch));
+}
+
+#[test]
+fn interop_result_validation_rejects_clone_text_leaked_into_structured_raw_evidence() {
+    let mut selected = selector_selected_match();
+    selected.output_value = serde_json::json!({
+        "textOutput": "Hello",
+        "comparisonTextOutput": "Invented clone text"
+    });
+    let result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::structured(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        vec![selected],
+        Vec::new(),
+    );
+
+    let error = result
+        .validate()
+        .expect_err("structured raw evidence must not carry clone text");
+    assert!(matches!(
+        error,
+        ContractError::StructuredOutputContainsComparisonText
+    ));
+}
 #[test]
 fn interop_stable_json_digest_helpers_cover_object_and_scalar_values() {
     let object_digest =
@@ -435,6 +560,30 @@ fn interop_result_validation_covers_strategy_specific_payload_invariants() {
     assert!(matches!(
         delimiter_selected_html_error,
         ContractError::MissingSelectedHtmlOutput
+    ));
+
+    let mut delimiter_with_comparison_text = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::DelimiterPair,
+            SelectionMode::Single,
+            Output::selected_html(),
+            1,
+        ),
+        source.clone(),
+        vec![delimiter_selected_match_with(1, 1)],
+        Vec::new(),
+    )
+    .with_computed_digest()
+    .expect("digest");
+    delimiter_with_comparison_text.selected_matches[0].comparison_text_output =
+        Some("comparison text is CSS-only".to_owned());
+    let delimiter_comparison_text_error = delimiter_with_comparison_text
+        .validate()
+        .expect_err("delimiter matches must not publish comparison_text_output");
+    assert!(matches!(
+        delimiter_comparison_text_error,
+        ContractError::UnexpectedComparisonTextOutput
     ));
 
     let mut non_object_structured = InteropResult::new(

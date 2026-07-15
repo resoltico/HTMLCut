@@ -134,6 +134,76 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         Some("https://example.com/base.html")
     );
 
+    let adapted_comparison_text = v1::adapt_successful_extraction_for_tests(
+        &selector_source,
+        &selector_plan(),
+        successful_selector_extraction(
+            vec![ExtractionMatch {
+                value: json!({
+                    "textOutput": "Raw evidence",
+                    "comparisonTextOutput": "Canonical comparison",
+                    "innerHtmlOutput": "Raw evidence",
+                    "outerHtmlOutput": "<article>Raw evidence</article>"
+                }),
+                ..selector_core_match(1, 1, 1)
+            }],
+            1,
+            None,
+        ),
+    )
+    .expect("comparison text projection");
+    assert_eq!(
+        adapted_comparison_text.selected_matches[0].text_output,
+        "Raw evidence"
+    );
+    assert_eq!(
+        adapted_comparison_text.selected_matches[0]
+            .comparison_text_output
+            .as_deref(),
+        Some("Canonical comparison")
+    );
+    assert_eq!(
+        adapted_comparison_text.selected_matches[0].output_value,
+        Value::String("Canonical comparison".to_owned())
+    );
+
+    let adapted_comparison_structured = v1::adapt_successful_extraction_for_tests(
+        &selector_source,
+        &Plan::new(
+            PlanStrategy::css_selector(css_selector("article")),
+            Selection::single(),
+            Output::structured(),
+            Rendering::new(TextWhitespace::Normalize, false),
+        ),
+        successful_selector_extraction(
+            vec![ExtractionMatch {
+                value: json!({
+                    "textOutput": "Raw evidence",
+                    "comparisonTextOutput": "Canonical comparison",
+                    "innerHtmlOutput": "Raw evidence",
+                    "outerHtmlOutput": "<article>Raw evidence</article>"
+                }),
+                ..selector_core_match(1, 1, 1)
+            }],
+            1,
+            None,
+        ),
+    )
+    .expect("comparison structured projection");
+    let selected = &adapted_comparison_structured.selected_matches[0];
+    assert_eq!(
+        selected.comparison_text_output.as_deref(),
+        Some("Canonical comparison")
+    );
+    assert_eq!(
+        selected.output_value,
+        json!({
+            "textOutput": "Raw evidence",
+            "innerHtmlOutput": "Raw evidence",
+            "outerHtmlOutput": "<article>Raw evidence</article>"
+        })
+    );
+
     let adapted_inner = v1::adapt_successful_extraction_for_tests(
         &selector_source,
         &Plan::new(
@@ -326,6 +396,30 @@ fn interop_execution_helpers_cover_compile_projection_and_error_paths() {
         selector_missing_text_error
             .message
             .contains("\"textOutput\"")
+    );
+
+    let selector_non_string_comparison_error = v1::project_structured_match_for_tests(
+        &ExtractionMatch {
+            value: json!({
+                "textOutput": "Hello",
+                "comparisonTextOutput": 7,
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>"
+            }),
+            ..selector_match.clone()
+        },
+        StrategyKind::CssSelector,
+        &[],
+    )
+    .expect_err("non-string comparison text");
+    assert_eq!(
+        selector_non_string_comparison_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        selector_non_string_comparison_error
+            .message
+            .contains("comparisonTextOutput")
     );
 
     let delimiter_missing_selected_html_error = v1::project_structured_match_for_tests(

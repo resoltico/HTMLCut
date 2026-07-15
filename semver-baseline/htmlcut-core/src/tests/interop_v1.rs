@@ -70,6 +70,7 @@ fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) 
         candidate_index,
         output_value: Value::String("Hello".to_owned()),
         text_output: "Hello".to_owned(),
+        comparison_text_output: None,
         selected_html_output: None,
         inner_html_output: "Hello".to_owned(),
         outer_html_output: "<article>Hello</article>".to_owned(),
@@ -97,6 +98,7 @@ fn delimiter_selected_match_with(candidate_count: usize, candidate_index: usize)
         candidate_index,
         output_value: Value::String("<article>Hello</article>".to_owned()),
         text_output: "Hello".to_owned(),
+        comparison_text_output: None,
         selected_html_output: Some("<article>Hello</article>".to_owned()),
         inner_html_output: "Hello".to_owned(),
         outer_html_output: "<article>Hello</article>".to_owned(),
@@ -173,6 +175,7 @@ fn successful_selector_extraction(
 }
 
 mod acceptance;
+mod canonicalization;
 mod execution;
 mod properties;
 mod schema;
