@@ -9,11 +9,12 @@ use serde_json::Value;
 use super::super::stable_json::digest_stable_json_omitting_field;
 use super::plan::{Output, SelectionMode, StrategyKind};
 use super::shared::{
-    ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
-    RESULT_SCHEMA_VERSION, validate_message_bytes, validate_schema_identity, validate_sha256_hex,
+    ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE,
+    INVALID_SELECTOR_MESSAGE, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION, validate_message_bytes,
+    validate_schema_identity, validate_sha256_hex,
 };
 use crate::DisplayedHttpUrl;
-use crate::selector_parse::validate_selector_parse_details;
+use crate::selector_parse::{SelectorParseDetailsViolation, validate_selector_parse_details};
 
 macro_rules! interop_diagnostic_codes {
     (
@@ -686,31 +687,31 @@ impl InteropError {
                 received: matching_diagnostics.len(),
             });
         }
+        if self.message != INVALID_SELECTOR_MESSAGE {
+            return Err(ContractError::InvalidSelectorMessage { carrier: "message" });
+        }
+        if matching_diagnostics[0].message != INVALID_SELECTOR_MESSAGE {
+            return Err(ContractError::InvalidSelectorMessage {
+                carrier: "diagnostic.message",
+            });
+        }
 
         let diagnostic_details = matching_diagnostics[0].details.as_ref().ok_or(
-            ContractError::InvalidSelectorParseDetails {
+            ContractError::MissingSelectorParseDetails {
                 carrier: "diagnostic.details",
-                reason: "selector_parse is required",
             },
         )?;
         let diagnostic_selector_parse = validate_selector_parse_details(diagnostic_details)
-            .map_err(|reason| ContractError::InvalidSelectorParseDetails {
-                carrier: "diagnostic.details",
-                reason,
-            })?;
+            .map_err(|violation| selector_parse_contract_error("diagnostic.details", violation))?;
         let core_details =
             self.details
                 .get("core_details")
-                .ok_or(ContractError::InvalidSelectorParseDetails {
+                .ok_or(ContractError::MissingSelectorParseDetails {
                     carrier: "details.core_details",
-                    reason: "selector_parse is required",
                 })?;
         let core_selector_parse =
-            validate_selector_parse_details(core_details).map_err(|reason| {
-                ContractError::InvalidSelectorParseDetails {
-                    carrier: "details.core_details",
-                    reason,
-                }
+            validate_selector_parse_details(core_details).map_err(|violation| {
+                selector_parse_contract_error("details.core_details", violation)
             })?;
 
         if diagnostic_selector_parse != core_selector_parse {
@@ -753,5 +754,28 @@ impl InteropError {
     pub fn with_computed_digest(mut self) -> Result<Self, ContractError> {
         self.error_digest_sha256 = self.digest_sha256()?;
         Ok(self)
+    }
+}
+
+fn selector_parse_contract_error(
+    carrier: &'static str,
+    violation: SelectorParseDetailsViolation,
+) -> ContractError {
+    match violation {
+        SelectorParseDetailsViolation::Missing => {
+            ContractError::MissingSelectorParseDetails { carrier }
+        }
+        SelectorParseDetailsViolation::Malformed => {
+            ContractError::MalformedSelectorParseDetails { carrier }
+        }
+        SelectorParseDetailsViolation::NonObject => {
+            ContractError::NonObjectSelectorParseDetails { carrier }
+        }
+        SelectorParseDetailsViolation::ZeroPosition => {
+            ContractError::ZeroPositionSelectorParseDetails { carrier }
+        }
+        SelectorParseDetailsViolation::UnknownClass => {
+            ContractError::UnknownSelectorParseErrorClass { carrier }
+        }
     }
 }

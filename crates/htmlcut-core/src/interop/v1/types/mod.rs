@@ -17,6 +17,7 @@ pub use shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, PLAN_SCHEMA_NAME,
     PLAN_SCHEMA_VERSION, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION,
 };
+pub(crate) use shared::{INVALID_SELECTOR_MESSAGE, is_valid_sha256_hex};
 
 #[cfg(test)]
 pub(super) fn validate_schema_identity(

@@ -17,6 +17,8 @@ mod types;
 /// downstream consumers persist for one extraction.
 pub const HTMLCUT_EXTRACTION_SEMANTICS_VERSION: u32 = 3;
 
+pub(crate) use types::{INVALID_SELECTOR_MESSAGE, is_valid_sha256_hex};
+
 pub use execution::{ValidatedPlan, execute_plan, execute_validated_plan, prepare_plan};
 #[cfg(test)]
 pub(crate) use execution::{

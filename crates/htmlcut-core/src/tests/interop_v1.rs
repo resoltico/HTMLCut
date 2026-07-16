@@ -209,6 +209,7 @@ fn successful_selector_extraction(
 mod acceptance;
 mod canonicalization;
 mod execution;
+mod finalization;
 mod properties;
 mod schema;
 mod surface;

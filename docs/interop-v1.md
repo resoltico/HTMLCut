@@ -189,7 +189,8 @@ types in that message. Instead, both `diagnostics[].details.selector_parse` and
 `line` is one-based. `column_utf16` is one-based and counts UTF-16 code units. The
 `parse_error_class` vocabulary is owned and exhaustively mapped by HTMLCut; consumers must treat
 unknown values as invalid rather than attempting to interpret upstream parser output. Runtime
-validation rejects a missing, malformed, non-object, zero-position, unknown, or mismatched copy.
+validation rejects a non-canonical invalid-selector message and each distinct selector-detail
+failure: missing, malformed, non-object, zero-position, unknown class, or mismatched copy.
 The current closed vocabulary is:
 
 - `unexpected_token`, `end_of_input`, `invalid_at_rule`, `invalid_at_rule_body`, and `invalid_qualified_rule`
@@ -204,6 +205,11 @@ The JSON Schema advertises a 1024-character maximum where standard JSON Schema c
 runtime validation is authoritative for the stricter byte limit and for the cross-carrier selector
 parse invariant. `with_computed_digest`, `digest_sha256`, and `stable_json` enforce those rules
 before returning a public document.
+
+If construction rejects an interop error, HTMLCut returns a valid internal-error fallback. Its
+`interop_contract_rejection` detail preserves a closed rejection code plus the exact rejected
+diagnostic count and diagnostic-code counts; it never copies unbounded or invalid diagnostic
+payloads into the fallback.
 
 ## DOM Canonicalization
 

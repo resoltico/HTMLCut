@@ -6,7 +6,7 @@ use crate::{Diagnostic, DiagnosticCode};
 
 use super::super::{
     ContractError, ErrorCode, InteropDiagnostic, InteropDiagnosticCode, InteropError, Plan,
-    StrategyKind,
+    StrategyKind, is_valid_sha256_hex,
 };
 
 const ZERO_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -178,7 +178,16 @@ fn finalization_rejection_code(error: &ContractError) -> &'static str {
             "invalid_selector_diagnostic_cardinality"
         }
         ContractError::InvalidSelectorCoreDiagnostic => "invalid_selector_core_diagnostic",
-        ContractError::InvalidSelectorParseDetails { .. } => "invalid_selector_parse_details",
+        ContractError::InvalidSelectorMessage { .. } => "invalid_selector_message",
+        ContractError::MissingSelectorParseDetails { .. } => "missing_selector_parse_details",
+        ContractError::MalformedSelectorParseDetails { .. } => "malformed_selector_parse_details",
+        ContractError::NonObjectSelectorParseDetails { .. } => "non_object_selector_parse_details",
+        ContractError::ZeroPositionSelectorParseDetails { .. } => {
+            "zero_position_selector_parse_details"
+        }
+        ContractError::UnknownSelectorParseErrorClass { .. } => {
+            "unknown_selector_parse_error_class"
+        }
         ContractError::MismatchedSelectorParseDetails => "mismatched_selector_parse_details",
         _ => "invalid_interop_contract",
     }
@@ -207,7 +216,7 @@ fn last_resort_finalization_error() -> InteropError {
 }
 
 fn sanitized_plan_digest_sha256(value: &str) -> String {
-    if value.len() == ZERO_SHA256.len() && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if is_valid_sha256_hex(value) {
         value.to_owned()
     } else {
         ZERO_SHA256.to_owned()

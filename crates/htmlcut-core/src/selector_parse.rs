@@ -169,6 +169,16 @@ pub(crate) struct SelectorParse {
     class: SelectorParseErrorClass,
 }
 
+/// Closed reasons a serialized `selector_parse` object is rejected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectorParseDetailsViolation {
+    Missing,
+    Malformed,
+    NonObject,
+    ZeroPosition,
+    UnknownClass,
+}
+
 impl SelectorParse {
     fn from_error(error: &SelectorParseError<'_>) -> Self {
         let location = error.location();
@@ -201,14 +211,16 @@ pub(crate) fn selector_parse_details(error: &SelectorParseError<'_>) -> Value {
 /// Validates and normalizes the closed public `selector_parse` detail object.
 pub(crate) fn validate_selector_parse_details(
     value: &Value,
-) -> Result<SelectorParse, &'static str> {
-    let details = value.as_object().ok_or("details must be an object")?;
+) -> Result<SelectorParse, SelectorParseDetailsViolation> {
+    let details = value
+        .as_object()
+        .ok_or(SelectorParseDetailsViolation::Malformed)?;
     let selector_parse = details
         .get("selector_parse")
-        .ok_or("selector_parse is required")?;
+        .ok_or(SelectorParseDetailsViolation::Missing)?;
     let selector_parse = selector_parse
         .as_object()
-        .ok_or("selector_parse must be an object")?;
+        .ok_or(SelectorParseDetailsViolation::NonObject)?;
 
     const REQUIRED_FIELDS: [&str; 3] = ["line", "column_utf16", "parse_error_class"];
     if selector_parse.len() != REQUIRED_FIELDS.len()
@@ -216,32 +228,31 @@ pub(crate) fn validate_selector_parse_details(
             .iter()
             .any(|field| !selector_parse.contains_key(*field))
     {
-        return Err(
-            "selector_parse must contain exactly line, column_utf16, and parse_error_class",
-        );
+        return Err(SelectorParseDetailsViolation::Malformed);
     }
 
-    let line = selector_parse
-        .get("line")
-        .and_then(Value::as_u64)
-        .filter(|line| *line > 0)
-        .ok_or("selector_parse.line must be a positive integer")?;
-    let column_utf16 = selector_parse
-        .get("column_utf16")
-        .and_then(Value::as_u64)
-        .filter(|column| *column > 0)
-        .ok_or("selector_parse.column_utf16 must be a positive integer")?;
-    let class = selector_parse
+    let line = positive_position(selector_parse.get("line"))?;
+    let column_utf16 = positive_position(selector_parse.get("column_utf16"))?;
+    let class_name = selector_parse
         .get("parse_error_class")
         .and_then(Value::as_str)
-        .and_then(SelectorParseErrorClass::parse)
-        .ok_or("selector_parse.parse_error_class is unknown")?;
+        .ok_or(SelectorParseDetailsViolation::Malformed)?;
+    let class = SelectorParseErrorClass::parse(class_name)
+        .ok_or(SelectorParseDetailsViolation::UnknownClass)?;
 
     Ok(SelectorParse {
         line,
         column_utf16,
         class,
     })
+}
+
+fn positive_position(value: Option<&Value>) -> Result<u64, SelectorParseDetailsViolation> {
+    match value.and_then(Value::as_u64) {
+        Some(0) => Err(SelectorParseDetailsViolation::ZeroPosition),
+        Some(value) => Ok(value),
+        None => Err(SelectorParseDetailsViolation::Malformed),
+    }
 }
 
 #[cfg(test)]
