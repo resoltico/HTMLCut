@@ -4,6 +4,15 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [11.0.1] - 2026-07-16
+
+### Changed
+- `htmlcut-v1` now publishes `htmlcut.result@8` and `htmlcut.error@3`. The revised documents bound every public error and diagnostic message to 1024 UTF-8 bytes and reject invalid selector-error payloads before canonical JSON or digests are produced.
+- Invalid CSS selector errors now use a stable safe message and carry a closed, one-based source position plus an HTMLCut-owned parse-error class in both the diagnostic and error-detail carriers; the two copies must agree exactly.
+
+### Fixed
+- Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error.
+
 ## [11.0.0] - 2026-07-15
 
 ### Added

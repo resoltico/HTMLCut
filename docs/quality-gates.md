@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: QUALITY
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [quality gates, cargo xtask, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]

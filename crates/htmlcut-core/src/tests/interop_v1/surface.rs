@@ -663,3 +663,40 @@ fn execute_plan_retains_no_match_candidate_count_in_the_interop_error_details() 
     assert_eq!(error.details["core_diagnostic_code"], "NO_MATCH");
     assert_eq!(error.details["core_details"]["candidateCount"], 0);
 }
+
+#[test]
+fn execute_plan_publishes_safe_selector_parse_details_with_utf16_locations() {
+    let source = HtmlInput::new("target-news", "<article>One</article>").expect("source");
+    let plan = Plan::new(
+        PlanStrategy::css_selector(css_selector("article,\n😀span[[[bad")),
+        Selection::single(),
+        Output::text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+
+    let error = execute_plan(&source, &plan).expect_err("invalid selector");
+
+    assert_eq!(error.error_code, ErrorCode::PlanInvalid);
+    assert_eq!(error.message, "CSS selector is invalid.");
+    assert_eq!(error.diagnostics.len(), 1);
+    assert_eq!(error.diagnostics[0].message, "CSS selector is invalid.");
+    assert_eq!(
+        error.diagnostics[0].details,
+        Some(json!({
+            "selector_parse": {
+                "line": 2,
+                "column_utf16": 8,
+                "parse_error_class": "invalid_attribute_selector",
+            }
+        }))
+    );
+    assert_eq!(
+        error.details["core_details"]["selector_parse"],
+        error.diagnostics[0]
+            .details
+            .as_ref()
+            .expect("selector parse details")["selector_parse"]
+    );
+    assert_eq!(error.details["core_details"]["candidateCount"], 0);
+    assert!(error.validate().is_ok());
+}

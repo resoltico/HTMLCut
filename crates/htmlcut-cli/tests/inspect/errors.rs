@@ -12,7 +12,7 @@ fn invalid_selector_exits_with_usage_code() {
         .args(["--css", "["])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("Invalid selector"));
+        .stderr(predicate::str::contains("CSS selector is invalid."));
 }
 #[test]
 fn slice_attribute_error_hints_when_excluded_start_boundary_drops_the_opening_tag() {

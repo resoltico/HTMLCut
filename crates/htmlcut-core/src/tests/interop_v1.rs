@@ -2,9 +2,9 @@ use super::*;
 use crate::interop::v1::{
     self, AttributeName, ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention,
     DelimiterBoundaryText, DelimiterMode, DisplayedHttpUrl, ErrorCode, HtmlInput, HttpUrl,
-    InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult, Output, OutputKind,
-    Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource, SelectedMatch,
-    SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
+    InteropDiagnostic, InteropDiagnosticCode, InteropDiagnosticLevel, InteropError, InteropResult,
+    Output, OutputKind, Plan, PlanStrategy, RegexFlag, Rendering, ResultExecution, ResultSource,
+    SelectedMatch, SelectedMatchMetadata, Selection, SelectionMode, StrategyKind, TextWhitespace,
 };
 use crate::result::{
     DelimiterPairMatchMetadata, ExtractionMatch, ExtractionStats, Range, SelectorMatchMetadata,
@@ -62,6 +62,38 @@ fn http_url(value: &str) -> HttpUrl {
 
 fn displayed_http_url(value: &str) -> DisplayedHttpUrl {
     DisplayedHttpUrl::parse(value).expect("displayed http url")
+}
+
+fn selector_parse_details(line: u64, column_utf16: u64, parse_error_class: &str) -> Value {
+    json!({
+        "selector_parse": {
+            "line": line,
+            "column_utf16": column_utf16,
+            "parse_error_class": parse_error_class,
+        }
+    })
+}
+
+fn invalid_selector_interop_error(diagnostic_details: Value, core_details: Value) -> InteropError {
+    InteropError::new(
+        TEST_PLAN_DIGEST_SHA256,
+        ErrorCode::PlanInvalid,
+        "CSS selector is invalid.",
+        Some(StrategyKind::CssSelector),
+        BTreeMap::from([
+            (
+                "core_diagnostic_code".to_owned(),
+                Value::from(InteropDiagnosticCode::InvalidSelector.as_str()),
+            ),
+            ("core_details".to_owned(), core_details),
+        ]),
+        vec![InteropDiagnostic {
+            level: InteropDiagnosticLevel::Error,
+            code: InteropDiagnosticCode::InvalidSelector,
+            message: "CSS selector is invalid.".to_owned(),
+            details: Some(diagnostic_details),
+        }],
+    )
 }
 
 fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) -> SelectedMatch {

@@ -11,9 +11,11 @@ pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
 pub const PLAN_SCHEMA_VERSION: u32 = 7;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 7;
+pub const RESULT_SCHEMA_VERSION: u32 = 8;
 /// Schema version for the extraction error.
-pub const ERROR_SCHEMA_VERSION: u32 = 2;
+pub const ERROR_SCHEMA_VERSION: u32 = 3;
+/// Maximum UTF-8 byte length for one human-readable interop error or diagnostic message.
+pub(super) const MAX_INTEROP_MESSAGE_BYTES: usize = 1024;
 
 /// Error returned when interop contract values or schema identities are invalid.
 #[derive(Debug, Error)]
@@ -185,6 +187,54 @@ pub enum ContractError {
     /// The source label was blank.
     #[error("source label must not be empty")]
     EmptySourceLabel,
+    /// One public interop message exceeded its fixed byte bound.
+    #[error("{field} must contain at most {maximum} UTF-8 bytes; received {received} bytes")]
+    MessageTooLong {
+        /// Public field whose bound was exceeded.
+        field: &'static str,
+        /// Maximum allowed UTF-8 byte length.
+        maximum: usize,
+        /// Received UTF-8 byte length.
+        received: usize,
+    },
+    /// An invalid-selector interop error did not identify exactly one matching diagnostic.
+    #[error(
+        "invalid-selector interop error must carry exactly one matching diagnostic; received {received}"
+    )]
+    InvalidSelectorDiagnosticCardinality {
+        /// Number of `INVALID_SELECTOR` diagnostics carried by the error.
+        received: usize,
+    },
+    /// An invalid-selector interop error did not identify its core diagnostic consistently.
+    #[error("invalid-selector interop error must identify INVALID_SELECTOR as its core diagnostic")]
+    InvalidSelectorCoreDiagnostic,
+    /// One selector parse detail object did not satisfy the closed public contract.
+    #[error("{carrier} selector_parse is invalid: {reason}")]
+    InvalidSelectorParseDetails {
+        /// Public carrier that held the invalid detail object.
+        carrier: &'static str,
+        /// Stable explanation of the rejected shape.
+        reason: &'static str,
+    },
+    /// The selector parse detail copies in the two public error carriers disagreed.
+    #[error("invalid-selector diagnostic and core_details selector_parse values must match")]
+    MismatchedSelectorParseDetails,
+}
+
+pub(super) fn validate_message_bytes(
+    field: &'static str,
+    value: &str,
+) -> Result<(), ContractError> {
+    let received = value.len();
+    if received <= MAX_INTEROP_MESSAGE_BYTES {
+        Ok(())
+    } else {
+        Err(ContractError::MessageTooLong {
+            field,
+            maximum: MAX_INTEROP_MESSAGE_BYTES,
+            received,
+        })
+    }
 }
 
 pub(super) fn validate_schema_identity(

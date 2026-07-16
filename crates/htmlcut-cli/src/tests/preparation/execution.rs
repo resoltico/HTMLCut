@@ -153,7 +153,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     );
     assert_eq!(preview_text.exit_code, EXIT_CODE_USAGE);
     assert!(preview_text.stdout.is_none());
-    assert!(preview_text.stderr[0].contains("Invalid selector"));
+    assert!(preview_text.stderr[0].contains("CSS selector is invalid."));
 
     let preview_json = execute_preview(
         PreparedPreview::from_select(InspectSelectArgs {
@@ -282,7 +282,7 @@ fn execution_paths_cover_direct_success_and_failure_variants() {
     );
     assert_eq!(extract_text.exit_code, EXIT_CODE_USAGE);
     assert!(extract_text.stdout.is_none());
-    assert!(extract_text.stderr[0].contains("Invalid selector"));
+    assert!(extract_text.stderr[0].contains("CSS selector is invalid."));
 
     let bundle_dir = tempdir.path().join("bundle out");
     let extract_success = execute_extraction(

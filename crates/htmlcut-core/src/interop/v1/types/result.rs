@@ -10,9 +10,10 @@ use super::super::stable_json::digest_stable_json_omitting_field;
 use super::plan::{Output, SelectionMode, StrategyKind};
 use super::shared::{
     ContractError, ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, INTEROP_V1_PROFILE, RESULT_SCHEMA_NAME,
-    RESULT_SCHEMA_VERSION, validate_schema_identity, validate_sha256_hex,
+    RESULT_SCHEMA_VERSION, validate_message_bytes, validate_schema_identity, validate_sha256_hex,
 };
 use crate::DisplayedHttpUrl;
+use crate::selector_parse::validate_selector_parse_details;
 
 macro_rules! interop_diagnostic_codes {
     (
@@ -157,6 +158,7 @@ pub struct InteropDiagnostic {
     /// Stable interop diagnostic code.
     pub code: InteropDiagnosticCode,
     /// Human-readable diagnostic message.
+    #[schemars(length(max = 1024))]
     pub message: String,
     /// Optional structured details for automation and debugging.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,6 +173,12 @@ impl From<&crate::Diagnostic> for InteropDiagnostic {
             message: value.message.clone(),
             details: value.details.clone(),
         }
+    }
+}
+
+impl InteropDiagnostic {
+    fn validate_body(&self) -> Result<(), ContractError> {
+        validate_message_bytes("diagnostic.message", &self.message)
     }
 }
 
@@ -406,6 +414,10 @@ impl InteropResult {
         validate_sha256_hex("plan_digest_sha256", &self.plan_digest_sha256)?;
         self.output.validate_for_strategy(self.strategy_kind)?;
 
+        for diagnostic in &self.diagnostics {
+            diagnostic.validate_body()?;
+        }
+
         if self.candidate_count == 0 {
             return Err(ContractError::ZeroCandidateCount);
         }
@@ -592,6 +604,7 @@ pub struct InteropError {
     /// Interop error code.
     pub error_code: ErrorCode,
     /// Human-readable error summary.
+    #[schemars(length(max = 1024))]
     pub message: String,
     /// Strategy kind when one was known.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -640,6 +653,70 @@ impl InteropError {
             INTEROP_V1_PROFILE,
         )?;
         validate_sha256_hex("plan_digest_sha256", &self.plan_digest_sha256)?;
+        validate_message_bytes("message", &self.message)?;
+        for diagnostic in &self.diagnostics {
+            diagnostic.validate_body()?;
+        }
+        self.validate_invalid_selector_contract()?;
+        Ok(())
+    }
+
+    fn validate_invalid_selector_contract(&self) -> Result<(), ContractError> {
+        let matching_diagnostics = self
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == InteropDiagnosticCode::InvalidSelector)
+            .collect::<Vec<_>>();
+        let core_diagnostic_code = self
+            .details
+            .get("core_diagnostic_code")
+            .and_then(Value::as_str);
+        let identifies_invalid_selector = !matching_diagnostics.is_empty()
+            || core_diagnostic_code == Some(InteropDiagnosticCode::InvalidSelector.as_str());
+
+        if !identifies_invalid_selector {
+            return Ok(());
+        }
+
+        if core_diagnostic_code != Some(InteropDiagnosticCode::InvalidSelector.as_str()) {
+            return Err(ContractError::InvalidSelectorCoreDiagnostic);
+        }
+        if matching_diagnostics.len() != 1 {
+            return Err(ContractError::InvalidSelectorDiagnosticCardinality {
+                received: matching_diagnostics.len(),
+            });
+        }
+
+        let diagnostic_details = matching_diagnostics[0].details.as_ref().ok_or(
+            ContractError::InvalidSelectorParseDetails {
+                carrier: "diagnostic.details",
+                reason: "selector_parse is required",
+            },
+        )?;
+        let diagnostic_selector_parse = validate_selector_parse_details(diagnostic_details)
+            .map_err(|reason| ContractError::InvalidSelectorParseDetails {
+                carrier: "diagnostic.details",
+                reason,
+            })?;
+        let core_details =
+            self.details
+                .get("core_details")
+                .ok_or(ContractError::InvalidSelectorParseDetails {
+                    carrier: "details.core_details",
+                    reason: "selector_parse is required",
+                })?;
+        let core_selector_parse =
+            validate_selector_parse_details(core_details).map_err(|reason| {
+                ContractError::InvalidSelectorParseDetails {
+                    carrier: "details.core_details",
+                    reason,
+                }
+            })?;
+
+        if diagnostic_selector_parse != core_selector_parse {
+            return Err(ContractError::MismatchedSelectorParseDetails);
+        }
+
         Ok(())
     }
 

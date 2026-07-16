@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "11.0.0"
+  version: "11.0.1"
   domain: DEPENDENCY
-  updated: "2026-07-15"
+  updated: "2026-07-16"
 RETRIEVAL_HINTS:
   keywords: [local dependency patch, vendored dependency stack, scraper, selectors, html5ever, markup5ever, servo_arc, tendril, miri, strict provenance]
   questions: ["why does HTMLCut vendor the selector and parser stack locally?", "how do I verify the local dependency patches?", "when can the local overrides be removed?"]

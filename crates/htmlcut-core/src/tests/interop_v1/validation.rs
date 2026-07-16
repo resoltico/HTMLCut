@@ -632,3 +632,194 @@ fn interop_result_validation_covers_strategy_specific_payload_invariants() {
         }
     ));
 }
+
+#[test]
+fn interop_validation_enforces_bounded_messages_and_closed_selector_parse_details() {
+    let selector_parse = selector_parse_details(1, 1, "invalid_attribute_selector");
+    let valid_error = invalid_selector_interop_error(selector_parse.clone(), selector_parse)
+        .with_computed_digest()
+        .expect("valid invalid-selector error");
+    assert!(valid_error.validate().is_ok());
+
+    let mut missing = valid_error.clone();
+    missing.diagnostics[0].details = None;
+    assert!(matches!(
+        missing.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut malformed = valid_error.clone();
+    malformed.diagnostics[0].details = Some(json!({"selector_parse": {"line": 1}}));
+    assert!(matches!(
+        malformed.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut replaced_required_field = valid_error.clone();
+    replaced_required_field.diagnostics[0].details = Some(json!({
+        "selector_parse": {
+            "line": 1,
+            "column_utf16": 1,
+            "unexpected": "invalid_attribute_selector",
+        }
+    }));
+    assert!(matches!(
+        replaced_required_field.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut non_object = valid_error.clone();
+    non_object.diagnostics[0].details = Some(json!({"selector_parse": "invalid"}));
+    assert!(matches!(
+        non_object.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut zero_line = valid_error.clone();
+    zero_line.diagnostics[0].details =
+        Some(selector_parse_details(0, 1, "invalid_attribute_selector"));
+    assert!(matches!(
+        zero_line.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut zero_column = valid_error.clone();
+    zero_column.diagnostics[0].details =
+        Some(selector_parse_details(1, 0, "invalid_attribute_selector"));
+    assert!(matches!(
+        zero_column.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut unknown_class = valid_error.clone();
+    unknown_class.diagnostics[0].details = Some(selector_parse_details(1, 1, "not_a_class"));
+    assert!(matches!(
+        unknown_class.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails { .. })
+    ));
+
+    let mut mismatch = valid_error.clone();
+    mismatch.details.insert(
+        "core_details".to_owned(),
+        selector_parse_details(2, 1, "invalid_attribute_selector"),
+    );
+    assert!(matches!(
+        mismatch.digest_sha256(),
+        Err(ContractError::MismatchedSelectorParseDetails)
+    ));
+
+    let mut duplicate_diagnostic = valid_error.clone();
+    duplicate_diagnostic
+        .diagnostics
+        .push(duplicate_diagnostic.diagnostics[0].clone());
+    assert!(matches!(
+        duplicate_diagnostic.digest_sha256(),
+        Err(ContractError::InvalidSelectorDiagnosticCardinality { received: 2 })
+    ));
+
+    let mut no_matching_diagnostic = valid_error.clone();
+    no_matching_diagnostic.diagnostics.clear();
+    assert!(matches!(
+        no_matching_diagnostic.digest_sha256(),
+        Err(ContractError::InvalidSelectorDiagnosticCardinality { received: 0 })
+    ));
+
+    let mut missing_core_diagnostic = valid_error.clone();
+    missing_core_diagnostic
+        .details
+        .remove("core_diagnostic_code");
+    assert!(matches!(
+        missing_core_diagnostic.digest_sha256(),
+        Err(ContractError::InvalidSelectorCoreDiagnostic)
+    ));
+
+    let mut missing_core_details = valid_error.clone();
+    missing_core_details.details.remove("core_details");
+    assert!(matches!(
+        missing_core_details.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails {
+            carrier: "details.core_details",
+            ..
+        })
+    ));
+
+    let mut malformed_core_details = valid_error.clone();
+    malformed_core_details.details.insert(
+        "core_details".to_owned(),
+        json!({"selector_parse": {"line": 1}}),
+    );
+    assert!(matches!(
+        malformed_core_details.digest_sha256(),
+        Err(ContractError::InvalidSelectorParseDetails {
+            carrier: "details.core_details",
+            ..
+        })
+    ));
+
+    let oversized = "x".repeat(1025);
+    let root_message_error = InteropError::new(
+        TEST_PLAN_DIGEST_SHA256,
+        ErrorCode::InternalError,
+        oversized.clone(),
+        None,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    assert!(matches!(
+        root_message_error.digest_sha256(),
+        Err(ContractError::MessageTooLong {
+            field: "message",
+            ..
+        })
+    ));
+
+    let diagnostic_message_error = InteropError::new(
+        TEST_PLAN_DIGEST_SHA256,
+        ErrorCode::NoMatch,
+        "No matches were found.",
+        None,
+        BTreeMap::new(),
+        vec![InteropDiagnostic {
+            level: InteropDiagnosticLevel::Error,
+            code: InteropDiagnosticCode::NoMatch,
+            message: oversized.clone(),
+            details: None,
+        }],
+    );
+    assert!(matches!(
+        diagnostic_message_error.digest_sha256(),
+        Err(ContractError::MessageTooLong {
+            field: "diagnostic.message",
+            ..
+        })
+    ));
+
+    let result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        selector_selected_matches(),
+        vec![InteropDiagnostic {
+            level: InteropDiagnosticLevel::Warning,
+            code: InteropDiagnosticCode::EffectiveBaseUrlUnresolved,
+            message: oversized,
+            details: None,
+        }],
+    );
+    assert!(matches!(
+        result.digest_sha256(),
+        Err(ContractError::MessageTooLong {
+            field: "diagnostic.message",
+            ..
+        })
+    ));
+}

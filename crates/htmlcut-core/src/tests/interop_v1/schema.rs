@@ -245,6 +245,53 @@ fn interop_result_schema_enforces_h5_evidence_boundaries_and_marks_the_runtime_b
 }
 
 #[test]
+fn interop_error_and_result_schemas_publish_message_length_limits() {
+    let oversized = "x".repeat(1025);
+    let error = InteropError::new(
+        TEST_PLAN_DIGEST_SHA256,
+        ErrorCode::InternalError,
+        oversized.clone(),
+        None,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    let error_document = serde_json::to_value(&error).expect("error JSON");
+    assert!(!interop_schema_accepts(
+        v1::ERROR_SCHEMA_NAME,
+        v1::ERROR_SCHEMA_VERSION,
+        &error_document,
+    ));
+
+    let result = InteropResult::new(
+        ResultExecution::new(
+            TEST_PLAN_DIGEST_SHA256,
+            StrategyKind::CssSelector,
+            SelectionMode::Single,
+            Output::text(),
+            1,
+        ),
+        ResultSource {
+            input_base_url: None,
+            effective_base_url: None,
+            document_title: None,
+        },
+        selector_selected_matches(),
+        vec![InteropDiagnostic {
+            level: InteropDiagnosticLevel::Warning,
+            code: InteropDiagnosticCode::EffectiveBaseUrlUnresolved,
+            message: oversized,
+            details: None,
+        }],
+    );
+    let result_document = serde_json::to_value(&result).expect("result JSON");
+    assert!(!interop_schema_accepts(
+        v1::RESULT_SCHEMA_NAME,
+        v1::RESULT_SCHEMA_VERSION,
+        &result_document,
+    ));
+}
+
+#[test]
 fn interop_public_helpers_cover_selection_modes_and_html_input_paths() {
     assert!(selector_plan().validate().is_ok());
     assert_eq!(Selection::single().mode(), SelectionMode::Single);

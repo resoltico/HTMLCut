@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: CLI_LIBRARY
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [cli library, htmlcut_cli, run, command, exit codes, report schemas, typed reports, clap command]
   questions: ["what does the public htmlcut-cli crate export?", "when should I use htmlcut_cli::run instead of htmlcut_core?", "how do I consume typed catalog or schema reports from htmlcut-cli?"]

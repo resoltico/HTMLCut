@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::{Diagnostic, DiagnosticCode};
 
@@ -116,33 +116,94 @@ pub(super) fn internal_adapter_error(
 }
 
 pub(super) fn finalize_error(error: InteropError) -> InteropError {
-    let plan_digest_sha256 = error.plan_digest_sha256.clone();
-    let strategy_kind = error.strategy_kind;
-    let diagnostics = error.diagnostics.clone();
-
-    match error.with_computed_digest() {
+    match error.clone().with_computed_digest() {
         Ok(error) => error,
-        Err(contract_error) => {
-            let mut details = BTreeMap::new();
-            details.insert(
-                "contract_error".to_owned(),
-                Value::from(contract_error.to_string()),
-            );
-
-            let fallback = InteropError::new(
-                sanitized_plan_digest_sha256(&plan_digest_sha256),
-                ErrorCode::InternalError,
-                "HTMLCut could not finalize its interop error payload.",
-                strategy_kind,
-                details,
-                diagnostics,
-            );
-
-            fallback
-                .with_computed_digest()
-                .expect("sanitized fallback interop error payload must digest")
-        }
+        Err(contract_error) => sanitized_finalization_error(error, &contract_error),
     }
+}
+
+fn sanitized_finalization_error(
+    error: InteropError,
+    contract_error: &ContractError,
+) -> InteropError {
+    let mut diagnostic_code_counts = BTreeMap::<String, u64>::new();
+    for diagnostic in &error.diagnostics {
+        let count = diagnostic_code_counts
+            .entry(diagnostic.code.as_str().to_owned())
+            .or_default();
+        *count = count.saturating_add(1);
+    }
+    let diagnostic_code_counts = diagnostic_code_counts
+        .into_iter()
+        .map(|(code, count)| (code, Value::from(count)))
+        .collect::<serde_json::Map<_, _>>();
+    let mut details = BTreeMap::new();
+    details.insert(
+        "interop_contract_rejection".to_owned(),
+        json!({
+            "code": finalization_rejection_code(contract_error),
+            "rejected_diagnostic_count": error.diagnostics.len(),
+            "rejected_diagnostic_code_counts": diagnostic_code_counts,
+        }),
+    );
+
+    let fallback = InteropError::new(
+        sanitized_plan_digest_sha256(&error.plan_digest_sha256),
+        ErrorCode::InternalError,
+        "HTMLCut could not finalize its interop error payload.",
+        error.strategy_kind,
+        details,
+        Vec::new(),
+    );
+
+    finalize_sanitized_fallback(fallback)
+}
+
+fn finalize_sanitized_fallback(fallback: InteropError) -> InteropError {
+    match fallback.clone().with_computed_digest() {
+        Ok(fallback) => fallback,
+        Err(_) => last_resort_finalization_error(),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn finalize_sanitized_fallback_for_tests(fallback: InteropError) -> InteropError {
+    finalize_sanitized_fallback(fallback)
+}
+
+fn finalization_rejection_code(error: &ContractError) -> &'static str {
+    match error {
+        ContractError::MessageTooLong { .. } => "message_too_long",
+        ContractError::InvalidSelectorDiagnosticCardinality { .. } => {
+            "invalid_selector_diagnostic_cardinality"
+        }
+        ContractError::InvalidSelectorCoreDiagnostic => "invalid_selector_core_diagnostic",
+        ContractError::InvalidSelectorParseDetails { .. } => "invalid_selector_parse_details",
+        ContractError::MismatchedSelectorParseDetails => "mismatched_selector_parse_details",
+        _ => "invalid_interop_contract",
+    }
+}
+
+fn last_resort_finalization_error() -> InteropError {
+    let mut details = BTreeMap::new();
+    details.insert(
+        "interop_contract_rejection".to_owned(),
+        json!({
+            "code": "fallback_finalization_failed",
+            "rejected_diagnostic_count": 0,
+            "rejected_diagnostic_code_counts": {},
+        }),
+    );
+    let fallback = InteropError::new(
+        ZERO_SHA256,
+        ErrorCode::InternalError,
+        "HTMLCut could not finalize its interop error payload.",
+        None,
+        details,
+        Vec::new(),
+    );
+
+    fallback.clone().with_computed_digest().unwrap_or(fallback)
 }
 
 fn sanitized_plan_digest_sha256(value: &str) -> String {
