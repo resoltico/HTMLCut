@@ -1,12 +1,16 @@
 #![forbid(unsafe_code)]
 
-use std::process::Command;
-
 use serde_json::Value;
+
+mod support;
+
+use support::IsolatedArtifacts;
 
 #[test]
 fn structure_gate_json_is_one_machine_readable_report() {
-    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+    let artifacts = IsolatedArtifacts::new();
+    let output = artifacts
+        .xtask_command()
         .args(["structure", "check", "--format", "json"])
         .output()
         .expect("run structured source gate");
@@ -31,17 +35,26 @@ fn structure_gate_json_is_one_machine_readable_report() {
             .as_array()
             .is_some_and(|steps| !steps.is_empty())
     );
+    let report_path = report["report_path"]
+        .as_str()
+        .map(std::path::Path::new)
+        .expect("JSON report path");
     assert!(
-        report["report_path"]
-            .as_str()
-            .is_some_and(|path| std::path::Path::new(path).is_file()),
+        report_path.is_file(),
         "JSON report must point to retained evidence"
+    );
+    assert!(
+        report_path.starts_with(artifacts.gate_report_dir()),
+        "integration-test gate evidence must remain isolated: {}",
+        report_path.display()
     );
 }
 
 #[test]
 fn rejected_gate_input_still_emits_a_machine_readable_failure_report() {
-    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+    let artifacts = IsolatedArtifacts::new();
+    let output = artifacts
+        .xtask_command()
         .args(["fuzz-smoke", "--target", "not-real", "--format", "json"])
         .output()
         .expect("run rejected fuzz smoke");
@@ -57,4 +70,13 @@ fn rejected_gate_input_still_emits_a_machine_readable_failure_report() {
             .is_some_and(|message| message.contains("unknown fuzz target `not-real`"))
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("unknown fuzz target `not-real`"));
+    let report_path = report["report_path"]
+        .as_str()
+        .map(std::path::Path::new)
+        .expect("JSON report path");
+    assert!(
+        report_path.starts_with(artifacts.gate_report_dir()),
+        "integration-test gate evidence must remain isolated: {}",
+        report_path.display()
+    );
 }

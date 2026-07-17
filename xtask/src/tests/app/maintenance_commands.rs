@@ -140,18 +140,20 @@ fn fuzz_smoke_propagates_a_target_execution_failure() {
 fn main_entry_with_rejects_unknown_fuzz_targets_before_tool_preflight() {
     let repo_root = tempdir().expect("repo tempdir");
 
-    let error = main_entry_with(
-        repo_root.path(),
-        ["xtask", "fuzz-smoke", "--target", "not-real"],
-    )
-    .expect_err("unknown fuzz target should fail before preflight");
+    with_isolated_target_dir(repo_root.path(), || {
+        let error = main_entry_with(
+            repo_root.path(),
+            ["xtask", "fuzz-smoke", "--target", "not-real"],
+        )
+        .expect_err("unknown fuzz target should fail before preflight");
 
-    let message = error.to_string();
-    assert!(message.contains("unknown fuzz target `not-real`"));
-    assert!(
-        !message.contains("missing prerequisites"),
-        "unknown target should not depend on tool preflight: {message}"
-    );
+        let message = error.to_string();
+        assert!(message.contains("unknown fuzz target `not-real`"));
+        assert!(
+            !message.contains("missing prerequisites"),
+            "unknown target should not depend on tool preflight: {message}"
+        );
+    });
 }
 
 #[test]

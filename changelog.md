@@ -21,6 +21,7 @@ Notable changes to this project are documented in this file. The format is based
 - Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
 - Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
 - Semver-baseline refresh now captures the published vendored selector/parser stack with the tagged `htmlcut-core` source and restores its exact fork identities in the baseline manifest, so compatibility checks compile against the API users actually receive instead of incompatible upstream registry substitutes.
+- Maintainer-tool tests, including spawned integration binaries, now isolate their report roots, so retained operational evidence no longer contains fixture-only zero-step failures that can be mistaken for real gate runs.
 
 ## [11.0.0] - 2026-07-15
 

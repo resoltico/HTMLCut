@@ -5,6 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use xtask::{assert_known_fuzz_target, fuzz_smoke_targets};
 
+mod support;
+
+use support::IsolatedArtifacts;
+
 fn run_xtask_help(args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
         .args(args)
@@ -145,7 +149,9 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
 
 #[test]
 fn invalid_fuzz_target_errors_readably_without_debug_quotes() {
-    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+    let artifacts = IsolatedArtifacts::new();
+    let output = artifacts
+        .xtask_command()
         .args(["fuzz-smoke", "--target", "not-real"])
         .output()
         .expect("run xtask invalid fuzz target");
@@ -155,6 +161,10 @@ fn invalid_fuzz_target_errors_readably_without_debug_quotes() {
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
     assert!(stderr.contains("xtask: unknown fuzz target `not-real`"));
     assert!(!stderr.contains("xtask: \"unknown fuzz target"));
+    assert!(
+        artifacts.gate_report_dir().is_dir(),
+        "rejected gate evidence must remain in the test-owned artifact root"
+    );
 }
 
 #[test]

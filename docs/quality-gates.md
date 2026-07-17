@@ -125,6 +125,9 @@ The complete stdout and stderr streams live outside the worktree under the sibli
 root to the artifact-hygiene budget, includes it in `cargo xtask hygiene report`, and removes it
 only with `cargo xtask hygiene clean --mode rebuildable`. Use `--verbose` to replay every retained
 command stream deliberately; do not treat raw successful-command output as routine terminal input.
+That root contains operational invocations only: maintainer-tool tests, including spawned
+integration binaries, isolate their own evidence so a deliberately failing test case cannot
+masquerade as a real gate failure.
 
 There is no reliable cross-tool definition of every warning or error string. The report therefore
 keeps the complete source streams as authoritative evidence, extracts high-confidence Rust-style
