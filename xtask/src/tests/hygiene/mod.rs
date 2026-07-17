@@ -11,5 +11,6 @@ fn with_test_artifact_overrides<T>(repo_root: &Path, operation: impl FnOnce() ->
 }
 
 mod artifacts;
+#[cfg(unix)]
 mod failures_and_sizes;
 mod reports;

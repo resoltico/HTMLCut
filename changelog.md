@@ -18,6 +18,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 - Quiet maintainer-command execution now preserves both output streams and reveals bounded diagnostics when a command fails instead of discarding the information needed to diagnose the gate.
+- Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
 - Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
 
 ## [11.0.0] - 2026-07-15
