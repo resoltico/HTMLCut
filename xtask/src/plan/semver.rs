@@ -39,9 +39,12 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
     format!("{cargo_toml}\n[workspace]\n")
 }
 
-/// Rewrites repo-owned vendored selector/parser dependencies back to registry coordinates for
-/// semver-baseline packaging.
-pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> DynResult<String> {
+/// Rewrites vendored dependencies only for Cargo's temporary package-normalization input.
+///
+/// The resulting manifest is never the checked-in baseline: after Cargo has produced the core
+/// package layout, the refresh flow restores the published vendored dependency paths and copies
+/// their tagged source into that baseline.
+pub fn sanitize_snapshot_workspace_manifest_for_packaging(cargo_toml: &str) -> DynResult<String> {
     let mut manifest = toml::from_str::<Value>(cargo_toml)
         .map_err(|error| crate::model::XtaskError::invalid_toml("snapshot Cargo.toml", error))?;
     let Some(workspace) = manifest.get_mut("workspace").and_then(Value::as_table_mut) else {
@@ -62,6 +65,66 @@ pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> Dy
     }
 
     Ok(toml::to_string_pretty(&manifest)?)
+}
+
+/// Returns whether a released workspace ships the vendored selector/parser stack.
+pub fn snapshot_uses_vendored_selector_stack(cargo_toml: &str) -> DynResult<bool> {
+    let manifest = toml::from_str::<Value>(cargo_toml)
+        .map_err(|error| crate::model::XtaskError::invalid_toml("snapshot Cargo.toml", error))?;
+    let Some(workspace) = manifest.get("workspace").and_then(Value::as_table) else {
+        return Ok(false);
+    };
+    let Some(dependencies) = workspace.get("dependencies").and_then(Value::as_table) else {
+        return Ok(false);
+    };
+
+    Ok(dependencies
+        .values()
+        .any(is_vendored_selector_stack_dependency))
+}
+
+/// Restores HTMLCut's published vendored selector-stack dependencies in a packaged baseline.
+///
+/// Cargo package normalization removes path dependencies, but `htmlcut-core`'s public API is
+/// compiled against the repository-owned `htmlcut-*` forks. The checked-in semver baseline must
+/// therefore point at its copied tagged forks rather than an upstream registry lookalike.
+pub fn restore_vendored_dependency_paths_in_baseline_manifest(
+    cargo_toml: &str,
+) -> DynResult<Option<String>> {
+    let mut manifest = toml::from_str::<Value>(cargo_toml)
+        .map_err(|error| crate::model::XtaskError::invalid_toml("baseline Cargo.toml", error))?;
+    let Some(dependencies) = manifest
+        .get_mut("dependencies")
+        .and_then(Value::as_table_mut)
+    else {
+        return Ok(None);
+    };
+
+    let restored = [
+        (
+            "scraper",
+            "htmlcut-scraper",
+            "vendor/scraper",
+            "0.27.0-htmlcut.1",
+        ),
+        (
+            "selectors",
+            "htmlcut-selectors",
+            "vendor/selectors",
+            "0.38.0-htmlcut.1",
+        ),
+    ]
+    .into_iter()
+    .filter(|(alias, package, path, version)| {
+        restore_vendored_baseline_dependency(dependencies, alias, package, path, version)
+    })
+    .count();
+
+    if restored == 0 {
+        return Ok(None);
+    }
+
+    Ok(Some(toml::to_string_pretty(&manifest)?))
 }
 
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.
@@ -100,7 +163,7 @@ fn sanitize_vendored_workspace_dependency_table(table: &mut toml::Table) {
         return;
     };
 
-    if !package_name.starts_with("htmlcut-") || !path.starts_with("patches/rust/") {
+    if !is_vendored_selector_stack_package(package_name, path) {
         return;
     }
 
@@ -116,10 +179,47 @@ fn sanitize_vendored_workspace_dependency_table(table: &mut toml::Table) {
     });
 }
 
+fn is_vendored_selector_stack_dependency(dependency: &Value) -> bool {
+    let Some(table) = dependency.as_table() else {
+        return false;
+    };
+    let Some(package_name) = table.get("package").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(path) = table.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    is_vendored_selector_stack_package(package_name, path)
+}
+
+fn is_vendored_selector_stack_package(package_name: &str, path: &str) -> bool {
+    package_name.starts_with("htmlcut-") && path.starts_with("patches/rust/")
+}
+
 fn unvendor_dependency_version(version: &str) -> String {
     version
         .split("-htmlcut.")
         .next()
         .unwrap_or(version)
         .to_owned()
+}
+
+fn restore_vendored_baseline_dependency(
+    dependencies: &mut toml::Table,
+    alias: &str,
+    package: &str,
+    path: &str,
+    version: &str,
+) -> bool {
+    let Some(dependency) = dependencies.get_mut(alias) else {
+        return false;
+    };
+    let Some(table) = dependency.as_table_mut() else {
+        return false;
+    };
+
+    table.insert("package".to_owned(), Value::String(package.to_owned()));
+    table.insert("path".to_owned(), Value::String(path.to_owned()));
+    table.insert("version".to_owned(), Value::String(version.to_owned()));
+    true
 }

@@ -105,9 +105,21 @@ pub fn with_workspace_stub(cargo_toml: &str) -> String {
     semver::with_workspace_stub(cargo_toml)
 }
 
-/// Rewrites vendored workspace dependencies back to registry coordinates for semver packaging.
-pub fn sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml: &str) -> DynResult<String> {
-    semver::sanitize_snapshot_workspace_manifest_for_baseline(cargo_toml)
+/// Rewrites vendored workspace dependencies only for temporary semver package normalization.
+pub fn sanitize_snapshot_workspace_manifest_for_packaging(cargo_toml: &str) -> DynResult<String> {
+    semver::sanitize_snapshot_workspace_manifest_for_packaging(cargo_toml)
+}
+
+/// Returns whether a released workspace ships the vendored selector/parser stack.
+pub fn snapshot_uses_vendored_selector_stack(cargo_toml: &str) -> DynResult<bool> {
+    semver::snapshot_uses_vendored_selector_stack(cargo_toml)
+}
+
+/// Restores copied published vendored dependency paths in one semver baseline manifest.
+pub fn restore_vendored_dependency_paths_in_baseline_manifest(
+    cargo_toml: &str,
+) -> DynResult<Option<String>> {
+    semver::restore_vendored_dependency_paths_in_baseline_manifest(cargo_toml)
 }
 
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.

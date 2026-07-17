@@ -216,9 +216,26 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                 let snapshot_root = PathBuf::from(args[3]);
                 fs::create_dir_all(snapshot_root.join("crates/htmlcut-core"))
                     .expect("create snapshot crate dir");
+                for directory in [
+                    "html5ever",
+                    "markup5ever",
+                    "scraper",
+                    "selectors",
+                    "servo_arc",
+                    "tendril",
+                ] {
+                    let vendor_dir = snapshot_root.join("patches/rust").join(directory);
+                    fs::create_dir_all(&vendor_dir).expect("create snapshot vendor dir");
+                    fs::write(vendor_dir.join("source.rs"), directory)
+                        .expect("write snapshot vendor source");
+                    fs::create_dir_all(vendor_dir.join("nested"))
+                        .expect("create nested snapshot vendor dir");
+                    fs::write(vendor_dir.join("nested/source.rs"), directory)
+                        .expect("write nested snapshot vendor source");
+                }
                 fs::write(
                     snapshot_root.join("Cargo.toml"),
-                    "[workspace]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }\n",
+                    "[workspace]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }\nselectors = { package = \"htmlcut-selectors\", path = \"patches/rust/selectors\", version = \"0.38.0-htmlcut.1\" }\n",
                 )
                 .expect("write snapshot workspace Cargo.toml");
                 fs::write(
@@ -268,7 +285,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                 fs::create_dir_all(&extracted_dir).expect("create extracted dir");
                 fs::write(
                     extracted_dir.join("Cargo.toml"),
-                    packaged_manifest_for_override.borrow().as_str(),
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n\n[dependencies.scraper]\nversion = \"0.27.0\"\ndefault-features = false\nfeatures = [\"errors\"]\n\n[dependencies.selectors]\nversion = \"0.38.0\"\n",
                 )
                     .expect("write extracted manifest");
                 return Some(Ok(()));
@@ -292,6 +309,16 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
     assert!(refreshed_manifest.contains("version = \"4.2.0\""));
     assert!(!refreshed_manifest.contains("[dev-dependencies]"));
     assert!(refreshed_manifest.contains("\n[workspace]\n"));
+    assert!(refreshed_manifest.contains("package = \"htmlcut-scraper\""));
+    assert!(refreshed_manifest.contains("path = \"vendor/scraper\""));
+    assert!(refreshed_manifest.contains("package = \"htmlcut-selectors\""));
+    assert!(baseline_dir.join("vendor/scraper/source.rs").exists());
+    assert!(
+        baseline_dir
+            .join("vendor/scraper/nested/source.rs")
+            .exists()
+    );
+    assert!(baseline_dir.join("vendor/tendril/source.rs").exists());
     assert!(refreshed_provenance.contains("schema = \"htmlcut.semver_baseline_provenance@1\""));
     assert!(refreshed_provenance.contains("package = \"htmlcut-core\""));
     assert!(refreshed_provenance.contains("package_version = \"4.2.0\""));

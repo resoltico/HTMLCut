@@ -10,12 +10,22 @@ use crate::gate_report::{GateOutputOptions, with_gate_report};
 use crate::{
     CommandSpec, CommandStdout, CommandToolchainEnv, DEFAULT_FUZZ_SMOKE_RUNS, DynResult,
     HygieneCleanMode, HygieneReportFormat, check_source_structure, clean_hygiene, ensure_hygiene,
-    hygiene_report, render_hygiene_report, report_source_structure, run_outdated_check, run_spec,
-    sanitize_snapshot_workspace_manifest_for_baseline, strip_dev_dependency_tables,
-    with_workspace_stub, workspace_version,
+    hygiene_report, render_hygiene_report, report_source_structure,
+    restore_vendored_dependency_paths_in_baseline_manifest, run_outdated_check, run_spec,
+    sanitize_snapshot_workspace_manifest_for_packaging, snapshot_uses_vendored_selector_stack,
+    strip_dev_dependency_tables, with_workspace_stub, workspace_version,
 };
 
 mod gates;
+
+const VENDORED_SELECTOR_STACK_DIRECTORIES: &[&str] = &[
+    "html5ever",
+    "markup5ever",
+    "scraper",
+    "selectors",
+    "servo_arc",
+    "tendril",
+];
 
 use self::gates::{
     run_check, run_ci_rust_gate, run_coverage, run_fuzz_smoke, run_miri, run_semver_check,
@@ -305,8 +315,15 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
         .join(format!("htmlcut-core-{version}.crate"));
 
     let snapshot_workspace_cargo_toml = fs::read_to_string(&snapshot_workspace_manifest)?;
+    let published_vendored_stack = snapshot.path().join("published-vendored-selector-stack");
+    if snapshot_uses_vendored_selector_stack(&snapshot_workspace_cargo_toml)? {
+        copy_published_vendored_selector_stack(
+            &snapshot_root.join("patches/rust"),
+            &published_vendored_stack,
+        )?;
+    }
     let sanitized_workspace_manifest =
-        sanitize_snapshot_workspace_manifest_for_baseline(&snapshot_workspace_cargo_toml)?;
+        sanitize_snapshot_workspace_manifest_for_packaging(&snapshot_workspace_cargo_toml)?;
     fs::write(&snapshot_workspace_manifest, sanitized_workspace_manifest)?;
 
     let snapshot_cargo_toml = fs::read_to_string(&snapshot_manifest)?;
@@ -327,13 +344,58 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     let extract_baseline_spec = extract_baseline_command(&archive, &baseline_parent);
     run_spec(repo_root, &extract_baseline_spec)?;
 
-    let baseline_manifest = extracted_dir.join("Cargo.toml");
+    fs::rename(extracted_dir, &baseline_dir)?;
+    let baseline_manifest = baseline_dir.join("Cargo.toml");
     let cargo_toml = fs::read_to_string(&baseline_manifest)?;
-    fs::write(&baseline_manifest, with_workspace_stub(&cargo_toml))?;
-    fs::rename(extracted_dir, baseline_dir)?;
+    if let Some(restored_manifest) =
+        restore_vendored_dependency_paths_in_baseline_manifest(&cargo_toml)?
+    {
+        fs::write(&baseline_manifest, with_workspace_stub(&restored_manifest))?;
+        copy_published_vendored_selector_stack(
+            &published_vendored_stack,
+            &baseline_dir.join("vendor"),
+        )?;
+    } else {
+        fs::write(&baseline_manifest, with_workspace_stub(&cargo_toml))?;
+    }
     let provenance_path = baseline_parent.join("htmlcut-core").join("BASELINE.toml");
     let provenance = semver_baseline_provenance(git_ref, &version);
     fs::write(provenance_path, provenance)?;
+    Ok(())
+}
+
+fn copy_published_vendored_selector_stack(
+    source_stack_root: &Path,
+    destination_stack_root: &Path,
+) -> DynResult<()> {
+    for directory in VENDORED_SELECTOR_STACK_DIRECTORIES {
+        copy_directory_recursively(
+            &source_stack_root.join(directory),
+            &destination_stack_root.join(directory),
+        )?;
+    }
+    Ok(())
+}
+
+fn copy_directory_recursively(source: &Path, destination: &Path) -> DynResult<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let entry_type = entry.file_type()?;
+        if entry_type.is_dir() {
+            copy_directory_recursively(&source_path, &destination_path)?;
+        } else if entry_type.is_file() {
+            fs::copy(source_path, destination_path)?;
+        } else {
+            return Err(format!(
+                "published vendored selector-stack entry is neither a regular file nor directory: {}",
+                source_path.display()
+            )
+            .into());
+        }
+    }
     Ok(())
 }
 

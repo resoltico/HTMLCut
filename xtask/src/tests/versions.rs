@@ -323,7 +323,7 @@ fn with_workspace_stub_appends_once() {
 }
 
 #[test]
-fn sanitize_snapshot_workspace_manifest_for_baseline_rewrites_vendored_dependencies() {
+fn sanitize_snapshot_workspace_manifest_for_packaging_rewrites_vendored_dependencies() {
     let manifest = "\
 [workspace]
 resolver = \"3\"
@@ -333,7 +333,7 @@ scraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", vers
 serde = \"1\"
 ";
 
-    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(manifest)
+    let sanitized = sanitize_snapshot_workspace_manifest_for_packaging(manifest)
         .expect("sanitize vendored workspace manifest");
 
     assert!(sanitized.contains("[workspace.dependencies.scraper]"));
@@ -346,7 +346,7 @@ serde = \"1\"
 }
 
 #[test]
-fn sanitize_snapshot_workspace_manifest_for_baseline_leaves_unrelated_shapes_untouched() {
+fn sanitize_snapshot_workspace_manifest_for_packaging_leaves_unrelated_shapes_untouched() {
     let no_workspace = "[package]\nname = \"htmlcut-core\"";
     let workspace_without_dependencies = "[workspace]\nresolver = \"3\"";
     let incomplete_and_non_vendored = "\
@@ -362,17 +362,17 @@ wrong_path = { package = \"htmlcut-scraper\", path = \"vendor/scraper\", version
 missing_version = { package = \"htmlcut-markup5ever\", path = \"patches/rust/markup5ever\" }";
 
     assert_eq!(
-        sanitize_snapshot_workspace_manifest_for_baseline(no_workspace)
+        sanitize_snapshot_workspace_manifest_for_packaging(no_workspace)
             .expect("manifest without workspace should pass"),
         no_workspace
     );
     assert_eq!(
-        sanitize_snapshot_workspace_manifest_for_baseline(workspace_without_dependencies)
+        sanitize_snapshot_workspace_manifest_for_packaging(workspace_without_dependencies)
             .expect("workspace without dependencies should pass"),
         workspace_without_dependencies
     );
 
-    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(incomplete_and_non_vendored)
+    let sanitized = sanitize_snapshot_workspace_manifest_for_packaging(incomplete_and_non_vendored)
         .expect("sanitize incomplete and non-vendored manifest");
 
     assert!(sanitized.contains("serde = \"1\""));
@@ -384,7 +384,7 @@ missing_version = { package = \"htmlcut-markup5ever\", path = \"patches/rust/mar
 }
 
 #[test]
-fn sanitize_snapshot_workspace_manifest_for_baseline_drops_vendored_aliases_without_version() {
+fn sanitize_snapshot_workspace_manifest_for_packaging_drops_vendored_aliases_without_version() {
     let manifest = "\
 [workspace]
 resolver = \"3\"
@@ -393,12 +393,123 @@ resolver = \"3\"
 markup5ever = { package = \"htmlcut-markup5ever\", path = \"patches/rust/markup5ever\" }
 ";
 
-    let sanitized = sanitize_snapshot_workspace_manifest_for_baseline(manifest)
+    let sanitized = sanitize_snapshot_workspace_manifest_for_packaging(manifest)
         .expect("sanitize vendored dependency without version");
 
     assert!(sanitized.contains("[workspace.dependencies.markup5ever]"));
     assert!(!sanitized.contains("htmlcut-markup5ever"));
     assert!(!sanitized.contains("patches/rust/markup5ever"));
+}
+
+#[test]
+fn snapshot_uses_vendored_selector_stack_requires_one_complete_vendored_dependency() {
+    let no_workspace = "[package]\nname = \"htmlcut-core\"\n";
+    let workspace_without_dependencies = "[workspace]\nresolver = \"3\"\n";
+    let incomplete_dependencies = "\
+[workspace]
+
+[workspace.dependencies]
+plain = \"1\"
+missing_package = { path = \"patches/rust/scraper\" }
+missing_path = { package = \"htmlcut-scraper\" }
+wrong_package = { package = \"scraper\", path = \"patches/rust/scraper\" }
+wrong_path = { package = \"htmlcut-scraper\", path = \"vendor/scraper\" }
+";
+    let published_stack = "\
+[workspace]
+
+[workspace.dependencies]
+scraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\" }
+";
+
+    assert!(!snapshot_uses_vendored_selector_stack(no_workspace).expect("parse package manifest"));
+    assert!(
+        !snapshot_uses_vendored_selector_stack(workspace_without_dependencies)
+            .expect("parse workspace manifest")
+    );
+    assert!(
+        !snapshot_uses_vendored_selector_stack(incomplete_dependencies)
+            .expect("parse incomplete dependencies")
+    );
+    assert!(
+        snapshot_uses_vendored_selector_stack(published_stack)
+            .expect("recognize vendored selector stack")
+    );
+}
+
+#[test]
+fn restore_vendored_dependency_paths_in_baseline_manifest_reanchors_the_forked_api() {
+    let manifest = "\
+[package]
+name = \"htmlcut-core\"
+version = \"11.0.1\"
+
+[dependencies.scraper]
+version = \"0.27.0\"
+default-features = false
+features = [\"errors\"]
+
+[dependencies.selectors]
+version = \"0.38.0\"
+
+[dependencies.serde]
+version = \"1.0.228\"
+";
+
+    let restored = restore_vendored_dependency_paths_in_baseline_manifest(manifest)
+        .expect("restore vendored dependencies")
+        .expect("the manifest depends on the published selector stack");
+
+    assert!(restored.contains("package = \"htmlcut-scraper\""));
+    assert!(restored.contains("path = \"vendor/scraper\""));
+    assert!(restored.contains("version = \"0.27.0-htmlcut.1\""));
+    assert!(restored.contains("package = \"htmlcut-selectors\""));
+    assert!(restored.contains("path = \"vendor/selectors\""));
+    assert!(restored.contains("version = \"0.38.0-htmlcut.1\""));
+    assert!(restored.contains("features = [\"errors\"]"));
+    assert!(restored.contains("serde"));
+}
+
+#[test]
+fn restore_vendored_dependency_paths_in_baseline_manifest_skips_unrelated_packages() {
+    let manifest = "[package]\nname = \"htmlcut-core\"\nversion = \"11.0.1\"\n";
+
+    assert_eq!(
+        restore_vendored_dependency_paths_in_baseline_manifest(manifest)
+            .expect("parse baseline manifest"),
+        None
+    );
+}
+
+#[test]
+fn restore_vendored_dependency_paths_in_baseline_manifest_requires_table_dependencies() {
+    let missing_alias = "\
+[package]
+name = \"htmlcut-core\"
+version = \"11.0.1\"
+
+[dependencies]
+serde = \"1\"
+";
+    let non_table_alias = "\
+[package]
+name = \"htmlcut-core\"
+version = \"11.0.1\"
+
+[dependencies]
+scraper = \"0.27.0\"
+";
+
+    assert_eq!(
+        restore_vendored_dependency_paths_in_baseline_manifest(missing_alias)
+            .expect("parse dependencies without aliases"),
+        None
+    );
+    assert_eq!(
+        restore_vendored_dependency_paths_in_baseline_manifest(non_table_alias)
+            .expect("parse scalar dependency alias"),
+        None
+    );
 }
 
 #[test]

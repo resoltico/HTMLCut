@@ -118,15 +118,17 @@ git push
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
 cannot silently drift to unreleased local worktree state. The refresh flow strips test-only
 `dev-dependencies` tables from the released snapshot before packaging, so workspace-local
-maintainer helpers do not block the public-API baseline refresh. Because the released workspace
-ships repo-owned vendored selector/parser crates for downstream git consumers, the refresh flow
-also rewrites those temporary snapshot dependency coordinates back to registry identities before
-packaging so the isolated semver baseline remains buildable as a standalone published crate
-snapshot. It rewrites `semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref,
-package name, package version, and the exact refresh command so the checked-in snapshot carries
-its own provenance cue. The packaging step uses an isolated temp-owned Cargo target/build root
-rather than assuming the snapshot writes to `target/package`, so repo-owned Cargo artifact layout
-settings and ambient operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
+maintainer helpers do not block the public-API baseline refresh. Cargo needs a temporary
+registry-shaped workspace to normalize the core package, but that intermediate never becomes the
+baseline: the refresh restores the published `htmlcut-*` selector/parser fork identities and copies
+their complete tagged source graph into `semver-baseline/htmlcut-core/vendor/`. The isolated
+baseline therefore remains buildable while comparing against the exact dependency API that Git/path
+consumers receive, not an upstream registry lookalike. It rewrites
+`semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref, package name, package
+version, and the exact refresh command so the checked-in snapshot carries its own provenance cue.
+The packaging step uses an isolated temp-owned Cargo target/build root rather than assuming the
+snapshot writes to `target/package`, so repo-owned Cargo artifact layout settings and ambient
+operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
 
 The full maintainer gate is mandatory after that commit and before the direct `main` push. It
 proves the committed closeout state, rather than a dirty baseline snapshot that `cargo xtask check`

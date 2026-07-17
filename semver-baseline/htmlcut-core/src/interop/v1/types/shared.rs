@@ -11,9 +11,13 @@ pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
 pub const PLAN_SCHEMA_VERSION: u32 = 7;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 7;
+pub const RESULT_SCHEMA_VERSION: u32 = 8;
 /// Schema version for the extraction error.
-pub const ERROR_SCHEMA_VERSION: u32 = 2;
+pub const ERROR_SCHEMA_VERSION: u32 = 3;
+/// Exact public message for an invalid CSS selector.
+pub(crate) const INVALID_SELECTOR_MESSAGE: &str = "CSS selector is invalid.";
+/// Maximum UTF-8 byte length for one human-readable interop error or diagnostic message.
+pub(super) const MAX_INTEROP_MESSAGE_BYTES: usize = 1024;
 
 /// Error returned when interop contract values or schema identities are invalid.
 #[derive(Debug, Error)]
@@ -185,6 +189,82 @@ pub enum ContractError {
     /// The source label was blank.
     #[error("source label must not be empty")]
     EmptySourceLabel,
+    /// One public interop message exceeded its fixed byte bound.
+    #[error("{field} must contain at most {maximum} UTF-8 bytes; received {received} bytes")]
+    MessageTooLong {
+        /// Public field whose bound was exceeded.
+        field: &'static str,
+        /// Maximum allowed UTF-8 byte length.
+        maximum: usize,
+        /// Received UTF-8 byte length.
+        received: usize,
+    },
+    /// An invalid-selector interop error did not identify exactly one matching diagnostic.
+    #[error(
+        "invalid-selector interop error must carry exactly one matching diagnostic; received {received}"
+    )]
+    InvalidSelectorDiagnosticCardinality {
+        /// Number of `INVALID_SELECTOR` diagnostics carried by the error.
+        received: usize,
+    },
+    /// An invalid-selector interop error did not identify its core diagnostic consistently.
+    #[error("invalid-selector interop error must identify INVALID_SELECTOR as its core diagnostic")]
+    InvalidSelectorCoreDiagnostic,
+    /// An invalid-selector error carried a non-canonical public message.
+    #[error("{carrier} must be the exact invalid-selector message")]
+    InvalidSelectorMessage {
+        /// Public field that carried the non-canonical message.
+        carrier: &'static str,
+    },
+    /// One selector parse detail object was missing.
+    #[error("{carrier} selector_parse is required")]
+    MissingSelectorParseDetails {
+        /// Public carrier that omitted the required detail object.
+        carrier: &'static str,
+    },
+    /// One selector parse detail object had an invalid field shape.
+    #[error("{carrier} selector_parse is malformed")]
+    MalformedSelectorParseDetails {
+        /// Public carrier that held the malformed detail object.
+        carrier: &'static str,
+    },
+    /// One selector parse detail object was not an object.
+    #[error("{carrier} selector_parse must be an object")]
+    NonObjectSelectorParseDetails {
+        /// Public carrier that held the non-object detail value.
+        carrier: &'static str,
+    },
+    /// One selector parse position was zero.
+    #[error("{carrier} selector_parse position must be positive")]
+    ZeroPositionSelectorParseDetails {
+        /// Public carrier that held the zero-valued position.
+        carrier: &'static str,
+    },
+    /// One selector parse detail object named an unknown parse-error class.
+    #[error("{carrier} selector_parse parse_error_class is unknown")]
+    UnknownSelectorParseErrorClass {
+        /// Public carrier that held the invalid detail object.
+        carrier: &'static str,
+    },
+    /// The selector parse detail copies in the two public error carriers disagreed.
+    #[error("invalid-selector diagnostic and core_details selector_parse values must match")]
+    MismatchedSelectorParseDetails,
+}
+
+pub(super) fn validate_message_bytes(
+    field: &'static str,
+    value: &str,
+) -> Result<(), ContractError> {
+    let received = value.len();
+    if received <= MAX_INTEROP_MESSAGE_BYTES {
+        Ok(())
+    } else {
+        Err(ContractError::MessageTooLong {
+            field,
+            maximum: MAX_INTEROP_MESSAGE_BYTES,
+            received,
+        })
+    }
 }
 
 pub(super) fn validate_schema_identity(
@@ -223,11 +303,7 @@ pub(super) fn validate_schema_identity(
 }
 
 pub(super) fn validate_sha256_hex(field: &'static str, value: &str) -> Result<(), ContractError> {
-    let valid = value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-    if valid {
+    if is_valid_sha256_hex(value) {
         Ok(())
     } else {
         Err(ContractError::InvalidDigest {
@@ -235,4 +311,11 @@ pub(super) fn validate_sha256_hex(field: &'static str, value: &str) -> Result<()
             received: value.to_owned(),
         })
     }
+}
+
+pub(crate) fn is_valid_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }

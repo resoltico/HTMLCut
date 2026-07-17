@@ -62,9 +62,10 @@ pub use plan::{
     binary_name, cargo_build_dir, cargo_target_dir, check_plan, ci_rust_gate_plan,
     core_manifest_path, coverage_build_dir, coverage_target_dir, gate_report_dir,
     is_semver_check_spec, normalize_path, release_binary_path,
-    sanitize_snapshot_workspace_manifest_for_baseline, semver_baseline_path, semver_release_type,
+    restore_vendored_dependency_paths_in_baseline_manifest,
+    sanitize_snapshot_workspace_manifest_for_packaging, semver_baseline_path, semver_release_type,
     semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
-    strip_dev_dependency_tables, with_workspace_stub,
+    snapshot_uses_vendored_selector_stack, strip_dev_dependency_tables, with_workspace_stub,
 };
 pub use policy::{
     deny_check_command, deny_graph_targets, ensure_deny_targets_match_release_targets,

@@ -202,3 +202,160 @@ fn refresh_semver_baseline_for_tests_overrides_snapshot_cargo_target_layout() {
         "refresh flow should still materialize the baseline provenance"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn refresh_semver_baseline_for_tests_rejects_symbolic_links_in_published_vendored_sources() {
+    use std::os::unix::fs::symlink;
+
+    let repo_root = tempdir().expect("repo tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"3.0.0\"\n",
+    )
+    .expect("write Cargo.toml");
+
+    let error = crate::command_exec::with_run_spec_override(
+        move |_, spec| {
+            let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
+            if spec.program == Path::new("tar")
+                && args.first() == Some(&"-xf")
+                && args.get(2) == Some(&"-C")
+            {
+                let snapshot_root = PathBuf::from(args[3]);
+                fs::create_dir_all(snapshot_root.join("crates/htmlcut-core"))
+                    .expect("create snapshot crate dir");
+                for directory in [
+                    "html5ever",
+                    "markup5ever",
+                    "scraper",
+                    "selectors",
+                    "servo_arc",
+                    "tendril",
+                ] {
+                    fs::create_dir_all(snapshot_root.join("patches/rust").join(directory))
+                        .expect("create snapshot vendor dir");
+                }
+                let scraper_dir = snapshot_root.join("patches/rust/scraper");
+                symlink(&scraper_dir, scraper_dir.join("unexpected-link"))
+                    .expect("write snapshot symbolic link");
+                fs::write(
+                    snapshot_root.join("Cargo.toml"),
+                    "[workspace]\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\" }\n",
+                )
+                .expect("write snapshot workspace Cargo.toml");
+                fs::write(
+                    snapshot_root.join("crates/htmlcut-core/Cargo.toml"),
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n",
+                )
+                .expect("write snapshot crate manifest");
+                return Some(Ok(()));
+            }
+            Some(Ok(()))
+        },
+        || refresh_semver_baseline_for_tests(repo_root.path(), "v4.2.0"),
+    )
+    .expect_err("symbolic link should fail the vendored baseline copy");
+
+    assert!(error.to_string().contains(
+        "published vendored selector-stack entry is neither a regular file nor directory"
+    ));
+}
+
+#[test]
+fn refresh_semver_baseline_for_tests_fails_when_the_captured_vendored_stack_disappears() {
+    let repo_root = tempdir().expect("repo tempdir");
+    fs::write(
+        repo_root.path().join("Cargo.toml"),
+        "[workspace.package]\nversion = \"3.0.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    let repo_root_path = repo_root.path().to_path_buf();
+
+    let result = crate::command_exec::with_run_spec_override(
+        move |current_root, spec| {
+            let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
+            if spec.program == Path::new("tar")
+                && args.first() == Some(&"-xf")
+                && args.get(2) == Some(&"-C")
+            {
+                let snapshot_root = PathBuf::from(args[3]);
+                fs::create_dir_all(snapshot_root.join("crates/htmlcut-core"))
+                    .expect("create snapshot crate dir");
+                for directory in [
+                    "html5ever",
+                    "markup5ever",
+                    "scraper",
+                    "selectors",
+                    "servo_arc",
+                    "tendril",
+                ] {
+                    let vendor_dir = snapshot_root.join("patches/rust").join(directory);
+                    fs::create_dir_all(&vendor_dir).expect("create snapshot vendor dir");
+                    fs::write(vendor_dir.join("source.rs"), directory)
+                        .expect("write snapshot vendor source");
+                }
+                fs::write(
+                    snapshot_root.join("Cargo.toml"),
+                    "[workspace]\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\" }\n",
+                )
+                .expect("write snapshot workspace Cargo.toml");
+                fs::write(
+                    snapshot_root.join("crates/htmlcut-core/Cargo.toml"),
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n",
+                )
+                .expect("write snapshot crate manifest");
+                return Some(Ok(()));
+            }
+
+            if spec.program == Path::new("cargo")
+                && args[..5]
+                    == [
+                        "package",
+                        "--allow-dirty",
+                        "--no-verify",
+                        "-p",
+                        "htmlcut-core",
+                    ]
+            {
+                let captured_stack = current_root
+                    .parent()
+                    .expect("snapshot parent")
+                    .join("published-vendored-selector-stack");
+                fs::rename(
+                    &captured_stack,
+                    current_root.join("moved-vendored-selector-stack"),
+                )
+                .expect("hide captured stack before extraction");
+                let archive = PathBuf::from(command_env_value(spec, "CARGO_TARGET_DIR"))
+                    .join("package/htmlcut-core-4.2.0.crate");
+                fs::create_dir_all(archive.parent().expect("archive parent"))
+                    .expect("create archive parent");
+                fs::write(&archive, "crate archive").expect("write crate archive");
+                return Some(Ok(()));
+            }
+
+            if spec.program == Path::new("tar")
+                && args.first() == Some(&"-xzf")
+                && args.get(2) == Some(&"-C")
+            {
+                let extracted_dir = repo_root_path.join("semver-baseline/htmlcut-core-4.2.0");
+                fs::create_dir_all(&extracted_dir).expect("create extracted dir");
+                fs::write(
+                    extracted_dir.join("Cargo.toml"),
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n\n[dependencies.scraper]\nversion = \"0.27.0\"\n",
+                )
+                .expect("write extracted manifest");
+                return Some(Ok(()));
+            }
+
+            Some(Ok(()))
+        },
+        || refresh_semver_baseline_for_tests(repo_root.path(), "v4.2.0"),
+    );
+
+    assert!(
+        result.is_err(),
+        "refresh must fail rather than write a baseline that points to a missing vendored stack"
+    );
+}

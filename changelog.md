@@ -20,6 +20,7 @@ Notable changes to this project are documented in this file. The format is based
 - Quiet maintainer-command execution now preserves both output streams and reveals bounded diagnostics when a command fails instead of discarding the information needed to diagnose the gate.
 - Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
 - Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
+- Semver-baseline refresh now captures the published vendored selector/parser stack with the tagged `htmlcut-core` source and restores its exact fork identities in the baseline manifest, so compatibility checks compile against the API users actually receive instead of incompatible upstream registry substitutes.
 
 ## [11.0.0] - 2026-07-15
 

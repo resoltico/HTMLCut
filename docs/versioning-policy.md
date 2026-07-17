@@ -166,6 +166,9 @@ Rules:
 - refresh it from an explicit published Git ref with `cargo xtask refresh-semver-baseline --git-ref vX.Y.Z`
 - let that command rewrite `semver-baseline/htmlcut-core/BASELINE.toml` so the checked-in
   snapshot records the published Git ref and packaged crate version it came from
+- keep the published vendored selector/parser crates captured inside that snapshot whenever the
+  released core depends on them; semver checks must compile against the released fork graph rather
+  than a registry substitute with a different API
 - never regenerate it from unreleased local worktree state
 - treat it as the comparison target for future semver checks, not as a staging area during feature work
 

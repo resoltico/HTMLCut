@@ -190,6 +190,11 @@ pub(crate) fn finalize_error_for_tests(error: InteropError) -> InteropError {
 }
 
 #[cfg(test)]
+pub(crate) fn finalize_sanitized_fallback_for_tests(error: InteropError) -> InteropError {
+    errors::finalize_sanitized_fallback_for_tests(error)
+}
+
+#[cfg(test)]
 pub(crate) fn plan_digest_error_for_tests(
     plan: &Plan,
     error: super::ContractError,
