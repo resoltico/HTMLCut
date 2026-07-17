@@ -7,6 +7,7 @@ mod command_exec;
 mod coverage;
 mod docs;
 mod fuzz;
+mod gate_report;
 mod host_tools;
 mod hygiene;
 mod manifest;
@@ -17,6 +18,7 @@ mod plan;
 mod policy;
 mod preflight;
 mod release;
+mod structure;
 #[cfg(test)]
 mod tests;
 mod toolchain;
@@ -39,7 +41,8 @@ pub use host_tools::{
 };
 pub use hygiene::{
     HygieneCleanMode, HygieneCleanResult, HygieneReport, HygieneReportFormat, clean_hygiene,
-    ensure_hygiene, hygiene_report, prepare_artifact_layout, render_hygiene_report,
+    ensure_hygiene, hygiene_report, prepare_artifact_layout, prepare_gate_report_root,
+    render_hygiene_report,
 };
 pub use manifest::{
     package_version_from_manifest, workspace_rust_version, workspace_rust_version_from_manifest,
@@ -57,10 +60,11 @@ pub use model::{
 pub use outdated::{outdated_check_command, run_outdated_check};
 pub use plan::{
     binary_name, cargo_build_dir, cargo_target_dir, check_plan, ci_rust_gate_plan,
-    core_manifest_path, coverage_build_dir, coverage_target_dir, is_semver_check_spec,
-    normalize_path, release_binary_path, sanitize_snapshot_workspace_manifest_for_baseline,
-    semver_baseline_path, semver_release_type, semver_release_type_from_versions,
-    semver_scratch_dir, shell_script_paths, strip_dev_dependency_tables, with_workspace_stub,
+    core_manifest_path, coverage_build_dir, coverage_target_dir, gate_report_dir,
+    is_semver_check_spec, normalize_path, release_binary_path,
+    sanitize_snapshot_workspace_manifest_for_baseline, semver_baseline_path, semver_release_type,
+    semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
+    strip_dev_dependency_tables, with_workspace_stub,
 };
 pub use policy::{
     deny_check_command, deny_graph_targets, ensure_deny_targets_match_release_targets,
@@ -73,6 +77,7 @@ pub use release::{
     ReleaseMatrixEntry, macos_deployment_target, release_asset_names, release_matrix,
     release_target_triples,
 };
+pub use structure::{check_source_structure, report_source_structure};
 pub use toolchain::{
     RepoToolchain, RepoToolchainPreflightFailure, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_from_manifest,

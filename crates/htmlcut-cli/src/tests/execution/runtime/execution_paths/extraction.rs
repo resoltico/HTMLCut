@@ -23,7 +23,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.contains("\"code\": \"INVALID_SELECTOR\""));
-    assert!(stdout.contains("Invalid selector"));
+    assert!(stdout.contains("CSS selector is invalid."));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
@@ -85,7 +85,7 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.is_empty());
-    assert!(stderr.contains("Invalid selector"));
+    assert!(stderr.contains("CSS selector is invalid."));
 
     let (exit_code, _, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

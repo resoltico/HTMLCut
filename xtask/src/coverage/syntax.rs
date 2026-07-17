@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use syn::{File, ImplItem, Item, ItemMacro, TraitItem};
+use syn::{File, ImplItem, Item, TraitItem};
 
 use crate::model::{CoverageSourceKind, DynResult};
 
@@ -39,7 +39,9 @@ fn item_is_declarative_only(item: &Item) -> bool {
         | Item::Union(_)
         | Item::Use(_) => true,
         Item::Impl(item_impl) => item_impl.items.iter().all(impl_item_is_declarative_only),
-        Item::Macro(item_macro) => macro_is_definition(item_macro),
+        // Item-position macro expansion is attributed to its defining crate rather than this
+        // invocation site, so it cannot contribute executable lines for this file.
+        Item::Macro(_) => true,
         Item::Mod(item_mod) => item_mod
             .content
             .as_ref()
@@ -62,10 +64,6 @@ fn trait_item_is_declarative_only(item: &TraitItem) -> bool {
         TraitItem::Const(_) | TraitItem::Type(_) | TraitItem::Macro(_) => true,
         TraitItem::Verbatim(_) | _ => false,
     }
-}
-
-fn macro_is_definition(item_macro: &ItemMacro) -> bool {
-    item_macro.ident.is_some() || item_macro.mac.path.is_ident("macro_rules")
 }
 
 #[cfg(test)]

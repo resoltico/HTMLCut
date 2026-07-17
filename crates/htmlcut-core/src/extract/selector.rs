@@ -15,6 +15,8 @@ use crate::document::{
     extract_document_title, parse_document_node, render_element_as_text, resolve_document_base_url,
     rewrite_urls_in_document, serialize_children, serialize_element,
 };
+use crate::interop::v1::INVALID_SELECTOR_MESSAGE;
+use crate::selector_parse::selector_parse_details;
 use crate::source::LoadedSource;
 
 use super::{ExtractionRun, select_candidates};
@@ -179,14 +181,11 @@ pub(crate) fn run_validated_selector_extraction(
 }
 
 pub(crate) fn validate_selector_query(selector: &SelectorQuery) -> Result<Selector, Diagnostic> {
-    Selector::parse(selector.as_str()).map_err(|error| {
+    Selector::parse_with_location(selector.as_str()).map_err(|error| {
         error_diagnostic(
             DiagnosticCode::InvalidSelector,
-            format!("Invalid selector: {selector}: {error}"),
-            Some(json!({
-                "selector": selector.as_str(),
-                "parseError": error.to_string(),
-            })),
+            INVALID_SELECTOR_MESSAGE,
+            Some(selector_parse_details(&error)),
         )
     })
 }

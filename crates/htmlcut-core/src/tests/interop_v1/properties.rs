@@ -433,6 +433,11 @@ impl CaseGenerator {
             details.insert(self.non_empty_text(12), self.json_value(2));
         }
 
+        let diagnostics = self
+            .diagnostics(true)
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code != InteropDiagnosticCode::InvalidSelector)
+            .collect();
         let mut error = InteropError::new(
             TEST_PLAN_DIGEST_SHA256,
             error_code,
@@ -445,7 +450,7 @@ impl CaseGenerator {
                 }
             }),
             details,
-            self.diagnostics(true),
+            diagnostics,
         );
         error.extensions = self.extensions();
         error

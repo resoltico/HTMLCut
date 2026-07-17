@@ -15,7 +15,7 @@ use selectors::{
 use serde::{Deserialize, Serialize, de::Visitor};
 
 use crate::ElementRef;
-use crate::error::SelectorErrorKind;
+use crate::error::{SelectorErrorKind, SelectorParseError};
 
 /// Wrapper around CSS selectors.
 ///
@@ -29,12 +29,17 @@ pub struct Selector {
 impl Selector {
     /// Parses a CSS selector group.
     pub fn parse(selectors: &str) -> Result<Self, SelectorErrorKind<'_>> {
+        Self::parse_with_location(selectors).map_err(SelectorParseError::into_kind)
+    }
+
+    /// Parses a CSS selector group while preserving a source location on failure.
+    pub fn parse_with_location(selectors: &str) -> Result<Self, SelectorParseError<'_>> {
         let mut parser_input = cssparser::ParserInput::new(selectors);
         let mut parser = cssparser::Parser::new(&mut parser_input);
 
         SelectorList::parse(&Parser, &mut parser, ParseRelative::No)
             .map(|selectors| Self { selectors })
-            .map_err(SelectorErrorKind::from)
+            .map_err(SelectorParseError::from)
     }
 
     /// Returns true if the element matches this selector.

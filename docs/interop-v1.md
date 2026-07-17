@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: INTEROP
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, dom_canonicalization, comparison_text_output, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?", "where is the candidate count on an htmlcut interop error?", "how does HTMLCut canonicalize a selected DOM subtree without changing raw evidence?"]
@@ -69,8 +69,8 @@ Main types:
 Validator discovery:
 
 - `htmlcut schema --name htmlcut.plan --schema-version 7 --output json`
-- `htmlcut schema --name htmlcut.result --schema-version 7 --output json`
-- `htmlcut schema --name htmlcut.error --schema-version 2 --output json`
+- `htmlcut schema --name htmlcut.result --schema-version 8 --output json`
+- `htmlcut schema --name htmlcut.error --schema-version 3 --output json`
 
 Rust callers can also use `htmlcut_core::schema_catalog()` and `schema_descriptor(...)`.
 
@@ -173,6 +173,44 @@ Core execution errors preserve the upstream diagnostic without collapsing its me
 selection. This includes `NO_MATCH`, for which the count is `0`; other core diagnostic details
 remain alongside it in `core_details`.
 
+Invalid CSS selectors use the exact human-readable message `CSS selector is invalid.`. HTMLCut
+does not expose the selector text, upstream parser prose, debug formatting, or parser-internal
+types in that message. Instead, both `diagnostics[].details.selector_parse` and
+`details.core_details.selector_parse` carry the same closed object:
+
+```json
+{
+  "line": 1,
+  "column_utf16": 1,
+  "parse_error_class": "invalid_attribute_selector"
+}
+```
+
+`line` is one-based. `column_utf16` is one-based and counts UTF-16 code units. The
+`parse_error_class` vocabulary is owned and exhaustively mapped by HTMLCut; consumers must treat
+unknown values as invalid rather than attempting to interpret upstream parser output. Runtime
+validation rejects a non-canonical invalid-selector message and each distinct selector-detail
+failure: missing, malformed, non-object, zero-position, unknown class, or mismatched copy.
+The current closed vocabulary is:
+
+- `unexpected_token`, `end_of_input`, `invalid_at_rule`, `invalid_at_rule_body`, and `invalid_qualified_rule`
+- `pseudo_element_expected_colon`, `pseudo_element_expected_ident`, and `no_ident_for_pseudo`
+- `invalid_attribute_selector`, `unexpected_token_in_attribute_selector`, `expected_bar_in_attribute_selector`, `invalid_attribute_value`, and `invalid_qualified_name_in_attribute_selector`
+- `empty_selector`, `dangling_combinator`, `non_compound_selector`, and `invalid_state`
+- `non_pseudo_element_after_slotted`, `invalid_pseudo_element_after_slotted`, and `invalid_pseudo_element_inside_where`
+- `unsupported_pseudo_class_or_element`, `unexpected_ident`, `expected_namespace`, `explicit_namespace_unexpected_token`, and `class_needs_ident`
+
+Every `InteropError.message` and `InteropDiagnostic.message` is limited to 1024 UTF-8 bytes.
+The JSON Schema advertises a 1024-character maximum where standard JSON Schema can express it;
+runtime validation is authoritative for the stricter byte limit and for the cross-carrier selector
+parse invariant. `with_computed_digest`, `digest_sha256`, and `stable_json` enforce those rules
+before returning a public document.
+
+If construction rejects an interop error, HTMLCut returns a valid internal-error fallback. Its
+`interop_contract_rejection` detail preserves a closed rejection code plus the exact rejected
+diagnostic count and diagnostic-code counts; it never copies unbounded or invalid diagnostic
+payloads into the fallback.
+
 ## DOM Canonicalization
 
 Construct a `DomCanonicalization` policy, then pass it to a CSS-selector plan with
@@ -223,17 +261,19 @@ The interop surface is versioned around:
 `HtmlInput::extraction_identity_sha256(&Plan)` is the canonical identity for one extraction. It
 binds every `HtmlInput` field (including the decoded HTML bytes, logical label, and optional input
 base URL), the complete `Plan` including a plan that yields a diagnostic, and
-`HTMLCUT_EXTRACTION_SEMANTICS_VERSION`. HTMLCut owns the
-identity algorithm so downstream consumers do not reimplement or omit part of its input.
+`HTMLCUT_EXTRACTION_SEMANTICS_VERSION`. HTMLCut owns the identity algorithm so downstream
+consumers do not reimplement or omit part of its input.
 
 `dom_canonicalization` is part of the serialized `Plan`, so it participates directly in
 `plan_digest_sha256` and extraction identity. The counter is `3`: a fixed CSS raw-output plan that
 carried this policy now correctly produces `plan_invalid` instead of silently ignoring it. A fixed
 pre-H5 plan has no policy and retains its previous projection and diagnostics.
 
-Increment `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` only when fixed complete input and plan could
-produce a different projection or diagnostic. Do not derive it from the HTMLCut crate version, the
-core specification version, or dependency versions. The counter is intentionally an identity
+Increment `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` only when fixed complete input and a plan that
+passes preflight could produce a different extraction projection. Invalid-plan diagnostic-envelope
+changes are instead versioned by `htmlcut.error` and `htmlcut.result`; they do not change the
+typed measurement semantics counter. Do not derive the counter from the HTMLCut crate version,
+the core specification version, or dependency versions. The counter is intentionally an identity
 input, not a field that every `InteropResult` or `InteropError` must carry.
 
 The acceptance corpus lives under:
@@ -264,7 +304,8 @@ These are intentionally not part of `htmlcut-v1`:
 `htmlcut_core::interop::v1` is versioned through its exported schema families.
 
 When `Plan`, `InteropResult`, or `InteropError` changes shape, update the corresponding integer
-schema version, refresh the acceptance fixtures, and ship the docs change in the same release
-slice. DOM canonicalization is represented by `htmlcut.plan@7` and its comparison output by
-`htmlcut.result@7`.
+schema version, refresh the acceptance fixtures, and ship the docs change in the same release.
+DOM canonicalization is represented by `htmlcut.plan@7` and its comparison output by
+`htmlcut.result@8`; bounded diagnostic messages and the validated selector-parse error envelope
+are represented by `htmlcut.error@3` and `htmlcut.result@8`.
 The maintained policy details live in [versioning-policy.md](versioning-policy.md).

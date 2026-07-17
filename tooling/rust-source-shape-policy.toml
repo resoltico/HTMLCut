@@ -1,0 +1,373 @@
+version = 1
+
+# This is an executable ownership contract, not a formatting preference. Every maintained
+# first-party Rust source and test file resolves to the most-specific role below. Vendored parser
+# patches and the frozen semver baseline are deliberately outside this inventory.
+
+[[rules]]
+path = "crates/htmlcut-core/src/tests/"
+match = "prefix"
+role = "core-test-scenario"
+owner = "HTMLCut core"
+rationale = "Each test module proves one public or internal core contract without becoming a second implementation."
+split_trigger = "the scenario crosses unrelated core boundaries or exceeds any declared budget"
+max_physical_lines = 650
+max_items = 85
+max_public_items = 0
+max_imports = 24
+max_functions = 65
+max_decision_points = 190
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "catalog", "contracts", "diagnostics", "document", "extract", "inspect", "interop", "result", "schema", "selector_parse", "source", "tests", "wire"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/interop/v1/types/"
+match = "prefix"
+role = "core-interop-contract"
+owner = "HTMLCut interop"
+rationale = "Versioned interop value objects and validation form a narrow public contract boundary."
+split_trigger = "a file owns more than one document family or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 30
+max_imports = 18
+max_functions = 42
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "contracts", "interop", "selector_parse"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/interop/"
+match = "prefix"
+role = "core-interop-adapter"
+owner = "HTMLCut interop"
+rationale = "Interop execution adapts validated HTMLCut extraction into versioned public documents."
+split_trigger = "a file combines document modelling with unrelated extraction, source, or schema ownership"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 24
+max_imports = 20
+max_functions = 45
+max_decision_points = 130
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "contracts", "diagnostics", "document", "extract", "interop", "result", "selector_parse", "source"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/document/"
+match = "prefix"
+role = "core-document-semantics"
+owner = "HTMLCut document semantics"
+rationale = "Document parsing, URL handling, and text projection own DOM-derived semantics only."
+split_trigger = "a file combines independent document transformations or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 16
+max_imports = 18
+max_functions = 44
+max_decision_points = 140
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "contracts", "document", "source"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/extract/"
+match = "prefix"
+role = "core-extraction"
+owner = "HTMLCut extraction"
+rationale = "Extraction modules select and project content over already acquired source material."
+split_trigger = "a file owns independent extraction strategies or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 16
+max_imports = 20
+max_functions = 44
+max_decision_points = 140
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "catalog", "contracts", "diagnostics", "document", "extract", "inspect", "interop", "result", "selector_parse", "source"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/source/"
+match = "prefix"
+role = "core-source-acquisition"
+owner = "HTMLCut source acquisition"
+rationale = "Source modules acquire and describe input without owning extraction or output policy."
+split_trigger = "a file combines acquisition transport with unrelated parsing or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 16
+max_imports = 18
+max_functions = 44
+max_decision_points = 130
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "contracts", "diagnostics", "source"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/contracts/"
+match = "prefix"
+role = "core-contract"
+owner = "HTMLCut core contracts"
+rationale = "Contract modules own typed request and result vocabulary, not runtime orchestration."
+split_trigger = "a file combines unrelated value-object families or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 55
+max_public_items = 34
+max_imports = 18
+max_functions = 44
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "catalog", "contracts", "diagnostics"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/wire/"
+match = "prefix"
+role = "core-wire-contract"
+owner = "HTMLCut wire contract"
+rationale = "Wire modules translate one versioned external document family without owning engine behavior."
+split_trigger = "a file combines unrelated wire document families or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 35
+max_imports = 18
+max_functions = 44
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "contracts", "result", "source", "wire"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/inspect/"
+match = "prefix"
+role = "core-inspection"
+owner = "HTMLCut inspection"
+rationale = "Inspection modules report document evidence and recommendations without becoming a second renderer or extractor."
+split_trigger = "a file combines independent inspection facets or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 12
+max_imports = 18
+max_functions = 44
+max_decision_points = 140
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "contracts", "document", "inspect"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/"
+match = "prefix"
+role = "core-foundation"
+owner = "HTMLCut core"
+rationale = "Foundation modules expose crate-wide primitives and cannot accumulate feature-specific orchestration."
+split_trigger = "a file gains a second feature responsibility or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "catalog", "cli_choice", "contracts", "diagnostics", "document", "extract", "fmt", "inspect", "interop", "schema", "selector_parse", "source", "wire"]
+
+[[rules]]
+path = "crates/htmlcut-cli/tests/"
+match = "prefix"
+role = "cli-integration-test"
+owner = "HTMLCut CLI"
+rationale = "Integration scenarios exercise public CLI behavior without becoming a second command implementation."
+split_trigger = "a scenario spans unrelated commands or exceeds any declared budget"
+max_physical_lines = 650
+max_items = 85
+max_public_items = 0
+max_imports = 24
+max_functions = 65
+max_decision_points = 180
+max_match_arms = 85
+allowed_internal_dependencies = ["crate"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/tests/"
+match = "prefix"
+role = "cli-test-scenario"
+owner = "HTMLCut CLI"
+rationale = "CLI unit scenarios state one adapter contract while shared fixtures remain separately owned."
+split_trigger = "a scenario crosses unrelated CLI responsibilities or exceeds any declared budget"
+max_physical_lines = 650
+max_items = 85
+max_public_items = 0
+max_imports = 24
+max_functions = 65
+max_decision_points = 180
+max_match_arms = 85
+allowed_internal_dependencies = ["crate", "args", "contract", "error", "execute", "file_output", "help", "lookup", "metadata", "model", "prepare", "render", "tests"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/contract/"
+match = "prefix"
+role = "cli-contract"
+owner = "HTMLCut CLI"
+rationale = "CLI contract modules own canonical command vocabulary, help, and descriptors."
+split_trigger = "a file combines independent command contract families or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 30
+max_imports = 18
+max_functions = 44
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "contract", "model"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/prepare/"
+match = "prefix"
+role = "cli-preparation"
+owner = "HTMLCut CLI"
+rationale = "Preparation modules translate CLI input into core requests and command reports."
+split_trigger = "a file owns unrelated parsing and rendering responsibilities or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 55
+max_public_items = 16
+max_imports = 20
+max_functions = 44
+max_decision_points = 130
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "args", "contract", "error", "lookup", "metadata", "model", "prepare"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/render/"
+match = "prefix"
+role = "cli-rendering"
+owner = "HTMLCut CLI"
+rationale = "Rendering modules present already prepared reports without owning CLI parsing or core execution."
+split_trigger = "a file combines unrelated output facets or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 55
+max_public_items = 16
+max_imports = 20
+max_functions = 44
+max_decision_points = 130
+max_match_arms = 65
+allowed_internal_dependencies = ["crate", "contract", "metadata", "model", "render"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/"
+match = "prefix"
+role = "cli-adapter"
+owner = "HTMLCut CLI"
+rationale = "CLI modules adapt process input, core execution, and reports without owning core semantics."
+split_trigger = "a file grows a second adapter responsibility or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 52
+max_public_items = 24
+max_imports = 20
+max_functions = 42
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "args", "contract", "error", "execute", "file_output", "help", "lookup", "metadata", "model", "prepare", "render"]
+
+[[rules]]
+path = "crates/htmlcut-tempdir/src/"
+match = "prefix"
+role = "support-utility"
+owner = "HTMLCut maintainership"
+rationale = "Temporary-workspace support stays narrow and independent of HTMLCut application semantics."
+split_trigger = "a file gains application behavior or exceeds any declared budget"
+max_physical_lines = 300
+max_items = 35
+max_public_items = 24
+max_imports = 14
+max_functions = 28
+max_decision_points = 70
+max_match_arms = 35
+allowed_internal_dependencies = []
+
+[[rules]]
+path = "xtask/src/structure/tests.rs"
+match = "exact"
+role = "maintenance-test-scenario"
+owner = "HTMLCut maintainership"
+rationale = "Structure-gate tests prove fail-closed policy behavior without becoming an alternate gate."
+split_trigger = "the scenario needs unrelated maintenance setup or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 65
+max_public_items = 0
+max_imports = 20
+max_functions = 55
+max_decision_points = 160
+max_match_arms = 75
+allowed_internal_dependencies = ["crate", "structure"]
+
+[[rules]]
+path = "xtask/src/tests/"
+match = "prefix"
+role = "maintenance-test-scenario"
+owner = "HTMLCut maintainership"
+rationale = "Maintenance scenarios prove one repository contract at a time."
+split_trigger = "the scenario spans unrelated maintenance contracts or exceeds any declared budget"
+max_physical_lines = 650
+max_items = 85
+max_public_items = 0
+max_imports = 24
+max_functions = 65
+max_decision_points = 180
+max_match_arms = 85
+allowed_internal_dependencies = ["crate", "app", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "outdated", "plan", "policy", "preflight", "release", "structure", "tests", "toolchain"]
+
+[[rules]]
+path = "xtask/tests/"
+match = "prefix"
+role = "maintenance-integration-test"
+owner = "HTMLCut maintainership"
+rationale = "External xtask tests exercise its public command surface."
+split_trigger = "the scenario spans unrelated maintainer commands or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 0
+max_imports = 20
+max_functions = 50
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate"]
+
+[[rules]]
+path = "xtask/src/"
+match = "prefix"
+role = "maintenance-tooling"
+owner = "HTMLCut maintainership"
+rationale = "xtask owns repository quality workflows and may not become a second application runtime."
+split_trigger = "a file combines independent maintenance workflows or exceeds any declared budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command_exec", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "outdated", "plan", "policy", "preflight", "release", "structure", "toolchain"]
+
+[[rules]]
+path = "fuzz/fuzz_targets/"
+match = "prefix"
+role = "fuzz-harness"
+owner = "HTMLCut core verification"
+rationale = "Each fuzz harness targets one public boundary and must not become a second parser or runtime."
+split_trigger = "a harness covers unrelated public contracts or exceeds any declared budget"
+max_physical_lines = 250
+max_items = 35
+max_public_items = 0
+max_imports = 16
+max_functions = 24
+max_decision_points = 70
+max_match_arms = 35
+allowed_internal_dependencies = []
+
+[[rules]]
+path = "fuzz/fuzz_targets/support/"
+match = "prefix"
+role = "fuzz-support"
+owner = "HTMLCut core verification"
+rationale = "Shared fuzz generators provide constrained public test-only vocabulary to individual harnesses."
+split_trigger = "a support module begins to own product parsing or runtime behavior, or exceeds any declared budget"
+max_physical_lines = 250
+max_items = 35
+max_public_items = 8
+max_imports = 16
+max_functions = 24
+max_decision_points = 70
+max_match_arms = 35
+allowed_internal_dependencies = ["interop_common", "request_common"]

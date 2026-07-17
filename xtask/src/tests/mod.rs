@@ -4,6 +4,60 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const SOURCE_SHAPE_POLICY: &str = r#"version = 1
+
+[[rules]]
+path = "crates/htmlcut-cli/src/"
+match = "prefix"
+role = "test CLI source"
+owner = "xtask test fixture"
+rationale = "The synthetic repository needs explicit source ownership when it runs maintainer gates."
+split_trigger = "Fixture source exceeds its deliberately broad test budget."
+max_physical_lines = 100
+max_items = 100
+max_public_items = 100
+max_imports = 100
+max_functions = 100
+max_decision_points = 100
+max_match_arms = 100
+allowed_internal_dependencies = []
+
+[[rules]]
+path = "crates/htmlcut-cli/tests/"
+match = "prefix"
+role = "test CLI integration scenario"
+owner = "xtask test fixture"
+rationale = "The synthetic repository needs explicit test ownership when it runs maintainer gates."
+split_trigger = "Fixture test source exceeds its deliberately broad test budget."
+max_physical_lines = 100
+max_items = 100
+max_public_items = 100
+max_imports = 100
+max_functions = 100
+max_decision_points = 100
+max_match_arms = 100
+allowed_internal_dependencies = []
+
+"#;
+
+const XTASK_SOURCE_RULE: &str = r#"
+[[rules]]
+path = "xtask/src/"
+match = "prefix"
+role = "test xtask source"
+owner = "xtask test fixture"
+rationale = "The synthetic repository needs explicit maintenance-tool ownership when it runs maintainer gates."
+split_trigger = "Fixture maintenance source exceeds its deliberately broad test budget."
+max_physical_lines = 100
+max_items = 100
+max_public_items = 100
+max_imports = 100
+max_functions = 100
+max_decision_points = 100
+max_match_arms = 100
+allowed_internal_dependencies = []
+"#;
+
 fn test_command_spec<I, S>(
     program: impl Into<PathBuf>,
     args: I,
@@ -114,7 +168,23 @@ fn write_repo_scaffold(repo_root: &Path) {
         )
         .expect("write htmlcut-cli test target");
     }
+    let tooling_dir = repo_root.join("tooling");
+    fs::create_dir_all(&tooling_dir).expect("create tooling dir");
+    fs::write(
+        tooling_dir.join("rust-source-shape-policy.toml"),
+        SOURCE_SHAPE_POLICY,
+    )
+    .expect("write Rust source-shape policy");
     write_empty_release_targets_script(repo_root);
+}
+
+fn add_xtask_source_rule_to_repo_scaffold(repo_root: &Path) {
+    let policy_path = repo_root
+        .join("tooling")
+        .join("rust-source-shape-policy.toml");
+    let policy = fs::read_to_string(&policy_path).expect("read Rust source-shape policy");
+    fs::write(policy_path, format!("{policy}{XTASK_SOURCE_RULE}"))
+        .expect("add xtask source-shape rule");
 }
 
 fn write_empty_release_targets_script(repo_root: &Path) {

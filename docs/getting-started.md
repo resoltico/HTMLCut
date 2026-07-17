@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: SETUP
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, request file]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction request?"]
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=11.0.0
+VERSION=11.0.1
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "11.0.0"
+$Version = "11.0.1"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"

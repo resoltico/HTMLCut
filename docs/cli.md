@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: CLI
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]

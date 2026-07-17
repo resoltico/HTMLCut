@@ -49,6 +49,7 @@ fn root_help_describes_each_maintained_task() {
     assert!(help.contains("Run the maintained dependency-freshness gate."));
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
     assert!(help.contains("Inspect or repair the repository artifact hygiene policy."));
+    assert!(help.contains("Inspect or enforce the first-party Rust source-structure contract."));
     assert!(help.contains("Refresh the checked-in htmlcut-core semver baseline."));
     assert!(help.contains("cargo xtask check"));
     assert!(help.contains("cargo xtask refresh-semver-baseline --git-ref v7.0.0"));
@@ -59,7 +60,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
     let help = run_xtask_help(&["--help"]);
     let examples = xtask_help_examples(&help);
 
-    assert_eq!(examples.len(), 10, "root help example inventory drifted");
+    assert_eq!(examples.len(), 13, "root help example inventory drifted");
 
     assert_eq!(
         examples
@@ -69,6 +70,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
             .collect::<Vec<_>>(),
         vec![
             "cargo xtask check",
+            "cargo xtask check --format json",
             "cargo xtask ci-rust-gate",
             "cargo xtask semver-check",
             "cargo xtask coverage",
@@ -76,6 +78,8 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
             "cargo xtask outdated-check",
             "cargo xtask hygiene report",
             "cargo xtask hygiene clean --mode rebuildable",
+            "cargo xtask structure report",
+            "cargo xtask structure check",
             "cargo xtask refresh-semver-baseline --git-ref v7.0.0",
         ]
     );
@@ -106,6 +110,8 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
     let check_help = run_xtask_help(&["check", "--help"]);
     assert!(check_help.contains("Run the full maintainer quality gate"));
     assert!(check_help.contains("100% coverage pass"));
+    assert!(check_help.contains("--format <FORMAT>"));
+    assert!(check_help.contains("--verbose"));
 
     let ci_rust_gate_help = run_xtask_help(&["ci-rust-gate", "--help"]);
     assert!(ci_rust_gate_help.contains("cross-platform Rust CI gate"));
@@ -123,6 +129,12 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
 
     let hygiene_help = run_xtask_help(&["hygiene", "--help"]);
     assert!(hygiene_help.contains("artifact hygiene policy"));
+
+    let structure_help = run_xtask_help(&["structure", "--help"]);
+    assert!(
+        structure_help
+            .contains("role ownership, cohesion budgets, and internal dependency boundaries")
+    );
 
     let fuzz_help = run_xtask_help(&["fuzz-smoke", "--help"]);
     assert!(fuzz_help.contains("Run a short maintained libFuzzer smoke pass"));
@@ -181,6 +193,10 @@ fn hygiene_report_honors_explicit_cargo_artifact_env_overrides() {
         .iter()
         .find(|entry| entry["id"] == "managed-workspace-build")
         .expect("managed build entry");
+    let managed_gate_reports = entries
+        .iter()
+        .find(|entry| entry["id"] == "managed-gate-reports")
+        .expect("managed gate reports entry");
 
     assert_eq!(
         managed_target["path"].as_str(),
@@ -189,6 +205,10 @@ fn hygiene_report_honors_explicit_cargo_artifact_env_overrides() {
     assert_eq!(
         managed_build["path"].as_str(),
         Some(build_dir.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        managed_gate_reports["path"].as_str(),
+        Some(override_root.join("gate-runs").to_string_lossy().as_ref())
     );
 
     fs::remove_dir_all(&override_root).expect("remove artifact override tempdir");

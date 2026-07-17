@@ -67,6 +67,11 @@ pub fn coverage_build_dir(repo_root: &Path) -> PathBuf {
     paths::coverage_build_dir(repo_root)
 }
 
+/// Returns the managed evidence root retained for completed maintainer-gate runs.
+pub fn gate_report_dir(repo_root: &Path) -> PathBuf {
+    paths::gate_report_dir(repo_root)
+}
+
 /// Returns the nested Cargo target directory created by `cargo llvm-cov`.
 pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
     paths::coverage_cargo_target_dir(repo_root)

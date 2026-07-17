@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: INDEX
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [docs index, documentation index, getting started, developer setup, devcontainer, architecture guide, workspace layout, cli guide, cli library guide, core guide, interop guide, release protocol, quality gates, artifact hygiene, tempdir helper]
   questions: ["where is the HTMLCut documentation index?", "where is the complete list of Markdown docs under docs/?", "where is the HTMLCut getting started guide?", "where are the HTMLCut maintainer docs?", "which doc explains the CLI surface?", "which doc explains the published htmlcut_cli crate?", "where is the workspace layout guide?", "where is the HTMLCut release protocol overview?", "where is the interop v1 guide?", "where is the HTMLCut artifact hygiene guide?", "where is the htmlcut_tempdir helper documented?", "where is the HTMLCut devcontainer workflow documented?"]

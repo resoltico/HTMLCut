@@ -136,6 +136,7 @@ fn repo_relative_source_path(repo_root: &Path, absolute_path: &Path) -> DynResul
 fn should_skip_coverage_path(relative_path: &str, excluded_paths: &BTreeSet<&str>) -> bool {
     relative_path.ends_with("/main.rs")
         || relative_path.contains("/tests/")
+        || relative_path.ends_with("/tests.rs")
         || excluded_paths.contains(relative_path)
 }
 

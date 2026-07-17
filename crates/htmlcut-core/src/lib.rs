@@ -14,6 +14,7 @@ mod fmt;
 mod inspect;
 pub mod interop;
 mod schema;
+mod selector_parse;
 mod source;
 #[cfg(test)]
 mod tests;

@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: QUALITY
-updated: "2026-07-15"
+updated: "2026-07-17"
 route:
-  keywords: [quality gates, cargo xtask, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
-  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
+  keywords: [quality gates, cargo xtask, gate reports, JSON gate output, retained diagnostics, source structure, source shape, cohesion budgets, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
+  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "where are HTMLCut gate diagnostics retained?", "how do I inspect or enforce HTMLCut Rust source structure?", "how does HTMLCut prevent god files?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
@@ -74,6 +74,18 @@ Run only the maintained dependency-freshness gate:
 ./scripts/xtask.sh outdated-check
 ```
 
+Inspect the measured ownership and shape of every maintained first-party Rust file:
+
+```bash
+./scripts/xtask.sh structure report
+```
+
+Enforce the repository-owned source-structure contract without running the wider maintainer gate:
+
+```bash
+./scripts/xtask.sh structure check
+```
+
 Inspect or repair artifact hygiene:
 
 ```bash
@@ -84,6 +96,40 @@ Inspect or repair artifact hygiene:
 Direct `cargo xtask ...` remains useful for interactive work on `xtask` itself, but the
 maintained gate, CI, and release protocol use `./scripts/xtask.sh ...` so the driver process never
 holds a live executable lock inside the managed Cargo artifact tree.
+
+## Gate Output and Retained Evidence
+
+Every command that executes a maintainer gate (`check`, `ci-rust-gate`, `semver-check`,
+`coverage`, `miri`, `outdated-check`, `fuzz-smoke`, `hygiene verify`, and `structure check`)
+creates one `htmlcut.gate_run@1` report. Human output is the default: it shows the gate, concise
+step progress, normalized warning summary, final result, and the report path. Successful child
+command streams remain out of the terminal; a failed step prints a bounded diagnostic tail and
+points to its complete retained streams.
+
+Use JSON when a caller needs one machine-readable document on standard output:
+
+```bash
+./scripts/xtask.sh check --format json > gate-report.json
+./scripts/xtask.sh structure check --format json > structure-gate-report.json
+```
+
+In JSON mode standard output contains exactly the final report. A non-zero gate still writes its
+top-level error to standard error and returns a non-zero exit status, so scripts should use the
+process status as the pass/fail signal and parse standard output as the report. The document records
+ordered commands and internal checks, exit status, duration, separate byte counts and log paths,
+deduplicated Rust-style `warning:` diagnostics, and a bounded failure tail. It records only explicit
+environment-variable names, never their values.
+
+The complete stdout and stderr streams live outside the worktree under the sibling managed root
+`../.htmlcut-artifacts/gate-runs`. HTMLCut keeps the 20 most recent completed runs, subjects the
+root to the artifact-hygiene budget, includes it in `cargo xtask hygiene report`, and removes it
+only with `cargo xtask hygiene clean --mode rebuildable`. Use `--verbose` to replay every retained
+command stream deliberately; do not treat raw successful-command output as routine terminal input.
+
+There is no reliable cross-tool definition of every warning or error string. The report therefore
+keeps the complete source streams as authoritative evidence, extracts high-confidence Rust-style
+warning lines for the summary, and treats failed process status plus its bounded diagnostic tail as
+the actionable error surface.
 
 The hygiene contract is repo-owned: the committed `.cargo/config.toml` defines the default
 artifact layout, and `cargo xtask` honors explicit caller-managed `CARGO_TARGET_DIR` /
@@ -115,6 +161,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 
 - shell script syntax and `shellcheck`
 - `cargo fmt --check`
+- the fail-closed Rust source-structure contract before the Rust command plan: every maintained first-party source and test file must have one declared role in `tooling/rust-source-shape-policy.toml`, stay within that role's cohesion budgets, and use only that role's allowed direct internal module dependencies; unowned, stale, malformed, duplicate, or expired rules fail the gate, as do non-regular, symlinked, or repository-escaping source paths
 - the final curated coverage pass, which is the canonical execution owner for the maintained
   `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` package test targets instead of
   replaying those same inventories earlier in `cargo xtask check`

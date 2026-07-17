@@ -6,18 +6,19 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use htmlcut_tempdir::tempdir;
 
 use crate::fuzz::FUZZ_SMOKE_EXAMPLE_TARGET;
+use crate::gate_report::{GateOutputOptions, with_gate_report};
 use crate::{
-    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, CoverageFailure,
-    DEFAULT_FUZZ_SMOKE_RUNS, DynResult, HygieneCleanMode, HygieneReportFormat,
-    assert_known_fuzz_target, check_plan, ci_rust_gate_plan, clean_hygiene, coverage_clean_command,
-    coverage_command, coverage_output_path, ensure_coverage_output_dir,
-    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_hygiene,
-    ensure_miri_prerequisites, ensure_repo_toolchain_prerequisites, evaluate_coverage_report,
-    fuzz_smoke_command, fuzz_smoke_targets, hygiene_report, is_semver_check_spec,
-    miri_contract_command, prepare_artifact_layout, read_coverage_report, remove_dir_if_exists,
-    render_hygiene_report, run_outdated_check, run_spec,
-    sanitize_snapshot_workspace_manifest_for_baseline, semver_scratch_dir, stage_fuzz_corpus,
-    strip_dev_dependency_tables, tracked_files, with_workspace_stub, workspace_version,
+    CommandSpec, CommandStdout, CommandToolchainEnv, DEFAULT_FUZZ_SMOKE_RUNS, DynResult,
+    HygieneCleanMode, HygieneReportFormat, check_source_structure, clean_hygiene, ensure_hygiene,
+    hygiene_report, render_hygiene_report, report_source_structure, run_outdated_check, run_spec,
+    sanitize_snapshot_workspace_manifest_for_baseline, strip_dev_dependency_tables,
+    with_workspace_stub, workspace_version,
+};
+
+mod gates;
+
+use self::gates::{
+    run_check, run_ci_rust_gate, run_coverage, run_fuzz_smoke, run_miri, run_semver_check,
 };
 
 #[derive(Parser)]
@@ -33,32 +34,50 @@ enum Task {
         about = "Run the full maintainer quality gate.",
         long_about = "Run the full maintainer quality gate, including formatting, docs, dependency policy, tests, and the final curated 100% coverage pass."
     )]
-    Check,
+    Check {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run the curated cross-platform Rust CI gate.",
         long_about = "Run the maintained cross-platform Rust CI gate through cargo xtask so GitHub Actions does not duplicate command ownership."
     )]
-    CiRustGate,
+    CiRustGate {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run only the maintained htmlcut-core semver gate.",
         long_about = "Run only the maintained htmlcut-core cargo-semver-checks gate with the same baseline and release-type policy used by cargo xtask check."
     )]
-    SemverCheck,
+    SemverCheck {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run only the curated 100% coverage gate.",
         long_about = "Run the curated 100% line-and-branch coverage gate plus its prerequisite checks without rerunning the broader maintainer gate."
     )]
-    Coverage,
+    Coverage {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run the maintained strict-provenance selector-and-slice Miri proof.",
         long_about = "Run the maintained strict-provenance selector-and-slice Miri proof against htmlcut-core's selector validation plus delimiter slice execution path."
     )]
-    Miri,
+    Miri {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run the maintained dependency-freshness gate.",
         long_about = "Run the maintained dependency-freshness gate through a sanitized workspace snapshot so local path patches do not break the outdated check."
     )]
-    OutdatedCheck,
+    OutdatedCheck {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Run a short maintained libFuzzer smoke pass.",
         long_about = "Run a short maintained libFuzzer smoke pass over one target or the whole maintained target inventory."
@@ -75,6 +94,8 @@ enum Task {
             value_parser = clap::value_parser!(u32).range(1..)
         )]
         runs: u32,
+        #[command(flatten)]
+        output: GateOutputOptions,
     },
     #[command(
         about = "Refresh the checked-in htmlcut-core semver baseline.",
@@ -93,6 +114,14 @@ enum Task {
         #[command(subcommand)]
         command: HygieneTask,
     },
+    #[command(
+        about = "Inspect or enforce the first-party Rust source-structure contract.",
+        long_about = "Measure or fail-closed enforce role ownership, cohesion budgets, and internal dependency boundaries for maintained first-party Rust code."
+    )]
+    Structure {
+        #[command(subcommand)]
+        command: StructureTask,
+    },
 }
 
 #[derive(Subcommand)]
@@ -110,7 +139,10 @@ enum HygieneTask {
         about = "Fail if the current artifact inventory violates policy.",
         long_about = "Fail if the current repository artifact inventory violates the maintained hygiene policy."
     )]
-    Verify,
+    Verify {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
     #[command(
         about = "Delete disposable artifact roots.",
         long_about = "Delete disposable artifact roots. `safe` removes repo-local temporary workspace state, legacy repo-local target trees, and other disposable scratch; `rebuildable` also deletes the managed Cargo caches."
@@ -122,13 +154,33 @@ enum HygieneTask {
     },
 }
 
+#[derive(Subcommand)]
+enum StructureTask {
+    #[command(
+        about = "Fail if maintained first-party Rust source has no role, exceeds a budget, or crosses a dependency boundary."
+    )]
+    Check {
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
+    #[command(
+        about = "Print measured source shape and resolved ownership for maintained first-party Rust source."
+    )]
+    Report,
+}
+
 /// Parses explicit `cargo xtask` arguments and runs the requested maintainer workflow.
 pub(crate) fn main_entry_with<I, T>(repo_root: &Path, args: I) -> DynResult<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    run_task(repo_root, parse_task(args)?)
+    let task = parse_task(args)?;
+    if let Some((gate, output)) = task.gate_context() {
+        with_gate_report(repo_root, gate, output, || run_task(repo_root, task))
+    } else {
+        run_task(repo_root, task)
+    }
 }
 
 fn parse_task<I, T>(args: I) -> Result<Task, clap::Error>
@@ -146,172 +198,50 @@ fn cli_command() -> clap::Command {
 
 fn xtask_after_help() -> String {
     format!(
-        "Examples:\n  cargo xtask check\n  cargo xtask ci-rust-gate\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask miri\n  cargo xtask outdated-check\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask hygiene report\n  cargo xtask hygiene clean --mode rebuildable\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
+        "Examples:\n  cargo xtask check\n  cargo xtask check --format json\n  cargo xtask ci-rust-gate\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask miri\n  cargo xtask outdated-check\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask hygiene report\n  cargo xtask hygiene clean --mode rebuildable\n  cargo xtask structure report\n  cargo xtask structure check\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
     )
 }
 
 fn run_task(repo_root: &Path, task: Task) -> DynResult<()> {
     match task {
-        Task::Check => run_check(repo_root),
-        Task::CiRustGate => run_ci_rust_gate(repo_root),
-        Task::SemverCheck => run_semver_check(repo_root),
-        Task::Coverage => run_coverage(repo_root),
-        Task::Miri => run_miri(repo_root),
-        Task::OutdatedCheck => run_outdated_check(repo_root),
-        Task::FuzzSmoke { target, runs } => run_fuzz_smoke(repo_root, target.as_deref(), runs),
+        Task::Check { .. } => run_check(repo_root),
+        Task::CiRustGate { .. } => run_ci_rust_gate(repo_root),
+        Task::SemverCheck { .. } => run_semver_check(repo_root),
+        Task::Coverage { .. } => run_coverage(repo_root),
+        Task::Miri { .. } => run_miri(repo_root),
+        Task::OutdatedCheck { .. } => run_outdated_check(repo_root),
+        Task::FuzzSmoke { target, runs, .. } => run_fuzz_smoke(repo_root, target.as_deref(), runs),
         Task::RefreshSemverBaseline { git_ref } => refresh_semver_baseline(repo_root, &git_ref),
         Task::Hygiene { command } => run_hygiene(repo_root, command),
+        Task::Structure { command } => run_structure(repo_root, command),
     }
 }
 
-fn run_check(repo_root: &Path) -> DynResult<()> {
-    ensure_repo_toolchain_prerequisites(repo_root)?;
-    ensure_miri_prerequisites(repo_root)?;
-    ensure_coverage_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
-    ensure_hygiene(repo_root)?;
-    println!("==> Rust gate");
-
-    for spec in check_plan(repo_root)? {
-        if is_semver_check_spec(&spec) {
-            remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
-            let result = run_spec(repo_root, &spec);
-            let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
-            result?;
-            cleanup?;
-            continue;
-        }
-
-        run_spec(repo_root, &spec)?;
-    }
-
-    run_coverage(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
-}
-
-fn run_miri(repo_root: &Path) -> DynResult<()> {
-    ensure_repo_toolchain_prerequisites(repo_root)?;
-    ensure_miri_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
-    ensure_hygiene(repo_root)?;
-    println!("==> Strict-provenance selector-and-slice Miri proof");
-    run_spec(repo_root, &miri_contract_command())?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
-}
-
-fn run_ci_rust_gate(repo_root: &Path) -> DynResult<()> {
-    ensure_repo_toolchain_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
-    ensure_hygiene(repo_root)?;
-    println!("==> Cross-platform Rust gate");
-
-    for spec in ci_rust_gate_plan(repo_root)? {
-        if is_semver_check_spec(&spec) {
-            remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
-            let result = run_spec(repo_root, &spec);
-            let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
-            result?;
-            cleanup?;
-            continue;
-        }
-
-        run_spec(repo_root, &spec)?;
-    }
-
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
-}
-
-fn run_semver_check(repo_root: &Path) -> DynResult<()> {
-    ensure_repo_toolchain_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
-    ensure_hygiene(repo_root)?;
-    let spec = semver_check_spec(check_plan(repo_root)?)?;
-
-    remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
-    let result = run_spec(repo_root, &spec);
-    let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
-    result?;
-    cleanup?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
-}
-
-fn semver_check_spec(plan: Vec<CommandSpec>) -> DynResult<CommandSpec> {
-    plan.into_iter()
-        .find(is_semver_check_spec)
-        .ok_or_else(|| "semver gate step is missing from cargo xtask check".into())
-}
-
-fn run_coverage(repo_root: &Path) -> DynResult<()> {
-    ensure_coverage_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedCoverage)?;
-    ensure_hygiene(repo_root)?;
-    let coverage_clean_spec = coverage_clean_command();
-    let coverage_spec = coverage_command(repo_root);
-    run_spec(repo_root, &coverage_clean_spec)?;
-    ensure_coverage_output_dir(repo_root)?;
-
-    let result = (|| -> DynResult<()> {
-        run_spec(repo_root, &coverage_spec)?;
-
-        let tracked = tracked_files(repo_root)?;
-        let report = read_coverage_report(&coverage_output_path(repo_root))?;
-        let summary = evaluate_coverage_report(repo_root, &tracked, report)?;
-
-        if !summary.failures.is_empty() {
-            eprintln!("Rust coverage gate failed.");
-            for failure in &summary.failures {
-                report_coverage_failure(failure);
+impl Task {
+    fn gate_context(&self) -> Option<(&'static str, GateOutputOptions)> {
+        match self {
+            Self::Check { output } => Some(("check", *output)),
+            Self::CiRustGate { output } => Some(("ci-rust-gate", *output)),
+            Self::SemverCheck { output } => Some(("semver-check", *output)),
+            Self::Coverage { output } => Some(("coverage", *output)),
+            Self::Miri { output } => Some(("miri", *output)),
+            Self::OutdatedCheck { output } => Some(("outdated-check", *output)),
+            Self::FuzzSmoke { output, .. } => Some(("fuzz-smoke", *output)),
+            Self::Hygiene {
+                command: HygieneTask::Verify { output },
+            } => Some(("hygiene-verify", *output)),
+            Self::Structure {
+                command: StructureTask::Check { output },
+            } => Some(("structure-check", *output)),
+            Self::RefreshSemverBaseline { .. }
+            | Self::Hygiene {
+                command: HygieneTask::Report { .. } | HygieneTask::Clean { .. },
             }
-            return Err("coverage gate failed".into());
+            | Self::Structure {
+                command: StructureTask::Report,
+            } => None,
         }
-
-        println!(
-            "Rust coverage: lines 100.00% ({0}/{0}) | branches 100.00% ({1}/{1})",
-            summary.tracked_line_count, summary.tracked_branch_count
-        );
-        Ok(())
-    })();
-
-    let cleanup = run_spec(repo_root, &coverage_clean_spec);
-    result?;
-    cleanup?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
-}
-
-fn run_fuzz_smoke(repo_root: &Path, target: Option<&str>, runs: u32) -> DynResult<()> {
-    if let Some(target) = target {
-        assert_known_fuzz_target(target)?;
     }
-
-    ensure_fuzz_smoke_prerequisites(repo_root)?;
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
-    ensure_hygiene(repo_root)?;
-
-    let targets = target
-        .map(|target| vec![target])
-        .unwrap_or_else(|| fuzz_smoke_targets().to_vec());
-
-    for target in targets {
-        println!("==> Fuzz smoke: {target}");
-        let scratch_root = tempdir()?;
-        let staged_corpus = stage_fuzz_corpus(repo_root, scratch_root.path(), target)?;
-        let fuzz_spec = fuzz_smoke_command(target, &staged_corpus, runs)?;
-        run_spec(repo_root, &fuzz_spec)?;
-    }
-
-    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    ensure_hygiene(repo_root)
 }
 
 fn run_hygiene(repo_root: &Path, command: HygieneTask) -> DynResult<()> {
@@ -324,7 +254,7 @@ fn run_hygiene(repo_root: &Path, command: HygieneTask) -> DynResult<()> {
             }
             Ok(())
         }
-        HygieneTask::Verify => ensure_hygiene(repo_root),
+        HygieneTask::Verify { .. } => ensure_hygiene(repo_root),
         HygieneTask::Clean { mode } => {
             let result = clean_hygiene(repo_root, mode)?;
             println!(
@@ -337,6 +267,13 @@ fn run_hygiene(repo_root: &Path, command: HygieneTask) -> DynResult<()> {
             }
             Ok(())
         }
+    }
+}
+
+fn run_structure(repo_root: &Path, command: StructureTask) -> DynResult<()> {
+    match command {
+        StructureTask::Check { .. } => check_source_structure(repo_root),
+        StructureTask::Report => report_source_structure(repo_root),
     }
 }
 
@@ -414,25 +351,6 @@ fn semver_baseline_provenance(git_ref: &str, version: &str) -> String {
     )
 }
 
-fn report_coverage_failure(failure: &CoverageFailure) {
-    if !failure.uncovered_lines.is_empty() {
-        eprintln!(
-            "- {} lines: {}",
-            failure.file,
-            failure.uncovered_lines.join(", ")
-        );
-    }
-
-    if failure.uncovered_branch_count == 0 {
-        return;
-    }
-
-    eprintln!(
-        "- {} branches: {} uncovered",
-        failure.file, failure.uncovered_branch_count
-    );
-}
-
 fn snapshot_archive_command(snapshot_archive: &Path, git_ref: &str) -> CommandSpec {
     CommandSpec::new(
         "git",
@@ -495,7 +413,7 @@ fn extract_baseline_command(archive: &Path, baseline_parent: &Path) -> CommandSp
 
 #[cfg(test)]
 pub(crate) fn semver_check_spec_for_tests(plan: Vec<CommandSpec>) -> DynResult<CommandSpec> {
-    semver_check_spec(plan)
+    gates::semver_check_spec(plan)
 }
 
 #[cfg(test)]

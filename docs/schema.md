@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: SCHEMA
-updated: "2026-07-15"
+updated: "2026-07-17"
 route:
-  keywords: [schema registry, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, dom_canonicalization, comparison_text_output, schema inventory]
-  questions: ["what schemas does HTMLCut export?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry DOM canonicalization?"]
+  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, dom_canonicalization, comparison_text_output, schema inventory]
+  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry DOM canonicalization?"]
 ---
 
 # Schema Guide
@@ -14,11 +14,12 @@ HTMLCut exports a validator-grade JSON Schema registry for its maintained public
 
 The registry is the authority for JSON shape and every contract rule expressible in standard JSON
 Schema. For complete interop acceptance, validate the document against the exported schema,
-deserialize it, and invoke [`Plan::validate`](../crates/htmlcut-core/src/interop/v1/types/plan.rs)
-or [`InteropResult::validate`](../crates/htmlcut-core/src/interop/v1/types/result.rs). Runtime
-validation additionally checks semantic relations that standard JSON Schema cannot express, such
-as exact text-projection equality. `stable_json` and digest helpers perform that runtime
-validation before producing canonical data.
+deserialize it, and invoke [`Plan::validate`](../crates/htmlcut-core/src/interop/v1/types/plan/mod.rs),
+[`InteropResult::validate`](../crates/htmlcut-core/src/interop/v1/types/result/mod.rs), or
+[`InteropError::validate`](../crates/htmlcut-core/src/interop/v1/types/result/mod.rs), as appropriate.
+Runtime validation additionally checks semantic relations that standard JSON Schema cannot express,
+such as exact text-projection equality, UTF-8 byte bounds, and duplicate selector-parse equality.
+`stable_json` and digest helpers perform that runtime validation before producing canonical data.
 
 Do not scrape help text or infer JSON shapes from examples when a schema exists here.
 
@@ -30,7 +31,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 7 --output json
+htmlcut schema --name htmlcut.result --schema-version 8 --output json
 ```
 
 Rust:
@@ -59,8 +60,9 @@ The exported registry profile is:
 
 Stable schema families are grouped by owner:
 
-This inventory is completeness-linted against the live schema registry. If the registry gains or
-loses a schema family, this guide is expected to change in the same diff.
+This inventory is completeness-linted against the live runtime schema registry and the maintained
+gate-report contract. If either contract inventory gains or loses a schema family, this guide is
+expected to change in the same diff.
 
 Core request contracts:
 
@@ -83,6 +85,10 @@ CLI report contracts:
 - `htmlcut.source_inspection_report`
 - `htmlcut.error_report`
 
+Maintainer report contracts:
+
+- `htmlcut.gate_run`
+
 Interop v1 contracts:
 
 - `htmlcut.plan`
@@ -90,16 +96,21 @@ Interop v1 contracts:
 - `htmlcut.error`
 
 Use `htmlcut schema --output json` when you need the current integer schema versions for those
-families. The registry output is the authoritative version inventory.
+runtime families. The versioned `htmlcut.gate_run@1` document is emitted by `cargo xtask` quality
+gates rather than the extraction CLI schema registry; see [quality-gates.md](quality-gates.md) for
+its execution, retention, and diagnostic contract.
 
 The interop families are their own published language, not schema aliases for generic core
 request/result types. Their selector text, delimiter boundaries, output contract, diagnostics, and
 byte ranges are owned by `htmlcut_core::interop::v1`.
 
-The current DOM-aware interop revisions are `htmlcut.plan@7` and `htmlcut.result@7`.
+The current DOM-aware interop revisions are `htmlcut.plan@7`, `htmlcut.result@8`, and
+`htmlcut.error@3`.
 Plan version 7 carries optional `dom_canonicalization` only for CSS text or structured output;
-result version 7 carries optional `comparison_text_output` only for those same output kinds while
-preserving the raw evidence fields.
+result version 8 carries optional `comparison_text_output` only for those same output kinds while
+preserving the raw evidence fields. Result and error revisions enforce bounded public diagnostic
+messages; runtime validation additionally enforces the closed, duplicated selector-parse detail on
+invalid-selector errors.
 
 ## Catalog Relationship
 

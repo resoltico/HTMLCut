@@ -4,6 +4,23 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [11.0.1] - 2026-07-17
+
+### Added
+- Added a fail-closed Rust source-structure quality gate with role-owned cohesion budgets and internal dependency boundaries for every maintained first-party source and test file; `cargo xtask structure report` exposes the measured inventory and `cargo xtask structure check` enforces it independently or as part of the main maintainer and cross-platform Rust gates.
+
+### Changed
+- Maintainer gates now emit concise human progress by default or one `htmlcut.gate_run@1` JSON report with `--format json`; each completed run retains ordered command and internal-check evidence, separate stdout/stderr logs, durations, normalized Rust-style warnings, and bounded failure diagnostics under the managed artifact root.
+- Artifact hygiene now inventories and budgets retained gate evidence, keeps the 20 most recent completed reports, and removes those rebuildable reports only through `cargo xtask hygiene clean --mode rebuildable`.
+- Release closeout now requires the full maintainer gate after committing the refreshed semver baseline and before its direct `main` push, so the published closeout state is verified rather than relying on a conditional prose instruction that followed an earlier push command.
+- `htmlcut-v1` now publishes `htmlcut.result@8` and `htmlcut.error@3`. The revised documents bound every public error and diagnostic message to 1024 UTF-8 bytes and reject invalid selector-error payloads before canonical JSON or digests are produced.
+- Invalid CSS selector errors now validate the exact safe message and carry a closed, one-based source position plus an HTMLCut-owned parse-error class in both the diagnostic and error-detail carriers; the two copies must agree exactly.
+
+### Fixed
+- Quiet maintainer-command execution now preserves both output streams and reveals bounded diagnostics when a command fails instead of discarding the information needed to diagnose the gate.
+- Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
+- Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
+
 ## [11.0.0] - 2026-07-15
 
 ### Added

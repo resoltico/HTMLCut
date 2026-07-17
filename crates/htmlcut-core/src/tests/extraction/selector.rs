@@ -206,7 +206,7 @@ fn selector_runtime_reports_misrouted_and_per_match_builder_errors() {
 }
 
 #[test]
-fn selector_validation_preserves_parser_details() {
+fn selector_validation_publishes_only_closed_structured_parser_details() {
     let invalid_request = ExtractionRequest::new(
         memory_source("inline", "<article>Hello</article>"),
         ExtractionSpec::selector(SelectorQuery::new("[").expect("selector query")),
@@ -217,19 +217,28 @@ fn selector_validation_preserves_parser_details() {
     assert_eq!(invalid_run.candidate_count, 0);
     assert!(invalid_run.matches.is_empty());
     assert_eq!(invalid_run.diagnostics[0].code, "INVALID_SELECTOR");
-    assert!(
-        invalid_run.diagnostics[0]
-            .message
-            .contains("Invalid selector: [")
+    assert_eq!(
+        invalid_run.diagnostics[0].message,
+        "CSS selector is invalid."
     );
+    let details = invalid_run.diagnostics[0]
+        .details
+        .as_ref()
+        .expect("structured selector parse details");
+    let selector_parse = details
+        .get("selector_parse")
+        .and_then(Value::as_object)
+        .expect("closed selector_parse object");
+    assert_eq!(selector_parse.len(), 3);
+    assert!(selector_parse["line"].as_u64().is_some_and(|line| line > 0));
     assert!(
-        invalid_run.diagnostics[0]
-            .details
-            .as_ref()
-            .and_then(|details| details.get("parseError"))
-            .and_then(Value::as_str)
-            .is_some()
+        selector_parse["column_utf16"]
+            .as_u64()
+            .is_some_and(|column| column > 0)
     );
+    assert!(selector_parse["parse_error_class"].as_str().is_some());
+    assert!(!details.to_string().contains("parseError"));
+    assert!(!details.to_string().contains('['));
 }
 
 #[test]

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: SETUP
-updated: "2026-07-15"
+updated: "2026-07-16"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-miri, macOS clang, CC override, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]

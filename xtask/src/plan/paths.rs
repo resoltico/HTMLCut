@@ -108,6 +108,11 @@ pub fn coverage_build_dir(repo_root: &Path) -> PathBuf {
     sibling_artifact_dir(&cargo_build_dir(repo_root), "coverage-build")
 }
 
+/// Returns the managed evidence root retained for completed maintainer-gate runs.
+pub fn gate_report_dir(repo_root: &Path) -> PathBuf {
+    sibling_artifact_dir(&cargo_target_dir(repo_root), "gate-runs")
+}
+
 /// Returns the nested Cargo target directory created by `cargo llvm-cov` inside the managed coverage root.
 pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
     coverage_target_dir(repo_root).join("llvm-cov-target")

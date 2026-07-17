@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: RELEASE
-updated: "2026-07-15"
+updated: "2026-07-17"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]
@@ -111,6 +111,7 @@ git merge --ff-only origin/main
 cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 git add semver-baseline/htmlcut-core
 git commit -m "chore: refresh htmlcut-core semver baseline"
+./check.sh
 git push
 ```
 
@@ -127,17 +128,16 @@ its own provenance cue. The packaging step uses an isolated temp-owned Cargo tar
 rather than assuming the snapshot writes to `target/package`, so repo-owned Cargo artifact layout
 settings and ambient operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
 
-With the documented branch protection, that `git push` is an intentional maintainer-owned direct
-`main` closeout update and GitHub may report it as an admin bypass of the pull-request-only rule.
-If the push is rejected because admins are now enforced or a new review rule was added, repository
-settings have drifted away from this protocol and must be corrected before the closeout continues.
+The full maintainer gate is mandatory after that commit and before the direct `main` push. It
+proves the committed closeout state, rather than a dirty baseline snapshot that `cargo xtask check`
+intentionally rejects, and covers any maintainer tooling or release documentation changed during
+the release session. Do not push the refresh before this gate passes.
 
-If the release session itself changed maintainer tooling, release docs, or any other checked-in
-surface after the published tag, commit the semver-baseline refresh first and then rerun the full
-maintainer gate from that committed post-refresh `main` tree before the final push. `cargo xtask
-check` intentionally rejects a dirty checked-in baseline snapshot, so the end-of-session proof
-must execute against the committed closeout state rather than while
-`semver-baseline/htmlcut-core` is still an uncommitted diff.
+With the documented branch protection, that final `git push` is an intentional maintainer-owned
+direct `main` closeout update and GitHub may report it as an admin bypass of the
+pull-request-only rule. If the push is rejected because admins are now enforced or a new review
+rule was added, repository settings have drifted away from this protocol and must be corrected
+before the closeout continues.
 
 ## 12. Reconcile The Primary Checkout
 

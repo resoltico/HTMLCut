@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "11.0.0"
+version: "11.0.1"
 domain: OPERATIONS
-updated: "2026-07-15"
+updated: "2026-07-17"
 route:
-  keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, xtask hygiene, cache cleanup, managed build artifacts]
-  questions: ["where do HTMLCut build artifacts live?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "why is repo-local target considered legacy in HTMLCut?", "which artifact roots are managed and disposable?"]
+  keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, gate reports, retained diagnostics, xtask hygiene, cache cleanup, managed build artifacts]
+  questions: ["where do HTMLCut build artifacts live?", "where are HTMLCut gate reports stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "why is repo-local target considered legacy in HTMLCut?", "which artifact roots are managed and disposable?"]
 ---
 
 # Artifact Hygiene
@@ -24,6 +24,8 @@ layout:
 - final Cargo artifacts go to a sibling `../.htmlcut-artifacts/target` tree outside the repo root
 - intermediate Cargo build state goes to a sibling `../.htmlcut-artifacts/build` tree outside the
   repo root
+- completed quality-gate reports and their raw stdout/stderr evidence go to the sibling
+  `../.htmlcut-artifacts/gate-runs` tree outside the repo root
 
 That means routine `cargo build`, `cargo test`, `cargo run`, `cargo xtask ...`, and `./check.sh`
 do not grow the repository directory with multi-gigabyte `target/debug` and
@@ -55,6 +57,8 @@ HTMLCut enforces these hygiene rules:
   roots after the maintainer gate finishes
 - coverage scratch and semver scratch are disposable and are cleaned automatically by maintained
   `cargo xtask` flows
+- gate evidence retains the 20 most recent completed runs under its managed `gate-runs` root; it is
+  visible to hygiene reporting and removed only by `cargo xtask hygiene clean --mode rebuildable`
 - the maintainer Rust gates run a hygiene cleanup and a hygiene verification pass before and after
   the command plan
 
