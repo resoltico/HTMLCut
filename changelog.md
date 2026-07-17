@@ -12,6 +12,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Changed
 - Maintainer gates now emit concise human progress by default or one `htmlcut.gate_run@1` JSON report with `--format json`; each completed run retains ordered command and internal-check evidence, separate stdout/stderr logs, durations, normalized Rust-style warnings, and bounded failure diagnostics under the managed artifact root.
 - Artifact hygiene now inventories and budgets retained gate evidence, keeps the 20 most recent completed reports, and removes those rebuildable reports only through `cargo xtask hygiene clean --mode rebuildable`.
+- Release closeout now requires the full maintainer gate after committing the refreshed semver baseline and before its direct `main` push, so the published closeout state is verified rather than relying on a conditional prose instruction that followed an earlier push command.
 - `htmlcut-v1` now publishes `htmlcut.result@8` and `htmlcut.error@3`. The revised documents bound every public error and diagnostic message to 1024 UTF-8 bytes and reject invalid selector-error payloads before canonical JSON or digests are produced.
 - Invalid CSS selector errors now validate the exact safe message and carry a closed, one-based source position plus an HTMLCut-owned parse-error class in both the diagnostic and error-detail carriers; the two copies must agree exactly.
 
