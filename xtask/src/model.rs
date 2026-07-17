@@ -184,18 +184,18 @@ pub enum MiriPreflightFailure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Stdout handling for one external maintainer command.
 pub enum CommandStdout {
-    /// Stream stdout directly to the terminal.
+    /// Replay stdout to the terminal after a successful command completes.
     Inherit,
-    /// Suppress stdout unless the command fails.
+    /// Hide successful stdout but retain and reveal it when the command fails.
     Quiet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Stderr handling for one external maintainer command.
 pub enum CommandStderr {
-    /// Stream stderr directly to the terminal.
+    /// Replay stderr to the terminal after a successful command completes.
     Inherit,
-    /// Suppress stderr unless the command fails.
+    /// Hide successful stderr but retain and reveal it when the command fails.
     Quiet,
 }
 

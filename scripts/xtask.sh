@@ -13,7 +13,7 @@ readonly repo_root
 
 cd "${repo_root}"
 
-cargo build -p xtask --locked
+cargo build --quiet -p xtask --locked
 
 compiled_xtask="$(htmlcut_cargo_host_binary_path "${repo_root}" "debug" "xtask")"
 [[ -f "${compiled_xtask}" ]] || htmlcut_die "missing compiled xtask binary ${compiled_xtask}"
