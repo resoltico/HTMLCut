@@ -9,9 +9,9 @@ pub const RESULT_SCHEMA_NAME: &str = "htmlcut.result";
 /// Schema name for the extraction error.
 pub const ERROR_SCHEMA_NAME: &str = "htmlcut.error";
 /// Schema version for the extraction plan.
-pub const PLAN_SCHEMA_VERSION: u32 = 7;
+pub const PLAN_SCHEMA_VERSION: u32 = 8;
 /// Schema version for the extraction result.
-pub const RESULT_SCHEMA_VERSION: u32 = 8;
+pub const RESULT_SCHEMA_VERSION: u32 = 9;
 /// Schema version for the extraction error.
 pub const ERROR_SCHEMA_VERSION: u32 = 3;
 /// Exact public message for an invalid CSS selector.
@@ -146,6 +146,15 @@ pub enum ContractError {
     /// A non-CSS result unexpectedly carried a detached-clone comparison text projection.
     #[error("delimiter_pair selected matches must not carry comparison_text_output")]
     UnexpectedComparisonTextOutput,
+    /// A non-CSS result unexpectedly carried a DOM plain-text projection.
+    #[error("delimiter_pair selected matches must not carry plain_text_output")]
+    UnexpectedPlainTextOutput,
+    /// A CSS result omitted its DOM plain-text projection.
+    #[error("css_selector selected matches must carry plain_text_output")]
+    MissingPlainTextOutput,
+    /// A non-CSS result unexpectedly carried a detached-clone comparison plain-text projection.
+    #[error("delimiter_pair selected matches must not carry comparison_plain_text_output")]
+    UnexpectedComparisonPlainTextOutput,
     /// A raw CSS output kind unexpectedly carried a detached-clone comparison text projection.
     #[error(
         "selected matches for output kind {output_kind:?} must not carry comparison_text_output"
@@ -154,14 +163,33 @@ pub enum ContractError {
         /// Output kind declared by the result.
         output_kind: super::plan::OutputKind,
     },
+    /// A raw output kind unexpectedly carried a detached-clone comparison plain-text projection.
+    #[error(
+        "selected matches for output kind {output_kind:?} must not carry comparison_plain_text_output"
+    )]
+    UnexpectedComparisonPlainTextOutputForOutput {
+        /// Output kind declared by the result.
+        output_kind: super::plan::OutputKind,
+    },
     /// A text result's exact output did not agree with its authoritative text projection.
     #[error(
         "text output_value must equal comparison_text_output when present, otherwise text_output"
     )]
     TextOutputValueMismatch,
+    /// A plain-text result's exact output did not agree with its authoritative plain-text projection.
+    #[error(
+        "plain_text output_value must equal comparison_plain_text_output when present, otherwise plain_text_output"
+    )]
+    PlainTextOutputValueMismatch,
     /// Raw structured evidence leaked the interop-only clone comparison projection.
     #[error("structured output_value must not contain comparisonTextOutput")]
     StructuredOutputContainsComparisonText,
+    /// Raw structured evidence leaked the interop-only plain-text clone comparison projection.
+    #[error("structured output_value must not contain comparisonPlainTextOutput")]
+    StructuredOutputContainsComparisonPlainText,
+    /// Raw CSS structured evidence did not retain its authoritative plain-text field.
+    #[error("structured CSS output_value must retain plainTextOutput equal to plain_text_output")]
+    StructuredOutputPlainTextMismatch,
     /// Result metadata did not describe the same strategy kind as the top-level result.
     #[error(
         "selected match metadata kind {metadata_kind:?} does not match result strategy kind {strategy_kind:?}"

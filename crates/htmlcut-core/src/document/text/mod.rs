@@ -5,8 +5,9 @@ mod vocabulary;
 
 pub(crate) use render::ELLIPSIS;
 pub(crate) use render::{
-    apply_whitespace_mode, extract_heading_text, render_element_as_text,
-    render_element_children_as_text, render_html_as_text, render_selected_document_body_as_text,
+    apply_whitespace_mode, extract_element_plain_text, extract_heading_text,
+    render_element_as_text, render_element_children_as_text, render_html_as_text,
+    render_selected_document_body_as_text,
 };
 #[cfg(test)]
 pub(crate) use render::{

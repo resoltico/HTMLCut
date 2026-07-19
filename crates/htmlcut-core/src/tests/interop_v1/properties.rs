@@ -127,11 +127,12 @@ impl CaseGenerator {
 
     fn output(&mut self, strategy_kind: StrategyKind) -> Output {
         match strategy_kind {
-            StrategyKind::CssSelector => match self.bounded(5) {
+            StrategyKind::CssSelector => match self.bounded(6) {
                 0 => Output::text(),
-                1 => Output::inner_html(),
-                2 => Output::outer_html(),
-                3 => Output::attribute(output_attribute_name(
+                1 => Output::plain_text(),
+                2 => Output::inner_html(),
+                3 => Output::outer_html(),
+                4 => Output::attribute(output_attribute_name(
                     &self.non_empty_text(8).replace(' ', "_"),
                 )),
                 _ => Output::structured(),
@@ -319,12 +320,17 @@ impl CaseGenerator {
             },
         };
         let text_output = self.text(24, true);
+        let plain_text_output =
+            matches!(strategy_kind, StrategyKind::CssSelector).then(|| self.text(24, true));
         let selected_html_output =
             matches!(strategy_kind, StrategyKind::DelimiterPair).then(|| self.text(24, true));
         let inner_html_output = self.text(24, true);
         let outer_html_output = self.text(24, true);
         let output_value = match output {
             Output::Text => Value::String(text_output.clone()),
+            Output::PlainText => {
+                Value::String(plain_text_output.clone().expect("CSS plain-text output"))
+            }
             Output::InnerHtml => Value::String(inner_html_output.clone()),
             Output::OuterHtml => Value::String(outer_html_output.clone()),
             Output::SelectedHtml => Value::String(
@@ -344,10 +350,17 @@ impl CaseGenerator {
                         .unwrap_or_else(|| self.text(24, true)),
                 )
             }
-            Output::Structured => Value::Object(Map::from_iter([(
-                "example".to_owned(),
-                Value::String(self.text(24, true)),
-            )])),
+            Output::Structured => {
+                let mut structured =
+                    Map::from_iter([("example".to_owned(), Value::String(self.text(24, true)))]);
+                if let Some(plain_text_output) = &plain_text_output {
+                    structured.insert(
+                        "plainTextOutput".to_owned(),
+                        Value::String(plain_text_output.clone()),
+                    );
+                }
+                Value::Object(structured)
+            }
         };
 
         SelectedMatch {
@@ -355,6 +368,8 @@ impl CaseGenerator {
             output_value,
             text_output,
             comparison_text_output: None,
+            plain_text_output,
+            comparison_plain_text_output: None,
             selected_html_output,
             inner_html_output,
             outer_html_output,

@@ -154,6 +154,6 @@ fn schema_report_surfaces_core_cli_and_interop_contracts() {
     assert!(
         version_error
             .message
-            .contains("Available versions for `htmlcut.result`: 8.")
+            .contains("Available versions for `htmlcut.result`: 9.")
     );
 }

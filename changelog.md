@@ -4,6 +4,24 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [12.0.0] - 2026-07-19
+
+### Added
+
+- Added the CSS-only `plain_text` output to `htmlcut-v1`, which returns direct DOM descendant text after the configured whitespace policy without HTML-aware heading, list, link, table, or other structural decoration.
+- Added plain-text evidence to every CSS-selector selected match: `plain_text_output` preserves the original selected DOM value, and `comparison_plain_text_output` records the detached canonicalized value when applicable; structured output retains original evidence without embedding comparison-only data.
+
+### Changed
+
+- HTMLCut `12.0.0` advances `htmlcut.plan` to version 8, `htmlcut.result` to version 9, and `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` to 4 for the expanded CSS evidence contract; older plan and result revisions are deliberately rejected at this major-version boundary.
+- CSS consumers can now choose between semantic rendered `text` and literal descendant `plain_text`: rendered text retains HTML-aware structure, while plain text is available only for CSS selection and carries no markup-derived decoration. Canonicalized CSS projections retain their comparison value separately for either text form.
+- Refreshed the maintained dependency graph to current Rust 1.97-compatible releases, including `clap 4.6.2`, `serde 1.0.229`, `thiserror 2.0.19`, and the `xtask` syntax-analysis dependency `syn 3.0.0`. The dependency policy now carries one exact `syn 2.0.119` exception for current upstream proc-macro consumers, with its convergence-based removal trigger recorded alongside the policy.
+
+### Fixed
+
+- Semver-baseline refresh now captures the published vendored selector/parser stack with the tagged `htmlcut-core` source and restores its exact fork identities in the baseline manifest, so compatibility checks compile against the API users actually receive instead of incompatible upstream registry substitutes.
+- Maintainer-tool tests, including spawned integration binaries, now isolate their report roots, so retained operational evidence no longer contains fixture-only zero-step failures that can be mistaken for real gate runs.
+
 ## [11.0.1] - 2026-07-17
 
 ### Added
@@ -20,8 +38,6 @@ Notable changes to this project are documented in this file. The format is based
 - Quiet maintainer-command execution now preserves both output streams and reveals bounded diagnostics when a command fails instead of discarding the information needed to diagnose the gate.
 - Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
 - Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
-- Semver-baseline refresh now captures the published vendored selector/parser stack with the tagged `htmlcut-core` source and restores its exact fork identities in the baseline manifest, so compatibility checks compile against the API users actually receive instead of incompatible upstream registry substitutes.
-- Maintainer-tool tests, including spawned integration binaries, now isolate their report roots, so retained operational evidence no longer contains fixture-only zero-step failures that can be mistaken for real gate runs.
 
 ## [11.0.0] - 2026-07-15
 

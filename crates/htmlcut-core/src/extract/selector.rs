@@ -12,8 +12,9 @@ use crate::contracts::{
 use crate::diagnostics::{DiagnosticCode, error_diagnostic, unresolved_effective_base_diagnostic};
 use crate::document::{
     apply_whitespace_mode, build_node_path, build_preview, document_base_href, element_attributes,
-    extract_document_title, parse_document_node, render_element_as_text, resolve_document_base_url,
-    rewrite_urls_in_document, serialize_children, serialize_element,
+    extract_document_title, extract_element_plain_text, parse_document_node,
+    render_element_as_text, resolve_document_base_url, rewrite_urls_in_document,
+    serialize_children, serialize_element,
 };
 use crate::interop::v1::INVALID_SELECTOR_MESSAGE;
 use crate::selector_parse::selector_parse_details;
@@ -140,17 +141,18 @@ pub(crate) fn run_validated_selector_extraction(
             .and_then(|rewritten| rewritten.tree.get(selected_candidate.candidate.id()))
             .and_then(ElementRef::wrap)
             .unwrap_or(rendered_candidate);
-        let comparison_text_output =
+        let (comparison_text_output, comparison_plain_text_output) =
             match (dom_canonicalization, canonicalization_document.as_mut()) {
                 (Some(canonicalization), Some(canonicalization_document)) => {
-                    Some(render_canonicalized_selected_clone(
+                    let (rendered, plain) = project_canonicalized_selected_clone(
                         canonicalization_document,
                         selected_candidate.candidate.id(),
                         canonicalization,
                         request.output.rendering.whitespace,
-                    ))
+                    );
+                    (Some(rendered), Some(plain))
                 }
-                _ => None,
+                _ => (None, None),
             };
         let built_match = build_selector_match_with_comparison(
             request,
@@ -162,6 +164,7 @@ pub(crate) fn run_validated_selector_extraction(
                 candidate_index: selected_candidate.candidate_index,
                 candidate_count,
                 comparison_text_output,
+                comparison_plain_text_output,
             },
         );
 
@@ -210,6 +213,7 @@ pub(crate) fn build_selector_match(
             candidate_index,
             candidate_count,
             comparison_text_output: None,
+            comparison_plain_text_output: None,
         },
     )
 }
@@ -220,6 +224,7 @@ struct SelectorMatchDetails {
     candidate_index: usize,
     candidate_count: usize,
     comparison_text_output: Option<String>,
+    comparison_plain_text_output: Option<String>,
 }
 
 fn build_selector_match_with_comparison(
@@ -234,6 +239,7 @@ fn build_selector_match_with_comparison(
         candidate_index,
         candidate_count,
         comparison_text_output,
+        comparison_plain_text_output,
     } = details;
     let value_spec = request.extraction.value();
     let path = build_node_path(node);
@@ -247,6 +253,14 @@ fn build_selector_match_with_comparison(
     let text = OnceCell::new();
     let text_value = || {
         text.get_or_init(|| render_element_as_text(text_node, request.output.rendering.whitespace))
+            .clone()
+    };
+    let plain_text = OnceCell::new();
+    let plain_text_value = || {
+        plain_text
+            .get_or_init(|| {
+                extract_element_plain_text(text_node, request.output.rendering.whitespace)
+            })
             .clone()
     };
     let inner_html = OnceCell::new();
@@ -295,12 +309,17 @@ fn build_selector_match_with_comparison(
                 "tagName": tag_name.clone(),
                 "path": path.clone(),
                 "textOutput": text_value(),
+                "plainTextOutput": plain_text_value(),
                 "innerHtmlOutput": inner_html_value(),
                 "outerHtmlOutput": outer_html_value(),
                 "attributes": attributes_value(),
             });
             if let Some(comparison_text_output) = &comparison_text_output {
                 structured["comparisonTextOutput"] = Value::String(comparison_text_output.clone());
+            }
+            if let Some(comparison_plain_text_output) = &comparison_plain_text_output {
+                structured["comparisonPlainTextOutput"] =
+                    Value::String(comparison_plain_text_output.clone());
             }
             structured
         }
@@ -332,12 +351,12 @@ fn build_selector_match_with_comparison(
     })
 }
 
-fn render_canonicalized_selected_clone(
+fn project_canonicalized_selected_clone(
     document: &mut Html,
     selected_node_id: NodeId,
     canonicalization: &SelectorDomCanonicalization,
     whitespace: crate::WhitespaceMode,
-) -> String {
+) -> (String, String) {
     let detached_clone_id = document
         .tree
         .get_mut(selected_node_id)
@@ -350,7 +369,10 @@ fn render_canonicalized_selected_clone(
         .get(detached_clone_id)
         .and_then(ElementRef::wrap)
         .expect("cloned selected element must remain an element");
-    render_element_as_text(&detached_clone, whitespace)
+    (
+        render_element_as_text(&detached_clone, whitespace),
+        extract_element_plain_text(&detached_clone, whitespace),
+    )
 }
 
 fn canonicalize_detached_subtree(

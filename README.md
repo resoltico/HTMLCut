@@ -7,7 +7,7 @@ when you need to cut raw source text.
 You can save an extraction definition as a request file and rerun it later without restating the
 selector, slice boundaries, or output settings.
 
-- Extract text, links, attributes, HTML fragments, or structured match data
+- Extract semantic rendered text, direct DOM descendant text, links, attributes, HTML fragments, or structured match data
 - Cut raw source text between literal strings or regex boundaries
 - Preview a source or an extraction before committing to final output
 - Save reusable request files and replay them unchanged
@@ -31,7 +31,7 @@ definition, so you get the same selector and output settings without repeating t
 
 ## Embed Deterministic Extraction
 
-Rust applications can use `htmlcut_core::interop::v1` to prepare typed extraction plans, execute them against application-owned HTML, and persist deterministic result and error documents. See the [Interop v1 Guide](docs/interop-v1.md) for the contract boundary and integration API.
+Rust applications can use `htmlcut_core::interop::v1` to prepare typed extraction plans, execute them against application-owned HTML, and persist deterministic result and error documents. Use `text` when HTML-aware rendered structure is part of the value; use CSS-only `plain_text` when the value is the selected element's direct descendant text after its declared whitespace policy. See the [Interop v1 Guide](docs/interop-v1.md) for the contract boundary and integration API.
 
 ## Documentation Index
 

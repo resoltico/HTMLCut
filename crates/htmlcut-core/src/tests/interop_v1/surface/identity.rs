@@ -59,10 +59,10 @@ fn html_input_extraction_identity_binds_complete_input_plan_and_semantics_versio
         .extraction_identity_sha256(&plan)
         .expect("extraction identity");
 
-    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 3);
+    assert_eq!(HTMLCUT_EXTRACTION_SEMANTICS_VERSION, 4);
     assert_eq!(
         identity,
-        "34bf7d47eefd8316dced5279c68f4e4260fd988020fc9a4c74546e272a5f8278"
+        "5289fb8f86b322f12c72e584dab7cbc48e2af00d7c98638e34047831d91fd797"
     );
     assert_eq!(
         source
@@ -136,7 +136,7 @@ fn html_input_extraction_identity_binds_invalid_plans_for_diagnostics() {
 
     assert_eq!(
         identity,
-        "affc732742023f4ed49e98b620067666051075b906b9db4ea838eab360bdaa51"
+        "dff8152418c9423294432bf279969ac6dfae9fdfdf60a2923bf808fc911a8bef"
     );
     assert_eq!(
         prepare_plan(&plan)

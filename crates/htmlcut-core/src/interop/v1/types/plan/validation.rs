@@ -59,7 +59,10 @@ impl Plan {
             });
         }
 
-        if !matches!(self.output, Output::Text | Output::Structured) {
+        if !matches!(
+            self.output,
+            Output::Text | Output::PlainText | Output::Structured
+        ) {
             return Err(
                 ContractError::DomCanonicalizationRequiresComparisonTextOutput {
                     output_kind: self.output.kind(),

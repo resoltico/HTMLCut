@@ -287,7 +287,7 @@ impl Selection {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OutputKind {
-    /// Extract normalized or preserved text.
+    /// Extract HTML-aware rendered text.
     Text,
     /// Extract true inner HTML.
     InnerHtml,
@@ -299,6 +299,8 @@ pub enum OutputKind {
     Attribute,
     /// Extract the full structured HTMLCut payload.
     Structured,
+    /// Extract DOM descendant text without rendered structural decoration.
+    PlainText,
 }
 
 impl OutputKind {
@@ -311,6 +313,7 @@ impl OutputKind {
             Self::SelectedHtml => "selected_html",
             Self::Attribute => "attribute",
             Self::Structured => "structured",
+            Self::PlainText => "plain_text",
         }
     }
 }
@@ -326,7 +329,7 @@ impl fmt::Display for OutputKind {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Output {
-    /// Extract normalized or preserved text.
+    /// Extract HTML-aware rendered text.
     Text,
     /// Extract true inner HTML.
     InnerHtml,
@@ -341,12 +344,19 @@ pub enum Output {
     },
     /// Extract the full structured HTMLCut payload.
     Structured,
+    /// Extract DOM descendant text without rendered structural decoration.
+    PlainText,
 }
 
 impl Output {
     /// Builds a text output selection.
     pub const fn text() -> Self {
         Self::Text
+    }
+
+    /// Builds a plain DOM-descendant-text output selection.
+    pub const fn plain_text() -> Self {
+        Self::PlainText
     }
 
     /// Builds an inner-HTML output selection.
@@ -378,6 +388,7 @@ impl Output {
     pub const fn kind(&self) -> OutputKind {
         match self {
             Self::Text => OutputKind::Text,
+            Self::PlainText => OutputKind::PlainText,
             Self::InnerHtml => OutputKind::InnerHtml,
             Self::OuterHtml => OutputKind::OuterHtml,
             Self::SelectedHtml => OutputKind::SelectedHtml,
@@ -393,6 +404,7 @@ impl Output {
         if matches!(
             (strategy_kind, self),
             (StrategyKind::CssSelector, Self::SelectedHtml)
+                | (StrategyKind::DelimiterPair, Self::PlainText)
         ) {
             return Err(ContractError::UnsupportedOutputForStrategy {
                 strategy_kind,

@@ -348,6 +348,7 @@ fn interop_result_validation_rejects_clone_text_leaked_into_structured_raw_evide
     let mut selected = selector_selected_match();
     selected.output_value = serde_json::json!({
         "textOutput": "Hello",
+        "plainTextOutput": "Hello",
         "comparisonTextOutput": "Invented clone text"
     });
     let result = InteropResult::new(
@@ -375,6 +376,7 @@ fn interop_result_validation_rejects_clone_text_leaked_into_structured_raw_evide
         ContractError::StructuredOutputContainsComparisonText
     ));
 }
+
 #[test]
 fn interop_stable_json_digest_helpers_cover_object_and_scalar_values() {
     let object_digest =
