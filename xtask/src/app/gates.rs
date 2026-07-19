@@ -4,6 +4,7 @@ use std::path::Path;
 
 use htmlcut_tempdir::tempdir;
 
+use crate::plan::materialize_semver_baseline;
 use crate::{
     CommandArtifactLayout, CommandSpec, CoverageFailure, DynResult, HygieneCleanMode,
     assert_known_fuzz_target, check_plan, check_source_structure, ci_rust_gate_plan, clean_hygiene,
@@ -155,11 +156,34 @@ pub(super) fn run_fuzz_smoke(repo_root: &Path, target: Option<&str>, runs: u32) 
 }
 
 fn run_semver_step(repo_root: &Path, spec: CommandSpec) -> DynResult<()> {
-    remove_dir_if_exists(&semver_scratch_dir(repo_root))?;
-    let result = run_spec(repo_root, &spec);
-    let cleanup = remove_dir_if_exists(&semver_scratch_dir(repo_root));
+    let scratch = semver_scratch_dir(repo_root);
+    remove_dir_if_exists(&scratch)?;
+    let result = (|| {
+        let materialized_baseline =
+            materialize_semver_baseline(repo_root, &scratch.join("baseline"))?;
+        let spec = with_materialized_baseline(spec, &materialized_baseline)?;
+        run_spec(repo_root, &spec)
+    })();
+    let cleanup = remove_dir_if_exists(&scratch);
     result?;
     cleanup
+}
+
+pub(super) fn with_materialized_baseline(
+    mut spec: CommandSpec,
+    materialized_baseline: &Path,
+) -> DynResult<CommandSpec> {
+    let flag_index = spec
+        .args
+        .iter()
+        .position(|argument| argument == "--baseline-root")
+        .ok_or("semver gate command is missing --baseline-root")?;
+    let baseline_argument = spec
+        .args
+        .get_mut(flag_index + 1)
+        .ok_or("semver gate command is missing the --baseline-root value")?;
+    *baseline_argument = materialized_baseline.to_string_lossy().into_owned();
+    Ok(spec)
 }
 
 fn record_coverage_success(message: &str) {

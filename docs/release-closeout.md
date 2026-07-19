@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.0"
+version: "12.0.1"
 domain: RELEASE
-updated: "2026-07-17"
+updated: "2026-07-19"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]
@@ -121,9 +121,10 @@ cannot silently drift to unreleased local worktree state. The refresh flow strip
 maintainer helpers do not block the public-API baseline refresh. Cargo needs a temporary
 registry-shaped workspace to normalize the core package, but that intermediate never becomes the
 baseline: the refresh restores the published `htmlcut-*` selector/parser fork identities and copies
-their complete tagged source graph into `semver-baseline/htmlcut-core/vendor/`. The isolated
-baseline therefore remains buildable while comparing against the exact dependency API that Git/path
-consumers receive, not an upstream registry lookalike. It rewrites
+their complete tagged source graph into `semver-baseline/htmlcut-core/vendor/`. Vendor manifests
+are stored there as `Cargo.toml.htmlcut-baseline`, not live `Cargo.toml` files, so downstream Git
+consumers cannot discover duplicate frozen packages. The semver gate materializes the exact
+buildable baseline in managed scratch before invoking `cargo semver-checks`. It rewrites
 `semver-baseline/htmlcut-core/BASELINE.toml` with the published Git ref, package name, package
 version, and the exact refresh command so the checked-in snapshot carries its own provenance cue.
 The packaging step uses an isolated temp-owned Cargo target/build root rather than assuming the

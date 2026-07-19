@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.0"
+version: "12.0.1"
 domain: WORKSPACE
-updated: "2026-07-16"
+updated: "2026-07-19"
 route:
   keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
   questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]
@@ -63,7 +63,8 @@ runtime product surfaces in the same sense as `htmlcut-core`, `htmlcut-cli`, and
 These paths matter, but they are not normal workspace members:
 
 - `semver-baseline/htmlcut-core` is a checked-in snapshot of the last published `htmlcut-core`
-  API used by semver checks. It is intentionally excluded from the live workspace.
+  API used by semver checks. It is intentionally excluded from the live workspace; vendored
+  dependency manifests stay inert until `xtask` materializes the snapshot in managed scratch.
 - `.devcontainer/` owns the committed contributor-container contract and is backed by lifecycle
   scripts plus host-side entrypoints under `scripts/`.
 - `docs/` is the maintained Markdown contract set.

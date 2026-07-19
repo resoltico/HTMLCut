@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "12.0.0"
+version: "12.0.1"
 domain: OPERATIONS
 updated: "2026-07-17"
 route:

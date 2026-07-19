@@ -1,10 +1,55 @@
+use std::ffi::OsStr;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::{model::DynResult, package_version_from_manifest, workspace_version};
 use toml::Value;
 
 use super::paths::semver_baseline_path;
+
+pub(crate) const INERT_BASELINE_MANIFEST_NAME: &str = "Cargo.toml.htmlcut-baseline";
+
+/// Copies the frozen semver baseline into scratch and restores its inert vendored manifests.
+///
+/// The checked-in snapshot keeps vendored dependency manifests inert so Cargo's Git dependency
+/// discovery cannot mistake those frozen packages for duplicate live packages. Semver checking
+/// receives a complete scratch copy with the original manifest names restored.
+pub(crate) fn materialize_semver_baseline(
+    repo_root: &Path,
+    scratch_baseline_root: &Path,
+) -> DynResult<PathBuf> {
+    copy_baseline_directory(&semver_baseline_path(repo_root), scratch_baseline_root)?;
+    Ok(scratch_baseline_root.to_path_buf())
+}
+
+fn copy_baseline_directory(source: &Path, destination: &Path) -> DynResult<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let file_type = entry.file_type()?;
+        let entry_name = entry.file_name();
+        let destination_name = if entry_name == OsStr::new(INERT_BASELINE_MANIFEST_NAME) {
+            OsStr::new("Cargo.toml")
+        } else {
+            &entry_name
+        };
+        let destination_path = destination.join(destination_name);
+
+        if file_type.is_dir() {
+            copy_baseline_directory(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            fs::copy(source_path, destination_path)?;
+        } else {
+            return Err(format!(
+                "semver baseline contains a non-regular entry: {}",
+                source_path.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
 
 /// Infers the semver release type that `cargo semver-checks` should enforce.
 pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {

@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::Path;
 
@@ -7,6 +7,7 @@ use htmlcut_tempdir::tempdir;
 
 use crate::fuzz::FUZZ_SMOKE_EXAMPLE_TARGET;
 use crate::gate_report::{GateOutputOptions, with_gate_report};
+use crate::plan::INERT_BASELINE_MANIFEST_NAME;
 use crate::{
     CommandSpec, CommandStdout, CommandToolchainEnv, DEFAULT_FUZZ_SMOKE_RUNS, DynResult,
     HygieneCleanMode, HygieneReportFormat, check_source_structure, clean_hygiene, ensure_hygiene,
@@ -382,7 +383,13 @@ fn copy_directory_recursively(source: &Path, destination: &Path) -> DynResult<()
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
+        let entry_name = entry.file_name();
+        let destination_name = if entry_name == OsStr::new("Cargo.toml") {
+            OsStr::new(INERT_BASELINE_MANIFEST_NAME)
+        } else {
+            &entry_name
+        };
+        let destination_path = destination.join(destination_name);
         let entry_type = entry.file_type()?;
         if entry_type.is_dir() {
             copy_directory_recursively(&source_path, &destination_path)?;
@@ -476,6 +483,14 @@ fn extract_baseline_command(archive: &Path, baseline_parent: &Path) -> CommandSp
 #[cfg(test)]
 pub(crate) fn semver_check_spec_for_tests(plan: Vec<CommandSpec>) -> DynResult<CommandSpec> {
     gates::semver_check_spec(plan)
+}
+
+#[cfg(test)]
+pub(crate) fn semver_spec_with_materialized_baseline_for_tests(
+    spec: CommandSpec,
+    materialized_baseline: &Path,
+) -> DynResult<CommandSpec> {
+    gates::with_materialized_baseline(spec, materialized_baseline)
 }
 
 #[cfg(test)]

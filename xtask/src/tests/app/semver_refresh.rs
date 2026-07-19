@@ -294,6 +294,11 @@ fn refresh_semver_baseline_for_tests_fails_when_the_captured_vendored_stack_disa
                     fs::create_dir_all(&vendor_dir).expect("create snapshot vendor dir");
                     fs::write(vendor_dir.join("source.rs"), directory)
                         .expect("write snapshot vendor source");
+                    fs::write(
+                        vendor_dir.join("Cargo.toml"),
+                        format!("[package]\nname = \"htmlcut-{directory}\"\nversion = \"0.1.0\"\n"),
+                    )
+                    .expect("write snapshot vendor manifest");
                 }
                 fs::write(
                     snapshot_root.join("Cargo.toml"),
@@ -322,6 +327,16 @@ fn refresh_semver_baseline_for_tests_fails_when_the_captured_vendored_stack_disa
                     .parent()
                     .expect("snapshot parent")
                     .join("published-vendored-selector-stack");
+                assert!(
+                    captured_stack
+                        .join("scraper/Cargo.toml.htmlcut-baseline")
+                        .exists(),
+                    "the frozen selector stack must store an inert manifest"
+                );
+                assert!(
+                    !captured_stack.join("scraper/Cargo.toml").exists(),
+                    "the frozen selector stack must not expose a duplicate package manifest"
+                );
                 fs::rename(
                     &captured_stack,
                     current_root.join("moved-vendored-selector-stack"),
