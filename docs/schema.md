@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "11.0.1"
+version: "12.0.0"
 domain: SCHEMA
 updated: "2026-07-17"
 route:
-  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, dom_canonicalization, comparison_text_output, schema inventory]
-  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry DOM canonicalization?"]
+  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, plain_text, dom_canonicalization, comparison_text_output, schema inventory]
+  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry plain text and DOM canonicalization?"]
 ---
 
 # Schema Guide
@@ -31,7 +31,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 8 --output json
+htmlcut schema --name htmlcut.result --schema-version 9 --output json
 ```
 
 Rust:
@@ -104,13 +104,14 @@ The interop families are their own published language, not schema aliases for ge
 request/result types. Their selector text, delimiter boundaries, output contract, diagnostics, and
 byte ranges are owned by `htmlcut_core::interop::v1`.
 
-The current DOM-aware interop revisions are `htmlcut.plan@7`, `htmlcut.result@8`, and
+The current DOM-aware interop revisions are `htmlcut.plan@8`, `htmlcut.result@9`, and
 `htmlcut.error@3`.
-Plan version 7 carries optional `dom_canonicalization` only for CSS text or structured output;
-result version 8 carries optional `comparison_text_output` only for those same output kinds while
-preserving the raw evidence fields. Result and error revisions enforce bounded public diagnostic
-messages; runtime validation additionally enforces the closed, duplicated selector-parse detail on
-invalid-selector errors.
+Plan version 8 adds CSS-only `plain_text`: direct DOM descendant text without HTML-aware structural
+decoration. DOM canonicalization is valid only for CSS rendered-text, plain-text, or structured
+plans. Result version 9 carries `plain_text_output` and, when clone canonicalization is configured,
+`comparison_plain_text_output`, while preserving raw rendered and structured evidence. Result and
+error revisions enforce bounded public diagnostic messages; runtime validation additionally
+enforces the closed, duplicated selector-parse detail on invalid-selector errors.
 
 ## Catalog Relationship
 

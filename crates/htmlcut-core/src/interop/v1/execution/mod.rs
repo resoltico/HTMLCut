@@ -54,7 +54,7 @@ pub fn execute_validated_plan(
     let request = compile_request(source, validated_plan.plan());
     let runtime = default_runtime_options();
     let dom_canonicalization = match &validated_plan.plan().output {
-        Output::Text | Output::Structured => validated_plan
+        Output::Text | Output::PlainText | Output::Structured => validated_plan
             .plan()
             .dom_canonicalization
             .as_ref()
@@ -127,6 +127,28 @@ pub(crate) fn project_structured_match_for_tests(
 ) -> Result<(), Box<InteropError>> {
     project::project_structured_match(matched, strategy_kind, TEST_PLAN_DIGEST_SHA256, diagnostics)
         .map(|_| ())
+}
+
+#[cfg(test)]
+pub(crate) fn project_plain_text_for_tests(
+    matched: &crate::result::ExtractionMatch,
+    strategy_kind: super::StrategyKind,
+    diagnostics: &[crate::Diagnostic],
+) -> Result<(), Box<InteropError>> {
+    let projected = project::project_structured_match(
+        matched,
+        strategy_kind,
+        TEST_PLAN_DIGEST_SHA256,
+        diagnostics,
+    )?;
+    project::project_output_value(
+        &super::Output::PlainText,
+        &projected,
+        TEST_PLAN_DIGEST_SHA256,
+        strategy_kind,
+        diagnostics,
+    )
+    .map(|_| ())
 }
 
 #[cfg(test)]

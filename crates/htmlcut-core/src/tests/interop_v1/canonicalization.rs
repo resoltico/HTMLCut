@@ -210,7 +210,7 @@ fn dom_canonicalization_rejects_removed_controls_non_css_strategies_and_ignored_
             .insert(removed_control.to_owned(), serde_json::json!(true));
         let removed_control_error = serde_json::from_value::<Plan>(serde_json::json!({
             "schema_name": "htmlcut.plan",
-            "schema_version": 7,
+            "schema_version": 8,
             "interop_profile": "htmlcut-v1",
             "strategy": {"kind": "css_selector", "selector": "article.measurement"},
             "selection": {"mode": "single"},

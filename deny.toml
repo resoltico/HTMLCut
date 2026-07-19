@@ -43,6 +43,7 @@ allow-workspace = false
 deny = []
 skip = [
     { crate = "getrandom@0.4.3", reason = "Windows release-target graphs currently need build-only getrandom 0.4 via cc/jobserver while rustls/ring still pull runtime getrandom 0.2; keep the duplicate exception exact and narrow until that upstream ecosystem split closes." },
+    { crate = "syn@2.0.119", reason = "Current upstream proc-macro dependencies still require syn 2 while current serde, ref-cast, and thiserror use syn 3; keep this exact exception until those remaining upstream dependencies converge on syn 3." },
 ]
 skip-tree = []
 

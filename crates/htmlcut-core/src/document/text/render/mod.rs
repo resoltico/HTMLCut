@@ -92,6 +92,20 @@ pub(crate) fn render_element_as_text(node: &ElementRef<'_>, whitespace: Whitespa
     format::normalize_rendered_output(output, whitespace)
 }
 
+/// Extracts the selected element's DOM descendant text without rendering structural markup.
+///
+/// This is deliberately a DOM `textContent`-style projection, not a visibility heuristic and
+/// not HTML-aware rendered text. It therefore never introduces heading markers, list bullets,
+/// link destinations, table separators, or other presentation syntax that was absent from the
+/// selected node's text nodes. Whitespace normalization remains an explicit caller policy.
+pub(crate) fn extract_element_plain_text(
+    node: &ElementRef<'_>,
+    whitespace: WhitespaceMode,
+) -> String {
+    let text = node.text().collect::<String>();
+    format::apply_whitespace_mode(&text, whitespace)
+}
+
 pub(crate) fn extract_heading_text(node: &ElementRef<'_>) -> Option<String> {
     let mut rendered = String::new();
     for child in node.children() {

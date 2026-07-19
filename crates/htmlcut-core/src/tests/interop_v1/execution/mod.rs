@@ -11,6 +11,7 @@ fn selector_match() -> ExtractionMatch {
         value_type: ValueType::Structured,
         value: json!({
             "textOutput": "Hello",
+            "plainTextOutput": "Hello",
             "innerHtmlOutput": "Hello",
             "outerHtmlOutput": "<article>Hello</article>"
         }),
