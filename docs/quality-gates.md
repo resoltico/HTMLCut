@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.0"
+version: "12.0.1"
 domain: QUALITY
-updated: "2026-07-17"
+updated: "2026-07-19"
 route:
   keywords: [quality gates, cargo xtask, gate reports, JSON gate output, retained diagnostics, source structure, source shape, cohesion budgets, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "where are HTMLCut gate diagnostics retained?", "how do I inspect or enforce HTMLCut Rust source structure?", "how does HTMLCut prevent god files?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
@@ -210,8 +210,11 @@ command inventory in GitHub Actions.
 The same preflight also refuses to run semver checks against a dirty
 `semver-baseline/htmlcut-core` tree. That baseline is the frozen last-published API snapshot, so
 the maintainer gate stops before command planning if the worktree has edited it instead of
-comparing against a moved target. The maintained refresh path records the source Git ref and crate
-version for that snapshot in `semver-baseline/htmlcut-core/BASELINE.toml`.
+comparing against a moved target. Its vendored selector/parser package manifests are stored as
+`Cargo.toml.htmlcut-baseline` so Git consumers do not discover frozen duplicates; each semver step
+copies the snapshot into managed scratch and restores those manifest names only for the check. The
+maintained refresh path records the source Git ref and crate version for that snapshot in
+`semver-baseline/htmlcut-core/BASELINE.toml`.
 
 The coverage command fails before any coverage build starts if the nightly toolchain or
 `llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean

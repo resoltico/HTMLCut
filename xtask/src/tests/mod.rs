@@ -248,6 +248,7 @@ mod plan;
 mod policy;
 mod preflight;
 mod release;
+mod semver_baseline;
 mod toolchain;
 mod versions;
 

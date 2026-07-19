@@ -6,6 +6,7 @@ mod semver;
 
 use crate::model::{CommandSpec, DynResult};
 pub use check::ci_rust_gate_plan;
+pub(crate) use semver::INERT_BASELINE_MANIFEST_NAME;
 
 /// Builds the ordered command plan for `cargo xtask check`.
 pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
@@ -55,6 +56,14 @@ pub fn semver_baseline_path(repo_root: &Path) -> PathBuf {
 /// Returns the semver-checks scratch directory under the Cargo target tree.
 pub fn semver_scratch_dir(repo_root: &Path) -> PathBuf {
     paths::semver_scratch_dir(repo_root)
+}
+
+/// Materializes the frozen semver baseline in scratch for one semver-check invocation.
+pub(crate) fn materialize_semver_baseline(
+    repo_root: &Path,
+    scratch_baseline_root: &Path,
+) -> DynResult<PathBuf> {
+    semver::materialize_semver_baseline(repo_root, scratch_baseline_root)
 }
 
 /// Returns the isolated Cargo target directory used by the coverage gate.

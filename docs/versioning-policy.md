@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.0"
+version: "12.0.1"
 domain: MAINTAINER
-updated: "2026-07-16"
+updated: "2026-07-19"
 route:
   keywords: [versioning policy, interop profile, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -167,8 +167,10 @@ Rules:
 - let that command rewrite `semver-baseline/htmlcut-core/BASELINE.toml` so the checked-in
   snapshot records the published Git ref and packaged crate version it came from
 - keep the published vendored selector/parser crates captured inside that snapshot whenever the
-  released core depends on them; semver checks must compile against the released fork graph rather
-  than a registry substitute with a different API
+  released core depends on them; their manifests are stored inertly as
+  `Cargo.toml.htmlcut-baseline` and materialized only in semver scratch, so compatibility checks
+  compile against the released fork graph without exposing duplicate packages to downstream Git
+  consumers
 - never regenerate it from unreleased local worktree state
 - treat it as the comparison target for future semver checks, not as a staging area during feature work
 

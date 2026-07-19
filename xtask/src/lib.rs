@@ -101,7 +101,7 @@ pub fn main_entry() -> DynResult<()> {
 #[cfg(test)]
 pub(crate) use app::{
     main_entry_with, refresh_semver_baseline_for_tests, run_coverage_for_tests,
-    semver_check_spec_for_tests,
+    semver_check_spec_for_tests, semver_spec_with_materialized_baseline_for_tests,
 };
 #[cfg(test)]
 pub(crate) use model::*;

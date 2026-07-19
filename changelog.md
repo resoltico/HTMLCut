@@ -4,6 +4,12 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [12.0.1] - 2026-07-19
+
+### Fixed
+
+- Fixed downstream Cargo resolution of the public HTMLCut Git dependency. The frozen semver baseline now stores its vendored selector/parser manifests inertly, and `cargo xtask` materializes a complete temporary baseline only for semver checks, so downstream builds no longer emit duplicate-package warnings while compatibility checks retain the exact published dependency graph.
+
 ## [12.0.0] - 2026-07-19
 
 ### Added
