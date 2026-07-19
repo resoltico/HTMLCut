@@ -38,6 +38,7 @@ fn successful_adaptation_projects_selector_results_and_selection_modes() {
                 value: json!({
                     "textOutput": "Raw evidence",
                     "comparisonTextOutput": "Canonical comparison",
+                    "plainTextOutput": "Raw evidence",
                     "innerHtmlOutput": "Raw evidence",
                     "outerHtmlOutput": "<article>Raw evidence</article>"
                 }),
@@ -76,6 +77,7 @@ fn successful_adaptation_projects_selector_results_and_selection_modes() {
                 value: json!({
                     "textOutput": "Raw evidence",
                     "comparisonTextOutput": "Canonical comparison",
+                    "plainTextOutput": "Raw evidence",
                     "innerHtmlOutput": "Raw evidence",
                     "outerHtmlOutput": "<article>Raw evidence</article>"
                 }),
@@ -95,6 +97,7 @@ fn successful_adaptation_projects_selector_results_and_selection_modes() {
         selected.output_value,
         json!({
             "textOutput": "Raw evidence",
+            "plainTextOutput": "Raw evidence",
             "innerHtmlOutput": "Raw evidence",
             "outerHtmlOutput": "<article>Raw evidence</article>"
         })
@@ -159,7 +162,7 @@ fn successful_adaptation_projects_selector_results_and_selection_modes() {
         &selector_plan(),
         successful_selector_extraction(
             vec![ExtractionMatch {
-                value: json!({"textOutput": "Hello", "outerHtmlOutput": "<article>Hello</article>"}),
+                value: json!({"textOutput": "Hello", "plainTextOutput": "Hello", "outerHtmlOutput": "<article>Hello</article>"}),
                 ..selector_core_match(1, 1, 1)
             }],
             1,

@@ -20,6 +20,8 @@ pub(super) struct ProjectedStructuredMatch {
     structured_output: Value,
     text_output: String,
     comparison_text_output: Option<String>,
+    plain_text_output: Option<String>,
+    comparison_plain_text_output: Option<String>,
     selected_html_output: Option<String>,
     inner_html_output: String,
     outer_html_output: String,
@@ -87,6 +89,8 @@ pub(super) fn adapt_successful_extraction(
                 output_value,
                 text_output: projected.text_output,
                 comparison_text_output: projected.comparison_text_output,
+                plain_text_output: projected.plain_text_output,
+                comparison_plain_text_output: projected.comparison_plain_text_output,
                 selected_html_output: projected.selected_html_output,
                 inner_html_output: projected.inner_html_output,
                 outer_html_output: projected.outer_html_output,
@@ -152,6 +156,13 @@ pub(super) fn project_structured_match(
                 strategy_kind,
                 diagnostics,
             )?;
+            let comparison_plain_text_output = optional_string_field(
+                structured,
+                "comparisonPlainTextOutput",
+                plan_digest_sha256,
+                strategy_kind,
+                diagnostics,
+            )?;
             // The core structured payload transports this interop-only projection, but structured
             // output is raw evidence and must never expose it as part of that payload.
             let mut structured_output = matched.value.clone();
@@ -159,6 +170,10 @@ pub(super) fn project_structured_match(
                 .as_object_mut()
                 .expect("validated structured core match payload must stay an object")
                 .remove("comparisonTextOutput");
+            structured_output
+                .as_object_mut()
+                .expect("validated structured core match payload must stay an object")
+                .remove("comparisonPlainTextOutput");
             Ok(ProjectedStructuredMatch {
                 candidate_index,
                 structured_output,
@@ -170,6 +185,14 @@ pub(super) fn project_structured_match(
                     diagnostics,
                 )?,
                 comparison_text_output,
+                plain_text_output: Some(required_string_field(
+                    structured,
+                    "plainTextOutput",
+                    plan_digest_sha256,
+                    strategy_kind,
+                    diagnostics,
+                )?),
+                comparison_plain_text_output,
                 selected_html_output: None,
                 inner_html_output: required_string_field(
                     structured,
@@ -213,6 +236,8 @@ pub(super) fn project_structured_match(
                     diagnostics,
                 )?,
                 comparison_text_output: None,
+                plain_text_output: None,
+                comparison_plain_text_output: None,
                 selected_html_output: Some(required_string_field(
                     structured,
                     "selectedHtmlOutput",
@@ -257,7 +282,7 @@ pub(super) fn project_structured_match(
     }
 }
 
-fn project_output_value(
+pub(super) fn project_output_value(
     output: &Output,
     projected: &ProjectedStructuredMatch,
     plan_digest_sha256: &str,
@@ -272,6 +297,32 @@ fn project_output_value(
                 .unwrap_or(&projected.text_output)
                 .clone(),
         )),
+        Output::PlainText => projected
+            .plain_text_output
+            .as_ref()
+            .map(|plain_text_output| {
+                Value::String(
+                    projected
+                        .comparison_plain_text_output
+                        .as_ref()
+                        .unwrap_or(plain_text_output)
+                        .clone(),
+                )
+            })
+            .ok_or_else(|| {
+                let mut details = BTreeMap::new();
+                details.insert(
+                    "output_kind".to_owned(),
+                    Value::from(output.kind().to_string()),
+                );
+                Box::new(internal_adapter_error(
+                    plan_digest_sha256,
+                    Some(strategy_kind),
+                    "execution could not project plain_text for this strategy",
+                    details,
+                    diagnostics,
+                ))
+            }),
         Output::InnerHtml => Ok(Value::String(projected.inner_html_output.clone())),
         Output::OuterHtml => Ok(Value::String(projected.outer_html_output.clone())),
         Output::SelectedHtml => projected

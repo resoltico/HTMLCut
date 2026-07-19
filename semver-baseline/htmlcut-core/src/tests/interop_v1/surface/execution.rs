@@ -67,6 +67,32 @@ fn execute_plan_executes_css_selector_with_rewritten_outer_html() {
 }
 
 #[test]
+fn execute_plan_exposes_plain_dom_text_without_heading_decoration() {
+    let source = HtmlInput::new(
+        "target-heading",
+        "<html><body><h1>Big <em>Title</em></h1></body></html>",
+    )
+    .expect("source");
+    let plan = Plan::new(
+        PlanStrategy::css_selector(css_selector("h1")),
+        Selection::single(),
+        Output::plain_text(),
+        Rendering::new(TextWhitespace::Normalize, false),
+    );
+
+    let result = execute_plan(&source, &plan).expect("plain-text interop result");
+    let selected_match = only_selected_match(&result);
+
+    assert_eq!(result.output.kind(), OutputKind::PlainText);
+    assert_eq!(selected_match.output_value, json!("Big Title"));
+    assert_eq!(
+        selected_match.plain_text_output.as_deref(),
+        Some("Big Title")
+    );
+    assert_eq!(selected_match.text_output, "# Big Title");
+}
+
+#[test]
 fn execute_plan_executes_regex_delimiter_pair() {
     let source =
         HtmlInput::new("target-article", "<ARTICLE data-id=\"7\">Hello</ARTICLE>").expect("source");

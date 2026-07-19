@@ -161,6 +161,12 @@ pub struct SelectedMatch {
     /// Text rendered from the detached canonicalized CSS-selected clone when configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comparison_text_output: Option<String>,
+    /// DOM descendant text without rendered structural decoration, when the strategy has a DOM.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plain_text_output: Option<String>,
+    /// Plain text from the detached canonicalized CSS-selected clone when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comparison_plain_text_output: Option<String>,
     /// Exact selected HTML fragment when the strategy supports it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_html_output: Option<String>,

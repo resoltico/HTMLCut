@@ -22,7 +22,7 @@ fn structured_projection_rejects_malformed_selector_and_delimiter_matches() {
 
     let missing_field_error = v1::project_structured_match_for_tests(
         &ExtractionMatch {
-            value: json!({"textOutput": "Hello", "innerHtmlOutput": "Hello"}),
+            value: json!({"textOutput": "Hello", "plainTextOutput": "Hello", "innerHtmlOutput": "Hello"}),
             ..selector_match.clone()
         },
         StrategyKind::CssSelector,
@@ -84,6 +84,7 @@ fn structured_projection_rejects_malformed_selector_and_delimiter_matches() {
             value: json!({
                 "textOutput": "Hello",
                 "comparisonTextOutput": 7,
+                "plainTextOutput": "Hello",
                 "innerHtmlOutput": "Hello",
                 "outerHtmlOutput": "<article>Hello</article>"
             }),
@@ -101,6 +102,71 @@ fn structured_projection_rejects_malformed_selector_and_delimiter_matches() {
         selector_non_string_comparison_error
             .message
             .contains("comparisonTextOutput")
+    );
+
+    let selector_non_string_plain_comparison_error = v1::project_structured_match_for_tests(
+        &ExtractionMatch {
+            value: json!({
+                "textOutput": "Hello",
+                "plainTextOutput": "Hello",
+                "comparisonPlainTextOutput": 7,
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>"
+            }),
+            ..selector_match.clone()
+        },
+        StrategyKind::CssSelector,
+        &[],
+    )
+    .expect_err("non-string plain comparison text");
+    assert_eq!(
+        selector_non_string_plain_comparison_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        selector_non_string_plain_comparison_error
+            .message
+            .contains("comparisonPlainTextOutput")
+    );
+
+    let selector_missing_plain_text_error = v1::project_structured_match_for_tests(
+        &ExtractionMatch {
+            value: json!({
+                "textOutput": "Hello",
+                "innerHtmlOutput": "Hello",
+                "outerHtmlOutput": "<article>Hello</article>"
+            }),
+            ..selector_match.clone()
+        },
+        StrategyKind::CssSelector,
+        &[],
+    )
+    .expect_err("CSS selected matches must always carry plain text");
+    assert_eq!(
+        selector_missing_plain_text_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(
+        selector_missing_plain_text_error
+            .message
+            .contains("plainTextOutput")
+    );
+
+    v1::project_plain_text_for_tests(&selector_match, StrategyKind::CssSelector, &[])
+        .expect("CSS selected matches expose a DOM plain-text projection");
+
+    let malformed_selector_plain_text_error = v1::project_plain_text_for_tests(
+        &ExtractionMatch {
+            value: json!("not-an-object"),
+            ..selector_match.clone()
+        },
+        StrategyKind::CssSelector,
+        &[],
+    )
+    .expect_err("malformed CSS match cannot expose a plain-text projection");
+    assert_eq!(
+        malformed_selector_plain_text_error.error_code,
+        ErrorCode::InternalError
     );
 
     let delimiter_missing_selected_html_error = v1::project_structured_match_for_tests(
@@ -220,4 +286,13 @@ fn structured_projection_rejects_malformed_selector_and_delimiter_matches() {
     .expect_err("zero candidate index");
     assert_eq!(zero_index_error.error_code, ErrorCode::InternalError);
     assert!(zero_index_error.message.contains("zero candidate index"));
+
+    let delimiter_plain_text_error =
+        v1::project_plain_text_for_tests(&delimiter_match, StrategyKind::DelimiterPair, &[])
+            .expect_err("delimiter extraction cannot expose a DOM-only plain-text projection");
+    assert_eq!(
+        delimiter_plain_text_error.error_code,
+        ErrorCode::InternalError
+    );
+    assert!(delimiter_plain_text_error.message.contains("plain_text"));
 }

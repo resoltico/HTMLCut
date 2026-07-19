@@ -196,7 +196,9 @@ fn interop_result_schema_enforces_h5_evidence_boundaries_and_marks_the_runtime_b
 
     let mut structured_match = selector_selected_match();
     structured_match.comparison_text_output = Some("Canonical text".to_owned());
-    structured_match.output_value = json!({ "textOutput": "raw text" });
+    structured_match.plain_text_output = Some("raw text".to_owned());
+    structured_match.output_value =
+        json!({ "textOutput": "raw text", "plainTextOutput": "raw text" });
     let structured_result = css_result(Output::structured(), structured_match)
         .with_computed_digest()
         .expect("valid structured result");
@@ -212,6 +214,7 @@ fn interop_result_schema_enforces_h5_evidence_boundaries_and_marks_the_runtime_b
     let mut structured_leak = structured_result.clone();
     structured_leak.selected_matches[0].output_value = json!({
         "textOutput": "raw text",
+        "plainTextOutput": "raw text",
         "comparisonTextOutput": "invented clone text"
     });
     let structured_leak_document =

@@ -20,6 +20,8 @@ fn interop_result_round_trips_through_stable_json() {
             output_value: json!("Hello"),
             text_output: "Hello".to_owned(),
             comparison_text_output: None,
+            plain_text_output: None,
+            comparison_plain_text_output: None,
             selected_html_output: Some("Hello".to_owned()),
             inner_html_output: "Hello".to_owned(),
             outer_html_output: "<article>Hello</article>".to_owned(),

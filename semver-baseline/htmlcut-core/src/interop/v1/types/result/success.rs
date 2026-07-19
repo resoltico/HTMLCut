@@ -147,6 +147,9 @@ impl InteropResult {
                     if selected_match.selected_html_output.is_some() {
                         return Err(ContractError::UnexpectedSelectedHtmlOutput);
                     }
+                    if selected_match.plain_text_output.is_none() {
+                        return Err(ContractError::MissingPlainTextOutput);
+                    }
                 }
                 StrategyKind::DelimiterPair => {
                     if selected_match.selected_html_output.is_none() {
@@ -155,13 +158,32 @@ impl InteropResult {
                     if selected_match.comparison_text_output.is_some() {
                         return Err(ContractError::UnexpectedComparisonTextOutput);
                     }
+                    if selected_match.plain_text_output.is_some() {
+                        return Err(ContractError::UnexpectedPlainTextOutput);
+                    }
+                    if selected_match.comparison_plain_text_output.is_some() {
+                        return Err(ContractError::UnexpectedComparisonPlainTextOutput);
+                    }
                 }
             }
 
             if selected_match.comparison_text_output.is_some()
-                && !matches!(self.output, Output::Text | Output::Structured)
+                && !matches!(
+                    self.output,
+                    Output::Text | Output::PlainText | Output::Structured
+                )
             {
                 return Err(ContractError::UnexpectedComparisonTextOutputForOutput { output_kind });
+            }
+            if selected_match.comparison_plain_text_output.is_some()
+                && !matches!(
+                    self.output,
+                    Output::Text | Output::PlainText | Output::Structured
+                )
+            {
+                return Err(
+                    ContractError::UnexpectedComparisonPlainTextOutputForOutput { output_kind },
+                );
             }
 
             match &self.output {
@@ -177,12 +199,39 @@ impl InteropResult {
                         return Err(ContractError::TextOutputValueMismatch);
                     }
                 }
+                Output::PlainText => {
+                    let Some(output_value) = selected_match.output_value.as_str() else {
+                        return Err(ContractError::NonStringOutputValue { output_kind });
+                    };
+                    let plain_text_output = selected_match
+                        .plain_text_output
+                        .as_deref()
+                        .ok_or(ContractError::MissingPlainTextOutput)?;
+                    let expected_text = selected_match
+                        .comparison_plain_text_output
+                        .as_deref()
+                        .unwrap_or(plain_text_output);
+                    if output_value != expected_text {
+                        return Err(ContractError::PlainTextOutputValueMismatch);
+                    }
+                }
                 Output::Structured => {
                     let Some(structured_output) = selected_match.output_value.as_object() else {
                         return Err(ContractError::NonObjectStructuredOutputValue);
                     };
                     if structured_output.contains_key("comparisonTextOutput") {
                         return Err(ContractError::StructuredOutputContainsComparisonText);
+                    }
+                    if structured_output.contains_key("comparisonPlainTextOutput") {
+                        return Err(ContractError::StructuredOutputContainsComparisonPlainText);
+                    }
+                    if self.strategy_kind == StrategyKind::CssSelector
+                        && (structured_output
+                            .get("plainTextOutput")
+                            .and_then(serde_json::Value::as_str)
+                            != selected_match.plain_text_output.as_deref())
+                    {
+                        return Err(ContractError::StructuredOutputPlainTextMismatch);
                     }
                 }
                 Output::SelectedHtml

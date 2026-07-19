@@ -103,6 +103,8 @@ fn selector_selected_match_with(candidate_count: usize, candidate_index: usize) 
         output_value: Value::String("Hello".to_owned()),
         text_output: "Hello".to_owned(),
         comparison_text_output: None,
+        plain_text_output: Some("Hello".to_owned()),
+        comparison_plain_text_output: None,
         selected_html_output: None,
         inner_html_output: "Hello".to_owned(),
         outer_html_output: "<article>Hello</article>".to_owned(),
@@ -131,6 +133,8 @@ fn delimiter_selected_match_with(candidate_count: usize, candidate_index: usize)
         output_value: Value::String("<article>Hello</article>".to_owned()),
         text_output: "Hello".to_owned(),
         comparison_text_output: None,
+        plain_text_output: None,
+        comparison_plain_text_output: None,
         selected_html_output: Some("<article>Hello</article>".to_owned()),
         inner_html_output: "Hello".to_owned(),
         outer_html_output: "<article>Hello</article>".to_owned(),
@@ -159,6 +163,7 @@ fn selector_core_match(
         value_type: ValueType::Structured,
         value: json!({
             "textOutput": "Hello",
+            "plainTextOutput": "Hello",
             "innerHtmlOutput": "Hello",
             "outerHtmlOutput": format!("<article data-index=\"{index}\">Hello</article>")
         }),
