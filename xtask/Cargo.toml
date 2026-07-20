@@ -19,7 +19,7 @@ regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 shell-words.workspace = true
-syn = { version = "=3.0.0", features = ["full", "visit"] }
+syn = { version = "=3.0.2", features = ["full", "visit"] }
 thiserror.workspace = true
 time.workspace = true
 toml.workspace = true
