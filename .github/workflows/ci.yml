@@ -144,7 +144,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-nextest cargo-audit cargo-deny cargo-outdated cargo-semver-checks)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust QA tools
-        uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2.83.2
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2.85.5
         with:
           tool: ${{ steps.rust_qa_tools.outputs.tool_csv }}
 
