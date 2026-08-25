@@ -4,6 +4,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Fixed
+
+- Scheduled and manually started mutation campaigns now use artifact-safe shard identities, preserve the complete `mutants.out` tree during workflow handoff, and reject missing, duplicated, or unexpected shard evidence before aggregation.
+
 ## [13.0.0] - 2026-08-25
 
 ### Added
