@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the pinned contributor cargo QA tool inventory, or one selected subset of it.
+# Install the default pinned contributor cargo QA inventory, or one selected optional tool.
 
 set -euo pipefail
 
@@ -115,6 +115,19 @@ install_tool_if_needed() {
     local binary_name="$3"
     local current_version
 
+    if [[ "${crate_name}" == "cargo-semver-checks" ]]; then
+        printf 'contributor cargo tool: installing %s from pinned upstream revision %s\n' \
+            "${binary_name}" \
+            "${HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION}"
+        cargo install \
+            --git https://github.com/obi1kenobi/cargo-semver-checks.git \
+            --rev "${HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION}" \
+            --locked \
+            --force \
+            cargo-semver-checks
+        return 0
+    fi
+
     current_version="$(tool_current_version "${crate_name}" "${binary_name}" || true)"
     if [[ "${current_version}" == "${version}" ]]; then
         printf 'contributor cargo tool: %s %s already installed as %s\n' "${binary_name}" "${version}" "${current_version}"
@@ -131,6 +144,12 @@ install_tool_if_needed() {
 
 ensure_native_prerequisites
 
+if (($# == 0)); then
+    tool_inventory_command=(htmlcut_contributor_default_cargo_tool_inventory)
+else
+    tool_inventory_command=(htmlcut_selected_contributor_cargo_tools "$@")
+fi
+
 while read -r crate_name version binary_name; do
     install_tool_if_needed "${crate_name}" "${version}" "${binary_name}"
-done < <(htmlcut_selected_contributor_cargo_tools "$@")
+done < <("${tool_inventory_command[@]}")

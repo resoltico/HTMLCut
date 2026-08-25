@@ -6,11 +6,13 @@ use crate::model::{
 };
 use crate::{
     FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, cargo_fuzz_probe_command,
-    coverage_preflight_failures, coverage_preflight_message, host_tool_preflight_failures,
-    host_tool_preflight_message, host_tool_probe_command, miri_preflight_failures,
-    miri_preflight_message, miri_probe_command, repo_toolchain,
-    repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
-    repo_toolchain_preflight_message, repo_toolchain_probe_command,
+    cargo_mutants_probe_command, coverage_preflight_failures, coverage_preflight_message,
+    host_tool_preflight_failures, host_tool_preflight_message, host_tool_probe_command,
+    miri_preflight_failures, miri_preflight_message, miri_probe_command,
+    mutants_preflight_failures, mutants_preflight_message, nightly_toolchain_probe_command,
+    repo_toolchain, repo_toolchain_component_probe_command, repo_toolchain_preflight_failures,
+    repo_toolchain_preflight_message, repo_toolchain_probe_command, rustc_version_meets_floor,
+    workspace_rust_version,
 };
 
 /// Validates the pinned repository toolchain before the main maintainer gate starts.
@@ -65,6 +67,7 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
         "coverage preflight could not query rustup toolchains",
         "coverage preflight received invalid rustup output",
     )?;
+    ensure_nightly_toolchain_supports_workspace_floor(repo_root, &toolchains)?;
     let components = capture_utf8(
         repo_root,
         &CommandSpec::new(
@@ -99,6 +102,7 @@ pub fn ensure_miri_prerequisites(repo_root: &Path) -> DynResult<()> {
         "Miri preflight could not query rustup toolchains",
         "Miri preflight received invalid rustup output",
     )?;
+    ensure_nightly_toolchain_supports_workspace_floor(repo_root, &toolchains)?;
     let components = capture_utf8(
         repo_root,
         &CommandSpec::new(
@@ -132,6 +136,7 @@ pub fn ensure_fuzz_smoke_prerequisites(repo_root: &Path) -> DynResult<()> {
         "fuzz-smoke preflight could not query rustup toolchains",
         "fuzz-smoke preflight received invalid rustup output",
     )?;
+    ensure_nightly_toolchain_supports_workspace_floor(repo_root, &toolchains)?;
     let cargo_fuzz_installed =
         capture_command_output(repo_root, &cargo_fuzz_probe_command()).is_ok();
 
@@ -141,6 +146,55 @@ pub fn ensure_fuzz_smoke_prerequisites(repo_root: &Path) -> DynResult<()> {
         Err(message.into())
     } else {
         Ok(())
+    }
+}
+
+/// Rejects a stale nightly before Miri, coverage, or fuzzing reaches Cargo compilation.
+fn ensure_nightly_toolchain_supports_workspace_floor(
+    repo_root: &Path,
+    toolchains: &str,
+) -> DynResult<()> {
+    let floor = workspace_rust_version(repo_root).map_err(|error| {
+        format!("nightly toolchain preflight could not read the workspace Rust floor: {error}")
+    })?;
+    if !toolchains
+        .lines()
+        .map(str::trim)
+        .any(|line| line.starts_with("nightly"))
+    {
+        return Err(
+            "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows require the `nightly` toolchain.\n\nInstall it with:\n  rustup toolchain install nightly --profile minimal\n"
+                .into(),
+        );
+    }
+
+    let compiler = capture_utf8(
+        repo_root,
+        &nightly_toolchain_probe_command(),
+        "nightly toolchain preflight could not run the nightly compiler",
+        "nightly toolchain preflight received invalid nightly compiler output",
+    )?;
+    if rustc_version_meets_floor(&compiler, &floor)? {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows need a nightly compiler that supports the published Rust floor.\n\nDetected nightly: `{}`\nRequired workspace floor: `{floor}`\n\nRefresh nightly, then restore its required components:\n  rustup update nightly\n  rustup component add llvm-tools-preview miri rust-src --toolchain nightly\n",
+        compiler.trim()
+    )
+    .into())
+}
+
+/// Validates the pinned cargo-mutants command before a mutation-testing run starts.
+pub fn ensure_mutants_prerequisites(repo_root: &Path) -> DynResult<()> {
+    let cargo_mutants_installed =
+        capture_command_output(repo_root, &cargo_mutants_probe_command()).is_ok();
+    let failures = mutants_preflight_failures(cargo_mutants_installed);
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(mutants_preflight_message(&failures).into())
     }
 }
 

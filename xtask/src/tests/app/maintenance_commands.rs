@@ -73,6 +73,7 @@ fn main_entry_with_runs_the_dependency_freshness_check() {
 fn main_entry_with_runs_one_targeted_fuzz_smoke_command() {
     let repo_root = tempdir().expect("repo tempdir");
     with_isolated_target_dir(repo_root.path(), || {
+        write_workspace_rust_floor(repo_root.path());
         let checked_in_corpus = repo_root.path().join("fuzz/corpus/selector_parsing");
         fs::create_dir_all(&checked_in_corpus).expect("create corpus dir");
         fs::write(checked_in_corpus.join("seed"), "alpha").expect("write seed");
@@ -115,6 +116,7 @@ fn main_entry_with_runs_one_targeted_fuzz_smoke_command() {
 fn fuzz_smoke_propagates_a_target_execution_failure() {
     let repo_root = tempdir().expect("repo tempdir");
     with_isolated_target_dir(repo_root.path(), || {
+        write_workspace_rust_floor(repo_root.path());
         let checked_in_corpus = repo_root.path().join("fuzz/corpus/selector_parsing");
         fs::create_dir_all(&checked_in_corpus).expect("create corpus dir");
         fs::write(checked_in_corpus.join("seed"), "alpha").expect("write seed");
@@ -160,6 +162,7 @@ fn main_entry_with_rejects_unknown_fuzz_targets_before_tool_preflight() {
 fn main_entry_with_runs_the_full_fuzz_smoke_inventory() {
     let repo_root = tempdir().expect("repo tempdir");
     with_isolated_target_dir(repo_root.path(), || {
+        write_workspace_rust_floor(repo_root.path());
         for target in fuzz_smoke_targets() {
             let checked_in_corpus = repo_root.path().join("fuzz/corpus").join(target);
             fs::create_dir_all(&checked_in_corpus).expect("create corpus dir");
@@ -181,6 +184,134 @@ fn main_entry_with_runs_the_full_fuzz_smoke_inventory() {
         .expect("full fuzz-smoke inventory should pass");
 
         assert_eq!(*call_count.borrow(), fuzz_smoke_targets().len());
+    });
+}
+
+#[test]
+fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let output_dir = crate::mutants_output_dir(repo_root.path());
+        fs::create_dir_all(output_dir.join("mutants.out")).expect("create stale mutation output");
+        fs::write(output_dir.join("mutants.out/stale"), "result")
+            .expect("write stale mutation output");
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_for_override = Rc::clone(&calls);
+
+        with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |_, spec| {
+                    calls_for_override.borrow_mut().push(spec.clone());
+                    Some(Ok(()))
+                },
+                || {
+                    main_entry_with(
+                        repo_root.path(),
+                        [
+                            "xtask",
+                            "mutants",
+                            "--in-place",
+                            "--shard",
+                            "2/16",
+                            "--in-diff",
+                            "changes.diff",
+                        ],
+                    )
+                },
+            )
+        })
+        .expect("xtask mutants should pass");
+
+        assert!(
+            !output_dir.join("mutants.out").exists(),
+            "stale mutation results should be cleared while the managed evidence root remains"
+        );
+        assert_eq!(
+            calls.borrow().as_slice(),
+            &[crate::mutants_command(
+                &output_dir,
+                true,
+                Some("2/16"),
+                Some(Path::new("changes.diff")),
+            )]
+        );
+    });
+}
+
+#[test]
+fn mutation_testing_preserves_a_failed_mutant_result_for_inspection() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let output_dir = crate::mutants_output_dir(repo_root.path());
+        let output_dir_for_override = output_dir.clone();
+
+        let error = with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |_, spec| {
+                    if spec
+                        .args
+                        .first()
+                        .is_some_and(|argument| argument == "mutants")
+                    {
+                        fs::create_dir_all(output_dir_for_override.join("mutants.out"))
+                            .expect("write mutation result");
+                        return Some(Err("surviving mutant fixture".into()));
+                    }
+                    Some(Ok(()))
+                },
+                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+            )
+        })
+        .expect_err("surviving mutant should fail the mutation gate");
+
+        assert!(error.to_string().contains("surviving mutant fixture"));
+        assert!(
+            output_dir.join("mutants.out").is_dir(),
+            "mutation results must remain available after failure"
+        );
+    });
+}
+
+#[test]
+fn mutation_testing_classifies_missed_timed_out_and_broken_baseline_runs() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+
+        for (status, expected_message) in [
+            (2, "found missed mutants"),
+            (3, "timed out while testing"),
+            (4, "could not establish a passing unmutated baseline"),
+        ] {
+            let error = with_ready_preflight(|| {
+                crate::command_exec::with_run_spec_override(
+                    move |_, spec| {
+                        (spec
+                            .args
+                            .first()
+                            .is_some_and(|argument| argument == "mutants"))
+                        .then(|| {
+                            Err(format!(
+                                "command failed with status exit status: {status}: cargo mutants"
+                            )
+                            .into())
+                        })
+                    },
+                    || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+                )
+            })
+            .expect_err("mutation run should fail");
+
+            assert!(
+                error.to_string().contains(expected_message),
+                "unexpected mutation diagnostic: {error}"
+            );
+        }
     });
 }
 

@@ -121,6 +121,8 @@ fn prepare_artifact_layout_creates_managed_roots_and_marker_files() {
         let coverage_cargo_build = crate::plan::coverage_cargo_build_dir(repo_root.path());
         let gate_reports =
             prepare_gate_report_root(repo_root.path()).expect("prepare gate reports");
+        let mutation_reports =
+            prepare_mutation_report_root(repo_root.path()).expect("prepare mutation reports");
 
         for path in [
             workspace_target,
@@ -130,6 +132,7 @@ fn prepare_artifact_layout_creates_managed_roots_and_marker_files() {
             coverage_cargo_target,
             coverage_cargo_build,
             gate_reports,
+            mutation_reports,
         ] {
             assert!(path.is_dir(), "{} should exist", path.display());
             assert!(path.join("CACHEDIR.TAG").is_file());
@@ -148,6 +151,20 @@ fn prepare_gate_report_root_rejects_a_non_directory_evidence_root() {
 
         let error =
             prepare_gate_report_root(repo_root.path()).expect_err("report root should fail");
+        assert!(error.to_string().contains(&root.display().to_string()));
+    });
+}
+
+#[test]
+fn prepare_mutation_report_root_rejects_a_non_directory_evidence_root() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        let root = mutation_report_dir(repo_root.path());
+        fs::create_dir_all(root.parent().expect("mutation report parent")).expect("create parent");
+        fs::write(&root, "not a directory").expect("block mutation report root");
+
+        let error =
+            prepare_mutation_report_root(repo_root.path()).expect_err("report root should fail");
         assert!(error.to_string().contains(&root.display().to_string()));
     });
 }

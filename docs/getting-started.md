@@ -84,7 +84,7 @@ cargo run -- --help
 ```
 
 `rust-toolchain.toml` is the canonical exact repo toolchain pin. Right now that resolves to
-`1.97.0`. `Cargo.toml` `[workspace.package] rust-version = "1.97"` carries the published
+`1.98.0`. `Cargo.toml` `[workspace.package] rust-version = "1.98"` carries the published
 compatibility floor separately.
 
 Install into Cargo's bin directory from this repository root:

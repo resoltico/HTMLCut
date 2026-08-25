@@ -52,6 +52,42 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
 }
 
 #[test]
+fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let output = Command::new("bash")
+        .current_dir(repo_root)
+        .arg("-lc")
+        .arg(
+            r#"
+                set -euo pipefail
+                source ./scripts/contributor-rust-tools.sh
+                htmlcut_contributor_default_cargo_tool_inventory
+                printf '%s\n' '-- optional --'
+                htmlcut_selected_contributor_cargo_tools cargo-mutants
+            "#,
+        )
+        .output()
+        .expect("render contributor tool inventories");
+
+    assert!(
+        output.status.success(),
+        "contributor inventory probe failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let inventory = String::from_utf8(output.stdout).expect("utf8 inventory");
+    let (default_tools, optional_tool) = inventory
+        .split_once("-- optional --\n")
+        .expect("inventory separator");
+    assert!(default_tools.contains("cargo-nextest 0.9.143 cargo-nextest"));
+    assert!(default_tools.contains("cargo-fuzz 0.13.2 cargo-fuzz"));
+    assert!(!default_tools.contains("cargo-mutants"));
+    assert_eq!(optional_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
+}
+
+#[test]
 fn contributor_rust_tools_script_is_safe_to_source_under_readonly_shell_locals() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -113,4 +149,29 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
             .count(),
         2
     );
+}
+
+#[test]
+fn contributor_images_pin_multi_platform_manifest_indexes() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let contributor_image = fs::read_to_string(repo_root.join(".devcontainer/Dockerfile"))
+        .expect("read contributor Dockerfile");
+    let cli_helper = fs::read_to_string(
+        repo_root
+            .join("scripts")
+            .join("devcontainer-cli-helper.Dockerfile"),
+    )
+    .expect("read CLI helper Dockerfile");
+
+    assert!(contributor_image.contains("multi-platform image index"));
+    assert!(
+        contributor_image
+            .contains("sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae")
+    );
+    assert!(cli_helper.contains("multi-platform image index"));
+    assert!(cli_helper.contains(
+        "docker:29.7.2-cli@sha256:000bb62ff495f986c9f5578eb67cc2cb98b91138eda81d7762d5371eb8a497fe"
+    ));
 }

@@ -13,6 +13,7 @@ mod hygiene;
 mod manifest;
 mod miri;
 mod model;
+mod mutants;
 mod outdated;
 mod plan;
 mod policy;
@@ -42,7 +43,7 @@ pub use host_tools::{
 pub use hygiene::{
     HygieneCleanMode, HygieneCleanResult, HygieneReport, HygieneReportFormat, clean_hygiene,
     ensure_hygiene, hygiene_report, prepare_artifact_layout, prepare_gate_report_root,
-    render_hygiene_report,
+    prepare_mutation_report_root, render_hygiene_report,
 };
 pub use manifest::{
     package_version_from_manifest, workspace_rust_version, workspace_rust_version_from_manifest,
@@ -52,16 +53,20 @@ pub use miri::{
     miri_contract_command, miri_preflight_failures, miri_preflight_message, miri_probe_command,
 };
 pub use model::{
-    CommandArtifactLayout, CommandSpec, CommandStdout, CommandToolchainEnv, CoverageBranchRecord,
-    CoverageCounter, CoverageDataSet, CoverageFailure, CoverageFile, CoverageFileSummary,
-    CoveragePreflightFailure, CoverageReport, CoverageSourceKind, CoverageSummary, DynResult,
-    MiriPreflightFailure, TrackedCoverageFile, XtaskError,
+    CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
+    CoverageBranchRecord, CoverageCounter, CoverageDataSet, CoverageFailure, CoverageFile,
+    CoverageFileSummary, CoveragePreflightFailure, CoverageReport, CoverageSourceKind,
+    CoverageSummary, DynResult, MiriPreflightFailure, TrackedCoverageFile, XtaskError,
+};
+pub use mutants::{
+    MutantsPreflightFailure, cargo_mutants_probe_command, mutants_command, mutants_output_dir,
+    mutants_preflight_failures, mutants_preflight_message,
 };
 pub use outdated::{outdated_check_command, run_outdated_check};
 pub use plan::{
     binary_name, cargo_build_dir, cargo_target_dir, check_plan, ci_rust_gate_plan,
     core_manifest_path, coverage_build_dir, coverage_target_dir, gate_report_dir,
-    is_semver_check_spec, normalize_path, release_binary_path,
+    is_semver_check_spec, mutation_report_dir, normalize_path, release_binary_path,
     restore_vendored_dependency_paths_in_baseline_manifest,
     sanitize_snapshot_workspace_manifest_for_packaging, semver_baseline_path, semver_release_type,
     semver_release_type_from_versions, semver_scratch_dir, shell_script_paths,
@@ -72,7 +77,7 @@ pub use policy::{
 };
 pub use preflight::{
     ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_miri_prerequisites,
-    ensure_repo_toolchain_prerequisites,
+    ensure_mutants_prerequisites, ensure_repo_toolchain_prerequisites,
 };
 pub use release::{
     ReleaseMatrixEntry, macos_deployment_target, release_asset_names, release_matrix,
@@ -80,10 +85,10 @@ pub use release::{
 };
 pub use structure::{check_source_structure, report_source_structure};
 pub use toolchain::{
-    RepoToolchain, RepoToolchainPreflightFailure, repo_toolchain,
+    RepoToolchain, RepoToolchainPreflightFailure, nightly_toolchain_probe_command, repo_toolchain,
     repo_toolchain_component_probe_command, repo_toolchain_from_manifest,
     repo_toolchain_preflight_failures, repo_toolchain_preflight_message,
-    repo_toolchain_probe_command,
+    repo_toolchain_probe_command, rustc_version_meets_floor,
 };
 
 /// Runs `cargo xtask` using the current process arguments at the repository root.

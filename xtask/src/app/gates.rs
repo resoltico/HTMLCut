@@ -10,9 +10,10 @@ use crate::{
     assert_known_fuzz_target, check_plan, check_source_structure, ci_rust_gate_plan, clean_hygiene,
     coverage_clean_command, coverage_command, coverage_output_path, ensure_coverage_output_dir,
     ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_hygiene,
-    ensure_miri_prerequisites, ensure_repo_toolchain_prerequisites, evaluate_coverage_report,
-    fuzz_smoke_command, fuzz_smoke_targets, is_semver_check_spec, miri_contract_command,
-    prepare_artifact_layout, read_coverage_report, remove_dir_if_exists, run_spec,
+    ensure_miri_prerequisites, ensure_mutants_prerequisites, ensure_repo_toolchain_prerequisites,
+    evaluate_coverage_report, fuzz_smoke_command, fuzz_smoke_targets, is_semver_check_spec,
+    miri_contract_command, mutants_command, mutants_output_dir, prepare_artifact_layout,
+    prepare_mutation_report_root, read_coverage_report, remove_dir_if_exists, run_spec,
     semver_scratch_dir, stage_fuzz_corpus, tracked_files,
 };
 
@@ -153,6 +154,49 @@ pub(super) fn run_fuzz_smoke(repo_root: &Path, target: Option<&str>, runs: u32) 
 
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
     ensure_hygiene(repo_root)
+}
+
+/// Runs cargo-mutants with the checked-in first-party mutation scope.
+pub(super) fn run_mutants(
+    repo_root: &Path,
+    in_place: bool,
+    shard: Option<&str>,
+    in_diff: Option<&Path>,
+) -> DynResult<()> {
+    ensure_repo_toolchain_prerequisites(repo_root)?;
+    ensure_mutants_prerequisites(repo_root)?;
+    clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
+    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
+    prepare_mutation_report_root(repo_root)?;
+    ensure_hygiene(repo_root)?;
+
+    let output_dir = mutants_output_dir(repo_root);
+    remove_dir_if_exists(&output_dir.join("mutants.out"))?;
+    remove_dir_if_exists(&output_dir.join("mutants.out.old"))?;
+    let execution = run_spec(
+        repo_root,
+        &mutants_command(&output_dir, in_place, shard, in_diff),
+    );
+    let hygiene = ensure_hygiene(repo_root);
+
+    if let Err(error) = execution {
+        return Err(mutation_execution_error(error));
+    }
+    hygiene
+}
+
+fn mutation_execution_error(error: crate::XtaskError) -> crate::XtaskError {
+    let message = error.to_string();
+    let outcome = if message.contains("status exit status: 2") {
+        "cargo-mutants found missed mutants. Review `missed.txt` and the per-mutant logs in the retained mutation evidence."
+    } else if message.contains("status exit status: 3") {
+        "cargo-mutants timed out while testing one or more mutants. Review `timeout.txt` and the retained per-mutant logs before changing timeouts."
+    } else if message.contains("status exit status: 4") {
+        "cargo-mutants could not establish a passing unmutated baseline. Repair the baseline test failure before interpreting mutation results."
+    } else {
+        return error;
+    };
+    format!("Mutation-testing run did not complete successfully: {outcome}\n\n{message}").into()
 }
 
 fn run_semver_step(repo_root: &Path, spec: CommandSpec) -> DynResult<()> {

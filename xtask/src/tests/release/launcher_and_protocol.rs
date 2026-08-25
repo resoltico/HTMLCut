@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn stable_xtask_launcher_runs_a_temp_copy_outside_the_managed_target_root() {
+fn stable_xtask_launcher_builds_and_runs_outside_the_managed_target_root() {
     let actual_repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
@@ -48,7 +48,7 @@ printf '%s\n' "$*" > "{args_path}"
 [[ "$3" == "-p" ]]
 [[ "$4" == "xtask" ]]
 [[ "$5" == "--locked" ]]
-target_root="{managed_target_root}"
+target_root="${{CARGO_TARGET_DIR:?xtask launcher must set a detached target directory}}"
 mkdir -p "${{target_root}}/debug"
 cat > "${{target_root}}/debug/xtask.exe" <<'EOF'
 #!/usr/bin/env bash

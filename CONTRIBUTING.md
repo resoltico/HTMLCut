@@ -26,7 +26,7 @@ compiler-override commands plus the reasoning behind them.
 Use [docs/workspace-layout.md](docs/workspace-layout.md) when you need the current workspace-member
 map or the package-name versus Rust-path naming rule.
 
-Rust `1.97.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
+Rust `1.98.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
 manifest mirrors that compiler contract through `[workspace.package] rust-version`, and nightly
 exists separately for the coverage gate plus live `cargo-fuzz` campaigns.
 
@@ -49,6 +49,7 @@ or directly:
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 For a short live libFuzzer pass that stages the checked-in corpora into disposable scratch, use
 `./scripts/xtask.sh fuzz-smoke`.
+For mutation testing against first-party runtime code, use `./scripts/xtask.sh mutants`.
 If you changed `.devcontainer/`, the contributor-container lifecycle scripts, or the contributor
 container docs, also run `./scripts/validate-devcontainer.sh` plus
 `./scripts/devcontainer-check.sh` from the host shell.

@@ -47,6 +47,10 @@ fn rendering_helpers_handle_blocks_spacing_previews_and_url_resolution() {
         "A\n\nB"
     );
     assert!(looks_like_full_document("<html><body></body></html>"));
+    assert!(crate::looks_like_html_document(
+        "<html><body></body></html>"
+    ));
+    assert!(!crate::looks_like_html_document("<p>Fragment only</p>"));
     assert_eq!(
         rewrite_html_urls(
             "<a href=\"guide.html\">Guide</a>",

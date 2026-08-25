@@ -50,6 +50,8 @@ PY
 export HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
 HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly"
 export HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
+HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION="966ade348570e9bc4fb0a8a9651be10e26909671"
+export HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION
 readonly HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
 readonly -a HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS=("clippy" "rustfmt")
@@ -86,14 +88,26 @@ htmlcut_contributor_install_stable_toolchain_components() {
 
 htmlcut_contributor_cargo_tool_inventory() {
     cat <<'EOF'
-cargo-nextest 0.9.140 cargo-nextest
+cargo-nextest 0.9.143 cargo-nextest
 cargo-audit 0.22.2 cargo-audit
 cargo-deny 0.20.2 cargo-deny
-cargo-semver-checks 0.48.0 cargo-semver-checks
+cargo-semver-checks 0.50.0-git.966ade348570 cargo-semver-checks
 cargo-outdated 0.19.0 cargo-outdated
-cargo-llvm-cov 0.8.7 cargo-llvm-cov
+cargo-llvm-cov 0.9.0 cargo-llvm-cov
 cargo-fuzz 0.13.2 cargo-fuzz
+cargo-mutants 27.1.0 cargo-mutants
 EOF
+}
+
+htmlcut_contributor_default_cargo_tool_inventory() {
+    htmlcut_selected_contributor_cargo_tools \
+        cargo-nextest \
+        cargo-audit \
+        cargo-deny \
+        cargo-semver-checks \
+        cargo-outdated \
+        cargo-llvm-cov \
+        cargo-fuzz
 }
 
 htmlcut_selected_contributor_cargo_tools() {

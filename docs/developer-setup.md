@@ -2,10 +2,10 @@
 afad: "4.0"
 version: "12.0.1"
 domain: SETUP
-updated: "2026-07-16"
+updated: "2026-08-25"
 route:
-  keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-miri, macOS clang, CC override, artifact hygiene]
-  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?", "do I need Rust installed on the host if I use the HTMLCut devcontainer?"]
+  keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
+  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
 ---
 
 # Developer Setup
@@ -27,8 +27,8 @@ campaigns. The maintainer workflow also depends on Rust-native QA commands plus 
 shell-script checks.
 
 The workspace manifest carries the published compatibility floor through
-`[workspace.package] rust-version = "1.97"`, while `rust-toolchain.toml` owns the exact
-day-to-day repository pin (currently `1.97.0`).
+`[workspace.package] rust-version = "1.98"`, while `rust-toolchain.toml` owns the exact
+day-to-day repository pin (currently `1.98.0`).
 
 Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit control over
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
@@ -58,9 +58,9 @@ Why this shape:
 - `./scripts/contributor-rust-tools.sh` is the canonical owner for the exact stable/nightly
   bootstrap values shared by docs, bootstrap scripts, and CI.
 - `rust-toolchain.toml` owns the exact stable repository pin for day-to-day work. Right now that
-  resolves to `1.97.0`.
+  resolves to `1.98.0`.
 - the workspace manifest carries the published compatibility floor separately through
-  `[workspace.package] rust-version = "1.97"`.
+  `[workspace.package] rust-version = "1.98"`.
 - `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
   coverage gate, because `cargo xtask miri` now proves the selector and delimiter-slice paths
   under strict provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.
@@ -88,9 +88,9 @@ Why this shape:
   the maintained macOS path, especially `cargo-outdated`.
 - `CC=clang CXX=clang++` protects fresh macOS machines from stale shell overrides that point at a
   removed Homebrew LLVM install.
-- `cargo-fuzz` is not part of the default maintainer gate, but HTMLCut keeps checked-in fuzz
-  targets and seed corpora, so contributors should have the runner available for local smoke
-  campaigns and incident reproduction.
+- `cargo-fuzz` is installed with the default contributor inventory because HTMLCut keeps checked-in
+  fuzz targets and seed corpora. `cargo-mutants` is intentionally opt-in because full mutation
+  testing is scheduled/manual rather than part of the normal contributor gate.
 
 The installer also preflights those macOS native prerequisites now. If `pkg-config` cannot see
 OpenSSL metadata, it stops immediately with the exact Homebrew repair command instead of failing
@@ -109,6 +109,20 @@ LLVM-backed maintainer flows are a separate concern: `cargo xtask coverage` and
 stay on the LLVM toolchain. The strict-provenance selector-and-slice Miri proof does not need that compiler override,
 but it does require the nightly `miri` plus `rust-src` components. Keep `clang` and `clang++`
 available on `PATH` on any host where you plan to run the maintained coverage or fuzz commands.
+
+Install cargo-mutants only when you will run the mutation workflow locally:
+
+```bash
+CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-mutants
+```
+
+The CI mutation workflow installs this same pinned tool independently, so normal devcontainer
+bootstrap and ordinary contributor setup do not pay to build an optional multi-hour quality tool.
+
+The contributor installer temporarily builds `cargo-semver-checks` from its exact checked-in
+upstream revision because crates.io `0.50.0` cannot read Rust `1.98` Rustdoc JSON. The pinned
+revision restores the maintained semver gate and should be replaced by a published release once it
+contains Rustdoc-v60 support.
 
 ## Install Host-Native ShellCheck
 
@@ -173,6 +187,8 @@ cargo outdated --version
 cargo llvm-cov --version
 cargo +nightly miri --version
 cargo fuzz --version
+# Optional: install cargo-mutants first when you need mutation testing.
+cargo mutants --version
 shellcheck --version
 ```
 
@@ -190,6 +206,8 @@ supported gate path outside Cargo's mutable artifact roots:
 ./scripts/xtask.sh miri
 ./scripts/xtask.sh outdated-check
 ./scripts/xtask.sh fuzz-smoke
+# Optional: requires the cargo-mutants installation above.
+./scripts/xtask.sh mutants
 ```
 
 The curated cross-platform CI Rust lane runs `./scripts/xtask.sh ci-rust-gate`, which still comes
@@ -200,6 +218,17 @@ For a short live libFuzzer pass that keeps the checked-in seed corpora clean, us
 then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
 prerequisites fail fast with one actionable message and broad default Cargo test loops stay
 finite.
+For mutation testing, use `./scripts/xtask.sh mutants`; it copies the workspace before mutating
+and retains the resulting `mutants.out` tree under `../.htmlcut-artifacts/mutation-runs`. The
+scheduled CI workflow is the only maintained caller that adds `--in-place`, because its checkout
+is disposable.
+
+To test only mutations in a reviewed source diff, pass a unified diff file:
+
+```bash
+git diff --no-ext-diff --unified=0 origin/main...HEAD > /tmp/htmlcut-mutants.diff
+./scripts/xtask.sh mutants --in-diff /tmp/htmlcut-mutants.diff
+```
 The main `xtask check` gate likewise preflights the exact stable pin from
 `rust-toolchain.toml`, its required `clippy`/`rustfmt` components, the nightly Miri prerequisites,
 and the nightly coverage prerequisites before the Rust gate starts, including direct probes that

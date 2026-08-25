@@ -1,6 +1,6 @@
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use htmlcut_tempdir::tempdir;
@@ -29,7 +29,8 @@ const VENDORED_SELECTOR_STACK_DIRECTORIES: &[&str] = &[
 ];
 
 use self::gates::{
-    run_check, run_ci_rust_gate, run_coverage, run_fuzz_smoke, run_miri, run_semver_check,
+    run_check, run_ci_rust_gate, run_coverage, run_fuzz_smoke, run_miri, run_mutants,
+    run_semver_check,
 };
 
 #[derive(Parser)]
@@ -105,6 +106,23 @@ enum Task {
             value_parser = clap::value_parser!(u32).range(1..)
         )]
         runs: u32,
+        #[command(flatten)]
+        output: GateOutputOptions,
+    },
+    #[command(
+        about = "Run maintained mutation testing against first-party HTMLCut Rust source.",
+        long_about = "Run cargo-mutants with the checked-in first-party source scope and product-test configuration. Local runs use a copied workspace by default; CI can opt into --in-place only inside a disposable checkout."
+    )]
+    Mutants {
+        /// Mutate the current checkout instead of a copied workspace. Use only in disposable CI checkouts.
+        #[arg(long, default_value_t = false)]
+        in_place: bool,
+        /// Run one zero-based cargo-mutants shard such as `0/16`.
+        #[arg(long, value_name = "INDEX/TOTAL")]
+        shard: Option<String>,
+        /// Test only mutations that overlap with a unified diff file.
+        #[arg(long, value_name = "DIFF_FILE")]
+        in_diff: Option<PathBuf>,
         #[command(flatten)]
         output: GateOutputOptions,
     },
@@ -209,7 +227,7 @@ fn cli_command() -> clap::Command {
 
 fn xtask_after_help() -> String {
     format!(
-        "Examples:\n  cargo xtask check\n  cargo xtask check --format json\n  cargo xtask ci-rust-gate\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask miri\n  cargo xtask outdated-check\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask hygiene report\n  cargo xtask hygiene clean --mode rebuildable\n  cargo xtask structure report\n  cargo xtask structure check\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
+        "Examples:\n  cargo xtask check\n  cargo xtask check --format json\n  cargo xtask ci-rust-gate\n  cargo xtask semver-check\n  cargo xtask coverage\n  cargo xtask miri\n  cargo xtask outdated-check\n  cargo xtask fuzz-smoke --target {FUZZ_SMOKE_EXAMPLE_TARGET}\n  cargo xtask mutants\n  cargo xtask hygiene report\n  cargo xtask hygiene clean --mode rebuildable\n  cargo xtask structure report\n  cargo xtask structure check\n  cargo xtask refresh-semver-baseline --git-ref v7.0.0"
     )
 }
 
@@ -222,6 +240,12 @@ fn run_task(repo_root: &Path, task: Task) -> DynResult<()> {
         Task::Miri { .. } => run_miri(repo_root),
         Task::OutdatedCheck { .. } => run_outdated_check(repo_root),
         Task::FuzzSmoke { target, runs, .. } => run_fuzz_smoke(repo_root, target.as_deref(), runs),
+        Task::Mutants {
+            in_place,
+            shard,
+            in_diff,
+            ..
+        } => run_mutants(repo_root, in_place, shard.as_deref(), in_diff.as_deref()),
         Task::RefreshSemverBaseline { git_ref } => refresh_semver_baseline(repo_root, &git_ref),
         Task::Hygiene { command } => run_hygiene(repo_root, command),
         Task::Structure { command } => run_structure(repo_root, command),
@@ -238,6 +262,7 @@ impl Task {
             Self::Miri { output } => Some(("miri", *output)),
             Self::OutdatedCheck { output } => Some(("outdated-check", *output)),
             Self::FuzzSmoke { output, .. } => Some(("fuzz-smoke", *output)),
+            Self::Mutants { output, .. } => Some(("mutants", *output)),
             Self::Hygiene {
                 command: HygieneTask::Verify { output },
             } => Some(("hygiene-verify", *output)),

@@ -4,6 +4,24 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Added
+
+- Added a pinned cargo-mutants `27.1.0` quality workflow for first-party HTMLCut runtime code. `cargo xtask mutants` runs safely from a copied local workspace, while a scheduled/manual sixteen-shard Linux workflow uses disposable in-place checkouts and uploads complete mutation results for review.
+- Added a focused pull-request mutation check for changed production Rust, plus a completion-checked full-run summary that combines all scheduled shard outcomes.
+
+### Changed
+
+- Raised the published Rust floor and exact stable toolchain pin to Rust `1.98`/`1.98.0`. Refreshed the Cargo graph, shipped selector-stack dependencies, contributor QA tools, pinned GitHub Actions, and contributor-container image digests to their current compatible releases.
+- Mutation evidence now has its own managed artifact root, so expensive survivor and timeout diagnostics are retained independently of rebuildable Cargo cache budgets.
+- Pinned cargo-semver-checks to its upstream Rustdoc-v60-compatible revision until that support is published on crates.io, keeping the semver gate active on Rust `1.98`.
+
+### Fixed
+
+- Contributor-container image pins now retain their multi-platform manifest indexes instead of an AMD64-only child manifest, so Apple-silicon hosts run the native arm64 environment rather than an emulated Linux image.
+- Nightly Miri, coverage, and fuzzing preflights now reject a compiler below HTMLCut's published Rust floor before an expensive Cargo build fails, with the exact nightly-refresh repair command.
+- Corrected cargo-mutants sharding to cover every zero-based partition and balanced the full campaign with round-robin distribution.
+- Full-document detection now has a direct public-contract assertion, preventing a wrapped-document regression that mutation testing exposed.
+
 ## [12.0.1] - 2026-07-19
 
 ### Fixed

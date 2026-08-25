@@ -133,7 +133,7 @@ fn with_isolated_managed_workspace_artifacts<T>(
 fn write_repo_scaffold(repo_root: &Path) {
     fs::write(
         repo_root.join("Cargo.toml"),
-        "[workspace.package]\nversion = \"3.0.0\"\n",
+        "[workspace.package]\nversion = \"3.0.0\"\nrust-version = \"1.98\"\n",
     )
     .expect("write Cargo.toml");
     fs::write(repo_root.join("changelog.md"), "## [Unreleased]\n").expect("write changelog.md");

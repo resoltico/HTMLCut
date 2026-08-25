@@ -13,18 +13,23 @@ readonly repo_root
 
 cd "${repo_root}"
 
-cargo build --quiet -p xtask --locked
-
-compiled_xtask="$(htmlcut_cargo_host_binary_path "${repo_root}" "debug" "xtask")"
-[[ -f "${compiled_xtask}" ]] || htmlcut_die "missing compiled xtask binary ${compiled_xtask}"
-
 tmp_root="$(htmlcut_temp_root)"
 detached_root="$(TMPDIR="${tmp_root}" mktemp -d -t htmlcut-xtask-XXXXXX)"
 readonly detached_root
 trap 'rm -rf "${detached_root}"' EXIT
 
-detached_xtask="${detached_root}/$(basename "${compiled_xtask}")"
-cp "${compiled_xtask}" "${detached_xtask}"
-chmod +x "${detached_xtask}" 2>/dev/null || true
+launcher_target_dir="${detached_root}/target"
+launcher_build_dir="${detached_root}/build"
+readonly launcher_target_dir
+readonly launcher_build_dir
 
-"${detached_xtask}" "$@"
+# Keep the gate driver outside HTMLCut's managed Cargo roots so a clean rebuild cannot create
+# unmarked artifacts before xtask's hygiene policy has prepared them.
+CARGO_TARGET_DIR="${launcher_target_dir}" \
+    CARGO_BUILD_BUILD_DIR="${launcher_build_dir}" \
+    cargo build --quiet -p xtask --locked
+
+compiled_xtask="${launcher_target_dir}/debug/xtask$(htmlcut_host_executable_suffix)"
+[[ -f "${compiled_xtask}" ]] || htmlcut_die "missing compiled xtask binary ${compiled_xtask}"
+
+"${compiled_xtask}" "$@"

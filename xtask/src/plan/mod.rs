@@ -81,6 +81,11 @@ pub fn gate_report_dir(repo_root: &Path) -> PathBuf {
     paths::gate_report_dir(repo_root)
 }
 
+/// Returns the managed evidence root retained for the latest mutation-testing run.
+pub fn mutation_report_dir(repo_root: &Path) -> PathBuf {
+    paths::mutation_report_dir(repo_root)
+}
+
 /// Returns the nested Cargo target directory created by `cargo llvm-cov`.
 pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
     paths::coverage_cargo_target_dir(repo_root)

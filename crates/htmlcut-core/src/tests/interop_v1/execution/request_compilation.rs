@@ -14,6 +14,9 @@ fn request_compilation_maps_selection_strategy_and_flags() {
         WhitespaceMode::Normalize
     );
     assert!(!selector_request.output.rendering.rewrite_urls);
+    assert!(!selector_request.output.include_source_text);
+    assert!(!selector_request.output.include_html);
+    assert!(!selector_request.output.include_text);
     let first_request = v1::compile_request_for_tests(
         &selector_source,
         &Plan::new(
