@@ -4,23 +4,34 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [13.0.0] - 2026-08-25
+
 ### Added
 
-- Added a pinned cargo-mutants `27.1.0` quality workflow for first-party HTMLCut runtime code. `cargo xtask mutants` runs safely from a copied local workspace, while a scheduled/manual sixteen-shard Linux workflow uses disposable in-place checkouts and uploads complete mutation results for review.
-- Added a focused pull-request mutation check for changed production Rust, plus a completion-checked full-run summary that combines all scheduled shard outcomes.
+- Added `cargo xtask mutants`, a maintained cargo-mutants `27.1.0` gate for first-party HTMLCut runtime code. Pull requests receive focused checks for changed production Rust, while scheduled and manually started Linux campaigns publish complete mutation evidence for maintainers.
+- Added durable mutation-run artifacts and a verified aggregate result for full campaigns, so maintainers can review survivor, timeout, and execution evidence separately from rebuildable Cargo compilation caches.
+- Added direct public-contract coverage for full-document detection, protecting wrapped document output from future regressions.
 
 ### Changed
 
-- Raised the published Rust floor and exact stable toolchain pin to Rust `1.98`/`1.98.0`. Refreshed the Cargo graph, shipped selector-stack dependencies, contributor QA tools, pinned GitHub Actions, and contributor-container image digests to their current compatible releases.
-- Mutation evidence now has its own managed artifact root, so expensive survivor and timeout diagnostics are retained independently of rebuildable Cargo cache budgets.
-- Pinned cargo-semver-checks to its upstream Rustdoc-v60-compatible revision until that support is published on crates.io, keeping the semver gate active on Rust `1.98`.
+- Raised HTMLCut's published Rust floor and exact stable toolchain pin to Rust `1.98`/`1.98.0`, and refreshed the compatible Cargo graph, vendored selector stack, contributor QA tools, GitHub Actions pins, and contributor-container image digests.
+- Kept the semver compatibility gate active on Rust `1.98` by pinning cargo-semver-checks to its upstream Rustdoc-v60-compatible revision until that support is published on crates.io.
+- Refreshed the checked-in `htmlcut-core` semver baseline to `v12.0.1`, so compatibility checks compare against the current public release.
+- Long command help now derives typed compatibility rules from the canonical CLI contract, covering match indexes, attributes, TLS CA bundles, output-file restrictions, structured output, and HTML value combinations; it also states explicit stdin, HEAD-first preflight, semantic whitespace, fragment HTML, and JSON failure routing.
+- Source reports now define `bytes_read` as accepted UTF-8 bytes after decoding, retain both successful and failed source-loading actions in `load_steps`, and describe inspection root/tag counts as parser-normalized document structure.
+- Invoking `htmlcut` without a command now produces a concise usage error and exits with code `2`, while explicit help commands remain successful.
 
 ### Fixed
 
 - Contributor-container image pins now retain their multi-platform manifest indexes instead of an AMD64-only child manifest, so Apple-silicon hosts run the native arm64 environment rather than an emulated Linux image.
 - Nightly Miri, coverage, and fuzzing preflights now reject a compiler below HTMLCut's published Rust floor before an expensive Cargo build fails, with the exact nightly-refresh repair command.
 - Corrected cargo-mutants sharding to cover every zero-based partition and balanced the full campaign with round-robin distribution.
-- Full-document detection now has a direct public-contract assertion, preventing a wrapped-document regression that mutation testing exposed.
+- URL-backed extraction and inspection now resolve relative links against the final redirected GET URL unless an explicit base override is supplied, redact redirected queries in visible metadata, and record GET success only after the response body is usable.
+- HTTP sources now decode declared character sets such as `iso-8859-1` with strict byte and decoded-text limits, while local files and stdin remain UTF-8 inputs.
+- Source inspection now recognizes bounded long-form opaque `div` shells anchored by meaningful titles and prose, so generated pages do not collapse to a small related-content card.
+- First and satisfied nth slice extraction now keep complete earlier pairs when only a trailing later pair is incomplete; `--match single` and `--match all` remain strict.
+- `selected-html` now renders its exact selected fragment in HTML output and wrapped bundle output.
+- The executable now exits quietly when stdout closes in a normal pipeline, unsupported URI schemes are diagnosed as URL usage errors, selector errors show safe source locations in human output, and empty inspection text identifies parser-normalized structure.
 
 ## [12.0.1] - 2026-07-19
 

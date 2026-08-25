@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: QUALITY
 updated: "2026-08-25"
 route:

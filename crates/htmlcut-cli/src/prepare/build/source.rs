@@ -36,7 +36,7 @@ fn build_requested_source_input(args: &SourceArgs) -> Result<SourceRequest, CliE
         return Ok(SourceRequest::stdin());
     }
 
-    if input.starts_with("http://") || input.starts_with("https://") {
+    if has_uri_scheme_prefix(&input) {
         return Ok(SourceRequest::url(validate_input_url(&input)?));
     }
 
@@ -46,6 +46,17 @@ fn build_requested_source_input(args: &SourceArgs) -> Result<SourceRequest, CliE
         },
         base_url: None,
     })
+}
+
+fn has_uri_scheme_prefix(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once("://") else {
+        return false;
+    };
+    let mut characters = scheme.chars();
+    matches!(characters.next(), Some(character) if character.is_ascii_alphabetic())
+        && characters.all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+        })
 }
 
 pub(crate) fn build_runtime(args: &SourceArgs) -> Result<RuntimeOptions, CliError> {
@@ -281,5 +292,44 @@ mod tests {
         })
         .expect_err("webpki bundle conflict");
         assert_eq!(bundle_conflict.code, "CLI_TLS_CA_BUNDLE_CONFLICT");
+    }
+
+    #[test]
+    fn source_inputs_classify_scheme_shaped_values_before_file_paths() {
+        let source_args = |input: &str| SourceArgs {
+            input: Some(input.to_owned()),
+            input_html: None,
+            base_url: None,
+            max_bytes: "64mib".to_owned(),
+            fetch_timeout_ms: htmlcut_core::DEFAULT_FETCH_TIMEOUT_MS,
+            fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+            tls_trust: CliTlsTrustMode::WebPki,
+            tls_ca_bundle: None,
+            fetch_preflight: crate::args::CliFetchPreflightMode::HeadFirst,
+        };
+
+        let unsupported = build_requested_source_input(&source_args("ftp://example.test/page"))
+            .expect_err("unsupported scheme");
+        assert_eq!(unsupported.code, "CLI_SOURCE_URL_SCHEME_INVALID");
+
+        let uppercase = build_requested_source_input(&source_args("HTTPS://example.test/page"))
+            .expect("uppercase https url");
+        assert!(matches!(uppercase.input, SourceInput::Url { .. }));
+
+        let path =
+            build_requested_source_input(&source_args("report:final.html")).expect("colon path");
+        assert!(matches!(path.input, SourceInput::File { .. }));
+
+        let non_scheme = build_requested_source_input(&source_args("1ftp://example.test/page"))
+            .expect("non-scheme path");
+        assert!(matches!(non_scheme.input, SourceInput::File { .. }));
+
+        let invalid_scheme_character =
+            build_requested_source_input(&source_args("ht*tp://example.test/page"))
+                .expect("non-scheme path with an invalid character");
+        assert!(matches!(
+            invalid_scheme_character.input,
+            SourceInput::File { .. }
+        ));
     }
 }

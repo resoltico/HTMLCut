@@ -7,7 +7,9 @@ use crate::error::CliError;
 
 use crate::metadata::identity_banner;
 
-use super::render::{operation_examples_after_help, render_examples_after_help};
+use super::render::{
+    operation_examples_after_help, operation_long_about, render_examples_after_help,
+};
 
 static ROOT_BEFORE_HELP: LazyLock<String> = LazyLock::new(identity_banner);
 static ROOT_AFTER_HELP: LazyLock<String> =
@@ -35,6 +37,16 @@ static INSPECT_SELECT_AFTER_HELP: LazyLock<String> =
     LazyLock::new(|| operation_after_help(OperationId::SelectPreview));
 static INSPECT_SLICE_AFTER_HELP: LazyLock<String> =
     LazyLock::new(|| operation_after_help(OperationId::SlicePreview));
+static SELECT_LONG_ABOUT: LazyLock<String> =
+    LazyLock::new(|| operation_long_about_text(OperationId::SelectExtract));
+static SLICE_LONG_ABOUT: LazyLock<String> =
+    LazyLock::new(|| operation_long_about_text(OperationId::SliceExtract));
+static INSPECT_SOURCE_LONG_ABOUT: LazyLock<String> =
+    LazyLock::new(|| operation_long_about_text(OperationId::SourceInspect));
+static INSPECT_SELECT_LONG_ABOUT: LazyLock<String> =
+    LazyLock::new(|| operation_long_about_text(OperationId::SelectPreview));
+static INSPECT_SLICE_LONG_ABOUT: LazyLock<String> =
+    LazyLock::new(|| operation_long_about_text(OperationId::SlicePreview));
 
 pub(super) fn catalog_about() -> &'static str {
     crate::contract::cli_aux_command_descriptor(CliAuxCommandId::Catalog).about
@@ -76,6 +88,26 @@ pub(super) fn inspect_slice_about() -> &'static str {
     htmlcut_core::operation_descriptor(OperationId::SlicePreview)
         .map(|descriptor| descriptor.description)
         .unwrap_or("Operation description unavailable.")
+}
+
+pub(super) fn select_long_about() -> &'static str {
+    SELECT_LONG_ABOUT.as_str()
+}
+
+pub(super) fn slice_long_about() -> &'static str {
+    SLICE_LONG_ABOUT.as_str()
+}
+
+pub(super) fn inspect_source_long_about() -> &'static str {
+    INSPECT_SOURCE_LONG_ABOUT.as_str()
+}
+
+pub(super) fn inspect_select_long_about() -> &'static str {
+    INSPECT_SELECT_LONG_ABOUT.as_str()
+}
+
+pub(super) fn inspect_slice_long_about() -> &'static str {
+    INSPECT_SLICE_LONG_ABOUT.as_str()
 }
 
 pub(super) fn root_before_help() -> &'static str {
@@ -121,6 +153,10 @@ fn resolve_cached_help_text(result: Result<String, CliError>) -> String {
 
 fn operation_after_help(operation_id: OperationId) -> String {
     resolve_cached_help_text(operation_examples_after_help(operation_id))
+}
+
+fn operation_long_about_text(operation_id: OperationId) -> String {
+    resolve_cached_help_text(operation_long_about(operation_id))
 }
 
 #[cfg(test)]

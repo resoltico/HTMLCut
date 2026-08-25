@@ -43,21 +43,11 @@ fn help_output(args: &[&str]) -> String {
     String::from_utf8(assert.get_output().stdout.clone()).expect("stdout utf8")
 }
 
-fn assert_help_stays_grammar_first(args: &[&str]) {
+fn assert_help_renders_canonical_contract_details(args: &[&str]) {
     let help = normalize_whitespace(&help_output(args));
     assert!(help.contains("Usage:"), "{help}");
     assert!(help.contains("Examples:"), "{help}");
-    for fragment in [
-        "Default match mode:",
-        "Supported match modes:",
-        "Default value mode:",
-        "Supported value modes:",
-        "Default output mode:",
-        "Output default override:",
-        "Supported output modes:",
-    ] {
-        assert!(!help.contains(fragment), "{fragment}");
-    }
+    assert!(help.contains("Behavior:"), "{help}");
 }
 
 #[test]
@@ -69,8 +59,19 @@ fn subcommand_help_renders_canonical_contract_modes_and_notes() {
         &["inspect", "select", "--help"][..],
         &["inspect", "slice", "--help"][..],
     ] {
-        assert_help_stays_grammar_first(args);
+        assert_help_renders_canonical_contract_details(args);
     }
+
+    let select_help = normalize_whitespace(&help_output(&["select", "--help"]));
+    assert!(select_help.contains("Default match mode:"), "{select_help}");
+    assert!(
+        select_help.contains("Compatibility Rules:"),
+        "{select_help}"
+    );
+
+    let short_help = normalize_whitespace(&help_output(&["select", "-h"]));
+    assert!(!short_help.contains("Behavior:"), "{short_help}");
+    assert!(!short_help.contains("Compatibility Rules:"), "{short_help}");
 }
 
 #[test]

@@ -1,6 +1,22 @@
+use std::collections::BTreeSet;
+
+use ego_tree::NodeId;
+
+use crate::document::extract_heading_text;
+
 use super::super::samples::{
     count_meaningful_headings, count_meaningful_links, first_meaningful_heading,
 };
+
+const HEADING_ANCHORED_DIV_MAX_DEPTH: usize = 6;
+const HEADING_ANCHORED_DIV_MIN_TEXT_CHARS: usize = 800;
+const HEADING_ANCHORED_DIV_MIN_PROSE_PARAGRAPHS: usize = 3;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CandidateEligibility {
+    Semantic,
+    HeadingAnchoredOpaqueDiv,
+}
 use super::super::selectors::recommend_content_selector;
 use super::super::*;
 use super::promotion::{
@@ -22,10 +38,12 @@ pub(in super::super) fn build_ranked_content_candidates_for(
     }
 
     let heading_selector = Selector::parse("h1, h2, h3, h4, h5, h6").expect("heading selector");
+    let h1_selector = Selector::parse("h1").expect("h1 selector");
     let primary_heading_selector = Selector::parse("h1, h2").expect("primary heading selector");
     let link_selector = Selector::parse("a").expect("link selector");
     let paragraph_selector = Selector::parse("p").expect("paragraph selector");
     let list_item_selector = Selector::parse("li").expect("list item selector");
+    let heading_anchored_div_ids = collect_heading_anchored_div_ids(document, &h1_selector);
     let mut candidates = Vec::<RankedContentCandidate>::new();
 
     for node_ref in document.tree.nodes() {
@@ -39,9 +57,13 @@ pub(in super::super) fn build_ranked_content_candidates_for(
         }
         let signal_tokens = structural_signal_tokens(&element);
         let positive_signal_count = token_match_count(&signal_tokens, &POSITIVE_CONTENT_TOKENS);
-        if !is_content_candidate_container(&element, positive_signal_count) {
+        let eligibility = if is_content_candidate_container(&element, positive_signal_count) {
+            CandidateEligibility::Semantic
+        } else if heading_anchored_div_ids.contains(&element.id()) {
+            CandidateEligibility::HeadingAnchoredOpaqueDiv
+        } else {
             continue;
-        }
+        };
 
         let negative_signal_count = token_match_count(&signal_tokens, &NEGATIVE_CONTENT_TOKENS);
         let text_char_count =
@@ -59,6 +81,15 @@ pub(in super::super) fn build_ranked_content_candidates_for(
             prose_paragraph_count,
             element.select(&list_item_selector).count(),
         );
+        if eligibility == CandidateEligibility::HeadingAnchoredOpaqueDiv
+            && !opaque_div_has_long_form_shape(
+                text_char_count,
+                prose_paragraph_count,
+                count_meaningful_headings(&element, &h1_selector),
+            )
+        {
+            continue;
+        }
         if !candidate_has_readable_density(
             element.value().name(),
             text_char_count,
@@ -140,6 +171,44 @@ pub(in super::super) fn build_ranked_content_candidates_for(
     candidates.sort_by(|left, right| compare_content_candidates_for(left, right, preference));
 
     candidates.into_iter().take(sample_limit).collect()
+}
+
+fn opaque_div_has_long_form_shape(
+    text_char_count: usize,
+    prose_paragraph_count: usize,
+    meaningful_h1_count: usize,
+) -> bool {
+    text_char_count >= HEADING_ANCHORED_DIV_MIN_TEXT_CHARS
+        && prose_paragraph_count >= HEADING_ANCHORED_DIV_MIN_PROSE_PARAGRAPHS
+        && meaningful_h1_count == 1
+}
+
+#[cfg(test)]
+pub(in super::super) fn opaque_div_has_long_form_shape_for_tests(
+    text_char_count: usize,
+    prose_paragraph_count: usize,
+    meaningful_h1_count: usize,
+) -> bool {
+    opaque_div_has_long_form_shape(text_char_count, prose_paragraph_count, meaningful_h1_count)
+}
+
+fn collect_heading_anchored_div_ids(document: &Html, h1_selector: &Selector) -> BTreeSet<NodeId> {
+    // Bound the prepass to title ancestors so nested pages do not rescan every div subtree.
+    let mut ids = BTreeSet::new();
+    for heading in document.select(h1_selector) {
+        if extract_heading_text(&heading).is_none() {
+            continue;
+        }
+        for ancestor in heading.ancestors().take(HEADING_ANCHORED_DIV_MAX_DEPTH) {
+            let Some(element) = ElementRef::wrap(ancestor) else {
+                continue;
+            };
+            if element.value().name() == "div" {
+                ids.insert(element.id());
+            }
+        }
+    }
+    ids
 }
 
 #[cfg(test)]

@@ -43,7 +43,9 @@ pub(crate) struct DefinitionArgs {
 #[derive(Debug, Args)]
 #[command(next_help_heading = "Source")]
 pub(crate) struct SourceArgs {
-    /// HTML input source: a local file path, an http(s) URL, or `-` for stdin.
+    /// HTML input source: a local file path, an http(s) URL, or `-` for explicit stdin.
+    ///
+    /// Omitted INPUT never implicitly consumes piped stdin.
     #[arg(value_name = "INPUT")]
     pub(crate) input: Option<String>,
 
@@ -70,8 +72,9 @@ pub(crate) struct SourceArgs {
     #[arg(long, default_value_t = DEFAULT_FETCH_CONNECT_TIMEOUT_MS, value_name = "MILLISECONDS")]
     pub(crate) fetch_connect_timeout_ms: u64,
 
-    /// Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected
-    /// or broken, or skip the HEAD preflight entirely.
+    /// Use successful HEAD responses as advisory validation before GET. HTMLCut falls back only
+    /// when HEAD rejects the method or fails in a way that indicates HEAD intolerance; get-only
+    /// skips the probe.
     #[arg(long, value_parser = cli_choice_parser::<CliFetchPreflightMode>(), default_value_t = CliFetchPreflightMode::HeadFirst)]
     pub(crate) fetch_preflight: CliFetchPreflightMode,
 
@@ -79,7 +82,7 @@ pub(crate) struct SourceArgs {
     #[arg(long, value_parser = cli_choice_parser::<CliTlsTrustMode>(), default_value_t = CliTlsTrustMode::WebPki)]
     pub(crate) tls_trust: CliTlsTrustMode,
 
-    /// PEM CA bundle path used when `--tls-trust custom-ca-bundle` is selected.
+    /// PEM CA bundle path required only with `--tls-trust custom-ca-bundle`.
     #[arg(long, value_name = "PATH")]
     pub(crate) tls_ca_bundle: Option<PathBuf>,
 }
@@ -108,7 +111,9 @@ pub(crate) struct ExtractOutputArgs {
     #[arg(long)]
     pub(crate) attribute: Option<String>,
 
-    /// Preserve rendered whitespace or normalize it for text-like values.
+    /// Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering.
+    ///
+    /// Normalization does not flatten headings, lists, tables, or link annotations.
     #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
@@ -116,9 +121,11 @@ pub(crate) struct ExtractOutputArgs {
     #[arg(long, default_value_t = false)]
     pub(crate) rewrite_urls: bool,
 
-    /// How stdout should be rendered after extraction.
+    /// How stdout should be rendered after extraction. HTML output emits fragments, not a
+    /// standalone document; multiple fragments are separated by blank lines.
     ///
-    /// `--output none` suppresses stdout and therefore requires `--bundle`.
+    /// JSON mode writes either a success or failure document to stdout, and the process exit status
+    /// remains authoritative. `--output none` suppresses stdout and therefore requires `--bundle`.
     #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
     pub(crate) output: Option<CliOutputMode>,
 
@@ -155,7 +162,9 @@ pub(crate) struct SliceExtractOutputArgs {
     #[arg(long)]
     pub(crate) attribute: Option<String>,
 
-    /// Preserve rendered whitespace or normalize it for text-like values.
+    /// Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering.
+    ///
+    /// Normalization does not flatten headings, lists, tables, or link annotations.
     #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
@@ -163,9 +172,11 @@ pub(crate) struct SliceExtractOutputArgs {
     #[arg(long, default_value_t = false)]
     pub(crate) rewrite_urls: bool,
 
-    /// How stdout should be rendered after extraction.
+    /// How stdout should be rendered after extraction. HTML output emits fragments, not a
+    /// standalone document; multiple fragments are separated by blank lines.
     ///
-    /// `--output none` suppresses stdout and therefore requires `--bundle`.
+    /// JSON mode writes either a success or failure document to stdout, and the process exit status
+    /// remains authoritative. `--output none` suppresses stdout and therefore requires `--bundle`.
     #[arg(long, value_parser = cli_choice_parser::<CliOutputMode>())]
     pub(crate) output: Option<CliOutputMode>,
 
@@ -195,6 +206,9 @@ pub(crate) struct SliceExtractOutputArgs {
 #[command(next_help_heading = "Inspection Output")]
 pub(crate) struct InspectOutputArgs {
     /// Render the inspection as compact text or structured JSON.
+    ///
+    /// JSON mode writes either a success or failure document to stdout, and the process exit status
+    /// remains authoritative.
     #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Text)]
     pub(crate) output: CliInspectOutputMode,
 

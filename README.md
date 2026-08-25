@@ -1,15 +1,16 @@
 # HTMLCut — repeatable HTML extraction from files, URLs, and stdin
 
-HTMLCut extracts a specific value or fragment from an HTML file, a web page, or stdin.
+HTMLCut extracts a specific value or fragment from an HTML file, a web page, explicit stdin, or inline HTML.
 Use a CSS selector when the content is in the parsed document, or use literal and regex boundaries
 when you need to cut raw source text.
 
 You can save an extraction definition as a request file and rerun it later without restating the
 selector, slice boundaries, or output settings.
 
-- Extract semantic rendered text, direct DOM descendant text, links, attributes, HTML fragments, or structured match data
+- Load files, HTTP(S) URLs, `--input-html`, or explicit `-` stdin; redirected URLs provide the default base for relative links unless you supply `--base-url`
+- Extract semantic rendered text, CSS-only direct DOM text, links, attributes, HTML fragments, or structured match data
 - Cut raw source text between literal strings or regex boundaries
-- Preview a source or an extraction before committing to final output
+- Inspect a source or preview an extraction before committing to final output
 - Save reusable request files and replay them unchanged
 - Write outputs or forensic bundles to disk
 
@@ -20,14 +21,12 @@ htmlcut select ./page.html \
   --css 'article a.more' \
   --value attribute \
   --attribute href \
-  --emit-request-file ./article-link.request.json \
-  --overwrite
+  --emit-request-file ./article-link.request.json
 
 htmlcut select --request-file ./article-link.request.json
 ```
 
-The first command writes a reusable extraction definition. The second command reruns that saved
-definition, so you get the same selector and output settings without repeating the inline flags.
+The first command writes a reusable extraction definition. The second command reruns that saved definition, so you get the same selector and output settings without repeating the inline flags. Add `--overwrite` only when intentionally replacing an existing request file.
 
 ## Embed Deterministic Extraction
 

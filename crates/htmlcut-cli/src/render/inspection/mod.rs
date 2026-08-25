@@ -5,7 +5,7 @@ mod source;
 pub(crate) use self::preview::render_preview_text;
 #[cfg(test)]
 pub(crate) use self::preview::{render_preview_location, render_preview_match_lines};
-pub(crate) use self::shared::build_human_diagnostic_stderr_lines;
+pub(crate) use self::shared::{build_human_diagnostic_stderr_lines, selector_parse_detail_line};
 #[cfg(test)]
 pub(crate) use self::shared::{
     compact_inline_preview, render_attribute_summary, render_diagnostic_level,

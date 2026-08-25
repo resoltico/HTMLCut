@@ -108,7 +108,7 @@ fn getting_started_quick_start_commands_run_on_the_demo_page() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Title: HTMLCut README Fixture"))
-        .stdout(predicate::str::contains("Root tag: html"));
+        .stdout(predicate::str::contains("Parsed root tag: html"));
 
     let mut inspect_select = Command::cargo_bin("htmlcut").expect("binary");
     inspect_select

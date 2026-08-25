@@ -1,9 +1,12 @@
+#[cfg(test)]
+use std::cell::RefCell;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::time::Duration;
 
 use serde_json::json;
+use ureq::ResponseExt;
 use ureq::http::Response;
 use ureq::tls::{Certificate, PemItem, RootCerts, TlsConfig, parse_pem};
 
@@ -14,9 +17,14 @@ use crate::contracts::{
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 use crate::format_byte_size;
 
-use super::super::io::finish_url_source_from_reader;
+use super::super::io::{UrlResponseContext, finish_url_source_from_reader};
 use super::super::metadata::source_load_failure;
 use super::super::{LoadedSource, SourceLoadFailure};
+
+#[cfg(test)]
+thread_local! {
+    static FINAL_RESPONSE_URI_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
 
 pub(crate) fn read_url_source(
     source: &SourceRequest,
@@ -122,7 +130,7 @@ pub(crate) fn read_url_source(
     }
 
     let mut response = agent.get(fetch_url).call().map_err(|error| {
-        let mut failed_steps = load_steps.clone();
+        let mut failed_steps = load_steps.to_vec();
         failed_steps.push(SourceLoadStep {
             action: SourceLoadAction::Get,
             outcome: SourceLoadOutcome::Failed,
@@ -146,7 +154,7 @@ pub(crate) fn read_url_source(
     })?;
 
     validate_url_response(&response, runtime, &source_value, "GET").map_err(|diagnostic| {
-        let mut failed_steps = load_steps.clone();
+        let mut failed_steps = load_steps.to_vec();
         failed_steps.push(SourceLoadStep {
             action: SourceLoadAction::Get,
             outcome: SourceLoadOutcome::Failed,
@@ -159,33 +167,92 @@ pub(crate) fn read_url_source(
         source_load_failure(
             source,
             SourceKind::Url,
-            source_value.clone(),
+            source_value.to_owned(),
             failed_steps,
             diagnostic,
         )
     })?;
-    load_steps.push(SourceLoadStep {
-        action: SourceLoadAction::Get,
-        outcome: SourceLoadOutcome::Succeeded,
-        status: Some(response.status().as_u16()),
-        message: "Fetched the remote source with GET.".to_owned(),
-    });
+    let response_uri = final_response_uri(&response);
+    let final_url = final_response_url(
+        source,
+        &source_value,
+        response.status().as_u16(),
+        &load_steps,
+        &response_uri,
+    )?;
     let input_base_url = source
         .base_url
         .as_ref()
         .map(|base_url| base_url.to_string())
-        .or(Some(source_value.clone()));
+        .or_else(|| Some(final_url.to_string()));
     let response_status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|header| header.to_str().ok())
+        .map(str::to_owned);
+    let get_success_message = if final_url.as_url() != href.as_url() {
+        format!("Fetched the remote source with GET after redirect to {final_url}.")
+    } else {
+        "Fetched the remote source with GET.".to_owned()
+    };
     let mut reader = response.body_mut().as_reader();
     finish_url_source_from_reader(
         source,
         runtime,
-        &source_value,
-        response_status,
-        input_base_url,
-        load_steps,
+        UrlResponseContext {
+            source_value,
+            response_status,
+            input_base_url,
+            load_steps,
+            content_type,
+            get_success_message,
+        },
         &mut reader,
     )
+}
+
+fn final_response_uri(response: &Response<ureq::Body>) -> String {
+    #[cfg(test)]
+    if let Some(response_uri) =
+        FINAL_RESPONSE_URI_OVERRIDE.with(|override_uri| override_uri.borrow_mut().take())
+    {
+        return response_uri;
+    }
+
+    response.get_uri().to_string()
+}
+
+fn final_response_url(
+    source: &SourceRequest,
+    source_value: &str,
+    response_status: u16,
+    load_steps: &[SourceLoadStep],
+    response_uri: &str,
+) -> Result<HttpUrl, SourceLoadFailure> {
+    HttpUrl::parse(response_uri).map_err(|_| {
+        let mut failed_steps = load_steps.to_vec();
+        failed_steps.push(SourceLoadStep {
+            action: SourceLoadAction::Get,
+            outcome: SourceLoadOutcome::Failed,
+            status: Some(response_status),
+            message: "GET reached a final URL that HTMLCut could not represent safely.".to_owned(),
+        });
+        source_load_failure(
+            source,
+            SourceKind::Url,
+            source_value.to_owned(),
+            failed_steps,
+            error_diagnostic(
+                DiagnosticCode::SourceLoadFailed,
+                format!("Could not safely represent the final URL reached from {source_value}."),
+                Some(json!({
+                    "source": source_value,
+                    "method": "GET",
+                })),
+            ),
+        )
+    })
 }
 
 pub(crate) fn build_http_agent(
@@ -380,117 +447,5 @@ pub(crate) fn head_error_allows_get_fallback_for_tests(error: &ureq::Error) -> b
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{MaxBytes, SourceInput, SourceRequest};
-    use htmlcut_tempdir::tempdir;
-
-    #[test]
-    fn tls_trust_policy_helpers_cover_platform_and_custom_bundle_paths() {
-        assert!(matches!(
-            root_certs_for_policy(&TlsTrustPolicy::Platform).expect("platform roots"),
-            RootCerts::PlatformVerifier
-        ));
-
-        let tempdir = tempdir().expect("tempdir");
-        let missing_bundle = tempdir.path().join("missing-roots.pem");
-        let missing_error = load_custom_ca_bundle(&missing_bundle).expect_err("missing bundle");
-        assert!(
-            missing_error
-                .message
-                .contains("Could not read custom CA bundle")
-        );
-
-        let invalid_bundle = tempdir.path().join("invalid-roots.pem");
-        fs::write(
-            &invalid_bundle,
-            "-----BEGIN CERTIFICATE-----\n%%%not-base64%%%\n-----END CERTIFICATE-----\n",
-        )
-        .expect("write invalid bundle");
-        let invalid_error = load_custom_ca_bundle(&invalid_bundle).expect_err("invalid bundle");
-        assert!(
-            invalid_error
-                .message
-                .contains("is not valid PEM certificate data")
-        );
-
-        let empty_bundle = tempdir.path().join("empty-roots.pem");
-        fs::write(
-            &empty_bundle,
-            "-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----\n",
-        )
-        .expect("write empty bundle");
-        let empty_error = load_custom_ca_bundle(&empty_bundle).expect_err("empty bundle");
-        assert!(
-            empty_error
-                .message
-                .contains("does not contain any PEM certificates")
-        );
-
-        let public_key_bundle = tempdir.path().join("public-key.pem");
-        fs::write(
-            &public_key_bundle,
-            "-----BEGIN PUBLIC KEY-----\nAA==\n-----END PUBLIC KEY-----\n",
-        )
-        .expect("write public key bundle");
-        let public_key_error =
-            load_custom_ca_bundle(&public_key_bundle).expect_err("public key only bundle");
-        assert!(
-            public_key_error
-                .message
-                .contains("does not contain any PEM certificates")
-        );
-
-        let valid_bundle = tempdir.path().join("valid-roots.pem");
-        fs::write(
-            &valid_bundle,
-            "-----BEGIN CERTIFICATE-----\nAA==\n-----END CERTIFICATE-----\n",
-        )
-        .expect("write valid bundle");
-        load_custom_ca_bundle(&valid_bundle).expect("valid bundle roots");
-
-        let custom_agent = build_http_agent(&RuntimeOptions {
-            tls_trust: TlsTrustPolicy::CustomCaBundle {
-                path: valid_bundle.clone(),
-            },
-            ..RuntimeOptions::default()
-        })
-        .expect("custom bundle agent");
-        assert_eq!(
-            custom_agent.config().timeouts().global,
-            Some(Duration::from_millis(
-                RuntimeOptions::default().fetch_timeout_ms.get()
-            ))
-        );
-    }
-
-    #[test]
-    fn url_loading_reports_custom_ca_bundle_build_failures_without_leaking_secrets() {
-        let tempdir = tempdir().expect("tempdir");
-        let href = HttpUrl::parse("https://example.com/private?sig=secret#frag").expect("http url");
-        let source = SourceRequest {
-            input: SourceInput::Url { href: href.clone() },
-            base_url: None,
-        };
-        let error = read_url_source(
-            &source,
-            &href,
-            &RuntimeOptions {
-                max_bytes: MaxBytes::new(1024).expect("max bytes"),
-                tls_trust: TlsTrustPolicy::CustomCaBundle {
-                    path: tempdir.path().join("missing-roots.pem"),
-                },
-                ..RuntimeOptions::default()
-            },
-        )
-        .expect_err("custom bundle build failure");
-
-        assert_eq!(error.metadata.kind, SourceKind::Url);
-        assert_eq!(
-            error.metadata.value,
-            "https://example.com/private?[redacted]"
-        );
-        assert!(error.message.contains("Could not read custom CA bundle"));
-        assert!(!error.message.contains("sig=secret"));
-    }
-}
+#[path = "../../tests/source/http_enabled.rs"]
+mod tests;

@@ -38,7 +38,10 @@ fn select_help_stays_select_specific() {
         .stdout(predicate::str::contains("\n\nExamples:\n"))
         .stdout(predicate::str::contains("Guidance:").not())
         .stdout(predicate::str::contains(
-            "`--output none` suppresses stdout and therefore requires `--bundle`.",
+            "Compatibility Rules:",
+        ))
+        .stdout(predicate::str::contains(
+            "`--bundle` is required when `--output` is `none`.",
         ))
         .stdout(predicate::str::contains(
             "Attribute name to extract when `--value attribute` is used",
@@ -65,7 +68,7 @@ fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
             "Which matched boundaries become part of the selected fragment",
         ))
         .stdout(predicate::str::contains(
-            "`--output none` suppresses stdout and therefore requires `--bundle`.",
+            "`--bundle` is required when `--output` is `none`.",
         ))
         .stdout(predicate::str::contains(
             "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",

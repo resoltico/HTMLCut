@@ -362,6 +362,7 @@ fn help_renderers_cover_numbered_sections_and_multi_value_output_overrides() {
             output_modes: Vec::new(),
             default_output: None,
             default_output_overrides: Vec::new(),
+            constraints: Vec::new(),
             selection_modes: Vec::new(),
             default_match: None,
             value_modes: Vec::new(),

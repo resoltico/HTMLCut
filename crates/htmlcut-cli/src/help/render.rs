@@ -1,10 +1,19 @@
-use crate::contract::CliHelpDocument;
-#[cfg(test)]
-use crate::contract::{CliHelpSection, CliHelpSectionStyle, OperationCliContract};
+use crate::contract::{
+    CliCondition, CliConstraint, CliHelpDocument, CliHelpSection, CliHelpSectionStyle,
+    OperationCliContract,
+};
 use crate::error::CliError;
 use crate::lookup;
 
-#[cfg(test)]
+pub(super) fn operation_long_about(
+    operation_id: htmlcut_core::OperationId,
+) -> Result<String, CliError> {
+    build_operation_long_about_from_sources(
+        lookup::operation_contract(operation_id),
+        lookup::operation_help_document(operation_id),
+    )
+}
+
 fn build_operation_long_about_from_sources(
     contract: Result<&'static OperationCliContract, CliError>,
     document: Result<CliHelpDocument, CliError>,
@@ -14,7 +23,6 @@ fn build_operation_long_about_from_sources(
     Ok(build_operation_long_about_from_parts(sections, contract))
 }
 
-#[cfg(test)]
 pub(super) fn build_operation_long_about_from_parts(
     mut sections: Vec<CliHelpSection>,
     contract: &OperationCliContract,
@@ -25,6 +33,13 @@ pub(super) fn build_operation_long_about_from_parts(
             title: "Behavior".to_owned(),
             style: CliHelpSectionStyle::Plain,
             lines: mode_summary.lines().map(str::to_owned).collect(),
+        });
+    }
+    if !contract.constraints.is_empty() {
+        sections.push(CliHelpSection {
+            title: "Compatibility Rules".to_owned(),
+            style: CliHelpSectionStyle::Bullets,
+            lines: contract.constraints.iter().map(render_constraint).collect(),
         });
     }
     if !contract.notes.is_empty() {
@@ -62,7 +77,6 @@ pub(super) fn render_examples_after_help(document: &CliHelpDocument) -> String {
     }
 }
 
-#[cfg(test)]
 pub(super) fn render_help_sections(sections: &[CliHelpSection]) -> String {
     sections
         .iter()
@@ -88,7 +102,6 @@ pub(super) fn render_guidance_sections(sections: &[CliHelpSection]) -> String {
     }
 }
 
-#[cfg(test)]
 pub(super) fn render_help_section(section: &CliHelpSection) -> String {
     let body = render_section_body(section, "");
 
@@ -101,7 +114,6 @@ fn render_guidance_section(section: &CliHelpSection) -> String {
     format!("  {}:\n{}", section.title, body)
 }
 
-#[cfg(test)]
 fn render_section_body(section: &CliHelpSection, indent: &str) -> String {
     match section.style {
         CliHelpSectionStyle::Plain => section
@@ -126,7 +138,6 @@ fn render_section_body(section: &CliHelpSection, indent: &str) -> String {
     }
 }
 
-#[cfg(test)]
 pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> String {
     let mut lines = Vec::new();
 
@@ -207,13 +218,64 @@ pub(super) fn render_contract_mode_summary(contract: &OperationCliContract) -> S
     lines.join("\n")
 }
 
-#[cfg(test)]
 fn join_cli_values(values: impl IntoIterator<Item = crate::contract::CliValue>) -> String {
     values
         .into_iter()
         .map(crate::contract::render_cli_value)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn render_constraint(constraint: &CliConstraint) -> String {
+    match constraint {
+        CliConstraint::RequiresParameter { parameter, when } => {
+            format!("`{parameter}` is required when {}.", render_condition(when))
+        }
+        CliConstraint::AllowedOnlyWhen { parameter, when } => {
+            format!(
+                "`{parameter}` is allowed only when {}.",
+                render_condition(when)
+            )
+        }
+        CliConstraint::RestrictsParameterValues {
+            parameter,
+            allowed_values,
+            when,
+        } => format!(
+            "`{parameter}` accepts only {} when {}.",
+            render_quoted_values(allowed_values),
+            render_condition(when)
+        ),
+    }
+}
+
+fn render_condition(condition: &CliCondition) -> String {
+    let values = render_quoted_values(&condition.values);
+    let verb = if condition.values.len() == 1 {
+        "is"
+    } else {
+        "is one of"
+    };
+    format!("`{}` {verb} {values}", condition.parameter)
+}
+
+fn render_quoted_values(values: &[crate::contract::CliValue]) -> String {
+    let values = values
+        .iter()
+        .copied()
+        .map(crate::contract::render_cli_value)
+        .map(|value| format!("`{value}`"))
+        .collect::<Vec<_>>();
+    match values.as_slice() {
+        [] => "no values".to_owned(),
+        [value] => value.clone(),
+        [left, right] => format!("{left} or {right}"),
+        _ => format!(
+            "{}, or {}",
+            values[..values.len() - 1].join(", "),
+            values.last().expect("non-empty values")
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -272,6 +334,14 @@ mod tests {
             render_guidance_sections(&guide_only.sections),
             "Guidance:\n\n  Start Here:\n    Inspect first."
         );
+        assert_eq!(render_quoted_values(&[]), "no values");
+        assert_eq!(
+            render_quoted_values(&[
+                CliValue::OutputMode(CliOutputMode::Json),
+                CliValue::OutputMode(CliOutputMode::None),
+            ]),
+            "`json` or `none`"
+        );
     }
 
     #[test]
@@ -313,7 +383,13 @@ mod tests {
                 CliOutputMode::Json,
                 CliOutputMode::Html,
             ],
-            constraints: Vec::new(),
+            constraints: vec![crate::contract::CliConstraint::RequiresParameter {
+                parameter: CliParameterId::Bundle,
+                when: CliCondition {
+                    parameter: CliParameterId::Output,
+                    values: vec![CliValue::OutputMode(CliOutputMode::None)],
+                },
+            }],
             notes: vec![
                 "Pick one stable selector.",
                 "Bundle output writes report files.",
@@ -344,6 +420,11 @@ mod tests {
         assert!(rendered.contains("Modes:\n1. Inspect the source.\n2. Extract one match."));
         assert!(rendered.contains("Flags:\n- Use --rewrite-urls when needed."));
         assert!(rendered.contains("Behavior:\nDefault match mode: first."));
+        assert!(
+            rendered.contains(
+                "Compatibility Rules:\n- `--bundle` is required when `--output` is `none`."
+            )
+        );
         assert!(rendered.contains("Key Rules:\n- Pick one stable selector."));
         assert!(rendered.contains("Output default override: html when --value is outer-html."));
         assert!(
