@@ -41,8 +41,10 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("cargo-mutants-${{ matrix.shard }}"));
     assert!(workflow.contains("./scripts/xtask.sh mutants --in-place --shard"));
     assert!(workflow.contains("--in-diff"));
+    assert!(workflow.contains("all(.[];"));
     assert!(workflow.contains("htmlcut_contributor_install_action_csv cargo-mutants"));
     assert!(workflow.contains("workspaces: \". -> ../.htmlcut-artifacts/target\""));
     assert!(workflow.contains("mutation-runs/mutants.out"));
+    assert!(workflow.contains("${{ runner.temp }}/htmlcut-mutation-results/mutants.out"));
     assert!(workflow.contains("Verify complete shards and summarize results"));
 }

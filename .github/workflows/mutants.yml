@@ -81,7 +81,7 @@ jobs:
           jq -e '
             length > 0
             and ([.[].package] | unique == ["htmlcut-cli", "htmlcut-core", "htmlcut-tempdir"])
-            and all(.;
+            and all(.[];
               (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
               and (.file | test("/src/(tests/|.*/tests/)") | not)
             )
@@ -91,12 +91,23 @@ jobs:
         shell: bash
         run: ./scripts/xtask.sh mutants --in-place --shard "${{ matrix.shard }}"
 
+      - name: Stage mutation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/../.htmlcut-artifacts/mutation-runs/mutants.out"
+          stage_dir="$RUNNER_TEMP/htmlcut-mutation-results"
+          test -d "$source_dir"
+          mkdir -p "$stage_dir"
+          cp -R "$source_dir" "$stage_dir/mutants.out"
+
       - name: Upload mutation results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cargo-mutants-${{ matrix.shard }}
-          path: ../.htmlcut-artifacts/mutation-runs/mutants.out
+          path: ${{ runner.temp }}/htmlcut-mutation-results/mutants.out
           if-no-files-found: error
 
   mutants-diff:
@@ -144,7 +155,7 @@ jobs:
           jq -e '
             length > 0
             and ([.[].package] | unique == ["htmlcut-cli", "htmlcut-core", "htmlcut-tempdir"])
-            and all(.;
+            and all(.[];
               (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
               and (.file | test("/src/(tests/|.*/tests/)") | not)
             )
@@ -158,12 +169,23 @@ jobs:
           git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
           ./scripts/xtask.sh mutants --in-place --in-diff "$diff_path"
 
+      - name: Stage mutation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/../.htmlcut-artifacts/mutation-runs/mutants.out"
+          stage_dir="$RUNNER_TEMP/htmlcut-mutation-results"
+          test -d "$source_dir"
+          mkdir -p "$stage_dir"
+          cp -R "$source_dir" "$stage_dir/mutants.out"
+
       - name: Upload mutation results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cargo-mutants-pr-diff
-          path: ../.htmlcut-artifacts/mutation-runs/mutants.out
+          path: ${{ runner.temp }}/htmlcut-mutation-results/mutants.out
           if-no-files-found: error
 
   mutation-summary:
