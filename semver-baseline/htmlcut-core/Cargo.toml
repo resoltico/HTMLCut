@@ -1,12 +1,16 @@
 [dependencies.ego-tree]
 version = "0.11.0"
 
+[dependencies.encoding_rs]
+optional = true
+version = "0.8.35"
+
 [dependencies.regex]
 version = "1.13.0"
 
 [dependencies.schemars]
 features = ["url2"]
-version = "1.2.1"
+version = "1.2.2"
 
 [dependencies.scraper]
 default-features = false
@@ -25,13 +29,13 @@ features = ["derive"]
 version = "1.0.228"
 
 [dependencies.serde_json]
-version = "1.0.150"
+version = "1.0.151"
 
 [dependencies.sha2]
 version = "0.11.0"
 
 [dependencies.thiserror]
-version = "2.0.18"
+version = "2.0.20"
 
 [dependencies.ureq]
 default-features = false
@@ -41,7 +45,7 @@ features = [
     "platform-verifier",
 ]
 optional = true
-version = "3.3.0"
+version = "3.4.0"
 
 [dependencies.url]
 features = ["serde"]
@@ -57,7 +61,10 @@ path = "examples/reusable_extraction_definition.rs"
 
 [features]
 default = []
-http-client = ["dep:ureq"]
+http-client = [
+    "dep:encoding_rs",
+    "dep:ureq",
+]
 
 [lib]
 name = "htmlcut_core"
@@ -86,7 +93,7 @@ license = "MIT"
 name = "htmlcut-core"
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
-rust-version = "1.97"
-version = "12.0.1"
+rust-version = "1.98"
+version = "13.0.0"
 
 [workspace]

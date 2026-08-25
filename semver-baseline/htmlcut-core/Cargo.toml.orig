@@ -11,10 +11,11 @@ description = "Library for extracting and inspecting HTML with CSS selectors, li
 
 [features]
 default = []
-http-client = ["dep:ureq"]
+http-client = ["dep:encoding_rs", "dep:ureq"]
 
 [dependencies]
 ego-tree.workspace = true
+encoding_rs = { workspace = true, optional = true }
 regex.workspace = true
 scraper.workspace = true
 schemars.workspace = true

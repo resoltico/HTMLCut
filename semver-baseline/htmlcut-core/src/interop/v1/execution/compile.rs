@@ -77,7 +77,6 @@ pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequ
             },
             rewrite_urls: plan.rendering.rewrite_urls,
         },
-        include_source_text: false,
         include_html: false,
         include_text: false,
         ..OutputOptions::default()

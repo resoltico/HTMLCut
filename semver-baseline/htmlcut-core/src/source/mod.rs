@@ -5,9 +5,11 @@ mod types;
 
 use http as url_loader;
 
-#[cfg(all(test, feature = "http-client"))]
-pub(crate) use io::finish_url_source_from_reader_for_tests;
 pub(crate) use io::read_stdin_source;
+#[cfg(all(test, feature = "http-client"))]
+pub(crate) use io::{
+    UrlResponseContext, declared_http_charset_for_tests, finish_url_source_from_reader_for_tests,
+};
 #[cfg(test)]
 pub(crate) use io::{
     read_file_source as read_file_source_from_path, read_limited_to_string,

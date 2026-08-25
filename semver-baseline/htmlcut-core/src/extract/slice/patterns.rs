@@ -1,7 +1,7 @@
 use regex::RegexBuilder;
 use serde_json::json;
 
-use crate::contracts::{Diagnostic, PatternMode, SliceSpec};
+use crate::contracts::{Diagnostic, PatternMode, SelectionSpec, SliceSpec};
 use crate::diagnostics::{DiagnosticCode, error_diagnostic};
 use crate::result::Range;
 
@@ -49,13 +49,14 @@ pub(crate) fn extract_slice_candidates(
     slice: &SliceSpec,
 ) -> Result<Vec<SliceCandidate>, Diagnostic> {
     let patterns = CompiledSlicePatterns::compile(slice)?;
-    extract_compiled_slice_candidates(source_text, slice, &patterns)
+    extract_compiled_slice_candidates(source_text, slice, &patterns, &SelectionSpec::All)
 }
 
 pub(crate) fn extract_compiled_slice_candidates(
     source_text: &str,
     slice: &SliceSpec,
     patterns: &CompiledSlicePatterns,
+    selection: &SelectionSpec,
 ) -> Result<Vec<SliceCandidate>, Diagnostic> {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
@@ -66,6 +67,9 @@ pub(crate) fn extract_compiled_slice_candidates(
         };
 
         let Some(end) = patterns.end.find(source_text, start.end) else {
+            if completed_selection_is_sufficient(selection, candidates.len()) {
+                break;
+            }
             return Err(error_diagnostic(
                 DiagnosticCode::NoMatch,
                 format!(
@@ -133,6 +137,14 @@ pub(crate) fn extract_compiled_slice_candidates(
     }
 
     Ok(candidates)
+}
+
+fn completed_selection_is_sufficient(selection: &SelectionSpec, candidate_count: usize) -> bool {
+    match selection {
+        SelectionSpec::First => candidate_count > 0,
+        SelectionSpec::Nth { index } => candidate_count >= index.get(),
+        SelectionSpec::Single | SelectionSpec::All => false,
+    }
 }
 
 pub(crate) fn build_finder(

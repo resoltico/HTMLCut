@@ -155,24 +155,20 @@ fn url_stream_source_helpers_preserve_failure_metadata() {
     let response_failure = finish_url_source_from_reader_for_tests(
         &url_request,
         &runtime,
-        source_value,
-        200,
-        Some(format!("{source_value}/")),
-        vec![
-            SourceLoadStep {
+        UrlResponseContext {
+            source_value: source_value.to_owned(),
+            response_status: 200,
+            input_base_url: Some(format!("{source_value}/")),
+            load_steps: vec![SourceLoadStep {
                 action: SourceLoadAction::HeadPreflight,
                 outcome: SourceLoadOutcome::Skipped,
                 status: None,
                 message: "Skipped HEAD preflight because --fetch-preflight get-only was requested."
                     .to_owned(),
-            },
-            SourceLoadStep {
-                action: SourceLoadAction::Get,
-                outcome: SourceLoadOutcome::Succeeded,
-                status: Some(200),
-                message: "Fetched the remote source with GET.".to_owned(),
-            },
-        ],
+            }],
+            content_type: Some("text/html".to_owned()),
+            get_success_message: "Fetched the remote source with GET.".to_owned(),
+        },
         &mut oversized_response,
     )
     .expect_err("oversized response body");
@@ -182,7 +178,7 @@ fn url_stream_source_helpers_preserve_failure_metadata() {
         response_failure.metadata.input_base_url.as_deref(),
         Some("https://example.com/page")
     );
-    assert_eq!(response_failure.metadata.load_steps.len(), 3);
+    assert_eq!(response_failure.metadata.load_steps.len(), 2);
     assert_eq!(
         response_failure
             .metadata
