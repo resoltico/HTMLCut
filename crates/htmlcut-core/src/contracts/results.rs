@@ -49,17 +49,17 @@ pub struct SourceMetadata {
     /// The base URL actually used after honoring any document `<base href>`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_base_url: Option<String>,
-    /// The number of bytes read into memory for this source.
+    /// The number of UTF-8 bytes accepted into memory for this source.
     pub bytes_read: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    /// Structured trace of successful source-loading steps, currently used for URL fetches.
+    /// Structured trace of source-loading steps, currently used for URL fetches.
     pub load_steps: Vec<SourceLoadStep>,
     /// The original source text when the caller explicitly asks to include it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
 }
 
-/// One successful source-loading action.
+/// One source-loading action.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceLoadAction {
@@ -69,7 +69,7 @@ pub enum SourceLoadAction {
     Get,
 }
 
-/// Outcome class for one successful source-loading action.
+/// Outcome class for one source-loading action.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceLoadOutcome {
@@ -323,9 +323,9 @@ pub struct DocumentInspection {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Parsed document title when present.
     pub title: Option<String>,
-    /// Name of the root element used for inspection.
+    /// Name of the parsed root element used for inspection, including parser-normalized shells.
     pub root_tag: String,
-    /// Number of parsed elements.
+    /// Number of parsed elements, including parser-synthesized structure when present.
     pub element_count: usize,
     /// Character count of normalized document body text before content-root heuristics are applied.
     pub text_char_count: usize,
@@ -344,7 +344,7 @@ pub struct DocumentInspection {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Raw document `<base href>` when present.
     pub document_base_href: Option<String>,
-    /// Most frequent element names.
+    /// Most frequent parsed element names.
     pub top_tags: Vec<InspectionCount>,
     /// Most frequent CSS classes.
     pub top_classes: Vec<InspectionCount>,

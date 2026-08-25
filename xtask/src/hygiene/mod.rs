@@ -8,7 +8,8 @@ use serde::Serialize;
 use crate::model::{CommandArtifactLayout, DynResult};
 use crate::plan::{
     cargo_build_dir, cargo_target_dir, coverage_build_dir, coverage_cargo_build_dir,
-    coverage_cargo_target_dir, coverage_target_dir, gate_report_dir, semver_scratch_dir,
+    coverage_cargo_target_dir, coverage_target_dir, gate_report_dir, mutation_report_dir,
+    semver_scratch_dir,
 };
 use crate::remove_dir_if_exists;
 
@@ -24,6 +25,7 @@ const MANAGED_BUILD_BUDGET_BYTES: u64 = 24 * GIB;
 const MANAGED_COVERAGE_TARGET_BUDGET_BYTES: u64 = 2 * GIB;
 const MANAGED_COVERAGE_BUILD_BUDGET_BYTES: u64 = 8 * GIB;
 const MANAGED_GATE_REPORT_BUDGET_BYTES: u64 = GIB;
+const MANAGED_MUTATION_REPORT_BUDGET_BYTES: u64 = 8 * GIB;
 const LEGACY_REPO_TARGET_BUDGET_BYTES: u64 = 512 * MIB;
 const REPO_TMP_BUDGET_BYTES: u64 = 256 * MIB;
 
@@ -35,6 +37,7 @@ enum ManagedArtifactKind {
     CoverageTarget,
     CoverageBuild,
     GateReports,
+    MutationReports,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -206,6 +209,20 @@ pub fn prepare_gate_report_root(repo_root: &Path) -> DynResult<PathBuf> {
     Ok(root)
 }
 
+/// Prepares and returns the managed root that retains completed mutation-testing evidence.
+pub fn prepare_mutation_report_root(repo_root: &Path) -> DynResult<PathBuf> {
+    let root = mutation_report_dir(repo_root);
+    prepare_managed_artifact_roots(
+        repo_root,
+        [(
+            root.as_path(),
+            ManagedArtifactKind::MutationReports,
+            "retained cargo-mutants results for the latest completed mutation-testing run",
+        )],
+    )?;
+    Ok(root)
+}
+
 /// Builds a full repository artifact report, including managed caches and legacy local roots.
 pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
     let tmp_root = repo_root.join("tmp");
@@ -216,6 +233,7 @@ pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
     let managed_coverage_target = coverage_target_dir(repo_root);
     let managed_coverage_build = coverage_build_dir(repo_root);
     let managed_gate_reports = gate_report_dir(repo_root);
+    let managed_mutation_reports = mutation_report_dir(repo_root);
 
     let tmp_cargo_entry = repo_tmp_cargo_entry(&tmp_root, &tmp_cargo_roots)?;
 
@@ -249,6 +267,12 @@ pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
             "gate-reports",
             managed_gate_reports.as_path(),
             MANAGED_GATE_REPORT_BUDGET_BYTES,
+        ),
+        (
+            "managed-mutation-reports",
+            "mutation-reports",
+            managed_mutation_reports.as_path(),
+            MANAGED_MUTATION_REPORT_BUDGET_BYTES,
         ),
     ])?;
     entries.extend(unmanaged_entries([
@@ -370,6 +394,7 @@ pub fn clean_hygiene(repo_root: &Path, mode: HygieneCleanMode) -> DynResult<Hygi
         removal_roots.push(cargo_target_dir(repo_root));
         removal_roots.push(cargo_build_dir(repo_root));
         removal_roots.push(gate_report_dir(repo_root));
+        removal_roots.push(mutation_report_dir(repo_root));
     }
 
     let removal_roots = deduplicate_root_set(removal_roots);

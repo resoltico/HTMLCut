@@ -264,6 +264,19 @@ fn build_content_candidates(
     .collect()
 }
 
+#[cfg(test)]
+pub(crate) fn opaque_div_has_long_form_shape_for_tests(
+    text_char_count: usize,
+    prose_paragraph_count: usize,
+    meaningful_h1_count: usize,
+) -> bool {
+    candidates::build::opaque_div_has_long_form_shape_for_tests(
+        text_char_count,
+        prose_paragraph_count,
+        meaningful_h1_count,
+    )
+}
+
 mod candidates;
 mod samples;
 mod selectors;

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: CLI
-updated: "2026-07-16"
+updated: "2026-08-25"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -43,15 +43,26 @@ Every extraction and inspection command accepts one input:
 
 - a local file path
 - an `http://` or `https://` URL
-- `-` for stdin
+- `-` for explicit stdin
 - `--input-html <HTML>` when the source bytes are already in memory
 
-`--base-url` sets the input base explicitly. For URL inputs, the request URL is the input base
-automatically. If the document contains `<base href>`, HTMLCut resolves it against the input base to
-produce the effective base URL used by `--rewrite-urls`. When HTML-valued extraction is later
-rendered as plain text, HTMLCut resolves displayed link destinations against that effective base,
-including bundled `selection.txt` output, even when `--rewrite-urls` is off. `--rewrite-urls`
+`-` is the only stdin spelling. Omitting INPUT never implicitly consumes a pipe, so a missing input
+remains a usage error instead of becoming an accidental empty-source run. Inputs shaped like
+`scheme://...` are validated as URLs; unsupported schemes report a URL usage error rather than a
+misleading file-path failure.
+
+`--base-url` sets the input base explicitly. For URL inputs without that override, HTMLCut uses the
+final GET response URL after redirects as the input base while retaining the original requested URL
+as source identity. If the document contains `<base href>`, HTMLCut resolves it against the input
+base to produce the effective base URL used by `--rewrite-urls`. When HTML-valued extraction is
+later rendered as plain text, HTMLCut resolves displayed link destinations against that effective
+base, including bundled `selection.txt` output, even when `--rewrite-urls` is off. `--rewrite-urls`
 controls the saved HTML fragment itself.
+
+HTTP responses honor a declared `Content-Type` charset, including legacy labels such as
+`iso-8859-1`, while retaining strict size limits and decode failures. File and stdin sources remain
+strict UTF-8 inputs. URL load traces report a successful GET only after body reading and character
+decoding complete, and redirected URL queries remain redacted in reports and messages.
 
 For URL inputs, HTMLCut uses HEAD-first fetch preflight by default:
 
@@ -141,12 +152,20 @@ The registry includes:
 - `inspect select` previews selector matches with the same value modes as final selector extraction
 - `inspect slice` previews slice matches with the same value modes as final slice extraction
 
-`inspect` defaults to JSON. Text mode is for compact human review.
+All `inspect` commands default to text for compact human review. Add `--output json` when an agent
+or script needs a structured report.
 
 Suggested selectors are heuristics, not a promise that one selector is universally best for every
 output goal. `inspect source` now separates narrower extraction selectors from broader reading
 selectors so HTML saving and rendered-text review do not have to share one compromise list. Use
 `inspect select` to compare the top candidates before you commit to `outer-html` or `inner-html`.
+Long-form generated `div` shells can be considered when a meaningful nearby `h1`, substantial prose,
+and normal readability checks provide enough evidence; this remains a bounded heuristic rather than
+a blanket rule for arbitrary `div` elements.
+
+When an inspected source has zero bytes, text output says that the displayed root and structural
+counts are the HTML parser's normalized shell. JSON retains the existing fields and exposes the
+zero-byte source directly.
 
 `inspect source` carries source-analysis-specific controls:
 
@@ -304,7 +323,7 @@ Default stdout behavior:
 - `slice --value selected-html`, `slice --value inner-html`, and `slice --value outer-html`
   default to `html`
 - `--value structured` defaults to `json`
-- `inspect` defaults to `json`
+- `inspect` defaults to `text`
 - `--max-bytes` accepts raw bytes or KiB/MiB/GiB values only when they resolve to a whole positive byte count after unit scaling
 
 `--output none` is valid only with `--bundle`.
@@ -316,8 +335,13 @@ That works for text, HTML, JSON, and inspection text/JSON outputs. It is intenti
 `select --output html` is only valid with `--value inner-html` or `--value outer-html`.
 `slice --output html` is valid with `--value selected-html`, `--value inner-html`, or
 `--value outer-html`.
+HTML stdout is a fragment payload, not a standalone document. Multiple selected fragments are
+separated by blank lines; use `--bundle` when you need the wrapped `selection.html` review file.
 When an HTML value mode is paired with `--output text`, the CLI renders the extracted fragment
 through HTMLCut's plain-text renderer instead of emitting raw markup.
+
+`--whitespace normalize` normalizes whitespace within HTMLCut's semantic text renderer. It does not
+flatten headings, lists, tables, or link annotations into raw descendant text.
 
 When `--bundle`, `--output-file`, or `--emit-request-file` points into a directory tree that does
 not exist yet, the CLI creates the parent directories automatically.
@@ -378,6 +402,10 @@ For embeddable Rust callers, the matching core type is `htmlcut_core::Extraction
 Human output modes print the primary failure to stderr.
 
 JSON modes still exit non-zero on failure, but they emit structured JSON to stdout.
+Treat the process exit status as authoritative for both JSON success and failure documents.
+
+Human invalid-selector errors retain the concise primary message and add the parser's safe line,
+UTF-16 column, and normalized failure class when that structured detail is available.
 
 Unknown operation IDs and schema lookups suggest the nearest registered names or available
 schema versions instead of failing with an unqualified miss.
@@ -393,6 +421,9 @@ Exit code categories:
 - `3` source
 - `4` extraction
 - `5` output
+
+Invoking `htmlcut` without a command is a usage failure with exit code `2`. Use `htmlcut --help`,
+`htmlcut -h`, or `htmlcut help` for successful help output.
 
 Typical source failures are explicit:
 

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: CORE
-updated: "2026-07-16"
+updated: "2026-08-25"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -74,6 +74,13 @@ Important invariants:
 - when URL loading is enabled, `FetchPreflightMode::HeadFirst` treats successful HEAD responses as
   advisory preflight and falls back to GET only when the HEAD response rejects the method or the
   HEAD exchange fails in a way that indicates HEAD intolerance
+- URL-backed sources use an explicit request base when supplied; otherwise they use the final GET
+  response URL after redirects, with redacted display URLs retained in result metadata
+- HTTP responses decode an explicit `Content-Type` charset through strict bounded decoding; file,
+  stdin, and memory sources remain UTF-8 text inputs
+- `SelectionSpec::First` and a satisfied `SelectionSpec::Nth` can return complete earlier delimiter
+  pairs when only a later trailing start boundary is incomplete; `Single`, `All`, and unsatisfied
+  `Nth` remain globally strict
 - structured extraction metadata is typed, not loose JSON
 
 ## Result Model
@@ -89,6 +96,13 @@ work: sampled headings, sampled meaningful links, narrower extraction candidates
 reading candidates that can be fed directly into `inspect select` or `select`.
 Extraction candidates bias toward cleaner saved HTML roots, while reading candidates bias toward
 title-preserving wrappers instead of forcing one ranking to serve both jobs.
+The parsed inspection structure can include parser-synthesized `html`, `head`, and `body` elements,
+especially for empty input. `SourceMetadata.bytes_read` reports the UTF-8 bytes accepted into memory.
+
+Inspection can also rank an opaque generated `div` as a content root when one meaningful `h1` occurs
+within a bounded ancestor depth, the wrapper has substantial prose, and the existing utility-chrome
+and readability checks agree. That narrow path allows modern long-form pages without treating every
+`div` as content.
 
 Diagnostics are first-class and machine-readable through:
 
@@ -241,6 +255,8 @@ For interop deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md
 
 - source loading for generic CLI/core workflows, including optional URL loading when
   `http-client` is enabled
+- final-response URL bases, strict declared HTTP charset decoding, and structured load-step traces
+  that record GET success only after the body is usable
 - HEAD-first URL preflight policy, where method rejection or HEAD-intolerance failures fall back to
   GET and successful HEAD responses still enforce obvious content-type and size rejection before
   the full body read

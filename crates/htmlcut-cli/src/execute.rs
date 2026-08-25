@@ -48,12 +48,17 @@ where
 {
     let raw_args: Vec<String> = args.into_iter().collect();
     if raw_args.len() <= 1 {
-        let mut command = crate::command();
-        let mut buffer = Vec::new();
-        command.write_long_help(&mut buffer)?;
-        let rendered = String::from_utf8(buffer).expect("clap help must remain UTF-8");
-        writeln!(stdout, "{}", crate::help::normalize_help_copy(&rendered))?;
-        return Ok(0);
+        let outcome = error_outcome(
+            command_name_from_raw_args(&raw_args),
+            false,
+            None,
+            crate::file_output::FileWriteMode::CreateFresh,
+            usage_error(
+                CliErrorCode::ParseError,
+                "A command is required. Usage: htmlcut [OPTIONS] <COMMAND>. Use `--help` for examples.",
+            ),
+        );
+        return write_outcome(outcome, stdout, stderr);
     }
 
     if raw_args_requests_version(&raw_args) && !raw_args_requests_help(&raw_args) {

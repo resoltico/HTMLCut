@@ -80,19 +80,11 @@ fn cargo_manifest_drives_the_public_metadata_constants() {
 #[test]
 fn run_covers_root_help_help_version_and_parse_error_modes() {
     let (exit_code, stdout, stderr) = run_vec(vec!["htmlcut".to_owned()]);
-    assert_eq!(exit_code, 0);
-    assert!(stdout.starts_with(&format!(
-        "{DISPLAY_NAME} {HTMLCUT_VERSION}\n{HTMLCUT_DESCRIPTION}\n"
-    )));
-    assert!(
-        stdout
-            .find("Usage: htmlcut [OPTIONS] <COMMAND>")
-            .expect("usage")
-            < stdout.find("Examples:").expect("examples")
-    );
-    assert!(stdout.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
-    assert!(!stdout.contains("Guidance:"));
-    assert!(stderr.is_empty());
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("A command is required."));
+    assert!(stderr.contains("Usage: htmlcut [OPTIONS] <COMMAND>"));
+    assert!(stderr.contains("Use `--help` for examples."));
 
     let (exit_code, stdout, _) = run_vec(vec!["htmlcut".to_owned(), "--help".to_owned()]);
     assert_eq!(exit_code, 0);
@@ -217,7 +209,7 @@ fn run_covers_root_help_help_version_and_parse_error_modes() {
 fn run_propagates_stdout_write_failures_for_help_and_command_output() {
     let mut stderr = Vec::new();
     let help_error = run(
-        vec!["htmlcut".to_owned()],
+        vec!["htmlcut".to_owned(), "--help".to_owned()],
         &mut BrokenPipeWriter,
         &mut stderr,
     )
@@ -257,4 +249,67 @@ fn run_propagates_stderr_write_failures_for_usage_errors() {
     .expect_err("stderr write should fail");
 
     assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+}
+
+#[test]
+fn long_operation_help_renders_canonical_compatibility_rules() {
+    let mut command = Cli::command();
+    let mut select = command
+        .find_subcommand_mut("select")
+        .expect("select command")
+        .clone();
+    let help = render_long_help(&mut select);
+
+    assert!(help.contains("Compatibility Rules:"));
+    assert!(help.contains("`--bundle` is required when `--output` is `none`."));
+    assert!(
+        help.contains("`--tls-ca-bundle` is required when `--tls-trust` is `custom-ca-bundle`.")
+    );
+}
+
+#[test]
+fn canonical_contracts_cover_shared_mode_and_output_file_dependencies() {
+    let select_preview =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectPreview)
+            .expect("select preview contract");
+    assert!(select_preview.constraints.iter().any(|constraint| matches!(
+        constraint,
+        crate::contract::CliConstraint::RequiresParameter { parameter, when }
+            if *parameter == crate::contract::CliParameterId::Index
+                && when.parameter == crate::contract::CliParameterId::Match
+                && when.values == vec![crate::contract::CliValue::SelectionMode(crate::contract::CliSelectionMode::Nth)]
+    )));
+    assert!(select_preview.constraints.iter().any(|constraint| matches!(
+        constraint,
+        crate::contract::CliConstraint::AllowedOnlyWhen { parameter, when }
+            if *parameter == crate::contract::CliParameterId::Attribute
+                && when.parameter == crate::contract::CliParameterId::Value
+                && when.values == vec![crate::contract::CliValue::ValueType(htmlcut_core::ValueType::Attribute)]
+    )));
+
+    let source_inspect =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SourceInspect)
+            .expect("source inspection contract");
+    assert!(source_inspect.constraints.iter().any(|constraint| matches!(
+        constraint,
+        crate::contract::CliConstraint::RequiresParameter { parameter, when }
+            if *parameter == crate::contract::CliParameterId::TlsCaBundle
+                && when.parameter == crate::contract::CliParameterId::TlsTrust
+                && when.values == vec![crate::contract::CliValue::TlsTrustMode(crate::contract::CliTlsTrustMode::CustomCaBundle)]
+    )));
+
+    let select_extract =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select extraction contract");
+    assert!(select_extract.constraints.iter().any(|constraint| matches!(
+        constraint,
+        crate::contract::CliConstraint::AllowedOnlyWhen { parameter, when }
+            if *parameter == crate::contract::CliParameterId::OutputFile
+                && when.parameter == crate::contract::CliParameterId::Output
+                && when.values == vec![
+                    crate::contract::CliValue::OutputMode(crate::contract::CliOutputMode::Text),
+                    crate::contract::CliValue::OutputMode(crate::contract::CliOutputMode::Html),
+                    crate::contract::CliValue::OutputMode(crate::contract::CliOutputMode::Json),
+                ]
+    )));
 }

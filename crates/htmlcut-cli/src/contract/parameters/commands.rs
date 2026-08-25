@@ -104,7 +104,7 @@ pub(super) fn inspect_select_parameters() -> Vec<CliParameterDescriptor> {
         "WHITESPACE",
         Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
         whitespace_values(),
-        "Preserve rendered whitespace after HTML-aware text rendering, or normalize preview text.",
+        "Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering without flattening headings, lists, tables, or link annotations.",
     ));
     parameters.push(param_flag(
         CliParameterSection::Extraction,
@@ -149,7 +149,7 @@ pub(super) fn inspect_slice_parameters() -> Vec<CliParameterDescriptor> {
         "WHITESPACE",
         Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
         whitespace_values(),
-        "Preserve rendered whitespace after HTML-aware text rendering, or normalize preview text.",
+        "Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering without flattening headings, lists, tables, or link annotations.",
     ));
     parameters.push(param_flag(
         CliParameterSection::Extraction,

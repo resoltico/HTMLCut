@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: SETUP
-updated: "2026-07-16"
+updated: "2026-08-24"
 route:
   keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check, miri]
   questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "does the HTMLCut devcontainer install the nightly Miri proof too?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
@@ -40,6 +40,10 @@ The committed owner files are:
 - [../scripts/devcontainer-cli-helper.Dockerfile](../scripts/devcontainer-cli-helper.Dockerfile)
 - [../scripts/devcontainer-check.sh](../scripts/devcontainer-check.sh)
 - [../scripts/validate-devcontainer.sh](../scripts/validate-devcontainer.sh)
+
+The Dockerfiles pin multi-platform image indexes, not a single architecture's child manifest. That
+lets Docker select the native arm64 or amd64 contributor image instead of silently running an
+emulated image on Apple silicon.
 
 ## Why Rust Bootstraps On First Create
 
@@ -96,7 +100,7 @@ cargo +nightly miri --version
 
 Expected contributor shape:
 
-- `rustc --version` reports the exact stable pin from `rust-toolchain.toml` (currently `1.97.0`)
+- `rustc --version` reports the exact stable pin from `rust-toolchain.toml` (currently `1.98.0`)
 - `cargo nextest --version` succeeds because the QA tool bootstrap completed
 - `cargo +nightly miri --version` succeeds because the nightly Miri components bootstrapped cleanly
 - `./scripts/validate-devcontainer.sh` succeeds

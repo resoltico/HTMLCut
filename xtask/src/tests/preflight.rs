@@ -96,6 +96,29 @@ fn coverage_miri_and_fuzz_preflight_helpers_report_missing_prerequisites() {
 }
 
 #[test]
+fn mutation_preflight_reports_an_unavailable_cargo_subcommand() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let expected_probe = cargo_mutants_probe_command();
+
+    crate::command_exec::with_capture_command_output_override(
+        move |_repo_root, spec| {
+            (command_signature(spec) == command_signature(&expected_probe))
+                .then(|| Err("cargo-mutants unavailable".into()))
+        },
+        || {
+            let error = ensure_mutants_prerequisites(repo_root).expect_err("missing cargo-mutants");
+            assert!(
+                error
+                    .to_string()
+                    .contains("install-contributor-cargo-tools.sh cargo-mutants")
+            );
+        },
+    );
+}
+
+#[test]
 fn public_preflight_wrappers_use_the_capture_override_surface() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -519,6 +542,10 @@ fn capture_override_fixture(
         Ok(b"rustc 1.97.0\n".to_vec()),
     );
     outputs.insert(
+        command_signature(&nightly_toolchain_probe_command()),
+        Ok(b"rustc 1.100.0-nightly (hash 2026-08-23)\n".to_vec()),
+    );
+    outputs.insert(
         command_signature(&test_command_spec(
             "rustup",
             [
@@ -597,3 +624,5 @@ fn command_signature(spec: &CommandSpec) -> (String, Vec<String>) {
         spec.args.clone(),
     )
 }
+
+mod nightly;

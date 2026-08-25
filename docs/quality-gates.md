@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: QUALITY
-updated: "2026-07-19"
+updated: "2026-08-25"
 route:
-  keywords: [quality gates, cargo xtask, gate reports, JSON gate output, retained diagnostics, source structure, source shape, cohesion budgets, coverage, miri, semver baseline, nextest, clippy, cargo deny, fuzz, devcontainer, devcontainer check, hygiene]
-  questions: ["what does cargo xtask check enforce?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "where are HTMLCut gate diagnostics retained?", "how do I inspect or enforce HTMLCut Rust source structure?", "how does HTMLCut prevent god files?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "when should I refresh the semver baseline from a release tag?", "how do I validate the HTMLCut contributor devcontainer?", "how do I run the maintainer gate through the contributor devcontainer from the host?", "which command checks HTMLCut artifact hygiene?"]
+  keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
+  questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
@@ -25,12 +25,12 @@ compiler-override safeguard for native crate builds.
 Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred contributor-container
 workflow on Ubuntu `24.04`.
 
-`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.97.0`).
+`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.0`).
 Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
 coverage gate, and live `cargo-fuzz` campaigns because `cargo xtask miri`, `cargo +nightly
 llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly. The workspace manifest carries the
 published compatibility floor separately through
-`[workspace.package] rust-version = "1.97"`.
+`[workspace.package] rust-version = "1.98"`.
 
 The LLVM-backed `cargo xtask coverage` and `cargo xtask fuzz-smoke` commands both launch Cargo
 with `CC=clang CXX=clang++`. Keep `clang` and `clang++` available on `PATH` when you use those
@@ -74,6 +74,12 @@ Run only the maintained dependency-freshness gate:
 ./scripts/xtask.sh outdated-check
 ```
 
+Run mutation testing in a copied workspace, preserving the current checkout:
+
+```bash
+./scripts/xtask.sh mutants
+```
+
 Inspect the measured ownership and shape of every maintained first-party Rust file:
 
 ```bash
@@ -100,7 +106,7 @@ holds a live executable lock inside the managed Cargo artifact tree.
 ## Gate Output and Retained Evidence
 
 Every command that executes a maintainer gate (`check`, `ci-rust-gate`, `semver-check`,
-`coverage`, `miri`, `outdated-check`, `fuzz-smoke`, `hygiene verify`, and `structure check`)
+`coverage`, `miri`, `outdated-check`, `fuzz-smoke`, `mutants`, `hygiene verify`, and `structure check`)
 creates one `htmlcut.gate_run@1` report. Human output is the default: it shows the gate, concise
 step progress, normalized warning summary, final result, and the report path. Successful child
 command streams remain out of the terminal; a failed step prints a bounded diagnostic tail and
@@ -139,6 +145,40 @@ artifact layout, and `cargo xtask` honors explicit caller-managed `CARGO_TARGET_
 `CARGO_BUILD_BUILD_DIR` overrides only when the caller intentionally sets them for a boundary such
 as the contributor container. The coverage gate also manages and tags the nested
 `llvm-cov-target` worktrees that `cargo llvm-cov` creates inside the sibling coverage roots.
+
+## Mutation Testing
+
+`cargo xtask mutants` runs cargo-mutants `27.1.0` against the first-party runtime source selected
+in [../.cargo/mutants.toml](../.cargo/mutants.toml). The configuration includes `htmlcut-core`,
+`htmlcut-cli`, and `htmlcut-tempdir`, runs their all-feature locked Cargo tests, and excludes
+vendored parser code, `xtask`, fuzz harnesses, and in-tree test modules. This asks whether the
+existing tests reject plausible behavioral changes; it complements coverage, fuzzing, and Miri
+rather than replacing any of them.
+
+Install the optional pinned tool before a local run:
+
+```bash
+./scripts/install-contributor-cargo-tools.sh cargo-mutants
+```
+
+Local invocation copies the workspace before applying mutations, so it is safe on a working
+checkout. Results are retained under `../.htmlcut-artifacts/mutation-runs/mutants.out`; every new
+run clears only that prior generated result directory. Safe hygiene cleanup preserves this evidence,
+while `cargo xtask hygiene clean --mode rebuildable` removes it. `--in-place` is reserved for
+disposable CI checkouts, where it avoids copying the workspace and reuses Cargo artifacts. Do not
+use it in a checkout you are editing or preparing to commit.
+
+The [mutation workflow](../.github/workflows/mutants.yml) runs a complete weekly/manual Ubuntu
+campaign across sixteen zero-based (`0/16` through `15/16`) round-robin shards. A final summary job
+verifies that every shard produced a completed `outcomes.json`, then reports the combined caught,
+missed, timeout, and unviable counts. Each shard uploads its complete `mutants.out` result tree
+even when survivors fail the job.
+
+Pull requests touching Rust mutation inputs also run an `--in-diff` check against the PR base. It is
+fast feedback for changed production code, not a substitute for the authoritative full campaign:
+test-only changes can reduce coverage without adding any in-diff mutants. Use the full result to
+triage survivors; `--iterate` is appropriate only for a local test-writing loop because it assumes
+already-caught mutants remain caught across later changes.
 
 Validate the committed contributor devcontainer:
 
@@ -198,10 +238,10 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 Before any of those gate steps begin, `cargo xtask check` preflights the exact repository
 toolchain declared in `rust-toolchain.toml`, the nightly Miri prerequisites, and the nightly
 coverage prerequisites. If the pinned compiler itself is missing, if its required
-`clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if
-`cargo +nightly miri --version` is broken despite rustup reporting the components, or if the
-coverage prerequisites are absent, the gate stops immediately with the exact repair command
-instead of failing later inside the Rust gate.
+`clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if its
+compiler is below the workspace's published Rust floor, if `cargo +nightly miri --version` is
+broken despite rustup reporting the components, or if the coverage prerequisites are absent, the
+gate stops immediately with the exact repair command instead of failing later inside the Rust gate.
 
 The cross-platform CI Rust lane uses `./scripts/xtask.sh ci-rust-gate`, which still delegates to
 the same `xtask` command-plan module as the local gate instead of maintaining a second hard-coded
@@ -216,8 +256,8 @@ copies the snapshot into managed scratch and restores those manifest names only 
 maintained refresh path records the source Git ref and crate version for that snapshot in
 `semver-baseline/htmlcut-core/BASELINE.toml`.
 
-The coverage command fails before any coverage build starts if the nightly toolchain or
-`llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean
+The coverage command fails before any coverage build starts if the nightly toolchain is below the
+workspace Rust floor or its `llvm-tools-preview` component is missing. Once the preflight passes, it starts from a clean
 `cargo llvm-cov` scratch tree, executes the maintained `htmlcut-core`, `htmlcut-cli`,
 `htmlcut-tempdir`, and `xtask` package test targets once under coverage, deduplicates duplicate
 branch spans emitted by Rust lowering, and then enforces the 100% line and branch bar across the

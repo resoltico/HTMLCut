@@ -48,6 +48,26 @@ pub(crate) fn inspect_slice_about() -> &'static str {
     cache::inspect_slice_about()
 }
 
+pub(crate) fn select_long_about() -> &'static str {
+    cache::select_long_about()
+}
+
+pub(crate) fn slice_long_about() -> &'static str {
+    cache::slice_long_about()
+}
+
+pub(crate) fn inspect_source_long_about() -> &'static str {
+    cache::inspect_source_long_about()
+}
+
+pub(crate) fn inspect_select_long_about() -> &'static str {
+    cache::inspect_select_long_about()
+}
+
+pub(crate) fn inspect_slice_long_about() -> &'static str {
+    cache::inspect_slice_long_about()
+}
+
 pub(crate) fn root_before_help() -> &'static str {
     cache::root_before_help()
 }

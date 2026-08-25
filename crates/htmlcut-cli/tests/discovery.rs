@@ -114,12 +114,22 @@ fn catalog_json_surfaces_operation_catalog() {
             && parameter.requirement_note.as_deref()
                 == Some("required when --value attribute is used")
     }));
-    assert!(command_contract.notes.iter().any(|note| {
-        note.contains("Structured extraction only supports --output json or --output none.")
-    }));
-    assert!(command_contract.notes.iter().any(|note| {
-        note.contains("--output none suppresses stdout and therefore requires --bundle.")
-    }));
+    assert!(
+        command_contract
+            .constraints
+            .iter()
+            .any(|constraint| matches!(
+                constraint,
+                htmlcut_cli::CatalogConstraint::RestrictsParameterValues {
+                    parameter,
+                    allowed_values,
+                    when,
+                } if parameter == "--output"
+                    && allowed_values == &vec!["json".to_owned(), "none".to_owned()]
+                    && when.parameter == "--value"
+                    && when.values == vec!["structured".to_owned()]
+            ))
+    );
 }
 
 #[test]

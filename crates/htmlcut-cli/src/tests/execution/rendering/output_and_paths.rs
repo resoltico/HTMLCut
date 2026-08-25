@@ -75,6 +75,49 @@ fn render_output_helpers_cover_text_html_json_and_none() {
             .expect("stdout payload"),
         "Hello"
     );
+
+    let outer_html = "<a href=\"x\">One</a>";
+    for selected_html in [
+        "One",
+        "<a href=\"x\">One",
+        "One</a>",
+        "<a href=\"x\">One</a>",
+    ] {
+        let mut selected_html_report = build_extraction_report(
+            "slice",
+            fixture_result(
+                Value::String(selected_html.to_owned()),
+                ValueType::SelectedHtml,
+            ),
+            None,
+        );
+        selected_html_report.matches[0].html = Some(outer_html.to_owned());
+        assert_eq!(
+            render_extraction_output(&selected_html_report, CliOutputMode::Html)
+                .expect("selected html output")
+                .expect("stdout payload"),
+            selected_html
+        );
+    }
+
+    let mut selected_html_report = build_extraction_report(
+        "slice",
+        fixture_result(Value::String("One".to_owned()), ValueType::SelectedHtml),
+        None,
+    );
+    selected_html_report.matches[0].html = Some(outer_html.to_owned());
+    assert!(
+        wrap_html_document(&selected_html_report)
+            .expect("wrapped selected html")
+            .contains("<section data-match-index=\"1\">One</section>")
+    );
+    assert!(
+        render_extraction_output(&selected_html_report, CliOutputMode::Json)
+            .expect("selected html json")
+            .expect("stdout payload")
+            .contains("\"value\": \"One\"")
+    );
+
     let mut broken_html_report = build_extraction_report(
         "select",
         fixture_result(

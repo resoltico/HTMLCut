@@ -378,6 +378,81 @@ fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
     assert_eq!(zero_width[0].selected_range.start, 0);
     assert_eq!(zero_width[1].selected_range.start, 3);
 }
+
+#[test]
+fn slice_selection_tolerates_only_an_irrelevant_trailing_incomplete_pair() {
+    let source = "<a>one</a><a>two</a><a>broken";
+    let run_for_selection = |selection| {
+        let request = ExtractionRequest::new(
+            memory_source("inline", source),
+            ExtractionSpec::slice(slice_spec("<a>", "</a>")).with_selection(selection),
+        );
+        let loaded = load_source(&request.source, &RuntimeOptions::default()).expect("loaded");
+        run_slice_extraction(&request, &loaded)
+    };
+
+    let first = run_for_selection(SelectionSpec::First);
+    assert_eq!(first.candidate_count, 2);
+    assert_eq!(first.matches.len(), 1);
+    assert_eq!(first.matches[0].value.as_str(), Some("one"));
+    assert!(
+        first
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "MULTIPLE_MATCHES")
+    );
+
+    let nth = run_for_selection(nth_selection(2));
+    assert_eq!(nth.candidate_count, 2);
+    assert_eq!(nth.matches.len(), 1);
+    assert_eq!(nth.matches[0].value.as_str(), Some("two"));
+
+    for selection in [
+        SelectionSpec::single(),
+        SelectionSpec::All,
+        nth_selection(3),
+    ] {
+        let strict = run_for_selection(selection);
+        assert!(strict.matches.is_empty());
+        assert_eq!(
+            strict
+                .diagnostics
+                .last()
+                .map(|diagnostic| diagnostic.code.as_str()),
+            Some("NO_MATCH")
+        );
+    }
+
+    let regex_request = ExtractionRequest::new(
+        memory_source("inline", source),
+        ExtractionSpec::slice(regex_slice_spec(r"<a>", r"</a>"))
+            .with_selection(SelectionSpec::First),
+    );
+    let regex_loaded =
+        load_source(&regex_request.source, &RuntimeOptions::default()).expect("regex loaded");
+    let regex_first = run_slice_extraction(&regex_request, &regex_loaded);
+    assert_eq!(regex_first.candidate_count, 2);
+    assert_eq!(regex_first.matches[0].value.as_str(), Some("one"));
+
+    let incomplete_first_request = ExtractionRequest::new(
+        memory_source("inline", "<a>broken"),
+        ExtractionSpec::slice(slice_spec("<a>", "</a>")).with_selection(SelectionSpec::First),
+    );
+    let incomplete_first_loaded =
+        load_source(&incomplete_first_request.source, &RuntimeOptions::default())
+            .expect("incomplete first source");
+    let incomplete_first =
+        run_slice_extraction(&incomplete_first_request, &incomplete_first_loaded);
+    assert!(incomplete_first.matches.is_empty());
+    assert_eq!(incomplete_first.candidate_count, 0);
+    assert!(
+        incomplete_first
+            .diagnostics
+            .last()
+            .is_some_and(|diagnostic| diagnostic.message.contains("End pattern was not found"))
+    );
+}
+
 #[test]
 fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
     let literal = build_finder("<p>", PatternMode::Literal, None).expect("literal finder");

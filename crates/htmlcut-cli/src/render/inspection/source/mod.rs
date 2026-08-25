@@ -22,6 +22,11 @@ pub(crate) fn render_source_inspection_text(
         ),
         format!("Bytes: {}", report.source.bytes_read),
     ];
+    if report.source.bytes_read == 0 {
+        lines.push(
+            "Input is empty; the structure below is the HTML parser's normalized shell.".to_owned(),
+        );
+    }
 
     match (
         report.source.input_base_url.as_deref(),
@@ -58,7 +63,7 @@ pub(crate) fn render_source_inspection_text(
     if let Some(title) = document.title.as_deref() {
         lines.push(format!("Title: {title}"));
     }
-    lines.push(format!("Root tag: {}", document.root_tag));
+    lines.push(format!("Parsed root tag: {}", document.root_tag));
     if let Some(document_base_href) = document.document_base_href.as_deref() {
         lines.push(format!("Document <base href>: {document_base_href}"));
         if report.source.effective_base_url.is_none() {
@@ -66,7 +71,7 @@ pub(crate) fn render_source_inspection_text(
         }
     }
     lines.push(format!(
-        "Elements: {} | Body text chars: {} | Links: {} | Images: {} | Forms: {} | Tables: {}",
+        "Parsed elements: {} | Body text chars: {} | Links: {} | Images: {} | Forms: {} | Tables: {}",
         document.element_count,
         document.text_char_count,
         document.link_count,

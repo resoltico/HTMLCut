@@ -8,7 +8,7 @@ use htmlcut_core::CliChoice;
 use crate::help::{
     ROOT_HELP_TEMPLATE, catalog_about, catalog_after_help, inspect_about, root_after_help,
     root_before_help, schema_about, schema_after_help, select_about, select_after_help,
-    slice_about, slice_after_help,
+    select_long_about, slice_about, slice_after_help, slice_long_about,
 };
 use crate::metadata::TOOL_NAME;
 
@@ -242,11 +242,13 @@ pub(crate) enum Commands {
     Schema(SchemaArgs),
     #[command(
         about = select_about(),
+        long_about = select_long_about(),
         after_long_help = select_after_help()
     )]
     Select(SelectArgs),
     #[command(
         about = slice_about(),
+        long_about = slice_long_about(),
         after_long_help = slice_after_help()
     )]
     Slice(SliceArgs),

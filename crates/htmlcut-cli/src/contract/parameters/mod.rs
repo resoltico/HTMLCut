@@ -130,6 +130,10 @@ pub(super) fn requires_parameter(parameter: CliParameterId, when: CliCondition) 
     CliConstraint::RequiresParameter { parameter, when }
 }
 
+pub(super) fn allowed_only_when(parameter: CliParameterId, when: CliCondition) -> CliConstraint {
+    CliConstraint::AllowedOnlyWhen { parameter, when }
+}
+
 pub(super) fn constraints_with_parameter_rules(
     parameters: &[CliParameterDescriptor],
     mut extra_constraints: Vec<CliConstraint>,

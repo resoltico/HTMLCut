@@ -1,10 +1,10 @@
-#[cfg(test)]
-use std::cell::Cell;
 use std::path::Path;
 use std::sync::LazyLock;
 
 mod discovery;
 mod inspection;
+#[cfg(test)]
+mod test_support;
 
 use htmlcut_core::{ValueType, result::ExtractionMatch};
 use scraper::{Html, Selector};
@@ -21,11 +21,6 @@ use crate::model::{
     ExtractionCommandReport,
 };
 
-#[cfg(test)]
-thread_local! {
-    static JSON_RENDER_FAILURE_OVERRIDE: Cell<bool> = const { Cell::new(false) };
-}
-
 static HTML_LANG_SELECTOR: LazyLock<Selector> =
     LazyLock::new(|| Selector::parse("html[lang]").expect("html lang selector"));
 static BODY_CHILD_LANG_SELECTOR: LazyLock<Selector> =
@@ -40,6 +35,7 @@ pub(crate) use self::inspection::{
     build_human_diagnostic_stderr_lines, build_human_followup_lines,
     build_source_inspection_verbose_lines, build_source_load_error_lines, build_verbose_lines,
     fallback_document_title, render_preview_text, render_source_inspection_text,
+    selector_parse_detail_line,
 };
 #[cfg(test)]
 pub(crate) use self::inspection::{
@@ -47,6 +43,8 @@ pub(crate) use self::inspection::{
     render_preview_location, render_preview_match_lines, render_range_summary, render_source_kind,
     render_text_preview,
 };
+#[cfg(test)]
+pub(crate) use self::test_support::with_json_render_failure_for_tests;
 
 pub(crate) fn get_bundle_paths(dir: &Path) -> BundlePaths {
     let dir = canonical_bundle_dir(dir);
@@ -224,7 +222,8 @@ pub(crate) fn render_match_as_text(matched: &ExtractionMatch) -> Result<String, 
 
 pub(crate) fn render_match_as_html(matched: &ExtractionMatch) -> Result<String, CliError> {
     if let Value::String(html) = &matched.value
-        && (matched.value_type == ValueType::InnerHtml
+        && (matched.value_type == ValueType::SelectedHtml
+            || matched.value_type == ValueType::InnerHtml
             || matched.value_type == ValueType::OuterHtml)
     {
         return Ok(html.clone());
@@ -307,7 +306,7 @@ fn json_render_error(context: &str, error: serde_json::Error) -> CliError {
 
 fn render_pretty_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     #[cfg(test)]
-    if JSON_RENDER_FAILURE_OVERRIDE.with(Cell::get) {
+    if test_support::json_render_failure_is_enabled() {
         return Err(serde_json::Error::io(std::io::Error::other(
             "synthetic JSON render failure",
         )));
@@ -481,19 +480,4 @@ pub(crate) fn canonical_bundle_dir_for_tests(dir: &Path) -> std::path::PathBuf {
 #[cfg(test)]
 pub(crate) fn lexical_normalize_path_for_tests(path: &Path) -> std::path::PathBuf {
     lexical_normalize_path(path.to_path_buf())
-}
-
-#[cfg(test)]
-pub(crate) fn with_json_render_failure_for_tests<T>(operation: impl FnOnce() -> T) -> T {
-    struct ResetJsonRenderFailure;
-
-    impl Drop for ResetJsonRenderFailure {
-        fn drop(&mut self) {
-            JSON_RENDER_FAILURE_OVERRIDE.with(|enabled| enabled.set(false));
-        }
-    }
-
-    JSON_RENDER_FAILURE_OVERRIDE.with(|enabled| enabled.set(true));
-    let _reset = ResetJsonRenderFailure;
-    operation()
 }

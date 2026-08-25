@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "12.0.1"
+version: "13.0.0"
 domain: OPERATIONS
-updated: "2026-07-17"
+updated: "2026-08-25"
 route:
-  keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, gate reports, retained diagnostics, xtask hygiene, cache cleanup, managed build artifacts]
-  questions: ["where do HTMLCut build artifacts live?", "where are HTMLCut gate reports stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "why is repo-local target considered legacy in HTMLCut?", "which artifact roots are managed and disposable?"]
+  keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, cargo-mutants, mutation results, gate reports, xtask hygiene, cache cleanup]
+  questions: ["where do HTMLCut build artifacts live?", "where are cargo-mutants results stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "which artifact roots are managed and disposable?"]
 ---
 
 # Artifact Hygiene
@@ -26,6 +26,8 @@ layout:
   repo root
 - completed quality-gate reports and their raw stdout/stderr evidence go to the sibling
   `../.htmlcut-artifacts/gate-runs` tree outside the repo root
+- cargo-mutants result trees go under the sibling evidence root
+  `../.htmlcut-artifacts/mutation-runs/mutants.out`, outside the managed Cargo target cache
 
 That means routine `cargo build`, `cargo test`, `cargo run`, `cargo xtask ...`, and `./check.sh`
 do not grow the repository directory with multi-gigabyte `target/debug` and
@@ -59,6 +61,9 @@ HTMLCut enforces these hygiene rules:
   `cargo xtask` flows
 - gate evidence retains the 20 most recent completed runs under its managed `gate-runs` root; it is
   visible to hygiene reporting and removed only by `cargo xtask hygiene clean --mode rebuildable`
+- each `cargo xtask mutants` run clears only its previous generated mutation result tree before
+  writing fresh outcomes; safe cleanup preserves it, while `cargo xtask hygiene clean --mode
+  rebuildable` removes the dedicated evidence root
 - the maintainer Rust gates run a hygiene cleanup and a hygiene verification pass before and after
   the command plan
 

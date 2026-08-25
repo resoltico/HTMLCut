@@ -260,9 +260,9 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
 
     assert_eq!(
         workspace_rust_version_from_manifest(&workspace_manifest).expect("workspace rust-version"),
-        "1.97"
+        "1.98"
     );
-    assert_eq!(repo_toolchain.channel, "1.97.0");
+    assert_eq!(repo_toolchain.channel, "1.98.0");
     assert_eq!(repo_toolchain.components, vec!["clippy", "rustfmt"]);
     assert!(core_manifest.contains("rust-version.workspace = true"));
     assert!(cli_manifest.contains("rust-version.workspace = true"));

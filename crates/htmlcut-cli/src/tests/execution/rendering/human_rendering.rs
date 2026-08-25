@@ -62,6 +62,17 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
     assert!(inspection_text.contains("head preflight fallback (405)"));
     assert!(inspection_text.contains("get succeeded (200)"));
 
+    let mut empty_inspection = fixture_inspection();
+    empty_inspection.source.bytes_read = 0;
+    let empty_inspection_text =
+        render_source_inspection_text(&empty_inspection, DEFAULT_PREVIEW_CHARS);
+    assert!(
+        empty_inspection_text
+            .contains("Input is empty; the structure below is the HTML parser's normalized shell.")
+    );
+    assert!(empty_inspection_text.contains("Parsed root tag: html"));
+    assert!(empty_inspection_text.contains("Parsed elements:"));
+
     let mut extraction_only = fixture_inspection();
     extraction_only
         .document

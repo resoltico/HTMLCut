@@ -1,0 +1,246 @@
+name: Mutation testing
+
+on:
+  pull_request:
+    paths:
+      - "crates/**/*.rs"
+      - ".cargo/mutants.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "patches/rust/**/*.rs"
+      - "patches/rust/**/Cargo.toml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutants-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mutants:
+    if: github.event_name != 'pull_request'
+    name: cargo-mutants (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["0/16", "1/16", "2/16", "3/16", "4/16", "5/16", "6/16", "7/16", "8/16", "9/16", "10/16", "11/16", "12/16", "13/16", "14/16", "15/16"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          retry() {
+            local attempts="$1"
+            local delay_seconds="$2"
+            shift 2
+            local attempt=1
+            until "$@"; do
+              if (( attempt >= attempts )); then
+                return 1
+              fi
+              sleep "${delay_seconds}"
+              attempt=$((attempt + 1))
+            done
+          }
+          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+
+      - name: Export mutation tool inventory
+        id: mutation_tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        with:
+          tool: ${{ steps.mutation_tools.outputs.tool_csv }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: mutants-${{ matrix.shard }}
+          workspaces: ". -> ../.htmlcut-artifacts/target"
+
+      - name: Verify mutation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo mutants --config .cargo/mutants.toml --list --json > "$RUNNER_TEMP/mutants.json"
+          jq -e '
+            length > 0
+            and ([.[].package] | unique == ["htmlcut-cli", "htmlcut-core", "htmlcut-tempdir"])
+            and all(.[];
+              (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
+              and (.file | test("/src/(tests/|.*/tests/)") | not)
+            )
+          ' "$RUNNER_TEMP/mutants.json" >/dev/null
+
+      - name: Run mutation shard
+        shell: bash
+        run: ./scripts/xtask.sh mutants --in-place --shard "${{ matrix.shard }}"
+
+      - name: Stage mutation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/../.htmlcut-artifacts/mutation-runs/mutants.out"
+          stage_dir="$RUNNER_TEMP/htmlcut-mutation-results"
+          test -d "$source_dir"
+          mkdir -p "$stage_dir"
+          cp -R "$source_dir" "$stage_dir/mutants.out"
+
+      - name: Upload mutation results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-mutants-${{ matrix.shard }}
+          path: ${{ runner.temp }}/htmlcut-mutation-results/mutants.out
+          if-no-files-found: error
+
+  mutants-diff:
+    if: github.event_name == 'pull_request'
+    name: cargo-mutants (pull-request diff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+
+      - name: Export mutation tool inventory
+        id: mutation_tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        with:
+          tool: ${{ steps.mutation_tools.outputs.tool_csv }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: mutants-pr-diff
+          workspaces: ". -> ../.htmlcut-artifacts/target"
+
+      - name: Verify mutation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo mutants --config .cargo/mutants.toml --list --json > "$RUNNER_TEMP/mutants.json"
+          jq -e '
+            length > 0
+            and ([.[].package] | unique == ["htmlcut-cli", "htmlcut-core", "htmlcut-tempdir"])
+            and all(.[];
+              (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
+              and (.file | test("/src/(tests/|.*/tests/)") | not)
+            )
+          ' "$RUNNER_TEMP/mutants.json" >/dev/null
+
+      - name: Run mutations in changed Rust code
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff_path="$RUNNER_TEMP/htmlcut-mutants.diff"
+          git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
+          ./scripts/xtask.sh mutants --in-place --in-diff "$diff_path"
+
+      - name: Stage mutation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/../.htmlcut-artifacts/mutation-runs/mutants.out"
+          stage_dir="$RUNNER_TEMP/htmlcut-mutation-results"
+          test -d "$source_dir"
+          mkdir -p "$stage_dir"
+          cp -R "$source_dir" "$stage_dir/mutants.out"
+
+      - name: Upload mutation results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-mutants-pr-diff
+          path: ${{ runner.temp }}/htmlcut-mutation-results/mutants.out
+          if-no-files-found: error
+
+  mutation-summary:
+    if: github.event_name != 'pull_request' && always()
+    needs: mutants
+    name: cargo-mutants summary
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download mutation results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.1
+        with:
+          pattern: cargo-mutants-*
+          path: mutation-artifacts
+
+      - name: Verify complete shards and summarize results
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t outcome_files < <(find mutation-artifacts -type f -path '*/mutants.out/outcomes.json' | sort)
+          if (( ${#outcome_files[@]} != 16 )); then
+            echo "expected outcomes from 16 shards, found ${#outcome_files[@]}" >&2
+            exit 1
+          fi
+
+          total=0
+          missed=0
+          timed_out=0
+          unviable=0
+          caught=0
+          {
+            echo "## cargo-mutants full-run summary"
+            echo
+            echo "| Shard | Mutants | Caught | Missed | Timed out | Unviable |"
+            echo "| --- | ---: | ---: | ---: | ---: | ---: |"
+            for outcome_file in "${outcome_files[@]}"; do
+              jq -e '.end_time != null' "$outcome_file" >/dev/null
+              shard=$(basename "$(dirname "$(dirname "$outcome_file")")")
+              shard_total=$(jq -r '.total_mutants' "$outcome_file")
+              shard_caught=$(jq -r '.caught' "$outcome_file")
+              shard_missed=$(jq -r '.missed' "$outcome_file")
+              shard_timed_out=$(jq -r '.timeout' "$outcome_file")
+              shard_unviable=$(jq -r '.unviable' "$outcome_file")
+              total=$((total + shard_total))
+              caught=$((caught + shard_caught))
+              missed=$((missed + shard_missed))
+              timed_out=$((timed_out + shard_timed_out))
+              unviable=$((unviable + shard_unviable))
+              echo "| $shard | $shard_total | $shard_caught | $shard_missed | $shard_timed_out | $shard_unviable |"
+            done
+            echo
+            echo "Total: $total mutants; $caught caught; $missed missed; $timed_out timed out; $unviable unviable."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ needs.mutants.result }}" != "success" ]]; then
+            echo "one or more mutation shards did not complete successfully" >&2
+            exit 1
+          fi

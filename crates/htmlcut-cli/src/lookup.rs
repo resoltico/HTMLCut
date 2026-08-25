@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::contract::CliHelpDocument;
-#[cfg(test)]
-use crate::contract::OperationCliContract;
+use crate::contract::{CliHelpDocument, OperationCliContract};
 use htmlcut_core::OperationId;
 
 use crate::error::{CliError, internal_error, usage_error};
@@ -26,7 +24,6 @@ pub(crate) fn unknown_operation_id_error(requested: &str) -> CliError {
     )
 }
 
-#[cfg(test)]
 pub(crate) fn operation_contract(
     operation_id: OperationId,
 ) -> Result<&'static OperationCliContract, CliError> {

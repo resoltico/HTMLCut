@@ -1,0 +1,19 @@
+# Mutation testing exercises HTMLCut-owned runtime behavior, not vendored parser code or
+# test-only helpers. `cargo xtask mutants` supplies the disposable result directory and CI shard.
+all_features = true
+additional_cargo_args = ["--locked"]
+test_tool = "cargo"
+test_package = ["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir"]
+skip_calls_defaults = true
+sharding = "round-robin"
+
+examine_globs = [
+    "crates/htmlcut-core/src/**/*.rs",
+    "crates/htmlcut-cli/src/**/*.rs",
+    "crates/htmlcut-tempdir/src/**/*.rs",
+]
+
+exclude_globs = [
+    "**/src/tests/**/*.rs",
+    "**/src/**/tests/**/*.rs",
+]

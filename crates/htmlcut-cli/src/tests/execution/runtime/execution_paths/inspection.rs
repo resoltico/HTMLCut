@@ -24,7 +24,7 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
         "text".to_owned(),
     ]);
     assert_eq!(exit_code, 0);
-    assert!(stdout.contains("Root tag: html"));
+    assert!(stdout.contains("Parsed root tag: html"));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
@@ -38,6 +38,18 @@ fn run_covers_inspection_text_failure_and_preview_modes() {
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.is_empty());
     assert!(stderr.contains("URLs must use http or https."));
+
+    let (exit_code, stdout, stderr) = run_vec(vec![
+        "htmlcut".to_owned(),
+        "inspect".to_owned(),
+        "source".to_owned(),
+        "ftp://example.com/article".to_owned(),
+        "--output".to_owned(),
+        "json".to_owned(),
+    ]);
+    assert_eq!(exit_code, EXIT_CODE_USAGE);
+    assert!(stdout.contains("\"code\": \"CLI_SOURCE_URL_SCHEME_INVALID\""));
+    assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

@@ -13,7 +13,7 @@ use crate::prepare::{PreparedExtraction, PreparedPreview, build_extraction_repor
 use crate::render::{
     build_human_diagnostic_stderr_lines, build_human_followup_lines, build_source_load_error_lines,
     build_verbose_lines, get_bundle_paths, render_extraction_output, render_preview_text,
-    to_pretty_json, write_bundle,
+    selector_parse_detail_line, to_pretty_json, write_bundle,
 };
 use htmlcut_core::{extract, preview_extraction};
 
@@ -232,6 +232,9 @@ pub(crate) fn json_error_outcome(
 
 pub(crate) fn human_error_outcome(error: CliError) -> ExecutionOutcome {
     let mut stderr = vec![format!("htmlcut: {}", error.message)];
+    if let Some(selector_parse_detail) = selector_parse_detail_line(&error.diagnostics) {
+        stderr.push(selector_parse_detail);
+    }
     stderr.extend(build_human_diagnostic_stderr_lines(&error.diagnostics));
     stderr.extend(build_source_load_error_lines(&error.source_load_steps));
 

@@ -78,6 +78,8 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
         let managed_coverage_build = coverage_build_dir(repo_root.path());
         let managed_gate_reports =
             prepare_gate_report_root(repo_root.path()).expect("prepare managed gate reports");
+        let managed_mutation_reports = prepare_mutation_report_root(repo_root.path())
+            .expect("prepare managed mutation reports");
         fs::create_dir_all(managed_workspace_target.join("dist")).expect("create managed target");
         fs::create_dir_all(managed_workspace_build.join("debug/deps"))
             .expect("create managed build");
@@ -91,6 +93,13 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
             .expect("write coverage cache");
         fs::write(managed_coverage_build.join("debug/cache"), "cache")
             .expect("write coverage build cache");
+        fs::create_dir_all(managed_mutation_reports.join("mutants.out"))
+            .expect("create mutation evidence");
+        fs::write(
+            managed_mutation_reports.join("mutants.out/missed.txt"),
+            "mutant",
+        )
+        .expect("write mutation evidence");
 
         let legacy_repo_target = repo_root.path().join("target/debug/deps");
         fs::create_dir_all(&legacy_repo_target).expect("create legacy repo target");
@@ -172,6 +181,10 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
             managed_gate_reports.exists(),
             "safe clean keeps retained gate evidence"
         );
+        assert!(
+            managed_mutation_reports.exists(),
+            "safe clean keeps retained mutation evidence"
+        );
 
         let rebuildable_clean = clean_hygiene(repo_root.path(), HygieneCleanMode::Rebuildable)
             .expect("rebuildable clean");
@@ -197,11 +210,18 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
             rebuildable_clean
                 .removed_paths
                 .iter()
+                .any(|path| path == &managed_mutation_reports)
+        );
+        assert!(
+            rebuildable_clean
+                .removed_paths
+                .iter()
                 .all(|path| path != &repo_root.path().join("target"))
         );
         assert!(!managed_workspace_target.exists());
         assert!(!managed_workspace_build.exists());
         assert!(!managed_gate_reports.exists());
+        assert!(!managed_mutation_reports.exists());
     });
 }
 

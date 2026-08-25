@@ -4,7 +4,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::model::{
-    CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv, DynResult, XtaskError,
+    CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv, DynResult,
+    MAINTAINED_NIGHTLY_TOOLCHAIN_NAME, XtaskError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -120,6 +121,22 @@ pub fn repo_toolchain_probe_command(toolchain: &RepoToolchain) -> CommandSpec {
     .with_stderr(CommandStderr::Quiet)
 }
 
+/// Builds the direct compiler probe for the maintained nightly toolchain.
+pub fn nightly_toolchain_probe_command() -> CommandSpec {
+    CommandSpec::new(
+        "rustup",
+        ["run", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME, "rustc", "-V"],
+        CommandStdout::Quiet,
+        CommandToolchainEnv::Inherit,
+    )
+    .with_stderr(CommandStderr::Quiet)
+}
+
+/// Checks whether a `rustc -V` response meets a workspace Rust-version floor.
+pub fn rustc_version_meets_floor(rustc_output: &str, floor: &str) -> DynResult<bool> {
+    Ok(parse_rust_version(rustc_output, "rustc output")? >= parse_rust_version(floor, "floor")?)
+}
+
 /// Formats the actionable preflight error shown before the main Rust gate starts.
 pub fn repo_toolchain_preflight_message(
     failures: &[RepoToolchainPreflightFailure],
@@ -191,4 +208,38 @@ fn installed_component_present(output: &str, expected_component: &str) -> bool {
                     .strip_prefix(expected_component)
                     .is_some_and(|suffix| suffix.starts_with('-'))
         })
+}
+
+fn parse_rust_version(value: &str, label: &str) -> DynResult<(u64, u64, u64)> {
+    let version = if label == "rustc output" {
+        value
+            .split_whitespace()
+            .nth(1)
+            .ok_or_else(|| format!("could not parse a Rust version from {label}: {value:?}"))?
+    } else {
+        value.trim()
+    };
+    let version = version
+        .split_once('-')
+        .map_or(version, |(stable, _)| stable);
+    let mut parts = version.split('.');
+    let major = parse_version_part(parts.next(), label, value)?;
+    let minor = parse_version_part(parts.next(), label, value)?;
+    let patch = match parts.next() {
+        Some(patch) => patch
+            .parse::<u64>()
+            .map_err(|_| format!("could not parse a Rust version from {label}: {value:?}"))?,
+        None => 0,
+    };
+    if parts.next().is_some() {
+        return Err(format!("could not parse a Rust version from {label}: {value:?}").into());
+    }
+
+    Ok((major, minor, patch))
+}
+
+fn parse_version_part(part: Option<&str>, label: &str, value: &str) -> DynResult<u64> {
+    part.ok_or_else(|| format!("could not parse a Rust version from {label}: {value:?}"))?
+        .parse::<u64>()
+        .map_err(|_| format!("could not parse a Rust version from {label}: {value:?}").into())
 }

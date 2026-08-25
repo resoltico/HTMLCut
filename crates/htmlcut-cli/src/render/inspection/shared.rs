@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use htmlcut_core::{
-    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticLevel,
+    DEFAULT_PREVIEW_CHARS, Diagnostic, DiagnosticCode, DiagnosticLevel,
     result::{InspectionCount, Range},
 };
 
@@ -95,6 +95,39 @@ pub(crate) fn build_human_diagnostic_stderr_lines(diagnostics: &[Diagnostic]) ->
         .collect()
 }
 
+pub(crate) fn selector_parse_detail_line(diagnostics: &[Diagnostic]) -> Option<String> {
+    let diagnostic = diagnostics.iter().find(|diagnostic| {
+        diagnostic.level == DiagnosticLevel::Error
+            && diagnostic.code == DiagnosticCode::InvalidSelector
+    })?;
+    let selector_parse = diagnostic
+        .details
+        .as_ref()?
+        .get("selector_parse")?
+        .as_object()?;
+    let line = selector_parse
+        .get("line")?
+        .as_u64()
+        .filter(|line| *line > 0)?;
+    let column = selector_parse
+        .get("column_utf16")?
+        .as_u64()
+        .filter(|column| *column > 0)?;
+    let class = selector_parse.get("parse_error_class")?.as_str()?;
+    if class.is_empty()
+        || !class
+            .chars()
+            .all(|character| character.is_ascii_lowercase() || character == '_')
+    {
+        return None;
+    }
+
+    Some(format!(
+        "htmlcut: selector parse detail: line {line}, UTF-16 column {column}, {}.",
+        class.replace('_', " ")
+    ))
+}
+
 pub(crate) fn render_count_list(entries: &[InspectionCount]) -> String {
     entries
         .iter()
@@ -173,6 +206,7 @@ mod tests {
         Diagnostic, DiagnosticCode, DiagnosticLevel, SourceLoadAction, SourceLoadOutcome,
         SourceLoadStep, result::Range,
     };
+    use serde_json::json;
 
     #[test]
     fn block_text_preview_covers_truncation_line_limits_and_blank_edges() {
@@ -263,6 +297,107 @@ mod tests {
                 message: "disabled".to_owned(),
             }),
             "head preflight skipped: disabled"
+        );
+
+        let selector_diagnostic = Diagnostic {
+            level: DiagnosticLevel::Error,
+            code: DiagnosticCode::InvalidSelector,
+            message: "CSS selector is invalid.".to_owned(),
+            details: Some(json!({
+                "selector_parse": {
+                    "line": 1,
+                    "column_utf16": 9,
+                    "parse_error_class": "end_of_input",
+                }
+            })),
+        };
+        assert_eq!(
+            selector_parse_detail_line(&[selector_diagnostic]).as_deref(),
+            Some("htmlcut: selector parse detail: line 1, UTF-16 column 9, end of input.")
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::NoMatch,
+                message: "No matches were found.".to_owned(),
+                details: Some(json!({
+                    "selector_parse": {
+                        "line": 1,
+                        "column_utf16": 1,
+                        "parse_error_class": "end_of_input",
+                    }
+                })),
+            }])
+            .is_none()
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::InvalidSelector,
+                message: "CSS selector is invalid.".to_owned(),
+                details: Some(json!({
+                    "selector_parse": {
+                        "line": 1,
+                        "column_utf16": 0,
+                        "parse_error_class": "end_of_input",
+                    }
+                })),
+            }])
+            .is_none()
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::InvalidSelector,
+                message: "CSS selector is invalid.".to_owned(),
+                details: Some(json!({ "selector_parse": { "line": 0 } })),
+            }])
+            .is_none()
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::InvalidSelector,
+                message: "CSS selector is invalid.".to_owned(),
+                details: Some(json!({
+                    "selector_parse": {
+                        "line": 0,
+                        "column_utf16": 1,
+                        "parse_error_class": "end_of_input",
+                    }
+                })),
+            }])
+            .is_none()
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::InvalidSelector,
+                message: "CSS selector is invalid.".to_owned(),
+                details: Some(json!({
+                    "selector_parse": {
+                        "line": 1,
+                        "column_utf16": 1,
+                        "parse_error_class": "Not valid!",
+                    }
+                })),
+            }])
+            .is_none()
+        );
+        assert!(
+            selector_parse_detail_line(&[Diagnostic {
+                level: DiagnosticLevel::Error,
+                code: DiagnosticCode::InvalidSelector,
+                message: "CSS selector is invalid.".to_owned(),
+                details: Some(json!({
+                    "selector_parse": {
+                        "line": 1,
+                        "column_utf16": 1,
+                        "parse_error_class": "",
+                    }
+                })),
+            }])
+            .is_none()
         );
     }
 }

@@ -52,6 +52,9 @@ fn root_help_describes_each_maintained_task() {
     assert!(help.contains("Run the maintained strict-provenance selector-and-slice Miri proof."));
     assert!(help.contains("Run the maintained dependency-freshness gate."));
     assert!(help.contains("Run a short maintained libFuzzer smoke pass."));
+    assert!(
+        help.contains("Run maintained mutation testing against first-party HTMLCut Rust source.")
+    );
     assert!(help.contains("Inspect or repair the repository artifact hygiene policy."));
     assert!(help.contains("Inspect or enforce the first-party Rust source-structure contract."));
     assert!(help.contains("Refresh the checked-in htmlcut-core semver baseline."));
@@ -64,7 +67,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
     let help = run_xtask_help(&["--help"]);
     let examples = xtask_help_examples(&help);
 
-    assert_eq!(examples.len(), 13, "root help example inventory drifted");
+    assert_eq!(examples.len(), 14, "root help example inventory drifted");
 
     assert_eq!(
         examples
@@ -80,6 +83,7 @@ fn root_help_examples_parse_against_the_live_cli_surface() {
             "cargo xtask coverage",
             "cargo xtask miri",
             "cargo xtask outdated-check",
+            "cargo xtask mutants",
             "cargo xtask hygiene report",
             "cargo xtask hygiene clean --mode rebuildable",
             "cargo xtask structure report",
@@ -142,6 +146,12 @@ fn subcommand_help_explains_scope_instead_of_only_showing_usage() {
 
     let fuzz_help = run_xtask_help(&["fuzz-smoke", "--help"]);
     assert!(fuzz_help.contains("Run a short maintained libFuzzer smoke pass"));
+
+    let mutants_help = run_xtask_help(&["mutants", "--help"]);
+    assert!(mutants_help.contains("checked-in first-party source scope"));
+    assert!(mutants_help.contains("--in-place"));
+    assert!(mutants_help.contains("--shard <INDEX/TOTAL>"));
+    assert!(mutants_help.contains("--in-diff <DIFF_FILE>"));
 
     let semver_help = run_xtask_help(&["refresh-semver-baseline", "--help"]);
     assert!(semver_help.contains("Refresh the checked-in htmlcut-core semver baseline"));

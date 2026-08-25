@@ -12,10 +12,24 @@ fn write_toolchain_contract(repo_root: &Path) {
 }
 
 fn write_tracked_source(repo_root: &Path, relative_path: &str) -> PathBuf {
+    write_workspace_rust_floor(repo_root);
     let path = repo_root.join(relative_path);
     fs::create_dir_all(path.parent().expect("tracked source parent")).expect("create src dir");
     fs::write(&path, "pub fn covered() {}\n").expect("write tracked source");
     path
+}
+
+fn write_workspace_rust_floor(repo_root: &Path) {
+    let manifest_path = repo_root.join("Cargo.toml");
+    if manifest_path.exists() {
+        return;
+    }
+
+    fs::write(
+        manifest_path,
+        "[workspace.package]\nversion = \"3.0.0\"\nrust-version = \"1.98\"\n",
+    )
+    .expect("write workspace Rust floor");
 }
 
 fn write_coverage_report(
@@ -113,6 +127,9 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
             if spec.program == Path::new("rustup") && args == ["run", "stable", "rustc", "-Vv"] {
                 return Some(Ok(b"rustc 1.97.0\n".to_vec()));
             }
+            if spec.program == Path::new("rustup") && args == ["run", "nightly", "rustc", "-V"] {
+                return Some(Ok(b"rustc 1.100.0-nightly (hash 2026-08-23)\n".to_vec()));
+            }
             if spec.program == Path::new("rustup")
                 && args == ["component", "list", "--toolchain", "stable", "--installed"]
             {
@@ -143,6 +160,9 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
             }
             if spec.program == Path::new("cargo") && args == ["fuzz", "--help"] {
                 return Some(Ok(b"cargo-fuzz 0.12.0\n".to_vec()));
+            }
+            if spec.program == Path::new("cargo") && args == ["mutants", "--version"] {
+                return Some(Ok(b"cargo-mutants 27.1.0\n".to_vec()));
             }
             if (spec.program == Path::new("clang") || spec.program == Path::new("clang++"))
                 && args == ["--version"]

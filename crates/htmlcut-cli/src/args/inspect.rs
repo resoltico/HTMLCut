@@ -4,8 +4,9 @@ use clap::{Args, Subcommand};
 use htmlcut_core::{DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_PREVIEW_CHARS};
 
 use crate::help::{
-    inspect_select_about, inspect_select_after_help, inspect_slice_about, inspect_slice_after_help,
-    inspect_source_about, inspect_source_after_help,
+    inspect_select_about, inspect_select_after_help, inspect_select_long_about,
+    inspect_slice_about, inspect_slice_after_help, inspect_slice_long_about, inspect_source_about,
+    inspect_source_after_help, inspect_source_long_about,
 };
 
 use super::{
@@ -25,18 +26,21 @@ pub(crate) enum InspectCommands {
     #[command(
         name = "source",
         about = inspect_source_about(),
+        long_about = inspect_source_long_about(),
         after_long_help = inspect_source_after_help()
     )]
     Source(InspectSourceArgs),
     #[command(
         name = "select",
         about = inspect_select_about(),
+        long_about = inspect_select_long_about(),
         after_long_help = inspect_select_after_help()
     )]
     Select(InspectSelectArgs),
     #[command(
         name = "slice",
         about = inspect_slice_about(),
+        long_about = inspect_slice_long_about(),
         after_long_help = inspect_slice_after_help()
     )]
     Slice(InspectSliceArgs),
@@ -52,6 +56,9 @@ pub(crate) struct InspectSourceArgs {
     pub(crate) sample_limit: usize,
 
     /// Render the inspection as compact text or structured JSON.
+    ///
+    /// JSON mode writes either a success or failure document to stdout, and the process exit status
+    /// remains authoritative.
     #[arg(long, value_parser = cli_choice_parser::<CliInspectOutputMode>(), default_value_t = CliInspectOutputMode::Text)]
     pub(crate) output: CliInspectOutputMode,
 
@@ -96,7 +103,9 @@ pub(crate) struct InspectSelectArgs {
     #[arg(long)]
     pub(crate) attribute: Option<String>,
 
-    /// Preserve rendered whitespace or normalize preview text.
+    /// Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering.
+    ///
+    /// Normalization does not flatten headings, lists, tables, or link annotations.
     #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 
@@ -150,7 +159,9 @@ pub(crate) struct InspectSliceArgs {
     #[arg(long)]
     pub(crate) attribute: Option<String>,
 
-    /// Preserve rendered whitespace or normalize preview text.
+    /// Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering.
+    ///
+    /// Normalization does not flatten headings, lists, tables, or link annotations.
     #[arg(long, value_parser = cli_choice_parser::<CliWhitespaceMode>(), default_value_t = CliWhitespaceMode::Rendered)]
     pub(crate) whitespace: CliWhitespaceMode,
 

@@ -14,6 +14,7 @@
 #   focused rather than Docker-driven;
 # - keeping Docker out of the contributor shell avoids mounted-socket permission drift and keeps
 #   this Ubuntu 24.04 contract close to the simpler GridGrind contributor-container shape.
+# Pin the multi-platform image index so Docker selects a native contributor image on each host.
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

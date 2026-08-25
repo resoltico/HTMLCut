@@ -1,7 +1,7 @@
 use htmlcut_core::{OperationId, ValueType, operation_descriptor};
 
 use super::parameters::{
-    common_input_forms, common_selection_modes, condition, conditional_default,
+    allowed_only_when, common_input_forms, common_selection_modes, condition, conditional_default,
     constraints_with_parameter_rules, extract_output_modes, inspect_output_modes,
     inspect_select_parameters, inspect_slice_parameters, inspect_source_parameters,
     requires_parameter, restricts_parameter_values, select_extract_parameters,
@@ -86,7 +86,82 @@ fn no_output_overrides() -> Vec<CliConditionalDefault> {
 }
 
 fn no_constraints(parameters: &[CliParameterDescriptor]) -> Vec<CliConstraint> {
-    constraints_with_parameter_rules(parameters, Vec::new())
+    constraints_with_parameter_rules(parameters, cross_parameter_constraints(parameters))
+}
+
+fn cross_parameter_constraints(parameters: &[CliParameterDescriptor]) -> Vec<CliConstraint> {
+    let mut constraints = Vec::new();
+    if has_parameter(parameters, CliParameterId::Index) {
+        constraints.push(allowed_only_when(
+            CliParameterId::Index,
+            condition(
+                CliParameterId::Match,
+                vec![CliValue::SelectionMode(CliSelectionMode::Nth)],
+            ),
+        ));
+    }
+    if has_parameter(parameters, CliParameterId::Attribute) {
+        constraints.push(allowed_only_when(
+            CliParameterId::Attribute,
+            condition(
+                CliParameterId::Value,
+                vec![CliValue::ValueType(ValueType::Attribute)],
+            ),
+        ));
+    }
+    if has_parameter(parameters, CliParameterId::TlsCaBundle) {
+        let custom_ca_bundle = condition(
+            CliParameterId::TlsTrust,
+            vec![CliValue::TlsTrustMode(
+                super::CliTlsTrustMode::CustomCaBundle,
+            )],
+        );
+        constraints.push(requires_parameter(
+            CliParameterId::TlsCaBundle,
+            custom_ca_bundle.clone(),
+        ));
+        constraints.push(allowed_only_when(
+            CliParameterId::TlsCaBundle,
+            custom_ca_bundle,
+        ));
+    }
+    if has_parameter(parameters, CliParameterId::OutputFile)
+        && parameter_allows_value(
+            parameters,
+            CliParameterId::Output,
+            CliValue::OutputMode(CliOutputMode::None),
+        )
+    {
+        constraints.push(allowed_only_when(
+            CliParameterId::OutputFile,
+            condition(
+                CliParameterId::Output,
+                vec![
+                    CliValue::OutputMode(CliOutputMode::Text),
+                    CliValue::OutputMode(CliOutputMode::Html),
+                    CliValue::OutputMode(CliOutputMode::Json),
+                ],
+            ),
+        ));
+    }
+    constraints
+}
+
+fn has_parameter(parameters: &[CliParameterDescriptor], parameter_id: CliParameterId) -> bool {
+    parameters
+        .iter()
+        .any(|parameter| parameter.id == parameter_id)
+}
+
+fn parameter_allows_value(
+    parameters: &[CliParameterDescriptor],
+    parameter_id: CliParameterId,
+    value: CliValue,
+) -> bool {
+    parameters
+        .iter()
+        .find(|parameter| parameter.id == parameter_id)
+        .is_some_and(|parameter| parameter.allowed_values.contains(&value))
 }
 
 fn select_extract_default_output_overrides() -> Vec<CliConditionalDefault> {
@@ -138,37 +213,36 @@ fn extract_constraints_with_html_values(
     parameters: &[CliParameterDescriptor],
     html_value_modes: Vec<CliValue>,
 ) -> Vec<CliConstraint> {
-    constraints_with_parameter_rules(
-        parameters,
-        vec![
-            requires_parameter(
-                CliParameterId::Bundle,
-                condition(
-                    CliParameterId::Output,
-                    vec![CliValue::OutputMode(CliOutputMode::None)],
-                ),
-            ),
-            restricts_parameter_values(
+    let mut constraints = cross_parameter_constraints(parameters);
+    constraints.extend([
+        requires_parameter(
+            CliParameterId::Bundle,
+            condition(
                 CliParameterId::Output,
-                vec![
-                    CliValue::OutputMode(CliOutputMode::Json),
-                    CliValue::OutputMode(CliOutputMode::None),
-                ],
-                condition(
-                    CliParameterId::Value,
-                    vec![CliValue::ValueType(ValueType::Structured)],
-                ),
+                vec![CliValue::OutputMode(CliOutputMode::None)],
             ),
-            restricts_parameter_values(
+        ),
+        restricts_parameter_values(
+            CliParameterId::Output,
+            vec![
+                CliValue::OutputMode(CliOutputMode::Json),
+                CliValue::OutputMode(CliOutputMode::None),
+            ],
+            condition(
                 CliParameterId::Value,
-                html_value_modes,
-                condition(
-                    CliParameterId::Output,
-                    vec![CliValue::OutputMode(CliOutputMode::Html)],
-                ),
+                vec![CliValue::ValueType(ValueType::Structured)],
             ),
-        ],
-    )
+        ),
+        restricts_parameter_values(
+            CliParameterId::Value,
+            html_value_modes,
+            condition(
+                CliParameterId::Output,
+                vec![CliValue::OutputMode(CliOutputMode::Html)],
+            ),
+        ),
+    ]);
+    constraints_with_parameter_rules(parameters, constraints)
 }
 
 fn select_extract_constraints(parameters: &[CliParameterDescriptor]) -> Vec<CliConstraint> {
@@ -302,9 +376,7 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             build_parameters: select_extract_parameters,
             build_constraints: select_extract_constraints,
             notes: &[
-                "Structured extraction only supports --output json or --output none.",
-                "--output none suppresses stdout and therefore requires --bundle.",
-                "--output html is only valid with --value inner-html or --value outer-html.",
+                "HTML stdout emits one fragment or multiple fragments separated by blank lines; it is not a standalone document. Use --bundle when you need wrapped selection.html output.",
                 "HTML output preserves the selected fragment apart from optional URL rewriting; it does not sanitize widgets, scripts, or related blocks.",
                 "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.",
                 "Use --emit-request-file to capture the canonical extraction definition while you iterate on inline flags.",
@@ -338,9 +410,7 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             notes: &[
                 "Literal boundaries are raw substring matching, not tag-aware; `<a` also matches `<article>`.",
                 "The selected fragment excludes both matched boundaries by default; --boundary-retention controls that selected fragment precisely.",
-                "Structured extraction only supports --output json or --output none.",
-                "--output none suppresses stdout and therefore requires --bundle.",
-                "--output html is valid with --value selected-html, --value inner-html, or --value outer-html.",
+                "HTML stdout emits one fragment or multiple fragments separated by blank lines; it is not a standalone document. Use --bundle when you need wrapped selection.html output.",
                 "HTML output preserves the selected fragment apart from optional URL rewriting; it does not sanitize widgets, scripts, or related blocks.",
                 "When --rewrite-urls is requested but no effective base URL can be resolved, relative URLs stay unchanged and a warning is emitted.",
                 "Use --emit-request-file to capture the canonical extraction definition while you iterate on inline flags.",
@@ -358,3 +428,13 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
         }),
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cross_parameter_constraints_omit_rules_for_a_surface_without_related_parameters() {
+        assert!(cross_parameter_constraints(&[]).is_empty());
+    }
+}

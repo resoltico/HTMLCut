@@ -17,13 +17,14 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
         "select".to_owned(),
         input.clone(),
         "--css".to_owned(),
-        "[".to_owned(),
+        "article[".to_owned(),
         "--output".to_owned(),
         "json".to_owned(),
     ]);
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.contains("\"code\": \"INVALID_SELECTOR\""));
     assert!(stdout.contains("CSS selector is invalid."));
+    assert!(stdout.contains("\"selector_parse\""));
     assert!(stderr.is_empty());
 
     let (exit_code, stdout, stderr) = run_vec(vec![
@@ -86,6 +87,9 @@ fn run_covers_extraction_error_json_and_bundle_failure_modes() {
     assert_eq!(exit_code, EXIT_CODE_USAGE);
     assert!(stdout.is_empty());
     assert!(stderr.contains("CSS selector is invalid."));
+    assert_eq!(stderr.matches("CSS selector is invalid.").count(), 1);
+    assert!(stderr.contains("selector parse detail: line 1, UTF-16 column"));
+    assert!(stderr.contains("end of input"));
 
     let (exit_code, _, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

@@ -306,7 +306,7 @@ max_imports = 24
 max_functions = 65
 max_decision_points = 180
 max_match_arms = 85
-allowed_internal_dependencies = ["crate", "app", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "outdated", "plan", "policy", "preflight", "release", "structure", "tests", "toolchain"]
+allowed_internal_dependencies = ["crate", "app", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "mutants", "outdated", "plan", "policy", "preflight", "release", "structure", "tests", "toolchain"]
 
 [[rules]]
 path = "xtask/tests/"
@@ -338,7 +338,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command_exec", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "outdated", "plan", "policy", "preflight", "release", "structure", "toolchain"]
+allowed_internal_dependencies = ["crate", "app", "command_exec", "coverage", "docs", "fuzz", "gate_report", "host_tools", "hygiene", "manifest", "miri", "model", "mutants", "outdated", "plan", "policy", "preflight", "release", "structure", "toolchain"]
 
 [[rules]]
 path = "fuzz/fuzz_targets/"

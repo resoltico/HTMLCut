@@ -70,7 +70,12 @@ pub(crate) fn run_validated_slice_extraction(
     } else {
         Vec::new()
     };
-    let candidates = match extract_compiled_slice_candidates(&source.text, slice, patterns) {
+    let candidates = match extract_compiled_slice_candidates(
+        &source.text,
+        slice,
+        patterns,
+        request.extraction.selection(),
+    ) {
         Ok(candidates) => candidates,
         Err(diagnostic) => {
             return ExtractionRun {

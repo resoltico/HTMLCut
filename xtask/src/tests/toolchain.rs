@@ -159,6 +159,26 @@ fn repo_toolchain_probe_command_stays_quiet_on_both_streams() {
 }
 
 #[test]
+fn nightly_toolchain_probe_and_version_floor_check_stay_actionable() {
+    let probe = nightly_toolchain_probe_command();
+
+    assert_eq!(probe.program, PathBuf::from("rustup"));
+    assert_eq!(probe.args, vec!["run", "nightly", "rustc", "-V"]);
+    assert!(command_is_quiet(&probe));
+    assert!(command_quiets_stderr(&probe));
+    assert!(
+        rustc_version_meets_floor("rustc 1.100.0-nightly (hash 2026-08-23)\n", "1.98")
+            .expect("parse current nightly")
+    );
+    assert!(
+        !rustc_version_meets_floor("rustc 1.97.0-nightly (hash 2026-05-11)\n", "1.98")
+            .expect("parse stale nightly")
+    );
+    assert!(rustc_version_meets_floor("not a compiler version", "1.98").is_err());
+    assert!(rustc_version_meets_floor("rustc 1.100.0-nightly\n", "1.98.0.1").is_err());
+}
+
+#[test]
 fn repo_toolchain_preflight_message_reports_broken_component_binaries() {
     let toolchain = RepoToolchain {
         channel: "1.97.0".to_owned(),

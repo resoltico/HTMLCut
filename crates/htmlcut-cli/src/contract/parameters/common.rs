@@ -109,7 +109,7 @@ pub(super) fn common_source_parameters(
             "FETCH_PREFLIGHT",
             Some(CliValue::FetchPreflightMode(FetchPreflightMode::HeadFirst)),
             fetch_preflight_values(),
-            "Probe remote URLs with HEAD before GET, automatically falling back when HEAD is rejected or broken, or skip the HEAD preflight entirely.",
+            "Use successful HEAD responses as advisory validation before GET. HTMLCut falls back only when HEAD rejects the method or fails in a way that indicates HEAD intolerance; get-only skips the probe.",
         ),
         param_option(
             CliParameterSection::Source,
@@ -127,13 +127,13 @@ pub(super) fn common_source_parameters(
             "PATH",
             None,
             Vec::new(),
-            "PEM CA bundle path used when --tls-trust custom-ca-bundle is selected.",
+            "PEM CA bundle path required only with --tls-trust custom-ca-bundle.",
         ),
         param_positional(
             CliParameterSection::Source,
             CliParameterId::Input,
             input_requirement,
-            "HTML input source: a local file path, an http(s) URL, or - for stdin.",
+            "HTML input source: a local file path, an http(s) URL, or - for explicit stdin. Omitted INPUT never implicitly consumes piped stdin.",
         ),
     ]
 }
@@ -249,7 +249,7 @@ pub(super) fn common_extract_parameters(value_modes: &[ValueType]) -> Vec<CliPar
             "WHITESPACE",
             Some(CliValue::WhitespaceMode(WhitespaceMode::Rendered)),
             whitespace_values(),
-            "Preserve rendered whitespace or normalize it for text-like values.",
+            "Preserve semantic rendered layout, or normalize whitespace within that HTML-aware rendering without flattening headings, lists, tables, or link annotations.",
         ),
         param_flag(
             CliParameterSection::Extraction,
@@ -263,7 +263,7 @@ pub(super) fn common_extract_parameters(value_modes: &[ValueType]) -> Vec<CliPar
             "OUTPUT",
             None,
             output_mode_values(&output_modes),
-            "How stdout should be rendered after extraction. When the extracted value is HTML, `text` renders that fragment into readable plain text. When OUTPUT is `none`, `--bundle` is required because no stdout payload is produced.",
+            "How stdout should be rendered after extraction. HTML output emits fragments, not a standalone document; multiple fragments are separated by blank lines. JSON mode writes either a success or failure document to stdout, and the process exit status remains authoritative. When OUTPUT is `none`, --bundle is required because no stdout payload is produced.",
         ),
         param_option(
             CliParameterSection::Extraction,
@@ -310,7 +310,7 @@ pub(super) fn common_inspect_output_parameters() -> Vec<CliParameterDescriptor> 
             "OUTPUT",
             Some(CliValue::OutputMode(CliOutputMode::Json)),
             output_mode_values(&output_modes),
-            "Render the inspection as compact text or structured JSON.",
+            "Render the inspection as compact text or structured JSON. JSON mode writes either a success or failure document to stdout, and the process exit status remains authoritative.",
         ),
         param_option(
             CliParameterSection::InspectionOutput,
