@@ -170,9 +170,11 @@ use it in a checkout you are editing or preparing to commit.
 
 The [mutation workflow](../.github/workflows/mutants.yml) runs a complete weekly/manual Ubuntu
 campaign across sixteen zero-based (`0/16` through `15/16`) round-robin shards. A final summary job
-verifies that every shard produced a completed `outcomes.json`, then reports the combined caught,
-missed, timeout, and unviable counts. Each shard uploads its complete `mutants.out` result tree
-even when survivors fail the job.
+verifies the exact artifact identity set from the same generated shard plan, requires each artifact
+to contain a completed `mutants.out/outcomes.json`, then reports the combined caught, missed,
+timeout, and unviable counts. Machine selectors containing `/` are kept separate from artifact-safe
+names such as `cargo-mutants-shard-0-of-16`. Each shard uploads its complete `mutants.out` result
+tree even when survivors fail the job.
 
 Pull requests touching Rust mutation inputs also run an `--in-diff` check against the PR base. It is
 fast feedback for changed production code, not a substitute for the authoritative full campaign:
