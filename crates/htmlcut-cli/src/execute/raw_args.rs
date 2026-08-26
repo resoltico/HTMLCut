@@ -202,15 +202,13 @@ fn raw_command_tokens_are_known(command_tokens: &[&str]) -> bool {
 }
 
 fn first_command_token_index(tokens: &[&str]) -> Option<usize> {
-    let mut index = 0usize;
-    while let Some(token) = tokens.get(index) {
+    for (index, token) in tokens.iter().enumerate() {
         if !token.starts_with('-') {
             return Some(index);
         }
         if !root_option_token_is_known(token) {
             return None;
         }
-        index += 1;
     }
 
     None

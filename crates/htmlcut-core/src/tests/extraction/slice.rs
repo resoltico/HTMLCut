@@ -502,6 +502,10 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
             2,
         )
     );
+    assert_eq!(
+        crate::extract::position_inside_markup_stalled_step_count_for_tests("<tag>", 2),
+        (false, 1),
+    );
     assert!(
         !crate::extract::position_inside_markup_rejects_invalid_progress_for_tests(
             "<div>text</div>",

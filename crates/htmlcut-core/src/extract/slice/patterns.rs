@@ -61,7 +61,7 @@ pub(crate) fn extract_compiled_slice_candidates(
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
 
-    while cursor <= source_text.len() {
+    for _ in 0..=source_text.len() {
         let Some(start) = patterns.start.find(source_text, cursor) else {
             break;
         };

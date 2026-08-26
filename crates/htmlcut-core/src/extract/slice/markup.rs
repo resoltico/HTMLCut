@@ -71,7 +71,10 @@ fn position_inside_markup_with_step(
     let mut cursor = 0usize;
     let mut state = MarkupState::Text;
 
-    while cursor < position {
+    for _ in 0..bytes.len() {
+        if cursor >= position {
+            break;
+        }
         let (next_state, width) = match state {
             MarkupState::Text => {
                 if starts_markup(bytes, cursor) {
@@ -144,6 +147,19 @@ pub(crate) fn position_inside_markup_rejects_out_of_bounds_progress_for_tests(
     position: usize,
 ) -> bool {
     position_inside_markup_with_step(source_text, position, |_, _| Some(source_text.len() + 1))
+}
+
+#[cfg(test)]
+pub(crate) fn position_inside_markup_stalled_step_count_for_tests(
+    source_text: &str,
+    position: usize,
+) -> (bool, usize) {
+    let steps = std::cell::Cell::new(0usize);
+    let result = position_inside_markup_with_step(source_text, position, |cursor, _| {
+        steps.set(steps.get() + 1);
+        Some(cursor)
+    });
+    (result, steps.get())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

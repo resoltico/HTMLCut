@@ -6,6 +6,7 @@ mod patterns;
 pub(crate) use markup::{
     position_inside_markup_for_tests, position_inside_markup_rejects_invalid_progress_for_tests,
     position_inside_markup_rejects_out_of_bounds_progress_for_tests,
+    position_inside_markup_stalled_step_count_for_tests,
 };
 #[cfg(test)]
 pub(crate) use matches::build_slice_match;

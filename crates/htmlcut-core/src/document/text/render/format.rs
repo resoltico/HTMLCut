@@ -136,7 +136,10 @@ pub(super) fn remove_immediate_heading_echoes(input: &str) -> String {
     let mut output = Vec::<String>::new();
     let mut index = 0usize;
 
-    while index < lines.len() {
+    for _ in 0..lines.len() {
+        if index >= lines.len() {
+            break;
+        }
         let current = lines[index];
         output.push(current.to_owned());
 
