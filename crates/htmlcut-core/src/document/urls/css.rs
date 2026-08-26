@@ -21,13 +21,32 @@ fn rewrite_css_urls_with_steps(
     rewrite_import: fn(&str, usize, &str) -> Option<(String, usize)>,
     next_char: fn(&str, usize) -> usize,
 ) -> String {
+    rewrite_css_urls_with_steps_and_budget(
+        value,
+        base_url,
+        comment_end,
+        rewrite_url,
+        rewrite_import,
+        next_char,
+        scan_step_budget(value),
+    )
+}
+
+fn rewrite_css_urls_with_steps_and_budget(
+    value: &str,
+    base_url: Option<&str>,
+    comment_end: fn(&str, usize) -> Option<usize>,
+    rewrite_url: fn(&str, usize, &str) -> Option<(String, usize)>,
+    rewrite_import: fn(&str, usize, &str) -> Option<(String, usize)>,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> String {
     let Some(base_url) = base_url else {
         return value.to_owned();
     };
 
     let mut rewritten = String::with_capacity(value.len());
     let mut cursor = 0usize;
-    let mut remaining_steps = scan_step_budget(value);
     while cursor < value.len() {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return value.to_owned();
@@ -141,6 +160,22 @@ fn rewrite_css_url_function_at_with_next(
     base_url: &str,
     next_char: fn(&str, usize) -> usize,
 ) -> Option<(String, usize)> {
+    rewrite_css_url_function_at_with_next_and_budget(
+        value,
+        cursor,
+        base_url,
+        next_char,
+        scan_step_budget(value),
+    )
+}
+
+fn rewrite_css_url_function_at_with_next_and_budget(
+    value: &str,
+    cursor: usize,
+    base_url: &str,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> Option<(String, usize)> {
     if !starts_with_css_keyword(value, cursor, "url") {
         return None;
     }
@@ -183,7 +218,6 @@ fn rewrite_css_url_function_at_with_next(
     }
 
     let raw_start = content_start;
-    let mut remaining_steps = scan_step_budget(value);
     while content_start < value.len() {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return None;
@@ -238,10 +272,18 @@ fn skip_css_ignorable(value: &str, cursor: usize) -> usize {
 
 fn skip_css_ignorable_with_comment(
     value: &str,
-    mut cursor: usize,
+    cursor: usize,
     comment_end: fn(&str, usize) -> Option<usize>,
 ) -> usize {
-    let mut remaining_steps = scan_step_budget(value);
+    skip_css_ignorable_with_comment_and_budget(value, cursor, comment_end, scan_step_budget(value))
+}
+
+fn skip_css_ignorable_with_comment_and_budget(
+    value: &str,
+    mut cursor: usize,
+    comment_end: fn(&str, usize) -> Option<usize>,
+    mut remaining_steps: usize,
+) -> usize {
     loop {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return cursor;
@@ -266,10 +308,18 @@ pub(super) fn skip_ascii_whitespace(value: &str, cursor: usize) -> usize {
 
 fn skip_ascii_whitespace_with_next(
     value: &str,
-    mut cursor: usize,
+    cursor: usize,
     next_char: fn(&str, usize) -> usize,
 ) -> usize {
-    let mut remaining_steps = scan_step_budget(value);
+    skip_ascii_whitespace_with_next_and_budget(value, cursor, next_char, scan_step_budget(value))
+}
+
+fn skip_ascii_whitespace_with_next_and_budget(
+    value: &str,
+    mut cursor: usize,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> usize {
     while cursor < value.len() {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return cursor;
@@ -306,9 +356,17 @@ fn find_css_string_end_with_next(
     quote_index: usize,
     next_char: fn(&str, usize) -> usize,
 ) -> Option<usize> {
+    find_css_string_end_with_next_and_budget(value, quote_index, next_char, scan_step_budget(value))
+}
+
+fn find_css_string_end_with_next_and_budget(
+    value: &str,
+    quote_index: usize,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> Option<usize> {
     let quote = value[quote_index..].chars().next()?;
     let mut cursor = quote_index + quote.len_utf8();
-    let mut remaining_steps = scan_step_budget(value);
     while cursor < value.len() {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return None;
@@ -379,11 +437,6 @@ fn consume_scan_step_budget(remaining_steps: &mut usize) -> bool {
     true
 }
 
-#[cfg(test)]
-fn advances_to_char_boundary(value: &str, cursor: usize, next: usize) -> bool {
-    next > cursor && is_in_bounds_char_boundary(value, next)
-}
-
 fn previous_char_boundary(value: &str, cursor: usize) -> usize {
     value[..cursor]
         .char_indices()
@@ -397,148 +450,7 @@ pub(super) fn is_css_identifier_char(ch: char) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn rewrite_css_urls_for_tests(value: &str, base_url: Option<&str>) -> String {
-    rewrite_css_urls(value, base_url)
-}
+mod test_support;
 
 #[cfg(test)]
-pub(crate) fn css_progress_rejection_for_tests(kind: CssProgressFault) -> bool {
-    fn no_progress(_: &str, _: usize) -> usize {
-        0
-    }
-
-    match kind {
-        CssProgressFault::Url => rewrite_css_url_function_at_with_next(
-            "url(asset.png)",
-            0,
-            "https://example.test/",
-            no_progress,
-        )
-        .is_none(),
-        CssProgressFault::Whitespace => {
-            skip_ascii_whitespace_with_next("  asset", 0, no_progress) == 0
-        }
-        CssProgressFault::String => {
-            find_css_string_end_with_next("'\\\\asset'", 0, no_progress).is_none()
-        }
-        CssProgressFault::PlainString => {
-            find_css_string_end_with_next("'asset'", 0, no_progress).is_none()
-        }
-        CssProgressFault::EscapedString => {
-            fn stall_after_escape(_: &str, cursor: usize) -> usize {
-                if cursor == 1 { 2 } else { 0 }
-            }
-            find_css_string_end_with_next("'\\\\asset'", 0, stall_after_escape).is_none()
-        }
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn css_dispatch_rejection_for_tests(kind: CssDispatchFault) -> bool {
-    fn no_progress(_: &str, _: usize) -> usize {
-        0
-    }
-    fn no_comment(_: &str, _: usize) -> Option<usize> {
-        None
-    }
-    fn no_url(_: &str, _: usize, _: &str) -> Option<(String, usize)> {
-        None
-    }
-    fn no_import(_: &str, _: usize, _: &str) -> Option<(String, usize)> {
-        None
-    }
-    fn stalled_comment(_: &str, _: usize) -> Option<usize> {
-        Some(0)
-    }
-    fn stalled_url(_: &str, _: usize, _: &str) -> Option<(String, usize)> {
-        Some((String::new(), 0))
-    }
-    fn stalled_import(_: &str, _: usize, _: &str) -> Option<(String, usize)> {
-        Some((String::new(), 0))
-    }
-
-    let value = match kind {
-        CssDispatchFault::Comment => rewrite_css_urls_with_steps(
-            "/* note */",
-            Some("https://example.test/"),
-            stalled_comment,
-            no_url,
-            no_import,
-            next_char_boundary,
-        ),
-        CssDispatchFault::Url => rewrite_css_urls_with_steps(
-            "url(asset.png)",
-            Some("https://example.test/"),
-            no_comment,
-            stalled_url,
-            no_import,
-            next_char_boundary,
-        ),
-        CssDispatchFault::Import => rewrite_css_urls_with_steps(
-            "@import \"theme.css\"",
-            Some("https://example.test/"),
-            no_comment,
-            no_url,
-            stalled_import,
-            next_char_boundary,
-        ),
-        CssDispatchFault::Character => rewrite_css_urls_with_steps(
-            "plain",
-            Some("https://example.test/"),
-            no_comment,
-            no_url,
-            no_import,
-            no_progress,
-        ),
-    };
-    value
-        == match kind {
-            CssDispatchFault::Comment => "/* note */",
-            CssDispatchFault::Url => "url(asset.png)",
-            CssDispatchFault::Import => "@import \"theme.css\"",
-            CssDispatchFault::Character => "plain",
-        }
-}
-
-#[cfg(test)]
-pub(crate) fn css_progress_is_valid_for_tests(value: &str, cursor: usize, next: usize) -> bool {
-    advances_to_char_boundary(value, cursor, next)
-}
-
-#[cfg(test)]
-pub(crate) fn css_progress_does_not_advance_for_tests(cursor: usize, next: usize) -> bool {
-    cursor_does_not_advance(cursor, next)
-}
-
-#[cfg(test)]
-pub(crate) fn css_scan_budget_exhausts_for_tests() -> bool {
-    let mut remaining_steps = 3;
-    consume_scan_step_budget(&mut remaining_steps)
-        && consume_scan_step_budget(&mut remaining_steps)
-        && consume_scan_step_budget(&mut remaining_steps)
-        && !consume_scan_step_budget(&mut remaining_steps)
-}
-
-#[cfg(test)]
-pub(crate) fn css_ignorable_rejects_nonadvancing_comment_for_tests() -> bool {
-    skip_css_ignorable_with_comment("/* comment */", 0, |_, _| Some(0)) == 0
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy)]
-pub(crate) enum CssProgressFault {
-    Url,
-    Whitespace,
-    String,
-    PlainString,
-    EscapedString,
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy)]
-pub(crate) enum CssDispatchFault {
-    Comment,
-    Url,
-    Import,
-    Character,
-}
+pub(crate) use test_support::*;

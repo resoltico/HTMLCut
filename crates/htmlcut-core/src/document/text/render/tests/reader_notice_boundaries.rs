@@ -3,9 +3,11 @@ use crate::document::{parse_document_node, select_first};
 use super::super::super::policy::{collect_notice_text, element_looks_like_brief_reader_notice};
 
 fn is_notice(text: &str, include_link: bool) -> bool {
-    let link = include_link
-        .then_some("<a href=\"/terms\">More</a>")
-        .unwrap_or("");
+    let link = if include_link {
+        "<a href=\"/terms\">More</a>"
+    } else {
+        ""
+    };
     let document = parse_document_node(&format!("<span>{text} {link}</span>"));
     let element = select_first(&document, "span").expect("notice fixture");
     element_looks_like_brief_reader_notice(&element)

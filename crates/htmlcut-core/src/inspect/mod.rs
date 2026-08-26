@@ -277,82 +277,6 @@ pub(crate) fn opaque_div_has_long_form_shape_for_tests(
     )
 }
 
-/// Test-only inputs for the content-candidate ranking policy.
-#[cfg(test)]
-#[derive(Clone, Debug)]
-pub(crate) struct ContentCandidateTestInput {
-    pub(crate) tag_name: &'static str,
-    pub(crate) selector: &'static str,
-    pub(crate) path: &'static str,
-    pub(crate) text_char_count: usize,
-    pub(crate) heading_count: usize,
-    pub(crate) link_count: usize,
-    pub(crate) paragraph_count: usize,
-    pub(crate) primary_heading_level: Option<u8>,
-    pub(crate) primary_heading_count: usize,
-    pub(crate) primary_heading_depth: Option<usize>,
-    pub(crate) utility_descendant_count: usize,
-    pub(crate) has_main_role: bool,
-    pub(crate) has_article_body_itemprop: bool,
-    pub(crate) positive_signal_count: usize,
-    pub(crate) negative_signal_count: usize,
-    pub(crate) uses_exact_path_selector: bool,
-}
-
-#[cfg(test)]
-impl Default for ContentCandidateTestInput {
-    fn default() -> Self {
-        Self {
-            tag_name: "div",
-            selector: "#candidate",
-            path: "html > body > div#candidate",
-            text_char_count: 8_000,
-            heading_count: 0,
-            link_count: 0,
-            paragraph_count: 0,
-            primary_heading_level: None,
-            primary_heading_count: 0,
-            primary_heading_depth: None,
-            utility_descendant_count: 0,
-            has_main_role: false,
-            has_article_body_itemprop: false,
-            positive_signal_count: 0,
-            negative_signal_count: 0,
-            uses_exact_path_selector: false,
-        }
-    }
-}
-
-/// Test-only preference selector for ranking-policy scenarios.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum ContentCandidateTestPreference {
-    Extraction,
-    Reading,
-}
-
-#[cfg(test)]
-fn content_candidate_score_inputs_for_tests(
-    input: &ContentCandidateTestInput,
-) -> ContentCandidateScoreInputs<'_> {
-    ContentCandidateScoreInputs {
-        tag_name: input.tag_name,
-        has_main_role: input.has_main_role,
-        has_article_body_itemprop: input.has_article_body_itemprop,
-        text_char_count: input.text_char_count,
-        heading_count: input.heading_count,
-        link_count: input.link_count,
-        paragraph_count: input.paragraph_count,
-        positive_signal_count: input.positive_signal_count,
-        negative_signal_count: input.negative_signal_count,
-        primary_heading_level: input.primary_heading_level,
-        primary_heading_count: input.primary_heading_count,
-        primary_heading_depth: input.primary_heading_depth,
-        utility_descendant_count: input.utility_descendant_count,
-        uses_exact_path_selector: input.uses_exact_path_selector,
-    }
-}
-
 /// Returns extraction and reading scores for a declared ranking-policy fixture.
 #[cfg(test)]
 pub(crate) fn content_candidate_scores_for_tests(input: &ContentCandidateTestInput) -> (i32, i32) {
@@ -370,24 +294,31 @@ pub(crate) fn extraction_candidate_score_for_tests(input: &ContentCandidateTestI
     candidates::build::ranked_content_candidate_score_for(&inputs, CandidatePreference::Extraction)
 }
 
+#[cfg(test)]
+fn content_candidate_bias_input_for_tests(
+    input: &ContentCandidateTestInput,
+) -> candidates::bias::CandidateBiasInput<'_> {
+    candidates::bias::CandidateBiasInput {
+        selector: input.selector,
+        text_char_count: input.text_char_count,
+        heading_count: input.heading_count,
+        link_count: input.link_count,
+        paragraph_count: input.paragraph_count,
+        primary_heading_count: input.primary_heading_count,
+        utility_descendant_count: input.utility_descendant_count,
+    }
+}
+
 /// Returns whether extraction should prefer a similarly complete, utility-light descendant.
 #[cfg(test)]
 pub(crate) fn extraction_prefers_utility_light_descendant_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::extraction_prefers_utility_light_descendant(
+    candidates::bias::extraction_prefers_utility_light_descendant(
         CandidatePreference::Extraction,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        outer.paragraph_count,
-        outer.utility_descendant_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
-        inner.paragraph_count,
-        inner.utility_descendant_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -398,12 +329,11 @@ pub(crate) fn extraction_preserves_title_bearing_outer_wrapper_for_tests(
     inner: &ContentCandidateTestInput,
     drops_outer_title_signal: bool,
 ) -> bool {
-    candidates::build::extraction_preserves_title_bearing_outer_wrapper(
+    candidates::bias::extraction_preserves_title_bearing_outer_wrapper(
         CandidatePreference::Extraction,
         drops_outer_title_signal,
-        outer.text_char_count,
-        outer.paragraph_count,
-        inner.text_char_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -413,14 +343,10 @@ pub(crate) fn extraction_prefers_heading_and_link_light_descendant_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::extraction_prefers_heading_and_link_light_descendant(
+    candidates::bias::extraction_prefers_heading_and_link_light_descendant(
         CandidatePreference::Extraction,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -430,14 +356,10 @@ pub(crate) fn extraction_prefers_near_complete_link_light_descendant_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::extraction_prefers_near_complete_link_light_descendant(
+    candidates::bias::extraction_prefers_near_complete_link_light_descendant(
         CandidatePreference::Extraction,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -447,11 +369,9 @@ pub(crate) fn prefers_heavy_link_descendant_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::prefers_heavy_link_descendant(
-        outer.text_char_count,
-        outer.link_count,
-        inner.text_char_count,
-        inner.link_count,
+    candidates::bias::prefers_heavy_link_descendant(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -462,17 +382,11 @@ pub(crate) fn extraction_prefers_stable_link_light_descendant_for_tests(
     inner: &ContentCandidateTestInput,
     drops_outer_title_signal: bool,
 ) -> bool {
-    candidates::build::extraction_prefers_stable_link_light_descendant(
+    candidates::bias::extraction_prefers_stable_link_light_descendant(
         CandidatePreference::Extraction,
         drops_outer_title_signal,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        outer.selector,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
-        inner.selector,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -482,14 +396,10 @@ pub(crate) fn extraction_preserves_large_outer_candidate_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::extraction_preserves_large_outer_candidate(
+    candidates::bias::extraction_preserves_large_outer_candidate(
         CandidatePreference::Extraction,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.paragraph_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.paragraph_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -499,17 +409,9 @@ pub(crate) fn prefers_utility_light_descendant_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::prefers_utility_light_descendant(
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        outer.paragraph_count,
-        outer.utility_descendant_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
-        inner.paragraph_count,
-        inner.utility_descendant_count,
+    candidates::bias::prefers_utility_light_descendant(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -520,13 +422,10 @@ pub(crate) fn preserves_title_bearing_outer_candidate_for_tests(
     inner: &ContentCandidateTestInput,
     drops_outer_title_signal: bool,
 ) -> bool {
-    candidates::build::preserves_title_bearing_outer_candidate(
-        outer.paragraph_count,
+    candidates::bias::preserves_title_bearing_outer_candidate(
         drops_outer_title_signal,
-        outer.text_char_count,
-        outer.link_count,
-        inner.text_char_count,
-        inner.link_count,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -536,16 +435,9 @@ pub(crate) fn preserves_primary_heading_outer_candidate_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::preserves_primary_heading_outer_candidate(
-        outer.paragraph_count,
-        outer.primary_heading_count,
-        inner.primary_heading_count,
-        outer.text_char_count,
-        outer.link_count,
-        outer.utility_descendant_count,
-        inner.text_char_count,
-        inner.link_count,
-        inner.utility_descendant_count,
+    candidates::bias::preserves_primary_heading_outer_candidate(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -555,16 +447,9 @@ pub(crate) fn preserves_heading_rich_outer_candidate_for_tests(
     outer: &ContentCandidateTestInput,
     inner: &ContentCandidateTestInput,
 ) -> bool {
-    candidates::build::preserves_heading_rich_outer_candidate(
-        outer.paragraph_count,
-        outer.text_char_count,
-        outer.heading_count,
-        outer.link_count,
-        outer.utility_descendant_count,
-        inner.text_char_count,
-        inner.heading_count,
-        inner.link_count,
-        inner.utility_descendant_count,
+    candidates::bias::preserves_heading_rich_outer_candidate(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
     )
 }
 
@@ -646,7 +531,14 @@ pub(crate) fn nested_content_candidate_bias_deltas_for_tests(
 mod candidates;
 mod samples;
 mod selectors;
+#[cfg(test)]
+mod test_support;
 mod text;
+
+#[cfg(test)]
+use test_support::content_candidate_score_inputs_for_tests;
+#[cfg(test)]
+pub(crate) use test_support::{ContentCandidateTestInput, ContentCandidateTestPreference};
 
 #[cfg(test)]
 mod tests;

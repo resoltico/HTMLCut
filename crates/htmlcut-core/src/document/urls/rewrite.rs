@@ -159,10 +159,18 @@ fn rewrite_srcset_with_step(
     base_url: Option<&str>,
     advance: fn(&mut usize, usize) -> bool,
 ) -> String {
+    rewrite_srcset_with_step_and_budget(value, base_url, advance, value.len().saturating_add(1))
+}
+
+fn rewrite_srcset_with_step_and_budget(
+    value: &str,
+    base_url: Option<&str>,
+    advance: fn(&mut usize, usize) -> bool,
+    mut remaining_steps: usize,
+) -> String {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
     let bytes = value.as_bytes();
-    let mut remaining_steps = bytes.len().saturating_add(1);
 
     while cursor < bytes.len() {
         while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b',')
@@ -324,10 +332,38 @@ pub(crate) fn srcset_callback_progress_is_valid_for_tests(
 #[cfg(test)]
 pub(crate) fn srcset_step_budget_exhausts_for_tests() -> bool {
     let mut remaining_steps = 3;
-    consume_srcset_step_budget(&mut remaining_steps)
-        && consume_srcset_step_budget(&mut remaining_steps)
-        && consume_srcset_step_budget(&mut remaining_steps)
-        && !consume_srcset_step_budget(&mut remaining_steps)
+    let outcomes = [
+        consume_srcset_step_budget(&mut remaining_steps),
+        consume_srcset_step_budget(&mut remaining_steps),
+        consume_srcset_step_budget(&mut remaining_steps),
+        consume_srcset_step_budget(&mut remaining_steps),
+    ];
+    outcomes == [true, true, true, false]
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_budget_rejection_for_tests(stage: SrcsetBudgetStage) -> bool {
+    let (value, remaining_steps) = match stage {
+        SrcsetBudgetStage::LeadingSeparator => (" asset.png", 0),
+        SrcsetBudgetStage::Url => ("asset.png", 0),
+        SrcsetBudgetStage::Whitespace => ("asset.png 2x", 9),
+        SrcsetBudgetStage::Descriptor => ("asset.png 2x", 10),
+    };
+    rewrite_srcset_with_step_and_budget(
+        value,
+        Some("https://example.test/"),
+        advance_srcset_cursor,
+        remaining_steps,
+    ) == value
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(crate) enum SrcsetBudgetStage {
+    LeadingSeparator,
+    Url,
+    Whitespace,
+    Descriptor,
 }
 
 fn rewrite_space_separated_urls(value: &str, base_url: Option<&str>) -> String {

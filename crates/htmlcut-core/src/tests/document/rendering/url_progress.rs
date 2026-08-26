@@ -1,6 +1,8 @@
 use super::*;
 use crate::document::{
-    css_progress_does_not_advance_for_tests, css_scan_budget_exhausts_for_tests,
+    CssBoundsFault, CssBudgetFault, SrcsetBudgetStage, css_bounds_rejection_for_tests,
+    css_budget_rejection_for_tests, css_progress_does_not_advance_for_tests,
+    css_scan_budget_exhausts_for_tests, srcset_budget_rejection_for_tests,
     srcset_callback_progress_is_valid_for_tests, srcset_rejects_success_without_progress_for_tests,
     srcset_step_budget_exhausts_for_tests,
 };
@@ -24,6 +26,19 @@ fn url_rewriters_preserve_css_and_srcset_token_boundaries() {
             Some("https://example.test/assets/"),
         ),
         "data:image/svg+xml,<svg></svg> 1x, https://example.test/assets/hero.png 2x, https://example.test/assets/icons/next.png 3x"
+    );
+    assert_eq!(
+        rewrite_srcset_for_tests("", Some("https://example.test/assets/")),
+        ""
+    );
+    assert_eq!(
+        rewrite_srcset_for_tests(" , ", Some("https://example.test/assets/")),
+        " , "
+    );
+    assert_eq!(rewrite_srcset_for_tests("asset.png", None), "asset.png");
+    assert_eq!(
+        rewrite_srcset_for_tests(",asset.png,", Some("https://example.test/assets/"),),
+        "https://example.test/assets/asset.png"
     );
 }
 
@@ -66,6 +81,34 @@ fn css_progress_requires_an_in_bounds_character_boundary() {
 }
 
 #[test]
+fn css_scanners_fail_closed_when_budgets_or_bounds_are_invalid() {
+    for fault in [
+        CssBudgetFault::Dispatcher,
+        CssBudgetFault::Url,
+        CssBudgetFault::Ignorable,
+        CssBudgetFault::Whitespace,
+        CssBudgetFault::String,
+    ] {
+        assert!(css_budget_rejection_for_tests(fault));
+    }
+
+    for fault in [
+        CssBoundsFault::DispatcherComment,
+        CssBoundsFault::DispatcherUrl,
+        CssBoundsFault::DispatcherImport,
+        CssBoundsFault::DispatcherCharacter,
+        CssBoundsFault::Url,
+        CssBoundsFault::Ignorable,
+        CssBoundsFault::Whitespace,
+        CssBoundsFault::EscapedStringFirstStep,
+        CssBoundsFault::EscapedStringSecondStep,
+        CssBoundsFault::PlainString,
+    ] {
+        assert!(css_bounds_rejection_for_tests(fault));
+    }
+}
+
+#[test]
 fn srcset_rewriter_rejects_non_advancing_internal_steps() {
     for value in [
         " asset.png",
@@ -89,4 +132,12 @@ fn srcset_rewriter_rejects_non_advancing_internal_steps() {
     assert!(!srcset_callback_progress_is_valid_for_tests(true, 2, 4, 3));
     assert!(srcset_rejects_success_without_progress_for_tests());
     assert!(srcset_step_budget_exhausts_for_tests());
+    for stage in [
+        SrcsetBudgetStage::LeadingSeparator,
+        SrcsetBudgetStage::Url,
+        SrcsetBudgetStage::Whitespace,
+        SrcsetBudgetStage::Descriptor,
+    ] {
+        assert!(srcset_budget_rejection_for_tests(stage));
+    }
 }
