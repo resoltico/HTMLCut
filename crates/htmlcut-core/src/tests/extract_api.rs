@@ -5,10 +5,10 @@ use std::net::TcpListener;
 use std::num::NonZeroUsize;
 #[cfg(feature = "http-client")]
 use std::thread;
-#[cfg(feature = "http-client")]
-use std::time::{Duration, Instant};
 
 use crate::result::ParsedDocument;
+#[cfg(feature = "http-client")]
+use crate::tests::accept_test_connection;
 use crate::{
     AttributeName, BoundaryRetention, ExtractionRequest, ExtractionSpec, FetchTimeoutMs, HttpUrl,
     MaxBytes, OutputOptions, ParseDocumentResult, RenderingOptions, RuntimeOptions, SelectionSpec,
@@ -455,76 +455,48 @@ fn source_file_loading_returns_absolute_path() {
 #[test]
 fn source_url_loading_works() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind server");
-    listener
-        .set_nonblocking(true)
-        .expect("make listener nonblocking");
     let address = listener.local_addr().expect("server addr");
     let url = format!("http://{address}");
 
     let handle = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(2);
         let mut methods = Vec::new();
+        for _ in 0..2 {
+            let (mut stream, _) = accept_test_connection(&listener, "HEAD/GET API request");
+            let mut request_buffer = [0u8; 512];
+            let read = stream.read(&mut request_buffer).expect("read request");
+            let request = String::from_utf8_lossy(&request_buffer[..read]);
+            let method = request
+                .lines()
+                .next()
+                .expect("request line")
+                .split_whitespace()
+                .next()
+                .expect("request method");
+            methods.push(method.to_owned());
 
-        while Instant::now() < deadline {
-            match listener.accept() {
-                Ok((mut stream, _)) => {
-                    stream
-                        .set_nonblocking(true)
-                        .expect("make stream nonblocking");
-                    while Instant::now() < deadline {
-                        let mut request_buffer = [0u8; 512];
-                        let read = loop {
-                            match stream.read(&mut request_buffer) {
-                                Ok(0) => {
-                                    thread::sleep(Duration::from_millis(10));
-                                }
-                                Ok(read) => break read,
-                                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                                    thread::sleep(Duration::from_millis(10));
-                                }
-                                Err(error) => panic!("read request: {error}"),
-                            }
-                        };
-                        let request = String::from_utf8_lossy(&request_buffer[..read]);
-                        let method = request
-                            .lines()
-                            .next()
-                            .expect("request line")
-                            .split_whitespace()
-                            .next()
-                            .expect("request method");
-                        methods.push(method.to_owned());
+            let body = "<article>Hello</article>";
+            let response = if method == "HEAD" {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                    body.len()
+                )
+            } else {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
 
-                        let body = "<article>Hello</article>";
-                        let response = if method == "HEAD" {
-                            format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
-                                body.len()
-                            )
-                        } else {
-                            format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-                                body.len(),
-                                body
-                            )
-                        };
-                        stream
-                            .write_all(response.as_bytes())
-                            .expect("write response");
-
-                        if method == "GET" {
-                            return methods;
-                        }
-                    }
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) => panic!("accept connection: {error}"),
+            if method == "GET" {
+                return methods;
             }
         }
 
-        panic!("timed out waiting for HEAD/GET sequence, saw methods: {methods:?}");
+        panic!("missing GET request, saw methods: {methods:?}");
     });
 
     let mut request = selector_request("", "article");

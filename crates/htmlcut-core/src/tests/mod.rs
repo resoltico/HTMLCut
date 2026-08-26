@@ -135,13 +135,20 @@ pub(crate) fn accept_test_connection(
     listener
         .set_nonblocking(true)
         .expect("configure bounded test listener");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
     loop {
         match listener.accept() {
             Ok((stream, address)) => {
                 stream
                     .set_nonblocking(false)
                     .expect("restore blocking test stream");
+                let io_timeout = Some(std::time::Duration::from_millis(100));
+                stream
+                    .set_read_timeout(io_timeout)
+                    .expect("bound test-stream reads");
+                stream
+                    .set_write_timeout(io_timeout)
+                    .expect("bound test-stream writes");
                 return (stream, address);
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
