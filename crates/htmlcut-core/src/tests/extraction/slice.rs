@@ -489,6 +489,43 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
         content_position
     ));
 
+    assert!(
+        !crate::extract::position_inside_markup_rejects_invalid_progress_for_tests(
+            "<div>text</div>",
+            2,
+            false,
+        )
+    );
+    assert!(
+        !crate::extract::position_inside_markup_rejects_out_of_bounds_progress_for_tests(
+            "<div>text</div>",
+            2,
+        )
+    );
+    assert!(
+        !crate::extract::position_inside_markup_rejects_invalid_progress_for_tests(
+            "<div>text</div>",
+            2,
+            true,
+        )
+    );
+
+    for attribute_text in [
+        r#"<div data-label="a > b">done</div>"#,
+        "<div data-label='a > b'>done</div>",
+    ] {
+        let quoted_position = attribute_text.find("a >").expect("quoted markup position");
+        assert!(position_inside_markup_for_tests(
+            attribute_text,
+            quoted_position
+        ));
+        let closing_position = attribute_text.find("</div>").expect("closing tag position") + 1;
+        assert!(position_inside_markup_for_tests(
+            attribute_text,
+            closing_position
+        ));
+    }
+
     let comment_text = "<!-- alpha < beta -->done";
     let comment_position = comment_text.find("alpha").expect("comment position");
     assert!(position_inside_markup_for_tests(

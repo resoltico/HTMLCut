@@ -42,6 +42,91 @@ fn wire_default_documents_match_domain_defaults() {
 }
 
 #[test]
+fn wire_default_documents_omit_only_default_json_fields() {
+    assert_eq!(
+        serde_json::to_value(RuntimeOptionsDocument::default()).expect("runtime JSON"),
+        json!({})
+    );
+    assert_eq!(
+        serde_json::to_value(InspectionOptionsDocument::default()).expect("inspection JSON"),
+        json!({})
+    );
+
+    let selector_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(selector_query("article")),
+    );
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(selector_request).expect("selector document"),
+        )
+        .expect("selector JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": { "kind": "selector", "selector": "article" }
+        })
+    );
+
+    let slice_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::slice(slice_spec("<article>", "</article>")),
+    );
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(slice_request).expect("slice document"),
+        )
+        .expect("slice JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": {
+                "kind": "slice",
+                "pattern": {
+                    "mode": "literal",
+                    "from": "<article>",
+                    "to": "</article>"
+                }
+            }
+        })
+    );
+
+    let configured_output = OutputOptions {
+        rendering: RenderingOptions {
+            whitespace: WhitespaceMode::Normalize,
+            rewrite_urls: true,
+        },
+        include_source_text: true,
+        include_html: false,
+        include_text: false,
+        preview_chars: NonZeroUsize::new(12).expect("preview chars"),
+    };
+    let mut configured_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(selector_query("article")),
+    );
+    configured_request.output = configured_output;
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(configured_request).expect("configured document"),
+        )
+        .expect("configured JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": { "kind": "selector", "selector": "article" },
+            "output": {
+                "rendering": { "whitespace": "normalize", "rewrite_urls": true },
+                "include_source_text": true,
+                "include_html": false,
+                "include_text": false,
+                "preview_chars": 12
+            }
+        })
+    );
+}
+
+#[test]
 fn wire_request_documents_round_trip_all_source_and_extraction_variants() {
     let sources = vec![
         SourceRequest::stdin(),

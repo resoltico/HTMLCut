@@ -53,6 +53,16 @@ fn slice_splits_markup(source_text: &str, range: &Range) -> bool {
 }
 
 fn position_inside_markup(source_text: &str, position: usize) -> bool {
+    position_inside_markup_with_step(source_text, position, |cursor, width| {
+        cursor.checked_add(width)
+    })
+}
+
+fn position_inside_markup_with_step(
+    source_text: &str,
+    position: usize,
+    advance: impl Fn(usize, usize) -> Option<usize>,
+) -> bool {
     if position == 0 || position > source_text.len() {
         return false;
     }
@@ -62,55 +72,51 @@ fn position_inside_markup(source_text: &str, position: usize) -> bool {
     let mut state = MarkupState::Text;
 
     while cursor < position {
-        state = match state {
+        let (next_state, width) = match state {
             MarkupState::Text => {
                 if starts_markup(bytes, cursor) {
                     if bytes[cursor..].starts_with(b"<!--") {
-                        cursor += 4;
-                        MarkupState::Comment
+                        (MarkupState::Comment, 4)
                     } else {
-                        cursor += 1;
-                        MarkupState::Tag { quote: None }
+                        (MarkupState::Tag { quote: None }, 1)
                     }
                 } else {
-                    cursor += 1;
-                    MarkupState::Text
+                    (MarkupState::Text, 1)
                 }
             }
             MarkupState::Tag { quote: Some(quote) } => {
                 if bytes[cursor] == quote {
-                    cursor += 1;
-                    MarkupState::Tag { quote: None }
+                    (MarkupState::Tag { quote: None }, 1)
                 } else {
-                    cursor += 1;
-                    MarkupState::Tag { quote: Some(quote) }
+                    (MarkupState::Tag { quote: Some(quote) }, 1)
                 }
             }
             MarkupState::Tag { quote: None } => match bytes[cursor] {
                 b'\'' | b'"' => {
                     let quote = bytes[cursor];
-                    cursor += 1;
-                    MarkupState::Tag { quote: Some(quote) }
+                    (MarkupState::Tag { quote: Some(quote) }, 1)
                 }
-                b'>' => {
-                    cursor += 1;
-                    MarkupState::Text
-                }
-                _ => {
-                    cursor += 1;
-                    MarkupState::Tag { quote: None }
-                }
+                b'>' => (MarkupState::Text, 1),
+                _ => (MarkupState::Tag { quote: None }, 1),
             },
             MarkupState::Comment => {
                 if bytes[cursor..].starts_with(b"-->") {
-                    cursor += 3;
-                    MarkupState::Text
+                    (MarkupState::Text, 3)
                 } else {
-                    cursor += 1;
-                    MarkupState::Comment
+                    (MarkupState::Comment, 1)
                 }
             }
         };
+        // Cursor movement is an internal safety invariant: a malformed scanner step must fail
+        // closed instead of turning a diagnostic probe into an unbounded loop.
+        let Some(next_cursor) = advance(cursor, width) else {
+            return false;
+        };
+        if next_cursor <= cursor || next_cursor > bytes.len() {
+            return false;
+        }
+        cursor = next_cursor;
+        state = next_state;
     }
 
     !matches!(state, MarkupState::Text)
@@ -119,6 +125,25 @@ fn position_inside_markup(source_text: &str, position: usize) -> bool {
 #[cfg(test)]
 pub(crate) fn position_inside_markup_for_tests(source_text: &str, position: usize) -> bool {
     position_inside_markup(source_text, position)
+}
+
+#[cfg(test)]
+pub(crate) fn position_inside_markup_rejects_invalid_progress_for_tests(
+    source_text: &str,
+    position: usize,
+    overflow: bool,
+) -> bool {
+    position_inside_markup_with_step(source_text, position, |cursor, _| {
+        (!overflow).then_some(cursor)
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn position_inside_markup_rejects_out_of_bounds_progress_for_tests(
+    source_text: &str,
+    position: usize,
+) -> bool {
+    position_inside_markup_with_step(source_text, position, |_, _| Some(source_text.len() + 1))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

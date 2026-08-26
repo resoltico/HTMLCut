@@ -277,6 +277,174 @@ pub(crate) fn opaque_div_has_long_form_shape_for_tests(
     )
 }
 
+/// Test-only inputs for the content-candidate ranking policy.
+#[cfg(test)]
+#[derive(Clone, Debug)]
+pub(crate) struct ContentCandidateTestInput {
+    pub(crate) tag_name: &'static str,
+    pub(crate) selector: &'static str,
+    pub(crate) path: &'static str,
+    pub(crate) text_char_count: usize,
+    pub(crate) heading_count: usize,
+    pub(crate) link_count: usize,
+    pub(crate) paragraph_count: usize,
+    pub(crate) primary_heading_level: Option<u8>,
+    pub(crate) primary_heading_count: usize,
+    pub(crate) primary_heading_depth: Option<usize>,
+    pub(crate) utility_descendant_count: usize,
+    pub(crate) has_main_role: bool,
+    pub(crate) has_article_body_itemprop: bool,
+    pub(crate) positive_signal_count: usize,
+    pub(crate) negative_signal_count: usize,
+    pub(crate) uses_exact_path_selector: bool,
+}
+
+#[cfg(test)]
+impl Default for ContentCandidateTestInput {
+    fn default() -> Self {
+        Self {
+            tag_name: "div",
+            selector: "#candidate",
+            path: "html > body > div#candidate",
+            text_char_count: 8_000,
+            heading_count: 0,
+            link_count: 0,
+            paragraph_count: 0,
+            primary_heading_level: None,
+            primary_heading_count: 0,
+            primary_heading_depth: None,
+            utility_descendant_count: 0,
+            has_main_role: false,
+            has_article_body_itemprop: false,
+            positive_signal_count: 0,
+            negative_signal_count: 0,
+            uses_exact_path_selector: false,
+        }
+    }
+}
+
+/// Test-only preference selector for ranking-policy scenarios.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ContentCandidateTestPreference {
+    Extraction,
+    Reading,
+}
+
+#[cfg(test)]
+fn content_candidate_score_inputs_for_tests(
+    input: &ContentCandidateTestInput,
+) -> ContentCandidateScoreInputs<'_> {
+    ContentCandidateScoreInputs {
+        tag_name: input.tag_name,
+        has_main_role: input.has_main_role,
+        has_article_body_itemprop: input.has_article_body_itemprop,
+        text_char_count: input.text_char_count,
+        heading_count: input.heading_count,
+        link_count: input.link_count,
+        paragraph_count: input.paragraph_count,
+        positive_signal_count: input.positive_signal_count,
+        negative_signal_count: input.negative_signal_count,
+        primary_heading_level: input.primary_heading_level,
+        primary_heading_count: input.primary_heading_count,
+        primary_heading_depth: input.primary_heading_depth,
+        utility_descendant_count: input.utility_descendant_count,
+        uses_exact_path_selector: input.uses_exact_path_selector,
+    }
+}
+
+/// Returns extraction and reading scores for a declared ranking-policy fixture.
+#[cfg(test)]
+pub(crate) fn content_candidate_scores_for_tests(input: &ContentCandidateTestInput) -> (i32, i32) {
+    let inputs = content_candidate_score_inputs_for_tests(input);
+    (
+        candidates::scoring::content_candidate_score_for(&inputs, CandidatePreference::Extraction),
+        candidates::scoring::content_candidate_score_for(&inputs, CandidatePreference::Reading),
+    )
+}
+
+/// Returns the extraction-ranking score, including its bounded reading-score contribution.
+#[cfg(test)]
+pub(crate) fn extraction_candidate_score_for_tests(input: &ContentCandidateTestInput) -> i32 {
+    let inputs = content_candidate_score_inputs_for_tests(input);
+    candidates::build::ranked_content_candidate_score_for(&inputs, CandidatePreference::Extraction)
+}
+
+/// Returns whether the `#scope` candidate is excluded as utility chrome.
+#[cfg(test)]
+pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {
+    let document = Html::parse_document(markup);
+    let scope = select_first(&document, "#scope").expect("#scope fixture element");
+    candidates::build::should_skip_content_candidate(&scope)
+}
+
+/// Returns whether a declared candidate has enough readable content for recommendation.
+#[cfg(test)]
+pub(crate) fn content_candidate_has_readable_density_for_tests(
+    tag_name: &str,
+    text_char_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    body_block_count: usize,
+    prose_paragraph_count: usize,
+) -> bool {
+    candidates::scoring::candidate_has_readable_density(
+        tag_name,
+        text_char_count,
+        heading_count,
+        link_count,
+        body_block_count,
+        prose_paragraph_count,
+    )
+}
+
+/// Returns whether the `#scope` element has the structural shape of prose.
+#[cfg(test)]
+pub(crate) fn content_candidate_has_narrative_section_shape_for_tests(markup: &str) -> bool {
+    let document = Html::parse_document(markup);
+    let scope = select_first(&document, "#scope").expect("#scope fixture element");
+    candidates::scoring::element_has_narrative_section_shape(&scope)
+}
+
+#[cfg(test)]
+fn ranked_content_candidate_for_tests(input: &ContentCandidateTestInput) -> RankedContentCandidate {
+    RankedContentCandidate {
+        score: 0,
+        inspection: ContentCandidateInspection {
+            selector: input.selector.to_owned(),
+            path: input.path.to_owned(),
+            tag_name: input.tag_name.to_owned(),
+            text_char_count: input.text_char_count,
+            heading_count: input.heading_count,
+            link_count: input.link_count,
+        },
+        paragraph_count: input.paragraph_count,
+        primary_heading_level: input.primary_heading_level,
+        primary_heading_count: input.primary_heading_count,
+        primary_heading_depth: input.primary_heading_depth,
+        utility_descendant_count: input.utility_descendant_count,
+    }
+}
+
+/// Returns the outer and inner score deltas from one nested-candidate policy comparison.
+#[cfg(test)]
+pub(crate) fn nested_content_candidate_bias_deltas_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    preference: ContentCandidateTestPreference,
+) -> (i32, i32) {
+    let preference = match preference {
+        ContentCandidateTestPreference::Extraction => CandidatePreference::Extraction,
+        ContentCandidateTestPreference::Reading => CandidatePreference::Reading,
+    };
+    let mut candidates = [
+        ranked_content_candidate_for_tests(outer),
+        ranked_content_candidate_for_tests(inner),
+    ];
+    candidates::build::apply_nested_content_candidate_bias_for(&mut candidates, preference);
+    (candidates[0].score, candidates[1].score)
+}
+
 mod candidates;
 mod samples;
 mod selectors;

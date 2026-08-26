@@ -151,6 +151,14 @@ pub(crate) fn rewrite_attribute_value(
 }
 
 fn rewrite_srcset(value: &str, base_url: Option<&str>) -> String {
+    rewrite_srcset_with_step(value, base_url, advance_srcset_cursor)
+}
+
+fn rewrite_srcset_with_step(
+    value: &str,
+    base_url: Option<&str>,
+    advance: fn(&mut usize, usize) -> bool,
+) -> String {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
     let bytes = value.as_bytes();
@@ -158,7 +166,9 @@ fn rewrite_srcset(value: &str, base_url: Option<&str>) -> String {
     while cursor < bytes.len() {
         while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b',')
         {
-            cursor += 1;
+            if !advance(&mut cursor, bytes.len()) {
+                return value.to_owned();
+            }
         }
         if cursor >= bytes.len() {
             break;
@@ -174,17 +184,23 @@ fn rewrite_srcset(value: &str, base_url: Option<&str>) -> String {
             if !data_url && byte == b',' {
                 break;
             }
-            cursor += 1;
+            if !advance(&mut cursor, bytes.len()) {
+                return value.to_owned();
+            }
         }
         let url = &value[url_start..cursor];
 
         while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-            cursor += 1;
+            if !advance(&mut cursor, bytes.len()) {
+                return value.to_owned();
+            }
         }
 
         let descriptor_start = cursor;
         while cursor < bytes.len() && bytes[cursor] != b',' {
-            cursor += 1;
+            if !advance(&mut cursor, bytes.len()) {
+                return value.to_owned();
+            }
         }
         let descriptor = value[descriptor_start..cursor].trim();
         let rewritten_url = resolve_url(url, base_url);
@@ -202,9 +218,55 @@ fn rewrite_srcset(value: &str, base_url: Option<&str>) -> String {
     }
 }
 
+fn advance_srcset_cursor(cursor: &mut usize, length: usize) -> bool {
+    let Some(next) = cursor.checked_add(1) else {
+        return false;
+    };
+    if next > length {
+        return false;
+    }
+    *cursor = next;
+    true
+}
+
 #[cfg(test)]
 pub(crate) fn rewrite_srcset_for_tests(value: &str, base_url: Option<&str>) -> String {
     rewrite_srcset(value, base_url)
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_rejects_non_advancing_progress_for_tests(value: &str) -> bool {
+    rewrite_srcset_with_step(value, Some("https://example.test/"), |_, _| false) == value
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_rejects_staged_non_advancing_progress_for_tests(descriptor: bool) -> bool {
+    fn advance_until_whitespace(cursor: &mut usize, length: usize) -> bool {
+        if *cursor == 9 {
+            return false;
+        }
+        advance_srcset_cursor(cursor, length)
+    }
+    fn advance_until_descriptor(cursor: &mut usize, length: usize) -> bool {
+        if *cursor == 10 {
+            return false;
+        }
+        advance_srcset_cursor(cursor, length)
+    }
+
+    let advance = if descriptor {
+        advance_until_descriptor
+    } else {
+        advance_until_whitespace
+    };
+    rewrite_srcset_with_step("asset.png 2x", Some("https://example.test/"), advance)
+        == "asset.png 2x"
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_progress_is_valid_for_tests(cursor: usize, length: usize) -> bool {
+    let mut cursor = cursor;
+    advance_srcset_cursor(&mut cursor, length)
 }
 
 fn rewrite_space_separated_urls(value: &str, base_url: Option<&str>) -> String {

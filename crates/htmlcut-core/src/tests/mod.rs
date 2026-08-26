@@ -5,14 +5,18 @@ use crate::contracts::{
 };
 use crate::diagnostics::{error_diagnostic, has_errors, warning_diagnostic};
 use crate::document::{
-    ELLIPSIS, apply_whitespace_mode, attribute_supports_url_rewrite, build_node_path,
-    build_preview, collapse_blank_lines_for_tests, collapse_inline_whitespace, element_attributes,
-    element_name, first_body, first_body_child_element, first_fragment_attributes,
-    looks_like_full_document, needs_space, parse_document_node, parse_wrapped_fragment,
-    push_newline, render_element_as_text, render_html_as_text, render_node,
-    resolve_document_base_url, resolve_url, rewrite_css_urls_for_tests, rewrite_html_urls,
-    rewrite_srcset_for_tests, rewrite_urls_in_document, select_first, serialize_children,
-    serialize_document,
+    CssDispatchFault, CssProgressFault, ELLIPSIS, apply_whitespace_mode,
+    attribute_supports_url_rewrite, build_node_path, build_preview, collapse_blank_lines_for_tests,
+    collapse_inline_whitespace, css_dispatch_rejection_for_tests,
+    css_ignorable_rejects_nonadvancing_comment_for_tests, css_progress_is_valid_for_tests,
+    css_progress_rejection_for_tests, element_attributes, element_name, first_body,
+    first_body_child_element, first_fragment_attributes, looks_like_full_document, needs_space,
+    parse_document_node, parse_wrapped_fragment, push_newline, render_element_as_text,
+    render_html_as_text, render_node, resolve_document_base_url, resolve_url,
+    rewrite_css_urls_for_tests, rewrite_html_urls, rewrite_srcset_for_tests,
+    rewrite_urls_in_document, select_first, serialize_children, serialize_document,
+    srcset_progress_is_valid_for_tests, srcset_rejects_non_advancing_progress_for_tests,
+    srcset_rejects_staged_non_advancing_progress_for_tests,
 };
 use crate::extract::{
     build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,

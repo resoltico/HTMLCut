@@ -50,9 +50,7 @@ pub(in super::super) fn build_ranked_content_candidates_for(
         let Some(element) = ElementRef::wrap(node_ref) else {
             continue;
         };
-        if element_looks_like_utility_chrome(&element)
-            || element_has_utility_chrome_ancestor(&element)
-        {
+        if should_skip_content_candidate(&element) {
             continue;
         }
         let signal_tokens = structural_signal_tokens(&element);
@@ -132,18 +130,7 @@ pub(in super::super) fn build_ranked_content_candidates_for(
             utility_descendant_count,
             uses_exact_path_selector: selector == path,
         };
-        let score = match preference {
-            CandidatePreference::Extraction => {
-                let extraction_score =
-                    content_candidate_score_for(&score_inputs, CandidatePreference::Extraction);
-                let reading_score =
-                    content_candidate_score_for(&score_inputs, CandidatePreference::Reading);
-                extraction_score + (reading_score.max(0) / 3)
-            }
-            CandidatePreference::Reading => {
-                content_candidate_score_for(&score_inputs, CandidatePreference::Reading)
-            }
-        };
+        let score = ranked_content_candidate_score_for(&score_inputs, preference);
         if score <= 0 {
             continue;
         }
@@ -171,6 +158,27 @@ pub(in super::super) fn build_ranked_content_candidates_for(
     candidates.sort_by(|left, right| compare_content_candidates_for(left, right, preference));
 
     candidates.into_iter().take(sample_limit).collect()
+}
+
+pub(in super::super) fn should_skip_content_candidate(element: &ElementRef<'_>) -> bool {
+    element_looks_like_utility_chrome(element) || element_has_utility_chrome_ancestor(element)
+}
+
+pub(in super::super) fn ranked_content_candidate_score_for(
+    inputs: &ContentCandidateScoreInputs<'_>,
+    preference: CandidatePreference,
+) -> i32 {
+    match preference {
+        CandidatePreference::Extraction => {
+            let extraction_score =
+                content_candidate_score_for(inputs, CandidatePreference::Extraction);
+            let reading_score = content_candidate_score_for(inputs, CandidatePreference::Reading);
+            extraction_score + (reading_score.max(0) / 3)
+        }
+        CandidatePreference::Reading => {
+            content_candidate_score_for(inputs, CandidatePreference::Reading)
+        }
+    }
 }
 
 fn opaque_div_has_long_form_shape(
