@@ -474,6 +474,24 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
     assert!(!position_inside_markup_for_tests("plain text only", 0));
     assert!(!position_inside_markup_for_tests("plain text only", 5));
     assert!(!position_inside_markup_for_tests("plain text only", 99));
+    assert!(!crate::extract::markup_position_is_in_bounds_for_tests(
+        0, 10
+    ));
+    assert!(crate::extract::markup_position_is_in_bounds_for_tests(
+        10, 10
+    ));
+    assert!(!crate::extract::markup_position_is_in_bounds_for_tests(
+        11, 10
+    ));
+    assert!(crate::extract::markup_cursor_step_is_valid_for_tests(
+        2, 3, 3
+    ));
+    assert!(!crate::extract::markup_cursor_step_is_valid_for_tests(
+        2, 2, 3
+    ));
+    assert!(!crate::extract::markup_cursor_step_is_valid_for_tests(
+        2, 4, 3
+    ));
 
     let script_text = r#"<script>if (x < y && y > 0) { alert("ok"); }</script><p>done</p>"#;
     let script_text_position = script_text.find("y &&").expect("script text position");
@@ -529,6 +547,22 @@ fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
             closing_position
         ));
     }
+
+    let embedded_delimiter_attribute = r#"<div data-label="a > b">done</div>"#;
+    let after_embedded_delimiter = embedded_delimiter_attribute
+        .find("b\"")
+        .expect("embedded delimiter tail");
+    assert!(position_inside_markup_for_tests(
+        embedded_delimiter_attribute,
+        after_embedded_delimiter
+    ));
+    let body_after_attribute = embedded_delimiter_attribute
+        .find("done")
+        .expect("body after attribute");
+    assert!(!position_inside_markup_for_tests(
+        embedded_delimiter_attribute,
+        body_after_attribute
+    ));
 
     let comment_text = "<!-- alpha < beta -->done";
     let comment_position = comment_text.find("alpha").expect("comment position");

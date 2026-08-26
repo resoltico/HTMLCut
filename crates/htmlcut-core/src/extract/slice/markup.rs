@@ -63,7 +63,7 @@ fn position_inside_markup_with_step(
     position: usize,
     advance: impl Fn(usize, usize) -> Option<usize>,
 ) -> bool {
-    if position == 0 || position > source_text.len() {
+    if !markup_position_is_in_bounds(position, source_text.len()) {
         return false;
     }
 
@@ -115,7 +115,7 @@ fn position_inside_markup_with_step(
         let Some(next_cursor) = advance(cursor, width) else {
             return false;
         };
-        if next_cursor <= cursor || next_cursor > bytes.len() {
+        if !markup_cursor_step_is_valid(cursor, next_cursor, bytes.len()) {
             return false;
         }
         cursor = next_cursor;
@@ -125,9 +125,31 @@ fn position_inside_markup_with_step(
     !matches!(state, MarkupState::Text)
 }
 
+fn markup_position_is_in_bounds(position: usize, length: usize) -> bool {
+    position > 0 && position <= length
+}
+
+fn markup_cursor_step_is_valid(cursor: usize, next_cursor: usize, length: usize) -> bool {
+    next_cursor > cursor && next_cursor <= length
+}
+
 #[cfg(test)]
 pub(crate) fn position_inside_markup_for_tests(source_text: &str, position: usize) -> bool {
     position_inside_markup(source_text, position)
+}
+
+#[cfg(test)]
+pub(crate) fn markup_position_is_in_bounds_for_tests(position: usize, length: usize) -> bool {
+    markup_position_is_in_bounds(position, length)
+}
+
+#[cfg(test)]
+pub(crate) fn markup_cursor_step_is_valid_for_tests(
+    cursor: usize,
+    next_cursor: usize,
+    length: usize,
+) -> bool {
+    markup_cursor_step_is_valid(cursor, next_cursor, length)
 }
 
 #[cfg(test)]
