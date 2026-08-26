@@ -162,7 +162,7 @@ pub(super) fn render_node_with_intent(
                 return;
             }
 
-            if tag_name == "ul" || tag_name == "ol" {
+            if is_list_container(tag_name) {
                 push_newline(output, 2);
                 render_child_nodes(node.children(), output, false, false, false, intent, false);
                 push_newline(output, 2);
@@ -263,6 +263,10 @@ pub(super) fn render_node_with_intent(
             }
         }
     }
+}
+
+pub(super) fn is_list_container(tag_name: &str) -> bool {
+    matches!(tag_name, "ul" | "ol")
 }
 
 pub(super) fn render_heading_text_node(

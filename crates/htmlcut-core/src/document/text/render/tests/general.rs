@@ -9,6 +9,10 @@ use super::super::tree::*;
 
 #[test]
 fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
+    assert!(is_list_container("ul"));
+    assert!(is_list_container("ol"));
+    assert!(!is_list_container("li"));
+
     assert_eq!(
         render_html_as_text(
             "<script>ignore</script><style>.x{}</style><p>Body</p>",
@@ -73,6 +77,13 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         true,
     );
     assert!(pre_only_rendered.contains("Keep"));
+    let mut pre_from_element_rendered = String::new();
+    render_heading_text_node(
+        *select_first(&pre_only_heading, "pre").expect("pre"),
+        &mut pre_from_element_rendered,
+        false,
+    );
+    assert_eq!(pre_from_element_rendered, "  Keep\n  spacing");
     let mut root_heading_rendered = String::new();
     render_heading_text_node(
         heading_document.tree.root(),
@@ -215,6 +226,17 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         ),
         None
     );
+    let exact_label_row = parse_document_node(&format!(
+        "<section><div>{}:</div><div>Value</div></section>",
+        "L".repeat(59)
+    ));
+    assert!(
+        render_label_value_row(
+            *select_first(&exact_label_row, "section").expect("section"),
+            false,
+        )
+        .is_some()
+    );
     let long_value_row = parse_document_node(&format!(
         "<section><div><p>Label:</p></div><div><p>{}</p></div></section>",
         "V".repeat(161)
@@ -225,6 +247,17 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
             false,
         ),
         None
+    );
+    let exact_value_row = parse_document_node(&format!(
+        "<section><div>Label:</div><div>{}</div></section>",
+        "V".repeat(160)
+    ));
+    assert!(
+        render_label_value_row(
+            *select_first(&exact_value_row, "section").expect("section"),
+            false,
+        )
+        .is_some()
     );
     let banner_paragraph =
         parse_document_node("<p><a href=\"https://example.com\">BREAKING NEWS</a></p>");
