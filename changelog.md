@@ -11,6 +11,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Fixed
 
 - Scheduled and manually started mutation campaigns now use artifact-safe shard identities, preserve the complete `mutants.out` tree during workflow handoff, and reject missing, duplicated, or unexpected shard evidence before aggregation.
+- Diff-scoped local mutation runs now stage their input before artifact hygiene cleanup, so unified diffs stored in repository scratch remain available to cargo-mutants and are removed after execution.
 - CSS URL, `srcset`, and slice-markup scanners now fail closed when an internal cursor cannot advance, preventing malformed traversal state from becoming an unbounded loop.
 - Local HTTP source fixtures now use bounded connection acceptance, so mutation-induced request suppression produces deterministic test failures instead of campaign timeouts.
 

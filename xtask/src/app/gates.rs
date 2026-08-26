@@ -1,6 +1,7 @@
 //! Executable quality-gate workflows behind the `xtask` command dispatcher.
 
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use htmlcut_tempdir::tempdir;
 
@@ -165,6 +166,7 @@ pub(super) fn run_mutants(
 ) -> DynResult<()> {
     ensure_repo_toolchain_prerequisites(repo_root)?;
     ensure_mutants_prerequisites(repo_root)?;
+    let diff_contents = read_mutation_diff(repo_root, in_diff)?;
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
     prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
     prepare_mutation_report_root(repo_root)?;
@@ -173,16 +175,60 @@ pub(super) fn run_mutants(
     let output_dir = mutants_output_dir(repo_root);
     remove_dir_if_exists(&output_dir.join("mutants.out"))?;
     remove_dir_if_exists(&output_dir.join("mutants.out.old"))?;
+    let staged_diff = stage_mutation_diff(&output_dir, diff_contents.as_deref())?;
     let execution = run_spec(
         repo_root,
-        &mutants_command(&output_dir, in_place, shard, in_diff),
+        &mutants_command(&output_dir, in_place, shard, staged_diff.as_deref()),
     );
+    let cleanup = remove_staged_mutation_diff(staged_diff.as_deref());
     let hygiene = ensure_hygiene(repo_root);
 
     if let Err(error) = execution {
+        cleanup?;
         return Err(mutation_execution_error(error));
     }
+    cleanup?;
     hygiene
+}
+
+fn read_mutation_diff(repo_root: &Path, in_diff: Option<&Path>) -> DynResult<Option<Vec<u8>>> {
+    in_diff
+        .map(|path| {
+            let path = if path.is_absolute() {
+                path.to_owned()
+            } else {
+                repo_root.join(path)
+            };
+            fs::read(&path).map_err(|error| -> crate::XtaskError {
+                format!("failed to read mutation diff {}: {error}", path.display()).into()
+            })
+        })
+        .transpose()
+}
+
+fn stage_mutation_diff(output_dir: &Path, contents: Option<&[u8]>) -> DynResult<Option<PathBuf>> {
+    contents
+        .map(|contents| {
+            let path = output_dir.join("input.diff");
+            fs::write(&path, contents).map_err(|error| -> crate::XtaskError {
+                format!("failed to stage mutation diff {}: {error}", path.display()).into()
+            })?;
+            Ok(path)
+        })
+        .transpose()
+}
+
+fn remove_staged_mutation_diff(path: Option<&Path>) -> DynResult<()> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    fs::remove_file(path).map_err(|error| -> crate::XtaskError {
+        format!(
+            "failed to remove staged mutation diff {}: {error}",
+            path.display()
+        )
+        .into()
+    })
 }
 
 fn mutation_execution_error(error: crate::XtaskError) -> crate::XtaskError {
@@ -211,6 +257,70 @@ fn run_semver_step(repo_root: &Path, spec: CommandSpec) -> DynResult<()> {
     let cleanup = remove_dir_if_exists(&scratch);
     result?;
     cleanup
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mutation_diff_staging_covers_relative_absolute_and_failure_paths() {
+        let repo_root = tempdir().expect("repo root");
+        let relative_diff = Path::new("changes.diff");
+        fs::write(repo_root.path().join(relative_diff), "diff evidence").expect("write diff");
+
+        assert_eq!(
+            read_mutation_diff(repo_root.path(), None).expect("no diff"),
+            None
+        );
+        assert_eq!(
+            read_mutation_diff(repo_root.path(), Some(relative_diff)).expect("relative diff"),
+            Some(b"diff evidence".to_vec())
+        );
+        assert_eq!(
+            read_mutation_diff(
+                repo_root.path(),
+                Some(&repo_root.path().join(relative_diff)),
+            )
+            .expect("absolute diff"),
+            Some(b"diff evidence".to_vec())
+        );
+        assert!(
+            read_mutation_diff(repo_root.path(), Some(Path::new("missing.diff")))
+                .expect_err("missing diff")
+                .to_string()
+                .contains("failed to read mutation diff")
+        );
+
+        let output_dir = repo_root.path().join("mutation-runs");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        assert_eq!(
+            stage_mutation_diff(&output_dir, None).expect("no staged diff"),
+            None
+        );
+        let staged = stage_mutation_diff(&output_dir, Some(b"staged evidence"))
+            .expect("stage diff")
+            .expect("staged path");
+        assert_eq!(
+            fs::read_to_string(&staged).expect("read staged diff"),
+            "staged evidence"
+        );
+        remove_staged_mutation_diff(Some(&staged)).expect("remove staged diff");
+        remove_staged_mutation_diff(None).expect("remove no diff");
+
+        assert!(
+            stage_mutation_diff(&repo_root.path().join("missing-parent"), Some(b"diff"))
+                .expect_err("missing stage parent")
+                .to_string()
+                .contains("failed to stage mutation diff")
+        );
+        assert!(
+            remove_staged_mutation_diff(Some(&staged))
+                .expect_err("missing staged file")
+                .to_string()
+                .contains("failed to remove staged mutation diff")
+        );
+    }
 }
 
 pub(super) fn with_materialized_baseline(

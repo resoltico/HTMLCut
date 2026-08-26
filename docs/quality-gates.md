@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "13.0.0"
 domain: QUALITY
-updated: "2026-08-25"
+updated: "2026-08-26"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
@@ -181,6 +181,11 @@ fast feedback for changed production code, not a substitute for the authoritativ
 test-only changes can reduce coverage without adding any in-diff mutants. Use the full result to
 triage survivors; `--iterate` is appropriate only for a local test-writing loop because it assumes
 already-caught mutants remain caught across later changes.
+
+For local `--in-diff` runs, xtask reads the requested unified diff before artifact hygiene runs,
+stages a temporary copy under the managed mutation evidence root, passes cargo-mutants that absolute
+path, and removes the staged copy after success or failure. A diff stored under repository `tmp/`
+therefore remains valid even though safe hygiene cleanup removes that scratch directory.
 
 Validate the committed contributor devcontainer:
 
