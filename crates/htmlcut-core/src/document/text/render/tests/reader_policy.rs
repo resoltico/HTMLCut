@@ -260,6 +260,13 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     );
     assert_eq!(root_limited_output, "Alpha");
 
+    let spanning_notice_document =
+        parse_document_node("<div id=\"notice\"><span>Alpha</span><span>Beta</span></div>");
+    let spanning_notice = select_first(&spanning_notice_document, "#notice").expect("notice");
+    let mut spanning_notice_output = String::new();
+    collect_notice_node_text(*spanning_notice, 10, &mut spanning_notice_output);
+    assert_eq!(spanning_notice_output, "Alpha Beta");
+
     let direct_math_root = parse_document_node("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     let mut direct_math_root_rendered = String::new();
     render_node(

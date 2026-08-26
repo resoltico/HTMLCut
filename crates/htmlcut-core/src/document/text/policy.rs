@@ -305,21 +305,14 @@ pub(super) fn collect_notice_node_text(
             ) {
                 return;
             }
-
-            for child in node.children() {
-                collect_notice_node_text(child, limit, output);
-                if output.chars().count() >= limit {
-                    return;
-                }
-            }
         }
-        _ => {
-            for child in node.children() {
-                collect_notice_node_text(child, limit, output);
-                if output.chars().count() >= limit {
-                    return;
-                }
-            }
+        _ => {}
+    }
+
+    for child in node.children() {
+        collect_notice_node_text(child, limit, output);
+        if output.chars().count() >= limit {
+            return;
         }
     }
 }
