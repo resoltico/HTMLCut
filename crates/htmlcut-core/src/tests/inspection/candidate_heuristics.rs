@@ -11,7 +11,7 @@ use crate::inspect::{
     extraction_preserves_large_outer_candidate_for_tests,
     extraction_preserves_title_bearing_outer_wrapper_for_tests,
     nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
-    prefers_utility_light_descendant_for_tests,
+    prefers_utility_light_descendant_for_tests, preserves_heading_rich_outer_candidate_for_tests,
     preserves_primary_heading_outer_candidate_for_tests,
     preserves_title_bearing_outer_candidate_for_tests,
 };
@@ -901,6 +901,51 @@ fn primary_heading_outer_candidate_preservation_requires_every_exact_boundary() 
 
     outer.utility_descendant_count = 10;
     assert!(!preserves_primary_heading_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+}
+
+#[test]
+fn heading_rich_outer_candidate_preservation_requires_every_exact_boundary() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.paragraph_count = 4;
+    outer.heading_count = 7;
+    outer.link_count = 25;
+    outer.utility_descendant_count = 9;
+    inner.heading_count = 3;
+    inner.link_count = 5;
+    inner.utility_descendant_count = 3;
+    inner.text_char_count = 800;
+    assert!(preserves_heading_rich_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+
+    outer.paragraph_count = 0;
+    assert!(!preserves_heading_rich_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    outer.paragraph_count = 4;
+
+    inner.text_char_count = 799;
+    assert!(!preserves_heading_rich_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    inner.text_char_count = 800;
+
+    outer.heading_count = 6;
+    assert!(!preserves_heading_rich_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    outer.heading_count = 7;
+
+    outer.link_count = 26;
+    assert!(!preserves_heading_rich_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    outer.link_count = 25;
+
+    outer.utility_descendant_count = 10;
+    assert!(!preserves_heading_rich_outer_candidate_for_tests(
         &outer, &inner
     ));
 }
