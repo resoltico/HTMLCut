@@ -10,6 +10,7 @@ use crate::inspect::{
     extraction_prefers_utility_light_descendant_for_tests,
     extraction_preserves_large_outer_candidate_for_tests,
     nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
+    prefers_utility_light_descendant_for_tests,
 };
 use crate::tests::memory_source_with_base;
 use crate::{InspectionOptions, RuntimeOptions, inspect_source};
@@ -827,4 +828,39 @@ fn large_outer_candidate_preservation_requires_true_multiplicative_boundaries() 
     assert!(!extraction_preserves_large_outer_candidate_for_tests(
         &outer, &inner
     ));
+}
+
+#[test]
+fn utility_light_descendant_preference_requires_each_nonzero_alternative() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 5;
+    outer.link_count = 30;
+    outer.paragraph_count = 5;
+    outer.utility_descendant_count = 12;
+    inner.heading_count = 3;
+    inner.link_count = 10;
+    inner.paragraph_count = 4;
+    inner.utility_descendant_count = 4;
+    inner.text_char_count = 780;
+    assert!(prefers_utility_light_descendant_for_tests(&outer, &inner));
+
+    inner.text_char_count = 779;
+    assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
+    inner.text_char_count = 780;
+
+    inner.paragraph_count = 3;
+    assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
+    inner.paragraph_count = 4;
+
+    outer.heading_count = 6;
+    assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
+    outer.heading_count = 5;
+
+    outer.utility_descendant_count = 11;
+    outer.link_count = 18;
+    assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
+
+    outer.utility_descendant_count = 5;
+    outer.link_count = 19;
+    assert!(prefers_utility_light_descendant_for_tests(&outer, &inner));
 }

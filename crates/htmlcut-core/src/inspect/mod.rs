@@ -477,6 +477,26 @@ pub(crate) fn extraction_preserves_large_outer_candidate_for_tests(
     )
 }
 
+/// Returns whether a similarly complete descendant removes substantial utility chrome.
+#[cfg(test)]
+pub(crate) fn prefers_utility_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::build::prefers_utility_light_descendant(
+        outer.text_char_count,
+        outer.heading_count,
+        outer.link_count,
+        outer.paragraph_count,
+        outer.utility_descendant_count,
+        inner.text_char_count,
+        inner.heading_count,
+        inner.link_count,
+        inner.paragraph_count,
+        inner.utility_descendant_count,
+    )
+}
+
 /// Returns whether the `#scope` candidate is excluded as utility chrome.
 #[cfg(test)]
 pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {
