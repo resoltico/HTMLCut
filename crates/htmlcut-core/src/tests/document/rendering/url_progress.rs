@@ -1,4 +1,7 @@
 use super::*;
+use crate::document::{
+    css_progress_does_not_advance_for_tests, css_scan_budget_exhausts_for_tests,
+};
 
 #[test]
 fn url_rewriters_preserve_css_and_srcset_token_boundaries() {
@@ -53,6 +56,10 @@ fn css_progress_requires_an_in_bounds_character_boundary() {
     assert!(!css_progress_is_valid_for_tests("a", 0, 0));
     assert!(!css_progress_is_valid_for_tests("a", 0, 2));
     assert!(!css_progress_is_valid_for_tests("é", 0, 1));
+    assert!(css_progress_does_not_advance_for_tests(2, 2));
+    assert!(css_progress_does_not_advance_for_tests(2, 1));
+    assert!(!css_progress_does_not_advance_for_tests(2, 3));
+    assert!(css_scan_budget_exhausts_for_tests());
     assert!(css_ignorable_rejects_nonadvancing_comment_for_tests());
 }
 

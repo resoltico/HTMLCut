@@ -27,36 +27,52 @@ fn rewrite_css_urls_with_steps(
 
     let mut rewritten = String::with_capacity(value.len());
     let mut cursor = 0usize;
+    let mut remaining_steps = scan_step_budget(value);
     while cursor < value.len() {
-        if let Some(end) = comment_end(value, cursor) {
-            if advances_to_char_boundary(value, cursor, end) {
-                rewritten.push_str(&value[cursor..end]);
-                cursor = end;
-                continue;
-            }
+        if !consume_scan_step_budget(&mut remaining_steps) {
             return value.to_owned();
+        }
+        if let Some(end) = comment_end(value, cursor) {
+            if cursor_does_not_advance(cursor, end) {
+                return value.to_owned();
+            }
+            if !is_in_bounds_char_boundary(value, end) {
+                return value.to_owned();
+            }
+            rewritten.push_str(&value[cursor..end]);
+            cursor = end;
+            continue;
         }
 
         if let Some((replacement, next)) = rewrite_url(value, cursor, base_url) {
-            if advances_to_char_boundary(value, cursor, next) {
-                rewritten.push_str(&replacement);
-                cursor = next;
-                continue;
+            if cursor_does_not_advance(cursor, next) {
+                return value.to_owned();
             }
-            return value.to_owned();
+            if !is_in_bounds_char_boundary(value, next) {
+                return value.to_owned();
+            }
+            rewritten.push_str(&replacement);
+            cursor = next;
+            continue;
         }
 
         if let Some((replacement, next)) = rewrite_import(value, cursor, base_url) {
-            if advances_to_char_boundary(value, cursor, next) {
-                rewritten.push_str(&replacement);
-                cursor = next;
-                continue;
+            if cursor_does_not_advance(cursor, next) {
+                return value.to_owned();
             }
-            return value.to_owned();
+            if !is_in_bounds_char_boundary(value, next) {
+                return value.to_owned();
+            }
+            rewritten.push_str(&replacement);
+            cursor = next;
+            continue;
         }
 
         let next = next_char(value, cursor);
-        if !advances_to_char_boundary(value, cursor, next) {
+        if cursor_does_not_advance(cursor, next) {
+            return value.to_owned();
+        }
+        if !is_in_bounds_char_boundary(value, next) {
             return value.to_owned();
         }
         rewritten.push_str(&value[cursor..next]);
@@ -167,13 +183,20 @@ fn rewrite_css_url_function_at_with_next(
     }
 
     let raw_start = content_start;
+    let mut remaining_steps = scan_step_budget(value);
     while content_start < value.len() {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return None;
+        }
         let ch = value[content_start..].chars().next()?;
         if ch == ')' {
             break;
         }
         let next = next_char(value, content_start);
-        if !advances_to_char_boundary(value, content_start, next) {
+        if cursor_does_not_advance(content_start, next) {
+            return None;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
             return None;
         }
         content_start = next;
@@ -218,13 +241,20 @@ fn skip_css_ignorable_with_comment(
     mut cursor: usize,
     comment_end: fn(&str, usize) -> Option<usize>,
 ) -> usize {
+    let mut remaining_steps = scan_step_budget(value);
     loop {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return cursor;
+        }
         let next = skip_ascii_whitespace(value, cursor);
-        if let Some(end) = comment_end(value, next)
-            && advances_to_char_boundary(value, cursor, end)
-        {
-            cursor = end;
-            continue;
+        if let Some(end) = comment_end(value, next) {
+            if cursor_does_not_advance(cursor, end) {
+                return next;
+            }
+            if is_in_bounds_char_boundary(value, end) {
+                cursor = end;
+                continue;
+            }
         }
         return next;
     }
@@ -239,13 +269,20 @@ fn skip_ascii_whitespace_with_next(
     mut cursor: usize,
     next_char: fn(&str, usize) -> usize,
 ) -> usize {
+    let mut remaining_steps = scan_step_budget(value);
     while cursor < value.len() {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return cursor;
+        }
         let ch = value[cursor..].chars().next().expect("char boundary");
         if !ch.is_ascii_whitespace() {
             break;
         }
         let next = next_char(value, cursor);
-        if !advances_to_char_boundary(value, cursor, next) {
+        if cursor_does_not_advance(cursor, next) {
+            break;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
             break;
         }
         cursor = next;
@@ -271,17 +308,27 @@ fn find_css_string_end_with_next(
 ) -> Option<usize> {
     let quote = value[quote_index..].chars().next()?;
     let mut cursor = quote_index + quote.len_utf8();
+    let mut remaining_steps = scan_step_budget(value);
     while cursor < value.len() {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return None;
+        }
         let ch = value[cursor..].chars().next()?;
         if ch == '\\' {
             let next = next_char(value, cursor);
-            if !advances_to_char_boundary(value, cursor, next) {
+            if cursor_does_not_advance(cursor, next) {
+                return None;
+            }
+            if !is_in_bounds_char_boundary(value, next) {
                 return None;
             }
             cursor = next;
             if cursor < value.len() {
                 let next = next_char(value, cursor);
-                if !advances_to_char_boundary(value, cursor, next) {
+                if cursor_does_not_advance(cursor, next) {
+                    return None;
+                }
+                if !is_in_bounds_char_boundary(value, next) {
                     return None;
                 }
                 cursor = next;
@@ -292,7 +339,10 @@ fn find_css_string_end_with_next(
             return Some(cursor);
         }
         let next = next_char(value, cursor);
-        if !advances_to_char_boundary(value, cursor, next) {
+        if cursor_does_not_advance(cursor, next) {
+            return None;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
             return None;
         }
         cursor = next;
@@ -309,8 +359,29 @@ fn next_char_boundary(value: &str, cursor: usize) -> usize {
             .len_utf8()
 }
 
+fn is_in_bounds_char_boundary(value: &str, next: usize) -> bool {
+    next <= value.len() && value.is_char_boundary(next)
+}
+
+fn cursor_does_not_advance(cursor: usize, next: usize) -> bool {
+    next <= cursor
+}
+
+fn scan_step_budget(value: &str) -> usize {
+    value.chars().count().saturating_add(1)
+}
+
+fn consume_scan_step_budget(remaining_steps: &mut usize) -> bool {
+    if *remaining_steps == 0 {
+        return false;
+    }
+    *remaining_steps -= 1;
+    true
+}
+
+#[cfg(test)]
 fn advances_to_char_boundary(value: &str, cursor: usize, next: usize) -> bool {
-    next > cursor && next <= value.len() && value.is_char_boundary(next)
+    next > cursor && is_in_bounds_char_boundary(value, next)
 }
 
 fn previous_char_boundary(value: &str, cursor: usize) -> usize {
@@ -432,6 +503,20 @@ pub(crate) fn css_dispatch_rejection_for_tests(kind: CssDispatchFault) -> bool {
 #[cfg(test)]
 pub(crate) fn css_progress_is_valid_for_tests(value: &str, cursor: usize, next: usize) -> bool {
     advances_to_char_boundary(value, cursor, next)
+}
+
+#[cfg(test)]
+pub(crate) fn css_progress_does_not_advance_for_tests(cursor: usize, next: usize) -> bool {
+    cursor_does_not_advance(cursor, next)
+}
+
+#[cfg(test)]
+pub(crate) fn css_scan_budget_exhausts_for_tests() -> bool {
+    let mut remaining_steps = 3;
+    consume_scan_step_budget(&mut remaining_steps)
+        && consume_scan_step_budget(&mut remaining_steps)
+        && consume_scan_step_budget(&mut remaining_steps)
+        && !consume_scan_step_budget(&mut remaining_steps)
 }
 
 #[cfg(test)]

@@ -16,8 +16,9 @@ use css::rewrite_css_urls;
 #[cfg(test)]
 pub(crate) use css::{
     CssDispatchFault, CssProgressFault, css_dispatch_rejection_for_tests,
-    css_ignorable_rejects_nonadvancing_comment_for_tests, css_progress_is_valid_for_tests,
-    css_progress_rejection_for_tests, rewrite_css_urls_for_tests,
+    css_ignorable_rejects_nonadvancing_comment_for_tests, css_progress_does_not_advance_for_tests,
+    css_progress_is_valid_for_tests, css_progress_rejection_for_tests,
+    css_scan_budget_exhausts_for_tests, rewrite_css_urls_for_tests,
 };
 #[cfg(test)]
 use css::{
