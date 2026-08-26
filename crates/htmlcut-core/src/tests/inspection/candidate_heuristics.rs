@@ -3,7 +3,9 @@ use crate::inspect::{
     content_candidate_has_narrative_section_shape_for_tests,
     content_candidate_has_readable_density_for_tests,
     content_candidate_is_excluded_for_utility_chrome_for_tests, content_candidate_scores_for_tests,
-    extraction_candidate_score_for_tests, extraction_prefers_utility_light_descendant_for_tests,
+    extraction_candidate_score_for_tests,
+    extraction_prefers_heading_and_link_light_descendant_for_tests,
+    extraction_prefers_utility_light_descendant_for_tests,
     nested_content_candidate_bias_deltas_for_tests,
 };
 use crate::tests::memory_source_with_base;
@@ -689,4 +691,26 @@ fn utility_light_descendant_preference_requires_every_nonzero_threshold() {
     assert!(extraction_prefers_utility_light_descendant_for_tests(
         &outer, &inner
     ));
+}
+
+#[test]
+fn heading_and_link_light_descendant_preference_requires_exact_nonzero_gaps() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 15;
+    outer.link_count = 29;
+    inner.heading_count = 3;
+    inner.link_count = 5;
+    inner.text_char_count = 880;
+    assert!(extraction_prefers_heading_and_link_light_descendant_for_tests(&outer, &inner));
+
+    inner.text_char_count = 879;
+    assert!(!extraction_prefers_heading_and_link_light_descendant_for_tests(&outer, &inner));
+    inner.text_char_count = 880;
+
+    outer.heading_count = 14;
+    assert!(!extraction_prefers_heading_and_link_light_descendant_for_tests(&outer, &inner));
+    outer.heading_count = 15;
+
+    outer.link_count = 28;
+    assert!(!extraction_prefers_heading_and_link_light_descendant_for_tests(&outer, &inner));
 }
