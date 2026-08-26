@@ -49,6 +49,21 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
         "--output".to_owned(),
         "none".to_owned(),
     ]));
+    for output in ["text", "html", "none"] {
+        assert!(raw_args_prefers_json(&[
+            "htmlcut".to_owned(),
+            "select".to_owned(),
+            "page.html".to_owned(),
+            "--value=structured".to_owned(),
+        ]));
+        assert!(!raw_args_prefers_json(&[
+            "htmlcut".to_owned(),
+            "select".to_owned(),
+            "page.html".to_owned(),
+            format!("--output={output}"),
+            "--value=structured".to_owned(),
+        ]));
+    }
     assert!(!raw_args_prefers_json(&[
         "htmlcut".to_owned(),
         "select".to_owned(),
@@ -59,6 +74,18 @@ fn raw_args_prefers_json_tracks_output_and_inspect_modes() {
         "select".to_owned(),
         "page.html".to_owned(),
         "--".to_owned(),
+        "--value=structured".to_owned(),
+    ]));
+    assert!(!raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "mystery".to_owned(),
+        "--value=structured".to_owned(),
+    ]));
+    assert!(raw_args_prefers_json(&[
+        "htmlcut".to_owned(),
+        "select".to_owned(),
+        "page.html".to_owned(),
+        "--output=mystery".to_owned(),
         "--value=structured".to_owned(),
     ]));
 }
@@ -76,6 +103,15 @@ fn raw_arg_helpers_detect_help_anywhere_but_only_root_version_requests() {
     assert!(!raw_args_requests_version(&[
         "htmlcut".to_owned(),
         "-".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "-".to_owned(),
+        "--version".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "--quiet".to_owned(),
     ]));
     assert!(!raw_args_requests_version(&[
         "htmlcut".to_owned(),
@@ -100,6 +136,14 @@ fn raw_arg_helpers_detect_help_anywhere_but_only_root_version_requests() {
     assert!(!raw_args_requests_help(&[
         "htmlcut".to_owned(),
         "-".to_owned(),
+    ]));
+    assert!(!raw_args_requests_help(&[
+        "htmlcut".to_owned(),
+        "--vh".to_owned(),
+    ]));
+    assert!(!raw_args_requests_version(&[
+        "htmlcut".to_owned(),
+        "--qV".to_owned(),
     ]));
     assert!(!raw_args_requests_help(&[
         "htmlcut".to_owned(),
