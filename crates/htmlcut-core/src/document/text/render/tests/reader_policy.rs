@@ -77,6 +77,22 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     let backlink = parse_document_node("<span class=\"backlink\">Back</span>");
     let backlink_element = select_first(&backlink, "span").expect("span");
     assert!(element_looks_like_reader_auxiliary(&backlink_element));
+    let balanced_backlink = parse_document_node(
+        "<span class=\"backlink content\">A linked part of the article body.</span>",
+    );
+    let balanced_backlink_element =
+        select_first(&balanced_backlink, "span").expect("balanced backlink");
+    assert!(element_looks_like_reader_auxiliary(
+        &balanced_backlink_element
+    ));
+    let balanced_reference = parse_document_node(
+        "<span class=\"reference content\">A cited part of the article body.</span>",
+    );
+    let balanced_reference_element =
+        select_first(&balanced_reference, "span").expect("balanced reference");
+    assert!(!element_looks_like_reader_auxiliary(
+        &balanced_reference_element
+    ));
     let reference_list = parse_document_node("<ul class=\"references\"><li>Ref</li></ul>");
     let reference_list_element = select_first(&reference_list, "ul").expect("ul");
     assert!(element_looks_like_reader_auxiliary(&reference_list_element));
@@ -139,6 +155,12 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     ));
     assert!(element_should_skip_in_reader_text(
         &source_attribution_element
+    ));
+    let unlinked_source_label = parse_document_node("<p>Source: Research Feed</p>");
+    let unlinked_source_label_element =
+        select_first(&unlinked_source_label, "p").expect("unlinked source label");
+    assert!(!element_looks_like_source_attribution(
+        &unlinked_source_label_element
     ));
     let auxiliary_section = parse_document_node(
         "<section><h2>References</h2><ul><li><a href=\"/source\">Source</a></li></ul></section>",

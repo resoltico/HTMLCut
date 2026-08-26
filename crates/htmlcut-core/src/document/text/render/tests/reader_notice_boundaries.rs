@@ -29,6 +29,36 @@ fn reader_notice_policy_requires_a_link_and_recognizes_phrase_or_token_evidence(
     assert!(is_notice(affiliate_notice, true));
     assert!(is_notice("affiliate sponsored privacy reader notice", true));
     assert!(!is_notice("ordinary reader update", true));
+
+    let short_token_notice =
+        parse_document_node("<span>earn links terms abc <a href=\"/terms\">1</a></span>");
+    let short_token_notice_element =
+        select_first(&short_token_notice, "span").expect("short token notice");
+    assert_eq!(
+        collect_notice_text(*short_token_notice_element, 421)
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count(),
+        17
+    );
+    assert!(!element_looks_like_brief_reader_notice(
+        &short_token_notice_element
+    ));
+
+    let boundary_token_notice =
+        parse_document_node("<span>earn links terms abcd <a href=\"/terms\">1</a></span>");
+    let boundary_token_notice_element =
+        select_first(&boundary_token_notice, "span").expect("boundary token notice");
+    assert_eq!(
+        collect_notice_text(*boundary_token_notice_element, 421)
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count(),
+        18
+    );
+    assert!(element_looks_like_brief_reader_notice(
+        &boundary_token_notice_element
+    ));
 }
 
 #[test]
