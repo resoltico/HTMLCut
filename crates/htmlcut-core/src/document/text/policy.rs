@@ -135,7 +135,7 @@ pub(super) fn element_looks_like_brief_reader_notice(element: &ElementRef<'_>) -
         return false;
     }
 
-    let text = collect_notice_text(**element, 420);
+    let text = collect_notice_text(**element, 421);
     if text.is_empty() {
         return false;
     }
