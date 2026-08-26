@@ -423,6 +423,12 @@ mod tests {
             &empty_widget_element,
             0
         ));
+        let empty_child_widget = parse_document_node("<div><span></span></div>");
+        let empty_child_widget = select_first(&empty_child_widget, "div").expect("empty child");
+        assert!(!element_looks_like_compact_utility_widget(
+            &empty_child_widget,
+            0
+        ));
 
         let long_text = parse_document_node(
             "<div><a href=\"/one\">One</a>This text is intentionally long enough to exceed the compact utility widget threshold and force the detector to reject it.</div>",
