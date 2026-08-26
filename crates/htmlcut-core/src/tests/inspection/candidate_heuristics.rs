@@ -7,7 +7,7 @@ use crate::inspect::{
     extraction_prefers_heading_and_link_light_descendant_for_tests,
     extraction_prefers_near_complete_link_light_descendant_for_tests,
     extraction_prefers_utility_light_descendant_for_tests,
-    nested_content_candidate_bias_deltas_for_tests,
+    nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
 };
 use crate::tests::memory_source_with_base;
 use crate::{InspectionOptions, RuntimeOptions, inspect_source};
@@ -736,4 +736,20 @@ fn near_complete_link_light_descendant_preference_requires_exact_nonzero_gaps() 
 
     outer.link_count = 24;
     assert!(!extraction_prefers_near_complete_link_light_descendant_for_tests(&outer, &inner));
+}
+
+#[test]
+fn heavy_link_descendant_preference_requires_exact_nonzero_gaps() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.link_count = 144;
+    inner.link_count = 24;
+    inner.text_char_count = 980;
+    assert!(prefers_heavy_link_descendant_for_tests(&outer, &inner));
+
+    inner.text_char_count = 979;
+    assert!(!prefers_heavy_link_descendant_for_tests(&outer, &inner));
+    inner.text_char_count = 980;
+
+    outer.link_count = 143;
+    assert!(!prefers_heavy_link_descendant_for_tests(&outer, &inner));
 }

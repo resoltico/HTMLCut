@@ -358,9 +358,12 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= 2000;
             }
 
-            if inner_text_char_count * 100 >= outer_text_char_count * 98
-                && outer_link_count >= inner_link_count + 120
-            {
+            if prefers_heavy_link_descendant(
+                outer_text_char_count,
+                outer_link_count,
+                inner_text_char_count,
+                inner_link_count,
+            ) {
                 let (inner_boost, outer_penalty) = if preference == CandidatePreference::Reading {
                     (620, 520)
                 } else {
@@ -521,6 +524,16 @@ pub(in super::super) fn extraction_prefers_near_complete_link_light_descendant(
         && inner_text_char_count * 100 >= outer_text_char_count * 98
         && outer_heading_count >= inner_heading_count
         && outer_link_count >= inner_link_count + 20
+}
+
+pub(in super::super) fn prefers_heavy_link_descendant(
+    outer_text_char_count: usize,
+    outer_link_count: usize,
+    inner_text_char_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    inner_text_char_count * 100 >= outer_text_char_count * 98
+        && outer_link_count >= inner_link_count + 120
 }
 
 #[cfg(test)]

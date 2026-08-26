@@ -425,6 +425,20 @@ pub(crate) fn extraction_prefers_near_complete_link_light_descendant_for_tests(
     )
 }
 
+/// Returns whether a near-complete descendant removes a very large link burden.
+#[cfg(test)]
+pub(crate) fn prefers_heavy_link_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::build::prefers_heavy_link_descendant(
+        outer.text_char_count,
+        outer.link_count,
+        inner.text_char_count,
+        inner.link_count,
+    )
+}
+
 /// Returns whether the `#scope` candidate is excluded as utility chrome.
 #[cfg(test)]
 pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {
