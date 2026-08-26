@@ -439,6 +439,27 @@ pub(crate) fn prefers_heavy_link_descendant_for_tests(
     )
 }
 
+/// Returns whether extraction should prefer a stable, link-light near-complete descendant.
+#[cfg(test)]
+pub(crate) fn extraction_prefers_stable_link_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::build::extraction_prefers_stable_link_light_descendant(
+        CandidatePreference::Extraction,
+        drops_outer_title_signal,
+        outer.text_char_count,
+        outer.heading_count,
+        outer.link_count,
+        outer.selector,
+        inner.text_char_count,
+        inner.heading_count,
+        inner.link_count,
+        inner.selector,
+    )
+}
+
 /// Returns whether the `#scope` candidate is excluded as utility chrome.
 #[cfg(test)]
 pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {

@@ -346,14 +346,18 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= 260;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 95
-                && !drops_outer_title_signal
-                && outer_heading_count <= inner_heading_count + 4
-                && outer_link_count >= inner_link_count + 20
-                && selector_stability_rank(&inner_selector)
-                    >= selector_stability_rank(&outer_selector)
-            {
+            if extraction_prefers_stable_link_light_descendant(
+                preference,
+                drops_outer_title_signal,
+                outer_text_char_count,
+                outer_heading_count,
+                outer_link_count,
+                &outer_selector,
+                inner_text_char_count,
+                inner_heading_count,
+                inner_link_count,
+                &inner_selector,
+            ) {
                 candidates[inner_index].score += 2400;
                 candidates[outer_index].score -= 2000;
             }
@@ -534,6 +538,26 @@ pub(in super::super) fn prefers_heavy_link_descendant(
 ) -> bool {
     inner_text_char_count * 100 >= outer_text_char_count * 98
         && outer_link_count >= inner_link_count + 120
+}
+
+pub(in super::super) fn extraction_prefers_stable_link_light_descendant(
+    preference: CandidatePreference,
+    drops_outer_title_signal: bool,
+    outer_text_char_count: usize,
+    outer_heading_count: usize,
+    outer_link_count: usize,
+    outer_selector: &str,
+    inner_text_char_count: usize,
+    inner_heading_count: usize,
+    inner_link_count: usize,
+    inner_selector: &str,
+) -> bool {
+    preference == CandidatePreference::Extraction
+        && inner_text_char_count * 100 >= outer_text_char_count * 95
+        && !drops_outer_title_signal
+        && outer_heading_count <= inner_heading_count + 4
+        && outer_link_count >= inner_link_count + 20
+        && selector_stability_rank(inner_selector) >= selector_stability_rank(outer_selector)
 }
 
 #[cfg(test)]
