@@ -293,11 +293,13 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 continue;
             }
 
-            if preference == CandidatePreference::Extraction
-                && drops_outer_title_signal
-                && inner_text_char_count * 100 >= outer_text_char_count * 85
-                && outer_paragraph_count > 0
-            {
+            if extraction_preserves_title_bearing_outer_wrapper(
+                preference,
+                drops_outer_title_signal,
+                outer_text_char_count,
+                outer_paragraph_count,
+                inner_text_char_count,
+            ) {
                 candidates[outer_index].score += 245;
                 candidates[inner_index].score -= 280;
                 continue;
@@ -510,6 +512,19 @@ pub(in super::super) fn extraction_prefers_utility_light_descendant(
         && outer_heading_count <= inner_heading_count + 2
         && (outer_link_count >= inner_link_count + 8
             || outer_utility_descendant_count >= inner_utility_descendant_count + 2)
+}
+
+pub(in super::super) fn extraction_preserves_title_bearing_outer_wrapper(
+    preference: CandidatePreference,
+    drops_outer_title_signal: bool,
+    outer_text_char_count: usize,
+    outer_paragraph_count: usize,
+    inner_text_char_count: usize,
+) -> bool {
+    preference == CandidatePreference::Extraction
+        && drops_outer_title_signal
+        && inner_text_char_count * 100 >= outer_text_char_count * 85
+        && outer_paragraph_count > 0
 }
 
 pub(in super::super) fn extraction_prefers_heading_and_link_light_descendant(

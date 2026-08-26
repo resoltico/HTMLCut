@@ -391,6 +391,22 @@ pub(crate) fn extraction_prefers_utility_light_descendant_for_tests(
     )
 }
 
+/// Returns whether extraction should retain an outer wrapper that holds the title.
+#[cfg(test)]
+pub(crate) fn extraction_preserves_title_bearing_outer_wrapper_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::build::extraction_preserves_title_bearing_outer_wrapper(
+        CandidatePreference::Extraction,
+        drops_outer_title_signal,
+        outer.text_char_count,
+        outer.paragraph_count,
+        inner.text_char_count,
+    )
+}
+
 /// Returns whether extraction should prefer a descendant with substantially less heading and link chrome.
 #[cfg(test)]
 pub(crate) fn extraction_prefers_heading_and_link_light_descendant_for_tests(

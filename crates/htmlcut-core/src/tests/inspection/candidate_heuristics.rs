@@ -9,6 +9,7 @@ use crate::inspect::{
     extraction_prefers_stable_link_light_descendant_for_tests,
     extraction_prefers_utility_light_descendant_for_tests,
     extraction_preserves_large_outer_candidate_for_tests,
+    extraction_preserves_title_bearing_outer_wrapper_for_tests,
     nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
     prefers_utility_light_descendant_for_tests, preserves_title_bearing_outer_candidate_for_tests,
 };
@@ -694,6 +695,31 @@ fn utility_light_descendant_preference_requires_every_nonzero_threshold() {
     outer.utility_descendant_count = 5;
     assert!(extraction_prefers_utility_light_descendant_for_tests(
         &outer, &inner
+    ));
+}
+
+#[test]
+fn title_bearing_outer_wrapper_preservation_requires_every_exact_boundary() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.paragraph_count = 4;
+    inner.text_char_count = 850;
+    assert!(extraction_preserves_title_bearing_outer_wrapper_for_tests(
+        &outer, &inner, true
+    ));
+
+    assert!(!extraction_preserves_title_bearing_outer_wrapper_for_tests(
+        &outer, &inner, false
+    ));
+
+    inner.text_char_count = 849;
+    assert!(!extraction_preserves_title_bearing_outer_wrapper_for_tests(
+        &outer, &inner, true
+    ));
+    inner.text_char_count = 850;
+
+    outer.paragraph_count = 0;
+    assert!(!extraction_preserves_title_bearing_outer_wrapper_for_tests(
+        &outer, &inner, true
     ));
 }
 
