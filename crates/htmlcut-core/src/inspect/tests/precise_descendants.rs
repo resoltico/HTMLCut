@@ -59,6 +59,44 @@ fn precise_reading_descendant_promotion_prefers_near_full_article_descendants() 
         extraction_candidates[0].inspection.path,
         "html > body > main#content > article.article-body"
     );
+    assert_eq!(extraction_candidates.len(), 3);
+    assert_eq!(extraction_candidates[1].inspection.selector, "#content");
+}
+
+#[test]
+fn precise_reading_descendant_promotion_retains_low_heading_near_complete_articles() {
+    let mut extraction_candidates = vec![ranked_content_candidate(PromotionFixture {
+        selector: "#content",
+        path: "html > body > main#content",
+        tag_name: "main",
+        text_char_count: 1_000,
+        heading_count: 3,
+        link_count: 8,
+        primary_heading_level: Some(1),
+        primary_heading_depth: Some(1),
+    })];
+    let reading_candidates = vec![
+        extraction_candidates[0].clone(),
+        ranked_content_candidate(PromotionFixture {
+            selector: "article.story",
+            path: "html > body > main#content > article.story",
+            tag_name: "article",
+            text_char_count: 950,
+            heading_count: 1,
+            link_count: 4,
+            primary_heading_level: Some(1),
+            primary_heading_depth: Some(2),
+        }),
+    ];
+
+    promote_precise_reading_descendant_candidate(&mut extraction_candidates, &reading_candidates);
+
+    assert_eq!(
+        extraction_candidates[0].inspection.selector,
+        "article.story"
+    );
+    assert_eq!(extraction_candidates.len(), 2);
+    assert_eq!(extraction_candidates[1].inspection.selector, "#content");
 }
 
 #[test]
