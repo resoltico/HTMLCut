@@ -412,11 +412,14 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= outer_penalty;
             }
 
-            if outer_paragraph_count > 0
-                && drops_outer_title_signal
-                && inner_text_char_count * 100 >= outer_text_char_count * 70
-                && outer_link_count <= inner_link_count + 70
-            {
+            if preserves_title_bearing_outer_candidate(
+                outer_paragraph_count,
+                drops_outer_title_signal,
+                outer_text_char_count,
+                outer_link_count,
+                inner_text_char_count,
+                inner_link_count,
+            ) {
                 let (outer_boost, inner_penalty) = if preference == CandidatePreference::Reading {
                     (185, 220)
                 } else {
@@ -602,6 +605,20 @@ pub(in super::super) fn prefers_utility_light_descendant(
             || (outer_utility_descendant_count > inner_utility_descendant_count
                 && outer_link_count > inner_link_count + 8))
         && outer_heading_count <= inner_heading_count + 2
+}
+
+pub(in super::super) fn preserves_title_bearing_outer_candidate(
+    outer_paragraph_count: usize,
+    drops_outer_title_signal: bool,
+    outer_text_char_count: usize,
+    outer_link_count: usize,
+    inner_text_char_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    outer_paragraph_count > 0
+        && drops_outer_title_signal
+        && inner_text_char_count * 100 >= outer_text_char_count * 70
+        && outer_link_count <= inner_link_count + 70
 }
 
 #[cfg(test)]

@@ -497,6 +497,23 @@ pub(crate) fn prefers_utility_light_descendant_for_tests(
     )
 }
 
+/// Returns whether a title-bearing outer candidate should be retained for extraction.
+#[cfg(test)]
+pub(crate) fn preserves_title_bearing_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::build::preserves_title_bearing_outer_candidate(
+        outer.paragraph_count,
+        drops_outer_title_signal,
+        outer.text_char_count,
+        outer.link_count,
+        inner.text_char_count,
+        inner.link_count,
+    )
+}
+
 /// Returns whether the `#scope` candidate is excluded as utility chrome.
 #[cfg(test)]
 pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {

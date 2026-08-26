@@ -10,7 +10,7 @@ use crate::inspect::{
     extraction_prefers_utility_light_descendant_for_tests,
     extraction_preserves_large_outer_candidate_for_tests,
     nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
-    prefers_utility_light_descendant_for_tests,
+    prefers_utility_light_descendant_for_tests, preserves_title_bearing_outer_candidate_for_tests,
 };
 use crate::tests::memory_source_with_base;
 use crate::{InspectionOptions, RuntimeOptions, inspect_source};
@@ -796,6 +796,39 @@ fn stable_link_light_descendant_preference_requires_every_exact_boundary() {
     inner.selector = "article.inner";
     assert!(!extraction_prefers_stable_link_light_descendant_for_tests(
         &outer, &inner, false
+    ));
+}
+
+#[test]
+fn title_bearing_outer_candidate_preservation_requires_every_exact_boundary() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.paragraph_count = 4;
+    outer.link_count = 75;
+    inner.link_count = 5;
+    inner.text_char_count = 700;
+    assert!(preserves_title_bearing_outer_candidate_for_tests(
+        &outer, &inner, true
+    ));
+
+    assert!(!preserves_title_bearing_outer_candidate_for_tests(
+        &outer, &inner, false
+    ));
+
+    inner.text_char_count = 699;
+    assert!(!preserves_title_bearing_outer_candidate_for_tests(
+        &outer, &inner, true
+    ));
+    inner.text_char_count = 700;
+
+    outer.paragraph_count = 0;
+    assert!(!preserves_title_bearing_outer_candidate_for_tests(
+        &outer, &inner, true
+    ));
+    outer.paragraph_count = 4;
+
+    outer.link_count = 76;
+    assert!(!preserves_title_bearing_outer_candidate_for_tests(
+        &outer, &inner, true
     ));
 }
 
