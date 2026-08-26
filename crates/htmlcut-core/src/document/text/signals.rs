@@ -328,6 +328,16 @@ mod tests {
             1
         );
         assert_eq!(
+            token_match_count(&["supportab".to_owned()], &["support"]),
+            0
+        );
+        assert_eq!(
+            token_match_count(&["supportabc".to_owned()], &["support"]),
+            1
+        );
+        assert!(!looks_like_layout_shell(&[]));
+        assert!(looks_like_layout_shell(&["layout".to_owned()]));
+        assert_eq!(
             tokenize_structural_signal("LiveFeed42"),
             vec!["livefeed42".to_owned()]
         );
@@ -422,6 +432,16 @@ mod tests {
             &long_text_element,
             0
         ));
+        let exact_widget_text = parse_document_node(&format!(
+            "<div><a href=\"/one\">One</a>{}</div>",
+            "x".repeat(61)
+        ));
+        let exact_widget_text_element =
+            select_first(&exact_widget_text, "div").expect("exact widget text");
+        assert!(element_looks_like_compact_utility_widget(
+            &exact_widget_text_element,
+            0
+        ));
 
         let inside_heading = parse_document_node(
             "<h2><div class=\"widget-box\"><a href=\"/one\">One</a>Text</div></h2>",
@@ -483,6 +503,13 @@ mod tests {
         ));
         let outer = select_first(&descendant_limit, "div").expect("outer");
         assert!(!element_contains_primary_content_surface(&outer));
+
+        let descendant_boundary = parse_document_node(&format!(
+            "<div>{}<main><p>Body</p></main></div>",
+            "<span>Spacer</span>".repeat(255)
+        ));
+        let boundary_outer = select_first(&descendant_boundary, "div").expect("boundary outer");
+        assert!(element_contains_primary_content_surface(&boundary_outer));
 
         let main_document = parse_document_node("<main><p>Body</p></main>");
         let main = select_first(&main_document, "main").expect("main");
