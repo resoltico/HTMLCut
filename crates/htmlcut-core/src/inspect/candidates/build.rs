@@ -333,11 +333,15 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= 620;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 98
-                && outer_heading_count >= inner_heading_count
-                && outer_link_count >= inner_link_count + 20
-            {
+            if extraction_prefers_near_complete_link_light_descendant(
+                preference,
+                outer_text_char_count,
+                outer_heading_count,
+                outer_link_count,
+                inner_text_char_count,
+                inner_heading_count,
+                inner_link_count,
+            ) {
                 candidates[inner_index].score += 320;
                 candidates[outer_index].score -= 260;
             }
@@ -502,6 +506,21 @@ pub(in super::super) fn extraction_prefers_heading_and_link_light_descendant(
         && inner_text_char_count * 100 >= outer_text_char_count * 88
         && outer_heading_count >= inner_heading_count + 12
         && outer_link_count >= inner_link_count + 24
+}
+
+pub(in super::super) fn extraction_prefers_near_complete_link_light_descendant(
+    preference: CandidatePreference,
+    outer_text_char_count: usize,
+    outer_heading_count: usize,
+    outer_link_count: usize,
+    inner_text_char_count: usize,
+    inner_heading_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    preference == CandidatePreference::Extraction
+        && inner_text_char_count * 100 >= outer_text_char_count * 98
+        && outer_heading_count >= inner_heading_count
+        && outer_link_count >= inner_link_count + 20
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use crate::inspect::{
     content_candidate_is_excluded_for_utility_chrome_for_tests, content_candidate_scores_for_tests,
     extraction_candidate_score_for_tests,
     extraction_prefers_heading_and_link_light_descendant_for_tests,
+    extraction_prefers_near_complete_link_light_descendant_for_tests,
     extraction_prefers_utility_light_descendant_for_tests,
     nested_content_candidate_bias_deltas_for_tests,
 };
@@ -713,4 +714,26 @@ fn heading_and_link_light_descendant_preference_requires_exact_nonzero_gaps() {
 
     outer.link_count = 28;
     assert!(!extraction_prefers_heading_and_link_light_descendant_for_tests(&outer, &inner));
+}
+
+#[test]
+fn near_complete_link_light_descendant_preference_requires_exact_nonzero_gaps() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 7;
+    outer.link_count = 25;
+    inner.heading_count = 3;
+    inner.link_count = 5;
+    inner.text_char_count = 980;
+    assert!(extraction_prefers_near_complete_link_light_descendant_for_tests(&outer, &inner));
+
+    inner.text_char_count = 979;
+    assert!(!extraction_prefers_near_complete_link_light_descendant_for_tests(&outer, &inner));
+    inner.text_char_count = 980;
+
+    outer.heading_count = 2;
+    assert!(!extraction_prefers_near_complete_link_light_descendant_for_tests(&outer, &inner));
+    outer.heading_count = 7;
+
+    outer.link_count = 24;
+    assert!(!extraction_prefers_near_complete_link_light_descendant_for_tests(&outer, &inner));
 }
