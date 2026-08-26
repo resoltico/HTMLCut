@@ -430,12 +430,17 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score += outer_boost;
                 candidates[inner_index].score -= inner_penalty;
             }
-            if outer_paragraph_count > 0
-                && outer_primary_heading_count > inner_primary_heading_count
-                && inner_text_char_count * 100 >= outer_text_char_count * 80
-                && outer_link_count <= inner_link_count + 20
-                && outer_utility_descendant_count <= inner_utility_descendant_count + 6
-            {
+            if preserves_primary_heading_outer_candidate(
+                outer_paragraph_count,
+                outer_primary_heading_count,
+                inner_primary_heading_count,
+                outer_text_char_count,
+                outer_link_count,
+                outer_utility_descendant_count,
+                inner_text_char_count,
+                inner_link_count,
+                inner_utility_descendant_count,
+            ) {
                 let (outer_boost, inner_penalty) = if preference == CandidatePreference::Reading {
                     (85, 115)
                 } else {
@@ -634,6 +639,24 @@ pub(in super::super) fn preserves_title_bearing_outer_candidate(
         && drops_outer_title_signal
         && inner_text_char_count * 100 >= outer_text_char_count * 70
         && outer_link_count <= inner_link_count + 70
+}
+
+pub(in super::super) fn preserves_primary_heading_outer_candidate(
+    outer_paragraph_count: usize,
+    outer_primary_heading_count: usize,
+    inner_primary_heading_count: usize,
+    outer_text_char_count: usize,
+    outer_link_count: usize,
+    outer_utility_descendant_count: usize,
+    inner_text_char_count: usize,
+    inner_link_count: usize,
+    inner_utility_descendant_count: usize,
+) -> bool {
+    outer_paragraph_count > 0
+        && outer_primary_heading_count > inner_primary_heading_count
+        && inner_text_char_count * 100 >= outer_text_char_count * 80
+        && outer_link_count <= inner_link_count + 20
+        && outer_utility_descendant_count <= inner_utility_descendant_count + 6
 }
 
 #[cfg(test)]

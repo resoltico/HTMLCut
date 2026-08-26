@@ -530,6 +530,25 @@ pub(crate) fn preserves_title_bearing_outer_candidate_for_tests(
     )
 }
 
+/// Returns whether a primary-heading outer candidate should be retained for extraction.
+#[cfg(test)]
+pub(crate) fn preserves_primary_heading_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::build::preserves_primary_heading_outer_candidate(
+        outer.paragraph_count,
+        outer.primary_heading_count,
+        inner.primary_heading_count,
+        outer.text_char_count,
+        outer.link_count,
+        outer.utility_descendant_count,
+        inner.text_char_count,
+        inner.link_count,
+        inner.utility_descendant_count,
+    )
+}
+
 /// Returns whether the `#scope` candidate is excluded as utility chrome.
 #[cfg(test)]
 pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {
