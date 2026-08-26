@@ -3,7 +3,8 @@ use crate::inspect::{
     content_candidate_has_narrative_section_shape_for_tests,
     content_candidate_has_readable_density_for_tests,
     content_candidate_is_excluded_for_utility_chrome_for_tests, content_candidate_scores_for_tests,
-    extraction_candidate_score_for_tests, nested_content_candidate_bias_deltas_for_tests,
+    extraction_candidate_score_for_tests, extraction_prefers_utility_light_descendant_for_tests,
+    nested_content_candidate_bias_deltas_for_tests,
 };
 use crate::tests::memory_source_with_base;
 use crate::{InspectionOptions, RuntimeOptions, inspect_source};
@@ -595,4 +596,97 @@ fn nested_candidate_bias_uses_strict_fallback_boundaries() {
         ),
         (-60, 90),
     );
+}
+
+#[test]
+fn nested_candidate_bias_preserves_nonzero_threshold_arithmetic() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 5;
+    outer.link_count = 13;
+    outer.paragraph_count = 4;
+    outer.utility_descendant_count = 5;
+    inner.heading_count = 3;
+    inner.link_count = 5;
+    inner.paragraph_count = 3;
+    inner.utility_descendant_count = 3;
+    inner.text_char_count = 920;
+    assert_eq!(
+        nested_content_candidate_bias_deltas_for_tests(
+            &outer,
+            &inner,
+            ContentCandidateTestPreference::Extraction,
+        ),
+        (-205, 270),
+    );
+
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 16;
+    outer.link_count = 144;
+    outer.paragraph_count = 8;
+    outer.utility_descendant_count = 15;
+    inner.heading_count = 4;
+    inner.link_count = 12;
+    inner.paragraph_count = 7;
+    inner.utility_descendant_count = 3;
+    inner.text_char_count = 980;
+    assert_eq!(
+        nested_content_candidate_bias_deltas_for_tests(
+            &outer,
+            &inner,
+            ContentCandidateTestPreference::Extraction,
+        ),
+        (-1_520, 1_870),
+    );
+}
+
+#[test]
+fn utility_light_descendant_preference_requires_every_nonzero_threshold() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.heading_count = 5;
+    outer.link_count = 13;
+    outer.paragraph_count = 4;
+    outer.utility_descendant_count = 5;
+    inner.heading_count = 3;
+    inner.link_count = 5;
+    inner.paragraph_count = 3;
+    inner.utility_descendant_count = 3;
+    inner.text_char_count = 920;
+    assert!(extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+
+    inner.text_char_count = 919;
+    assert!(!extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+    inner.text_char_count = 920;
+
+    inner.paragraph_count = 2;
+    assert!(!extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+    inner.paragraph_count = 3;
+
+    outer.heading_count = 6;
+    assert!(!extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+    outer.heading_count = 5;
+
+    outer.link_count = 12;
+    outer.utility_descendant_count = 4;
+    assert!(!extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+
+    outer.link_count = 13;
+    assert!(extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
+
+    outer.link_count = 12;
+    outer.utility_descendant_count = 5;
+    assert!(extraction_prefers_utility_light_descendant_for_tests(
+        &outer, &inner
+    ));
 }
