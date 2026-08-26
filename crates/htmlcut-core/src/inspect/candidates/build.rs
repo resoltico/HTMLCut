@@ -377,11 +377,15 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= outer_penalty;
             }
 
-            if preference == CandidatePreference::Extraction
-                && outer_text_char_count >= inner_text_char_count.saturating_mul(6)
-                && outer_paragraph_count >= inner_paragraph_count + 4
-                && outer_heading_count >= inner_heading_count + 4
-            {
+            if extraction_preserves_large_outer_candidate(
+                preference,
+                outer_text_char_count,
+                outer_heading_count,
+                outer_paragraph_count,
+                inner_text_char_count,
+                inner_heading_count,
+                inner_paragraph_count,
+            ) {
                 candidates[outer_index].score += 170;
                 candidates[inner_index].score -= 190;
             }
@@ -558,6 +562,21 @@ pub(in super::super) fn extraction_prefers_stable_link_light_descendant(
         && outer_heading_count <= inner_heading_count + 4
         && outer_link_count >= inner_link_count + 20
         && selector_stability_rank(inner_selector) >= selector_stability_rank(outer_selector)
+}
+
+pub(in super::super) fn extraction_preserves_large_outer_candidate(
+    preference: CandidatePreference,
+    outer_text_char_count: usize,
+    outer_heading_count: usize,
+    outer_paragraph_count: usize,
+    inner_text_char_count: usize,
+    inner_heading_count: usize,
+    inner_paragraph_count: usize,
+) -> bool {
+    preference == CandidatePreference::Extraction
+        && outer_text_char_count >= inner_text_char_count.saturating_mul(6)
+        && outer_paragraph_count >= inner_paragraph_count + 4
+        && outer_heading_count >= inner_heading_count + 4
 }
 
 #[cfg(test)]

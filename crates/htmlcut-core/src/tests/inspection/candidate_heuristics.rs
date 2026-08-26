@@ -8,6 +8,7 @@ use crate::inspect::{
     extraction_prefers_near_complete_link_light_descendant_for_tests,
     extraction_prefers_stable_link_light_descendant_for_tests,
     extraction_prefers_utility_light_descendant_for_tests,
+    extraction_preserves_large_outer_candidate_for_tests,
     nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
 };
 use crate::tests::memory_source_with_base;
@@ -794,5 +795,36 @@ fn stable_link_light_descendant_preference_requires_every_exact_boundary() {
     inner.selector = "article.inner";
     assert!(!extraction_prefers_stable_link_light_descendant_for_tests(
         &outer, &inner, false
+    ));
+}
+
+#[test]
+fn large_outer_candidate_preservation_requires_true_multiplicative_boundaries() {
+    let (mut outer, mut inner) = nested_candidates();
+    outer.text_char_count = 1_800;
+    outer.heading_count = 7;
+    outer.paragraph_count = 7;
+    inner.text_char_count = 300;
+    inner.heading_count = 3;
+    inner.paragraph_count = 3;
+    assert!(extraction_preserves_large_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+
+    outer.text_char_count = 1_000;
+    assert!(!extraction_preserves_large_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    outer.text_char_count = 1_800;
+
+    outer.paragraph_count = 6;
+    assert!(!extraction_preserves_large_outer_candidate_for_tests(
+        &outer, &inner
+    ));
+    outer.paragraph_count = 7;
+
+    outer.heading_count = 6;
+    assert!(!extraction_preserves_large_outer_candidate_for_tests(
+        &outer, &inner
     ));
 }
