@@ -82,9 +82,7 @@ pub(in super::super) fn prepend_document_title_heading_if_missing(
     };
 
     headings.insert(0, document_heading);
-    if headings.len() > sample_limit {
-        headings.truncate(sample_limit);
-    }
+    headings.truncate(sample_limit);
 }
 
 pub(in super::super) fn select_elements_in_scope<'a>(
