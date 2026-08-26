@@ -2,7 +2,7 @@ mod compile;
 mod errors;
 mod project;
 
-use compile::{compile_request, default_runtime_options, exact_plan_digest_sha256};
+use compile::{compile_request, exact_plan_digest_sha256};
 use errors::{core_execution_error, plan_digest_error, plan_invalid_error};
 use project::adapt_successful_extraction;
 
@@ -52,7 +52,7 @@ pub fn execute_validated_plan(
     validated_plan: &ValidatedPlan,
 ) -> Result<InteropResult, Box<InteropError>> {
     let request = compile_request(source, validated_plan.plan());
-    let runtime = default_runtime_options();
+    let runtime = crate::RuntimeOptions::default();
     let dom_canonicalization = match &validated_plan.plan().output {
         Output::Text | Output::PlainText | Output::Structured => validated_plan
             .plan()

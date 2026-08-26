@@ -281,6 +281,8 @@ fn typed_error_codes_render_and_compare_as_stable_strings() {
     assert_eq!(format!("{cli_code}"), "CLI_PARSE_ERROR");
     assert_eq!(cli_code, "CLI_PARSE_ERROR");
     assert_eq!("CLI_PARSE_ERROR", cli_code);
+    assert_ne!(cli_code, "NO_MATCH");
+    assert_ne!("NO_MATCH", cli_code);
 
     let core_code = ErrorReportCode::Core(DiagnosticCode::NoMatch);
     assert_eq!(core_code.as_str(), "NO_MATCH");

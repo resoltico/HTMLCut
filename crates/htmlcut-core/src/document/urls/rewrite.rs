@@ -166,13 +166,32 @@ fn rewrite_srcset_with_step_and_budget(
     value: &str,
     base_url: Option<&str>,
     advance: fn(&mut usize, usize) -> bool,
+    remaining_steps: usize,
+) -> String {
+    rewrite_srcset_with_step_and_budgets(
+        value,
+        base_url,
+        advance,
+        remaining_steps,
+        value.len().saturating_add(1),
+    )
+}
+
+fn rewrite_srcset_with_step_and_budgets(
+    value: &str,
+    base_url: Option<&str>,
+    advance: fn(&mut usize, usize) -> bool,
     mut remaining_steps: usize,
+    mut remaining_iterations: usize,
 ) -> String {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
     let bytes = value.as_bytes();
 
-    while cursor < bytes.len() {
+    loop {
+        if !consume_srcset_step_budget(&mut remaining_iterations) {
+            return value.to_owned();
+        }
         while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b',')
         {
             if !consume_srcset_step_budget(&mut remaining_steps)
@@ -202,14 +221,6 @@ fn rewrite_srcset_with_step_and_budget(
             }
         }
         let url = &value[url_start..cursor];
-
-        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-            if !consume_srcset_step_budget(&mut remaining_steps)
-                || !advance_srcset_with_progress(&mut cursor, bytes.len(), advance)
-            {
-                return value.to_owned();
-            }
-        }
 
         let descriptor_start = cursor;
         while cursor < bytes.len() && bytes[cursor] != b',' {
@@ -355,6 +366,17 @@ pub(crate) fn srcset_budget_rejection_for_tests(stage: SrcsetBudgetStage) -> boo
         advance_srcset_cursor,
         remaining_steps,
     ) == value
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_iteration_budget_rejects_for_tests() -> bool {
+    rewrite_srcset_with_step_and_budgets(
+        "asset.png",
+        Some("https://example.test/"),
+        advance_srcset_cursor,
+        "asset.png".len() + 1,
+        0,
+    ) == "asset.png"
 }
 
 #[cfg(test)]

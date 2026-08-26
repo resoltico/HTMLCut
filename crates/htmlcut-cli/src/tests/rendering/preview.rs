@@ -33,6 +33,12 @@ fn preview_and_manifest_helpers_cover_remaining_branches() {
     let rendered = render_source_inspection_text(&input_only, DEFAULT_PREVIEW_CHARS);
     assert!(rendered.contains("Input base URL: https://example.com/docs/start.html"));
     assert!(!rendered.contains("Effective base URL: https://example.com/docs/start.html"));
+
+    let mut equal_bases = fixture_inspection();
+    equal_bases.source.effective_base_url = equal_bases.source.input_base_url.clone();
+    let rendered = render_source_inspection_text(&equal_bases, DEFAULT_PREVIEW_CHARS);
+    assert!(!rendered.contains("Input base URL:"));
+    assert_eq!(rendered.matches("Effective base URL:").count(), 1);
 }
 
 #[test]
@@ -127,4 +133,60 @@ fn preview_helpers_cover_metadata_mismatches_and_empty_reports() {
             .iter()
             .all(|line| !line.contains("fragment:"))
     );
+
+    let exact_location = render_preview_match_lines(
+        htmlcut_core::OperationId::SelectPreview,
+        &ExtractionMatch {
+            index: 1,
+            path: Some("html > body > main > article".to_owned()),
+            value_type: ValueType::Text,
+            value: Value::String("Body".to_owned()),
+            html: None,
+            text: Some("Body".to_owned()),
+            preview: "Body".to_owned(),
+            metadata: selector_metadata(1, 1, "article", "article", &[]),
+        },
+    );
+    assert_eq!(exact_location[0], "1. html > body > main > article");
+
+    let mut exact_three = build_extraction_report(
+        "inspect-select",
+        fixture_result(Value::String("one".to_owned()), ValueType::Text),
+        None,
+    );
+    exact_three.matches = ["one", "two", "three"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, text)| ExtractionMatch {
+            index: index + 1,
+            path: Some(format!("article:nth-of-type({})", index + 1)),
+            value_type: ValueType::Text,
+            value: Value::String(text.to_owned()),
+            html: None,
+            text: Some(text.to_owned()),
+            preview: text.to_owned(),
+            metadata: selector_metadata(index + 1, 3, "article", "article", &[]),
+        })
+        .collect();
+    let exact_three_text = render_preview_text(&exact_three);
+    assert!(!exact_three_text.contains("0 more match(es)"));
+    assert!(!exact_three_text.contains("Use `--output json`"));
+
+    let mut long_projection = exact_three.clone();
+    long_projection.matches.truncate(1);
+    let long_text = "x".repeat(200);
+    long_projection.matches[0].value = Value::String(long_text.clone());
+    long_projection.matches[0].text = Some(long_text.clone());
+    long_projection.matches[0].preview = long_text.clone();
+    assert!(render_preview_text(&long_projection).contains(&long_text));
+
+    let ten_lines = (1..=10)
+        .map(|line| format!("line-{line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    long_projection.matches[0].value = Value::String(ten_lines.clone());
+    long_projection.matches[0].text = Some(ten_lines);
+    let ten_line_preview = render_preview_text(&long_projection);
+    assert!(ten_line_preview.contains("  line-10"));
+    assert!(!ten_line_preview.contains("line-10..."));
 }

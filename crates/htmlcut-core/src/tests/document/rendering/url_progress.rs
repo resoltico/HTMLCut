@@ -3,8 +3,8 @@ use crate::document::{
     CssBoundsFault, CssBudgetFault, SrcsetBudgetStage, css_bounds_rejection_for_tests,
     css_budget_rejection_for_tests, css_progress_does_not_advance_for_tests,
     css_scan_budget_exhausts_for_tests, srcset_budget_rejection_for_tests,
-    srcset_callback_progress_is_valid_for_tests, srcset_rejects_success_without_progress_for_tests,
-    srcset_step_budget_exhausts_for_tests,
+    srcset_callback_progress_is_valid_for_tests, srcset_iteration_budget_rejects_for_tests,
+    srcset_rejects_success_without_progress_for_tests, srcset_step_budget_exhausts_for_tests,
 };
 
 #[test]
@@ -132,6 +132,7 @@ fn srcset_rewriter_rejects_non_advancing_internal_steps() {
     assert!(!srcset_callback_progress_is_valid_for_tests(true, 2, 4, 3));
     assert!(srcset_rejects_success_without_progress_for_tests());
     assert!(srcset_step_budget_exhausts_for_tests());
+    assert!(srcset_iteration_budget_rejects_for_tests());
     for stage in [
         SrcsetBudgetStage::LeadingSeparator,
         SrcsetBudgetStage::Url,

@@ -373,8 +373,7 @@ fn validate_url_response(
         .headers()
         .get("content-length")
         .and_then(|header| header.to_str().ok())
-        .and_then(|header| header.parse::<usize>().ok())
-        && content_length > runtime.max_bytes.get()
+        .and_then(|header| declared_content_length_exceedance(header, runtime.max_bytes.get()))
     {
         return Err(error_diagnostic(
             DiagnosticCode::SourceLoadFailed,
@@ -409,6 +408,13 @@ fn validate_url_response(
     }
 
     Ok(())
+}
+
+fn declared_content_length_exceedance(header: &str, max_bytes: usize) -> Option<usize> {
+    header
+        .parse::<usize>()
+        .ok()
+        .filter(|content_length| *content_length > max_bytes)
 }
 
 fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {

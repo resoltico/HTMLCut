@@ -7,7 +7,7 @@ fn get_only_fetch_preflight_skips_head_requests() {
     let methods = Arc::new(Mutex::new(Vec::new()));
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "get-only request");
         let mut request_buffer = [0u8; 512];
         let read = stream.read(&mut request_buffer).expect("read request");
         let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -62,7 +62,7 @@ fn head_preflight_falls_back_to_get_when_head_is_unsupported() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "fallback request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -122,7 +122,7 @@ fn head_preflight_falls_back_to_get_when_head_returns_forbidden() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "forbidden-head request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -181,7 +181,7 @@ fn head_preflight_falls_back_to_get_when_head_transport_breaks() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "broken-head request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -246,7 +246,7 @@ fn head_preflight_falls_back_to_get_when_head_response_is_malformed() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "malformed-head request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -327,7 +327,7 @@ fn head_preflight_rejects_non_html_responses_before_get() {
     let methods = Arc::new(Mutex::new(Vec::new()));
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "non-html preflight request");
         let mut request_buffer = [0u8; 512];
         let read = stream.read(&mut request_buffer).expect("read request");
         let request = String::from_utf8_lossy(&request_buffer[..read]);

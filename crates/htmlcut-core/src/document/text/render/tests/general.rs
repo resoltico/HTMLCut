@@ -4,11 +4,15 @@ use crate::document::{parse_document_node, select_first};
 
 use super::super::format::*;
 use super::super::list::*;
+use super::super::media::*;
 use super::super::table::*;
 use super::super::tree::*;
 
 #[test]
 fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
+    assert!(!contains_substantive_text(""));
+    assert!(!contains_substantive_text(" \n\t"));
+    assert!(contains_substantive_text(" \nBody"));
     assert!(is_list_container("ul"));
     assert!(is_list_container("ol"));
     assert!(!is_list_container("li"));
@@ -77,6 +81,13 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         true,
     );
     assert!(pre_only_rendered.contains("Keep"));
+    let mut inherited_pre_rendered = String::new();
+    render_heading_text_node(
+        *select_first(&pre_only_heading, "span").expect("preformatted span"),
+        &mut inherited_pre_rendered,
+        true,
+    );
+    assert_eq!(inherited_pre_rendered, "  Keep\n  spacing");
     let mut pre_from_element_rendered = String::new();
     render_heading_text_node(
         *select_first(&pre_only_heading, "pre").expect("pre"),
@@ -127,6 +138,14 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         ),
         ""
     );
+    let plain_image = parse_document_node("<div><img id='plain' alt='Hero'></div>");
+    let plain_image = select_first(&plain_image, "#plain").expect("plain image");
+    assert!(!image_has_caption_context(&plain_image));
+    let deep_caption = parse_document_node(
+        "<div><span class='caption'>Distant caption</span><div><div><div><img id='deep' alt='Hero'></div></div></div></div>",
+    );
+    let deep_image = select_first(&deep_caption, "#deep").expect("deep image");
+    assert!(!image_has_caption_context(&deep_image));
     assert_eq!(
         render_html_as_text(
             "<article><div><img alt=\"Hero\" src=\"hero.jpg\"><figcaption>Caption</figcaption></div></article>",
@@ -166,6 +185,19 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         )
         .as_deref(),
         Some("Release Date: 4/14/2026")
+    );
+    let boundary_label = "L".repeat(59) + ":";
+    let boundary_value = "V".repeat(160);
+    let boundary_row = parse_document_node(&format!(
+        "<section><div>{boundary_label}</div><div>{boundary_value}</div></section>"
+    ));
+    assert_eq!(
+        render_label_value_row(
+            *select_first(&boundary_row, "section").expect("boundary row"),
+            false,
+        )
+        .as_deref(),
+        Some(format!("{boundary_label} {boundary_value}").as_str())
     );
     let label_value_missing_right =
         parse_document_node("<section><div><p>Release Date:</p></div><div></div></section>");

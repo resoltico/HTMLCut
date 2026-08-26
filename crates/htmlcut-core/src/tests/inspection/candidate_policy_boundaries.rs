@@ -1,12 +1,14 @@
 use crate::inspect::{
-    ContentCandidateTestInput, extraction_prefers_heading_and_link_light_descendant_for_tests,
+    ContentCandidateTestInput, ContentCandidateTestPreference,
+    content_candidate_has_readable_density_for_tests,
+    extraction_prefers_heading_and_link_light_descendant_for_tests,
     extraction_prefers_near_complete_link_light_descendant_for_tests,
     extraction_prefers_stable_link_light_descendant_for_tests,
     extraction_prefers_utility_light_descendant_for_tests,
     extraction_preserves_large_outer_candidate_for_tests,
     extraction_preserves_title_bearing_outer_wrapper_for_tests,
-    prefers_heavy_link_descendant_for_tests, prefers_utility_light_descendant_for_tests,
-    preserves_heading_rich_outer_candidate_for_tests,
+    nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
+    prefers_utility_light_descendant_for_tests, preserves_heading_rich_outer_candidate_for_tests,
     preserves_primary_heading_outer_candidate_for_tests,
     preserves_title_bearing_outer_candidate_for_tests,
 };
@@ -396,7 +398,57 @@ fn utility_light_descendant_preference_requires_each_nonzero_alternative() {
     outer.link_count = 18;
     assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
 
-    outer.utility_descendant_count = 5;
-    outer.link_count = 19;
+    outer.utility_descendant_count = 12;
     assert!(prefers_utility_light_descendant_for_tests(&outer, &inner));
+
+    outer.utility_descendant_count = 4;
+    outer.link_count = 19;
+    assert!(!prefers_utility_light_descendant_for_tests(&outer, &inner));
+
+    outer.utility_descendant_count = 5;
+    assert!(prefers_utility_light_descendant_for_tests(&outer, &inner));
+}
+
+#[test]
+fn nested_candidate_fallback_requires_every_strict_nonzero_boundary() {
+    let assert_fallback = |outer: &ContentCandidateTestInput, inner: &ContentCandidateTestInput| {
+        assert_eq!(
+            nested_content_candidate_bias_deltas_for_tests(
+                outer,
+                inner,
+                ContentCandidateTestPreference::Extraction,
+            ),
+            (-60, 90),
+        );
+    };
+
+    let (mut outer, inner) = nested_candidates();
+    outer.heading_count = 2;
+    assert_fallback(&outer, &inner);
+
+    let (mut outer, mut inner) = nested_candidates();
+    outer.paragraph_count = 1;
+    outer.heading_count = 2;
+    outer.link_count = 15;
+    inner.link_count = 2;
+    assert_fallback(&outer, &inner);
+
+    let (mut outer, mut inner) = nested_candidates();
+    outer.paragraph_count = 1;
+    outer.heading_count = 2;
+    outer.utility_descendant_count = 7;
+    inner.utility_descendant_count = 2;
+    assert_fallback(&outer, &inner);
+
+    let (mut outer, mut inner) = nested_candidates();
+    outer.link_count = 5;
+    inner.link_count = 4;
+    assert_fallback(&outer, &inner);
+}
+
+#[test]
+fn readable_density_changes_policy_after_the_compact_candidate_boundary() {
+    assert!(content_candidate_has_readable_density_for_tests(
+        "article", 220, 10, 0, 2, 0,
+    ));
 }

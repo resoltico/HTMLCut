@@ -7,7 +7,7 @@ use super::super::super::policy::{
     element_looks_like_auxiliary_section, element_looks_like_brief_reader_notice,
     element_looks_like_reader_auxiliary, element_looks_like_source_attribution,
     element_should_skip_in_reader_text, is_note_fragment_href, looks_like_note_fragment_anchor,
-    should_skip_rendered_element, tokenize_notice_text,
+    node_starts_terminal_non_narrative_section, should_skip_rendered_element, tokenize_notice_text,
 };
 use super::super::math::*;
 use super::super::tree::*;
@@ -67,6 +67,24 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     let hidden_style_false = parse_document_node("<span style=\"display\">Body</span>");
     let hidden_style_false_element = select_first(&hidden_style_false, "span").expect("span");
     assert!(!element_has_hidden_style(&hidden_style_false_element));
+    for markup in [
+        "<span style=\"display:block\">Body</span>",
+        "<span style=\"color:none\">Body</span>",
+    ] {
+        let document = parse_document_node(markup);
+        let element = select_first(&document, "span").expect("visible span");
+        assert!(!element_has_hidden_style(&element));
+    }
+
+    for markup in [
+        "<nav class=\"menu\">Menu</nav>",
+        "<section><h2>References</h2><p>Sources</p></section>",
+        "<section><div><h2>References</h2></div><p>Sources</p></section>",
+    ] {
+        let document = parse_document_node(markup);
+        let element = select_first(&document, "nav, section").expect("terminal section");
+        assert!(node_starts_terminal_non_narrative_section(*element));
+    }
 
     let note_anchor = parse_document_node("<sup><a href=\"#cite_note-1\">[1]</a></sup>");
     let note_anchor_element = select_first(&note_anchor, "sup").expect("sup");

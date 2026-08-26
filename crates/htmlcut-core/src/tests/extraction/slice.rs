@@ -89,6 +89,26 @@ fn slice_match_builder_covers_value_modes() {
             .contains("Extracted fragment is missing attribute \"title\".")
     );
 
+    let mut inconsistent_candidate = candidate.clone();
+    inconsistent_candidate.selected_range.start += 1;
+    let unhinted_missing = build_slice_match(
+        &attribute_request,
+        effective_base_url.as_deref(),
+        &inconsistent_candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect_err("retained start boundaries must not suggest retaining the start boundary");
+    assert!(!unhinted_missing.message.contains("--boundary-retention"));
+    assert!(
+        unhinted_missing
+            .details
+            .as_ref()
+            .is_some_and(|details| details["hint"].is_null())
+    );
+
     let mut inner_capture_request = request.clone();
     inner_capture_request.extraction = ExtractionSpec::slice(SliceSpec {
         pattern: SlicePatternSpec::literal(slice_boundary("<a "), slice_boundary("</a>")),
@@ -377,6 +397,11 @@ fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
     assert_eq!(zero_width.len(), 2);
     assert_eq!(zero_width[0].selected_range.start, 0);
     assert_eq!(zero_width[1].selected_range.start, 3);
+
+    let nested = extract_slice_candidates("<a><a>inner</a>", &slice_spec("<a>", "</a>"))
+        .expect("nested candidate");
+    assert_eq!(nested.len(), 1);
+    assert_eq!(nested[0].outer_html, "<a><a>inner</a>");
 }
 
 #[test]

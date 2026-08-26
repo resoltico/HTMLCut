@@ -150,3 +150,14 @@ pub(crate) fn operation_examples_after_help_from_document_for_tests(
 ) -> Result<String, CliError> {
     render::operation_examples_after_help_from_document_for_tests(document)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auxiliary_after_help_text_keeps_its_canonical_examples() {
+        assert!(catalog_after_help().contains("htmlcut catalog --output json"));
+        assert!(schema_after_help().contains("htmlcut schema --output json"));
+    }
+}

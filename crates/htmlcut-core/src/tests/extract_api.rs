@@ -565,5 +565,6 @@ fn source_size_limits_are_enforced() {
 fn format_byte_size_has_friendly_units() {
     assert_eq!(format_byte_size(5), "5 bytes");
     assert_eq!(format_byte_size(1024), "1 KiB");
+    assert_eq!(format_byte_size(1076), "1.1 KiB");
     assert_eq!(format_byte_size(1536), "1.5 KiB");
 }

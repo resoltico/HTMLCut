@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::accept_test_connection;
 use crate::{MaxBytes, SourceInput, SourceRequest};
 use htmlcut_tempdir::tempdir;
 use std::io::{Read, Write};
@@ -27,11 +28,18 @@ fn final_response_url_rejects_an_unsafe_response_uri_with_a_failed_get_trace() {
 }
 
 #[test]
+fn declared_content_length_rejects_only_values_above_the_limit() {
+    assert_eq!(declared_content_length_exceedance("4", 4), None);
+    assert_eq!(declared_content_length_exceedance("5", 4), Some(5));
+    assert_eq!(declared_content_length_exceedance("invalid", 4), None);
+}
+
+#[test]
 fn url_loader_records_an_unsafe_final_response_uri_as_a_failed_get() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
     let address = listener.local_addr().expect("server address");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept request");
+        let (mut stream, _) = accept_test_connection(&listener, "unsafe response request");
         let mut request = [0u8; 1024];
         let request_bytes = stream.read(&mut request).expect("read request");
         assert!(request_bytes > 0, "request should not be empty");

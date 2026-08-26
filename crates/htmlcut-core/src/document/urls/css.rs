@@ -179,11 +179,10 @@ fn rewrite_css_url_function_at_with_next_and_budget(
     if !starts_with_css_keyword(value, cursor, "url") {
         return None;
     }
-    if cursor > 0
-        && value[..cursor]
-            .chars()
-            .next_back()
-            .is_some_and(is_css_identifier_char)
+    if value[..cursor]
+        .chars()
+        .next_back()
+        .is_some_and(is_css_identifier_char)
     {
         return None;
     }
@@ -218,11 +217,11 @@ fn rewrite_css_url_function_at_with_next_and_budget(
     }
 
     let raw_start = content_start;
-    while content_start < value.len() {
+    loop {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return None;
         }
-        let ch = value[content_start..].chars().next()?;
+        let ch = value.get(content_start..)?.chars().next()?;
         if ch == ')' {
             break;
         }
@@ -234,9 +233,6 @@ fn rewrite_css_url_function_at_with_next_and_budget(
             return None;
         }
         content_start = next;
-    }
-    if content_start >= value.len() {
-        return None;
     }
     debug_assert!(value[content_start..].starts_with(')'));
 
@@ -367,11 +363,11 @@ fn find_css_string_end_with_next_and_budget(
 ) -> Option<usize> {
     let quote = value[quote_index..].chars().next()?;
     let mut cursor = quote_index + quote.len_utf8();
-    while cursor < value.len() {
+    loop {
         if !consume_scan_step_budget(&mut remaining_steps) {
             return None;
         }
-        let ch = value[cursor..].chars().next()?;
+        let ch = value.get(cursor..)?.chars().next()?;
         if ch == '\\' {
             let next = next_char(value, cursor);
             if cursor_does_not_advance(cursor, next) {
@@ -405,7 +401,6 @@ fn find_css_string_end_with_next_and_budget(
         }
         cursor = next;
     }
-    None
 }
 
 fn next_char_boundary(value: &str, cursor: usize) -> usize {

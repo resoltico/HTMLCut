@@ -6,12 +6,13 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- Expanded mutation regression coverage for inspection candidate ranking and versioned JSON default omission, so threshold, weighting, nested-wrapper, and compact-document contracts are verified directly rather than only through broad end-to-end fixtures.
+- Expanded mutation regression coverage for CLI contracts and rendering, versioned JSON default omission and reverse conversion, inspection candidate ranking, source-loading limits, document rendering policy, and schema registries, so exact boundaries and registered contract outputs are verified directly rather than only through broad end-to-end fixtures.
 
 ### Fixed
 
 - Scheduled and manually started mutation campaigns now use artifact-safe shard identities, preserve the complete `mutants.out` tree during workflow handoff, and reject missing, duplicated, or unexpected shard evidence before aggregation.
 - CSS URL, `srcset`, and slice-markup scanners now fail closed when an internal cursor cannot advance, preventing malformed traversal state from becoming an unbounded loop.
+- Local HTTP source fixtures now use bounded connection acceptance, so mutation-induced request suppression produces deterministic test failures instead of campaign timeouts.
 
 ## [13.0.0] - 2026-08-25
 

@@ -221,6 +221,30 @@ fn promotion_eligibility_helpers_preserve_exact_content_boundaries() {
             selector: "#inner",
         },
     ));
+    assert!(!outer_wrapper_adds_heading_shell(
+        HeadingShellCandidate {
+            text_char_count: 1_000,
+            heading_count: 26,
+            link_count: 12,
+            selector: "#outer",
+        },
+        HeadingShellCandidate {
+            text_char_count: 939,
+            heading_count: 2,
+            link_count: 0,
+            selector: "#inner",
+        },
+    ));
+
+    let document = Html::parse_document(
+        "<main id='scope'><nav>Menu</nav><article>Story</article><footer>Legal</footer></main>",
+    );
+    let scope = select_first(&document, "#scope").expect("candidate scope");
+    assert_eq!(count_utility_descendant_roots(&scope), 2);
+
+    let linked_document = Html::parse_document("<main><a id='target' href='/docs'>Docs</a></main>");
+    let link = select_first(&linked_document, "#target").expect("link candidate");
+    assert_eq!(samples::path_hint_for_link(&link), build_node_path(&link));
 }
 
 #[test]
@@ -437,6 +461,10 @@ fn content_candidate_score_policy_helpers_preserve_exact_boundaries() {
     assert_eq!(
         content_candidate_link_density_penalty(CandidatePreference::Extraction, 1_000, 12, 2),
         60
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 239, 8, 2),
+        34
     );
     assert_eq!(
         content_candidate_link_density_penalty(CandidatePreference::Extraction, 1_599, 13, 2),

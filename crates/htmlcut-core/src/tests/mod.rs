@@ -127,6 +127,35 @@ fn url_source(url: &str) -> SourceRequest {
     SourceRequest::url(http_url(url))
 }
 
+#[cfg(feature = "http-client")]
+pub(crate) fn accept_test_connection(
+    listener: &TcpListener,
+    label: &str,
+) -> (std::net::TcpStream, std::net::SocketAddr) {
+    listener
+        .set_nonblocking(true)
+        .expect("configure bounded test listener");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    loop {
+        match listener.accept() {
+            Ok((stream, address)) => {
+                stream
+                    .set_nonblocking(false)
+                    .expect("restore blocking test stream");
+                return (stream, address);
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "timed out waiting for {label}"
+                );
+                thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(error) => panic!("failed to accept {label}: {error}"),
+        }
+    }
+}
+
 fn read_file_source(
     source: &SourceRequest,
     runtime: &RuntimeOptions,

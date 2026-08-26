@@ -125,19 +125,20 @@ fn render_preview_and_source_inspection_text_are_human_readable() {
 
 #[test]
 fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
+    let full_document = "<!DOCTYPE html><html><body>Hello</body></html>";
     let report = build_extraction_report(
         "select",
         fixture_result(
-            Value::String("<!DOCTYPE html><html><body>Hello</body></html>".to_owned()),
+            Value::String(full_document.to_owned()),
             ValueType::OuterHtml,
         ),
         None,
     );
-    assert!(
-        wrap_html_document(&report)
-            .expect("wrapped html document")
-            .starts_with("<!DOCTYPE html>")
+    assert_eq!(
+        wrap_html_document(&report).expect("wrapped html document"),
+        full_document
     );
+    assert!(looks_like_document(full_document));
 
     let json_match = ExtractionMatch {
         index: 1,
@@ -208,6 +209,34 @@ fn wrap_html_document_and_match_renderers_cover_remaining_paths() {
             .expect("language-aware wrapped html fragment")
             .contains("<html lang=\"lv\">")
     );
+    for value_type in [ValueType::InnerHtml, ValueType::OuterHtml] {
+        let value_language = build_extraction_report(
+            "select",
+            fixture_result(
+                Value::String("<article lang=\"et\">Tere</article>".to_owned()),
+                value_type,
+            ),
+            None,
+        );
+        assert!(
+            wrap_html_document(&value_language)
+                .expect("value-language HTML fragment")
+                .contains("<html lang=\"et\">")
+        );
+    }
+    let selected_language = build_extraction_report(
+        "select",
+        fixture_result(
+            Value::String("<article lang=\"lt\">Labas</article>".to_owned()),
+            ValueType::SelectedHtml,
+        ),
+        None,
+    );
+    assert!(
+        !wrap_html_document(&selected_language)
+            .expect("selected HTML fragment")
+            .contains("<html lang=\"lt\">")
+    );
     let structured_outer_html = build_extraction_report(
         "select",
         fixture_result(serde_json::json!({"kind":"html"}), ValueType::OuterHtml),
@@ -273,6 +302,24 @@ fn verbose_and_diagnostic_renderers_cover_branching_paths() {
         concise_verbose
             .iter()
             .any(|line| line.contains("effective base"))
+    );
+    assert!(
+        concise_verbose
+            .iter()
+            .all(|line| !line.contains("match 1 =>"))
+    );
+    let mut non_multiple_report = report.clone();
+    non_multiple_report.diagnostics = vec![Diagnostic {
+        level: DiagnosticLevel::Warning,
+        code: DiagnosticCode::EffectiveBaseUrlUnresolved,
+        message: "warning".to_owned(),
+        details: None,
+    }];
+    let followups = build_human_followup_lines(&non_multiple_report, Some("Hello"));
+    assert!(
+        followups
+            .iter()
+            .all(|line| !line.contains("multiple candidates"))
     );
     let mut inspection = fixture_inspection();
     inspection.source.load_steps = report.source.load_steps.clone();

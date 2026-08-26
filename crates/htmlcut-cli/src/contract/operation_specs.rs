@@ -73,18 +73,6 @@ pub(crate) fn build_cli_operation_contract(
     })
 }
 
-fn empty_selection_modes() -> Vec<CliSelectionMode> {
-    Vec::new()
-}
-
-fn empty_value_modes() -> Vec<ValueType> {
-    Vec::new()
-}
-
-fn no_output_overrides() -> Vec<CliConditionalDefault> {
-    Vec::new()
-}
-
 fn no_constraints(parameters: &[CliParameterDescriptor]) -> Vec<CliConstraint> {
     constraints_with_parameter_rules(parameters, cross_parameter_constraints(parameters))
 }
@@ -277,11 +265,11 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             command_path: &["inspect", "source"],
             invocation: "htmlcut inspect source [OPTIONS] [INPUT]",
             default_match: None,
-            selection_modes: empty_selection_modes,
+            selection_modes: Vec::new,
             default_value: None,
-            value_modes: empty_value_modes,
+            value_modes: Vec::new,
             default_output: Some(CliOutputMode::Text),
-            default_output_overrides: no_output_overrides,
+            default_output_overrides: Vec::new,
             output_modes: inspect_output_modes,
             build_parameters: inspect_source_parameters,
             build_constraints: no_constraints,
@@ -310,7 +298,7 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             default_value: Some(ValueType::Structured),
             value_modes: select_extract_value_modes,
             default_output: Some(CliOutputMode::Text),
-            default_output_overrides: no_output_overrides,
+            default_output_overrides: Vec::new,
             output_modes: inspect_output_modes,
             build_parameters: inspect_select_parameters,
             build_constraints: no_constraints,
@@ -340,7 +328,7 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
             default_value: Some(ValueType::Structured),
             value_modes: slice_extract_value_modes,
             default_output: Some(CliOutputMode::Text),
-            default_output_overrides: no_output_overrides,
+            default_output_overrides: Vec::new,
             output_modes: inspect_output_modes,
             build_parameters: inspect_slice_parameters,
             build_constraints: no_constraints,
@@ -436,5 +424,35 @@ mod tests {
     #[test]
     fn cross_parameter_constraints_omit_rules_for_a_surface_without_related_parameters() {
         assert!(cross_parameter_constraints(&[]).is_empty());
+    }
+
+    #[test]
+    fn slice_output_defaults_preserve_html_and_structured_overrides() {
+        let overrides = slice_extract_default_output_overrides();
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(
+            overrides[0],
+            CliConditionalDefault {
+                value: CliValue::OutputMode(CliOutputMode::Html),
+                when: condition(
+                    CliParameterId::Value,
+                    vec![
+                        CliValue::ValueType(ValueType::SelectedHtml),
+                        CliValue::ValueType(ValueType::InnerHtml),
+                        CliValue::ValueType(ValueType::OuterHtml),
+                    ],
+                ),
+            }
+        );
+        assert_eq!(
+            overrides[1],
+            CliConditionalDefault {
+                value: CliValue::OutputMode(CliOutputMode::Json),
+                when: condition(
+                    CliParameterId::Value,
+                    vec![CliValue::ValueType(ValueType::Structured)],
+                ),
+            }
+        );
     }
 }
