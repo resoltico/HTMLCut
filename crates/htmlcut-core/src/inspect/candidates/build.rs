@@ -24,9 +24,9 @@ use super::bias::{
     extraction_prefers_near_complete_link_light_descendant,
     extraction_prefers_stable_link_light_descendant, extraction_prefers_utility_light_descendant,
     extraction_preserves_large_outer_candidate, extraction_preserves_title_bearing_outer_wrapper,
-    prefers_heavy_link_descendant, prefers_utility_light_descendant,
-    preserves_heading_rich_outer_candidate, preserves_primary_heading_outer_candidate,
-    preserves_title_bearing_outer_candidate,
+    inner_link_density_exceeds_outer, prefers_heavy_link_descendant,
+    prefers_utility_light_descendant, preserves_heading_rich_outer_candidate,
+    preserves_primary_heading_outer_candidate, preserves_title_bearing_outer_candidate,
 };
 use super::promotion::{
     count_utility_descendant_roots, descendant_element_depth, drops_outer_title_signal,
@@ -434,7 +434,7 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
             if inner_text_char_count * 100 < outer_text_char_count * 68 {
                 continue;
             }
-            if outer_link_count > 0 && inner_link_count * 100 > outer_link_count * 80 {
+            if inner_link_density_exceeds_outer(outer_link_count, inner_link_count) {
                 continue;
             }
             if outer_utility_descendant_count > inner_utility_descendant_count + 12 {

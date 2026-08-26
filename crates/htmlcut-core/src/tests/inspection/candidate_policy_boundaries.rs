@@ -7,8 +7,9 @@ use crate::inspect::{
     extraction_prefers_utility_light_descendant_for_tests,
     extraction_preserves_large_outer_candidate_for_tests,
     extraction_preserves_title_bearing_outer_wrapper_for_tests,
-    nested_content_candidate_bias_deltas_for_tests, prefers_heavy_link_descendant_for_tests,
-    prefers_utility_light_descendant_for_tests, preserves_heading_rich_outer_candidate_for_tests,
+    inner_link_density_exceeds_outer_for_tests, nested_content_candidate_bias_deltas_for_tests,
+    prefers_heavy_link_descendant_for_tests, prefers_utility_light_descendant_for_tests,
+    preserves_heading_rich_outer_candidate_for_tests,
     preserves_primary_heading_outer_candidate_for_tests,
     preserves_title_bearing_outer_candidate_for_tests,
 };
@@ -444,6 +445,10 @@ fn nested_candidate_fallback_requires_every_strict_nonzero_boundary() {
     outer.link_count = 5;
     inner.link_count = 4;
     assert_fallback(&outer, &inner);
+
+    assert!(!inner_link_density_exceeds_outer_for_tests(5, 4));
+    assert!(inner_link_density_exceeds_outer_for_tests(5, 5));
+    assert!(!inner_link_density_exceeds_outer_for_tests(0, 1));
 }
 
 #[test]

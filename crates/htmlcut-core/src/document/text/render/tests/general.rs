@@ -88,6 +88,14 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
         true,
     );
     assert_eq!(inherited_pre_rendered, "  Keep\n  spacing");
+    let ordinary_heading_child = parse_document_node("<h2><span>Alpha   beta</span></h2>");
+    let mut ordinary_heading_rendered = String::new();
+    render_heading_text_node(
+        *select_first(&ordinary_heading_child, "span").expect("ordinary heading child"),
+        &mut ordinary_heading_rendered,
+        false,
+    );
+    assert_eq!(ordinary_heading_rendered, "Alpha beta");
     let mut pre_from_element_rendered = String::new();
     render_heading_text_node(
         *select_first(&pre_only_heading, "pre").expect("pre"),
@@ -440,5 +448,13 @@ fn helper_branches_cover_heading_table_banner_and_spacing_edges() {
     assert_eq!(
         remove_immediate_heading_echoes("# Heading\n\nHeading\nBody"),
         "# Heading\n\nBody"
+    );
+    assert_eq!(
+        remove_immediate_heading_echoes("#\n\n\nBody"),
+        "#\n\n\nBody"
+    );
+    assert_eq!(
+        remove_immediate_heading_echoes("# Heading\n\n"),
+        "# Heading\n"
     );
 }

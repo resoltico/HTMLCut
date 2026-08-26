@@ -176,8 +176,8 @@ fn preview_helpers_cover_metadata_mismatches_and_empty_reports() {
     long_projection.matches.truncate(1);
     let long_text = "x".repeat(200);
     long_projection.matches[0].value = Value::String(long_text.clone());
-    long_projection.matches[0].text = Some(long_text.clone());
-    long_projection.matches[0].preview = long_text.clone();
+    long_projection.matches[0].text = None;
+    long_projection.matches[0].preview = "separate match preview".to_owned();
     assert!(render_preview_text(&long_projection).contains(&long_text));
 
     let ten_lines = (1..=10)

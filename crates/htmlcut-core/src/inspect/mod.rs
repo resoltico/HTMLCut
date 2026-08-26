@@ -528,6 +528,14 @@ pub(crate) fn nested_content_candidate_bias_deltas_for_tests(
     (candidates[0].score, candidates[1].score)
 }
 
+#[cfg(test)]
+pub(crate) fn inner_link_density_exceeds_outer_for_tests(
+    outer_link_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    candidates::bias::inner_link_density_exceeds_outer(outer_link_count, inner_link_count)
+}
+
 mod candidates;
 mod samples;
 mod selectors;

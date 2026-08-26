@@ -136,3 +136,10 @@ pub(in super::super) fn preserves_heading_rich_outer_candidate(
         && outer.link_count <= inner.link_count + 20
         && outer.utility_descendant_count <= inner.utility_descendant_count + 6
 }
+
+pub(in super::super) fn inner_link_density_exceeds_outer(
+    outer_link_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    outer_link_count > 0 && inner_link_count * 100 > outer_link_count * 80
+}

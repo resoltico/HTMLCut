@@ -35,7 +35,8 @@ use crate::source::{
 use crate::source::{
     UrlResponseContext, build_http_agent, content_type_is_obviously_non_html_for_tests,
     declared_http_charset_for_tests, finish_url_source_from_reader_for_tests,
-    head_error_allows_get_fallback_for_tests, read_stdin_source_from_reader_for_tests,
+    head_error_allows_get_fallback_for_tests, head_error_requires_failure_for_tests,
+    read_stdin_source_from_reader_for_tests,
 };
 use scraper::ElementRef;
 use serde_json::{Value, json};

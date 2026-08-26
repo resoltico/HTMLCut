@@ -310,7 +310,13 @@ fn head_preflight_fallback_classifier_accepts_only_head_intolerance_errors() {
     assert!(!head_error_allows_get_fallback_for_tests(
         &ureq::Error::ConnectionFailed
     ));
+    assert!(head_error_requires_failure_for_tests(
+        &ureq::Error::ConnectionFailed
+    ));
     assert!(head_error_allows_get_fallback_for_tests(&ureq::Error::Io(
+        io::Error::new(io::ErrorKind::UnexpectedEof, "peer disconnected"),
+    )));
+    assert!(!head_error_requires_failure_for_tests(&ureq::Error::Io(
         io::Error::new(io::ErrorKind::UnexpectedEof, "peer disconnected"),
     )));
     assert!(!head_error_allows_get_fallback_for_tests(&ureq::Error::Io(

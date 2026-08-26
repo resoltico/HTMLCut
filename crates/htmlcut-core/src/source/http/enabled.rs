@@ -86,7 +86,29 @@ pub(crate) fn read_url_source(
                     });
                 }
             }
-            Err(error) if head_error_allows_get_fallback(&error) => {
+            Err(error) => {
+                if head_error_requires_failure(&error) {
+                    load_steps.push(SourceLoadStep {
+                        action: SourceLoadAction::HeadPreflight,
+                        outcome: SourceLoadOutcome::Failed,
+                        status: None,
+                        message: format!("HEAD preflight failed with {error}."),
+                    });
+                    return Err(source_load_failure(
+                        source,
+                        SourceKind::Url,
+                        source_value.clone(),
+                        load_steps,
+                        error_diagnostic(
+                            DiagnosticCode::SourceLoadFailed,
+                            format!("Could not preflight {source_value} with HEAD: {error}"),
+                            Some(json!({
+                                "source": source_value,
+                                "method": "HEAD",
+                            })),
+                        ),
+                    ));
+                }
                 load_steps.push(SourceLoadStep {
                     action: SourceLoadAction::HeadPreflight,
                     outcome: SourceLoadOutcome::Fallback,
@@ -95,28 +117,6 @@ pub(crate) fn read_url_source(
                         "HEAD preflight failed with {error}; HTMLCut fell back to GET."
                     ),
                 });
-            }
-            Err(error) => {
-                load_steps.push(SourceLoadStep {
-                    action: SourceLoadAction::HeadPreflight,
-                    outcome: SourceLoadOutcome::Failed,
-                    status: None,
-                    message: format!("HEAD preflight failed with {error}."),
-                });
-                return Err(source_load_failure(
-                    source,
-                    SourceKind::Url,
-                    source_value.clone(),
-                    load_steps,
-                    error_diagnostic(
-                        DiagnosticCode::SourceLoadFailed,
-                        format!("Could not preflight {source_value} with HEAD: {error}"),
-                        Some(json!({
-                            "source": source_value,
-                            "method": "HEAD",
-                        })),
-                    ),
-                ));
             }
         }
     } else {
@@ -431,6 +431,10 @@ fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
     }
 }
 
+fn head_error_requires_failure(error: &ureq::Error) -> bool {
+    !head_error_allows_get_fallback(error)
+}
+
 fn content_type_is_obviously_non_html(content_type: &str) -> bool {
     let normalized = content_type
         .split(';')
@@ -450,6 +454,11 @@ pub(crate) fn content_type_is_obviously_non_html_for_tests(content_type: &str) -
 #[cfg(test)]
 pub(crate) fn head_error_allows_get_fallback_for_tests(error: &ureq::Error) -> bool {
     head_error_allows_get_fallback(error)
+}
+
+#[cfg(test)]
+pub(crate) fn head_error_requires_failure_for_tests(error: &ureq::Error) -> bool {
+    head_error_requires_failure(error)
 }
 
 #[cfg(test)]

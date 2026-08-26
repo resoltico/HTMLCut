@@ -282,6 +282,7 @@ mod tests {
         assert!(suggestion_is_close(false, false, 2, 2));
         assert!(!suggestion_is_close(false, false, 3, 2));
         assert_eq!(levenshtein_distance("ab", "a"), 1);
+        assert_eq!(levenshtein_distance("ba", "a"), 1);
         assert_eq!(levenshtein_distance("a", "ab"), 1);
         assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
     }
