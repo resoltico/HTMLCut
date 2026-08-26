@@ -1,6 +1,8 @@
 use super::*;
 use crate::document::{
     css_progress_does_not_advance_for_tests, css_scan_budget_exhausts_for_tests,
+    srcset_callback_progress_is_valid_for_tests, srcset_rejects_success_without_progress_for_tests,
+    srcset_step_budget_exhausts_for_tests,
 };
 
 #[test]
@@ -80,4 +82,11 @@ fn srcset_rewriter_rejects_non_advancing_internal_steps() {
     assert!(srcset_progress_is_valid_for_tests(0, 1));
     assert!(!srcset_progress_is_valid_for_tests(1, 1));
     assert!(!srcset_progress_is_valid_for_tests(usize::MAX, usize::MAX));
+    assert!(srcset_callback_progress_is_valid_for_tests(true, 2, 3, 3));
+    assert!(!srcset_callback_progress_is_valid_for_tests(false, 2, 3, 3));
+    assert!(!srcset_callback_progress_is_valid_for_tests(true, 2, 2, 3));
+    assert!(!srcset_callback_progress_is_valid_for_tests(true, 2, 1, 3));
+    assert!(!srcset_callback_progress_is_valid_for_tests(true, 2, 4, 3));
+    assert!(srcset_rejects_success_without_progress_for_tests());
+    assert!(srcset_step_budget_exhausts_for_tests());
 }

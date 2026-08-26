@@ -30,9 +30,10 @@ use rewrite::raw_element_is_meta_refresh;
 #[cfg(test)]
 pub(crate) use rewrite::{
     attribute_supports_url_rewrite, rewrite_srcset_for_tests,
-    rewrite_urls_in_document_with_node_ids_for_tests, srcset_progress_is_valid_for_tests,
-    srcset_rejects_non_advancing_progress_for_tests,
+    rewrite_urls_in_document_with_node_ids_for_tests, srcset_callback_progress_is_valid_for_tests,
+    srcset_progress_is_valid_for_tests, srcset_rejects_non_advancing_progress_for_tests,
     srcset_rejects_staged_non_advancing_progress_for_tests,
+    srcset_rejects_success_without_progress_for_tests, srcset_step_budget_exhausts_for_tests,
 };
 pub(crate) use rewrite::{
     looks_like_full_document, rewrite_attribute_value, rewrite_html_urls, rewrite_urls_in_document,

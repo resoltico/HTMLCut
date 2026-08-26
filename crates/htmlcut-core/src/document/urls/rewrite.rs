@@ -162,11 +162,14 @@ fn rewrite_srcset_with_step(
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
     let bytes = value.as_bytes();
+    let mut remaining_steps = bytes.len().saturating_add(1);
 
     while cursor < bytes.len() {
         while cursor < bytes.len() && (bytes[cursor].is_ascii_whitespace() || bytes[cursor] == b',')
         {
-            if !advance(&mut cursor, bytes.len()) {
+            if !consume_srcset_step_budget(&mut remaining_steps)
+                || !advance_srcset_with_progress(&mut cursor, bytes.len(), advance)
+            {
                 return value.to_owned();
             }
         }
@@ -184,21 +187,27 @@ fn rewrite_srcset_with_step(
             if !data_url && byte == b',' {
                 break;
             }
-            if !advance(&mut cursor, bytes.len()) {
+            if !consume_srcset_step_budget(&mut remaining_steps)
+                || !advance_srcset_with_progress(&mut cursor, bytes.len(), advance)
+            {
                 return value.to_owned();
             }
         }
         let url = &value[url_start..cursor];
 
         while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-            if !advance(&mut cursor, bytes.len()) {
+            if !consume_srcset_step_budget(&mut remaining_steps)
+                || !advance_srcset_with_progress(&mut cursor, bytes.len(), advance)
+            {
                 return value.to_owned();
             }
         }
 
         let descriptor_start = cursor;
         while cursor < bytes.len() && bytes[cursor] != b',' {
-            if !advance(&mut cursor, bytes.len()) {
+            if !consume_srcset_step_budget(&mut remaining_steps)
+                || !advance_srcset_with_progress(&mut cursor, bytes.len(), advance)
+            {
                 return value.to_owned();
             }
         }
@@ -226,6 +235,33 @@ fn advance_srcset_cursor(cursor: &mut usize, length: usize) -> bool {
         return false;
     }
     *cursor = next;
+    true
+}
+
+fn advance_srcset_with_progress(
+    cursor: &mut usize,
+    length: usize,
+    advance: fn(&mut usize, usize) -> bool,
+) -> bool {
+    let before = *cursor;
+    let advanced = advance(cursor, length);
+    srcset_cursor_progress_is_valid(advanced, before, *cursor, length)
+}
+
+fn srcset_cursor_progress_is_valid(
+    callback_succeeded: bool,
+    before: usize,
+    after: usize,
+    length: usize,
+) -> bool {
+    callback_succeeded && after > before && after <= length
+}
+
+fn consume_srcset_step_budget(remaining_steps: &mut usize) -> bool {
+    if *remaining_steps == 0 {
+        return false;
+    }
+    *remaining_steps -= 1;
     true
 }
 
@@ -267,6 +303,31 @@ pub(crate) fn srcset_rejects_staged_non_advancing_progress_for_tests(descriptor:
 pub(crate) fn srcset_progress_is_valid_for_tests(cursor: usize, length: usize) -> bool {
     let mut cursor = cursor;
     advance_srcset_cursor(&mut cursor, length)
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_rejects_success_without_progress_for_tests() -> bool {
+    rewrite_srcset_with_step("asset.png 2x", Some("https://example.test/"), |_, _| true)
+        == "asset.png 2x"
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_callback_progress_is_valid_for_tests(
+    callback_succeeded: bool,
+    before: usize,
+    after: usize,
+    length: usize,
+) -> bool {
+    srcset_cursor_progress_is_valid(callback_succeeded, before, after, length)
+}
+
+#[cfg(test)]
+pub(crate) fn srcset_step_budget_exhausts_for_tests() -> bool {
+    let mut remaining_steps = 3;
+    consume_srcset_step_budget(&mut remaining_steps)
+        && consume_srcset_step_budget(&mut remaining_steps)
+        && consume_srcset_step_budget(&mut remaining_steps)
+        && !consume_srcset_step_budget(&mut remaining_steps)
 }
 
 fn rewrite_space_separated_urls(value: &str, base_url: Option<&str>) -> String {
