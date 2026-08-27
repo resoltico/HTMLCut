@@ -43,6 +43,10 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("workflow_dispatch:"));
     assert!(workflow.contains("schedule:"));
     assert!(workflow.contains("pull_request:"));
+    assert!(workflow.contains("- \".github/workflows/mutants.yml\""));
+    assert!(workflow.contains("- \"scripts/mutation-shard-plan.sh\""));
+    assert!(workflow.contains("- \"scripts/summarize-mutation-results.sh\""));
+    assert!(workflow.contains("- \"xtask/**/*.rs\""));
     assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh)\""));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));

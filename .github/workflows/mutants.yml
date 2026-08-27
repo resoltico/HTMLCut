@@ -5,10 +5,14 @@ on:
     paths:
       - "crates/**/*.rs"
       - ".cargo/mutants.toml"
+      - ".github/workflows/mutants.yml"
       - "Cargo.lock"
       - "Cargo.toml"
       - "patches/rust/**/*.rs"
       - "patches/rust/**/Cargo.toml"
+      - "scripts/mutation-shard-plan.sh"
+      - "scripts/summarize-mutation-results.sh"
+      - "xtask/**/*.rs"
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
