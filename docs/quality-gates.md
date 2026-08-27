@@ -176,11 +176,14 @@ timeout, and unviable counts. Machine selectors containing `/` are kept separate
 names such as `cargo-mutants-shard-0-of-16`. Each shard uploads its complete `mutants.out` result
 tree even when survivors fail the job.
 
-Pull requests touching Rust mutation inputs also run an `--in-diff` check against the PR base. It is
-fast feedback for changed production code, not a substitute for the authoritative full campaign:
-test-only changes can reduce coverage without adding any in-diff mutants. Use the full result to
-triage survivors; `--iterate` is appropriate only for a local test-writing loop because it assumes
-already-caught mutants remain caught across later changes.
+Pull requests touching Rust mutation inputs also enumerate `--in-diff` mutants against the PR base,
+then partition every nonempty selection across `min(16, selected-mutant-count)` round-robin shards.
+The PR summary verifies the exact planned artifact set and reports combined outcomes; a PR with no
+changed production mutants records that outcome explicitly. This is fast feedback for changed
+production code, not a substitute for the authoritative full campaign: test-only changes can
+reduce coverage without adding any in-diff mutants. Use the full result to triage survivors;
+`--iterate` is appropriate only for a local test-writing loop because it assumes already-caught
+mutants remain caught across later changes.
 
 For local `--in-diff` runs, xtask reads the requested unified diff before artifact hygiene runs,
 stages a temporary copy under the managed mutation evidence root, passes cargo-mutants that absolute
