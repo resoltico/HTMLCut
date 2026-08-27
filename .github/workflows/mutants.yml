@@ -173,7 +173,15 @@ jobs:
           set -euo pipefail
           diff_path="$RUNNER_TEMP/htmlcut-mutants.diff"
           git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
+          set +e
           cargo mutants --config .cargo/mutants.toml --in-diff "$diff_path" --list --json > "$RUNNER_TEMP/mutants.json"
+          mutants_status=$?
+          set -e
+          if (( mutants_status == 4 )); then
+            printf '[]\n' > "$RUNNER_TEMP/mutants.json"
+          elif (( mutants_status != 0 )); then
+            exit "$mutants_status"
+          fi
           jq -e '
             all(.[];
               (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
