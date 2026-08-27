@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: QUALITY
-updated: "2026-08-26"
+updated: "2026-08-27"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]

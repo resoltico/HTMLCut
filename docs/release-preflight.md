@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: RELEASE
-updated: "2026-07-16"
+updated: "2026-08-27"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
@@ -127,6 +127,8 @@ Then verify:
     `Cargo.toml`
   - the maintained Markdown metadata `version` fields in `CONTRIBUTING.md`, `PATENTS.md`,
     `fuzz/README.md`, and the maintained `docs/*.md` set
+  - the maintained Markdown metadata `updated` fields in every release-edited document, using the
+    release-candidate edit date
   - the concrete release-version literals in `docs/getting-started.md` install snippets
   - the local path-package entries in `Cargo.lock`, so the subsequent locked gate reflects the
     release version truthfully

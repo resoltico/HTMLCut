@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [13.1.0] - 2026-08-27
+
 ### Added
 
 - Added `scripts/mutation-shard-plan.sh` and `scripts/summarize-mutation-results.sh` as standalone maintainer operations for generating the complete artifact-safe 16-shard cargo-mutants plan, verifying the exact expected artifact identity set, rejecting incomplete outcomes, and rendering per-shard and aggregate result tables locally or in GitHub Actions.

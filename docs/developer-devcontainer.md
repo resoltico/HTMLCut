@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: SETUP
-updated: "2026-08-24"
+updated: "2026-08-27"
 route:
   keywords: [devcontainer, contributor container, ubuntu 24.04, dev container cli, vscode, cargo xtask, rustup bootstrap, devcontainer check, miri]
   questions: ["what is the preferred contributor container workflow for HTMLCut?", "how do I use the HTMLCut devcontainer?", "do I need Rust installed on the host if I use the HTMLCut container?", "why does the HTMLCut devcontainer bootstrap Rust on first create?", "does the HTMLCut devcontainer install the nightly Miri proof too?", "how do I validate the HTMLCut devcontainer?", "how do I run the full maintainer gate through the HTMLCut devcontainer from the host?"]
