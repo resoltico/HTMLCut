@@ -126,7 +126,7 @@ Then verify:
   - the path dependency versions for `htmlcut-cli`, `htmlcut-core`, and `htmlcut-tempdir` in
     `Cargo.toml`
   - the maintained Markdown metadata `version` fields in `CONTRIBUTING.md`, `PATENTS.md`,
-    `fuzz/README.md`, and the maintained `docs/*.md` set
+    `fuzz/README.md`, `patches/README.md`, and the maintained `docs/*.md` set
   - the maintained Markdown metadata `updated` fields in every release-edited document, using the
     release-candidate edit date
   - the concrete release-version literals in `docs/getting-started.md` install snippets
