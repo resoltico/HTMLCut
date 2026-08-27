@@ -328,6 +328,16 @@ mod tests {
             1
         );
         assert_eq!(
+            token_match_count(&["supportab".to_owned()], &["support"]),
+            0
+        );
+        assert_eq!(
+            token_match_count(&["supportabc".to_owned()], &["support"]),
+            1
+        );
+        assert!(!looks_like_layout_shell(&[]));
+        assert!(looks_like_layout_shell(&["layout".to_owned()]));
+        assert_eq!(
             tokenize_structural_signal("LiveFeed42"),
             vec!["livefeed42".to_owned()]
         );
@@ -413,6 +423,12 @@ mod tests {
             &empty_widget_element,
             0
         ));
+        let empty_child_widget = parse_document_node("<div><span></span></div>");
+        let empty_child_widget = select_first(&empty_child_widget, "div").expect("empty child");
+        assert!(!element_looks_like_compact_utility_widget(
+            &empty_child_widget,
+            0
+        ));
 
         let long_text = parse_document_node(
             "<div><a href=\"/one\">One</a>This text is intentionally long enough to exceed the compact utility widget threshold and force the detector to reject it.</div>",
@@ -420,6 +436,16 @@ mod tests {
         let long_text_element = select_first(&long_text, "div").expect("long text");
         assert!(!element_looks_like_compact_utility_widget(
             &long_text_element,
+            0
+        ));
+        let exact_widget_text = parse_document_node(&format!(
+            "<div><a href=\"/one\">One</a>{}</div>",
+            "x".repeat(61)
+        ));
+        let exact_widget_text_element =
+            select_first(&exact_widget_text, "div").expect("exact widget text");
+        assert!(element_looks_like_compact_utility_widget(
+            &exact_widget_text_element,
             0
         ));
 
@@ -483,6 +509,13 @@ mod tests {
         ));
         let outer = select_first(&descendant_limit, "div").expect("outer");
         assert!(!element_contains_primary_content_surface(&outer));
+
+        let descendant_boundary = parse_document_node(&format!(
+            "<div>{}<main><p>Body</p></main></div>",
+            "<span>Spacer</span>".repeat(255)
+        ));
+        let boundary_outer = select_first(&descendant_boundary, "div").expect("boundary outer");
+        assert!(element_contains_primary_content_surface(&boundary_outer));
 
         let main_document = parse_document_node("<main><p>Body</p></main>");
         let main = select_first(&main_document, "main").expect("main");

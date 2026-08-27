@@ -31,7 +31,7 @@ fn redirected_url_sources_use_the_safe_final_url_for_the_input_base_and_load_tra
     let address = listener.local_addr().expect("redirect server address");
     let server = thread::spawn(move || {
         for expected_target in ["/start", "/deep/page?token=secret"] {
-            let (mut stream, _) = listener.accept().expect("accept redirect request");
+            let (mut stream, _) = accept_test_connection(&listener, "redirect request");
             assert_eq!(request_target(&mut stream), expected_target);
             if expected_target == "/start" {
                 write_http_response(
@@ -94,7 +94,7 @@ fn explicit_base_url_overrides_a_redirected_response_url() {
     let address = listener.local_addr().expect("redirect server address");
     let server = thread::spawn(move || {
         for expected_target in ["/start", "/deep/page"] {
-            let (mut stream, _) = listener.accept().expect("accept redirect request");
+            let (mut stream, _) = accept_test_connection(&listener, "redirect request");
             assert_eq!(request_target(&mut stream), expected_target);
             if expected_target == "/start" {
                 write_http_response(&mut stream, "302 Found", &["Location: /deep/page"], b"");
@@ -310,7 +310,7 @@ fn start_single_response_server(
     let address = listener.local_addr().expect("response server address");
     let content_type = content_type.to_owned();
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept response request");
+        let (mut stream, _) = accept_test_connection(&listener, "encoded response request");
         let _ = request_target(&mut stream);
         write_http_response(
             &mut stream,

@@ -134,44 +134,38 @@ pub(super) fn collapse_blank_lines(input: &str) -> String {
 pub(super) fn remove_immediate_heading_echoes(input: &str) -> String {
     let lines = input.lines().collect::<Vec<_>>();
     let mut output = Vec::<String>::new();
-    let mut index = 0usize;
+    let mut remaining = lines.as_slice();
 
-    while index < lines.len() {
-        let current = lines[index];
+    while let Some((current, rest)) = remaining.split_first() {
+        let current = *current;
         output.push(current.to_owned());
+        remaining = rest;
 
         if let Some(heading_text) = current
             .strip_prefix('#')
             .map(|_| current.trim_start_matches('#').trim())
             .filter(|heading_text| !heading_text.is_empty())
         {
-            if lines.get(index + 1) == Some(&"")
-                && lines
-                    .get(index + 2)
-                    .is_some_and(|line| line.trim() == heading_text)
+            if let Some((&"", after_blank)) = rest.split_first()
+                && let Some((echo, after_echo)) = after_blank.split_first()
+                && echo.trim() == heading_text
             {
-                index += 3;
-                index += usize::from(lines.get(index) == Some(&""));
+                remaining = after_echo.strip_prefix(&[""]).unwrap_or(after_echo);
                 output.push(String::new());
                 continue;
             }
 
-            let mut duplicate_index = index + 1;
-            while lines.get(duplicate_index) == Some(&"") {
-                duplicate_index += 1;
-            }
-            if lines
-                .get(duplicate_index)
+            let mut rest_iter = rest.iter();
+            if rest_iter
+                .find(|line| !line.is_empty())
                 .is_some_and(|line| line.trim() == current.trim())
             {
-                index = duplicate_index + 1;
-                index += usize::from(lines.get(index) == Some(&""));
+                let after_echo = rest_iter.as_slice();
+                remaining = after_echo.strip_prefix(&[""]).unwrap_or(after_echo);
                 output.push(String::new());
                 continue;
             }
         }
-
-        index += 1;
     }
 
     output.join("\n")

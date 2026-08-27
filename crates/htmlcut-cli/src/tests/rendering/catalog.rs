@@ -22,6 +22,15 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
         render_catalog_surface(None, &CatalogAvailability::Cli),
         "cli".to_owned()
     );
+    let mut two_operations = build_catalog_report(None).expect("catalog report");
+    two_operations.operations.truncate(2);
+    let two_operation_text = render_catalog_text(&two_operations);
+    let operation_section = two_operation_text
+        .split_once("Operations:\n")
+        .map(|(_, section)| section)
+        .expect("operations section");
+    assert!(operation_section.starts_with("- "));
+    assert_eq!(operation_section.matches("\n\n- ").count(), 1);
 
     let (exit_code, stdout, stderr) = run_vec(vec![
         "htmlcut".to_owned(),

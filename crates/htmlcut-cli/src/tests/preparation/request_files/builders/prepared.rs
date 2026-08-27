@@ -169,7 +169,7 @@ fn prepared_request_file_builders_report_cli_conflicts() {
                 },
                 output: SliceExtractOutputArgs {
                     value: CliSliceValueMode::Structured,
-                    attribute: None,
+                    attribute: Some("href".to_owned()),
                     whitespace: CliWhitespaceMode::Normalize,
                     rewrite_urls: true,
                     output: Some(CliOutputMode::Json),
@@ -186,13 +186,88 @@ fn prepared_request_file_builders_report_cli_conflicts() {
         "slice request file conflict",
     );
     assert_eq!(slice_conflict.code, "CLI_REQUEST_FILE_CONFLICT");
-    assert!(slice_conflict.message.contains("--regex-flags"));
+    for conflict in [
+        "<INPUT>",
+        "--base-url",
+        "--from",
+        "--to",
+        "--pattern",
+        "--regex-flags",
+        "--boundary-retention",
+        "--match",
+        "--index",
+        "--value",
+        "--attribute",
+        "--whitespace",
+        "--rewrite-urls",
+        "--preview-chars",
+        "--include-source-text",
+    ] {
+        assert!(slice_conflict.message.contains(conflict), "{conflict}");
+    }
     assert!(
         slice_conflict
             .message
             .contains("--emit-request-file <PATH>")
     );
     assert!(!slice_conflict.message.contains("--output-file"));
+
+    let select_conflict = expect_cli_error(
+        PreparedExtraction::from_select_with_logging(
+            SelectArgs {
+                definition: DefinitionArgs {
+                    request_file: Some(fixture.selector_definition_path.clone()),
+                    emit_request_file: None,
+                },
+                source: SourceArgs {
+                    input: Some(fixture.input.clone()),
+                    input_html: None,
+                    base_url: Some("https://example.com/base/".to_owned()),
+                    max_bytes: DEFAULT_MAX_BYTES.to_string(),
+                    fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+                    fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+                    tls_trust: CliTlsTrustMode::WebPki,
+                    tls_ca_bundle: None,
+                    fetch_preflight: CliFetchPreflightMode::HeadFirst,
+                },
+                css: Some("article".to_owned()),
+                selection: SelectionArgs {
+                    r#match: CliMatchMode::Nth,
+                    index: Some(2),
+                },
+                output: ExtractOutputArgs {
+                    value: CliValueMode::Structured,
+                    attribute: Some("href".to_owned()),
+                    whitespace: CliWhitespaceMode::Normalize,
+                    rewrite_urls: true,
+                    output: Some(CliOutputMode::Json),
+                    bundle: None,
+                    output_file: None,
+                    preview_chars: DEFAULT_PREVIEW_CHARS + 1,
+                    include_source_text: true,
+                },
+                file_write: default_file_write_args(),
+            },
+            0,
+            false,
+        ),
+        "select request file conflict",
+    );
+    for conflict in [
+        "<INPUT>",
+        "--base-url",
+        "--css",
+        "--match",
+        "--index",
+        "--value",
+        "--attribute",
+        "--whitespace",
+        "--rewrite-urls",
+        "--preview-chars",
+        "--include-source-text",
+    ] {
+        assert!(select_conflict.message.contains(conflict), "{conflict}");
+    }
 
     let inspect_select_conflict = expect_cli_error(
         PreparedPreview::from_select(InspectSelectArgs {

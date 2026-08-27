@@ -23,7 +23,7 @@ pub(crate) use url_loader::read_url_source as read_url_source_from_href;
 #[cfg(all(test, feature = "http-client"))]
 pub(crate) use url_loader::{
     build_http_agent, content_type_is_obviously_non_html_for_tests,
-    head_error_allows_get_fallback_for_tests,
+    head_error_allows_get_fallback_for_tests, head_error_requires_failure_for_tests,
 };
 
 use crate::contracts::{RuntimeOptions, SourceInput, SourceKind, SourceRequest};

@@ -11,7 +11,7 @@ use super::{
     whitespace_values,
 };
 
-pub(super) fn common_input_forms() -> Vec<CliInputForm> {
+pub(in crate::contract) fn common_input_forms() -> Vec<CliInputForm> {
     vec![
         CliInputForm::LocalFilePath,
         CliInputForm::Url,
@@ -336,4 +336,22 @@ pub(super) fn common_inspect_output_parameters() -> Vec<CliParameterDescriptor> 
             "Write the stdout payload to exactly one file instead of stdout.",
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filesystem_output_surfaces_require_the_shared_overwrite_flag() {
+        for parameters in [
+            output_file_filesystem_output_parameters(),
+            preview_filesystem_output_parameters(),
+            extraction_filesystem_output_parameters(),
+        ] {
+            assert_eq!(parameters.len(), 1);
+            assert_eq!(parameters[0].id, CliParameterId::Overwrite);
+            assert_eq!(parameters[0].section, CliParameterSection::FilesystemOutput);
+        }
+    }
 }

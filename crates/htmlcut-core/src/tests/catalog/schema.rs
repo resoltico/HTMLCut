@@ -50,6 +50,16 @@ fn contract_lint_schema_catalog_is_unique_and_covers_core_and_interop_contracts(
     .expect("interop result schema");
     assert_eq!(interop_result_schema.owner, "interop-v1");
     assert_eq!(interop_result_schema.stability, SchemaStability::Versioned);
+
+    for descriptor in schema_catalog() {
+        let schema = (descriptor.json_schema)().expect("registered schema must materialize");
+        assert!(
+            schema.is_object(),
+            "{}@{} must materialize as an object",
+            descriptor.schema_ref.schema_name,
+            descriptor.schema_ref.schema_version
+        );
+    }
 }
 #[test]
 fn contract_lint_schemas_cover_inner_html_and_structured_metadata_variants() {

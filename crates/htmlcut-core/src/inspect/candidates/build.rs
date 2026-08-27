@@ -19,6 +19,15 @@ enum CandidateEligibility {
 }
 use super::super::selectors::recommend_content_selector;
 use super::super::*;
+use super::bias::{
+    CandidateBiasInput, extraction_prefers_heading_and_link_light_descendant,
+    extraction_prefers_near_complete_link_light_descendant,
+    extraction_prefers_stable_link_light_descendant, extraction_prefers_utility_light_descendant,
+    extraction_preserves_large_outer_candidate, extraction_preserves_title_bearing_outer_wrapper,
+    inner_link_density_exceeds_outer, prefers_heavy_link_descendant,
+    prefers_utility_light_descendant, preserves_heading_rich_outer_candidate,
+    preserves_primary_heading_outer_candidate, preserves_title_bearing_outer_candidate,
+};
 use super::promotion::{
     count_utility_descendant_roots, descendant_element_depth, drops_outer_title_signal,
     outer_wrapper_adds_heading_shell, path_depth, selector_stability_rank,
@@ -50,9 +59,7 @@ pub(in super::super) fn build_ranked_content_candidates_for(
         let Some(element) = ElementRef::wrap(node_ref) else {
             continue;
         };
-        if element_looks_like_utility_chrome(&element)
-            || element_has_utility_chrome_ancestor(&element)
-        {
+        if should_skip_content_candidate(&element) {
             continue;
         }
         let signal_tokens = structural_signal_tokens(&element);
@@ -132,18 +139,7 @@ pub(in super::super) fn build_ranked_content_candidates_for(
             utility_descendant_count,
             uses_exact_path_selector: selector == path,
         };
-        let score = match preference {
-            CandidatePreference::Extraction => {
-                let extraction_score =
-                    content_candidate_score_for(&score_inputs, CandidatePreference::Extraction);
-                let reading_score =
-                    content_candidate_score_for(&score_inputs, CandidatePreference::Reading);
-                extraction_score + (reading_score.max(0) / 3)
-            }
-            CandidatePreference::Reading => {
-                content_candidate_score_for(&score_inputs, CandidatePreference::Reading)
-            }
-        };
+        let score = ranked_content_candidate_score_for(&score_inputs, preference);
         if score <= 0 {
             continue;
         }
@@ -171,6 +167,27 @@ pub(in super::super) fn build_ranked_content_candidates_for(
     candidates.sort_by(|left, right| compare_content_candidates_for(left, right, preference));
 
     candidates.into_iter().take(sample_limit).collect()
+}
+
+pub(in super::super) fn should_skip_content_candidate(element: &ElementRef<'_>) -> bool {
+    element_looks_like_utility_chrome(element) || element_has_utility_chrome_ancestor(element)
+}
+
+pub(in super::super) fn ranked_content_candidate_score_for(
+    inputs: &ContentCandidateScoreInputs<'_>,
+    preference: CandidatePreference,
+) -> i32 {
+    match preference {
+        CandidatePreference::Extraction => {
+            let extraction_score =
+                content_candidate_score_for(inputs, CandidatePreference::Extraction);
+            let reading_score = content_candidate_score_for(inputs, CandidatePreference::Reading);
+            extraction_score + (reading_score.max(0) / 3)
+        }
+        CandidatePreference::Reading => {
+            content_candidate_score_for(inputs, CandidatePreference::Reading)
+        }
+    }
 }
 
 fn opaque_div_has_long_form_shape(
@@ -260,6 +277,24 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 inner_primary_heading_level,
                 inner_primary_heading_depth,
             );
+            let outer_bias = CandidateBiasInput {
+                selector: &outer_selector,
+                text_char_count: outer_text_char_count,
+                heading_count: outer_heading_count,
+                link_count: outer_link_count,
+                paragraph_count: outer_paragraph_count,
+                primary_heading_count: outer_primary_heading_count,
+                utility_descendant_count: outer_utility_descendant_count,
+            };
+            let inner_bias = CandidateBiasInput {
+                selector: &inner_selector,
+                text_char_count: inner_text_char_count,
+                heading_count: inner_heading_count,
+                link_count: inner_link_count,
+                paragraph_count: inner_paragraph_count,
+                primary_heading_count: inner_primary_heading_count,
+                utility_descendant_count: inner_utility_descendant_count,
+            };
 
             if outer_wrapper_adds_heading_shell(
                 HeadingShellCandidate {
@@ -285,60 +320,47 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 continue;
             }
 
-            if preference == CandidatePreference::Extraction
-                && drops_outer_title_signal
-                && inner_text_char_count * 100 >= outer_text_char_count * 85
-                && outer_paragraph_count > 0
-            {
+            if extraction_preserves_title_bearing_outer_wrapper(
+                preference,
+                drops_outer_title_signal,
+                outer_bias,
+                inner_bias,
+            ) {
                 candidates[outer_index].score += 245;
                 candidates[inner_index].score -= 280;
                 continue;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 92
-                && inner_paragraph_count + 1 >= outer_paragraph_count
-                && outer_heading_count <= inner_heading_count + 2
-                && (outer_link_count >= inner_link_count + 8
-                    || outer_utility_descendant_count >= inner_utility_descendant_count + 2)
-            {
+            if extraction_prefers_utility_light_descendant(preference, outer_bias, inner_bias) {
                 candidates[inner_index].score += 210;
                 candidates[outer_index].score -= 165;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 88
-                && outer_heading_count >= inner_heading_count + 12
-                && outer_link_count >= inner_link_count + 24
-            {
+            if extraction_prefers_heading_and_link_light_descendant(
+                preference, outer_bias, inner_bias,
+            ) {
                 candidates[inner_index].score += 760;
                 candidates[outer_index].score -= 620;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 98
-                && outer_heading_count >= inner_heading_count
-                && outer_link_count >= inner_link_count + 20
-            {
+            if extraction_prefers_near_complete_link_light_descendant(
+                preference, outer_bias, inner_bias,
+            ) {
                 candidates[inner_index].score += 320;
                 candidates[outer_index].score -= 260;
             }
 
-            if preference == CandidatePreference::Extraction
-                && inner_text_char_count * 100 >= outer_text_char_count * 95
-                && !drops_outer_title_signal
-                && outer_heading_count <= inner_heading_count + 4
-                && outer_link_count >= inner_link_count + 20
-                && selector_stability_rank(&inner_selector)
-                    >= selector_stability_rank(&outer_selector)
-            {
+            if extraction_prefers_stable_link_light_descendant(
+                preference,
+                drops_outer_title_signal,
+                outer_bias,
+                inner_bias,
+            ) {
                 candidates[inner_index].score += 2400;
                 candidates[outer_index].score -= 2000;
             }
 
-            if inner_text_char_count * 100 >= outer_text_char_count * 98
-                && outer_link_count >= inner_link_count + 120
-            {
+            if prefers_heavy_link_descendant(outer_bias, inner_bias) {
                 let (inner_boost, outer_penalty) = if preference == CandidatePreference::Reading {
                     (620, 520)
                 } else {
@@ -348,22 +370,12 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= outer_penalty;
             }
 
-            if preference == CandidatePreference::Extraction
-                && outer_text_char_count >= inner_text_char_count.saturating_mul(6)
-                && outer_paragraph_count >= inner_paragraph_count + 4
-                && outer_heading_count >= inner_heading_count + 4
-            {
+            if extraction_preserves_large_outer_candidate(preference, outer_bias, inner_bias) {
                 candidates[outer_index].score += 170;
                 candidates[inner_index].score -= 190;
             }
 
-            if inner_text_char_count * 100 >= outer_text_char_count * 78
-                && inner_paragraph_count + 1 >= outer_paragraph_count
-                && (outer_utility_descendant_count >= inner_utility_descendant_count + 8
-                    || (outer_utility_descendant_count > inner_utility_descendant_count
-                        && outer_link_count > inner_link_count + 8))
-                && outer_heading_count <= inner_heading_count + 2
-            {
+            if prefers_utility_light_descendant(outer_bias, inner_bias) {
                 let (inner_boost, outer_penalty) = if preference == CandidatePreference::Extraction
                 {
                     (145, 110)
@@ -374,11 +386,11 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score -= outer_penalty;
             }
 
-            if outer_paragraph_count > 0
-                && drops_outer_title_signal
-                && inner_text_char_count * 100 >= outer_text_char_count * 70
-                && outer_link_count <= inner_link_count + 70
-            {
+            if preserves_title_bearing_outer_candidate(
+                drops_outer_title_signal,
+                outer_bias,
+                inner_bias,
+            ) {
                 let (outer_boost, inner_penalty) = if preference == CandidatePreference::Reading {
                     (185, 220)
                 } else {
@@ -387,12 +399,7 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score += outer_boost;
                 candidates[inner_index].score -= inner_penalty;
             }
-            if outer_paragraph_count > 0
-                && outer_primary_heading_count > inner_primary_heading_count
-                && inner_text_char_count * 100 >= outer_text_char_count * 80
-                && outer_link_count <= inner_link_count + 20
-                && outer_utility_descendant_count <= inner_utility_descendant_count + 6
-            {
+            if preserves_primary_heading_outer_candidate(outer_bias, inner_bias) {
                 let (outer_boost, inner_penalty) = if preference == CandidatePreference::Reading {
                     (85, 115)
                 } else {
@@ -401,12 +408,7 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
                 candidates[outer_index].score += outer_boost;
                 candidates[inner_index].score -= inner_penalty;
             }
-            if outer_paragraph_count > 0
-                && inner_text_char_count * 100 >= outer_text_char_count * 80
-                && outer_heading_count >= inner_heading_count + 4
-                && outer_link_count <= inner_link_count + 20
-                && outer_utility_descendant_count <= inner_utility_descendant_count + 6
-            {
+            if preserves_heading_rich_outer_candidate(outer_bias, inner_bias) {
                 let (outer_boost, inner_penalty) = if preference == CandidatePreference::Reading {
                     (90, 110)
                 } else {
@@ -432,7 +434,7 @@ pub(in super::super) fn apply_nested_content_candidate_bias_for(
             if inner_text_char_count * 100 < outer_text_char_count * 68 {
                 continue;
             }
-            if outer_link_count > 0 && inner_link_count * 100 > outer_link_count * 80 {
+            if inner_link_density_exceeds_outer(outer_link_count, inner_link_count) {
                 continue;
             }
             if outer_utility_descendant_count > inner_utility_descendant_count + 12 {

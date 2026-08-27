@@ -361,4 +361,20 @@ mod tests {
                 .any(|line| line.starts_with("inspect slice"))
         );
     }
+
+    #[test]
+    fn operation_help_helpers_preserve_canonical_examples_and_command_labels() {
+        assert_eq!(
+            first_operation_example(OperationId::SelectExtract),
+            Some("htmlcut select ./page.html --css article --match single")
+        );
+        assert_eq!(
+            cli_operation_display_command(OperationId::SelectExtract),
+            "select"
+        );
+        assert_eq!(
+            cli_operation_display_command(OperationId::DocumentParse),
+            "document.parse"
+        );
+    }
 }

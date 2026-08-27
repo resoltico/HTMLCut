@@ -177,17 +177,25 @@ fn execute_plan_executes_all_selection_in_one_result_document() {
 }
 
 #[test]
-fn execute_plan_enforces_the_default_html_size_limit_for_preloaded_input() {
-    let oversized = format!("<article>{}</article>", "x".repeat(DEFAULT_MAX_BYTES + 1));
-    let source = HtmlInput::new("target-oversized", oversized).expect("source");
+fn execute_plan_uses_the_default_limit_and_maps_preloaded_size_failures() {
+    assert_eq!(RuntimeOptions::default().max_bytes.get(), DEFAULT_MAX_BYTES);
+
+    let source =
+        HtmlInput::new("target-oversized", "<article>oversized</article>").expect("source");
     let plan = Plan::new(
         PlanStrategy::css_selector(css_selector("article")),
         Selection::single(),
         Output::text(),
         Rendering::new(TextWhitespace::Normalize, false),
     );
+    let validated_plan = prepare_plan(&plan).expect("validated plan");
+    let runtime = RuntimeOptions {
+        max_bytes: MaxBytes::new(5).expect("max bytes"),
+        ..RuntimeOptions::default()
+    };
 
-    let error = execute_plan(&source, &plan).expect_err("oversized source should fail");
+    let error = execute_validated_plan_with_runtime_for_tests(&source, &validated_plan, &runtime)
+        .expect_err("oversized source should fail");
     assert_eq!(error.error_code, ErrorCode::InternalError);
     assert_eq!(
         error.diagnostics[0].code,

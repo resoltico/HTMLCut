@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: OPERATIONS
-updated: "2026-08-25"
+updated: "2026-08-27"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, cargo-mutants, mutation results, gate reports, xtask hygiene, cache cleanup]
   questions: ["where do HTMLCut build artifacts live?", "where are cargo-mutants results stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "which artifact roots are managed and disposable?"]

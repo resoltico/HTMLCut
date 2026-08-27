@@ -12,9 +12,7 @@ mod commands;
 mod common;
 mod descriptors;
 
-pub(super) fn common_input_forms() -> Vec<CliInputForm> {
-    common::common_input_forms()
-}
+pub(super) use common::common_input_forms;
 
 pub(super) fn common_selection_modes() -> Vec<CliSelectionMode> {
     common::common_selection_modes()
@@ -172,4 +170,52 @@ pub(super) fn parameter_descriptor(
         .parameters
         .iter()
         .find(|parameter| parameter.id == parameter_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_input_and_value_inventories_are_complete_and_ordered() {
+        assert_eq!(
+            common_input_forms(),
+            vec![
+                CliInputForm::LocalFilePath,
+                CliInputForm::Url,
+                CliInputForm::Stdin,
+            ]
+        );
+        assert_eq!(
+            whitespace_values(),
+            vec![
+                CliValue::WhitespaceMode(WhitespaceMode::Rendered),
+                CliValue::WhitespaceMode(WhitespaceMode::Normalize),
+            ]
+        );
+        assert_eq!(
+            fetch_preflight_values(),
+            vec![
+                CliValue::FetchPreflightMode(FetchPreflightMode::HeadFirst),
+                CliValue::FetchPreflightMode(FetchPreflightMode::GetOnly),
+            ]
+        );
+        assert_eq!(
+            boundary_retention_values(),
+            vec![
+                CliValue::BoundaryRetentionMode(
+                    crate::contract::CliBoundaryRetentionMode::ExcludeBoth,
+                ),
+                CliValue::BoundaryRetentionMode(
+                    crate::contract::CliBoundaryRetentionMode::IncludeStart,
+                ),
+                CliValue::BoundaryRetentionMode(
+                    crate::contract::CliBoundaryRetentionMode::IncludeEnd,
+                ),
+                CliValue::BoundaryRetentionMode(
+                    crate::contract::CliBoundaryRetentionMode::IncludeBoth,
+                ),
+            ]
+        );
+    }
 }

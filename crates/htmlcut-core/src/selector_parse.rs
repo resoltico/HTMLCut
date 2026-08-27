@@ -454,4 +454,32 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn selector_parse_details_require_exactly_the_closed_field_set() {
+        let extra = serde_json::json!({
+            "selector_parse": {
+                "line": 1,
+                "column_utf16": 1,
+                "parse_error_class": "unexpected-token",
+                "extra": true
+            }
+        });
+        assert_eq!(
+            validate_selector_parse_details(&extra),
+            Err(SelectorParseDetailsViolation::Malformed)
+        );
+
+        let substituted = serde_json::json!({
+            "selector_parse": {
+                "line": 1,
+                "column_utf16": 1,
+                "extra": true
+            }
+        });
+        assert_eq!(
+            validate_selector_parse_details(&substituted),
+            Err(SelectorParseDetailsViolation::Malformed)
+        );
+    }
 }

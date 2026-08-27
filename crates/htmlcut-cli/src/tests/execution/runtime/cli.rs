@@ -30,6 +30,15 @@ fn clap_error_message_handles_raw_errors_and_invalid_values() {
         clap_error_message(&hinted),
         "bad value. Use `--help` for usage."
     );
+
+    let detailed = Cli::command().error(
+        clap::error::ErrorKind::InvalidValue,
+        "bad value\nexpected a supported output mode",
+    );
+    assert_eq!(
+        clap_error_message(&detailed),
+        "bad value: expected a supported output mode. Use `--help` for usage."
+    );
 }
 
 #[test]

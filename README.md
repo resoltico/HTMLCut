@@ -14,6 +14,30 @@ selector, slice boundaries, or output settings.
 - Save reusable request files and replay them unchanged
 - Write outputs or forensic bundles to disk
 
+## Install and Try
+
+Download a checksummed prebuilt package from the [HTMLCut releases page](https://github.com/resoltico/HTMLCut/releases), or install the binary from this checkout:
+
+```bash
+cargo install --path crates/htmlcut-cli --locked
+```
+
+Run a first extraction without creating an input file:
+
+```bash
+htmlcut select --input-html '<article><h1>Guide</h1><p>Hello from HTMLCut.</p></article>' --css article
+```
+
+HTMLCut prints semantic rendered text:
+
+```text
+# Guide
+
+Hello from HTMLCut.
+```
+
+The [Getting Started guide](docs/getting-started.md) covers checksummed release installation on macOS, Linux, and Windows, source builds, files, URLs, stdin, inspection, and reusable requests.
+
 ## Save and Reuse an Extraction
 
 ```bash
@@ -39,6 +63,9 @@ The complete index of Markdown documentation under `docs/` lives in [docs/README
 - [Getting Started](docs/getting-started.md)
 - [CLI Developer Guide](docs/cli.md)
 - [Core Developer Guide](docs/core.md)
+- [Interop v1 Guide](docs/interop-v1.md)
+- [Quality Gates](docs/quality-gates.md)
+- [Changelog](changelog.md)
 - [Release Protocol Overview](docs/release-protocol.md)
 
 ## Legal

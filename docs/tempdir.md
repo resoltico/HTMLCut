@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: MAINTAINER
-updated: "2026-07-16"
+updated: "2026-08-27"
 route:
   keywords: [tempdir, htmlcut-tempdir, htmlcut_tempdir, TempDir, temporary directory, cleanup on drop, test helper]
   questions: ["what is htmlcut-tempdir for?", "how do HTMLCut tests create disposable temp directories?", "what does the htmlcut_tempdir crate export?"]

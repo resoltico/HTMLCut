@@ -33,6 +33,11 @@ fn title_bearing_reading_ancestor_promotion_restores_near_full_wrappers_that_kee
     );
 
     assert_eq!(extraction_candidates[0].inspection.selector, "#content");
+    assert_eq!(extraction_candidates.len(), 2);
+    assert_eq!(
+        extraction_candidates[1].inspection.selector,
+        "article.article-body"
+    );
 }
 
 #[test]

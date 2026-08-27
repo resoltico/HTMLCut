@@ -4,9 +4,31 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [13.1.0] - 2026-08-27
+
+### Added
+
+- Added `scripts/mutation-shard-plan.sh` and `scripts/summarize-mutation-results.sh` as standalone maintainer operations for generating the complete artifact-safe 16-shard cargo-mutants plan, verifying the exact expected artifact identity set, rejecting incomplete outcomes, and rendering per-shard and aggregate result tables locally or in GitHub Actions.
+- Added mutation-strength executable policy fixtures for CLI operation contracts, help examples, request-file conflicts, schema inventories, JSON wire defaults and round trips, extraction-versus-reading candidate ranking, reader-text cleanup, source limits and HTTP preflight, CSS and `srcset` URL rewriting, and delimiter extraction boundaries and progress.
+
+### Changed
+
+- Refreshed the checked-in `htmlcut-core` semver baseline to the public `v13.0.0` source, dependency graph, vendored selector stack, HTTP charset support, and Rust `1.98` floor, so compatibility checks now compare the next release against the latest published API.
+- CLI operation, help, catalog, and schema surfaces now derive from a more explicit canonical contract model for input forms, selection and value modes, conditional output defaults, parameter requirements, cross-parameter constraints, notes, examples, and report command labels, with direct drift checks for every registered surface.
+- Content inspection now expresses extraction and reading preferences through named score components and candidate-bias policies for title and primary-heading preservation, link and utility-chrome reduction, content completeness, readable density, stable selectors, ancestor promotion, and deterministic tie-breaking, making the recommendation theory independently testable without changing the public inspection schema.
+- Reader-text rendering now exposes and directly verifies the policy boundaries for brief notices, terminal auxiliary sections, ordered and unordered list containers, duplicate heading removal, image-caption context, heading whitespace, table rows, compact utility widgets, and substantive text detection.
+- Runtime and serialization bookkeeping now use the domain `RuntimeOptions` defaults as the interop execution authority and directly verify that runtime, inspection, extraction-request, and reusable-definition JSON omit only default-valued fields while preserving every configured non-default through conversion and round trips.
+- HTTP source-loading policy now names and directly verifies advisory HEAD fallback versus terminal failure, declared content-length exceedance, decoded and preloaded byte limits, and the exact accepted-limit boundaries used by files, URLs, stdin, and in-memory input.
+- Bundle-path bookkeeping now uses one component-aware lexical normalization model on Unix and Windows while preserving absolute roots, unresolved parent traversal, and canonicalized existing parents.
+- Full mutation campaigns now derive matrix selectors, cache identities, artifact names, expected downloads, and summary rows from one generated shard plan instead of maintaining parallel shard facts in workflow YAML and aggregation logic.
+
 ### Fixed
 
-- Scheduled and manually started mutation campaigns now use artifact-safe shard identities, preserve the complete `mutants.out` tree during workflow handoff, and reject missing, duplicated, or unexpected shard evidence before aggregation.
+- Scheduled and manually started mutation campaigns now use artifact-safe shard identities, preserve the complete `mutants.out` tree during workflow handoff, run download and exact verification even after shard failure, and reject missing, duplicated, unexpected, malformed, or incomplete shard evidence before aggregation.
+- Diff-scoped local mutation runs now stage their input before artifact hygiene cleanup, so unified diffs stored in repository scratch remain available to cargo-mutants and are removed after execution.
+- CSS URL, `srcset`, delimiter-pair, and delimiter-markup scanners now enforce bounded work, in-range character boundaries, and strictly advancing cursors, returning the original value or a closed diagnostic instead of allowing malformed traversal state to become an unbounded loop.
+- Reader text no longer classifies a notice longer than 420 characters as brief because collection stopped at the same boundary, no longer treats whitespace-only rendering as substantive before a terminal auxiliary section, and searches image-caption context across three actual element ancestors rather than spending depth on non-element nodes.
+- Mutation fixtures for local HTTP transport and oversized preloaded interop input now use bounded waits and small injected limits, so suppressed requests and rejected size checks produce immediate deterministic failures instead of campaign timeouts or parser-sized allocations.
 
 ## [13.0.0] - 2026-08-25
 

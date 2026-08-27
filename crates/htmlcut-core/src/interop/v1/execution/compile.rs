@@ -1,8 +1,6 @@
 use crate::{
-    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_MAX_BYTES,
-    ExtractionRequest, ExtractionSpec, FetchConnectTimeoutMs, FetchTimeoutMs, MaxBytes,
-    OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec, SlicePatternSpec, SliceSpec,
-    SourceRequest, ValueSpec, WhitespaceMode,
+    ExtractionRequest, ExtractionSpec, OutputOptions, RenderingOptions, SelectionSpec,
+    SlicePatternSpec, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode,
 };
 
 use super::super::stable_json::digest_stable_json;
@@ -13,18 +11,6 @@ use super::super::{
 
 pub(super) fn exact_plan_digest_sha256(plan: &Plan) -> Result<String, ContractError> {
     digest_stable_json(plan)
-}
-
-pub(super) fn default_runtime_options() -> RuntimeOptions {
-    RuntimeOptions {
-        max_bytes: MaxBytes::new(DEFAULT_MAX_BYTES).expect("default max bytes"),
-        fetch_timeout_ms: FetchTimeoutMs::new(DEFAULT_FETCH_TIMEOUT_MS)
-            .expect("default fetch timeout"),
-        fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(DEFAULT_FETCH_CONNECT_TIMEOUT_MS)
-            .expect("default connect timeout"),
-        fetch_preflight: crate::FetchPreflightMode::HeadFirst,
-        tls_trust: crate::TlsTrustPolicy::WebPki,
-    }
 }
 
 pub(super) fn compile_request(source: &HtmlInput, plan: &Plan) -> ExtractionRequest {

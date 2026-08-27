@@ -197,12 +197,26 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
         fs::create_dir_all(output_dir.join("mutants.out")).expect("create stale mutation output");
         fs::write(output_dir.join("mutants.out/stale"), "result")
             .expect("write stale mutation output");
+        fs::write(repo_root.path().join("changes.diff"), "diff evidence")
+            .expect("write mutation diff");
         let calls = Rc::new(RefCell::new(Vec::new()));
         let calls_for_override = Rc::clone(&calls);
 
         with_ready_preflight(|| {
             crate::command_exec::with_run_spec_override(
                 move |_, spec| {
+                    if spec.args.iter().any(|argument| argument == "--in-diff") {
+                        let diff_index = spec
+                            .args
+                            .iter()
+                            .position(|argument| argument == "--in-diff")
+                            .expect("diff argument");
+                        let staged_diff = Path::new(&spec.args[diff_index + 1]);
+                        assert_eq!(
+                            fs::read_to_string(staged_diff).expect("read staged mutation diff"),
+                            "diff evidence"
+                        );
+                    }
                     calls_for_override.borrow_mut().push(spec.clone());
                     Some(Ok(()))
                 },
@@ -228,13 +242,14 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
             !output_dir.join("mutants.out").exists(),
             "stale mutation results should be cleared while the managed evidence root remains"
         );
+        assert!(!output_dir.join("input.diff").exists());
         assert_eq!(
             calls.borrow().as_slice(),
             &[crate::mutants_command(
                 &output_dir,
                 true,
                 Some("2/16"),
-                Some(Path::new("changes.diff")),
+                Some(&output_dir.join("input.diff")),
             )]
         );
     });

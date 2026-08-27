@@ -7,7 +7,7 @@ use super::super::super::policy::{
     element_looks_like_auxiliary_section, element_looks_like_brief_reader_notice,
     element_looks_like_reader_auxiliary, element_looks_like_source_attribution,
     element_should_skip_in_reader_text, is_note_fragment_href, looks_like_note_fragment_anchor,
-    should_skip_rendered_element, tokenize_notice_text,
+    node_starts_terminal_non_narrative_section, should_skip_rendered_element, tokenize_notice_text,
 };
 use super::super::math::*;
 use super::super::tree::*;
@@ -67,6 +67,24 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     let hidden_style_false = parse_document_node("<span style=\"display\">Body</span>");
     let hidden_style_false_element = select_first(&hidden_style_false, "span").expect("span");
     assert!(!element_has_hidden_style(&hidden_style_false_element));
+    for markup in [
+        "<span style=\"display:block\">Body</span>",
+        "<span style=\"color:none\">Body</span>",
+    ] {
+        let document = parse_document_node(markup);
+        let element = select_first(&document, "span").expect("visible span");
+        assert!(!element_has_hidden_style(&element));
+    }
+
+    for markup in [
+        "<nav class=\"menu\">Menu</nav>",
+        "<section><h2>References</h2><p>Sources</p></section>",
+        "<section><div><h2>References</h2></div><p>Sources</p></section>",
+    ] {
+        let document = parse_document_node(markup);
+        let element = select_first(&document, "nav, section").expect("terminal section");
+        assert!(node_starts_terminal_non_narrative_section(*element));
+    }
 
     let note_anchor = parse_document_node("<sup><a href=\"#cite_note-1\">[1]</a></sup>");
     let note_anchor_element = select_first(&note_anchor, "sup").expect("sup");
@@ -77,6 +95,22 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     let backlink = parse_document_node("<span class=\"backlink\">Back</span>");
     let backlink_element = select_first(&backlink, "span").expect("span");
     assert!(element_looks_like_reader_auxiliary(&backlink_element));
+    let balanced_backlink = parse_document_node(
+        "<span class=\"backlink content\">A linked part of the article body.</span>",
+    );
+    let balanced_backlink_element =
+        select_first(&balanced_backlink, "span").expect("balanced backlink");
+    assert!(element_looks_like_reader_auxiliary(
+        &balanced_backlink_element
+    ));
+    let balanced_reference = parse_document_node(
+        "<span class=\"reference content\">A cited part of the article body.</span>",
+    );
+    let balanced_reference_element =
+        select_first(&balanced_reference, "span").expect("balanced reference");
+    assert!(!element_looks_like_reader_auxiliary(
+        &balanced_reference_element
+    ));
     let reference_list = parse_document_node("<ul class=\"references\"><li>Ref</li></ul>");
     let reference_list_element = select_first(&reference_list, "ul").expect("ul");
     assert!(element_looks_like_reader_auxiliary(&reference_list_element));
@@ -139,6 +173,12 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
     ));
     assert!(element_should_skip_in_reader_text(
         &source_attribution_element
+    ));
+    let unlinked_source_label = parse_document_node("<p>Source: Research Feed</p>");
+    let unlinked_source_label_element =
+        select_first(&unlinked_source_label, "p").expect("unlinked source label");
+    assert!(!element_looks_like_source_attribution(
+        &unlinked_source_label_element
     ));
     let auxiliary_section = parse_document_node(
         "<section><h2>References</h2><ul><li><a href=\"/source\">Source</a></li></ul></section>",
@@ -237,6 +277,13 @@ fn reader_cleanup_and_math_helpers_cover_hidden_auxiliary_and_math_edges() {
         &mut root_limited_output,
     );
     assert_eq!(root_limited_output, "Alpha");
+
+    let spanning_notice_document =
+        parse_document_node("<div id=\"notice\"><span>Alpha</span><span>Beta</span></div>");
+    let spanning_notice = select_first(&spanning_notice_document, "#notice").expect("notice");
+    let mut spanning_notice_output = String::new();
+    collect_notice_node_text(*spanning_notice, 10, &mut spanning_notice_output);
+    assert_eq!(spanning_notice_output, "Alpha Beta");
 
     let direct_math_root = parse_document_node("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     let mut direct_math_root_rendered = String::new();

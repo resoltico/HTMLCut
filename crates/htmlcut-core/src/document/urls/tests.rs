@@ -59,6 +59,16 @@ fn meta_refresh_helper_detects_exact_attribute_names_and_values() {
         rewrite_html_urls("<a href=\"/guide\">Guide</a>", None, false),
         "<a href=\"/guide\">Guide</a>"
     );
+    assert!(looks_like_full_document(&rewrite_html_urls(
+        "<article>Forced document</article>",
+        Some("https://example.test/"),
+        true,
+    )));
+    assert!(looks_like_full_document(&rewrite_html_urls(
+        "<html><body><article>Detected document</article></body></html>",
+        Some("https://example.test/"),
+        false,
+    )));
     assert_eq!(resolve_url("", Some("https://example.test/base/")), "");
     assert_eq!(
         resolve_url("#fragment", Some("https://example.test/base/")),
@@ -214,6 +224,39 @@ fn css_rewrite_helpers_cover_comments_escapes_and_invalid_forms() {
         rewrite_css_import_string_at("@media screen", 0, "https://example.test/assets/"),
         None
     );
+    assert_eq!(
+        rewrite_css_import_string_at("ximport \"theme.css\"", 0, "https://example.test/assets/"),
+        None
+    );
+    let import_source = "@import \"theme.css\" screen";
+    let (rewritten_import, import_next) =
+        rewrite_css_import_string_at(import_source, 0, "https://example.test/assets/")
+            .expect("quoted import");
+    assert_eq!(
+        rewritten_import,
+        "@import \"https://example.test/assets/theme.css\""
+    );
+    assert_eq!(
+        import_next,
+        import_source.find(" screen").expect("import tail")
+    );
+
+    for (source, expected) in [
+        (
+            "url(\"hero.png\") tail",
+            "url(\"https://example.test/assets/hero.png\")",
+        ),
+        (
+            "url(hero.png) tail",
+            "url(https://example.test/assets/hero.png)",
+        ),
+    ] {
+        let (rewritten, next) =
+            rewrite_css_url_function_at(source, 0, "https://example.test/assets/")
+                .expect("CSS URL function");
+        assert_eq!(rewritten, expected);
+        assert_eq!(next, source.find(" tail").expect("URL tail"));
+    }
     assert_eq!(skip_ascii_whitespace("x", 1), 1);
     assert!(is_css_identifier_char('-'));
     assert!(is_css_identifier_char('_'));

@@ -86,7 +86,29 @@ pub(crate) fn read_url_source(
                     });
                 }
             }
-            Err(error) if head_error_allows_get_fallback(&error) => {
+            Err(error) => {
+                if head_error_requires_failure(&error) {
+                    load_steps.push(SourceLoadStep {
+                        action: SourceLoadAction::HeadPreflight,
+                        outcome: SourceLoadOutcome::Failed,
+                        status: None,
+                        message: format!("HEAD preflight failed with {error}."),
+                    });
+                    return Err(source_load_failure(
+                        source,
+                        SourceKind::Url,
+                        source_value.clone(),
+                        load_steps,
+                        error_diagnostic(
+                            DiagnosticCode::SourceLoadFailed,
+                            format!("Could not preflight {source_value} with HEAD: {error}"),
+                            Some(json!({
+                                "source": source_value,
+                                "method": "HEAD",
+                            })),
+                        ),
+                    ));
+                }
                 load_steps.push(SourceLoadStep {
                     action: SourceLoadAction::HeadPreflight,
                     outcome: SourceLoadOutcome::Fallback,
@@ -95,28 +117,6 @@ pub(crate) fn read_url_source(
                         "HEAD preflight failed with {error}; HTMLCut fell back to GET."
                     ),
                 });
-            }
-            Err(error) => {
-                load_steps.push(SourceLoadStep {
-                    action: SourceLoadAction::HeadPreflight,
-                    outcome: SourceLoadOutcome::Failed,
-                    status: None,
-                    message: format!("HEAD preflight failed with {error}."),
-                });
-                return Err(source_load_failure(
-                    source,
-                    SourceKind::Url,
-                    source_value.clone(),
-                    load_steps,
-                    error_diagnostic(
-                        DiagnosticCode::SourceLoadFailed,
-                        format!("Could not preflight {source_value} with HEAD: {error}"),
-                        Some(json!({
-                            "source": source_value,
-                            "method": "HEAD",
-                        })),
-                    ),
-                ));
             }
         }
     } else {
@@ -373,8 +373,7 @@ fn validate_url_response(
         .headers()
         .get("content-length")
         .and_then(|header| header.to_str().ok())
-        .and_then(|header| header.parse::<usize>().ok())
-        && content_length > runtime.max_bytes.get()
+        .and_then(|header| declared_content_length_exceedance(header, runtime.max_bytes.get()))
     {
         return Err(error_diagnostic(
             DiagnosticCode::SourceLoadFailed,
@@ -411,6 +410,13 @@ fn validate_url_response(
     Ok(())
 }
 
+fn declared_content_length_exceedance(header: &str, max_bytes: usize) -> Option<usize> {
+    header
+        .parse::<usize>()
+        .ok()
+        .filter(|content_length| *content_length > max_bytes)
+}
+
 fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
     match error {
         ureq::Error::Protocol(_) => true,
@@ -423,6 +429,10 @@ fn head_error_allows_get_fallback(error: &ureq::Error) -> bool {
         ),
         _ => false,
     }
+}
+
+fn head_error_requires_failure(error: &ureq::Error) -> bool {
+    !head_error_allows_get_fallback(error)
 }
 
 fn content_type_is_obviously_non_html(content_type: &str) -> bool {
@@ -444,6 +454,11 @@ pub(crate) fn content_type_is_obviously_non_html_for_tests(content_type: &str) -
 #[cfg(test)]
 pub(crate) fn head_error_allows_get_fallback_for_tests(error: &ureq::Error) -> bool {
     head_error_allows_get_fallback(error)
+}
+
+#[cfg(test)]
+pub(crate) fn head_error_requires_failure_for_tests(error: &ureq::Error) -> bool {
+    head_error_requires_failure(error)
 }
 
 #[cfg(test)]

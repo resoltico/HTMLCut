@@ -159,10 +159,10 @@ pub(crate) fn suggest_nearest<'a>(
         .into_iter()
         .map(|candidate| {
             let normalized_candidate = candidate.to_ascii_lowercase();
-            let prefix_match = normalized_candidate.starts_with(&normalized_requested)
-                || normalized_requested.starts_with(&normalized_candidate);
-            let contains_match = normalized_candidate.contains(&normalized_requested)
-                || normalized_requested.contains(&normalized_candidate);
+            let prefix_match =
+                suggestion_prefix_matches(&normalized_requested, &normalized_candidate);
+            let contains_match =
+                suggestion_contains_match(&normalized_requested, &normalized_candidate);
             let distance = levenshtein_distance(&normalized_requested, &normalized_candidate);
             (candidate, prefix_match, contains_match, distance)
         })
@@ -179,18 +179,37 @@ pub(crate) fn suggest_nearest<'a>(
     ranked
         .into_iter()
         .filter(|candidate| {
-            candidate.1
-                || candidate.2
-                || candidate.3
-                    <= normalized_requested
-                        .len()
-                        .max(candidate.0.len())
-                        .saturating_div(3)
-                        .max(2)
+            suggestion_is_close(
+                candidate.1,
+                candidate.2,
+                candidate.3,
+                normalized_requested
+                    .len()
+                    .max(candidate.0.len())
+                    .saturating_div(3)
+                    .max(2),
+            )
         })
         .map(|candidate| candidate.0)
         .take(MAX_SUGGESTIONS)
         .collect()
+}
+
+fn suggestion_prefix_matches(requested: &str, candidate: &str) -> bool {
+    candidate.starts_with(requested) || requested.starts_with(candidate)
+}
+
+fn suggestion_contains_match(requested: &str, candidate: &str) -> bool {
+    candidate.contains(requested) || requested.contains(candidate)
+}
+
+fn suggestion_is_close(
+    prefix_match: bool,
+    contains_match: bool,
+    distance: usize,
+    distance_limit: usize,
+) -> bool {
+    prefix_match || contains_match || distance <= distance_limit
 }
 
 fn levenshtein_distance(left: &str, right: &str) -> usize {
@@ -252,6 +271,20 @@ mod tests {
             vec!["select.extract", "slice.extract"]
         );
         assert!(suggest_nearest("totally-unrelated", ["schema", "catalog"]).is_empty());
+        assert!(suggestion_prefix_matches("schema", "schema-report"));
+        assert!(suggestion_prefix_matches("schema-report", "schema"));
+        assert!(!suggestion_prefix_matches("chema", "schema-report"));
+        assert!(suggestion_contains_match("chema", "schema-report"));
+        assert!(suggestion_contains_match("schema-report", "chema"));
+        assert!(!suggestion_contains_match("schema", "catalog"));
+        assert!(suggestion_is_close(true, false, 10, 2));
+        assert!(suggestion_is_close(false, true, 10, 2));
+        assert!(suggestion_is_close(false, false, 2, 2));
+        assert!(!suggestion_is_close(false, false, 3, 2));
+        assert_eq!(levenshtein_distance("ab", "a"), 1);
+        assert_eq!(levenshtein_distance("ba", "a"), 1);
+        assert_eq!(levenshtein_distance("a", "ab"), 1);
+        assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
     }
 
     #[test]

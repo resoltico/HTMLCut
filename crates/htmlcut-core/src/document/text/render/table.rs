@@ -133,9 +133,7 @@ fn format_table_row(row: &[String], widths: &[usize]) -> String {
         }
 
         line.push_str(cell);
-        if index + 1 != row.len() {
-            line.push_str(&" ".repeat(widths[index].saturating_sub(cell.chars().count())));
-        }
+        line.push_str(&" ".repeat(widths[index].saturating_sub(cell.chars().count())));
     }
 
     line.trim_end().to_owned()

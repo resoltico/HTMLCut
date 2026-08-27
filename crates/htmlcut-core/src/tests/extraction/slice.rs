@@ -89,6 +89,26 @@ fn slice_match_builder_covers_value_modes() {
             .contains("Extracted fragment is missing attribute \"title\".")
     );
 
+    let mut inconsistent_candidate = candidate.clone();
+    inconsistent_candidate.selected_range.start += 1;
+    let unhinted_missing = build_slice_match(
+        &attribute_request,
+        effective_base_url.as_deref(),
+        &inconsistent_candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect_err("retained start boundaries must not suggest retaining the start boundary");
+    assert!(!unhinted_missing.message.contains("--boundary-retention"));
+    assert!(
+        unhinted_missing
+            .details
+            .as_ref()
+            .is_some_and(|details| details["hint"].is_null())
+    );
+
     let mut inner_capture_request = request.clone();
     inner_capture_request.extraction = ExtractionSpec::slice(SliceSpec {
         pattern: SlicePatternSpec::literal(slice_boundary("<a "), slice_boundary("</a>")),
@@ -377,6 +397,11 @@ fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
     assert_eq!(zero_width.len(), 2);
     assert_eq!(zero_width[0].selected_range.start, 0);
     assert_eq!(zero_width[1].selected_range.start, 3);
+
+    let nested = extract_slice_candidates("<a><a>inner</a>", &slice_spec("<a>", "</a>"))
+        .expect("nested candidate");
+    assert_eq!(nested.len(), 1);
+    assert_eq!(nested[0].outer_html, "<a><a>inner</a>");
 }
 
 #[test]
@@ -451,55 +476,6 @@ fn slice_selection_tolerates_only_an_irrelevant_trailing_incomplete_pair() {
             .last()
             .is_some_and(|diagnostic| diagnostic.message.contains("End pattern was not found"))
     );
-}
-
-#[test]
-fn slice_finders_cover_literal_regex_and_empty_reader_edges() {
-    let literal = build_finder("<p>", PatternMode::Literal, None).expect("literal finder");
-    assert_eq!(
-        literal.find("<p>Hello</p>", 0).expect("literal hit").start,
-        0
-    );
-    assert!(literal.find("<p>Hello</p>", 10).is_none());
-
-    let regex = build_finder(r"h\w+", PatternMode::Regex, Some("i")).expect("regex finder");
-    assert_eq!(regex.find("Hello", 0).expect("regex hit").start, 0);
-    assert!(regex.find("Hello", 5).is_none());
-
-    let mut empty = Cursor::new(Vec::<u8>::new());
-    assert_eq!(
-        read_limited_to_string(&mut empty, 10, "Input").expect("empty input"),
-        ""
-    );
-    assert!(!position_inside_markup_for_tests("plain text only", 0));
-    assert!(!position_inside_markup_for_tests("plain text only", 5));
-    assert!(!position_inside_markup_for_tests("plain text only", 99));
-
-    let script_text = r#"<script>if (x < y && y > 0) { alert("ok"); }</script><p>done</p>"#;
-    let script_text_position = script_text.find("y &&").expect("script text position");
-    assert!(!position_inside_markup_for_tests(
-        script_text,
-        script_text_position
-    ));
-
-    let attribute_text = r#"<div data-label="a > b">done</div>"#;
-    let content_position = attribute_text.find("done").expect("content position");
-    assert!(!position_inside_markup_for_tests(
-        attribute_text,
-        content_position
-    ));
-
-    let comment_text = "<!-- alpha < beta -->done";
-    let comment_position = comment_text.find("alpha").expect("comment position");
-    assert!(position_inside_markup_for_tests(
-        comment_text,
-        comment_position
-    ));
-    let after_comment_position = comment_text.find("done").expect("after comment position");
-    assert!(!position_inside_markup_for_tests(
-        comment_text,
-        after_comment_position
-    ));
 }
 
 #[test]

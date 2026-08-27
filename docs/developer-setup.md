@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.0.0"
+version: "13.1.0"
 domain: SETUP
-updated: "2026-08-25"
+updated: "2026-08-27"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
@@ -229,6 +229,9 @@ To test only mutations in a reviewed source diff, pass a unified diff file:
 git diff --no-ext-diff --unified=0 origin/main...HEAD > /tmp/htmlcut-mutants.diff
 ./scripts/xtask.sh mutants --in-diff /tmp/htmlcut-mutants.diff
 ```
+The command reads the diff before hygiene cleanup, stages it under the managed mutation evidence
+root for cargo-mutants, and removes that staged copy afterward. Repository-local `tmp/` diff paths
+are therefore supported even though hygiene treats that directory as disposable scratch.
 The main `xtask check` gate likewise preflights the exact stable pin from
 `rust-toolchain.toml`, its required `clippy`/`rustfmt` components, the nightly Miri prerequisites,
 and the nightly coverage prerequisites before the Rust gate starts, including direct probes that

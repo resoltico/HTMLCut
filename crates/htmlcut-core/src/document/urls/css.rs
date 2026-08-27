@@ -3,6 +3,44 @@
 use super::base::resolve_url;
 
 pub(super) fn rewrite_css_urls(value: &str, base_url: Option<&str>) -> String {
+    rewrite_css_urls_with_steps(
+        value,
+        base_url,
+        css_comment_end,
+        rewrite_css_url_function_at,
+        rewrite_css_import_string_at,
+        next_char_boundary,
+    )
+}
+
+fn rewrite_css_urls_with_steps(
+    value: &str,
+    base_url: Option<&str>,
+    comment_end: fn(&str, usize) -> Option<usize>,
+    rewrite_url: fn(&str, usize, &str) -> Option<(String, usize)>,
+    rewrite_import: fn(&str, usize, &str) -> Option<(String, usize)>,
+    next_char: fn(&str, usize) -> usize,
+) -> String {
+    rewrite_css_urls_with_steps_and_budget(
+        value,
+        base_url,
+        comment_end,
+        rewrite_url,
+        rewrite_import,
+        next_char,
+        scan_step_budget(value),
+    )
+}
+
+fn rewrite_css_urls_with_steps_and_budget(
+    value: &str,
+    base_url: Option<&str>,
+    comment_end: fn(&str, usize) -> Option<usize>,
+    rewrite_url: fn(&str, usize, &str) -> Option<(String, usize)>,
+    rewrite_import: fn(&str, usize, &str) -> Option<(String, usize)>,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> String {
     let Some(base_url) = base_url else {
         return value.to_owned();
     };
@@ -10,25 +48,52 @@ pub(super) fn rewrite_css_urls(value: &str, base_url: Option<&str>) -> String {
     let mut rewritten = String::with_capacity(value.len());
     let mut cursor = 0usize;
     while cursor < value.len() {
-        if let Some(end) = css_comment_end(value, cursor) {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return value.to_owned();
+        }
+        if let Some(end) = comment_end(value, cursor) {
+            if cursor_does_not_advance(cursor, end) {
+                return value.to_owned();
+            }
+            if !is_in_bounds_char_boundary(value, end) {
+                return value.to_owned();
+            }
             rewritten.push_str(&value[cursor..end]);
             cursor = end;
             continue;
         }
 
-        if let Some((replacement, next)) = rewrite_css_url_function_at(value, cursor, base_url) {
+        if let Some((replacement, next)) = rewrite_url(value, cursor, base_url) {
+            if cursor_does_not_advance(cursor, next) {
+                return value.to_owned();
+            }
+            if !is_in_bounds_char_boundary(value, next) {
+                return value.to_owned();
+            }
             rewritten.push_str(&replacement);
             cursor = next;
             continue;
         }
 
-        if let Some((replacement, next)) = rewrite_css_import_string_at(value, cursor, base_url) {
+        if let Some((replacement, next)) = rewrite_import(value, cursor, base_url) {
+            if cursor_does_not_advance(cursor, next) {
+                return value.to_owned();
+            }
+            if !is_in_bounds_char_boundary(value, next) {
+                return value.to_owned();
+            }
             rewritten.push_str(&replacement);
             cursor = next;
             continue;
         }
 
-        let next = next_char_boundary(value, cursor);
+        let next = next_char(value, cursor);
+        if cursor_does_not_advance(cursor, next) {
+            return value.to_owned();
+        }
+        if !is_in_bounds_char_boundary(value, next) {
+            return value.to_owned();
+        }
         rewritten.push_str(&value[cursor..next]);
         cursor = next;
     }
@@ -86,30 +151,55 @@ pub(super) fn rewrite_css_url_function_at(
     cursor: usize,
     base_url: &str,
 ) -> Option<(String, usize)> {
+    rewrite_css_url_function_at_with_next(value, cursor, base_url, next_char_boundary)
+}
+
+fn rewrite_css_url_function_at_with_next(
+    value: &str,
+    cursor: usize,
+    base_url: &str,
+    next_char: fn(&str, usize) -> usize,
+) -> Option<(String, usize)> {
+    rewrite_css_url_function_at_with_next_and_budget(
+        value,
+        cursor,
+        base_url,
+        next_char,
+        scan_step_budget(value),
+    )
+}
+
+fn rewrite_css_url_function_at_with_next_and_budget(
+    value: &str,
+    cursor: usize,
+    base_url: &str,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> Option<(String, usize)> {
     if !starts_with_css_keyword(value, cursor, "url") {
         return None;
     }
-    if cursor > 0
-        && value[..cursor]
-            .chars()
-            .next_back()
-            .is_some_and(is_css_identifier_char)
+    if value[..cursor]
+        .chars()
+        .next_back()
+        .is_some_and(is_css_identifier_char)
     {
         return None;
     }
 
     let mut index = cursor + "url".len();
-    index = skip_ascii_whitespace(value, index);
+    index = skip_ascii_whitespace_with_next(value, index, next_char);
     if !value[index..].starts_with('(') {
         return None;
     }
 
-    let mut content_start = skip_ascii_whitespace(value, index + 1);
+    let mut content_start = skip_ascii_whitespace_with_next(value, index + 1, next_char);
     let quote = value[content_start..].chars().next()?;
     if quote == '"' || quote == '\'' {
         let raw_start = content_start + quote.len_utf8();
-        let raw_end = find_css_string_end(value, content_start)?;
-        let after_quote = skip_ascii_whitespace(value, raw_end + quote.len_utf8());
+        let raw_end = find_css_string_end_with_next(value, content_start, next_char)?;
+        let after_quote =
+            skip_ascii_whitespace_with_next(value, raw_end + quote.len_utf8(), next_char);
         if !value[after_quote..].starts_with(')') {
             return None;
         }
@@ -127,15 +217,22 @@ pub(super) fn rewrite_css_url_function_at(
     }
 
     let raw_start = content_start;
-    while content_start < value.len() {
-        let ch = value[content_start..].chars().next()?;
+    loop {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return None;
+        }
+        let ch = value.get(content_start..)?.chars().next()?;
         if ch == ')' {
             break;
         }
-        content_start = next_char_boundary(value, content_start);
-    }
-    if content_start >= value.len() {
-        return None;
+        let next = next_char(value, content_start);
+        if cursor_does_not_advance(content_start, next) {
+            return None;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
+            return None;
+        }
+        content_start = next;
     }
     debug_assert!(value[content_start..].starts_with(')'));
 
@@ -165,24 +262,76 @@ pub(super) fn rewrite_css_url_function_at(
     ))
 }
 
-fn skip_css_ignorable(value: &str, mut cursor: usize) -> usize {
+fn skip_css_ignorable(value: &str, cursor: usize) -> usize {
+    skip_css_ignorable_with_comment(value, cursor, css_comment_end)
+}
+
+fn skip_css_ignorable_with_comment(
+    value: &str,
+    cursor: usize,
+    comment_end: fn(&str, usize) -> Option<usize>,
+) -> usize {
+    skip_css_ignorable_with_comment_and_budget(value, cursor, comment_end, scan_step_budget(value))
+}
+
+fn skip_css_ignorable_with_comment_and_budget(
+    value: &str,
+    mut cursor: usize,
+    comment_end: fn(&str, usize) -> Option<usize>,
+    mut remaining_steps: usize,
+) -> usize {
     loop {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return cursor;
+        }
         let next = skip_ascii_whitespace(value, cursor);
-        if let Some(end) = css_comment_end(value, next) {
-            cursor = end;
-            continue;
+        if let Some(end) = comment_end(value, next) {
+            if cursor_does_not_advance(cursor, end) {
+                return next;
+            }
+            if is_in_bounds_char_boundary(value, end) {
+                cursor = end;
+                continue;
+            }
         }
         return next;
     }
 }
 
-pub(super) fn skip_ascii_whitespace(value: &str, mut cursor: usize) -> usize {
+pub(super) fn skip_ascii_whitespace(value: &str, cursor: usize) -> usize {
+    skip_ascii_whitespace_with_next(value, cursor, next_char_boundary)
+}
+
+fn skip_ascii_whitespace_with_next(
+    value: &str,
+    cursor: usize,
+    next_char: fn(&str, usize) -> usize,
+) -> usize {
+    skip_ascii_whitespace_with_next_and_budget(value, cursor, next_char, scan_step_budget(value))
+}
+
+fn skip_ascii_whitespace_with_next_and_budget(
+    value: &str,
+    mut cursor: usize,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> usize {
     while cursor < value.len() {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return cursor;
+        }
         let ch = value[cursor..].chars().next().expect("char boundary");
         if !ch.is_ascii_whitespace() {
             break;
         }
-        cursor += ch.len_utf8();
+        let next = next_char(value, cursor);
+        if cursor_does_not_advance(cursor, next) {
+            break;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
+            break;
+        }
+        cursor = next;
     }
     cursor
 }
@@ -195,23 +344,63 @@ fn starts_with_css_keyword(value: &str, cursor: usize, keyword: &str) -> bool {
 }
 
 pub(super) fn find_css_string_end(value: &str, quote_index: usize) -> Option<usize> {
+    find_css_string_end_with_next(value, quote_index, next_char_boundary)
+}
+
+fn find_css_string_end_with_next(
+    value: &str,
+    quote_index: usize,
+    next_char: fn(&str, usize) -> usize,
+) -> Option<usize> {
+    find_css_string_end_with_next_and_budget(value, quote_index, next_char, scan_step_budget(value))
+}
+
+fn find_css_string_end_with_next_and_budget(
+    value: &str,
+    quote_index: usize,
+    next_char: fn(&str, usize) -> usize,
+    mut remaining_steps: usize,
+) -> Option<usize> {
     let quote = value[quote_index..].chars().next()?;
     let mut cursor = quote_index + quote.len_utf8();
-    while cursor < value.len() {
-        let ch = value[cursor..].chars().next()?;
+    loop {
+        if !consume_scan_step_budget(&mut remaining_steps) {
+            return None;
+        }
+        let ch = value.get(cursor..)?.chars().next()?;
         if ch == '\\' {
-            cursor = next_char_boundary(value, cursor);
+            let next = next_char(value, cursor);
+            if cursor_does_not_advance(cursor, next) {
+                return None;
+            }
+            if !is_in_bounds_char_boundary(value, next) {
+                return None;
+            }
+            cursor = next;
             if cursor < value.len() {
-                cursor = next_char_boundary(value, cursor);
+                let next = next_char(value, cursor);
+                if cursor_does_not_advance(cursor, next) {
+                    return None;
+                }
+                if !is_in_bounds_char_boundary(value, next) {
+                    return None;
+                }
+                cursor = next;
             }
             continue;
         }
         if ch == quote {
             return Some(cursor);
         }
-        cursor = next_char_boundary(value, cursor);
+        let next = next_char(value, cursor);
+        if cursor_does_not_advance(cursor, next) {
+            return None;
+        }
+        if !is_in_bounds_char_boundary(value, next) {
+            return None;
+        }
+        cursor = next;
     }
-    None
 }
 
 fn next_char_boundary(value: &str, cursor: usize) -> usize {
@@ -221,6 +410,26 @@ fn next_char_boundary(value: &str, cursor: usize) -> usize {
             .next()
             .expect("char boundary")
             .len_utf8()
+}
+
+fn is_in_bounds_char_boundary(value: &str, next: usize) -> bool {
+    next <= value.len() && value.is_char_boundary(next)
+}
+
+fn cursor_does_not_advance(cursor: usize, next: usize) -> bool {
+    next <= cursor
+}
+
+fn scan_step_budget(value: &str) -> usize {
+    value.chars().count().saturating_add(1)
+}
+
+fn consume_scan_step_budget(remaining_steps: &mut usize) -> bool {
+    if *remaining_steps == 0 {
+        return false;
+    }
+    *remaining_steps -= 1;
+    true
 }
 
 fn previous_char_boundary(value: &str, cursor: usize) -> usize {
@@ -236,6 +445,7 @@ pub(super) fn is_css_identifier_char(ch: char) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn rewrite_css_urls_for_tests(value: &str, base_url: Option<&str>) -> String {
-    rewrite_css_urls(value, base_url)
-}
+mod test_support;
+
+#[cfg(test)]
+pub(crate) use test_support::*;

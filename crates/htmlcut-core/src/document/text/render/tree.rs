@@ -162,7 +162,7 @@ pub(super) fn render_node_with_intent(
                 return;
             }
 
-            if tag_name == "ul" || tag_name == "ol" {
+            if is_list_container(tag_name) {
                 push_newline(output, 2);
                 render_child_nodes(node.children(), output, false, false, false, intent, false);
                 push_newline(output, 2);
@@ -263,6 +263,10 @@ pub(super) fn render_node_with_intent(
             }
         }
     }
+}
+
+pub(super) fn is_list_container(tag_name: &str) -> bool {
+    matches!(tag_name, "ul" | "ol")
 }
 
 pub(super) fn render_heading_text_node(
@@ -393,7 +397,7 @@ fn render_child_nodes<'a>(
     intent: TextRenderIntent,
     selected_root_children: bool,
 ) {
-    let mut rendered_substantive = output.chars().any(|character| !character.is_whitespace());
+    let mut rendered_substantive = contains_substantive_text(output);
     for child in children {
         if stop_at_terminal_auxiliary
             && rendered_substantive
@@ -410,10 +414,14 @@ fn render_child_nodes<'a>(
             intent,
             selected_root_children,
         );
-        if output.len() > before_len {
+        if contains_substantive_text(&output[before_len..]) {
             rendered_substantive = true;
         }
     }
+}
+
+pub(super) fn contains_substantive_text(text: &str) -> bool {
+    text.chars().any(|character| !character.is_whitespace())
 }
 
 #[cfg(test)]
@@ -533,11 +541,10 @@ pub(super) fn looks_like_shouty_banner(text: &str) -> bool {
     let mut lowercase_letters = 0usize;
 
     for character in text.chars() {
-        match character {
-            character if !character.is_alphabetic() => {}
-            character if character.is_uppercase() => uppercase_letters += 1,
-            character if character.is_lowercase() => lowercase_letters += 1,
-            _ => {}
+        if character.is_uppercase() {
+            uppercase_letters += 1;
+        } else if character.is_lowercase() {
+            lowercase_letters += 1;
         }
     }
 

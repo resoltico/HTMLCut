@@ -19,7 +19,7 @@ fn file_and_url_loading_cover_successful_non_error_branches() {
     let address = listener.local_addr().expect("server addr");
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "successful source request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -101,7 +101,7 @@ fn url_loading_get_error_and_status_failures_cover_remaining_branches() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind status server");
     let address = listener.local_addr().expect("status server addr");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "status response request");
         let mut request_buffer = [0u8; 512];
         let _ = stream.read(&mut request_buffer).expect("read request");
         let response =
@@ -149,7 +149,7 @@ fn url_loading_accepts_headerless_and_supported_html_content_types() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind headerless server");
     let address = listener.local_addr().expect("headerless server addr");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "headerless response request");
         let mut request_buffer = [0u8; 512];
         let _ = stream.read(&mut request_buffer).expect("read request");
         let body = "<html><body>Headerless</body></html>";
@@ -173,7 +173,7 @@ fn url_loading_accepts_headerless_and_supported_html_content_types() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind xhtml server");
     let address = listener.local_addr().expect("xhtml server addr");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "XHTML response request");
         let mut request_buffer = [0u8; 512];
         let _ = stream.read(&mut request_buffer).expect("read request");
         let body = "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>XHTML</body></html>";

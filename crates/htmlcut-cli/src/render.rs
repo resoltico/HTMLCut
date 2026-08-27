@@ -340,19 +340,15 @@ fn canonical_bundle_dir(dir: &Path) -> std::path::PathBuf {
     })
 }
 
-#[cfg(windows)]
 fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
     use std::path::Component;
 
     let is_absolute = path.is_absolute();
-    let mut prefix = None;
-    let mut has_root = false;
+    let mut normalized = std::path::PathBuf::new();
     let mut segments = Vec::new();
 
     for component in path.components() {
         match component {
-            Component::Prefix(value) => prefix = Some(value.as_os_str().to_owned()),
-            Component::RootDir => has_root = true,
             Component::CurDir => {}
             Component::ParentDir => {
                 let can_pop_normal = segments
@@ -366,58 +362,10 @@ fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
                 }
             }
             Component::Normal(part) => segments.push(part.to_owned()),
+            _ => normalized.push(component.as_os_str()),
         }
     }
 
-    let mut normalized = std::path::PathBuf::new();
-    if let Some(prefix) = prefix {
-        normalized.push(prefix);
-    }
-    if has_root {
-        normalized.push(std::path::MAIN_SEPARATOR.to_string());
-    }
-    for segment in segments {
-        normalized.push(segment);
-    }
-
-    if normalized.as_os_str().is_empty() {
-        std::path::PathBuf::from(".")
-    } else {
-        normalized
-    }
-}
-
-#[cfg(not(windows))]
-fn lexical_normalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
-
-    let is_absolute = path.is_absolute();
-    let mut segments = Vec::new();
-
-    for segment in path.as_os_str().as_bytes().split(|byte| *byte == b'/') {
-        match segment {
-            b"" | b"." => {}
-            b".." => {
-                let can_pop_normal = segments
-                    .last()
-                    .map(|existing: &std::ffi::OsString| existing != "..")
-                    .unwrap_or(false);
-                if can_pop_normal {
-                    segments.pop();
-                } else if !is_absolute {
-                    segments.push("..".into());
-                }
-            }
-            part => segments.push(OsStr::from_bytes(part).to_owned()),
-        }
-    }
-
-    let mut normalized = if is_absolute {
-        std::path::PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
-    } else {
-        std::path::PathBuf::new()
-    };
     for segment in segments {
         normalized.push(segment);
     }

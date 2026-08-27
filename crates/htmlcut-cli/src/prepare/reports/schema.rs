@@ -427,5 +427,19 @@ mod tests {
             public_schema_surface("synthetic-owner"),
             ("synthetic-owner".to_owned(), None)
         );
+
+        let report = build_schema_report(None, None).expect("complete schema report");
+        for schema in report
+            .schemas
+            .iter()
+            .filter(|schema| schema.surface == "cli")
+        {
+            assert!(
+                schema.json_schema.is_object(),
+                "{}@{} must materialize as an object",
+                schema.schema_name,
+                schema.schema_version
+            );
+        }
     }
 }

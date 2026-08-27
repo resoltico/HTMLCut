@@ -170,15 +170,14 @@ pub(in super::super) fn promote_title_bearing_reading_ancestor_candidate(
     ) {
         return;
     }
-    if current_extraction.inspection.text_char_count * 100
-        < reading_top.inspection.text_char_count * 85
-    {
-        return;
-    }
-    if reading_top.inspection.heading_count + 2 < current_extraction.inspection.heading_count {
-        return;
-    }
-    if reading_top.inspection.link_count > current_extraction.inspection.link_count + 60 {
+    if !title_bearing_reading_ancestor_is_promotable(
+        reading_top.inspection.text_char_count,
+        reading_top.inspection.heading_count,
+        reading_top.inspection.link_count,
+        current_extraction.inspection.text_char_count,
+        current_extraction.inspection.heading_count,
+        current_extraction.inspection.link_count,
+    ) {
         return;
     }
 
@@ -201,11 +200,14 @@ pub(in super::super) fn promote_cleaner_reading_descendant_candidate(
         .iter()
         .filter(|candidate| {
             candidate.inspection.path.starts_with(&descendant_prefix)
-                && candidate.inspection.text_char_count * 100
-                    >= current_extraction.inspection.text_char_count * 90
-                && candidate.inspection.heading_count + 2
-                    >= current_extraction.inspection.heading_count
-                && current_extraction.inspection.link_count >= candidate.inspection.link_count + 20
+                && cleaner_reading_descendant_is_promotable(
+                    current_extraction.inspection.text_char_count,
+                    current_extraction.inspection.heading_count,
+                    current_extraction.inspection.link_count,
+                    candidate.inspection.text_char_count,
+                    candidate.inspection.heading_count,
+                    candidate.inspection.link_count,
+                )
                 && !drops_outer_title_signal(
                     current_extraction.primary_heading_level,
                     current_extraction.primary_heading_depth,
@@ -251,6 +253,32 @@ pub(in super::super) fn content_tag_rank(tag_name: &str) -> u8 {
         "div" => 1,
         _ => 0,
     }
+}
+
+pub(in super::super) fn title_bearing_reading_ancestor_is_promotable(
+    ancestor_text_char_count: usize,
+    ancestor_heading_count: usize,
+    ancestor_link_count: usize,
+    current_text_char_count: usize,
+    current_heading_count: usize,
+    current_link_count: usize,
+) -> bool {
+    current_text_char_count * 100 >= ancestor_text_char_count * 85
+        && ancestor_heading_count + 2 >= current_heading_count
+        && ancestor_link_count <= current_link_count + 60
+}
+
+pub(in super::super) fn cleaner_reading_descendant_is_promotable(
+    current_text_char_count: usize,
+    current_heading_count: usize,
+    current_link_count: usize,
+    candidate_text_char_count: usize,
+    candidate_heading_count: usize,
+    candidate_link_count: usize,
+) -> bool {
+    candidate_text_char_count * 100 >= current_text_char_count * 90
+        && candidate_heading_count + 2 >= current_heading_count
+        && current_link_count >= candidate_link_count + 20
 }
 
 pub(in super::super) fn primary_heading_bonus(level: u8) -> i32 {

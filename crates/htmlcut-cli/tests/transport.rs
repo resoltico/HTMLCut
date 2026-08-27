@@ -9,7 +9,7 @@ fn url_select_recovers_when_head_preflight_returns_forbidden() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "forbidden-head request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
@@ -66,7 +66,7 @@ fn url_select_recovers_when_head_preflight_transport_breaks() {
     let methods_for_server = Arc::clone(&methods);
     let server = thread::spawn(move || {
         for _ in 0..2 {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let (mut stream, _) = accept_test_connection(&listener, "broken-head request");
             let mut request_buffer = [0u8; 512];
             let read = stream.read(&mut request_buffer).expect("read request");
             let request = String::from_utf8_lossy(&request_buffer[..read]);
