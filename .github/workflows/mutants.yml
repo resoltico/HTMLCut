@@ -177,10 +177,11 @@ jobs:
           cargo mutants --config .cargo/mutants.toml --in-diff "$diff_path" --list --json > "$RUNNER_TEMP/mutants.json"
           mutants_status=$?
           set -e
-          if (( mutants_status == 4 )); then
-            printf '[]\n' > "$RUNNER_TEMP/mutants.json"
-          elif (( mutants_status != 0 )); then
+          if (( mutants_status != 0 && mutants_status != 4 )); then
             exit "$mutants_status"
+          fi
+          if [[ ! -s "$RUNNER_TEMP/mutants.json" ]]; then
+            printf '[]\n' > "$RUNNER_TEMP/mutants.json"
           fi
           jq -e '
             all(.[];
