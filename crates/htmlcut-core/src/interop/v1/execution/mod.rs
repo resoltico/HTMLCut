@@ -51,8 +51,15 @@ pub fn execute_validated_plan(
     source: &HtmlInput,
     validated_plan: &ValidatedPlan,
 ) -> Result<InteropResult, Box<InteropError>> {
+    execute_validated_plan_with_runtime(source, validated_plan, &crate::RuntimeOptions::default())
+}
+
+fn execute_validated_plan_with_runtime(
+    source: &HtmlInput,
+    validated_plan: &ValidatedPlan,
+    runtime: &crate::RuntimeOptions,
+) -> Result<InteropResult, Box<InteropError>> {
     let request = compile_request(source, validated_plan.plan());
-    let runtime = crate::RuntimeOptions::default();
     let dom_canonicalization = match &validated_plan.plan().output {
         Output::Text | Output::PlainText | Output::Structured => validated_plan
             .plan()
@@ -72,7 +79,7 @@ pub fn execute_validated_plan(
     };
     let extraction = extract_with_selector_dom_canonicalization(
         &request,
-        &runtime,
+        runtime,
         dom_canonicalization.as_ref(),
     );
 
@@ -105,6 +112,15 @@ pub(crate) fn compile_request_for_tests(
     plan: &Plan,
 ) -> crate::ExtractionRequest {
     compile::compile_request(source, plan)
+}
+
+#[cfg(test)]
+pub(crate) fn execute_validated_plan_with_runtime_for_tests(
+    source: &HtmlInput,
+    validated_plan: &ValidatedPlan,
+    runtime: &crate::RuntimeOptions,
+) -> Result<InteropResult, Box<InteropError>> {
+    execute_validated_plan_with_runtime(source, validated_plan, runtime)
 }
 
 #[cfg(test)]

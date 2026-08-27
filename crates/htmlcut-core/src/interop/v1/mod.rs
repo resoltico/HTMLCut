@@ -24,10 +24,10 @@ pub use execution::{ValidatedPlan, execute_plan, execute_validated_plan, prepare
 pub(crate) use execution::{
     adapt_successful_extraction_for_tests, compile_regex_flags_for_tests,
     compile_request_for_tests, core_execution_error_for_tests, exact_plan_digest_sha256_for_tests,
-    finalize_error_for_tests, finalize_sanitized_fallback_for_tests,
-    internal_adapter_error_for_tests, internal_adapter_error_with_plan_digest_for_tests,
-    parse_optional_url_for_tests, plan_digest_error_for_tests, project_plain_text_for_tests,
-    project_structured_match_for_tests,
+    execute_validated_plan_with_runtime_for_tests, finalize_error_for_tests,
+    finalize_sanitized_fallback_for_tests, internal_adapter_error_for_tests,
+    internal_adapter_error_with_plan_digest_for_tests, parse_optional_url_for_tests,
+    plan_digest_error_for_tests, project_plain_text_for_tests, project_structured_match_for_tests,
 };
 #[cfg(test)]
 pub(crate) use stable_json::digest_stable_json_omitting_field_for_tests;
