@@ -7,6 +7,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Fixed
 
 - Release preflight now verifies the managed artifact root of a new worktree and prescribes rebuilding it when a shared disposable-worktree cache exceeds the hygiene budget, so the required maintainer gate starts from a truthful artifact state.
+- Pull-request mutation checks now partition every changed-source mutant across a generated exact shard plan and verify the combined artifacts, preventing large valid code reviews from exhausting a single job without narrowing the mutation scope or raising its timeout.
 
 ## [13.1.0] - 2026-08-27
 

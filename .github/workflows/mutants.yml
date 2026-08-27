@@ -5,10 +5,14 @@ on:
     paths:
       - "crates/**/*.rs"
       - ".cargo/mutants.toml"
+      - ".github/workflows/mutants.yml"
       - "Cargo.lock"
       - "Cargo.toml"
       - "patches/rust/**/*.rs"
       - "patches/rust/**/Cargo.toml"
+      - "scripts/mutation-shard-plan.sh"
+      - "scripts/summarize-mutation-results.sh"
+      - "xtask/**/*.rs"
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
@@ -129,11 +133,86 @@ jobs:
           path: ${{ runner.temp }}/htmlcut-mutation-results
           if-no-files-found: error
 
-  mutants-diff:
+  mutation-diff-plan:
     if: github.event_name == 'pull_request'
-    name: cargo-mutants (pull-request diff)
+    name: Plan cargo-mutants pull-request diff
+    runs-on: ubuntu-24.04
+    outputs:
+      has_mutants: ${{ steps.diff.outputs.has_mutants }}
+      shards: ${{ steps.diff.outputs.shards }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+
+      - name: Export mutation tool inventory
+        id: mutation_tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        with:
+          tool: ${{ steps.mutation_tools.outputs.tool_csv }}
+
+      - name: Select pull-request diff shards
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff_path="$RUNNER_TEMP/htmlcut-mutants.diff"
+          git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
+          set +e
+          cargo mutants --config .cargo/mutants.toml --in-diff "$diff_path" --list --json > "$RUNNER_TEMP/mutants.json"
+          mutants_status=$?
+          set -e
+          if (( mutants_status != 0 && mutants_status != 4 )); then
+            exit "$mutants_status"
+          fi
+          if [[ ! -s "$RUNNER_TEMP/mutants.json" ]]; then
+            printf '[]\n' > "$RUNNER_TEMP/mutants.json"
+          fi
+          jq -e '
+            all(.[];
+              (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
+              and (.file | test("/src/(tests/|.*/tests/)") | not)
+            )
+          ' "$RUNNER_TEMP/mutants.json" >/dev/null
+          mutant_count="$(jq 'length' "$RUNNER_TEMP/mutants.json")"
+          if (( mutant_count == 0 )); then
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
+            echo "shards=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          shard_count="$mutant_count"
+          if (( shard_count > 16 )); then
+            shard_count=16
+          fi
+          shards="$(./scripts/mutation-shard-plan.sh "$shard_count")"
+          echo "has_mutants=true" >> "$GITHUB_OUTPUT"
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+
+  mutants-diff:
+    if: github.event_name == 'pull_request' && needs.mutation-diff-plan.outputs.has_mutants == 'true'
+    needs: mutation-diff-plan
+    name: cargo-mutants (pull-request diff ${{ matrix.shard.selector }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-diff-plan.outputs.shards) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -163,7 +242,7 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: mutants-pr-diff
+          key: mutants-pr-diff-${{ matrix.shard.artifact_name }}
           workspaces: ". -> ../.htmlcut-artifacts/target"
 
       - name: Verify mutation scope
@@ -186,7 +265,7 @@ jobs:
           set -euo pipefail
           diff_path="$RUNNER_TEMP/htmlcut-mutants.diff"
           git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
-          ./scripts/xtask.sh mutants --in-place --in-diff "$diff_path"
+          ./scripts/xtask.sh mutants --in-place --shard "${{ matrix.shard.selector }}" --in-diff "$diff_path"
 
       - name: Stage mutation results
         if: always()
@@ -203,9 +282,47 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cargo-mutants-pr-diff
+          name: ${{ matrix.shard.artifact_name }}
           path: ${{ runner.temp }}/htmlcut-mutation-results
           if-no-files-found: error
+
+  mutation-diff-summary:
+    if: github.event_name == 'pull_request' && always()
+    needs: [mutation-diff-plan, mutants-diff]
+    name: cargo-mutants pull-request summary
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download mutation results
+        if: needs.mutation-diff-plan.outputs.has_mutants == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.1
+        with:
+          pattern: cargo-mutants-shard-*-of-*
+          path: mutation-artifacts
+          merge-multiple: false
+
+      - name: Verify complete shards and summarize results
+        shell: bash
+        env:
+          MUTATION_DIFF_HAS_MUTANTS: ${{ needs.mutation-diff-plan.outputs.has_mutants }}
+          MUTATION_SHARDS: ${{ needs.mutation-diff-plan.outputs.shards }}
+        run: |
+          set -euo pipefail
+          if [[ "$MUTATION_DIFF_HAS_MUTANTS" != "true" ]]; then
+            echo "No production Rust mutants overlap this pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ./scripts/summarize-mutation-results.sh \
+            "$MUTATION_SHARDS" \
+            mutation-artifacts \
+            "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ needs.mutants-diff.result }}" != "success" ]]; then
+            echo "one or more pull-request mutation shards did not complete successfully" >&2
+            exit 1
+          fi
 
   mutation-summary:
     if: github.event_name != 'pull_request' && always()

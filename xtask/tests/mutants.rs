@@ -43,11 +43,27 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("workflow_dispatch:"));
     assert!(workflow.contains("schedule:"));
     assert!(workflow.contains("pull_request:"));
+    assert!(workflow.contains("- \".github/workflows/mutants.yml\""));
+    assert!(workflow.contains("- \"scripts/mutation-shard-plan.sh\""));
+    assert!(workflow.contains("- \"scripts/summarize-mutation-results.sh\""));
+    assert!(workflow.contains("- \"xtask/**/*.rs\""));
     assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh)\""));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
+    assert!(workflow.contains("mutation-diff-plan:"));
+    assert!(workflow.contains(
+        "cargo mutants --config .cargo/mutants.toml --in-diff \"$diff_path\" --list --json"
+    ));
+    assert!(workflow.contains("if (( mutants_status != 0 && mutants_status != 4 )); then"));
+    assert!(workflow.contains("if [[ ! -s \"$RUNNER_TEMP/mutants.json\" ]]; then"));
+    assert!(workflow.contains("printf '[]\\n' > \"$RUNNER_TEMP/mutants.json\""));
+    assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh \"$shard_count\")\""));
+    assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-diff-plan.outputs.shards) }}"));
+    assert!(workflow.contains("needs.mutation-diff-plan.outputs.has_mutants == 'true'"));
     assert!(workflow.contains("--shard \"${{ matrix.shard.selector }}\""));
+    assert!(workflow.contains("--shard \"${{ matrix.shard.selector }}\" --in-diff \"$diff_path\""));
     assert!(workflow.contains("name: ${{ matrix.shard.artifact_name }}"));
     assert!(!workflow.contains("cargo-mutants-${{ matrix.shard }}"));
+    assert!(!workflow.contains("cargo-mutants-pr-diff"));
     assert!(workflow.contains("--in-diff"));
     assert!(workflow.contains("all(.[];"));
     assert!(workflow.contains("htmlcut_contributor_install_action_csv cargo-mutants"));
@@ -56,6 +72,9 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("path: ${{ runner.temp }}/htmlcut-mutation-results\n"));
     assert!(workflow.contains("pattern: cargo-mutants-shard-*-of-*"));
     assert!(workflow.contains("merge-multiple: false"));
+    assert!(workflow.contains("mutation-diff-summary:"));
+    assert!(workflow.contains("MUTATION_DIFF_HAS_MUTANTS"));
+    assert!(workflow.contains("No production Rust mutants overlap this pull request."));
     assert!(
         workflow
             .contains("- name: Verify complete shards and summarize results\n        if: always()")
@@ -80,10 +99,17 @@ fn two_shard_plan() -> Value {
 
 #[cfg(unix)]
 fn generated_shard_plan() -> Value {
-    let output = Command::new("bash")
-        .arg(repo_root().join("scripts").join("mutation-shard-plan.sh"))
-        .output()
-        .expect("run mutation shard plan");
+    generated_shard_plan_with_total(None)
+}
+
+#[cfg(unix)]
+fn generated_shard_plan_with_total(shard_total: Option<usize>) -> Value {
+    let mut command = Command::new("bash");
+    command.arg(repo_root().join("scripts").join("mutation-shard-plan.sh"));
+    if let Some(shard_total) = shard_total {
+        command.arg(shard_total.to_string());
+    }
+    let output = command.output().expect("run mutation shard plan");
     assert!(
         output.status.success(),
         "mutation shard plan failed:\n{}",
@@ -112,6 +138,41 @@ fn mutation_shard_plan_covers_every_selector_with_safe_unique_artifact_identity(
                 .contains('/')
         );
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn mutation_shard_plan_accepts_a_requested_nonzero_shard_total() {
+    let plan = generated_shard_plan_with_total(Some(2));
+    assert_eq!(
+        plan,
+        json!([
+            {
+                "selector": "0/2",
+                "artifact_name": "cargo-mutants-shard-0-of-2"
+            },
+            {
+                "selector": "1/2",
+                "artifact_name": "cargo-mutants-shard-1-of-2"
+            }
+        ])
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn mutation_shard_plan_rejects_an_invalid_requested_total() {
+    let output = Command::new("bash")
+        .arg(repo_root().join("scripts").join("mutation-shard-plan.sh"))
+        .arg("0")
+        .output()
+        .expect("run invalid mutation shard plan");
+
+    assert!(!output.status.success(), "zero shard count must fail");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("positive integer"),
+        "invalid shard count should be actionable"
+    );
 }
 
 #[cfg(unix)]
