@@ -61,6 +61,23 @@ primary checkout and makes post-release reconciliation mechanically obvious. A s
 last resort and, if used, must still be reconciled back into the primary checkout before the
 release session ends.
 
+Before running the full gate in a new worktree, verify its managed artifact root:
+
+```bash
+./scripts/xtask.sh hygiene verify
+```
+
+Disposable worktrees under one temporary parent can share `../.htmlcut-artifacts`. If verification
+reports an inherited rebuildable cache above its budget, reclaim only that managed cache and verify
+again before the full gate:
+
+```bash
+./scripts/xtask.sh hygiene clean --mode rebuildable
+./scripts/xtask.sh hygiene verify
+```
+
+Do not raise artifact budgets or bypass the hygiene gate to release from an inherited cache.
+
 If the primary checkout has unpublished local work, decide before the release whether that work is
 real or stale. Real work must move onto a named branch or exported patch before closeout. Stale
 work must be dropped. Never leave the primary checkout on stale `main` plus unpublished overlays.
