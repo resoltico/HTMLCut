@@ -46,7 +46,9 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh)\""));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));
-    assert!(workflow.contains("cargo mutants --config .cargo/mutants.toml --in-diff \"$diff_path\" --list --json"));
+    assert!(workflow.contains(
+        "cargo mutants --config .cargo/mutants.toml --in-diff \"$diff_path\" --list --json"
+    ));
     assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh \"$shard_count\")\""));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-diff-plan.outputs.shards) }}"));
     assert!(workflow.contains("needs.mutation-diff-plan.outputs.has_mutants == 'true'"));
