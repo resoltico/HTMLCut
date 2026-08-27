@@ -277,10 +277,276 @@ pub(crate) fn opaque_div_has_long_form_shape_for_tests(
     )
 }
 
+/// Returns extraction and reading scores for a declared ranking-policy fixture.
+#[cfg(test)]
+pub(crate) fn content_candidate_scores_for_tests(input: &ContentCandidateTestInput) -> (i32, i32) {
+    let inputs = content_candidate_score_inputs_for_tests(input);
+    (
+        candidates::scoring::content_candidate_score_for(&inputs, CandidatePreference::Extraction),
+        candidates::scoring::content_candidate_score_for(&inputs, CandidatePreference::Reading),
+    )
+}
+
+/// Returns the extraction-ranking score, including its bounded reading-score contribution.
+#[cfg(test)]
+pub(crate) fn extraction_candidate_score_for_tests(input: &ContentCandidateTestInput) -> i32 {
+    let inputs = content_candidate_score_inputs_for_tests(input);
+    candidates::build::ranked_content_candidate_score_for(&inputs, CandidatePreference::Extraction)
+}
+
+#[cfg(test)]
+fn content_candidate_bias_input_for_tests(
+    input: &ContentCandidateTestInput,
+) -> candidates::bias::CandidateBiasInput<'_> {
+    candidates::bias::CandidateBiasInput {
+        selector: input.selector,
+        text_char_count: input.text_char_count,
+        heading_count: input.heading_count,
+        link_count: input.link_count,
+        paragraph_count: input.paragraph_count,
+        primary_heading_count: input.primary_heading_count,
+        utility_descendant_count: input.utility_descendant_count,
+    }
+}
+
+/// Returns whether extraction should prefer a similarly complete, utility-light descendant.
+#[cfg(test)]
+pub(crate) fn extraction_prefers_utility_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::extraction_prefers_utility_light_descendant(
+        CandidatePreference::Extraction,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether extraction should retain an outer wrapper that holds the title.
+#[cfg(test)]
+pub(crate) fn extraction_preserves_title_bearing_outer_wrapper_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::bias::extraction_preserves_title_bearing_outer_wrapper(
+        CandidatePreference::Extraction,
+        drops_outer_title_signal,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether extraction should prefer a descendant with substantially less heading and link chrome.
+#[cfg(test)]
+pub(crate) fn extraction_prefers_heading_and_link_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::extraction_prefers_heading_and_link_light_descendant(
+        CandidatePreference::Extraction,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether extraction should prefer a near-complete descendant with fewer links.
+#[cfg(test)]
+pub(crate) fn extraction_prefers_near_complete_link_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::extraction_prefers_near_complete_link_light_descendant(
+        CandidatePreference::Extraction,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether a near-complete descendant removes a very large link burden.
+#[cfg(test)]
+pub(crate) fn prefers_heavy_link_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::prefers_heavy_link_descendant(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether extraction should prefer a stable, link-light near-complete descendant.
+#[cfg(test)]
+pub(crate) fn extraction_prefers_stable_link_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::bias::extraction_prefers_stable_link_light_descendant(
+        CandidatePreference::Extraction,
+        drops_outer_title_signal,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether extraction should retain an outer candidate that is substantially larger.
+#[cfg(test)]
+pub(crate) fn extraction_preserves_large_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::extraction_preserves_large_outer_candidate(
+        CandidatePreference::Extraction,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether a similarly complete descendant removes substantial utility chrome.
+#[cfg(test)]
+pub(crate) fn prefers_utility_light_descendant_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::prefers_utility_light_descendant(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether a title-bearing outer candidate should be retained for extraction.
+#[cfg(test)]
+pub(crate) fn preserves_title_bearing_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    drops_outer_title_signal: bool,
+) -> bool {
+    candidates::bias::preserves_title_bearing_outer_candidate(
+        drops_outer_title_signal,
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether a primary-heading outer candidate should be retained for extraction.
+#[cfg(test)]
+pub(crate) fn preserves_primary_heading_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::preserves_primary_heading_outer_candidate(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether a heading-rich outer candidate should be retained for extraction.
+#[cfg(test)]
+pub(crate) fn preserves_heading_rich_outer_candidate_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+) -> bool {
+    candidates::bias::preserves_heading_rich_outer_candidate(
+        content_candidate_bias_input_for_tests(outer),
+        content_candidate_bias_input_for_tests(inner),
+    )
+}
+
+/// Returns whether the `#scope` candidate is excluded as utility chrome.
+#[cfg(test)]
+pub(crate) fn content_candidate_is_excluded_for_utility_chrome_for_tests(markup: &str) -> bool {
+    let document = Html::parse_document(markup);
+    let scope = select_first(&document, "#scope").expect("#scope fixture element");
+    candidates::build::should_skip_content_candidate(&scope)
+}
+
+/// Returns whether a declared candidate has enough readable content for recommendation.
+#[cfg(test)]
+pub(crate) fn content_candidate_has_readable_density_for_tests(
+    tag_name: &str,
+    text_char_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    body_block_count: usize,
+    prose_paragraph_count: usize,
+) -> bool {
+    candidates::scoring::candidate_has_readable_density(
+        tag_name,
+        text_char_count,
+        heading_count,
+        link_count,
+        body_block_count,
+        prose_paragraph_count,
+    )
+}
+
+/// Returns whether the `#scope` element has the structural shape of prose.
+#[cfg(test)]
+pub(crate) fn content_candidate_has_narrative_section_shape_for_tests(markup: &str) -> bool {
+    let document = Html::parse_document(markup);
+    let scope = select_first(&document, "#scope").expect("#scope fixture element");
+    candidates::scoring::element_has_narrative_section_shape(&scope)
+}
+
+#[cfg(test)]
+fn ranked_content_candidate_for_tests(input: &ContentCandidateTestInput) -> RankedContentCandidate {
+    RankedContentCandidate {
+        score: 0,
+        inspection: ContentCandidateInspection {
+            selector: input.selector.to_owned(),
+            path: input.path.to_owned(),
+            tag_name: input.tag_name.to_owned(),
+            text_char_count: input.text_char_count,
+            heading_count: input.heading_count,
+            link_count: input.link_count,
+        },
+        paragraph_count: input.paragraph_count,
+        primary_heading_level: input.primary_heading_level,
+        primary_heading_count: input.primary_heading_count,
+        primary_heading_depth: input.primary_heading_depth,
+        utility_descendant_count: input.utility_descendant_count,
+    }
+}
+
+/// Returns the outer and inner score deltas from one nested-candidate policy comparison.
+#[cfg(test)]
+pub(crate) fn nested_content_candidate_bias_deltas_for_tests(
+    outer: &ContentCandidateTestInput,
+    inner: &ContentCandidateTestInput,
+    preference: ContentCandidateTestPreference,
+) -> (i32, i32) {
+    let preference = match preference {
+        ContentCandidateTestPreference::Extraction => CandidatePreference::Extraction,
+        ContentCandidateTestPreference::Reading => CandidatePreference::Reading,
+    };
+    let mut candidates = [
+        ranked_content_candidate_for_tests(outer),
+        ranked_content_candidate_for_tests(inner),
+    ];
+    candidates::build::apply_nested_content_candidate_bias_for(&mut candidates, preference);
+    (candidates[0].score, candidates[1].score)
+}
+
+#[cfg(test)]
+pub(crate) fn inner_link_density_exceeds_outer_for_tests(
+    outer_link_count: usize,
+    inner_link_count: usize,
+) -> bool {
+    candidates::bias::inner_link_density_exceeds_outer(outer_link_count, inner_link_count)
+}
+
 mod candidates;
 mod samples;
 mod selectors;
+#[cfg(test)]
+mod test_support;
 mod text;
+
+#[cfg(test)]
+use test_support::content_candidate_score_inputs_for_tests;
+#[cfg(test)]
+pub(crate) use test_support::{ContentCandidateTestInput, ContentCandidateTestPreference};
 
 #[cfg(test)]
 mod tests;

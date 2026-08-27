@@ -9,7 +9,6 @@ pub(super) fn image_has_caption_context(element: &ElementRef<'_>) -> bool {
     while let Some(current) = ancestor {
         let Some(ancestor_element) = ElementRef::wrap(current) else {
             ancestor = current.parent();
-            depth += 1;
             continue;
         };
 

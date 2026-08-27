@@ -5,14 +5,18 @@ use crate::contracts::{
 };
 use crate::diagnostics::{error_diagnostic, has_errors, warning_diagnostic};
 use crate::document::{
-    ELLIPSIS, apply_whitespace_mode, attribute_supports_url_rewrite, build_node_path,
-    build_preview, collapse_blank_lines_for_tests, collapse_inline_whitespace, element_attributes,
-    element_name, first_body, first_body_child_element, first_fragment_attributes,
-    looks_like_full_document, needs_space, parse_document_node, parse_wrapped_fragment,
-    push_newline, render_element_as_text, render_html_as_text, render_node,
-    resolve_document_base_url, resolve_url, rewrite_css_urls_for_tests, rewrite_html_urls,
-    rewrite_srcset_for_tests, rewrite_urls_in_document, select_first, serialize_children,
-    serialize_document,
+    CssDispatchFault, CssProgressFault, ELLIPSIS, apply_whitespace_mode,
+    attribute_supports_url_rewrite, build_node_path, build_preview, collapse_blank_lines_for_tests,
+    collapse_inline_whitespace, css_dispatch_rejection_for_tests,
+    css_ignorable_rejects_nonadvancing_comment_for_tests, css_progress_is_valid_for_tests,
+    css_progress_rejection_for_tests, element_attributes, element_name, first_body,
+    first_body_child_element, first_fragment_attributes, looks_like_full_document, needs_space,
+    parse_document_node, parse_wrapped_fragment, push_newline, render_element_as_text,
+    render_html_as_text, render_node, resolve_document_base_url, resolve_url,
+    rewrite_css_urls_for_tests, rewrite_html_urls, rewrite_srcset_for_tests,
+    rewrite_urls_in_document, select_first, serialize_children, serialize_document,
+    srcset_progress_is_valid_for_tests, srcset_rejects_non_advancing_progress_for_tests,
+    srcset_rejects_staged_non_advancing_progress_for_tests,
 };
 use crate::extract::{
     build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,
@@ -31,7 +35,8 @@ use crate::source::{
 use crate::source::{
     UrlResponseContext, build_http_agent, content_type_is_obviously_non_html_for_tests,
     declared_http_charset_for_tests, finish_url_source_from_reader_for_tests,
-    head_error_allows_get_fallback_for_tests, read_stdin_source_from_reader_for_tests,
+    head_error_allows_get_fallback_for_tests, head_error_requires_failure_for_tests,
+    read_stdin_source_from_reader_for_tests,
 };
 use scraper::ElementRef;
 use serde_json::{Value, json};
@@ -121,6 +126,42 @@ fn file_source(path: impl AsRef<Path>) -> SourceRequest {
 #[cfg(feature = "http-client")]
 fn url_source(url: &str) -> SourceRequest {
     SourceRequest::url(http_url(url))
+}
+
+#[cfg(feature = "http-client")]
+pub(crate) fn accept_test_connection(
+    listener: &TcpListener,
+    label: &str,
+) -> (std::net::TcpStream, std::net::SocketAddr) {
+    listener
+        .set_nonblocking(true)
+        .expect("configure bounded test listener");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+    loop {
+        match listener.accept() {
+            Ok((stream, address)) => {
+                stream
+                    .set_nonblocking(false)
+                    .expect("restore blocking test stream");
+                let io_timeout = Some(std::time::Duration::from_millis(100));
+                stream
+                    .set_read_timeout(io_timeout)
+                    .expect("bound test-stream reads");
+                stream
+                    .set_write_timeout(io_timeout)
+                    .expect("bound test-stream writes");
+                return (stream, address);
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "timed out waiting for {label}"
+                );
+                thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(error) => panic!("failed to accept {label}: {error}"),
+        }
+    }
 }
 
 fn read_file_source(

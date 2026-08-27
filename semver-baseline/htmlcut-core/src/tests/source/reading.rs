@@ -2,6 +2,11 @@ use super::*;
 
 #[test]
 fn source_reading_helpers_cover_error_paths() {
+    let mut exact = Cursor::new(b"123".to_vec());
+    assert_eq!(
+        read_limited_to_string(&mut exact, 3, "Input").expect("exact-limit input"),
+        "123"
+    );
     struct BrokenReader;
     impl Read for BrokenReader {
         fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
@@ -86,7 +91,7 @@ fn url_source_reading_helpers_cover_error_paths() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind size server");
     let address = listener.local_addr().expect("size server addr");
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let (mut stream, _) = accept_test_connection(&listener, "oversized response request");
         let mut request_buffer = [0u8; 512];
         let _ = stream.read(&mut request_buffer).expect("read request");
         let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 9999\r\n\r\n";
@@ -109,6 +114,16 @@ fn url_source_reading_helpers_cover_error_paths() {
 }
 #[test]
 fn source_loading_covers_memory_limits_and_extract_load_failures() {
+    let exact_memory = load_source(
+        &memory_source("inline", "123"),
+        &RuntimeOptions {
+            max_bytes: max_bytes_limit(3),
+            ..RuntimeOptions::default()
+        },
+    )
+    .expect("exact-limit memory source");
+    assert_eq!(exact_memory.text, "123");
+
     let oversized_memory = load_source(
         &memory_source("inline", "12345"),
         &RuntimeOptions {

@@ -42,6 +42,228 @@ fn wire_default_documents_match_domain_defaults() {
 }
 
 #[test]
+fn wire_default_documents_omit_only_default_json_fields() {
+    assert_eq!(
+        serde_json::to_value(RuntimeOptionsDocument::default()).expect("runtime JSON"),
+        json!({})
+    );
+    assert_eq!(
+        serde_json::to_value(InspectionOptionsDocument::default()).expect("inspection JSON"),
+        json!({})
+    );
+
+    let selector_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(selector_query("article")),
+    );
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(selector_request).expect("selector document"),
+        )
+        .expect("selector JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": { "kind": "selector", "selector": "article" }
+        })
+    );
+
+    let slice_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::slice(slice_spec("<article>", "</article>")),
+    );
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(slice_request).expect("slice document"),
+        )
+        .expect("slice JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": {
+                "kind": "slice",
+                "pattern": {
+                    "mode": "literal",
+                    "from": "<article>",
+                    "to": "</article>"
+                }
+            }
+        })
+    );
+
+    let configured_output = OutputOptions {
+        rendering: RenderingOptions {
+            whitespace: WhitespaceMode::Normalize,
+            rewrite_urls: true,
+        },
+        include_source_text: true,
+        include_html: false,
+        include_text: false,
+        preview_chars: NonZeroUsize::new(12).expect("preview chars"),
+    };
+    let mut configured_request = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(selector_query("article")),
+    );
+    configured_request.output = configured_output.clone();
+    assert_eq!(
+        serde_json::to_value(
+            ExtractionRequestDocument::try_from(configured_request).expect("configured document"),
+        )
+        .expect("configured JSON"),
+        json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": { "kind": "selector", "selector": "article" },
+            "output": {
+                "rendering": { "whitespace": "normalize", "rewrite_urls": true },
+                "include_source_text": true,
+                "include_html": false,
+                "include_text": false,
+                "preview_chars": 12
+            }
+        })
+    );
+
+    let configured_document = serde_json::from_value::<ExtractionRequestDocument>(json!({
+        "spec_version": CORE_SPEC_VERSION,
+        "source": { "input": { "type": "stdin" } },
+        "extraction": { "kind": "selector", "selector": "article" },
+        "output": {
+            "rendering": { "whitespace": "normalize", "rewrite_urls": true },
+            "include_source_text": true,
+            "include_html": false,
+            "include_text": false,
+            "preview_chars": 12
+        }
+    }))
+    .expect("configured output document");
+    let configured_domain: ExtractionRequest = configured_document.into();
+    assert_eq!(configured_domain.output, configured_output);
+}
+
+#[test]
+fn wire_non_default_documents_preserve_every_configured_field() {
+    let runtime = RuntimeOptions {
+        max_bytes: max_bytes_limit(4_096),
+        fetch_timeout_ms: fetch_timeout_limit(2_750),
+        fetch_connect_timeout_ms: FetchConnectTimeoutMs::new(750).expect("connect timeout"),
+        fetch_preflight: FetchPreflightMode::GetOnly,
+        tls_trust: TlsTrustPolicy::Platform,
+    };
+    assert_eq!(
+        serde_json::to_value(RuntimeOptionsDocument::from(runtime.clone())).expect("runtime JSON"),
+        json!({
+            "max_bytes": 4_096,
+            "fetch_timeout_ms": 2_750,
+            "fetch_connect_timeout_ms": 750,
+            "fetch_preflight": "get-only",
+            "tls_trust": { "kind": "platform" }
+        })
+    );
+
+    let inspection = InspectionOptions {
+        include_source_text: true,
+        sample_limit: 7,
+    };
+    assert_eq!(
+        serde_json::to_value(InspectionOptionsDocument::from(inspection)).expect("inspection JSON"),
+        json!({ "include_source_text": true, "sample_limit": 7 })
+    );
+
+    let output_json = |output| {
+        let mut request = ExtractionRequest::new(
+            SourceRequest::stdin(),
+            ExtractionSpec::selector(selector_query("article")),
+        );
+        request.output = output;
+        serde_json::to_value(ExtractionRequestDocument::try_from(request).expect("output document"))
+            .expect("output JSON")["output"]
+            .clone()
+    };
+    assert_eq!(
+        output_json(OutputOptions {
+            include_source_text: true,
+            ..OutputOptions::default()
+        }),
+        json!({ "include_source_text": true })
+    );
+    assert_eq!(
+        output_json(OutputOptions {
+            rendering: RenderingOptions {
+                rewrite_urls: true,
+                ..RenderingOptions::default()
+            },
+            ..OutputOptions::default()
+        }),
+        json!({ "rendering": { "rewrite_urls": true } })
+    );
+
+    let output_defaults: ExtractionRequest =
+        serde_json::from_value::<ExtractionRequestDocument>(json!({
+            "spec_version": CORE_SPEC_VERSION,
+            "source": { "input": { "type": "stdin" } },
+            "extraction": { "kind": "selector", "selector": "article" },
+            "output": {}
+        }))
+        .expect("explicit default output document")
+        .into();
+    assert_eq!(output_defaults.output, OutputOptions::default());
+
+    let selected = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(selector_query("article")).with_selection(SelectionSpec::single()),
+    );
+    let selected_json = serde_json::to_value(
+        ExtractionRequestDocument::try_from(selected).expect("selected document"),
+    )
+    .expect("selected JSON");
+    assert_eq!(
+        selected_json["extraction"]["selection"],
+        json!({ "type": "single" })
+    );
+
+    let retained = ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::slice(
+            slice_spec("<article>", "</article>")
+                .with_boundary_retention(BoundaryRetention::IncludeBoth),
+        ),
+    );
+    let retained_json = serde_json::to_value(
+        ExtractionRequestDocument::try_from(retained).expect("retained document"),
+    )
+    .expect("retained JSON");
+    assert_eq!(
+        retained_json["extraction"]["boundary_retention"],
+        "include-both"
+    );
+
+    let definition_for = |runtime| ExtractionDefinition {
+        schema_name: EXTRACTION_DEFINITION_SCHEMA_NAME.to_owned(),
+        schema_version: EXTRACTION_DEFINITION_SCHEMA_VERSION,
+        request: ExtractionRequest::new(
+            SourceRequest::stdin(),
+            ExtractionSpec::selector(selector_query("article")),
+        ),
+        runtime,
+    };
+    let configured_definition = serde_json::to_value(
+        ExtractionDefinitionDocument::try_from(definition_for(runtime))
+            .expect("configured definition"),
+    )
+    .expect("configured definition JSON");
+    assert_eq!(configured_definition["runtime"]["max_bytes"], 4_096);
+
+    let default_definition = serde_json::to_value(
+        ExtractionDefinitionDocument::try_from(definition_for(RuntimeOptions::default()))
+            .expect("default definition"),
+    )
+    .expect("default definition JSON");
+    assert!(default_definition.get("runtime").is_none());
+}
+
+#[test]
 fn wire_request_documents_round_trip_all_source_and_extraction_variants() {
     let sources = vec![
         SourceRequest::stdin(),

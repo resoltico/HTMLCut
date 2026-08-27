@@ -82,9 +82,7 @@ pub(in super::super) fn prepend_document_title_heading_if_missing(
     };
 
     headings.insert(0, document_heading);
-    if headings.len() > sample_limit {
-        headings.truncate(sample_limit);
-    }
+    headings.truncate(sample_limit);
 }
 
 pub(in super::super) fn select_elements_in_scope<'a>(
@@ -188,6 +186,26 @@ pub(in super::super) fn content_candidate_score_for(
 ) -> i32 {
     let shallow_primary_heading =
         has_shallow_primary_heading(inputs.primary_heading_level, inputs.primary_heading_depth);
+    let utility_multiplier =
+        content_candidate_utility_multiplier(preference, inputs.tag_name, shallow_primary_heading);
+    let body_absence_penalty = content_candidate_body_absence_penalty(
+        preference,
+        inputs.paragraph_count,
+        inputs.text_char_count,
+    );
+    let title_fragment_penalty = content_candidate_title_fragment_penalty(
+        preference,
+        inputs.tag_name,
+        shallow_primary_heading,
+        inputs.paragraph_count,
+        inputs.text_char_count,
+    );
+    let link_density_penalty = content_candidate_link_density_penalty(
+        preference,
+        inputs.text_char_count,
+        inputs.link_count,
+        inputs.paragraph_count,
+    );
     let (
         tag_bonus,
         role_bonus,
@@ -197,13 +215,9 @@ pub(in super::super) fn content_candidate_score_for(
         paragraph_multiplier,
         positive_multiplier,
         negative_multiplier,
-        utility_multiplier,
         exact_path_penalty,
         heading_absence_penalty,
         short_text_penalty,
-        body_absence_penalty,
-        title_fragment_penalty,
-        link_density_penalty,
         primary_heading_bonus,
         primary_heading_count_bonus,
     ) = match preference {
@@ -215,65 +229,7 @@ pub(in super::super) fn content_candidate_score_for(
                 "div" => 18,
                 _ => 0,
             };
-            let utility_multiplier =
-                if matches!(inputs.tag_name, "article" | "main") && shallow_primary_heading {
-                    18
-                } else {
-                    24
-                };
-            let body_absence_penalty =
-                if inputs.paragraph_count == 0 && inputs.text_char_count < 500 {
-                    200
-                } else if inputs.paragraph_count <= 1 && inputs.text_char_count < 420 {
-                    95
-                } else {
-                    0
-                };
-            let title_fragment_penalty = if !matches!(inputs.tag_name, "article" | "main")
-                && shallow_primary_heading
-                && inputs.paragraph_count == 0
-                && inputs.text_char_count < 420
-            {
-                200
-            } else {
-                0
-            };
-            let link_density_penalty = if inputs.text_char_count < 240 && inputs.link_count > 8 {
-                30
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(6)
-                && inputs.text_char_count < 1_600
-            {
-                25
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(4)
-                && inputs.text_char_count < 6_500
-            {
-                60
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(3)
-                && inputs.text_char_count < 12_000
-            {
-                34
-            } else {
-                0
-            };
-            (
-                tag_bonus,
-                28,
-                55,
-                105,
-                10,
-                7,
-                22,
-                34,
-                utility_multiplier,
-                220,
-                55,
-                35,
-                body_absence_penalty,
-                title_fragment_penalty,
-                link_density_penalty,
-                0,
-                0,
-            )
+            (tag_bonus, 28, 55, 105, 10, 7, 22, 34, 220, 55, 35, 0, 0)
         }
         CandidatePreference::Reading => {
             let tag_bonus = match inputs.tag_name {
@@ -283,12 +239,6 @@ pub(in super::super) fn content_candidate_score_for(
                 "div" => 15,
                 _ => 0,
             };
-            let utility_multiplier =
-                if matches!(inputs.tag_name, "article" | "main") && shallow_primary_heading {
-                    12
-                } else {
-                    18
-                };
             let primary_heading_bonus = if shallow_primary_heading {
                 inputs
                     .primary_heading_level
@@ -302,40 +252,6 @@ pub(in super::super) fn content_candidate_score_for(
             } else {
                 0
             };
-            let body_absence_penalty =
-                if inputs.paragraph_count == 0 && inputs.text_char_count < 500 {
-                    180
-                } else if inputs.paragraph_count <= 1 && inputs.text_char_count < 320 {
-                    75
-                } else {
-                    0
-                };
-            let title_fragment_penalty = if !matches!(inputs.tag_name, "article" | "main")
-                && shallow_primary_heading
-                && inputs.paragraph_count == 0
-                && inputs.text_char_count < 300
-            {
-                170
-            } else {
-                0
-            };
-            let link_density_penalty = if inputs.text_char_count < 240 && inputs.link_count > 8 {
-                25
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(6)
-                && inputs.text_char_count < 1_200
-            {
-                15
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(4)
-                && inputs.text_char_count < 4_000
-            {
-                40
-            } else if inputs.link_count > inputs.paragraph_count.saturating_mul(3)
-                && inputs.text_char_count < 6_000
-            {
-                22
-            } else {
-                0
-            };
             (
                 tag_bonus,
                 45,
@@ -345,13 +261,9 @@ pub(in super::super) fn content_candidate_score_for(
                 7,
                 20,
                 28,
-                utility_multiplier,
                 220,
                 45,
                 30,
-                body_absence_penalty,
-                title_fragment_penalty,
-                link_density_penalty,
                 primary_heading_bonus,
                 primary_heading_count_bonus,
             )
@@ -375,4 +287,100 @@ pub(in super::super) fn content_candidate_score_for(
         - body_absence_penalty
         - title_fragment_penalty
         - link_density_penalty
+}
+
+pub(in super::super) fn content_candidate_utility_multiplier(
+    preference: CandidatePreference,
+    tag_name: &str,
+    shallow_primary_heading: bool,
+) -> i32 {
+    let primary_content_surface = matches!(tag_name, "article" | "main") && shallow_primary_heading;
+    match preference {
+        CandidatePreference::Extraction => {
+            if primary_content_surface {
+                18
+            } else {
+                24
+            }
+        }
+        CandidatePreference::Reading => {
+            if primary_content_surface {
+                12
+            } else {
+                18
+            }
+        }
+    }
+}
+
+pub(in super::super) fn content_candidate_body_absence_penalty(
+    preference: CandidatePreference,
+    paragraph_count: usize,
+    text_char_count: usize,
+) -> i32 {
+    let (no_body_limit, no_body_penalty, sparse_body_limit, sparse_body_penalty) = match preference
+    {
+        CandidatePreference::Extraction => (500, 200, 420, 95),
+        CandidatePreference::Reading => (500, 180, 320, 75),
+    };
+    if paragraph_count == 0 && text_char_count < no_body_limit {
+        no_body_penalty
+    } else if paragraph_count <= 1 && text_char_count < sparse_body_limit {
+        sparse_body_penalty
+    } else {
+        0
+    }
+}
+
+pub(in super::super) fn content_candidate_title_fragment_penalty(
+    preference: CandidatePreference,
+    tag_name: &str,
+    shallow_primary_heading: bool,
+    paragraph_count: usize,
+    text_char_count: usize,
+) -> i32 {
+    if matches!(tag_name, "article" | "main") || !shallow_primary_heading || paragraph_count > 0 {
+        return 0;
+    }
+    let (text_limit, penalty) = match preference {
+        CandidatePreference::Extraction => (420, 200),
+        CandidatePreference::Reading => (300, 170),
+    };
+    if text_char_count < text_limit {
+        penalty
+    } else {
+        0
+    }
+}
+
+pub(in super::super) fn content_candidate_link_density_penalty(
+    preference: CandidatePreference,
+    text_char_count: usize,
+    link_count: usize,
+    paragraph_count: usize,
+) -> i32 {
+    let (
+        short_text_penalty,
+        first_text_limit,
+        first_penalty,
+        second_text_limit,
+        second_penalty,
+        third_text_limit,
+        third_penalty,
+    ) = match preference {
+        CandidatePreference::Extraction => (30, 1_600, 25, 6_500, 60, 12_000, 34),
+        CandidatePreference::Reading => (25, 1_200, 15, 4_000, 40, 6_000, 22),
+    };
+    if text_char_count < 240 && link_count > 8 {
+        short_text_penalty
+    } else if link_count > paragraph_count.saturating_mul(6) && text_char_count < first_text_limit {
+        first_penalty
+    } else if link_count > paragraph_count.saturating_mul(4) && text_char_count < second_text_limit
+    {
+        second_penalty
+    } else if link_count > paragraph_count.saturating_mul(3) && text_char_count < third_text_limit {
+        third_penalty
+    } else {
+        0
+    }
 }

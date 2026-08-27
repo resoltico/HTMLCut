@@ -4,6 +4,10 @@ use url::Url;
 
 #[test]
 fn request_value_objects_cover_http_urls_attributes_and_boundary_retention() {
+    let fetch_timeout = FetchTimeoutMs::new(2_750).expect("fetch timeout");
+    assert_eq!(fetch_timeout.get(), 2_750);
+    assert_eq!(u64::from(fetch_timeout), 2_750);
+
     let url = http_url("https://example.com/docs/page.html?token=secret#frag");
     assert_eq!(
         url.as_url().as_str(),
@@ -51,6 +55,12 @@ fn request_value_objects_cover_http_urls_attributes_and_boundary_retention() {
             .as_http_url()
             .as_fetch_str(),
         "https://example.com/archive"
+    );
+    assert_eq!(
+        String::from(
+            PersistedHttpUrl::parse("https://example.com/owned").expect("owned persisted URL")
+        ),
+        "https://example.com/owned"
     );
     assert_eq!(
         DisplayedHttpUrl::from(&url).as_str(),

@@ -61,7 +61,7 @@ pub(crate) fn extract_compiled_slice_candidates(
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
 
-    while cursor <= source_text.len() {
+    for _ in 0..=source_text.len() {
         let Some(start) = patterns.start.find(source_text, cursor) else {
             break;
         };
@@ -122,7 +122,7 @@ pub(crate) fn extract_compiled_slice_candidates(
             candidate.outer_range.start + 1
         };
         candidates.push(candidate);
-        cursor = next_cursor;
+        cursor = require_slice_cursor_progress(cursor, next_cursor)?;
     }
 
     if candidates.is_empty() {
@@ -137,6 +137,26 @@ pub(crate) fn extract_compiled_slice_candidates(
     }
 
     Ok(candidates)
+}
+
+fn require_slice_cursor_progress(cursor: usize, next_cursor: usize) -> Result<usize, Diagnostic> {
+    // Every loop iteration must consume source; a malformed matcher must not hang callers.
+    if next_cursor <= cursor {
+        return Err(error_diagnostic(
+            DiagnosticCode::NoMatch,
+            "Slice pattern did not advance through the source.".to_owned(),
+            Some(json!({ "offset": cursor })),
+        ));
+    }
+    Ok(next_cursor)
+}
+
+#[cfg(test)]
+pub(crate) fn slice_cursor_progress_for_tests(
+    cursor: usize,
+    next_cursor: usize,
+) -> Result<usize, Diagnostic> {
+    require_slice_cursor_progress(cursor, next_cursor)
 }
 
 fn completed_selection_is_sufficient(selection: &SelectionSpec, candidate_count: usize) -> bool {

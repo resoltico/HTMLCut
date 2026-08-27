@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use super::{displayed_http_url, http_url};
-use crate::DEFAULT_MAX_BYTES;
 use crate::interop::v1::{
     ByteRange, ContractError, CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText,
     DelimiterMode, ERROR_SCHEMA_NAME, ErrorCode, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, HtmlInput,
@@ -10,8 +9,9 @@ use crate::interop::v1::{
     Output, OutputKind, PLAN_SCHEMA_NAME, Plan, PlanStrategy, RESULT_SCHEMA_NAME, RegexFlag,
     Rendering, ResultExecution, ResultSource, SelectedMatch, SelectedMatchMetadata, Selection,
     SelectionMode, StrategyKind, TextWhitespace, execute_plan, execute_validated_plan,
-    prepare_plan, stable_json_v1,
+    execute_validated_plan_with_runtime_for_tests, prepare_plan, stable_json_v1,
 };
+use crate::{DEFAULT_MAX_BYTES, MaxBytes, RuntimeOptions};
 use serde_json::json;
 
 const TEST_PLAN_DIGEST_SHA256: &str =

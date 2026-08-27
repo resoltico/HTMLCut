@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
+use std::num::NonZeroUsize;
 use std::path::Path;
 
 use serde_json::json;
@@ -110,9 +111,10 @@ pub(crate) fn read_limited_bytes(
             )
         })?;
 
-        if read == 0 {
+        let Some(read) = NonZeroUsize::new(read) else {
             break;
-        }
+        };
+        let read = read.get();
 
         if buffer.len() + read > max_bytes {
             return Err(error_diagnostic(

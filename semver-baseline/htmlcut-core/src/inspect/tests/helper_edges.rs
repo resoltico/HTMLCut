@@ -42,6 +42,8 @@ fn promotion_helpers_cover_path_depth_empty_inputs_and_cleaner_descendants() {
     ];
     promote_cleaner_reading_descendant_candidate(&mut cleaner_descendants, &reading_candidates);
     assert_eq!(cleaner_descendants[0].inspection.selector, ".story-body");
+    assert_eq!(cleaner_descendants.len(), 2);
+    assert_eq!(cleaner_descendants[1].inspection.selector, "#content");
 
     let mut precise_descendants = vec![ranked_content_candidate(PromotionFixture {
         selector: "main.layout",
@@ -124,6 +126,11 @@ fn promotion_helpers_cover_path_depth_empty_inputs_and_cleaner_descendants() {
 fn selector_rank_and_link_preview_helpers_cover_attribute_and_reference_edges() {
     assert_eq!(selector_stability_rank("[itemprop=\"articleBody\"]"), 4);
     assert_eq!(selector_stability_rank("[data-surface=\"story\"]"), 4);
+    assert_eq!(
+        selector_stability_rank("article[itemprop=\"articleBody\"]"),
+        4
+    );
+    assert_eq!(selector_stability_rank("article[role=\"main\"]"), 4);
 
     assert!(!link_preview_is_low_signal(
         "#cite-note",
@@ -163,6 +170,81 @@ fn selector_rank_and_link_preview_helpers_cover_attribute_and_reference_edges() 
         "https://example.test/guide",
         "not a valid url"
     ));
+}
+
+#[test]
+fn promotion_eligibility_helpers_preserve_exact_content_boundaries() {
+    assert!(title_bearing_reading_ancestor_is_promotable(
+        1_000, 2, 70, 850, 4, 10,
+    ));
+    assert!(!title_bearing_reading_ancestor_is_promotable(
+        1_000, 2, 70, 849, 4, 10,
+    ));
+    assert!(!title_bearing_reading_ancestor_is_promotable(
+        1_000, 1, 70, 850, 4, 10,
+    ));
+    assert!(!title_bearing_reading_ancestor_is_promotable(
+        1_000, 3, 70, 850, 6, 10,
+    ));
+    assert!(!title_bearing_reading_ancestor_is_promotable(
+        1_000, 2, 71, 850, 4, 10,
+    ));
+
+    assert!(cleaner_reading_descendant_is_promotable(
+        1_000, 5, 30, 900, 3, 10,
+    ));
+    assert!(!cleaner_reading_descendant_is_promotable(
+        1_000, 5, 30, 899, 3, 10,
+    ));
+    assert!(!cleaner_reading_descendant_is_promotable(
+        1_000, 6, 30, 900, 3, 10,
+    ));
+    assert!(!cleaner_reading_descendant_is_promotable(
+        1_000, 5, 30, 900, 2, 10,
+    ));
+    assert!(!cleaner_reading_descendant_is_promotable(
+        1_000, 5, 30, 900, 3, 11,
+    ));
+
+    assert_eq!(content_tag_rank("section"), 2);
+    assert!(outer_wrapper_adds_heading_shell(
+        HeadingShellCandidate {
+            text_char_count: 1_000,
+            heading_count: 26,
+            link_count: 12,
+            selector: "#outer",
+        },
+        HeadingShellCandidate {
+            text_char_count: 940,
+            heading_count: 2,
+            link_count: 0,
+            selector: "#inner",
+        },
+    ));
+    assert!(!outer_wrapper_adds_heading_shell(
+        HeadingShellCandidate {
+            text_char_count: 1_000,
+            heading_count: 26,
+            link_count: 12,
+            selector: "#outer",
+        },
+        HeadingShellCandidate {
+            text_char_count: 939,
+            heading_count: 2,
+            link_count: 0,
+            selector: "#inner",
+        },
+    ));
+
+    let document = Html::parse_document(
+        "<main id='scope'><nav>Menu</nav><article>Story</article><footer>Legal</footer></main>",
+    );
+    let scope = select_first(&document, "#scope").expect("candidate scope");
+    assert_eq!(count_utility_descendant_roots(&scope), 2);
+
+    let linked_document = Html::parse_document("<main><a id='target' href='/docs'>Docs</a></main>");
+    let link = select_first(&linked_document, "#target").expect("link candidate");
+    assert_eq!(samples::path_hint_for_link(&link), build_node_path(&link));
 }
 
 #[test]
@@ -314,4 +396,127 @@ fn density_and_heading_helpers_cover_link_penalties_and_title_insertion() {
     );
     assert!(extraction_penalized < article_baseline);
     assert!(reading_penalized < article_baseline);
+}
+
+#[test]
+fn content_candidate_score_policy_helpers_preserve_exact_boundaries() {
+    assert_eq!(
+        content_candidate_utility_multiplier(CandidatePreference::Extraction, "article", true),
+        18
+    );
+    assert_eq!(
+        content_candidate_utility_multiplier(CandidatePreference::Extraction, "div", true),
+        24
+    );
+    assert_eq!(
+        content_candidate_utility_multiplier(CandidatePreference::Reading, "article", false),
+        18
+    );
+    assert_eq!(
+        content_candidate_utility_multiplier(CandidatePreference::Reading, "main", true),
+        12
+    );
+
+    assert_eq!(
+        content_candidate_body_absence_penalty(CandidatePreference::Extraction, 0, 499),
+        200
+    );
+    assert_eq!(
+        content_candidate_body_absence_penalty(CandidatePreference::Extraction, 1, 419),
+        95
+    );
+    assert_eq!(
+        content_candidate_body_absence_penalty(CandidatePreference::Reading, 1, 320),
+        0
+    );
+
+    for (preference, limit, penalty) in [
+        (CandidatePreference::Extraction, 420, 200),
+        (CandidatePreference::Reading, 300, 170),
+    ] {
+        assert_eq!(
+            content_candidate_title_fragment_penalty(preference, "div", true, 0, limit - 1),
+            penalty
+        );
+        assert_eq!(
+            content_candidate_title_fragment_penalty(preference, "div", true, 0, limit),
+            0
+        );
+        assert_eq!(
+            content_candidate_title_fragment_penalty(preference, "div", true, 0, limit + 1),
+            0
+        );
+    }
+    assert_eq!(
+        content_candidate_title_fragment_penalty(
+            CandidatePreference::Extraction,
+            "article",
+            true,
+            0,
+            419,
+        ),
+        0
+    );
+
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 1_000, 12, 2),
+        60
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 239, 8, 2),
+        34
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 1_599, 13, 2),
+        25
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 1_600, 13, 2),
+        60
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 6_499, 9, 2),
+        60
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 6_500, 9, 2),
+        34
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 11_999, 7, 2),
+        34
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Extraction, 12_000, 7, 2),
+        0
+    );
+
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 1_000, 12, 2),
+        40
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 1_199, 13, 2),
+        15
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 1_200, 13, 2),
+        40
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 3_999, 9, 2),
+        40
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 4_000, 9, 2),
+        22
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 5_999, 7, 2),
+        22
+    );
+    assert_eq!(
+        content_candidate_link_density_penalty(CandidatePreference::Reading, 6_000, 7, 2),
+        0
+    );
 }

@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 fn contract_lint_defaults_cover_public_default_contracts() {
+    assert_eq!(DEFAULT_MAX_BYTES, 52_428_800);
     assert_eq!(WhitespaceMode::default(), WhitespaceMode::Rendered);
     assert_eq!(SelectionSpec::default(), SelectionSpec::First);
     assert_eq!(ValueSpec::default().value_type(), ValueType::Text);
