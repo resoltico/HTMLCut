@@ -10,8 +10,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- Pull-request mutation checks now run on every pull request, partition every changed-source mutant across a generated exact shard plan, and publish one protected summary result even when no production Rust mutant overlaps the change.
-- Mutation shards now share one target-and-build cache identity, save it only from `main`, and limit planning and aggregation jobs to fifteen minutes; local mutation runs retain their output streams incrementally and isolate cargo-mutants scratch files from the reusable Cargo cache.
+- Refreshed the checked-in `htmlcut-core` semver baseline from the public `v13.1.0` source and dependency graph, so future compatibility checks compare the next release against the API consumers can actually obtain.
+- Every pull request now runs a generated diff-scoped mutation plan and a required `cargo-mutants pull-request summary` check; nonempty selections are partitioned across an exact shard plan, while changes without production Rust mutants record that outcome explicitly.
+- Mutation shards now share one target-and-build cache identity, save it only from `main`, and bound planning and aggregation jobs to fifteen minutes.
+- Local mutation runs now isolate cargo-mutants scratch data from reusable Cargo caches, retain stdout and stderr incrementally, and classify missed mutants, timeouts, and broken baselines from structured process exit statuses rather than platform-specific diagnostic text.
 
 ### Fixed
 
