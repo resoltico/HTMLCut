@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [13.2.0] - 2026-08-30
+
 ### Added
 
 - Added `scripts/verify-mutation-scope.sh`, which proves that the mutation configuration covers exactly Cargo's default runtime members and their non-test source files before workflow sharding begins.

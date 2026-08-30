@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.1.0"
+version: "13.2.0"
 domain: INTEROP
-updated: "2026-08-27"
+updated: "2026-08-30"
 route:
   keywords: [interop, v1, htmlcut-v1, execute_plan, prepare_plan, execute_validated_plan, ValidatedPlan, HtmlInput, Plan, InteropResult, plain_text, extraction identity, HTMLCUT_EXTRACTION_SEMANTICS_VERSION, dom_canonicalization, comparison_text_output, interop profile]
   questions: ["how do I embed htmlcut extraction into a downstream project?", "what is the htmlcut interop v1 API?", "when should I use plain_text instead of rendered text?", "what schemas does htmlcut interop v1 export?", "how do I identify a deterministic htmlcut extraction?", "where is the candidate count on an htmlcut interop error?", "how does HTMLCut canonicalize a selected DOM subtree without changing raw evidence?"]
