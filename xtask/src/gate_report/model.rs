@@ -126,9 +126,9 @@ pub(super) struct GateStep {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stderr_log: Option<String>,
     /// Raw standard-output byte count.
-    pub stdout_bytes: usize,
+    pub stdout_bytes: u64,
     /// Raw standard-error byte count.
-    pub stderr_bytes: usize,
+    pub stderr_bytes: u64,
     /// Warning diagnostics extracted from this step's raw streams.
     pub warnings: Vec<GateWarning>,
     /// Bounded diagnostic tail for a failed command or verification.

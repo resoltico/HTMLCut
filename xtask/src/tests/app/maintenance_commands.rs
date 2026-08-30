@@ -308,13 +308,15 @@ fn mutation_testing_classifies_missed_timed_out_and_broken_baseline_runs() {
                     move |_, spec| {
                         (spec
                             .args
-                            .first()
-                            .is_some_and(|argument| argument == "mutants"))
+                        .first()
+                        .is_some_and(|argument| argument == "mutants"))
                         .then(|| {
-                            Err(format!(
-                                "command failed with status exit status: {status}: cargo mutants"
-                            )
-                            .into())
+                            Err(crate::XtaskError::CommandFailed {
+                                exit_code: Some(status),
+                                message: format!(
+                                    "command failed with status exit status: {status}: cargo mutants"
+                                ),
+                            })
                         })
                     },
                     || main_entry_with(repo_root.path(), ["xtask", "mutants"]),

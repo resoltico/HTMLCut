@@ -4,10 +4,20 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Added
+
+- Added `scripts/verify-mutation-scope.sh`, which proves that the mutation configuration covers exactly Cargo's default runtime members and their non-test source files before workflow sharding begins.
+
+### Changed
+
+- Pull-request mutation checks now run on every pull request, partition every changed-source mutant across a generated exact shard plan, and publish one protected summary result even when no production Rust mutant overlaps the change.
+- Mutation shards now share one target-and-build cache identity, save it only from `main`, and limit planning and aggregation jobs to fifteen minutes; local mutation runs retain their output streams incrementally and isolate cargo-mutants scratch files from the reusable Cargo cache.
+
 ### Fixed
 
 - Release preflight now verifies the managed artifact root of a new worktree and prescribes rebuilding it when a shared disposable-worktree cache exceeds the hygiene budget, so the required maintainer gate starts from a truthful artifact state.
-- Pull-request mutation checks now partition every changed-source mutant across a generated exact shard plan and verify the combined artifacts, preventing large valid code reviews from exhausting a single job without narrowing the mutation scope or raising its timeout.
+- Mutation summaries now fail when planning fails and require the combined artifact outcomes to match the enumerated mutation corpus, preventing missing planning outputs or completed zero-outcome artifacts from producing a passing check.
+- Removed the yanked indirect `chacha20 0.10.1` dependency from the locked parser test graph, restoring a clean dependency-security audit.
 
 ## [13.1.0] - 2026-08-27
 

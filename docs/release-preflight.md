@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "13.1.0"
 domain: RELEASE
-updated: "2026-08-27"
+updated: "2026-08-30"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
@@ -201,6 +201,7 @@ candidate itself must also be the exact gated tree that ships.
   - `main` requires conversation resolution before merge
   - required status checks are exactly:
     - `Check`
+    - `cargo-mutants pull-request summary`
 
 The intended release architecture is a single-owner, CI-gated repository. Required review on
 `main` adds a non-existent human dependency and is therefore release-hostile technical debt.

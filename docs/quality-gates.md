@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "13.1.0"
 domain: QUALITY
-updated: "2026-08-27"
+updated: "2026-08-30"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
@@ -149,11 +149,11 @@ as the contributor container. The coverage gate also manages and tags the nested
 ## Mutation Testing
 
 `cargo xtask mutants` runs cargo-mutants `27.1.0` against the first-party runtime source selected
-in [../.cargo/mutants.toml](../.cargo/mutants.toml). The configuration includes `htmlcut-core`,
-`htmlcut-cli`, and `htmlcut-tempdir`, runs their all-feature locked Cargo tests, and excludes
-vendored parser code, `xtask`, fuzz harnesses, and in-tree test modules. This asks whether the
-existing tests reject plausible behavioral changes; it complements coverage, fuzzing, and Miri
-rather than replacing any of them.
+in [../.cargo/mutants.toml](../.cargo/mutants.toml). The workflow verifies that this selection
+matches Cargo's `workspace.default-members` and their non-test `src` files before it plans a run.
+It runs their all-feature locked Cargo tests and excludes vendored parser code, `xtask`, fuzz
+harnesses, and in-tree test modules. This asks whether the existing tests reject plausible
+behavioral changes; it complements coverage, fuzzing, and Miri rather than replacing any of them.
 
 Install the optional pinned tool before a local run:
 
@@ -161,30 +161,35 @@ Install the optional pinned tool before a local run:
 ./scripts/install-contributor-cargo-tools.sh cargo-mutants
 ```
 
-Local invocation copies the workspace before applying mutations, so it is safe on a working
-checkout. Results are retained under `../.htmlcut-artifacts/mutation-runs/mutants.out`; every new
-run clears only that prior generated result directory. Safe hygiene cleanup preserves this evidence,
-while `cargo xtask hygiene clean --mode rebuildable` removes it. `--in-place` is reserved for
-disposable CI checkouts, where it avoids copying the workspace and reuses Cargo artifacts. Do not
-use it in a checkout you are editing or preparing to commit.
+Local invocation copies the workspace before applying mutations, routes cargo-mutants scratch data
+to a temporary directory, and writes the retained stdout/stderr evidence as bytes arrive, so it is
+safe and diagnosable on a working checkout without contaminating its shared Cargo cache. Results
+are retained under `../.htmlcut-artifacts/mutation-runs/mutants.out`; every new run clears only that
+prior generated result directory. Safe hygiene cleanup preserves this evidence, while `cargo xtask
+hygiene clean --mode rebuildable` removes it. `--in-place` is reserved for disposable CI checkouts,
+where it avoids copying the workspace and reuses Cargo artifacts. Do not use it in a checkout you
+are editing or preparing to commit.
 
 The [mutation workflow](../.github/workflows/mutants.yml) runs a complete weekly/manual Ubuntu
-campaign across sixteen zero-based (`0/16` through `15/16`) round-robin shards. A final summary job
-verifies the exact artifact identity set from the same generated shard plan, requires each artifact
-to contain a completed `mutants.out/outcomes.json`, then reports the combined caught, missed,
-timeout, and unviable counts. Machine selectors containing `/` are kept separate from artifact-safe
-names such as `cargo-mutants-shard-0-of-16`. Each shard uploads its complete `mutants.out` result
-tree even when survivors fail the job.
+campaign across sixteen zero-based (`0/16` through `15/16`) round-robin shards. Planning and
+aggregation jobs each have a bounded fifteen-minute runtime. A final summary job verifies the exact
+artifact identity set from the same generated shard plan, requires each artifact to contain a
+completed `mutants.out/outcomes.json`, and requires the aggregate outcome count to equal the corpus
+enumerated during planning before it reports caught, missed, timeout, and unviable counts. Machine
+selectors containing `/` are kept separate from artifact-safe names such as
+`cargo-mutants-shard-0-of-16`. Each shard uploads its complete `mutants.out` result tree even when
+survivors fail the job. Full-campaign shards share the configured target and build cache through one
+cache identity; only `main` saves it, so PR experiments do not evict the authoritative cache.
 
-Pull requests touching Rust mutation inputs or the mutation workflow, planner, summary, or xtask
-machinery enumerate `--in-diff` mutants against the PR base, then partition every nonempty
-selection across `min(16, selected-mutant-count)` round-robin shards. The PR summary verifies the
-exact planned artifact set and reports combined outcomes; a PR with no changed production mutants
-records that outcome explicitly. This is fast feedback for changed production code, not a
-substitute for the authoritative full campaign: test-only changes can reduce coverage without
-adding any in-diff mutants. Use the full result to triage survivors; `--iterate` is appropriate
-only for a local test-writing loop because it assumes already-caught mutants remain caught across
-later changes.
+Every pull request runs a mutation summary check so branch protection always receives a result.
+The workflow enumerates `--in-diff` mutants against the PR base, then partitions every nonempty
+selection across `min(16, selected-mutant-count)` round-robin shards. The PR summary fails if
+planning fails, verifies the exact planned artifact set and aggregate corpus count, and reports
+combined outcomes; a PR with no changed production mutants records that outcome explicitly. This
+is fast feedback for changed production code, not a substitute for the authoritative full campaign:
+test-only changes can reduce coverage without adding any in-diff mutants. Use the full result to
+triage survivors; `--iterate` is appropriate only for a local test-writing loop because it assumes
+already-caught mutants remain caught across later changes.
 
 For local `--in-diff` runs, xtask reads the requested unified diff before artifact hygiene runs,
 stages a temporary copy under the managed mutation evidence root, passes cargo-mutants that absolute

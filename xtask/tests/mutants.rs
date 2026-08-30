@@ -1,14 +1,13 @@
 #![forbid(unsafe_code)]
 
 use std::fs;
-
-#[cfg(unix)]
 use std::process::Command;
 
 #[cfg(unix)]
 use htmlcut_tempdir::tempdir;
+use serde_json::Value;
 #[cfg(unix)]
-use serde_json::{Value, json};
+use serde_json::json;
 
 fn repo_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -21,18 +20,68 @@ fn repo_root() -> std::path::PathBuf {
 fn mutation_configuration_scopes_only_first_party_runtime_source() {
     let config = fs::read_to_string(repo_root().join(".cargo").join("mutants.toml"))
         .expect("read mutation configuration");
+    let runtime_members = default_runtime_members();
 
     assert!(config.contains("all_features = true"));
     assert!(config.contains("additional_cargo_args = [\"--locked\"]"));
     assert!(config.contains("test_tool = \"cargo\""));
     assert!(config.contains("sharding = \"round-robin\""));
-    assert!(config.contains("htmlcut-core\", \"htmlcut-cli\", \"htmlcut-tempdir"));
-    assert!(config.contains("crates/htmlcut-core/src/**/*.rs"));
-    assert!(config.contains("crates/htmlcut-cli/src/**/*.rs"));
-    assert!(config.contains("crates/htmlcut-tempdir/src/**/*.rs"));
+    for (package, member_path) in runtime_members {
+        assert!(config.contains(&format!("\"{package}\"")));
+        assert!(config.contains(&format!("{member_path}/src/**/*.rs")));
+    }
     assert!(config.contains("**/src/tests/**/*.rs"));
     assert!(!config.contains("patches/rust"));
     assert!(!config.contains("xtask/src"));
+}
+
+fn default_runtime_members() -> Vec<(String, String)> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .current_dir(repo_root())
+        .output()
+        .expect("run cargo metadata");
+    assert!(
+        output.status.success(),
+        "cargo metadata failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata = serde_json::from_slice::<Value>(&output.stdout).expect("parse cargo metadata");
+    let default_members = metadata["workspace_default_members"]
+        .as_array()
+        .expect("metadata workspace default members")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    metadata["packages"]
+        .as_array()
+        .expect("metadata packages")
+        .iter()
+        .filter(|package| {
+            package["id"]
+                .as_str()
+                .is_some_and(|id| default_members.contains(&id))
+        })
+        .map(|package| {
+            let manifest = std::path::Path::new(
+                package["manifest_path"]
+                    .as_str()
+                    .expect("metadata package manifest path"),
+            );
+            let member_path = manifest
+                .parent()
+                .expect("package manifest parent")
+                .strip_prefix(repo_root())
+                .expect("default member under workspace root")
+                .to_string_lossy()
+                .into_owned();
+            let name = package["name"]
+                .as_str()
+                .expect("metadata package name")
+                .to_owned();
+            (name, member_path)
+        })
+        .collect()
 }
 
 #[test]
@@ -43,11 +92,16 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("workflow_dispatch:"));
     assert!(workflow.contains("schedule:"));
     assert!(workflow.contains("pull_request:"));
-    assert!(workflow.contains("- \".github/workflows/mutants.yml\""));
-    assert!(workflow.contains("- \"scripts/mutation-shard-plan.sh\""));
-    assert!(workflow.contains("- \"scripts/summarize-mutation-results.sh\""));
-    assert!(workflow.contains("- \"xtask/**/*.rs\""));
+    assert!(!workflow.contains("    paths:"));
+    assert!(workflow.contains("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"));
     assert!(workflow.contains("shards=\"$(./scripts/mutation-shard-plan.sh)\""));
+    assert_eq!(
+        workflow
+            .matches("./scripts/verify-mutation-scope.sh")
+            .count(),
+        2,
+        "full and pull-request planning must share the canonical scope verifier"
+    );
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));
     assert!(workflow.contains(
@@ -65,15 +119,20 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(!workflow.contains("cargo-mutants-${{ matrix.shard }}"));
     assert!(!workflow.contains("cargo-mutants-pr-diff"));
     assert!(workflow.contains("--in-diff"));
-    assert!(workflow.contains("all(.[];"));
     assert!(workflow.contains("htmlcut_contributor_install_action_csv cargo-mutants"));
     assert!(workflow.contains("workspaces: \". -> ../.htmlcut-artifacts/target\""));
+    assert!(workflow.contains("cache-directories: ../.htmlcut-artifacts/build"));
+    assert!(workflow.contains("shared-key: htmlcut-mutation-workspace"));
+    assert!(workflow.contains("save-if: false"));
     assert!(workflow.contains("mutation-runs/mutants.out"));
     assert!(workflow.contains("path: ${{ runner.temp }}/htmlcut-mutation-results\n"));
     assert!(workflow.contains("pattern: cargo-mutants-shard-*-of-*"));
     assert!(workflow.contains("merge-multiple: false"));
     assert!(workflow.contains("mutation-diff-summary:"));
     assert!(workflow.contains("MUTATION_DIFF_HAS_MUTANTS"));
+    assert!(workflow.contains("MUTATION_EXPECTED_TOTAL"));
+    assert!(workflow.contains("needs.mutation-diff-plan.result"));
+    assert!(workflow.contains("needs.mutation-plan.result"));
     assert!(workflow.contains("No production Rust mutants overlap this pull request."));
     assert!(
         workflow
@@ -81,6 +140,52 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     );
     assert!(workflow.contains("./scripts/summarize-mutation-results.sh"));
     assert!(!workflow.contains("expected outcomes from 16 shards"));
+}
+
+#[cfg(unix)]
+#[test]
+fn mutation_scope_verifier_tracks_cargo_default_members_and_rejects_drift() {
+    let root = tempdir().expect("scope verifier fixture");
+    let valid_path = root.path().join("valid-mutants.json");
+    let invalid_path = root.path().join("invalid-mutants.json");
+    let members = default_runtime_members();
+    let mutants = members
+        .iter()
+        .map(|(package, member_path)| {
+            json!({
+                "package": package,
+                "file": format!("{member_path}/src/lib.rs"),
+            })
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        &valid_path,
+        serde_json::to_vec(&mutants).expect("serialize valid mutation fixture"),
+    )
+    .expect("write valid mutation fixture");
+    let mut invalid_mutants = mutants;
+    invalid_mutants.pop();
+    fs::write(
+        &invalid_path,
+        serde_json::to_vec(&invalid_mutants).expect("serialize invalid mutation fixture"),
+    )
+    .expect("write invalid mutation fixture");
+
+    for (path, expected_success) in [(valid_path, true), (invalid_path, false)] {
+        let output = Command::new("bash")
+            .arg(repo_root().join("scripts").join("verify-mutation-scope.sh"))
+            .arg(&path)
+            .output()
+            .expect("run mutation scope verifier");
+        assert_eq!(
+            output.status.success(),
+            expected_success,
+            "scope verifier stderr:\n{}\nfixture:\n{}",
+            String::from_utf8_lossy(&output.stderr),
+            // The fixture is included only when this regression fails, to make metadata/path drift actionable.
+            fs::read_to_string(path).expect("read scope verifier fixture")
+        );
+    }
 }
 
 #[cfg(unix)]
@@ -191,7 +296,7 @@ fn complete_generated_shard_plan_composes_with_the_summary_contract() {
         );
     }
 
-    let output = run_mutation_summary(&plan, &artifact_root, &summary_path);
+    let output = run_mutation_summary(&plan, &artifact_root, &summary_path, 16);
     assert!(
         output.status.success(),
         "complete mutation summary failed:\n{}",
@@ -236,6 +341,7 @@ fn run_mutation_summary(
     plan: &Value,
     artifact_root: &std::path::Path,
     summary_path: &std::path::Path,
+    expected_mutant_count: u64,
 ) -> std::process::Output {
     Command::new("bash")
         .arg(
@@ -246,6 +352,7 @@ fn run_mutation_summary(
         .arg(plan.to_string())
         .arg(artifact_root)
         .arg(summary_path)
+        .arg(expected_mutant_count.to_string())
         .output()
         .expect("run mutation summary")
 }
@@ -270,7 +377,7 @@ fn mutation_summary_verifies_exact_artifacts_and_aggregates_completed_outcomes()
         [3, 2, 0, 1, 0],
     );
 
-    let output = run_mutation_summary(&plan, &artifact_root, &summary_path);
+    let output = run_mutation_summary(&plan, &artifact_root, &summary_path, 5);
     assert!(
         output.status.success(),
         "mutation summary failed:\n{}",
@@ -290,6 +397,34 @@ fn mutation_summary_verifies_exact_artifacts_and_aggregates_completed_outcomes()
 
 #[cfg(unix)]
 #[test]
+fn mutation_summary_rejects_completed_zero_outcomes_when_the_enumerated_corpus_is_nonzero() {
+    let root = tempdir().expect("mutation summary fixture");
+    let artifact_root = root.path().join("artifacts");
+    let summary_path = root.path().join("summary.md");
+    let plan = two_shard_plan();
+    for artifact_name in ["cargo-mutants-shard-0-of-2", "cargo-mutants-shard-1-of-2"] {
+        write_outcome(
+            &artifact_root,
+            artifact_name,
+            "mutants.out/outcomes.json",
+            [0, 0, 0, 0, 0],
+        );
+    }
+
+    let output = run_mutation_summary(&plan, &artifact_root, &summary_path, 2);
+
+    assert!(
+        !output.status.success(),
+        "zero outcomes must not certify a nonzero corpus"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("expected 2 mutants, summarized 0"),
+        "corpus mismatch should explain the incomplete campaign"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn mutation_summary_rejects_a_count_correct_but_wrong_artifact_identity_set() {
     let root = tempdir().expect("mutation summary fixture");
     let artifact_root = root.path().join("artifacts");
@@ -302,6 +437,7 @@ fn mutation_summary_rejects_a_count_correct_but_wrong_artifact_identity_set() {
         &two_shard_plan(),
         &artifact_root,
         &root.path().join("summary.md"),
+        4,
     );
     assert!(!output.status.success(), "wrong artifact set must fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -328,7 +464,7 @@ fn mutation_summary_rejects_an_upload_that_flattened_the_mutants_out_root() {
         [2, 2, 0, 0, 0],
     );
 
-    let output = run_mutation_summary(&plan, &artifact_root, &root.path().join("summary.md"));
+    let output = run_mutation_summary(&plan, &artifact_root, &root.path().join("summary.md"), 4);
     assert!(
         !output.status.success(),
         "flattened artifact layout must fail"

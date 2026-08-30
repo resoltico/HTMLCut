@@ -1,5 +1,5 @@
 use std::env;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -152,8 +152,36 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
     let mut command = configured_command(repo_root, spec, Stdio::inherit())?;
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
-    let output = match command.output() {
-        Ok(output) => output,
+    let (stdout_path, stderr_path) = crate::gate_report::command_log_paths(index)
+        .expect("an active gate command must have retained log paths");
+    let stdout_log = match File::create(&stdout_path) {
+        Ok(log) => log,
+        Err(error) => {
+            let context = crate::gate_report::finish_command_evidence_failure(
+                index,
+                spec,
+                &error,
+                started.elapsed(),
+            )
+            .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+            return Err(context.into());
+        }
+    };
+    let stderr_log = match File::create(&stderr_path) {
+        Ok(log) => log,
+        Err(error) => {
+            let context = crate::gate_report::finish_command_evidence_failure(
+                index,
+                spec,
+                &error,
+                started.elapsed(),
+            )
+            .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+            return Err(context.into());
+        }
+    };
+    let child = match command.spawn() {
+        Ok(child) => child,
         Err(error) => {
             let context = crate::gate_report::finish_command_spawn_failure(
                 index,
@@ -165,10 +193,34 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
             return Err(context.into());
         }
     };
-    let context = crate::gate_report::finish_command(index, spec, &output, started.elapsed())
-        .unwrap_or_else(|| format!("command failed with status {}", output.status));
-    if output.status.success() && context.is_empty() {
+    let mirror = crate::gate_report::should_mirror_live_output(spec);
+    let status =
+        match crate::command_stream::stream_child_to_logs(child, stdout_log, stderr_log, mirror) {
+            Ok(status) => status,
+            Err(error) => {
+                let context = crate::gate_report::finish_command_evidence_failure(
+                    index,
+                    spec,
+                    &error,
+                    started.elapsed(),
+                )
+                .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+                return Err(context.into());
+            }
+        };
+    let context =
+        crate::gate_report::finish_streamed_command(index, spec, status, started.elapsed())
+            .unwrap_or_else(|| format!("command failed with status {status}"));
+    if status.success() && context.is_empty() {
         Ok(())
+    } else if !status.success() {
+        Err(command_failure_with_context(
+            spec,
+            status,
+            &[],
+            &[],
+            &context,
+        ))
     } else {
         Err(context.into())
     }
@@ -200,6 +252,14 @@ fn capture_reported_command_output(
         .unwrap_or_else(|| format!("command failed with status {}", output.status));
     if output.status.success() && context.is_empty() {
         Ok(output.stdout)
+    } else if !output.status.success() {
+        Err(command_failure_with_context(
+            spec,
+            output.status,
+            &output.stdout,
+            &output.stderr,
+            &context,
+        ))
     } else {
         Err(context.into())
     }
@@ -250,6 +310,16 @@ fn command_failure(
     stdout: &[u8],
     stderr: &[u8],
 ) -> crate::model::XtaskError {
+    command_failure_with_context(spec, status, stdout, stderr, "")
+}
+
+fn command_failure_with_context(
+    spec: &CommandSpec,
+    status: std::process::ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+    context: &str,
+) -> crate::model::XtaskError {
     let mut message = format!(
         "command failed with status {status}: {}",
         render_command(spec)
@@ -259,7 +329,14 @@ fn command_failure(
         message.push_str("\n\n");
         message.push_str(&tail);
     }
-    message.into()
+    if !context.is_empty() {
+        message.push_str("\n\n");
+        message.push_str(context);
+    }
+    crate::model::XtaskError::CommandFailed {
+        exit_code: status.code(),
+        message,
+    }
 }
 
 fn render_command(spec: &CommandSpec) -> String {

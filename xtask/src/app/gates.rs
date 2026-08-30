@@ -168,7 +168,9 @@ pub(super) fn run_mutants(
     ensure_mutants_prerequisites(repo_root)?;
     let diff_contents = read_mutation_diff(repo_root, in_diff)?;
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
-    prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
+    if in_place {
+        prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
+    }
     prepare_mutation_report_root(repo_root)?;
     ensure_hygiene(repo_root)?;
 
@@ -176,10 +178,17 @@ pub(super) fn run_mutants(
     remove_dir_if_exists(&output_dir.join("mutants.out"))?;
     remove_dir_if_exists(&output_dir.join("mutants.out.old"))?;
     let staged_diff = stage_mutation_diff(&output_dir, diff_contents.as_deref())?;
-    let execution = run_spec(
-        repo_root,
-        &mutants_command(&output_dir, in_place, shard, staged_diff.as_deref()),
-    );
+    let local_scratch = (!in_place).then(tempdir).transpose()?;
+    let mut mutation_spec = mutants_command(&output_dir, in_place, shard, staged_diff.as_deref());
+    if let Some(local_scratch) = &local_scratch {
+        let temp_root = local_scratch.path().to_string_lossy().into_owned();
+        mutation_spec = mutation_spec
+            .with_env("TMPDIR", &temp_root)
+            .with_env("TMP", &temp_root)
+            .with_env("TEMP", temp_root);
+    }
+    let execution = run_spec(repo_root, &mutation_spec);
+    drop(local_scratch);
     let cleanup = remove_staged_mutation_diff(staged_diff.as_deref());
     let hygiene = ensure_hygiene(repo_root);
 
@@ -232,16 +241,19 @@ fn remove_staged_mutation_diff(path: Option<&Path>) -> DynResult<()> {
 }
 
 fn mutation_execution_error(error: crate::XtaskError) -> crate::XtaskError {
-    let message = error.to_string();
-    let outcome = if message.contains("status exit status: 2") {
-        "cargo-mutants found missed mutants. Review `missed.txt` and the per-mutant logs in the retained mutation evidence."
-    } else if message.contains("status exit status: 3") {
-        "cargo-mutants timed out while testing one or more mutants. Review `timeout.txt` and the retained per-mutant logs before changing timeouts."
-    } else if message.contains("status exit status: 4") {
-        "cargo-mutants could not establish a passing unmutated baseline. Repair the baseline test failure before interpreting mutation results."
-    } else {
-        return error;
+    let outcome = match error.exit_code() {
+        Some(2) => {
+            "cargo-mutants found missed mutants. Review `missed.txt` and the per-mutant logs in the retained mutation evidence."
+        }
+        Some(3) => {
+            "cargo-mutants timed out while testing one or more mutants. Review `timeout.txt` and the retained per-mutant logs before changing timeouts."
+        }
+        Some(4) => {
+            "cargo-mutants could not establish a passing unmutated baseline. Repair the baseline test failure before interpreting mutation results."
+        }
+        _ => return error,
     };
+    let message = error.to_string();
     format!("Mutation-testing run did not complete successfully: {outcome}\n\n{message}").into()
 }
 

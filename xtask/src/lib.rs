@@ -4,6 +4,7 @@
 
 mod app;
 mod command_exec;
+mod command_stream;
 mod coverage;
 mod docs;
 mod fuzz;

@@ -1,11 +1,12 @@
 //! Retained evidence and concise rendering for HTMLCut maintainer-gate runs.
 
 mod model;
+mod streams;
 
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{ExitStatus, Output};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -14,15 +15,19 @@ use crate::hygiene::prepare_gate_report_root;
 use crate::model::{CommandSpec, DynResult};
 
 pub(crate) use model::GATE_RUN_REPORT_SCHEMA_NAME;
-use model::{
-    GateCommand, GateFailure, GateOutcome, GateRunReport, GateStep, GateStepKind, GateStream,
-    GateWarning,
-};
+#[cfg(test)]
+use model::GateStream;
+use model::{GateFailure, GateOutcome, GateRunReport, GateStep, GateStepKind, GateWarning};
 pub use model::{GateOutputFormat, GateOutputOptions};
+#[cfg(test)]
+use streams::{FAILURE_TAIL_BYTES, bounded_tail};
+use streams::{
+    combined_failure_tail, combined_failure_tail_from_logs, command_document, log_byte_count,
+    render_command, render_stream, replay_log_stream, replay_stream, warnings_from_logs,
+    warnings_from_output,
+};
 
 const MAX_RETAINED_RUNS: usize = 20;
-const FAILURE_TAIL_BYTES: usize = 8 * 1024;
-
 thread_local! {
     static ACTIVE_GATE_RUN: RefCell<Option<Rc<RefCell<GateRun>>>> = const { RefCell::new(None) };
 }
@@ -68,6 +73,16 @@ pub(crate) fn begin_command(spec: &CommandSpec) -> Option<usize> {
     with_active(|run| run.begin_command(spec))
 }
 
+/// Returns the retained stream paths for an announced command.
+pub(crate) fn command_log_paths(index: usize) -> Option<(PathBuf, PathBuf)> {
+    with_active(|run| run.command_log_paths(index))
+}
+
+/// Returns whether the active human gate should mirror this command's live streams.
+pub(crate) fn should_mirror_live_output(spec: &CommandSpec) -> bool {
+    with_active(|run| run.should_mirror_live_output(spec)).unwrap_or(false)
+}
+
 /// Retains one completed command and returns the run-local failure context when it failed.
 pub(crate) fn finish_command(
     index: usize,
@@ -78,6 +93,16 @@ pub(crate) fn finish_command(
     with_active(|run| run.finish_command(index, spec, output, duration))
 }
 
+/// Records one command whose streams were retained incrementally while it ran.
+pub(crate) fn finish_streamed_command(
+    index: usize,
+    spec: &CommandSpec,
+    status: ExitStatus,
+    duration: Duration,
+) -> Option<String> {
+    with_active(|run| run.finish_streamed_command(index, spec, status, duration))
+}
+
 /// Retains a command-spawn failure that produced no process output.
 pub(crate) fn finish_command_spawn_failure(
     index: usize,
@@ -86,6 +111,16 @@ pub(crate) fn finish_command_spawn_failure(
     duration: Duration,
 ) -> Option<String> {
     with_active(|run| run.finish_command_spawn_failure(index, spec, error, duration))
+}
+
+/// Records a failure to create or inspect the retained stream evidence for a command.
+pub(crate) fn finish_command_evidence_failure(
+    index: usize,
+    spec: &CommandSpec,
+    error: &std::io::Error,
+    duration: Duration,
+) -> Option<String> {
+    with_active(|run| run.finish_command_evidence_failure(index, spec, error, duration))
 }
 
 /// Records one in-process verification result without corrupting JSON-mode output.
@@ -169,6 +204,16 @@ impl GateRun {
         index
     }
 
+    fn command_log_paths(&self, index: usize) -> (PathBuf, PathBuf) {
+        let stdout_log = format!("steps/{index:03}.stdout.log");
+        let stderr_log = format!("steps/{index:03}.stderr.log");
+        (self.run_dir.join(stdout_log), self.run_dir.join(stderr_log))
+    }
+
+    fn should_mirror_live_output(&self, spec: &CommandSpec) -> bool {
+        self.options.format == GateOutputFormat::Human && spec.live_output
+    }
+
     fn finish_command(
         &mut self,
         index: usize,
@@ -178,8 +223,7 @@ impl GateRun {
     ) -> String {
         let stdout_log = format!("steps/{index:03}.stdout.log");
         let stderr_log = format!("steps/{index:03}.stderr.log");
-        let stdout_path = self.run_dir.join(&stdout_log);
-        let stderr_path = self.run_dir.join(&stderr_log);
+        let (stdout_path, stderr_path) = self.command_log_paths(index);
         let write_result = fs::write(&stdout_path, &output.stdout)
             .and_then(|()| fs::write(&stderr_path, &output.stderr));
 
@@ -230,8 +274,8 @@ impl GateRun {
             duration_ms: duration.as_millis(),
             stdout_log: Some(stdout_log),
             stderr_log: Some(stderr_log),
-            stdout_bytes: output.stdout.len(),
-            stderr_bytes: output.stderr.len(),
+            stdout_bytes: output.stdout.len() as u64,
+            stderr_bytes: output.stderr.len() as u64,
             warnings: warning_list,
             failure_tail,
         });
@@ -251,6 +295,89 @@ impl GateRun {
         failure_context.unwrap_or_default()
     }
 
+    fn finish_streamed_command(
+        &mut self,
+        index: usize,
+        spec: &CommandSpec,
+        status: ExitStatus,
+        duration: Duration,
+    ) -> String {
+        let stdout_log = format!("steps/{index:03}.stdout.log");
+        let stderr_log = format!("steps/{index:03}.stderr.log");
+        let (stdout_path, stderr_path) = self.command_log_paths(index);
+        let evidence = (|| {
+            let stdout_bytes = log_byte_count(&stdout_path)?;
+            let stderr_bytes = log_byte_count(&stderr_path)?;
+            let warnings = warnings_from_logs(&stdout_path, &stderr_path)?;
+            let failure_tail = (!status.success())
+                .then(|| combined_failure_tail_from_logs(&stdout_path, &stderr_path))
+                .transpose()?;
+            Ok::<_, std::io::Error>((stdout_bytes, stderr_bytes, warnings, failure_tail))
+        })();
+        let evidence_error = evidence.as_ref().err().map(ToString::to_string);
+        let (stdout_bytes, stderr_bytes, warning_list, failure_tail) = match evidence {
+            Ok(evidence) => evidence,
+            Err(error) => (
+                0,
+                0,
+                Vec::new(),
+                Some(format!("failed to retain command logs: {error}")),
+            ),
+        };
+        let success = status.success() && evidence_error.is_none();
+        let outcome = if success {
+            GateOutcome::Passed
+        } else {
+            GateOutcome::Failed
+        };
+        let failure_context = if success {
+            None
+        } else if let Some(error) = evidence_error {
+            Some(format!(
+                "could not retain evidence for `{}`: {error}",
+                render_command(spec)
+            ))
+        } else {
+            Some(format!(
+                "command `{}` failed with status {status}; retained logs: {} and {}",
+                render_command(spec),
+                stdout_path.display(),
+                stderr_path.display(),
+            ))
+        };
+        self.record_warnings(&warning_list);
+        self.report.steps.push(GateStep {
+            index,
+            id: format!("{}/{index:03}", self.report.gate),
+            kind: GateStepKind::Command,
+            label: render_command(spec),
+            command: Some(command_document(spec)),
+            outcome,
+            exit_code: status.code(),
+            duration_ms: duration.as_millis(),
+            stdout_log: Some(stdout_log),
+            stderr_log: Some(stderr_log),
+            stdout_bytes,
+            stderr_bytes,
+            warnings: warning_list,
+            failure_tail,
+        });
+
+        if self.options.format == GateOutputFormat::Human {
+            if success {
+                println!("    passed in {} ms", duration.as_millis());
+            } else {
+                eprintln!("    failed in {} ms", duration.as_millis());
+            }
+            if let (true, false) = (self.options.verbose, spec.live_output) {
+                replay_log_stream("stdout", &stdout_path, false);
+                replay_log_stream("stderr", &stderr_path, true);
+            }
+        }
+
+        failure_context.unwrap_or_default()
+    }
+
     fn finish_command_spawn_failure(
         &mut self,
         index: usize,
@@ -259,6 +386,39 @@ impl GateRun {
         duration: Duration,
     ) -> String {
         let message = format!("could not start `{}`: {error}", render_command(spec));
+        self.report.steps.push(GateStep {
+            index,
+            id: format!("{}/{index:03}", self.report.gate),
+            kind: GateStepKind::Command,
+            label: render_command(spec),
+            command: Some(command_document(spec)),
+            outcome: GateOutcome::Failed,
+            exit_code: None,
+            duration_ms: duration.as_millis(),
+            stdout_log: None,
+            stderr_log: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            warnings: Vec::new(),
+            failure_tail: Some(message.clone()),
+        });
+        if self.options.format == GateOutputFormat::Human {
+            eprintln!("    failed in {} ms", duration.as_millis());
+        }
+        message
+    }
+
+    fn finish_command_evidence_failure(
+        &mut self,
+        index: usize,
+        spec: &CommandSpec,
+        error: &std::io::Error,
+        duration: Duration,
+    ) -> String {
+        let message = format!(
+            "could not retain evidence for `{}`: {error}",
+            render_command(spec)
+        );
         self.report.steps.push(GateStep {
             index,
             id: format!("{}/{index:03}", self.report.gate),
@@ -421,78 +581,6 @@ fn unix_millis(timestamp: SystemTime) -> DynResult<u128> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .map_err(|error| format!("system clock is before the Unix epoch: {error}").into())
-}
-
-fn command_document(spec: &CommandSpec) -> GateCommand {
-    GateCommand {
-        program: spec.program.display().to_string(),
-        args: spec.args.clone(),
-        environment_keys: spec.env.keys().cloned().collect(),
-    }
-}
-
-fn render_command(spec: &CommandSpec) -> String {
-    std::iter::once(spec.program.display().to_string())
-        .chain(spec.args.iter().cloned())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn warnings_from_output(stdout: &[u8], stderr: &[u8]) -> Vec<GateWarning> {
-    [(GateStream::Stdout, stdout), (GateStream::Stderr, stderr)]
-        .into_iter()
-        .flat_map(|(stream, bytes)| {
-            String::from_utf8_lossy(bytes)
-                .lines()
-                .map(str::trim)
-                .filter(|line| line.starts_with("warning:") || line.starts_with("warning["))
-                .map(move |line| GateWarning {
-                    stream,
-                    message: line.to_owned(),
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
-
-fn bounded_tail(bytes: &[u8]) -> String {
-    let start = bytes.len().saturating_sub(FAILURE_TAIL_BYTES);
-    String::from_utf8_lossy(&bytes[start..]).into_owned()
-}
-
-fn combined_failure_tail(stdout: &[u8], stderr: &[u8]) -> String {
-    let mut combined = Vec::new();
-    if !stdout.is_empty() {
-        combined.extend_from_slice(b"stdout:\n");
-        combined.extend_from_slice(stdout);
-    }
-    if !stderr.is_empty() {
-        if !combined.is_empty() {
-            combined.push(b'\n');
-        }
-        combined.extend_from_slice(b"stderr:\n");
-        combined.extend_from_slice(stderr);
-    }
-    bounded_tail(&combined)
-}
-
-fn replay_stream(name: &str, bytes: &[u8], stderr: bool) {
-    if bytes.is_empty() {
-        return;
-    }
-    let text = String::from_utf8_lossy(bytes);
-    if stderr {
-        eprintln!("--- {name} ---\n{text}");
-    } else {
-        println!("--- {name} ---\n{text}");
-    }
-}
-
-fn render_stream(stream: GateStream) -> &'static str {
-    match stream {
-        GateStream::Stdout => "stdout",
-        GateStream::Stderr => "stderr",
-    }
 }
 
 #[cfg(test)]

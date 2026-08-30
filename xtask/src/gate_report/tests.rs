@@ -11,6 +11,8 @@ use crate::{
     CommandStdout, CommandToolchainEnv, capture_command_output, gate_report_dir, run_spec,
 };
 
+mod streams;
+
 fn output_options(format: GateOutputFormat) -> GateOutputOptions {
     GateOutputOptions {
         format,
@@ -46,28 +48,6 @@ fn with_gate_report_root<T>(operation: impl FnOnce(&Path) -> T) -> T {
 fn report_value(run: &GateRun) -> Value {
     serde_json::from_slice(&fs::read(&run.report.report_path).expect("read retained gate report"))
         .expect("parse retained gate report")
-}
-
-#[test]
-fn warning_extraction_preserves_stream_and_ignores_progress_noise() {
-    let warnings = warnings_from_output(
-        b"Compiling htmlcut-core\nwarning: first\n",
-        b"warning[E1234]: second\nFinished test profile\n",
-    );
-
-    assert_eq!(
-        warnings,
-        vec![
-            GateWarning {
-                stream: GateStream::Stdout,
-                message: "warning: first".to_owned(),
-            },
-            GateWarning {
-                stream: GateStream::Stderr,
-                message: "warning[E1234]: second".to_owned(),
-            },
-        ]
-    );
 }
 
 #[test]
@@ -189,6 +169,26 @@ fn instrumented_command_helpers_record_success_failure_and_spawn_errors() {
                 .to_string()
                 .contains("could not start")
         );
+
+        let mut live_options = output_options(GateOutputFormat::Human);
+        live_options.verbose = true;
+        let live_success = crate::command_stream::with_suppressed_live_output(|| {
+            with_gate_report(repo_root, "instrumented-live-success", live_options, || {
+                run_spec(repo_root, &command_spec(["--version"]).with_live_output())
+            })
+        });
+        assert!(live_success.is_ok(), "live stdout command should succeed");
+
+        let live_failure = crate::command_stream::with_suppressed_live_output(|| {
+            with_gate_report(repo_root, "instrumented-live-failure", live_options, || {
+                run_spec(
+                    repo_root,
+                    &command_spec(["__htmlcut_gate_report_test_failure__"]).with_live_output(),
+                )
+            })
+        })
+        .expect_err("live stderr command should fail");
+        assert!(live_failure.to_string().contains("retained logs"));
     });
 }
 
@@ -229,6 +229,42 @@ fn instrumented_execution_fails_closed_when_it_cannot_retain_evidence() {
         .expect_err("capture evidence write failure");
         assert!(
             capture_failure
+                .to_string()
+                .contains("could not retain evidence")
+        );
+
+        let stderr_log_failure = with_gate_report(
+            repo_root,
+            "instrumented-stderr-log-write-failure",
+            output_options(GateOutputFormat::Json),
+            || {
+                let stderr_log =
+                    with_active(|run| run.command_log_paths(1).1).expect("active stderr log path");
+                fs::create_dir(&stderr_log).expect("block stderr log file path");
+                run_spec(repo_root, &command_spec(["--version"]))
+            },
+        )
+        .expect_err("stderr evidence write failure");
+        assert!(
+            stderr_log_failure
+                .to_string()
+                .contains("could not retain evidence")
+        );
+
+        let stream_failure = with_gate_report(
+            repo_root,
+            "instrumented-stream-retention-failure",
+            output_options(GateOutputFormat::Json),
+            || {
+                crate::command_stream::with_stream_child_override(
+                    || Some(Err(std::io::Error::other("stream retention denied"))),
+                    || run_spec(repo_root, &command_spec(["--version"])),
+                )
+            },
+        )
+        .expect_err("stream retention failure");
+        assert!(
+            stream_failure
                 .to_string()
                 .contains("could not retain evidence")
         );

@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 3 )); then
-    printf 'usage: %s <shard-plan-json> <artifact-root> <step-summary>\n' "$0" >&2
+if (( $# != 4 )); then
+    printf 'usage: %s <shard-plan-json> <artifact-root> <step-summary> <expected-mutant-count>\n' "$0" >&2
     exit 1
 fi
 
 shard_plan_json="$1"
 artifact_root="$2"
 step_summary="$3"
+expected_mutant_count="$4"
+
+if ! [[ "$expected_mutant_count" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'expected mutant count must be a positive integer: %s\n' "$expected_mutant_count" >&2
+    exit 1
+fi
 
 if ! jq -e '
     def selector_parts:
@@ -119,6 +125,11 @@ while IFS=$'\t' read -r selector artifact_name; do
 done < <(jq -r '.[] | [.selector, .artifact_name] | @tsv' <<< "$shard_plan_json")
 
 if [[ "$artifacts_complete" != true ]]; then
+    exit 1
+fi
+
+if (( total != expected_mutant_count )); then
+    printf 'expected %s mutants, summarized %s\n' "$expected_mutant_count" "$total" >&2
     exit 1
 fi
 

@@ -158,6 +158,12 @@ fn command_failure_messages_bound_and_label_combined_streams() {
 }
 
 #[test]
+fn live_stream_writer_flushes_both_standard_streams_without_test_output_noise() {
+    crate::command_stream::write_live_stream_for_tests(false).expect("write live stdout");
+    crate::command_stream::write_live_stream_for_tests(true).expect("write live stderr");
+}
+
+#[test]
 fn command_environment_for_tests_applies_explicit_overrides() {
     let spec = test_command_spec("cargo", ["--version"], true, false)
         .with_stderr(CommandStderr::Quiet)

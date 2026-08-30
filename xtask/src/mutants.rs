@@ -75,13 +75,18 @@ pub fn mutants_command(
         args.extend(["--in-diff".to_owned(), diff.to_string_lossy().into_owned()]);
     }
 
-    CommandSpec::new(
+    let command = CommandSpec::new(
         "cargo",
         args,
         CommandStdout::Inherit,
         CommandToolchainEnv::Inherit,
     )
-    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    .with_live_output();
+    if in_place {
+        command.with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+    } else {
+        command
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +136,11 @@ mod tests {
             safe_command.args,
             ["mutants", "--output", "/tmp/htmlcut-mutants"]
         );
+        assert!(matches!(
+            safe_command.artifact_layout,
+            CommandArtifactLayout::Inherit
+        ));
+        assert!(safe_command.live_output);
         assert_eq!(
             ci_command.args,
             [
@@ -144,5 +154,10 @@ mod tests {
                 "/tmp/htmlcut.diff",
             ]
         );
+        assert!(matches!(
+            ci_command.artifact_layout,
+            CommandArtifactLayout::ManagedWorkspace
+        ));
+        assert!(ci_command.live_output);
     }
 }

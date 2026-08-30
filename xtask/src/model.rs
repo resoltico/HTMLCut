@@ -10,6 +10,14 @@ pub enum XtaskError {
     /// One human-authored maintenance failure message.
     #[error("{0}")]
     Message(String),
+    /// One external command exited unsuccessfully after it was started.
+    #[error("{message}")]
+    CommandFailed {
+        /// Numeric process exit code when the process exited normally.
+        exit_code: Option<i32>,
+        /// Human-readable command failure with retained diagnostic context.
+        message: String,
+    },
     /// Filesystem or process I/O failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -69,6 +77,14 @@ impl XtaskError {
         Self::TomlDocument {
             document_name,
             source,
+        }
+    }
+
+    /// Returns the numeric process exit code carried by a failed external command.
+    pub fn exit_code(&self) -> Option<i32> {
+        match self {
+            Self::CommandFailed { exit_code, .. } => *exit_code,
+            _ => None,
         }
     }
 }
@@ -234,6 +250,8 @@ pub struct CommandSpec {
     pub toolchain_env: CommandToolchainEnv,
     /// Artifact-root policy for the command.
     pub artifact_layout: CommandArtifactLayout,
+    /// Whether human-formatted gate runs should mirror both streams as bytes arrive.
+    pub live_output: bool,
     /// Explicit environment overrides for the command.
     pub env: BTreeMap<String, String>,
 }
@@ -257,6 +275,7 @@ impl CommandSpec {
             stderr: CommandStderr::Inherit,
             toolchain_env,
             artifact_layout: CommandArtifactLayout::Inherit,
+            live_output: false,
             env: BTreeMap::new(),
         }
     }
@@ -270,6 +289,12 @@ impl CommandSpec {
     /// Overrides the default artifact-root policy for the command.
     pub fn with_artifact_layout(mut self, artifact_layout: CommandArtifactLayout) -> Self {
         self.artifact_layout = artifact_layout;
+        self
+    }
+
+    /// Mirrors both command streams during a human-formatted gate run.
+    pub fn with_live_output(mut self) -> Self {
+        self.live_output = true;
         self
     }
 
