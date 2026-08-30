@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.1.0"
+version: "13.2.0"
 domain: CORE
-updated: "2026-08-27"
+updated: "2026-08-30"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]

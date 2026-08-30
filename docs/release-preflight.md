@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "13.1.0"
+version: "13.2.0"
 domain: RELEASE
 updated: "2026-08-30"
 route:
@@ -66,6 +66,11 @@ Before running the full gate in a new worktree, verify its managed artifact root
 ```bash
 ./scripts/xtask.sh hygiene verify
 ```
+
+Run this verification before any direct Cargo command in the new worktree. Direct Cargo commands
+honor the configured artifact paths but do not create xtask's managed-artifact markers. If a
+release-only lockfile refresh or other direct Cargo probe must run first, clean the rebuildable
+roots and verify them again before the full gate.
 
 Disposable worktrees under one temporary parent can share `../.htmlcut-artifacts`. If verification
 reports an inherited rebuildable cache above its budget, reclaim only that managed cache and verify
