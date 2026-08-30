@@ -94,6 +94,6 @@ name = "htmlcut-core"
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
 rust-version = "1.98"
-version = "13.1.0"
+version = "13.2.0"
 
 [workspace]
