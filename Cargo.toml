@@ -29,7 +29,7 @@ arbitrary = { version = "1.4.2", features = ["derive"] }
 assert_cmd = "2.2.2"
 boon = "0.6.1"
 clap = { version = "4.6.6", features = ["derive"] }
-cssparser = "0.37.0"
+cssparser = "0.38.0"
 ego-tree = "0.11.0"
 encoding_rs = "0.8.35"
 htmlcut-cli = { path = "crates/htmlcut-cli", version = "13.2.0" }
