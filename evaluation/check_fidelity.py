@@ -14,6 +14,7 @@ cases=[
  ('ordinary nested section', '<article><p>BEGINNING</p><section id="section-one"><h2>Policy terms</h2><p>IMPORTANT POLICY CONTENT</p></section><p>ENDING</p></article>', 'article', ['BEGINNING','IMPORTANT POLICY CONTENT','ENDING']),
  ('policy-id nested section', '<article><p>BEGINNING</p><section id="policy"><h2>Policy terms</h2><p>IMPORTANT POLICY CONTENT</p></section><p>ENDING</p></article>', 'article', ['BEGINNING','IMPORTANT POLICY CONTENT','ENDING']),
  ('image alternative text', '<p>Damage: <img src="mirror.jpg" alt="Broken mirror"> end.</p>', 'p', ['Broken mirror']),
+ ('unrelated table caption', '<article><table><caption>Charges</caption><tr><td>EUR 180</td></tr></table><img src="mirror.jpg" alt="Broken mirror"></article>', 'article', ['Broken mirror']),
 ]
 rows=[]
 for name,html,css,required in cases:
