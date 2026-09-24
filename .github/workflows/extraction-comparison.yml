@@ -1,0 +1,77 @@
+name: Extraction comparison inputs
+on:
+  push:
+    branches: [evaluation/extraction-comparison]
+    paths: [.github/workflows/extraction-comparison.yml]
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Capture public inputs and alternative executables
+        shell: bash
+        run: |
+          mkdir -p capture/{inputs,tools,wheels,evidence,encodings}
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, pathlib, re, urllib.request, urllib.parse
+          root = pathlib.Path('capture')
+          manifest = []
+          def download(url, path):
+              request = urllib.request.Request(url, headers={'User-Agent': 'HTMLCut-comparative-evaluation/1.0 (public-page extraction test)'})
+              try:
+                  with urllib.request.urlopen(request, timeout=45) as response:
+                      data = response.read(12 * 1024 * 1024 + 1)
+                      if len(data) > 12 * 1024 * 1024: raise ValueError('Capture size limit exceeded')
+                      path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
+                      record = {'url': url, 'final_url': response.url, 'path': str(path.relative_to(root)), 'status': response.status, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(), 'content_type': response.headers.get('Content-Type'), 'captured_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+              except Exception as exc:
+                  record = {'url': url, 'path': str(path.relative_to(root)), 'error': str(exc)}
+              manifest.append(record); print(json.dumps(record), flush=True)
+              return path if path.exists() else None
+          sources = {
+              'python-whatsnew.html': 'https://docs.python.org/3.13/whatsnew/3.13.html',
+              'books.html': 'https://books.toscrape.com/',
+              'quotes-js.html': 'https://quotes.toscrape.com/js/',
+              'airbnb-hli.html': 'https://www.airbnb.com/help/article/3145',
+              'rust-release.html': 'https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/',
+              'hackernews.html': 'https://news.ycombinator.com/',
+              'htmlcut-release.json': 'https://api.github.com/repos/resoltico/HTMLCut/releases/tags/v14.0.0',
+          }
+          for filename, url in sources.items(): download(url, root/'inputs'/filename)
+          quotes = root/'inputs'/'quotes-js.html'
+          if quotes.exists():
+              for i, src in enumerate(re.findall(r'<script[^>]+src=[\"\x27]([^\"\x27]+)', quotes.read_text())):
+                  download(urllib.parse.urljoin(sources['quotes-js.html'], src), root/'inputs'/f'quotes-script-{i}.js')
+          for name, repo in [('htmlq','mgdm/htmlq'), ('pup','ericchiang/pup')]:
+              p = download(f'https://api.github.com/repos/{repo}/releases/latest', root/'evidence'/f'{name}-release.json')
+              if p:
+                  data = json.loads(p.read_text())
+                  matches = [a for a in data.get('assets',[]) if 'linux' in a['name'].lower() and any(s in a['name'].lower() for s in ['x86_64','amd64'])]
+                  for a in matches[:1]: download(a['browser_download_url'],root/'tools'/a['name'])
+          (root/'evidence'/'capture-manifest.json').write_text(json.dumps(manifest, indent=2))
+          PY
+      - name: Download Python comparison wheels
+        shell: bash
+        run: |
+          python3 -m pip download --dest capture/wheels --only-binary=:all: --python-version 3.13 --abi cp313 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 tiktoken trafilatura selectolax readability-lxml cssselect html2text 2>&1 | tee capture/evidence/wheel-download.log
+      - name: Capture tokenizer vocabularies
+        shell: bash
+        run: |
+          python3 -m pip install --user tiktoken
+          TIKTOKEN_CACHE_DIR="$PWD/capture/encodings" python3 - <<'PY'
+          import json, pathlib, tiktoken, importlib.metadata
+          report={'tiktoken_version':importlib.metadata.version('tiktoken'),'encodings':{}}
+          for name in ['o200k_base','cl100k_base']:
+              e=tiktoken.get_encoding(name);report['encodings'][name]={'vocabulary':e.n_vocab,'test_count':len(e.encode('HTML extraction benchmark'))}
+          pathlib.Path('capture/evidence/tokenizers.json').write_text(json.dumps(report,indent=2))
+          PY
+      - name: Upload comparison inputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: extraction-comparison-inputs
+          path: capture
+          retention-days: 7
+          if-no-files-found: error
