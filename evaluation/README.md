@@ -8,15 +8,15 @@ HTMLCut has a useful future as a focused, reusable extraction CLI/core. Basic CS
 
 ## Reproducible fidelity failures
 
-Run `python evaluation/check_fidelity.py --htmlcut /path/to/htmlcut`. The check deliberately exits nonzero when selected meaningful content is lost. Version 14.0.0 passed two controls and failed three fidelity cases:
+Run `python evaluation/check_fidelity.py --htmlcut /path/to/htmlcut`. The check deliberately exits nonzero when selected meaningful content is lost. Version 14.0.0 passed three controls and failed three fidelity cases:
 
 - Adding `class="reference internal"` to an ordinary link removed its label from selected paragraph text.
 - An ordinary nested section with `id="policy"` caused its content and following article content to disappear; changing just the ID to a neutral value preserved them.
-- Meaningful image alternative text disappeared.
+- Adding an unrelated table caption in the same article suppressed an image's meaningful alternative text. An ordinary image-only control passed; this is not a claim that all image labels are dropped.
 
-All five extraction processes themselves exited successfully. Supplying a base URL did not cure the omissions. These are content-fidelity checks, not claims that every extraction mode fails. Attribute and outer-HTML extraction worked on the tested payloads.
+All six extraction processes themselves exited successfully. Supplying a base URL did not cure the omissions. These are content-fidelity checks, not claims that every extraction mode fails. Attribute and outer-HTML extraction worked on the tested payloads. Final QA narrowed the image case to its caption-dependent condition rather than treating the initially simplified image case as a failure.
 
-On the captured official Python 3.13 free-threading section, eight checked technical terms were absent from HTMLCut text and present in htmlq, pup, Beautiful Soup, lxml, and Selectolax output. HTMLCut outer-HTML followed by Pandoc preserved all eight. The relevant policies are in `crates/htmlcut-core/src/document/text/policy.rs` and `vocabulary.rs` at the tested tag.
+On the captured official Python 3.13 free-threading section, eight checked technical terms were absent from HTMLCut text and present in htmlq, pup, Beautiful Soup, lxml, and Selectolax output. HTMLCut outer-HTML followed by Pandoc preserved all eight. The relevant policies are in `crates/htmlcut-core/src/document/text/policy.rs`, `vocabulary.rs`, and `render/media.rs` at the tested tag.
 
 ## Measured comparisons
 
