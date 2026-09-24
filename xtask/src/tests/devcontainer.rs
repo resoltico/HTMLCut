@@ -52,7 +52,7 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
 }
 
 #[test]
-fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
+fn default_contributor_inventory_includes_the_gate_required_mutation_tool() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
@@ -64,7 +64,7 @@ fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
                 set -euo pipefail
                 source ./scripts/contributor-rust-tools.sh
                 htmlcut_contributor_default_cargo_tool_inventory
-                printf '%s\n' '-- optional --'
+                printf '%s\n' '-- selected --'
                 htmlcut_selected_contributor_cargo_tools cargo-mutants
             "#,
         )
@@ -78,15 +78,15 @@ fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
         String::from_utf8_lossy(&output.stderr)
     );
     let inventory = String::from_utf8(output.stdout).expect("utf8 inventory");
-    let (default_tools, optional_tool) = inventory
-        .split_once("-- optional --\n")
+    let (default_tools, selected_tool) = inventory
+        .split_once("-- selected --\n")
         .expect("inventory separator");
     assert!(default_tools.contains("cargo-nextest 0.9.146 cargo-nextest"));
     assert!(default_tools.contains("cargo-semver-checks 0.50.0 cargo-semver-checks"));
     assert!(default_tools.contains("cargo-llvm-cov 0.9.1 cargo-llvm-cov"));
     assert!(default_tools.contains("cargo-fuzz 0.13.2 cargo-fuzz"));
-    assert!(!default_tools.contains("cargo-mutants"));
-    assert_eq!(optional_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
+    assert!(default_tools.contains("cargo-mutants 27.1.0 cargo-mutants"));
+    assert_eq!(selected_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
 }
 
 #[test]

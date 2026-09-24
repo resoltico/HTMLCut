@@ -34,7 +34,7 @@ use protection::{
     prepare_worker_cargo_home_at, protect_worker_source_tree, restore_worker_source_tree,
 };
 use runner::run_worker;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use runner::{combine_worker_execution, run_worker_with, supervise_worker_with};
 
 /// One independently disposable source workspace and its result root.
@@ -286,16 +286,19 @@ mod tests {
     fn worker_environment_absolutizes_workspace_local_cargo_roots_and_budgets_build_jobs() {
         let workspace = tempdir().expect("temporary workspace");
         let workspace_root = workspace.path().join("workspace");
+        let shared_cargo_home = workspace.path().join("shared-cargo-home");
+        let output_root = workspace.path().join("output");
+        let explicit_build = workspace.path().join("explicit-build");
         fs::create_dir_all(&workspace_root).expect("create workspace root");
         let worker = LocalMutationWorker {
             index: 0,
             selector: "0/1".to_owned(),
             expected_names: BTreeSet::new(),
             workspace,
-            cargo_home: PathBuf::from("/tmp/htmlcut-worker-cargo-home"),
+            cargo_home: shared_cargo_home,
             source_fingerprint: SourceTreeFingerprint::from_workspace(&workspace_root)
                 .expect("source fingerprint"),
-            output_root: PathBuf::from("/tmp/htmlcut-mutants"),
+            output_root,
             command: CommandSpec::new(
                 "cargo",
                 ["mutants"],
@@ -303,7 +306,10 @@ mod tests {
                 crate::CommandToolchainEnv::Inherit,
             )
             .with_env("CARGO_TARGET_DIR", ".htmlcut-mutant-cargo/target")
-            .with_env("CARGO_BUILD_BUILD_DIR", "/tmp/explicit-build")
+            .with_env(
+                "CARGO_BUILD_BUILD_DIR",
+                explicit_build.to_string_lossy().into_owned(),
+            )
             .with_env("RUSTUP_TOOLCHAIN", "nightly"),
         };
 
@@ -322,7 +328,7 @@ mod tests {
         );
         assert_eq!(
             environment.get("CARGO_BUILD_BUILD_DIR"),
-            Some(&"/tmp/explicit-build".to_owned())
+            Some(&explicit_build.to_string_lossy().into_owned())
         );
         assert_eq!(
             environment.get("RUSTUP_TOOLCHAIN"),
@@ -365,6 +371,7 @@ mod tests {
         assert_eq!(bounded_cargo_build_jobs(10, 1).get(), 10);
     }
 
+    #[cfg(unix)]
     #[test]
     fn worker_runner_preserves_one_success_status_per_valid_worker() {
         let worker_root = tempdir().expect("worker root");
@@ -477,6 +484,7 @@ mod tests {
         assert!(run_worker(&invalid, 1).is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn worker_refuses_to_reuse_a_workspace_when_a_completed_partition_changes_source() {
         let worker_root = tempdir().expect("worker root");

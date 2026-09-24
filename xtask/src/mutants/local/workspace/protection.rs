@@ -2,6 +2,7 @@
 
 use std::env;
 use std::fs;
+#[cfg(unix)]
 use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
@@ -23,6 +24,7 @@ pub(super) struct RestoredSourceTree;
 /// Evidence that one private Cargo home links a verified shared cache directory.
 struct LinkedDirectory;
 
+#[cfg(unix)]
 enum SourceEntryKind {
     Directory,
     File,
@@ -86,6 +88,7 @@ fn protect_source_directory(directory: &Path, is_root: bool) -> DynResult<()> {
     remove_unix_write_permission(directory)
 }
 
+#[cfg(unix)]
 fn is_mutable_mutation_source(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "rs")
 }
@@ -107,6 +110,7 @@ fn restore_source_directory(directory: &Path, is_root: bool) -> DynResult<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn source_entry_kind(file_type: FileType, path: &Path) -> DynResult<SourceEntryKind> {
     if file_type.is_dir() {
         return Ok(SourceEntryKind::Directory);
@@ -231,6 +235,7 @@ fn link_directory(source: &Path, destination: &Path) -> DynResult<LinkedDirector
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use htmlcut_tempdir::tempdir;
 
     #[cfg(unix)]

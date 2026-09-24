@@ -243,6 +243,7 @@ mod fuzz;
 mod host_tools;
 mod hygiene;
 mod miri;
+#[cfg(unix)]
 mod mutation_execution;
 mod outdated;
 mod plan;

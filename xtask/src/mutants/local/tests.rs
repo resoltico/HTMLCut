@@ -1,8 +1,12 @@
+#[cfg(unix)]
 use std::cell::Cell;
+#[cfg(unix)]
 use std::collections::BTreeSet;
 use std::path::Path;
+#[cfg(unix)]
 use std::{fs, process::Command};
 
+#[cfg(unix)]
 use super::batching::run_partition_batches_with_lanes;
 use super::*;
 
@@ -50,6 +54,7 @@ fn empty_inventory_finishes_without_staging_a_mutation_workspace() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn partition_batches_reuse_a_bounded_lane_for_later_partitions() {
     let repository = htmlcut_tempdir::tempdir().expect("repository root");
@@ -107,6 +112,7 @@ fn partition_batches_reuse_a_bounded_lane_for_later_partitions() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn partition_batches_check_runtime_headroom_before_every_later_batch() {
     let repository = htmlcut_tempdir::tempdir().expect("repository root");

@@ -92,8 +92,9 @@ Why this shape:
 - `CC=clang CXX=clang++` protects fresh macOS machines from stale shell overrides that point at a
   removed Homebrew LLVM install.
 - `cargo-fuzz` is installed with the default contributor inventory because HTMLCut keeps checked-in
-  fuzz targets and seed corpora. `cargo-mutants` is intentionally opt-in because full mutation
-  testing is scheduled/manual rather than part of the normal contributor gate.
+  fuzz targets and seed corpora. `cargo-mutants` is also installed by default because the full
+  maintainer gate executes a real disposable mutation-workspace integration test; full mutation
+  campaigns remain separate scheduled or manual work.
 
 The installer also preflights those macOS native prerequisites now. If `pkg-config` cannot see
 OpenSSL metadata, it stops immediately with the exact Homebrew repair command instead of failing
@@ -113,14 +114,8 @@ stay on the LLVM toolchain. The strict-provenance selector-and-slice Miri proof 
 but it does require the nightly `miri` plus `rust-src` components. Keep `clang` and `clang++`
 available on `PATH` on any host where you plan to run the maintained coverage or fuzz commands.
 
-Install cargo-mutants only when you will run the mutation workflow locally:
-
-```bash
-CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-mutants
-```
-
-The CI mutation workflow installs this same pinned tool independently, so normal devcontainer
-bootstrap and ordinary contributor setup do not pay to build an optional multi-hour quality tool.
+The CI mutation workflow installs the same pinned `cargo-mutants` release independently for its
+sharded campaigns.
 
 The pinned `cargo-semver-checks` `0.50.0` release includes Rustdoc-v60 support for the
 maintained Rust `1.98.1` semver gate.
@@ -188,7 +183,6 @@ cargo outdated --version
 cargo llvm-cov --version
 cargo +nightly miri --version
 cargo fuzz --version
-# Optional: install cargo-mutants first when you need mutation testing.
 cargo mutants --version
 shellcheck --version
 ```
@@ -207,7 +201,7 @@ supported gate path outside Cargo's mutable artifact roots:
 ./scripts/xtask.sh miri
 ./scripts/xtask.sh outdated-check
 ./scripts/xtask.sh fuzz-smoke
-# Optional: requires the cargo-mutants installation above.
+# Full mutation campaigns are separate from the normal maintainer gate.
 ./scripts/xtask.sh mutants
 ```
 

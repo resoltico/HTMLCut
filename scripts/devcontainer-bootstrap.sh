@@ -84,4 +84,5 @@ cargo outdated --version >/dev/null
 cargo llvm-cov --version >/dev/null
 cargo +nightly miri --version >/dev/null
 cargo fuzz --version >/dev/null
+cargo mutants --version >/dev/null
 printf 'devcontainer bootstrap: ready\n'

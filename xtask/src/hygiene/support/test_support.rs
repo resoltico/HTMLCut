@@ -14,7 +14,6 @@ pub(crate) fn format_bytes_for_tests(bytes: u64) -> String {
     format_bytes(bytes)
 }
 
-#[cfg(unix)]
 pub(crate) fn dir_size_bytes_for_tests(path: &Path) -> u64 {
     dir_size_bytes(path).expect("dir size bytes")
 }

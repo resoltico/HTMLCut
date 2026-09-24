@@ -59,6 +59,21 @@ readonly -a HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS=(
     "rust-src"
 )
 
+htmlcut_contributor_retry() {
+    local retry_limit="$1"
+    local retry_delay_seconds="$2"
+    shift 2
+
+    local retry_index=1
+    until "$@"; do
+        if (( retry_index >= retry_limit )); then
+            return 1
+        fi
+        sleep "${retry_delay_seconds}"
+        retry_index=$((retry_index + 1))
+    done
+}
+
 htmlcut_contributor_rustup_toolchain_install() {
     local toolchain="$1"
     shift
@@ -105,7 +120,8 @@ htmlcut_contributor_default_cargo_tool_inventory() {
         cargo-semver-checks \
         cargo-outdated \
         cargo-llvm-cov \
-        cargo-fuzz
+        cargo-fuzz \
+        cargo-mutants
 }
 
 htmlcut_selected_contributor_cargo_tools() {

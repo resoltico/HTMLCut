@@ -125,8 +125,14 @@ mod tests {
     #[test]
     fn supervisor_allows_a_completed_child_when_pruning_and_headroom_are_healthy() {
         let output_root = tempdir().expect("output root");
+        #[cfg(unix)]
         let mut command = Command::new("sh");
+        #[cfg(unix)]
         command.args(["-c", "exit 0"]);
+        #[cfg(windows)]
+        let mut command = Command::new("cmd");
+        #[cfg(windows)]
+        command.args(["/C", "exit 0"]);
         let status = supervise_worker_with(
             &mut command,
             output_root.path(),

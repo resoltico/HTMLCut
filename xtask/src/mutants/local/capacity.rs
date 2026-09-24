@@ -2,6 +2,7 @@
 
 use std::num::NonZeroUsize;
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Command;
 
 use crate::DynResult;
@@ -59,6 +60,7 @@ fn available_bytes(path: &Path) -> DynResult<u64> {
     }
 }
 
+#[cfg(any(unix, test))]
 fn parse_df_available_bytes(
     path: &Path,
     succeeded: bool,
@@ -82,6 +84,7 @@ fn parse_df_available_bytes(
     })
 }
 
+#[cfg(any(unix, test))]
 fn parse_df_available_blocks(output: &str) -> DynResult<u64> {
     let row = output
         .lines()

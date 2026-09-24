@@ -31,7 +31,9 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -81,21 +83,10 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          retry() {
-            local attempts="$1"
-            local delay_seconds="$2"
-            shift 2
-            local attempt=1
-            until "$@"; do
-              if (( attempt >= attempts )); then
-                return 1
-              fi
-              sleep "${delay_seconds}"
-              attempt=$((attempt + 1))
-            done
-          }
-          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          retry 3 5 rustup toolchain install nightly --profile minimal
+          htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
+          htmlcut_contributor_retry 3 5 rustup toolchain install nightly --profile minimal
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -161,8 +152,9 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          rustup toolchain install nightly --profile minimal
+          htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -244,7 +236,9 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
+            "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
 
       - name: Export mutation tool inventory
         id: mutation_tools

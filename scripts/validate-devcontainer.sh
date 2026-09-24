@@ -67,6 +67,7 @@ validate_inner_runtime() {
     cargo semver-checks --version >/dev/null
     cargo outdated --version >/dev/null
     cargo fuzz --version >/dev/null
+    cargo mutants --version >/dev/null
 }
 
 if [[ "${HTMLCUT_DEVCONTAINER:-}" == "1" ]]; then
@@ -253,6 +254,7 @@ docker run --rm \
         cargo semver-checks --version >/dev/null
         cargo outdated --version >/dev/null
         cargo fuzz --version >/dev/null
+        cargo mutants --version >/dev/null
         cd /workspaces/htmlcut
         case "${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES}" in
             full)

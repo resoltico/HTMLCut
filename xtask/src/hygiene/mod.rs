@@ -465,15 +465,15 @@ mod support;
 
 #[cfg(all(test, unix))]
 pub(crate) use self::support::{
-    aggregate_entry_for_tests, dir_size_bytes_excluding_roots_for_tests, dir_size_bytes_for_tests,
-    dir_size_bytes_result_for_tests,
+    aggregate_entry_for_tests, checked_aggregate_bytes_for_tests,
+    dir_size_bytes_excluding_roots_for_tests, dir_size_bytes_result_for_tests,
+    managed_artifact_container_entry_for_tests, remove_artifact_path_if_exists_for_tests,
+    unmanaged_artifact_container_entry_for_tests,
 };
 #[cfg(test)]
 pub(crate) use self::support::{
-    checked_aggregate_bytes_for_tests, format_bytes_for_tests,
-    looks_like_cargo_target_dir_for_tests, managed_artifact_container_entry_for_tests,
-    remove_artifact_path_if_exists_for_tests, report_violations_for_tests,
-    unmanaged_artifact_container_entry_for_tests,
+    dir_size_bytes_for_tests, format_bytes_for_tests, looks_like_cargo_target_dir_for_tests,
+    report_violations_for_tests,
 };
 
 #[cfg(test)]
