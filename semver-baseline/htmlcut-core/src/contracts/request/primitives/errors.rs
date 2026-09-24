@@ -65,6 +65,15 @@ pub enum ContractValueError {
         /// Human-readable field label used in the validation message.
         field: &'static str,
     },
+    /// A standalone wire document did not carry its required v2 identity envelope.
+    #[error("wire document identity envelope is not current")]
+    WireEnvelope,
+    /// A fixed-width v2 wire value could not be represented by this host platform.
+    #[error("{field} is outside the supported v2 wire range")]
+    WireNumericRange {
+        /// Human-readable wire field label.
+        field: &'static str,
+    },
 }
 
 macro_rules! non_empty_string_type {

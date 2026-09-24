@@ -446,6 +446,9 @@ fn matches_complex_selector<E>(
 where
     E: Element,
 {
+    if !context.consume_work() {
+        return KleeneValue::False;
+    }
     // If this is the special pseudo-element mode, consume the ::pseudo-element
     // before proceeding, since the caller has already handled that part.
     if context.matching_mode() == MatchingMode::ForStatelessPseudoElement && !context.is_nested() {
@@ -631,7 +634,7 @@ fn match_relative_selectors<E: Element>(
         // correct, arguably. But the ideal solution isn't super-clear either. For now,
         // cope with it and explicitly reject it at match time. See [1] for discussion.
         //
-        // [1]: https://github.com/w3c/csswg-drafts/issues/9600
+        // [1]: <https://github.com/w3c/csswg-drafts/issues/9600>
         return KleeneValue::False;
     }
     if let Some(may_return_unknown) = context.matching_for_invalidation_comparison() {
@@ -729,7 +732,7 @@ fn matches_relative_selector_subtree<E: Element>(
 
 /// Whether the :hover and :active quirk applies.
 ///
-/// https://quirks.spec.whatwg.org/#the-active-and-hover-quirk
+/// <https://quirks.spec.whatwg.org/#the-active-and-hover-quirk>
 fn hover_and_active_quirk_applies<Impl: SelectorImpl>(
     selector_iter: &SelectorIter<Impl>,
     context: &MatchingContext<Impl>,
@@ -852,6 +855,9 @@ fn matches_complex_selector_internal<E>(
 where
     E: Element,
 {
+    if !context.consume_work() {
+        return SelectorMatchingResult::NotMatchedGlobally;
+    }
     debug!(
         "Matching complex selector {:?} for {:?}",
         selector_iter, element
@@ -1170,7 +1176,7 @@ pub(crate) fn compound_matches_featureless_host<Impl: SelectorImpl>(
             }
             Component::Negation(ref l) => {
                 // For now preserving behavior, see
-                // https://github.com/w3c/csswg-drafts/issues/10179 for existing resolutions that
+                // <https://github.com/w3c/csswg-drafts/issues/10179> for existing resolutions that
                 // tweak this behavior.
                 for selector in l.slice() {
                     if selector.matches_featureless_host(scope_matches_featureless_host)

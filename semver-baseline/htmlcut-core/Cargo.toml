@@ -1,12 +1,15 @@
+[dependencies.cssparser]
+version = "0.38.0"
+
 [dependencies.ego-tree]
 version = "0.11.0"
 
 [dependencies.encoding_rs]
 optional = true
-version = "0.8.35"
+version = "0.8.41"
 
 [dependencies.regex]
-version = "1.13.0"
+version = "1.13.1"
 
 [dependencies.schemars]
 features = ["url2"]
@@ -26,7 +29,7 @@ version = "0.38.0-htmlcut.1"
 
 [dependencies.serde]
 features = ["derive"]
-version = "1.0.228"
+version = "1.0.229"
 
 [dependencies.serde_json]
 version = "1.0.151"
@@ -35,7 +38,7 @@ version = "1.0.151"
 version = "0.11.0"
 
 [dependencies.thiserror]
-version = "2.0.20"
+version = "2.0.21"
 
 [dependencies.ureq]
 default-features = false
@@ -45,11 +48,15 @@ features = [
     "platform-verifier",
 ]
 optional = true
-version = "3.4.0"
+version = "3.4.2"
 
 [dependencies.url]
 features = ["serde"]
 version = "2.5.8"
+
+[[example]]
+name = "prepared_engine_benchmark"
+path = "examples/prepared_engine_benchmark.rs"
 
 [[example]]
 name = "request_and_result_namespaces"
@@ -93,7 +100,7 @@ license = "MIT"
 name = "htmlcut-core"
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
-rust-version = "1.98"
-version = "13.2.0"
+rust-version = "1.98.1"
+version = "14.0.0"
 
 [workspace]

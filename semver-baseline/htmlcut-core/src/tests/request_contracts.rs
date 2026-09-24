@@ -134,6 +134,54 @@ fn request_value_objects_cover_http_urls_attributes_and_boundary_retention() {
 }
 
 #[test]
+fn source_and_timeout_value_objects_reject_zero_through_constructors_and_conversions() {
+    for result in [
+        MaxBytes::new(0).map(|_| ()),
+        MaxBytes::try_from(0).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(ContractValueError::NonPositive { field: "max_bytes" })
+        ));
+    }
+    for result in [
+        FetchTimeoutMs::new(0).map(|_| ()),
+        FetchTimeoutMs::try_from(0).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(ContractValueError::NonPositive {
+                field: "fetch_timeout_ms"
+            })
+        ));
+    }
+    for result in [
+        FetchConnectTimeoutMs::new(0).map(|_| ()),
+        FetchConnectTimeoutMs::try_from(0).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(ContractValueError::NonPositive {
+                field: "fetch_connect_timeout_ms"
+            })
+        ));
+    }
+
+    assert_eq!(
+        usize::from(MaxBytes::new(65_537).expect("positive max-bytes limit")),
+        65_537
+    );
+    assert_eq!(
+        u64::from(FetchTimeoutMs::new(1_234).expect("positive fetch timeout")),
+        1_234
+    );
+    assert_eq!(
+        u64::from(FetchConnectTimeoutMs::new(567).expect("positive connect timeout")),
+        567
+    );
+}
+
+#[test]
 fn request_schemas_expose_runtime_and_url_constraints() {
     let schema = (crate::schema_descriptor(
         crate::EXTRACTION_DEFINITION_SCHEMA_NAME,
@@ -144,7 +192,10 @@ fn request_schemas_expose_runtime_and_url_constraints() {
     .expect("json schema");
 
     let defs = schema["$defs"].as_object().expect("schema defs");
-    assert_eq!(defs["MaxBytes"]["minimum"], json!(1));
+    assert_eq!(
+        defs["RuntimeOptionsDocument"]["properties"]["max_bytes"]["minimum"],
+        json!(1)
+    );
     assert_eq!(defs["FetchTimeoutMs"]["minimum"], json!(1));
     assert_eq!(defs["FetchConnectTimeoutMs"]["minimum"], json!(1));
     assert_eq!(
@@ -198,8 +249,8 @@ fn request_schemas_expose_runtime_and_url_constraints() {
     );
 
     let interop_result_schema = (crate::schema_descriptor(
-        crate::interop::v1::RESULT_SCHEMA_NAME,
-        crate::interop::v1::RESULT_SCHEMA_VERSION,
+        crate::interop::v2::RESULT_SCHEMA_NAME,
+        crate::interop::v2::RESULT_SCHEMA_VERSION,
     )
     .expect("interop result schema descriptor")
     .json_schema)()

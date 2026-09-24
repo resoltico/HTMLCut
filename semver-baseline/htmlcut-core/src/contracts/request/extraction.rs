@@ -162,6 +162,33 @@ impl ValueSpec {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_spec_attribute_name_exposes_only_the_configured_attribute() {
+        let attribute = AttributeName::new("HREF").expect("attribute name");
+        let attribute_spec = ValueSpec::Attribute {
+            name: attribute.clone(),
+        };
+
+        assert_eq!(
+            attribute_spec.attribute_name().map(AttributeName::as_str),
+            Some("href")
+        );
+        for value_spec in [
+            ValueSpec::Text,
+            ValueSpec::SelectedHtml,
+            ValueSpec::InnerHtml,
+            ValueSpec::OuterHtml,
+            ValueSpec::Structured,
+        ] {
+            assert_eq!(value_spec.attribute_name(), None);
+        }
+    }
+}
+
 /// Which slice boundaries become part of the selected fragment.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]

@@ -101,6 +101,8 @@ use std::fmt;
 diagnostic_codes! {
     /// The source could not be loaded or decoded.
     SourceLoadFailed => "SOURCE_LOAD_FAILED",
+    /// A loaded source could not satisfy the prepared-document contract.
+    SourcePreparationFailed => "SOURCE_PREPARATION_FAILED",
     /// The request spec version is unsupported.
     UnsupportedSpecVersion => "UNSUPPORTED_SPEC_VERSION",
     /// The CSS selector is invalid.
@@ -123,6 +125,14 @@ diagnostic_codes! {
     EffectiveBaseUrlUnresolved => "EFFECTIVE_BASE_URL_UNRESOLVED",
     /// Slice selection appears to start or end inside HTML markup.
     SliceSplitsMarkup => "SLICE_SPLITS_MARKUP",
+    /// Selector matching exhausted the plan's explicit work budget.
+    SelectorWorkLimitExceeded => "SELECTOR_WORK_LIMIT_EXCEEDED",
+    /// Candidate discovery exceeded the plan's explicit cardinality budget.
+    CandidateLimitExceeded => "CANDIDATE_LIMIT_EXCEEDED",
+    /// Selected-match retention exceeded the plan's explicit cardinality budget.
+    SelectedMatchLimitExceeded => "SELECTED_MATCH_LIMIT_EXCEEDED",
+    /// Rendered evidence exceeded the plan's explicit output budget.
+    OutputLimitExceeded => "OUTPUT_LIMIT_EXCEEDED",
 }
 
 pub(crate) fn has_errors(diagnostics: &[Diagnostic]) -> bool {

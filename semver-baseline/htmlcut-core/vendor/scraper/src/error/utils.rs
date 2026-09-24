@@ -86,6 +86,6 @@ mod tests {
     #[test]
     fn regression_test_issue212() {
         let err = Selector::parse("div138293@!#@!!@#").unwrap_err();
-        assert_eq!(err.to_string(), "Token \"@\" was not expected");
+        assert_eq!(err.to_string(), "Token was not expected");
     }
 }

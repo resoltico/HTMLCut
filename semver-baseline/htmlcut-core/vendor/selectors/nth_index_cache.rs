@@ -9,9 +9,9 @@ use rustc_hash::FxHashMap;
 
 /// A cache to speed up matching of nth-index-like selectors.
 ///
-/// See [1] for some discussion around the design tradeoffs.
+/// See the linked discussion around the design tradeoffs.
 ///
-/// [1] https://bugzilla.mozilla.org/show_bug.cgi?id=1401855#c3
+/// Design discussion: <https://bugzilla.mozilla.org/show_bug.cgi?id=1401855#c3>
 #[derive(Default)]
 pub struct NthIndexCache {
     nth: NthIndexCacheInner,

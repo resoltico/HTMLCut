@@ -10,18 +10,23 @@ use crate::contracts::{
     CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
     CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION,
 };
-use crate::interop::v1::{
-    ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, InteropError, InteropResult, PLAN_SCHEMA_NAME,
-    PLAN_SCHEMA_VERSION, Plan, RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION,
+use crate::interop::v2::{
+    ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION, EXPLORATION_ERROR_SCHEMA_NAME,
+    EXPLORATION_ERROR_SCHEMA_VERSION, EXPLORATION_RESULT_SCHEMA_NAME,
+    EXPLORATION_RESULT_SCHEMA_VERSION, ExplorationError, ExplorationResult, InteropError,
+    InteropResult, PLAN_SCHEMA_NAME, PLAN_SCHEMA_VERSION, PREPARATION_ERROR_SCHEMA_NAME,
+    PREPARATION_ERROR_SCHEMA_VERSION, Plan, PreparationError, RESULT_SCHEMA_NAME,
+    RESULT_SCHEMA_VERSION, TARGET_RESOLUTION_RESULT_SCHEMA_NAME,
+    TARGET_RESOLUTION_RESULT_SCHEMA_VERSION, TargetResolutionResult,
 };
-use crate::wire::v1::{
+use crate::wire::v2::{
     ExtractionDefinitionDocument, ExtractionRequestDocument, ExtractionResultDocument,
     InspectionOptionsDocument, RuntimeOptionsDocument, SourceInspectionResultDocument,
     SourceRequestDocument,
 };
 
 /// Versioned schema-registry profile exported by HTMLCut.
-pub const HTMLCUT_JSON_SCHEMA_PROFILE: &str = "htmlcut-json-schema-v1";
+pub const HTMLCUT_JSON_SCHEMA_PROFILE: &str = "htmlcut-json-schema-v2";
 /// Frozen schema name for [`crate::SourceRequest`].
 pub const SOURCE_REQUEST_SCHEMA_NAME: &str = "htmlcut.source_request";
 /// Frozen schema name for [`crate::RuntimeOptions`].
@@ -35,7 +40,7 @@ pub const EXTRACTION_DEFINITION_SCHEMA_NAME: &str = "htmlcut.extraction_definiti
 /// Schema version for request-side core contracts.
 pub const CORE_REQUEST_SCHEMA_VERSION: u32 = CORE_SPEC_VERSION;
 /// Schema version for reusable extraction definitions.
-pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 4;
+pub const EXTRACTION_DEFINITION_SCHEMA_VERSION: u32 = 5;
 
 /// Stable reference to one versioned schema document.
 #[derive(
@@ -173,6 +178,22 @@ const INTEROP_PLAN_SCHEMA_REF: SchemaRef = SchemaRef::new(PLAN_SCHEMA_NAME, PLAN
 const INTEROP_RESULT_SCHEMA_REF: SchemaRef =
     SchemaRef::new(RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION);
 const INTEROP_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(ERROR_SCHEMA_NAME, ERROR_SCHEMA_VERSION);
+const INTEROP_PREPARATION_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(
+    PREPARATION_ERROR_SCHEMA_NAME,
+    PREPARATION_ERROR_SCHEMA_VERSION,
+);
+const INTEROP_EXPLORATION_RESULT_SCHEMA_REF: SchemaRef = SchemaRef::new(
+    EXPLORATION_RESULT_SCHEMA_NAME,
+    EXPLORATION_RESULT_SCHEMA_VERSION,
+);
+const INTEROP_EXPLORATION_ERROR_SCHEMA_REF: SchemaRef = SchemaRef::new(
+    EXPLORATION_ERROR_SCHEMA_NAME,
+    EXPLORATION_ERROR_SCHEMA_VERSION,
+);
+const INTEROP_TARGET_RESOLUTION_RESULT_SCHEMA_REF: SchemaRef = SchemaRef::new(
+    TARGET_RESOLUTION_RESULT_SCHEMA_NAME,
+    TARGET_RESOLUTION_RESULT_SCHEMA_VERSION,
+);
 
 const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
     catalog_schema_descriptor(
@@ -219,21 +240,45 @@ const SCHEMA_CATALOG: &[SchemaDescriptor] = &[
     ),
     catalog_schema_descriptor(
         INTEROP_PLAN_SCHEMA_REF,
-        "interop-v1",
+        "interop-v2",
         "execution plan",
         interop_plan_schema,
     ),
     catalog_schema_descriptor(
         INTEROP_RESULT_SCHEMA_REF,
-        "interop-v1",
+        "interop-v2",
         "execution result",
         interop_result_schema,
     ),
     catalog_schema_descriptor(
         INTEROP_ERROR_SCHEMA_REF,
-        "interop-v1",
+        "interop-v2",
         "execution error",
         interop_error_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_PREPARATION_ERROR_SCHEMA_REF,
+        "interop-v2",
+        "preparation error",
+        interop_preparation_error_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_EXPLORATION_RESULT_SCHEMA_REF,
+        "interop-v2",
+        "exploration result",
+        interop_exploration_result_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_EXPLORATION_ERROR_SCHEMA_REF,
+        "interop-v2",
+        "exploration error",
+        interop_exploration_error_schema,
+    ),
+    catalog_schema_descriptor(
+        INTEROP_TARGET_RESOLUTION_RESULT_SCHEMA_REF,
+        "interop-v2",
+        "target resolution result",
+        interop_target_resolution_result_schema,
     ),
 ];
 
@@ -269,16 +314,6 @@ fn schema_export_serialize_error(
     }
 }
 
-#[cfg(test)]
-pub(crate) fn schema_export_serialize_error_for_tests(schema_ref: SchemaRef) -> SchemaExportError {
-    schema_export_serialize_error(
-        schema_ref,
-        serde_json::Error::io(std::io::Error::other(
-            "synthetic schema serialization failure",
-        )),
-    )
-}
-
 fn source_request_schema() -> Result<Value, SchemaExportError> {
     schema_json_for::<SourceRequestDocument>(SOURCE_REQUEST_SCHEMA_REF)
 }
@@ -307,6 +342,22 @@ fn source_inspection_result_schema() -> Result<Value, SchemaExportError> {
     schema_json_for::<SourceInspectionResultDocument>(SOURCE_INSPECTION_RESULT_SCHEMA_REF)
 }
 
+fn interop_preparation_error_schema() -> Result<Value, SchemaExportError> {
+    schema_json_for::<PreparationError>(INTEROP_PREPARATION_ERROR_SCHEMA_REF)
+}
+
+fn interop_exploration_result_schema() -> Result<Value, SchemaExportError> {
+    schema_json_for::<ExplorationResult>(INTEROP_EXPLORATION_RESULT_SCHEMA_REF)
+}
+
+fn interop_exploration_error_schema() -> Result<Value, SchemaExportError> {
+    schema_json_for::<ExplorationError>(INTEROP_EXPLORATION_ERROR_SCHEMA_REF)
+}
+
+fn interop_target_resolution_result_schema() -> Result<Value, SchemaExportError> {
+    schema_json_for::<TargetResolutionResult>(INTEROP_TARGET_RESOLUTION_RESULT_SCHEMA_REF)
+}
+
 #[cfg(test)]
 pub(crate) fn schema_catalog_contract_string_errors_for_tests() -> Vec<String> {
     schema_catalog_contract_string_errors(schema_catalog())
@@ -317,26 +368,6 @@ pub(crate) fn schema_catalog_contract_string_errors_for_tests_with(
     catalog: &[SchemaDescriptor],
 ) -> Vec<String> {
     schema_catalog_contract_string_errors(catalog)
-}
-
-#[cfg(test)]
-pub(crate) fn assert_schema_catalog_contract_strings_for_tests(catalog: &[SchemaDescriptor]) {
-    let errors = schema_catalog_contract_string_errors(catalog);
-    assert!(
-        errors.is_empty(),
-        "schema catalog contract strings drifted:\n- {}",
-        errors.join("\n- ")
-    );
-}
-
-#[cfg(test)]
-pub(crate) fn expected_schema_contract_family_for_tests(
-    schema_ref: SchemaRef,
-) -> Option<&'static str> {
-    schema_catalog()
-        .iter()
-        .find(|descriptor| descriptor.schema_ref == schema_ref)
-        .map(|descriptor| descriptor.contract_family)
 }
 
 #[cfg(test)]
@@ -354,6 +385,10 @@ fn schema_catalog_contract_string_errors(catalog: &[SchemaDescriptor]) -> Vec<St
         INTEROP_PLAN_SCHEMA_REF,
         INTEROP_RESULT_SCHEMA_REF,
         INTEROP_ERROR_SCHEMA_REF,
+        INTEROP_PREPARATION_ERROR_SCHEMA_REF,
+        INTEROP_EXPLORATION_RESULT_SCHEMA_REF,
+        INTEROP_EXPLORATION_ERROR_SCHEMA_REF,
+        INTEROP_TARGET_RESOLUTION_RESULT_SCHEMA_REF,
     ]
     .into_iter()
     .collect::<BTreeSet<_>>();
@@ -400,16 +435,14 @@ const fn catalog_schema_descriptor(
     }
 }
 
-#[cfg(test)]
-pub(crate) fn catalog_schema_descriptor_for_tests(
-    schema_ref: SchemaRef,
-    owner: &'static str,
-    contract_family: &'static str,
-    json_schema: fn() -> Result<Value, SchemaExportError>,
-) -> SchemaDescriptor {
-    catalog_schema_descriptor(schema_ref, owner, contract_family, json_schema)
-}
-
 mod constraints;
 
 use constraints::*;
+
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+pub(crate) use test_support::{
+    assert_schema_catalog_contract_strings_for_tests, catalog_schema_descriptor_for_tests,
+    expected_schema_contract_family_for_tests, schema_export_serialize_error_for_tests,
+};

@@ -384,3 +384,15 @@ pub(in super::super) fn content_candidate_link_density_penalty(
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::narrative_block_count;
+
+    #[test]
+    fn narrative_blocks_add_capped_list_groups_to_prose_paragraphs() {
+        assert_eq!(narrative_block_count(2, 3), 3);
+        assert_eq!(narrative_block_count(2, 18), 8);
+        assert_eq!(narrative_block_count(2, 19), 8);
+    }
+}

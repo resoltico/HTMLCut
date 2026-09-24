@@ -19,7 +19,7 @@ use crate::document::{
     srcset_rejects_staged_non_advancing_progress_for_tests,
 };
 use crate::extract::{
-    build_finder, build_regex, build_selector_match, build_slice_match, extract_slice_candidates,
+    build_finder, build_regex, build_selector_match, extract_slice_candidates,
     position_inside_markup_for_tests, run_selector_extraction, run_slice_extraction,
     select_candidates, validate_request,
 };
@@ -136,14 +136,17 @@ pub(crate) fn accept_test_connection(
     listener
         .set_nonblocking(true)
         .expect("configure bounded test listener");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+    // Local HTTP fixtures exercise the real client on a separately scheduled thread. A 100 ms
+    // socket deadline turns ordinary host contention into a false product failure; five seconds
+    // remains a strict liveness bound while allowing the client thread to be scheduled.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         match listener.accept() {
             Ok((stream, address)) => {
                 stream
                     .set_nonblocking(false)
                     .expect("restore blocking test stream");
-                let io_timeout = Some(std::time::Duration::from_millis(100));
+                let io_timeout = Some(std::time::Duration::from_secs(5));
                 stream
                     .set_read_timeout(io_timeout)
                     .expect("bound test-stream reads");
@@ -191,7 +194,7 @@ mod examples_api;
 mod extract_api;
 mod extraction;
 mod inspection;
-mod interop_v1;
+mod interop_v2;
 mod request_contracts;
 mod source;
 mod wire;

@@ -1,38 +1,73 @@
+use schemars::JsonSchema;
 use scraper::error::{SelectorErrorKind, SelectorParseError};
 use selectors::parser::SelectorParseErrorKind;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::num::NonZeroU64;
+
+mod validation;
+
+#[cfg(test)]
+pub(crate) use validation::SelectorParseDetailsViolation;
+pub(crate) use validation::validate_selector_parse_details;
 
 /// Closed machine-readable classes for CSS selector parse failures.
 ///
 /// This inventory is deliberately internal implementation machinery. The interop profile
 /// publishes its stable string representations in `selector_parse.parse_error_class` instead of
 /// exposing the vendored parser's error types or diagnostics.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SelectorParseErrorClass {
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectorParseErrorClass {
+    /// The parser encountered an unexpected token.
     UnexpectedToken,
+    /// The selector ended before a required token appeared.
     EndOfInput,
+    /// An at-rule was not valid in selector grammar.
     InvalidAtRule,
+    /// An at-rule body was not valid in selector grammar.
     InvalidAtRuleBody,
+    /// A qualified selector rule was not valid.
     InvalidQualifiedRule,
+    /// A pseudo-element was missing its required colon.
     PseudoElementExpectedColon,
+    /// A pseudo-element was missing its identifier.
     PseudoElementExpectedIdent,
+    /// An attribute-selector name was not valid.
     InvalidAttributeSelector,
+    /// The selector contained no selector component.
     EmptySelector,
+    /// The selector ended with a combinator.
     DanglingCombinator,
+    /// A required compound selector was absent.
     NonCompoundSelector,
+    /// A non-pseudo-element followed `::slotted`.
     NonPseudoElementAfterSlotted,
+    /// A pseudo-element after `::slotted` was invalid.
     InvalidPseudoElementAfterSlotted,
+    /// A pseudo-element inside `:where` was invalid.
     InvalidPseudoElementInsideWhere,
+    /// The selector parser entered an invalid internal grammar state.
     InvalidState,
+    /// An attribute selector contained an unexpected token.
     UnexpectedTokenInAttributeSelector,
+    /// A pseudo-class or pseudo-element was missing an identifier.
     NoIdentForPseudo,
+    /// The requested pseudo-class or pseudo-element is unsupported.
     UnsupportedPseudoClassOrElement,
+    /// The parser encountered an unexpected identifier.
     UnexpectedIdent,
+    /// A namespace identifier was required but absent.
     ExpectedNamespace,
+    /// An attribute selector was missing its namespace separator.
     ExpectedBarInAttributeSelector,
+    /// An attribute selector carried an invalid value.
     InvalidAttributeValue,
+    /// An attribute selector carried an invalid qualified name.
     InvalidQualifiedNameInAttributeSelector,
+    /// An explicit namespace contained an unexpected token.
     ExplicitNamespaceUnexpectedToken,
+    /// A class selector was missing its identifier.
     ClassNeedsIdent,
 }
 
@@ -104,9 +139,9 @@ impl SelectorParseErrorClass {
 
     fn from_error_kind(error: &SelectorErrorKind<'_>) -> Self {
         match error {
-            SelectorErrorKind::UnexpectedToken(_) => Self::UnexpectedToken,
+            SelectorErrorKind::UnexpectedToken => Self::UnexpectedToken,
             SelectorErrorKind::EndOfLine => Self::EndOfInput,
-            SelectorErrorKind::InvalidAtRule(_) => Self::InvalidAtRule,
+            SelectorErrorKind::InvalidAtRule => Self::InvalidAtRule,
             SelectorErrorKind::InvalidAtRuleBody => Self::InvalidAtRuleBody,
             SelectorErrorKind::QualRuleInvalid => Self::InvalidQualifiedRule,
             SelectorErrorKind::ExpectedColonOnPseudoElement(_) => Self::PseudoElementExpectedColon,
@@ -114,7 +149,7 @@ impl SelectorParseErrorClass {
                 Self::PseudoElementExpectedIdent
             }
             SelectorErrorKind::UnexpectedSelectorParseError(error) => match error {
-                SelectorParseErrorKind::NoQualifiedNameInAttributeSelector(_) => {
+                SelectorParseErrorKind::NoQualifiedNameInAttributeSelector { .. } => {
                     Self::InvalidAttributeSelector
                 }
                 SelectorParseErrorKind::EmptySelector => Self::EmptySelector,
@@ -148,7 +183,7 @@ impl SelectorParseErrorClass {
                 SelectorParseErrorKind::ExpectedBarInAttr(_) => {
                     Self::ExpectedBarInAttributeSelector
                 }
-                SelectorParseErrorKind::BadValueInAttr(_) => Self::InvalidAttributeValue,
+                SelectorParseErrorKind::BadValueInAttr => Self::InvalidAttributeValue,
                 SelectorParseErrorKind::InvalidQualNameInAttr(_) => {
                     Self::InvalidQualifiedNameInAttributeSelector
                 }
@@ -162,38 +197,34 @@ impl SelectorParseErrorClass {
 }
 
 /// One normalized selector parse position and classification.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SelectorParse {
-    line: u64,
-    column_utf16: u64,
-    class: SelectorParseErrorClass,
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectorParseDetail {
+    /// One-based source line that contains the parser rejection.
+    pub line: NonZeroU64,
+    /// One-based UTF-16 column within [`Self::line`].
+    pub column_utf16: NonZeroU64,
+    /// Closed HTMLCut-owned class of the parser rejection.
+    pub parse_error_class: SelectorParseErrorClass,
 }
 
-/// Closed reasons a serialized `selector_parse` object is rejected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SelectorParseDetailsViolation {
-    Missing,
-    Malformed,
-    NonObject,
-    ZeroPosition,
-    UnknownClass,
-}
-
-impl SelectorParse {
+impl SelectorParseDetail {
     fn from_error(error: &SelectorParseError<'_>) -> Self {
         let location = error.location();
         Self {
-            line: u64::from(location.line) + 1,
-            column_utf16: u64::from(location.column),
-            class: SelectorParseErrorClass::from_error_kind(error.kind()),
+            line: NonZeroU64::new(u64::from(location.line) + 1)
+                .expect("CSS parser line positions are one-based"),
+            column_utf16: NonZeroU64::new(u64::from(location.column))
+                .expect("CSS parser column positions are one-based"),
+            parse_error_class: SelectorParseErrorClass::from_error_kind(error.kind()),
         }
     }
 
     fn as_value(self) -> Value {
         json!({
-            "line": self.line,
-            "column_utf16": self.column_utf16,
-            "parse_error_class": self.class.as_str(),
+            "line": self.line.get(),
+            "column_utf16": self.column_utf16.get(),
+            "parse_error_class": self.parse_error_class.as_str(),
         })
     }
 }
@@ -203,56 +234,9 @@ pub(crate) fn selector_parse_details(error: &SelectorParseError<'_>) -> Value {
     let mut details = Map::new();
     details.insert(
         "selector_parse".to_owned(),
-        SelectorParse::from_error(error).as_value(),
+        SelectorParseDetail::from_error(error).as_value(),
     );
     Value::Object(details)
-}
-
-/// Validates and normalizes the closed public `selector_parse` detail object.
-pub(crate) fn validate_selector_parse_details(
-    value: &Value,
-) -> Result<SelectorParse, SelectorParseDetailsViolation> {
-    let details = value
-        .as_object()
-        .ok_or(SelectorParseDetailsViolation::Malformed)?;
-    let selector_parse = details
-        .get("selector_parse")
-        .ok_or(SelectorParseDetailsViolation::Missing)?;
-    let selector_parse = selector_parse
-        .as_object()
-        .ok_or(SelectorParseDetailsViolation::NonObject)?;
-
-    const REQUIRED_FIELDS: [&str; 3] = ["line", "column_utf16", "parse_error_class"];
-    if selector_parse.len() != REQUIRED_FIELDS.len()
-        || REQUIRED_FIELDS
-            .iter()
-            .any(|field| !selector_parse.contains_key(*field))
-    {
-        return Err(SelectorParseDetailsViolation::Malformed);
-    }
-
-    let line = positive_position(selector_parse.get("line"))?;
-    let column_utf16 = positive_position(selector_parse.get("column_utf16"))?;
-    let class_name = selector_parse
-        .get("parse_error_class")
-        .and_then(Value::as_str)
-        .ok_or(SelectorParseDetailsViolation::Malformed)?;
-    let class = SelectorParseErrorClass::parse(class_name)
-        .ok_or(SelectorParseDetailsViolation::UnknownClass)?;
-
-    Ok(SelectorParse {
-        line,
-        column_utf16,
-        class,
-    })
-}
-
-fn positive_position(value: Option<&Value>) -> Result<u64, SelectorParseDetailsViolation> {
-    match value.and_then(Value::as_u64) {
-        Some(0) => Err(SelectorParseDetailsViolation::ZeroPosition),
-        Some(value) => Ok(value),
-        None => Err(SelectorParseDetailsViolation::Malformed),
-    }
 }
 
 #[cfg(test)]
@@ -267,7 +251,7 @@ mod tests {
 
         let cases = [
             (
-                SelectorErrorKind::UnexpectedToken(token.clone()),
+                SelectorErrorKind::UnexpectedToken,
                 SelectorParseErrorClass::UnexpectedToken,
             ),
             (
@@ -275,7 +259,7 @@ mod tests {
                 SelectorParseErrorClass::EndOfInput,
             ),
             (
-                SelectorErrorKind::InvalidAtRule("rule".to_owned()),
+                SelectorErrorKind::InvalidAtRule,
                 SelectorParseErrorClass::InvalidAtRule,
             ),
             (
@@ -296,7 +280,10 @@ mod tests {
             ),
             (
                 SelectorErrorKind::UnexpectedSelectorParseError(
-                    SelectorParseErrorKind::NoQualifiedNameInAttributeSelector(token.clone()),
+                    SelectorParseErrorKind::NoQualifiedNameInAttributeSelector {
+                        token: token.clone(),
+                        location: cssparser::SourceLocation { line: 0, column: 1 },
+                    },
                 ),
                 SelectorParseErrorClass::InvalidAttributeSelector,
             ),
@@ -392,7 +379,7 @@ mod tests {
             ),
             (
                 SelectorErrorKind::UnexpectedSelectorParseError(
-                    SelectorParseErrorKind::BadValueInAttr(token.clone()),
+                    SelectorParseErrorKind::BadValueInAttr,
                 ),
                 SelectorParseErrorClass::InvalidAttributeValue,
             ),

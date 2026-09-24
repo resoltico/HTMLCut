@@ -93,7 +93,7 @@ impl ToCss for AttrSelectorOperator {
     where
         W: fmt::Write,
     {
-        // https://drafts.csswg.org/cssom/#serializing-selectors
+        // <https://drafts.csswg.org/cssom/#serializing-selectors>
         // See "attribute selector".
         dest.write_str(match *self {
             AttrSelectorOperator::Equal => "=",

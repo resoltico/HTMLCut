@@ -153,6 +153,51 @@ pub(crate) fn markup_cursor_step_is_valid_for_tests(
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::DiagnosticCode;
+
+    fn candidate(selected_range: Range) -> SelectedCandidate<SliceCandidate> {
+        SelectedCandidate {
+            candidate_index: 7,
+            candidate: SliceCandidate {
+                selected_range,
+                inner_range: Range { start: 0, end: 0 },
+                outer_range: Range { start: 0, end: 0 },
+                matched_start_range: Range { start: 0, end: 0 },
+                matched_end_range: Range { start: 0, end: 0 },
+            },
+        }
+    }
+
+    #[test]
+    fn markup_split_detection_flags_either_boundary_inside_a_tag() {
+        let source = "<em>hello</em>";
+
+        assert!(slice_splits_markup(source, &Range { start: 2, end: 8 }));
+        assert!(slice_splits_markup(source, &Range { start: 4, end: 11 }));
+        assert!(!slice_splits_markup(source, &Range { start: 4, end: 8 }));
+    }
+
+    #[test]
+    fn markup_split_diagnostic_reports_each_affected_selected_range() {
+        let diagnostics =
+            slice_markup_diagnostics("<em>hello</em>", &[candidate(Range { start: 2, end: 8 })]);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SliceSplitsMarkup);
+        assert_eq!(
+            diagnostics[0].details.as_ref().expect("diagnostic details")["affectedMatches"][0]["candidateIndex"],
+            7
+        );
+        assert_eq!(
+            diagnostics[0].details.as_ref().expect("diagnostic details")["affectedMatches"][0]["selectedRange"],
+            json!({ "start": 2, "end": 8 })
+        );
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn position_inside_markup_rejects_invalid_progress_for_tests(
     source_text: &str,
     position: usize,
