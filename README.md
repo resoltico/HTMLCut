@@ -1,34 +1,24 @@
-# HTMLCut — repeatable HTML extraction from files, URLs, and stdin
+# HTMLCut
 
-HTMLCut extracts a specific value or fragment from an HTML file, a web page, explicit stdin, or inline HTML.
-Use a CSS selector when the content is in the parsed document, or use literal and regex boundaries
-when you need to cut raw source text.
+HTMLCut extracts a chosen part of an HTML document from a file, an HTTP(S) URL, explicit stdin, or HTML supplied on the command line. Use CSS selectors for parsed elements and their values, or source boundaries when the bytes between two markers matter. Inspect matches before extracting, then save the extraction as a request file for later runs.
 
-You can save an extraction definition as a request file and rerun it later without restating the
-selector, slice boundaries, or output settings.
+HTMLCut works on the HTML it receives or fetches. It does not run page JavaScript or read a browser's live DOM.
 
-- Load files, HTTP(S) URLs, `--input-html`, or explicit `-` stdin; redirected URLs provide the default base for relative links unless you supply `--base-url`
-- Extract semantic rendered text, CSS-only direct DOM text, links, attributes, HTML fragments, or structured match data
-- Cut raw source text between literal strings or regex boundaries
-- Inspect a source or preview an extraction before committing to final output
-- Save reusable request files and replay them unchanged
-- Write outputs or forensic bundles to disk
+## Get started
 
-## Install and Try
-
-Download a checksummed prebuilt package from the [HTMLCut releases page](https://github.com/resoltico/HTMLCut/releases), or install the binary from this checkout:
+Download a published package from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases), or install the binary from this checkout with the repository's pinned Rust toolchain:
 
 ```bash
 cargo install --path crates/htmlcut-cli --locked
 ```
 
-Run a first extraction without creating an input file:
+Try an extraction without creating a file:
 
 ```bash
 htmlcut select --input-html '<article><h1>Guide</h1><p>Hello from HTMLCut.</p></article>' --css article
 ```
 
-HTMLCut prints semantic rendered text:
+The default value is rendered text, so the result is:
 
 ```text
 # Guide
@@ -36,39 +26,60 @@ HTMLCut prints semantic rendered text:
 Hello from HTMLCut.
 ```
 
-The [Getting Started guide](docs/getting-started.md) covers checksummed release installation on macOS, Linux, and Windows, source builds, files, URLs, stdin, inspection, and reusable requests.
+For installation options and a longer walkthrough, see [Getting Started](docs/getting-started.md).
 
-## Save and Reuse an Extraction
+## Find, preview, extract
+
+Create a page to use with the commands below:
 
 ```bash
-htmlcut select ./page.html \
-  --css 'article a.more' \
-  --value attribute \
-  --attribute href \
-  --emit-request-file ./article-link.request.json
-
-htmlcut select --request-file ./article-link.request.json
+cat > page.html <<'HTML'
+<article>
+  <h1>Field guide</h1>
+  <p>Read the <a class="more" href="/guide">guide</a>.</p>
+</article>
+HTML
 ```
 
-The first command writes a reusable extraction definition. The second command reruns that saved definition, so you get the same selector and output settings without repeating the inline flags. Add `--overwrite` only when intentionally replacing an existing request file.
+Inspect the source, preview a selector, and extract the link destination:
 
-## Embed Deterministic Extraction
+```bash
+htmlcut inspect source page.html
+htmlcut inspect select page.html --css 'article a.more' --match single
+htmlcut select page.html --css 'article a.more' --match single --value attribute --attribute href
+```
 
-Rust applications can use `htmlcut_core::interop::v1` to prepare typed extraction plans, execute them against application-owned HTML, and persist deterministic result and error documents. Use `text` when HTML-aware rendered structure is part of the value; use CSS-only `plain_text` when the value is the selected element's direct descendant text after its declared whitespace policy. See the [Interop v1 Guide](docs/interop-v1.md) for the contract boundary and integration API.
+The final command prints `/guide`. `--match single` makes an absent or ambiguous match an error. When a selector cannot express the desired source region, `slice` selects between literal or regex boundaries in the raw HTML; its output can then be rendered as text or returned as HTML.
 
-## Documentation Index
+| Task | Command |
+| --- | --- |
+| Examine a document and likely content roots | `htmlcut inspect source` |
+| Preview CSS or source-boundary matches | `htmlcut inspect select`, `htmlcut inspect slice` |
+| Extract a value from parsed elements | `htmlcut select` |
+| Extract between source boundaries | `htmlcut slice` |
+| Explore elements or resolve a target from a saved HTML snapshot | `htmlcut inspect elements`, `htmlcut inspect propose` |
+| Discover operations and JSON schemas | `htmlcut catalog`, `htmlcut schema` |
 
-The complete index of Markdown documentation under `docs/` lives in [docs/README.md](docs/README.md).
+Extraction commands also accept `https://` URLs, `-` for stdin, and `--input-html` for inline HTML. Choose text, HTML, or JSON output as supported by the value mode; use `--output-file` to save a payload or `--bundle` to save the result with diagnostic files. See the [CLI guide](docs/cli.md) for the exact modes, URL handling, output rules, and limits.
 
-- [Getting Started](docs/getting-started.md)
-- [CLI Developer Guide](docs/cli.md)
-- [Core Developer Guide](docs/core.md)
-- [Interop v1 Guide](docs/interop-v1.md)
-- [Quality Gates](docs/quality-gates.md)
+## Save an extraction
+
+Once the selector and output are right, write a request file and run it again without repeating the options:
+
+```bash
+htmlcut select page.html --css 'article a.more' --match single --value attribute --attribute href --emit-request-file guide.request.json
+htmlcut select --request-file guide.request.json
+```
+
+Both commands print `/guide`. The request stores the source and extraction settings, so rerunning it reads the source again; a changed page can produce a changed result. Existing request files require `--overwrite` to replace them.
+
+## Use HTMLCut from Rust
+
+The `htmlcut-core` crate exposes extraction primitives and the versioned `htmlcut_core::interop::v2` API for downstream Rust applications. In the interop API, the application supplies decoded HTML, compiles a typed plan, prepares a document snapshot, and executes one or more plans against it. The same snapshot supports bounded element exploration and target resolution. The application remains responsible for fetching and for keeping a browser target aligned with the supplied HTML. See the [Interop v2 guide](docs/interop-v2.md) for the API and its contracts, or the [Core guide](docs/core.md) for lower-level entry points.
+
+## Project references
+
+- [Documentation index](docs/README.md)
+- [Quality gates](docs/quality-gates.md)
 - [Changelog](changelog.md)
-- [Release Protocol Overview](docs/release-protocol.md)
-
-## Legal
-
-HTMLCut is released under the [MIT License](LICENSE). See [NOTICE](NOTICE) and
-[PATENTS](PATENTS.md) for the remaining legal files.
+- [MIT License](LICENSE), [Notice](NOTICE), and [Patents](PATENTS.md)

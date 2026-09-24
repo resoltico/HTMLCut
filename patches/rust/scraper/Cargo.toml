@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.98.1"
 name = "htmlcut-scraper"
-version = "0.27.0-htmlcut.1"
+version = "0.27.0-htmlcut.7"
 authors = ["June McEnroe <june@causal.agency>"]
 build = false
 autolib = false
@@ -42,7 +42,6 @@ default = [
     "main",
     "errors",
 ]
-deterministic = ["dep:indexmap"]
 errors = []
 main = ["dep:getopts"]
 serde = ["dep:serde"]
@@ -65,7 +64,7 @@ name = "fragment"
 path = "examples/fragment.rs"
 
 [dependencies.cssparser]
-version = "0.37.0"
+version = "0.38.0"
 
 [dependencies.ego-tree]
 version = "0.11.0"
@@ -77,11 +76,7 @@ optional = true
 [dependencies.html5ever]
 package = "htmlcut-html5ever"
 path = "../html5ever"
-version = "0.39.0-htmlcut.1"
-
-[dependencies.indexmap]
-version = "2.14.0"
-optional = true
+version = "0.39.0-htmlcut.3"
 
 [dependencies.precomputed-hash]
 version = "0.1.1"
@@ -89,13 +84,13 @@ version = "0.1.1"
 [dependencies.selectors]
 package = "htmlcut-selectors"
 path = "../selectors"
-version = "0.38.0-htmlcut.1"
+version = "0.38.0-htmlcut.6"
 
 [dependencies.serde]
-version = "1.0.228"
+version = "1.0.229"
 optional = true
 
 [dependencies.tendril]
 package = "htmlcut-tendril"
 path = "../tendril"
-version = "0.5.0-htmlcut.1"
+version = "0.5.0-htmlcut.3"

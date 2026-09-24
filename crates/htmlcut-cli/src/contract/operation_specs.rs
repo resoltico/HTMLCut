@@ -2,10 +2,11 @@ use htmlcut_core::{OperationId, ValueType, operation_descriptor};
 
 use super::parameters::{
     allowed_only_when, common_input_forms, common_selection_modes, condition, conditional_default,
-    constraints_with_parameter_rules, extract_output_modes, inspect_output_modes,
-    inspect_select_parameters, inspect_slice_parameters, inspect_source_parameters,
-    requires_parameter, restricts_parameter_values, select_extract_parameters,
-    select_extract_value_modes, slice_extract_parameters, slice_extract_value_modes,
+    constraints_with_parameter_rules, extract_output_modes, inspect_elements_parameters,
+    inspect_output_modes, inspect_propose_parameters, inspect_select_parameters,
+    inspect_slice_parameters, inspect_source_parameters, requires_parameter,
+    restricts_parameter_values, select_extract_parameters, select_extract_value_modes,
+    slice_extract_parameters, slice_extract_value_modes,
 };
 use super::{
     CliConditionalDefault, CliConstraint, CliOutputMode, CliParameterDescriptor, CliParameterId,
@@ -256,8 +257,54 @@ fn slice_extract_constraints(parameters: &[CliParameterDescriptor]) -> Vec<CliCo
 
 const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
     OperationSurfaceSpec {
-        operation_id: OperationId::DocumentParse,
-        cli: None,
+        operation_id: OperationId::ElementsExplore,
+        cli: Some(OperationCliSpec {
+            command_path: &["inspect", "elements"],
+            invocation: "htmlcut inspect elements [OPTIONS] [INPUT]",
+            default_match: None,
+            selection_modes: Vec::new,
+            default_value: None,
+            value_modes: Vec::new,
+            default_output: Some(CliOutputMode::Json),
+            default_output_overrides: Vec::new,
+            output_modes: || vec![CliOutputMode::Json],
+            build_parameters: inspect_elements_parameters,
+            build_constraints: no_constraints,
+            notes: &[
+                "Explores static parsed elements in deterministic document order and returns only bounded evidence and same-snapshot selector proposals.",
+                "Pass the exact next_cursor JSON object through --cursor to continue with the same source bytes and exploration options.",
+            ],
+            examples: &["htmlcut inspect elements ./page.html --max-elements 100"],
+            help_overview: &[
+                "Use this JSON-first operation to inspect bounded document elements before constructing a complete target hint.",
+            ],
+        }),
+    },
+    OperationSurfaceSpec {
+        operation_id: OperationId::TargetPropose,
+        cli: Some(OperationCliSpec {
+            command_path: &["inspect", "propose"],
+            invocation: "htmlcut inspect propose [OPTIONS] --path <PATH> --namespace <NAMESPACE> --local-name <NAME> --text-digest-sha256 <DIGEST> [INPUT]",
+            default_match: None,
+            selection_modes: Vec::new,
+            default_value: None,
+            value_modes: Vec::new,
+            default_output: Some(CliOutputMode::Json),
+            default_output_overrides: Vec::new,
+            output_modes: || vec![CliOutputMode::Json],
+            build_parameters: inspect_propose_parameters,
+            build_constraints: no_constraints,
+            notes: &[
+                "Path alone is never accepted: HTMLCut requires the complete namespace-aware name and normalized text digest, plus every supplied semantic attribute.",
+                "The text digest hashes `htmlcut.dom_text.v1\\0` followed by UTF-8 descendant text nodes in document order after CRLF and lone CR become LF.",
+            ],
+            examples: &[
+                "htmlcut inspect propose ./page.html --path html:html[1]/html:body[1]/html:main[1] --namespace html --local-name main --text-digest-sha256 <SHA256>",
+            ],
+            help_overview: &[
+                "Use this JSON-first operation to resolve one complete browser target hint without guessing and obtain same-snapshot selector proposals.",
+            ],
+        }),
     },
     OperationSurfaceSpec {
         operation_id: OperationId::SourceInspect,
@@ -420,6 +467,15 @@ const OPERATION_SURFACE_SPECS: &[OperationSurfaceSpec] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn operation_surface_lookup_returns_the_exact_requested_identity() {
+        for expected in operation_surface_specs() {
+            let resolved = operation_surface_spec(expected.operation_id)
+                .expect("every maintained operation surface must resolve");
+            assert_eq!(resolved.operation_id, expected.operation_id);
+        }
+    }
 
     #[test]
     fn cross_parameter_constraints_omit_rules_for_a_surface_without_related_parameters() {

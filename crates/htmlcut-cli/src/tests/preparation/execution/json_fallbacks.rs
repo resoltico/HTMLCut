@@ -243,3 +243,72 @@ fn json_render_failures_fall_back_to_human_errors_across_execution_paths() {
     assert_eq!(extraction_success.exit_code, EXIT_CODE_INTERNAL);
     assert!(extraction_success.stdout.is_none());
 }
+
+#[test]
+fn json_render_failures_cover_exploration_and_target_resolution_outputs() {
+    let elements = with_json_render_failure_for_tests(|| {
+        run_inspect_elements(
+            InspectElementsArgs {
+                source: inline_exploration_source("<main>One</main>"),
+                cursor: None,
+                max_elements: 4,
+                max_work_units: 100,
+                max_proposals_per_element: 2,
+                preview_bytes: 64,
+                output_file: None,
+                file_write: default_output_file_write_args(),
+            },
+            0,
+            true,
+        )
+    });
+    assert_eq!(elements.exit_code, EXIT_CODE_INTERNAL);
+    assert!(elements.stdout.is_none());
+    assert!(
+        elements
+            .stderr
+            .iter()
+            .any(|line| line.contains("Could not render"))
+    );
+
+    let target = with_json_render_failure_for_tests(|| {
+        run_inspect_propose(
+            InspectProposeArgs {
+                source: inline_exploration_source("<main data-anchor=\"stable\">One</main>"),
+                path: "html:html[1]/html:body[1]/html:main[1]".to_owned(),
+                namespace: "html".to_owned(),
+                local_name: "main".to_owned(),
+                text_digest_sha256: htmlcut_core::interop::v2::normalized_dom_text_digest("One"),
+                attributes: vec!["data-anchor=stable".to_owned()],
+                max_work_units: 100,
+                max_proposals: 2,
+                output_file: None,
+                file_write: default_output_file_write_args(),
+            },
+            0,
+            true,
+        )
+    });
+    assert_eq!(target.exit_code, EXIT_CODE_INTERNAL);
+    assert!(target.stdout.is_none());
+    assert!(
+        target
+            .stderr
+            .iter()
+            .any(|line| line.contains("Could not render"))
+    );
+}
+
+fn inline_exploration_source(html: &str) -> SourceArgs {
+    SourceArgs {
+        input: None,
+        input_html: Some(html.to_owned()),
+        base_url: None,
+        max_bytes: DEFAULT_MAX_BYTES.to_string(),
+        fetch_timeout_ms: DEFAULT_FETCH_TIMEOUT_MS,
+        fetch_connect_timeout_ms: htmlcut_core::DEFAULT_FETCH_CONNECT_TIMEOUT_MS,
+        tls_trust: CliTlsTrustMode::WebPki,
+        tls_ca_bundle: None,
+        fetch_preflight: CliFetchPreflightMode::HeadFirst,
+    }
+}

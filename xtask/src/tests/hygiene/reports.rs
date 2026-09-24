@@ -147,8 +147,41 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
         );
         assert_eq!(crate::hygiene::format_bytes_for_tests(1024), "1.0 KiB");
 
+        let expected_budgets = [
+            ("managed-workspace-target", 4 * 1024 * 1024 * 1024),
+            ("managed-workspace-build", 24 * 1024 * 1024 * 1024),
+            ("managed-coverage-target", 2 * 1024 * 1024 * 1024),
+            ("managed-coverage-build", 8 * 1024 * 1024 * 1024),
+            ("managed-gate-reports", 1024 * 1024 * 1024),
+            ("managed-mutation-reports", 8 * 1024 * 1024 * 1024),
+            ("legacy-repo-target", 512 * 1024 * 1024),
+            ("repo-tmp", 256 * 1024 * 1024),
+        ];
+        for (id, expected_budget) in expected_budgets {
+            assert_eq!(
+                report
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .and_then(|entry| entry.budget_bytes),
+                Some(expected_budget),
+                "budget for {id}"
+            );
+        }
+
+        let expected_safe_reclaimed_bytes = [
+            managed_coverage_target.as_path(),
+            managed_coverage_build.as_path(),
+            repo_root.path().join("tmp").as_path(),
+            repo_root.path().join("target").as_path(),
+        ]
+        .into_iter()
+        .map(crate::hygiene::dir_size_bytes_for_tests)
+        .sum::<u64>();
+
         let safe_clean =
             clean_hygiene(repo_root.path(), HygieneCleanMode::Safe).expect("safe clean");
+        assert_eq!(safe_clean.reclaimed_bytes, expected_safe_reclaimed_bytes);
         assert!(
             safe_clean
                 .removed_paths
@@ -186,8 +219,21 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
             "safe clean keeps retained mutation evidence"
         );
 
+        let expected_rebuildable_reclaimed_bytes = [
+            managed_workspace_target.as_path(),
+            managed_workspace_build.as_path(),
+            managed_gate_reports.as_path(),
+            managed_mutation_reports.as_path(),
+        ]
+        .into_iter()
+        .map(crate::hygiene::dir_size_bytes_for_tests)
+        .sum::<u64>();
         let rebuildable_clean = clean_hygiene(repo_root.path(), HygieneCleanMode::Rebuildable)
             .expect("rebuildable clean");
+        assert_eq!(
+            rebuildable_clean.reclaimed_bytes,
+            expected_rebuildable_reclaimed_bytes
+        );
         assert!(
             rebuildable_clean
                 .removed_paths
@@ -222,6 +268,140 @@ fn hygiene_report_and_clean_cover_legacy_repo_local_roots() {
         assert!(!managed_workspace_build.exists());
         assert!(!managed_gate_reports.exists());
         assert!(!managed_mutation_reports.exists());
+    });
+}
+
+#[test]
+fn hygiene_report_does_not_scan_a_non_shared_artifact_parent_as_a_container() {
+    let repo_root = tempdir().expect("repo tempdir");
+    crate::plan::with_cargo_artifact_dir_overrides_for_tests(
+        repo_root.path().join("first/target"),
+        repo_root.path().join("second/build"),
+        || {
+            let report = hygiene_report(repo_root.path()).expect("hygiene report");
+            assert!(
+                report
+                    .entries
+                    .iter()
+                    .all(|entry| entry.id != "managed-artifact-container")
+            );
+            assert!(
+                report
+                    .entries
+                    .iter()
+                    .all(|entry| entry.id != "unmanaged-artifact-container-entries")
+            );
+        },
+    );
+}
+
+#[test]
+fn safe_cleanup_repairs_markers_on_direct_cargo_workspace_cache_roots() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        let target = cargo_target_dir(repo_root.path());
+        let build = cargo_build_dir(repo_root.path());
+        fs::create_dir_all(&target).expect("direct Cargo target root");
+        fs::create_dir_all(&build).expect("direct Cargo build root");
+
+        clean_hygiene(repo_root.path(), HygieneCleanMode::Safe)
+            .expect("safe cleanup repairs workspace markers");
+        for root in [target, build] {
+            assert!(root.join("CACHEDIR.TAG").is_file());
+            assert!(root.join(".htmlcut-artifact.toml").is_file());
+        }
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn hygiene_report_fails_when_the_managed_container_cannot_be_enumerated() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        let container = crate::plan::managed_artifact_container_dir(repo_root.path())
+            .expect("managed container");
+        fs::create_dir_all(&container).expect("create container");
+        let original_permissions = fs::metadata(&container)
+            .expect("container metadata")
+            .permissions();
+        let mut unreadable_permissions = original_permissions.clone();
+        unreadable_permissions.set_mode(0o111);
+        fs::set_permissions(&container, unreadable_permissions).expect("lock container read");
+
+        let error = hygiene_report(repo_root.path()).expect_err("container enumeration failure");
+        fs::set_permissions(&container, original_permissions).expect("unlock container");
+        assert!(error.to_string().contains(&container.display().to_string()));
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn cleanup_root_discovery_fails_when_the_managed_container_cannot_be_enumerated() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        let container = crate::plan::managed_artifact_container_dir(repo_root.path())
+            .expect("managed container");
+        fs::create_dir_all(&container).expect("create container");
+        let original_permissions = fs::metadata(&container)
+            .expect("container metadata")
+            .permissions();
+        let mut unreadable_permissions = original_permissions.clone();
+        unreadable_permissions.set_mode(0o111);
+        fs::set_permissions(&container, unreadable_permissions).expect("lock container read");
+
+        let error = crate::hygiene::unmanaged_cleanup_roots_for_tests(repo_root.path())
+            .expect_err("cleanup discovery failure");
+        fs::set_permissions(&container, original_permissions).expect("unlock container");
+        assert!(error.to_string().contains(&container.display().to_string()));
+    });
+}
+
+#[test]
+fn hygiene_rejects_and_safe_cleanup_reclaims_unowned_artifact_container_entries() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        prepare_artifact_layout(repo_root.path(), CommandArtifactLayout::ManagedWorkspace)
+            .expect("prepare managed workspace roots");
+        let container = crate::plan::managed_artifact_container_dir(repo_root.path())
+            .expect("managed artifact container");
+        let forgotten_probe = container.join("forgotten-mutation-probe");
+        let forgotten_file = container.join("forgotten-runner.log");
+        fs::create_dir_all(&forgotten_probe).expect("create forgotten probe");
+        fs::write(forgotten_probe.join("result"), "evidence").expect("write forgotten probe");
+        fs::write(&forgotten_file, "runner output").expect("write forgotten file");
+
+        let report = hygiene_report(repo_root.path()).expect("hygiene report");
+        let unowned = report
+            .entries
+            .iter()
+            .find(|entry| entry.id == "unmanaged-artifact-container-entries")
+            .expect("unowned container entry");
+        assert!(unowned.present);
+        assert_eq!(unowned.details.len(), 2);
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|violation| violation.id == "unmanaged-artifact-container-entries")
+        );
+
+        let cleanup = clean_hygiene(repo_root.path(), HygieneCleanMode::Safe)
+            .expect("safe cleanup reclaims unowned artifact paths");
+        assert!(cleanup.removed_paths.contains(&forgotten_probe));
+        assert!(cleanup.removed_paths.contains(&forgotten_file));
+        assert!(!forgotten_probe.exists());
+        assert!(!forgotten_file.exists());
+        assert!(
+            hygiene_report(repo_root.path())
+                .expect("clean hygiene report")
+                .violations
+                .iter()
+                .all(|violation| violation.id != "unmanaged-artifact-container-entries")
+        );
     });
 }
 
@@ -406,4 +586,55 @@ fn hygiene_report_reports_tmp_cargo_aggregate_read_failures() {
                 .contains(&tmp_cargo_parent.display().to_string())
         );
     });
+}
+
+#[test]
+fn cargo_target_detection_rejects_ordinary_directories() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let ordinary = repo_root.path().join("ordinary");
+    fs::create_dir_all(&ordinary).expect("create ordinary directory");
+
+    assert!(!crate::hygiene::looks_like_cargo_target_dir_for_tests(
+        &ordinary
+    ));
+}
+
+#[test]
+fn hygiene_violations_exclude_exactly_at_budget_and_require_managed_markers() {
+    let exact_budget = crate::hygiene::HygieneEntry {
+        id: "ordinary".to_owned(),
+        kind: "ordinary".to_owned(),
+        path: "ordinary".to_owned(),
+        present: true,
+        bytes: 7,
+        budget_bytes: Some(7),
+        managed: false,
+        safe_to_delete: true,
+        details: Vec::new(),
+    };
+    assert!(crate::hygiene::report_violations_for_tests(&[exact_budget]).is_empty());
+
+    let root = tempdir().expect("managed root");
+    let missing_markers = crate::hygiene::HygieneEntry {
+        id: "managed-coverage-target".to_owned(),
+        kind: "managed".to_owned(),
+        path: root.path().display().to_string(),
+        present: true,
+        bytes: 0,
+        budget_bytes: None,
+        managed: true,
+        safe_to_delete: true,
+        details: Vec::new(),
+    };
+    let violations = crate::hygiene::report_violations_for_tests(&[missing_markers]);
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.message.contains("CACHEDIR.TAG"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.message.contains("llvm-cov-target/CACHEDIR.TAG"))
+    );
 }

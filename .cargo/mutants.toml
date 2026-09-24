@@ -1,9 +1,15 @@
-# Mutation testing exercises HTMLCut-owned runtime behavior, not vendored parser code or
-# test-only helpers. `cargo xtask mutants` supplies the disposable result directory and CI shard.
+# Mutation testing exercises HTMLCut-owned runtime behavior, maintainer-gate tooling, and the
+# exact maintained selector and scraper resource-boundary modules. `cargo xtask mutants` supplies
+# the disposable result directory and CI shard.
 all_features = true
 additional_cargo_args = ["--locked"]
 test_tool = "cargo"
-test_package = ["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir"]
+# The maintained command runs Cargo with nightly libtest support, so this stops after the first
+# test that proves a mutant. The standard gate separately retains the full Cargo doctest proof.
+additional_cargo_test_args = ["--", "-Z", "unstable-options", "--fail-fast"]
+# Each package-local mutant runs its locked all-feature suite. The complete campaign reconciles the
+# exact union across the CLI, core, tempdir, maintainer tooling, and maintained forks; fork crates
+# also carry direct boundary tests for their work-budget and error-propagation contracts.
 skip_calls_defaults = true
 sharding = "round-robin"
 
@@ -11,6 +17,10 @@ examine_globs = [
     "crates/htmlcut-core/src/**/*.rs",
     "crates/htmlcut-cli/src/**/*.rs",
     "crates/htmlcut-tempdir/src/**/*.rs",
+    "xtask/src/**/*.rs",
+    "patches/rust/selectors/work_budget.rs",
+    "patches/rust/scraper/src/html/clone.rs",
+    "patches/rust/scraper/src/selector/budget.rs",
 ]
 
 exclude_globs = [

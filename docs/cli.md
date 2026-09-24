@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: CLI
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [cli, catalog, schema, inspect, select, slice, bundle workflow, output model]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do select and slice outputs work?"]
@@ -141,7 +141,7 @@ The registry includes:
 - `htmlcut-core` request/result schemas
 - `htmlcut-cli` report schemas
 - `htmlcut-cli` error-report schema
-- interop v1 schemas
+- interop v2 schemas
 
 ### `inspect`
 
@@ -151,9 +151,14 @@ The registry includes:
   base-URL behavior
 - `inspect select` previews selector matches with the same value modes as final selector extraction
 - `inspect slice` previews slice matches with the same value modes as final slice extraction
+- `inspect elements` emits one bounded exploration-result JSON page with namespace-aware paths, safe attributes, explicit truncation evidence, and same-snapshot selector proposals; `--cursor <JSON>` accepts the exact `next_cursor` object from the preceding page
+- `inspect propose` accepts a complete path, namespace, local name, normalized text digest, and optional semantic attributes, then emits target-resolution-result JSON only when every target fact agrees
 
-All `inspect` commands default to text for compact human review. Add `--output json` when an agent
-or script needs a structured report.
+`inspect source`, `inspect select`, and `inspect slice` default to text for compact human review; add `--output json` for a structured report. `inspect elements` and `inspect propose` are always JSON because their results are intended for browser integrations and automation.
+
+For pagination, save one static HTML snapshot to a file, run `inspect elements` on it, then pass the compact JSON value of `next_cursor` as `--cursor` with the same source and page options. The cursor is bounded to 1024 JSON bytes and to that exact source snapshot and option set. A missing `next_cursor` means there is no next page. A live URL is fetched again for each CLI call; changed bytes cause a snapshot-mismatch error, so capture the page to a file when a full traversal is required. Malformed cursors, changed sources, and changed options have distinct JSON error codes.
+
+For `inspect propose`, form the target fingerprint from descendant DOM text nodes in document order, including text in script and style elements. Convert CRLF and lone CR to LF without trimming or rendered-text formatting. The lowercase digest is `SHA-256(UTF-8("htmlcut.dom_text.v1\0") || UTF-8(normalized_text))`, where `\0` means one NUL byte. For example, the fingerprint of `One` is `e163d4661874af8285350875496da6d42afb63bbe2c9e6f7d390c6c632aadfc6`; plain SHA-256 of `One` will not resolve. Target descendant text is bounded to 1 MiB. The target evidence must come from the same static HTML snapshot: JavaScript changes to a browser DOM can make the target fail closed against HTMLCut's fetched source.
 
 Suggested selectors are heuristics, not a promise that one selector is universally best for every
 output goal. `inspect source` now separates narrower extraction selectors from broader reading

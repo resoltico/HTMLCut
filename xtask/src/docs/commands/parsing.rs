@@ -6,31 +6,34 @@ pub(crate) fn extract_htmlcut_examples(text: &str) -> Vec<String> {
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("```") {
-            in_fence = !in_fence;
-            if !in_fence {
+            let was_in_fence = in_fence;
+            in_fence = match was_in_fence {
+                false => true,
+                true => false,
+            };
+            if was_in_fence {
                 current.clear();
             }
             continue;
         }
 
-        if !in_fence {
-            continue;
-        }
+        if in_fence {
+            if current.is_empty()
+                && (!trimmed.starts_with("htmlcut ") || !is_concrete_example(trimmed))
+            {
+                continue;
+            }
 
-        if current.is_empty() && (!trimmed.starts_with("htmlcut ") || !is_concrete_example(trimmed))
-        {
-            continue;
-        }
+            if current.is_empty() {
+                current.push_str(trimmed.trim_end_matches('\\').trim_end());
+            } else {
+                current.push(' ');
+                current.push_str(trimmed.trim_end_matches('\\').trim_end());
+            }
 
-        if current.is_empty() {
-            current.push_str(trimmed.trim_end_matches('\\').trim_end());
-        } else {
-            current.push(' ');
-            current.push_str(trimmed.trim_end_matches('\\').trim_end());
-        }
-
-        if !trimmed.ends_with('\\') {
-            examples.push(std::mem::take(&mut current));
+            if !trimmed.ends_with('\\') {
+                examples.push(std::mem::take(&mut current));
+            }
         }
     }
 
@@ -74,4 +77,19 @@ pub(super) fn clap_error_message(error: &clap::Error) -> String {
         .lines()
         .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
         .unwrap_or_else(|| rendered.trim().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn examples_are_collected_only_from_closed_concrete_htmlcut_fences() {
+        let text = "htmlcut select outside.html\n```bash\nhtmlcut select inside.html\n```\n```bash\nhtmlcut select [placeholder]\n```\n";
+
+        assert_eq!(
+            extract_htmlcut_examples(text),
+            vec!["htmlcut select inside.html".to_owned()]
+        );
+    }
 }

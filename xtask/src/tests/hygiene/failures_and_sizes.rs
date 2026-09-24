@@ -35,6 +35,26 @@ fn aggregate_entry_reports_member_read_failures_with_member_paths() {
 
 #[cfg(unix)]
 #[test]
+fn aggregate_entry_sums_each_member_exactly_once() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let first = repo_root.path().join("first");
+    let second = repo_root.path().join("second");
+    fs::create_dir_all(&first).expect("create first");
+    fs::create_dir_all(&second).expect("create second");
+    fs::write(first.join("artifact"), "abc").expect("write first artifact");
+    fs::write(second.join("artifact"), "wxyz").expect("write second artifact");
+
+    let entry = crate::hygiene::aggregate_entry_for_tests(
+        repo_root.path(),
+        &[first.clone(), second.clone()],
+    )
+    .expect("aggregate entry");
+
+    assert_eq!(entry.bytes, 7);
+}
+
+#[cfg(unix)]
+#[test]
 fn clean_hygiene_reports_removal_failures_with_artifact_paths() {
     use std::os::unix::fs::PermissionsExt;
 
@@ -76,6 +96,127 @@ fn dir_size_helpers_ignore_symlinks_and_special_files() {
 
     assert_eq!(crate::hygiene::dir_size_bytes_for_tests(&symlink_path), 0);
     assert_eq!(crate::hygiene::dir_size_bytes_for_tests(&socket_path), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn directory_size_excludes_only_the_declared_nested_roots() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let root = repo_root.path().join("root");
+    let retained = root.join("retained");
+    let skipped = root.join("skipped");
+    fs::create_dir_all(&retained).expect("create retained directory");
+    fs::create_dir_all(&skipped).expect("create skipped directory");
+    fs::write(retained.join("artifact"), "abc").expect("write retained artifact");
+    fs::write(skipped.join("artifact"), "wxyz").expect("write skipped artifact");
+
+    assert_eq!(
+        crate::hygiene::dir_size_bytes_excluding_roots_for_tests(
+            &root,
+            std::slice::from_ref(&skipped),
+        )
+        .expect("sized directory"),
+        3
+    );
+}
+
+#[test]
+fn artifact_container_helpers_remove_files_directories_and_missing_paths() {
+    let root = tempdir().expect("artifact container root");
+    let container = root.path().join("container");
+    fs::create_dir_all(&container).expect("create container");
+    let unowned_file = container.join("unowned.log");
+    let unowned_directory = container.join("unowned-directory");
+    fs::write(&unowned_file, "temporary output").expect("write unowned file");
+    fs::create_dir_all(&unowned_directory).expect("create unowned directory");
+
+    let entry = crate::hygiene::unmanaged_artifact_container_entry_for_tests(&container, &[])
+        .expect("unowned container entry");
+    assert!(entry.present);
+    assert_eq!(entry.details.len(), 2);
+    crate::hygiene::remove_artifact_path_if_exists_for_tests(&unowned_file)
+        .expect("remove unowned file");
+    crate::hygiene::remove_artifact_path_if_exists_for_tests(&unowned_directory)
+        .expect("remove unowned directory");
+    crate::hygiene::remove_artifact_path_if_exists_for_tests(&container.join("missing"))
+        .expect("missing unowned artifact is harmless");
+    assert!(!unowned_file.exists());
+    assert!(!unowned_directory.exists());
+}
+
+#[test]
+fn aggregate_size_rejects_overflow() {
+    let root = tempdir().expect("aggregate root");
+    assert!(crate::hygiene::checked_aggregate_bytes_for_tests(u64::MAX, 1, root.path()).is_err());
+}
+
+#[test]
+fn reclaimed_byte_accounting_rejects_overflow() {
+    let root = tempdir().expect("artifact root");
+    assert!(crate::hygiene::checked_reclaimed_bytes_for_tests(u64::MAX, 1, root.path()).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn artifact_path_cleanup_reports_metadata_errors_below_an_inaccessible_parent() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempdir().expect("artifact parent");
+    let parent = root.path().join("parent");
+    let artifact = parent.join("artifact");
+    fs::create_dir_all(&artifact).expect("create artifact");
+    let original_permissions = fs::metadata(&parent)
+        .expect("parent metadata")
+        .permissions();
+    let mut inaccessible_permissions = original_permissions.clone();
+    inaccessible_permissions.set_mode(0o000);
+    fs::set_permissions(&parent, inaccessible_permissions).expect("lock parent");
+
+    let error = crate::hygiene::remove_artifact_path_if_exists_for_tests(&artifact)
+        .expect_err("metadata failure must surface");
+    fs::set_permissions(&parent, original_permissions).expect("unlock parent");
+    assert!(error.to_string().contains("Permission denied"));
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_artifact_container_reports_the_container_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempdir().expect("artifact container root");
+    let container = root.path().join("container");
+    fs::create_dir_all(&container).expect("create container");
+    let original_root_permissions = fs::metadata(root.path())
+        .expect("root metadata")
+        .permissions();
+    let mut inaccessible_root_permissions = original_root_permissions.clone();
+    inaccessible_root_permissions.set_mode(0o000);
+    fs::set_permissions(root.path(), inaccessible_root_permissions).expect("lock parent root");
+    let managed_error = crate::hygiene::managed_artifact_container_entry_for_tests(&container)
+        .expect_err("managed container below inaccessible parent");
+    fs::set_permissions(root.path(), original_root_permissions).expect("unlock parent root");
+
+    let original_container_permissions = fs::metadata(&container)
+        .expect("container metadata")
+        .permissions();
+    let mut unreadable_container_permissions = original_container_permissions.clone();
+    unreadable_container_permissions.set_mode(0o111);
+    fs::set_permissions(&container, unreadable_container_permissions).expect("lock container");
+    let unmanaged_error =
+        crate::hygiene::unmanaged_artifact_container_entry_for_tests(&container, &[])
+            .expect_err("unreadable unowned container");
+
+    fs::set_permissions(&container, original_container_permissions).expect("unlock container");
+    assert!(
+        managed_error
+            .to_string()
+            .contains(&container.display().to_string())
+    );
+    assert!(
+        unmanaged_error
+            .to_string()
+            .contains(&container.display().to_string())
+    );
 }
 
 #[cfg(unix)]

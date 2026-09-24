@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "13.2.0"
+  version: "14.0.0"
   domain: QUALITY
-  updated: "2026-08-27"
+  updated: "2026-09-24"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
@@ -18,10 +18,12 @@ dependency floor while still letting live fuzzing use nightly through `cargo-fuz
 
 ## Targets
 
-- `parse_document_bytes`: feeds arbitrary decoded byte streams through the public document parse and source inspection surfaces.
+- `parse_document_bytes`: feeds arbitrary decoded byte streams through the prepared-document and source-inspection surfaces.
 - `selector_parsing`: builds selector extraction requests from arbitrary HTML, selectors, value modes, and selection policies.
 - `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and output modes.
-- `extraction_request_building`: exercises the frozen `htmlcut_core::interop::v1` plan builder and executor with arbitrary selector and delimiter strategies.
+- `extraction_request_building`: exercises the frozen `htmlcut_core::interop::v2` plan builder and executor with arbitrary selector and delimiter strategies.
+- `prepared_discovery`: exercises bounded document preparation, exploration pagination, target-hint validation, and same-snapshot selector synthesis with arbitrary text and resource limits.
+- `relational_selector_budget`: exercises `:has(...)` work exhaustion and fallible propagation through the maintained selector and scraper forks.
 - `cli_parse_error_surface`: asserts that missing-argument parse failures stay human by default and switch to JSON only when the public CLI surface explicitly requests structured output.
 
 ## Seed Corpora

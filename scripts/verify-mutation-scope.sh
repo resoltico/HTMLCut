@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# Proves that cargo-mutants is examining exactly the runtime crates Cargo defines as default members.
+# Proves that cargo-mutants is examining every default runtime crate, the maintainer gate tooling,
+# and the exact maintained fork boundary files.
 set -euo pipefail
 
 if (( $# != 1 )); then
@@ -34,13 +35,29 @@ jq -e --slurpfile mutants "$mutants_json" '
           )
         }
     ] as $default_members
+  | [
+      { name: "xtask", source_prefix: "xtask/src/" }
+    ] as $tooling_members
+  | [
+      { package: "htmlcut-selectors", file: "patches/rust/selectors/work_budget.rs" },
+      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/html/clone.rs" },
+      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/selector/budget.rs" }
+    ] as $fork_files
   | ($mutants[0]) as $mutants
-  | ($default_members | map(.name) | sort | unique) as $expected_packages
+  | (($default_members | map(.name)) + ($tooling_members | map(.name)) + ($fork_files | map(.package)) | sort | unique) as $expected_packages
   | ($mutants | map(.package) | sort | unique) as $actual_packages
   | ($expected_packages | length > 0)
     and ($mutants | length > 0)
     and ($actual_packages == $expected_packages)
     and all(
+      $fork_files[];
+      . as $fork
+      | any(
+          $mutants[];
+          .package == $fork.package and .file == $fork.file
+        )
+    )
+        and all(
       $mutants[];
       . as $mutant
       | any(
@@ -49,9 +66,21 @@ jq -e --slurpfile mutants "$mutants_json" '
           | $member.name == $mutant.package
             and ($mutant.file | startswith($member.source_prefix))
         )
+        or any(
+          $tooling_members[];
+          . as $member
+          | $member.name == $mutant.package
+            and ($mutant.file | startswith($member.source_prefix))
+        )
         and (.file | test("/src/(tests/|.*/tests/)") | not)
+        or any(
+          $fork_files[];
+          . as $fork
+          | $mutant.package == $fork.package
+            and $mutant.file == $fork.file
+        )
     )
 ' "$metadata_json" >/dev/null || {
-    echo "cargo-mutants must cover exactly Cargo's default runtime members and their non-test src files" >&2
+    echo "cargo-mutants must cover default runtime members, maintainer tooling, and the exact maintained selector and scraper boundary files" >&2
     exit 1
 }

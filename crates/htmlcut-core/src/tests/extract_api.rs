@@ -6,14 +6,13 @@ use std::num::NonZeroUsize;
 #[cfg(feature = "http-client")]
 use std::thread;
 
-use crate::result::ParsedDocument;
 #[cfg(feature = "http-client")]
 use crate::tests::accept_test_connection;
 use crate::{
     AttributeName, BoundaryRetention, ExtractionRequest, ExtractionSpec, FetchTimeoutMs, HttpUrl,
-    MaxBytes, OutputOptions, ParseDocumentResult, RenderingOptions, RuntimeOptions, SelectionSpec,
-    SelectorQuery, SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract,
-    format_byte_size, parse_document, preview_extraction,
+    MaxBytes, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
+    SliceBoundary, SliceSpec, SourceRequest, ValueSpec, WhitespaceMode, extract, format_byte_size,
+    preview_extraction,
 };
 
 fn output_options(preview_chars: usize) -> OutputOptions {
@@ -56,23 +55,6 @@ fn slice_request(html: &str, from: &str, to: &str) -> ExtractionRequest {
             SliceBoundary::new(to).expect("slice boundary"),
         )),
     )
-}
-
-#[test]
-fn parse_document_reads_memory_source() {
-    let source = SourceRequest::memory("inline", "<article><p>Hello</p></article>");
-
-    let parsed = parse_document(&source, &RuntimeOptions::default());
-    assert!(parsed.ok);
-    assert!(parsed.document.is_some());
-}
-
-#[test]
-fn parse_document_contract_types_remain_unwind_safe() {
-    fn assert_unwind_safe<T: std::panic::RefUnwindSafe + std::panic::UnwindSafe>() {}
-
-    assert_unwind_safe::<ParsedDocument>();
-    assert_unwind_safe::<ParseDocumentResult>();
 }
 
 #[test]

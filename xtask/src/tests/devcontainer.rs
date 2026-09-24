@@ -81,10 +81,43 @@ fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
     let (default_tools, optional_tool) = inventory
         .split_once("-- optional --\n")
         .expect("inventory separator");
-    assert!(default_tools.contains("cargo-nextest 0.9.143 cargo-nextest"));
+    assert!(default_tools.contains("cargo-nextest 0.9.146 cargo-nextest"));
+    assert!(default_tools.contains("cargo-semver-checks 0.50.0 cargo-semver-checks"));
+    assert!(default_tools.contains("cargo-llvm-cov 0.9.1 cargo-llvm-cov"));
     assert!(default_tools.contains("cargo-fuzz 0.13.2 cargo-fuzz"));
     assert!(!default_tools.contains("cargo-mutants"));
     assert_eq!(optional_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
+}
+
+#[test]
+fn contributor_tool_installer_uses_explicit_toolchain_and_available_dependency_resolution() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let installer = fs::read_to_string(
+        repo_root
+            .join("scripts")
+            .join("install-contributor-cargo-tools.sh"),
+    )
+    .expect("read contributor installer");
+    assert!(installer.contains(
+        "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}\" \"${install_args[@]}\""
+    ));
+    assert!(installer.contains("install-contributor-nextest.sh"));
+    assert!(installer.contains("install_args+=(--locked)"));
+    assert!(!installer.contains("--git https://github.com/obi1kenobi/cargo-semver-checks.git"));
+
+    let invalid = Command::new("bash")
+        .arg(
+            repo_root
+                .join("scripts")
+                .join("install-contributor-nextest.sh"),
+        )
+        .arg("0.0.0")
+        .output()
+        .expect("reject unsupported nextest version");
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("unsupported nextest version"));
 }
 
 #[test]

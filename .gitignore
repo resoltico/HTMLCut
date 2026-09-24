@@ -17,12 +17,6 @@
 .fleet/
 .direnv/
 
-# Maintainer protocol files are committed to GitHub, but source-archive exclusion lives in
-# .gitattributes so they do not ship inside downloadable archives.
-!/AGENTS.md
-!/.codex/
-!/.codex/**
-
 # OS and local scratch files
 .claude/
 .DS_Store

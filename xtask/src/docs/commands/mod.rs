@@ -78,6 +78,11 @@ fn command_example_errors_with_prepared_sandbox(
 #[cfg(test)]
 pub(crate) use parsing::{command_path, extract_htmlcut_examples, shell_words};
 
+#[cfg(test)]
+pub(crate) fn clap_error_message_for_tests(error: &clap::Error) -> String {
+    parsing::clap_error_message(error)
+}
+
 pub(crate) fn command_reference_error(
     display_path: &str,
     tokens: &[String],

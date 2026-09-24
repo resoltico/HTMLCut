@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: RELEASE
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
@@ -115,7 +115,7 @@ Install the local maintainer toolchain if it is not already available by followi
 [developer-setup.md](developer-setup.md). That guide owns the exact bootstrap commands for
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
-`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.0`).
+`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.1`).
 Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
 coverage gate, and live `cargo-fuzz` campaigns, because `cargo xtask miri`, `cargo +nightly
 llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly.
@@ -160,7 +160,7 @@ full maintainer gate before cutting `release-prep/X.Y.Z`, creating `release/X.Y.
 any release branch. A pre-version gate pass is only the starting proof; the prepared release
 candidate itself must also be the exact gated tree that ships.
 - `Cargo.toml` `[workspace.package] rust-version` still carries the published compatibility floor
-  (`1.98` today), while `rust-toolchain.toml` continues to own the exact repository pin, and the
+  (`1.98.1` today), while `rust-toolchain.toml` continues to own the exact repository pin, and the
   workspace crates still inherit that floor through `rust-version.workspace = true`.
 - `Cargo.toml` `[workspace.package] description` still reflects the current product in task-facing
   language. `htmlcut-cli` inherits it for CLI help and for the second line of `htmlcut --version`.
@@ -181,7 +181,7 @@ candidate itself must also be the exact gated tree that ships.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
 - `docs/versioning-policy.md` still matches the shipped contract policy, interop model, and
   semver-baseline rules.
-- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v1.md` still match the shipped
+- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v2.md` still match the shipped
   surfaces.
 - `docs/release-publishing.md` still matches the shipped publication flow, release assets, and
   provenance notes.

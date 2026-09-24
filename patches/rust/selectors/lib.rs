@@ -19,6 +19,7 @@ pub mod relative_selector;
 pub mod sink;
 mod tree;
 pub mod visitor;
+pub mod work_budget;
 
 pub use crate::nth_index_cache::NthIndexCache;
 pub use crate::parser::{Parser, SelectorImpl, SelectorList};

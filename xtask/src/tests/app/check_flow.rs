@@ -22,7 +22,7 @@ fn main_entry_with_runs_the_full_check_flow_and_cleans_semver_scratch() {
                         fs::create_dir_all(semver_scratch_dir(current_root).join("during"))
                             .expect("recreate semver scratch");
                     }
-                    if *spec == coverage_command(current_root) {
+                    if *spec == coverage_report_command(current_root) {
                         write_coverage_report(current_root, &tracked_file, 1, 1, 1, 0);
                     }
                     Some(Ok(()))
@@ -200,7 +200,7 @@ fn main_entry_with_reports_coverage_failures_and_runs_cleanup() {
             crate::command_exec::with_run_spec_override(
                 move |current_root, spec| {
                     calls_for_override.borrow_mut().push(spec.clone());
-                    if *spec == coverage_command(current_root) {
+                    if *spec == coverage_report_command(current_root) {
                         write_coverage_report(current_root, &tracked_file, 0, 1, 0, 1);
                     }
                     Some(Ok(()))
@@ -232,7 +232,7 @@ fn run_coverage_for_tests_reports_branch_only_failures() {
         let error = with_ready_preflight(|| {
             crate::command_exec::with_run_spec_override(
                 move |current_root, spec| {
-                    if *spec == coverage_command(current_root) {
+                    if *spec == coverage_report_command(current_root) {
                         write_coverage_report(current_root, &tracked_file, 1, 1, 0, 1);
                     }
                     Some(Ok(()))
@@ -255,7 +255,7 @@ fn run_coverage_for_tests_reports_line_only_failures() {
         let error = with_ready_preflight(|| {
             crate::command_exec::with_run_spec_override(
                 move |current_root, spec| {
-                    if *spec == coverage_command(current_root) {
+                    if *spec == coverage_report_command(current_root) {
                         write_coverage_report(current_root, &tracked_file, 0, 0, 0, 0);
                     }
                     Some(Ok(()))
@@ -278,7 +278,7 @@ fn run_coverage_for_tests_reports_success_when_every_tracked_counter_is_covered(
         with_ready_preflight(|| {
             crate::command_exec::with_run_spec_override(
                 move |current_root, spec| {
-                    if *spec == coverage_command(current_root) {
+                    if *spec == coverage_report_command(current_root) {
                         write_coverage_report(current_root, &tracked_file, 1, 1, 1, 0);
                     }
                     Some(Ok(()))
@@ -288,4 +288,103 @@ fn run_coverage_for_tests_reports_success_when_every_tracked_counter_is_covered(
         })
         .expect("fully covered fixture should pass");
     });
+}
+
+#[test]
+fn coverage_success_is_retained_as_a_gate_report_step() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/covered.rs");
+
+        with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    if *spec == coverage_report_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 1, 1, 1, 0);
+                    }
+                    Some(Ok(()))
+                },
+                || {
+                    crate::gate_report::with_gate_report(
+                        repo_root.path(),
+                        "coverage-success-evidence",
+                        crate::gate_report::GateOutputOptions {
+                            format: crate::gate_report::GateOutputFormat::Json,
+                            verbose: false,
+                        },
+                        || run_coverage_for_tests(repo_root.path()),
+                    )
+                },
+            )
+        })
+        .expect("fully covered fixture should retain success evidence");
+
+        let report = retained_gate_report(repo_root.path());
+        assert!(
+            report["steps"]
+                .as_array()
+                .is_some_and(|steps| steps.iter().any(|step| {
+                    step["label"] == "Rust coverage ledger" && step["outcome"] == "passed"
+                })),
+            "coverage success must be recorded as an internal gate step: {report}"
+        );
+    });
+}
+
+#[test]
+fn coverage_branch_failures_are_retained_as_gate_report_evidence() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        let tracked_file = write_tracked_source(repo_root.path(), "xtask/src/branch_only.rs");
+
+        let error = with_ready_preflight(|| {
+            crate::command_exec::with_run_spec_override(
+                move |current_root, spec| {
+                    if *spec == coverage_report_command(current_root) {
+                        write_coverage_report(current_root, &tracked_file, 1, 1, 0, 1);
+                    }
+                    Some(Ok(()))
+                },
+                || {
+                    crate::gate_report::with_gate_report(
+                        repo_root.path(),
+                        "coverage-failure-evidence",
+                        crate::gate_report::GateOutputOptions {
+                            format: crate::gate_report::GateOutputFormat::Json,
+                            verbose: false,
+                        },
+                        || run_coverage_for_tests(repo_root.path()),
+                    )
+                },
+            )
+        })
+        .expect_err("branch-only coverage fixture must fail");
+        assert!(error.to_string().contains("coverage gate failed"));
+
+        let report = retained_gate_report(repo_root.path());
+        assert!(
+            report["steps"]
+                .as_array()
+                .is_some_and(|steps| steps.iter().any(|step| {
+                    step["label"] == "Rust coverage ledger"
+                        && step["outcome"] == "failed"
+                        && step["failure_tail"]
+                            .as_str()
+                            .is_some_and(|detail| detail.contains("branches: 1 uncovered"))
+                })),
+            "branch-only coverage failure must retain its exact diagnostic: {report}"
+        );
+    });
+}
+
+fn retained_gate_report(repo_root: &Path) -> serde_json::Value {
+    let reports = fs::read_dir(crate::gate_report_dir(repo_root))
+        .expect("read gate-report root")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("report.json"))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    assert_eq!(reports.len(), 1, "expected one retained gate report");
+    serde_json::from_slice(&fs::read(&reports[0]).expect("read retained gate report"))
+        .expect("parse retained gate report")
 }

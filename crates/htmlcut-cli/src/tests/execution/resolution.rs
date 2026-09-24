@@ -24,6 +24,20 @@ fn resolve_selection_spec_validates_index_rules() {
         })
         .is_err()
     );
+    for mode in [CliMatchMode::Single, CliMatchMode::All] {
+        let error = resolve_selection_spec(&SelectionArgs {
+            r#match: mode,
+            index: Some(1),
+        })
+        .expect_err("index conflicts outside nth mode");
+        assert_eq!(error.code, CliErrorCode::MatchIndexConflict.as_str());
+    }
+    let zero_index = resolve_selection_spec(&SelectionArgs {
+        r#match: CliMatchMode::Nth,
+        index: Some(0),
+    })
+    .expect_err("zero index");
+    assert_eq!(zero_index.code, CliErrorCode::MatchIndexInvalid.as_str());
     assert_eq!(
         resolve_selection_spec(&SelectionArgs {
             r#match: CliMatchMode::Nth,

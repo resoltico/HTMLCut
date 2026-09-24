@@ -28,8 +28,8 @@ mod toolchain;
 pub use command_exec::{capture_command_output, remove_dir_if_exists, repo_root, run_spec};
 pub use coverage::{
     coverage_clean_command, coverage_command, coverage_output_path, coverage_preflight_failures,
-    coverage_preflight_message, ensure_coverage_output_dir, evaluate_coverage_report,
-    read_coverage_report, tracked_files,
+    coverage_preflight_message, coverage_report_command, ensure_coverage_output_dir,
+    evaluate_coverage_report, fork_coverage_command, read_coverage_report, tracked_files,
 };
 pub use docs::{markdown_contract_errors, markdown_doc_paths};
 pub use fuzz::{

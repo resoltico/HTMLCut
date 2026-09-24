@@ -21,6 +21,16 @@ pub fn coverage_command(repo_root: &Path) -> CommandSpec {
     commands::coverage_command(repo_root)
 }
 
+/// Builds the maintained default-feature fork coverage execution.
+pub fn fork_coverage_command() -> CommandSpec {
+    commands::fork_coverage_command()
+}
+
+/// Builds the final merged LLVM JSON coverage report command.
+pub fn coverage_report_command(repo_root: &Path) -> CommandSpec {
+    commands::coverage_report_command(repo_root)
+}
+
 /// Returns the JSON file that `cargo llvm-cov` writes for later scoring.
 pub fn coverage_output_path(repo_root: &Path) -> PathBuf {
     commands::coverage_output_path(repo_root)
@@ -85,6 +95,14 @@ pub(crate) fn repo_relative_source_path_for_tests(
     absolute_path: &Path,
 ) -> DynResult<String> {
     tracking::repo_relative_source_path_for_tests(repo_root, absolute_path)
+}
+
+#[cfg(test)]
+pub(crate) fn collect_tracked_files_from_root_for_tests(
+    repo_root: &Path,
+    current_path: &Path,
+) -> DynResult<BTreeMap<PathBuf, TrackedCoverageFile>> {
+    tracking::collect_tracked_files_from_root_for_tests(repo_root, current_path)
 }
 
 #[cfg(test)]

@@ -3,7 +3,6 @@ use super::*;
 #[test]
 fn markdown_contract_errors_report_patents_license_family_drift() {
     let repo_root = tempdir().expect("tempdir");
-    write_docs_protocol(repo_root.path(), "4.0");
     fs::write(
         repo_root.path().join("Cargo.toml"),
         "[workspace.package]\nversion = \"4.4.0\"\n",

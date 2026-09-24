@@ -8,7 +8,7 @@ use crate::model::CommandSpec;
 
 use super::model::{GateCommand, GateStream, GateWarning};
 
-pub(super) const FAILURE_TAIL_BYTES: usize = 8 * 1024;
+pub(super) const FAILURE_TAIL_BYTES: usize = 8_192;
 
 pub(super) fn command_document(spec: &CommandSpec) -> GateCommand {
     GateCommand {
@@ -119,26 +119,14 @@ fn log_tail(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-pub(super) fn replay_stream(name: &str, bytes: &[u8], stderr: bool) {
-    if bytes.is_empty() {
-        return;
-    }
-    let text = String::from_utf8_lossy(bytes);
-    if stderr {
-        eprintln!("--- {name} ---\n{text}");
-    } else {
-        println!("--- {name} ---\n{text}");
-    }
+/// Renders non-empty retained evidence for the caller-selected output stream.
+pub(super) fn replay_stream(name: &str, bytes: &[u8]) -> Option<String> {
+    (!bytes.is_empty()).then(|| format!("--- {name} ---\n{}", String::from_utf8_lossy(bytes)))
 }
 
-pub(super) fn replay_log_stream(name: &str, path: &Path, stderr: bool) {
-    match fs::read(path) {
-        Ok(bytes) => replay_stream(name, &bytes, stderr),
-        Err(error) => eprintln!(
-            "could not replay retained {name} log {}: {error}",
-            path.display()
-        ),
-    }
+/// Reads and renders non-empty retained evidence without choosing an output stream.
+pub(super) fn replay_log_stream(name: &str, path: &Path) -> std::io::Result<Option<String>> {
+    fs::read(path).map(|bytes| replay_stream(name, &bytes))
 }
 
 pub(super) fn render_stream(stream: GateStream) -> &'static str {

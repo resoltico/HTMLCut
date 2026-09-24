@@ -6,11 +6,13 @@ use crate::model::{
     DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 
-const FUZZ_SMOKE_TARGETS: [&str; 5] = [
+const FUZZ_SMOKE_TARGETS: [&str; 7] = [
     "parse_document_bytes",
     "selector_parsing",
     "slice_boundaries",
     "extraction_request_building",
+    "prepared_discovery",
+    "relational_selector_budget",
     "cli_parse_error_surface",
 ];
 pub(crate) const FUZZ_PACKAGE_NAME: &str = "htmlcut-fuzz";

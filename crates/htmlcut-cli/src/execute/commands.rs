@@ -23,6 +23,9 @@ use crate::render::{
     render_source_inspection_text, to_pretty_json,
 };
 
+mod exploration;
+pub(crate) use exploration::{run_inspect_elements, run_inspect_propose};
+
 pub(crate) fn run_catalog(args: CatalogArgs, _verbose: u8, quiet: bool) -> ExecutionOutcome {
     let write_mode = FileWriteMode::from_overwrite_flag(args.file_write.overwrite);
     if let Some(path) = args.output_file.as_deref()

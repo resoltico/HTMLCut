@@ -17,7 +17,7 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 #[test]
-fn mutation_configuration_scopes_only_first_party_runtime_source() {
+fn mutation_configuration_scopes_runtime_tooling_and_exact_maintained_fork_source() {
     let config = fs::read_to_string(repo_root().join(".cargo").join("mutants.toml"))
         .expect("read mutation configuration");
     let runtime_members = default_runtime_members();
@@ -25,14 +25,22 @@ fn mutation_configuration_scopes_only_first_party_runtime_source() {
     assert!(config.contains("all_features = true"));
     assert!(config.contains("additional_cargo_args = [\"--locked\"]"));
     assert!(config.contains("test_tool = \"cargo\""));
+    assert!(config.contains(
+        "additional_cargo_test_args = [\"--\", \"-Z\", \"unstable-options\", \"--fail-fast\"]"
+    ));
     assert!(config.contains("sharding = \"round-robin\""));
-    for (package, member_path) in runtime_members {
-        assert!(config.contains(&format!("\"{package}\"")));
+    for (_package, member_path) in runtime_members {
         assert!(config.contains(&format!("{member_path}/src/**/*.rs")));
     }
     assert!(config.contains("**/src/tests/**/*.rs"));
-    assert!(!config.contains("patches/rust"));
-    assert!(!config.contains("xtask/src"));
+    for path in [
+        "patches/rust/selectors/work_budget.rs",
+        "patches/rust/scraper/src/html/clone.rs",
+        "patches/rust/scraper/src/selector/budget.rs",
+    ] {
+        assert!(config.contains(path));
+    }
+    assert!(config.contains("xtask/src/**/*.rs"));
 }
 
 fn default_runtime_members() -> Vec<(String, String)> {
@@ -84,6 +92,10 @@ fn default_runtime_members() -> Vec<(String, String)> {
         .collect()
 }
 
+fn mutation_tooling_members() -> Vec<(String, String)> {
+    vec![("xtask".to_owned(), "xtask".to_owned())]
+}
+
 #[test]
 fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     let workflow = fs::read_to_string(repo_root().join(".github/workflows/mutants.yml"))
@@ -105,7 +117,7 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));
     assert!(workflow.contains(
-        "cargo mutants --config .cargo/mutants.toml --in-diff \"$diff_path\" --list --json"
+        "cargo mutants --config .cargo/mutants.toml --workspace --in-diff \"$diff_path\" --list --json"
     ));
     assert!(workflow.contains("if (( mutants_status != 0 && mutants_status != 4 )); then"));
     assert!(workflow.contains("if [[ ! -s \"$RUNNER_TEMP/mutants.json\" ]]; then"));
@@ -148,8 +160,9 @@ fn mutation_scope_verifier_tracks_cargo_default_members_and_rejects_drift() {
     let root = tempdir().expect("scope verifier fixture");
     let valid_path = root.path().join("valid-mutants.json");
     let invalid_path = root.path().join("invalid-mutants.json");
-    let members = default_runtime_members();
-    let mutants = members
+    let mut members = default_runtime_members();
+    members.extend(mutation_tooling_members());
+    let mut mutants = members
         .iter()
         .map(|(package, member_path)| {
             json!({
@@ -158,6 +171,11 @@ fn mutation_scope_verifier_tracks_cargo_default_members_and_rejects_drift() {
             })
         })
         .collect::<Vec<_>>();
+    mutants.extend([
+        json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/work_budget.rs"}),
+        json!({"package": "htmlcut-scraper", "file": "patches/rust/scraper/src/html/clone.rs"}),
+        json!({"package": "htmlcut-scraper", "file": "patches/rust/scraper/src/selector/budget.rs"}),
+    ]);
     fs::write(
         &valid_path,
         serde_json::to_vec(&mutants).expect("serialize valid mutation fixture"),

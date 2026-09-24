@@ -118,3 +118,36 @@ fn repo_relative_source_path_rejects_paths_outside_the_repo_root() {
 
     assert!(error.to_string().contains("does not live under repo root"));
 }
+
+#[cfg(unix)]
+#[test]
+fn exact_coverage_roots_accept_regular_files_and_reject_special_or_invalid_paths() {
+    let repo_root = tempdir().expect("repo tempdir");
+    let exact_file = repo_root
+        .path()
+        .join("patches/rust/selectors/work_budget.rs");
+    fs::create_dir_all(exact_file.parent().expect("parent")).expect("create parent");
+    fs::write(&exact_file, "pub fn tracked() {}\n").expect("write source");
+    let tracked =
+        crate::coverage::collect_tracked_files_from_root_for_tests(repo_root.path(), &exact_file)
+            .expect("exact file root");
+    assert_eq!(tracked.len(), 1);
+
+    let symlink = repo_root.path().join("special-root.rs");
+    symlink_file(&exact_file, &symlink);
+    assert!(
+        crate::coverage::collect_tracked_files_from_root_for_tests(repo_root.path(), &symlink)
+            .expect("symlink root is ignored")
+            .is_empty()
+    );
+
+    let non_directory = repo_root.path().join("not-a-directory");
+    fs::write(&non_directory, "not a directory").expect("write parent file");
+    assert!(
+        crate::coverage::collect_tracked_files_from_root_for_tests(
+            repo_root.path(),
+            &non_directory.join("child.rs"),
+        )
+        .is_err()
+    );
+}

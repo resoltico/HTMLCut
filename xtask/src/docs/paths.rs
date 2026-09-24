@@ -38,7 +38,7 @@ fn collect_markdown_doc_paths(
             continue;
         }
 
-        if is_markdown_doc(&path) {
+        if is_maintained_markdown_doc(repo_root, &path) {
             paths.push(path);
         }
     }
@@ -70,10 +70,6 @@ fn is_maintained_markdown_doc(repo_root: &Path, path: &Path) -> bool {
     if !is_markdown_doc(path) {
         return false;
     }
-    if path.file_name().is_some_and(|name| name == "AGENTS.md") {
-        return false;
-    }
-
     let Ok(relative) = path.strip_prefix(repo_root) else {
         return false;
     };

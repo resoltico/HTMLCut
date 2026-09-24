@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use htmlcut_core::wire::v1::ExtractionDefinitionDocument;
+use htmlcut_core::wire::v2::ExtractionDefinitionDocument;
 use htmlcut_core::{
     ContractValueError, ExtractionDefinition, ExtractionRequest, ExtractionStrategy, RuntimeOptions,
 };
@@ -87,16 +87,37 @@ fn load_extraction_definition(
             ),
         )
     })?;
-    let value: Value = serde_json::from_str(&raw).map_err(|error| {
-        usage_error(
+    htmlcut_core::wire::v2::preflight_document_json(
+        &raw,
+        htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,
+        htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
+    )
+    .map_err(|error| match error {
+        htmlcut_core::wire::v2::WireDocumentDecodeError::InvalidJson(error) => usage_error(
             CliErrorCode::RequestFileInvalid,
             format!(
                 "Could not parse extraction definition {} as JSON: {error}. {}",
                 path.display(),
                 request_file_recovery_hint(operation_id, expected_strategy, None)
             ),
-        )
+        ),
+        htmlcut_core::wire::v2::WireDocumentDecodeError::IncompatibleEnvelope => usage_error(
+            CliErrorCode::RequestFileSchemaUnsupported,
+            format!(
+                "Extraction definition {} does not carry the current {}@{} identity envelope. {} Re-emit a current definition with `htmlcut {} ... --emit-request-file <PATH>` or hand-author one that matches the maintained contract.",
+                path.display(),
+                htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,
+                htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
+                request_file_recovery_hint(operation_id, expected_strategy, None),
+                command,
+            ),
+        ),
     })?;
+    // The envelope preflight above has already parsed this exact byte string successfully. The
+    // value parse below cannot fail without a `serde_json` defect, while retaining the value lets
+    // the following typed decode retain its precise JSON-path diagnostics.
+    let value: Value = serde_json::from_str(&raw)
+        .expect("successful extraction-definition envelope preflight proves valid JSON");
     let shape_hint = request_file_shape_hint(&value, expected_strategy);
     let definition_document: ExtractionDefinitionDocument = serde_path_to_error::deserialize(value)
         .map_err(|error| {
@@ -118,25 +139,20 @@ fn load_extraction_definition(
                 ),
             )
         })?;
-    let definition: ExtractionDefinition = definition_document.into();
-
-    if definition.schema_name != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME
-        || definition.schema_version != htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION
-    {
-        return Err(usage_error(
+    let definition: ExtractionDefinition = definition_document.try_into().map_err(|error| {
+        usage_error(
             CliErrorCode::RequestFileSchemaUnsupported,
             format!(
-                "Unsupported extraction definition schema in {}: expected {}@{}, got {}@{}. {} Re-emit a current definition with `htmlcut {} ... --emit-request-file <PATH>` or hand-author one that matches the maintained contract.",
+                "Extraction definition {} does not carry the current {}@{} identity envelope: {}. {} Re-emit a current definition with `htmlcut {} ... --emit-request-file <PATH>` or hand-author one that matches the maintained contract.",
                 path.display(),
                 htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_NAME,
                 htmlcut_core::EXTRACTION_DEFINITION_SCHEMA_VERSION,
-                definition.schema_name,
-                definition.schema_version,
+                error,
                 request_file_recovery_hint(operation_id, expected_strategy, None),
                 command,
             ),
-        ));
-    }
+        )
+    })?;
 
     if definition.request.extraction.strategy() != expected_strategy {
         return Err(usage_error(

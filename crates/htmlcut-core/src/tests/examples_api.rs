@@ -4,7 +4,7 @@ use crate::{
     AttributeName, EXTRACTION_DEFINITION_SCHEMA_VERSION, ExtractionDefinition, ExtractionRequest,
     ExtractionSpec, HttpUrl, OutputOptions, RenderingOptions, RuntimeOptions, SelectionSpec,
     SelectorQuery, SourceRequest, ValueSpec, extract, result::ExtractionMatchMetadata,
-    wire::v1::ExtractionDefinitionDocument,
+    wire::v2::ExtractionDefinitionDocument,
 };
 
 #[test]

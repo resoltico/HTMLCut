@@ -2,14 +2,24 @@
 
 mod model;
 mod streams;
+mod summary;
 
 use std::cell::RefCell;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+macro_rules! replay_terminal_text {
+    ($stream:expr, $text:expr) => {{
+        let mut stdout = std::io::stdout().lock();
+        let mut stderr = std::io::stderr().lock();
+        replay_terminal_text_to($stream, $text, &mut stdout, &mut stderr)
+    }};
+}
 
 use crate::hygiene::prepare_gate_report_root;
 use crate::model::{CommandSpec, DynResult};
@@ -160,11 +170,21 @@ fn with_active<T>(operation: impl FnOnce(&mut GateRun) -> T) -> Option<T> {
     })
 }
 
+fn is_successful_outcome(outcome: GateOutcome) -> bool {
+    outcome == GateOutcome::Passed
+}
+
 struct GateRun {
     options: GateOutputOptions,
     run_dir: PathBuf,
     started: Instant,
     report: GateRunReport,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum HumanSummaryStream {
+    Stdout,
+    Stderr,
 }
 
 impl GateRun {
@@ -198,7 +218,7 @@ impl GateRun {
 
     fn begin_command(&mut self, spec: &CommandSpec) -> usize {
         let index = self.report.steps.len() + 1;
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             println!("==> [{index:02}] {}", render_command(spec));
         }
         index
@@ -211,7 +231,12 @@ impl GateRun {
     }
 
     fn should_mirror_live_output(&self, spec: &CommandSpec) -> bool {
-        self.options.format == GateOutputFormat::Human && spec.live_output
+        self.emits_human_progress() && spec.live_output
+    }
+
+    /// Returns whether this report mode may emit progress to the human terminal.
+    fn emits_human_progress(&self) -> bool {
+        self.options.format == GateOutputFormat::Human
     }
 
     fn finish_command(
@@ -280,15 +305,19 @@ impl GateRun {
             failure_tail,
         });
 
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             if success {
                 println!("    passed in {} ms", duration.as_millis());
             } else {
                 eprintln!("    failed in {} ms", duration.as_millis());
             }
             if self.options.verbose {
-                replay_stream("stdout", &output.stdout, false);
-                replay_stream("stderr", &output.stderr, true);
+                if let Some(text) = replay_stream("stdout", &output.stdout) {
+                    replay_terminal_text!(HumanSummaryStream::Stdout, &text);
+                }
+                if let Some(text) = replay_stream("stderr", &output.stderr) {
+                    replay_terminal_text!(HumanSummaryStream::Stderr, &text);
+                }
             }
         }
 
@@ -363,15 +392,29 @@ impl GateRun {
             failure_tail,
         });
 
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             if success {
                 println!("    passed in {} ms", duration.as_millis());
             } else {
                 eprintln!("    failed in {} ms", duration.as_millis());
             }
             if let (true, false) = (self.options.verbose, spec.live_output) {
-                replay_log_stream("stdout", &stdout_path, false);
-                replay_log_stream("stderr", &stderr_path, true);
+                match replay_log_stream("stdout", &stdout_path) {
+                    Ok(Some(text)) => replay_terminal_text!(HumanSummaryStream::Stdout, &text),
+                    Ok(None) => {}
+                    Err(error) => eprintln!(
+                        "could not replay retained stdout log {}: {error}",
+                        stdout_path.display()
+                    ),
+                }
+                match replay_log_stream("stderr", &stderr_path) {
+                    Ok(Some(text)) => replay_terminal_text!(HumanSummaryStream::Stderr, &text),
+                    Ok(None) => {}
+                    Err(error) => eprintln!(
+                        "could not replay retained stderr log {}: {error}",
+                        stderr_path.display()
+                    ),
+                }
             }
         }
 
@@ -402,7 +445,7 @@ impl GateRun {
             warnings: Vec::new(),
             failure_tail: Some(message.clone()),
         });
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             eprintln!("    failed in {} ms", duration.as_millis());
         }
         message
@@ -435,7 +478,7 @@ impl GateRun {
             warnings: Vec::new(),
             failure_tail: Some(message.clone()),
         });
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             eprintln!("    failed in {} ms", duration.as_millis());
         }
         message
@@ -452,7 +495,7 @@ impl GateRun {
             Ok(()) => (GateOutcome::Passed, None),
             Err(message) => (GateOutcome::Failed, Some(message)),
         };
-        if self.options.format == GateOutputFormat::Human {
+        if self.emits_human_progress() {
             println!("==> [{index:02}] {label}");
         }
         self.report.steps.push(GateStep {
@@ -471,8 +514,8 @@ impl GateRun {
             warnings: Vec::new(),
             failure_tail,
         });
-        if self.options.format == GateOutputFormat::Human {
-            if outcome == GateOutcome::Passed {
+        if self.emits_human_progress() {
+            if is_successful_outcome(outcome) {
                 println!("    passed in {} ms", duration.as_millis());
             } else {
                 eprintln!("    failed in {} ms", duration.as_millis());
@@ -503,60 +546,28 @@ impl GateRun {
         fs::write(&self.report.report_path, &serialized)?;
 
         match self.options.format {
-            GateOutputFormat::Human => self.render_human_summary(),
+            GateOutputFormat::Human => self.write_human_summary()?,
             GateOutputFormat::Json => println!("{}", String::from_utf8(serialized)?),
         }
         Ok(())
     }
+}
 
-    fn render_human_summary(&self) {
-        let passed = self
-            .report
-            .steps
-            .iter()
-            .filter(|step| step.outcome == GateOutcome::Passed)
-            .count();
-        let failed = self.report.steps.len() - passed;
-        let summary = format!(
-            "HTMLCut gate `{}` {}: {} passed, {} failed, {} distinct warnings, {} ms.",
-            self.report.gate,
-            if self.report.outcome == GateOutcome::Passed {
-                "passed"
-            } else {
-                "failed"
-            },
-            passed,
-            failed,
-            self.report.warnings.len(),
-            self.report.duration_ms,
-        );
-        if self.report.outcome == GateOutcome::Passed {
-            println!("{summary}");
-        } else {
-            eprintln!("{summary}");
-        }
-        for warning in &self.report.warnings {
-            eprintln!(
-                "warning [{}]: {}",
-                render_stream(warning.stream),
-                warning.message
-            );
-        }
-        if let Some(failure) = &self.report.failure {
-            eprintln!("failure: {}", failure.message);
-        }
-        for step in self
-            .report
-            .steps
-            .iter()
-            .filter(|step| step.outcome == GateOutcome::Failed)
-        {
-            if let Some(tail) = &step.failure_tail {
-                eprintln!("--- failed step {} ---\n{tail}", step.label);
-            }
-        }
-        println!("Gate report: {}", self.report.report_path);
-    }
+fn replay_terminal_text_to(
+    stream: HumanSummaryStream,
+    text: &str,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) {
+    let writer: &mut dyn Write = match stream {
+        HumanSummaryStream::Stdout => stdout,
+        HumanSummaryStream::Stderr => stderr,
+    };
+    write_replayed_text(writer, text);
+}
+
+fn write_replayed_text(writer: &mut dyn Write, text: &str) {
+    let _ignored = writeln!(writer, "{text}");
 }
 
 fn prune_completed_runs(root: &Path) -> DynResult<()> {
@@ -564,7 +575,7 @@ fn prune_completed_runs(root: &Path) -> DynResult<()> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let file_type = entry.file_type().ok()?;
-            (file_type.is_dir() && !file_type.is_symlink()).then_some(entry)
+            file_type.is_dir().then_some(entry)
         })
         .filter(|entry| entry.path().join("report.json").is_file())
         .collect::<Vec<_>>();

@@ -42,7 +42,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo mutants --config .cargo/mutants.toml --list --json > "$RUNNER_TEMP/mutants.json"
+          cargo mutants --config .cargo/mutants.toml --workspace --list --json > "$RUNNER_TEMP/mutants.json"
           ./scripts/verify-mutation-scope.sh "$RUNNER_TEMP/mutants.json"
           mutant_count="$(jq 'length' "$RUNNER_TEMP/mutants.json")"
           if (( mutant_count == 0 )); then
@@ -95,6 +95,7 @@ jobs:
             done
           }
           retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          retry 3 5 rustup toolchain install nightly --profile minimal
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -105,7 +106,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -161,6 +162,7 @@ jobs:
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
           rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          rustup toolchain install nightly --profile minimal
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -171,7 +173,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -180,12 +182,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo mutants --config .cargo/mutants.toml --list --json > "$RUNNER_TEMP/full-mutants.json"
+          cargo mutants --config .cargo/mutants.toml --workspace --list --json > "$RUNNER_TEMP/full-mutants.json"
           ./scripts/verify-mutation-scope.sh "$RUNNER_TEMP/full-mutants.json"
           diff_path="$RUNNER_TEMP/htmlcut-mutants.diff"
           git diff --no-ext-diff --unified=0 "${{ github.event.pull_request.base.sha }}" HEAD > "$diff_path"
           set +e
-          cargo mutants --config .cargo/mutants.toml --in-diff "$diff_path" --list --json > "$RUNNER_TEMP/mutants.json"
+          cargo mutants --config .cargo/mutants.toml --workspace --in-diff "$diff_path" --list --json > "$RUNNER_TEMP/mutants.json"
           mutants_status=$?
           set -e
           if (( mutants_status != 0 && mutants_status != 4 )); then
@@ -196,8 +198,13 @@ jobs:
           fi
           jq -e '
             all(.[];
-              (.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
-              and (.file | test("/src/(tests/|.*/tests/)") | not)
+              (
+                ((.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
+                  and (.file | test("/src/(tests/|.*/tests/)") | not))
+                or (.file == "patches/rust/selectors/work_budget.rs")
+                or (.file == "patches/rust/scraper/src/html/clone.rs")
+                or (.file == "patches/rust/scraper/src/selector/budget.rs")
+              )
             )
           ' "$RUNNER_TEMP/mutants.json" >/dev/null
           mutant_count="$(jq 'length' "$RUNNER_TEMP/mutants.json")"
@@ -248,7 +255,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -299,7 +306,7 @@ jobs:
 
       - name: Download mutation results
         if: needs.mutation-diff-plan.outputs.has_mutants == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: cargo-mutants-shard-*-of-*
           path: mutation-artifacts
@@ -344,7 +351,7 @@ jobs:
 
       - name: Download mutation results
         if: always()
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: cargo-mutants-shard-*-of-*
           path: mutation-artifacts

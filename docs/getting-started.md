@@ -1,12 +1,12 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: SETUP
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, request file]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction request?"]
-  related: [../README.md, cli.md, platform-support.md, core.md, interop-v1.md]
+  related: [../README.md, cli.md, platform-support.md, core.md, interop-v2.md]
 ---
 
 # Getting Started
@@ -30,7 +30,7 @@ Release packages are published on the [HTMLCut releases page](https://github.com
 ### macOS Or Linux
 
 ```bash
-VERSION=13.2.0
+VERSION=14.0.0
 TARGET=aarch64-apple-darwin # or x86_64-apple-darwin / x86_64-unknown-linux-musl
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-${TARGET}.tar.gz"
 curl -fsSLO "https://github.com/resoltico/HTMLCut/releases/download/v${VERSION}/htmlcut-${VERSION}-checksums.txt"
@@ -54,7 +54,7 @@ htmlcut --help
 ### Windows PowerShell
 
 ```powershell
-$Version = "13.2.0"
+$Version = "14.0.0"
 $Target = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-$Target.zip" -OutFile "htmlcut-$Version-$Target.zip"
 Invoke-WebRequest "https://github.com/resoltico/HTMLCut/releases/download/v$Version/htmlcut-$Version-checksums.txt" -OutFile "htmlcut-$Version-checksums.txt"
@@ -84,7 +84,7 @@ cargo run -- --help
 ```
 
 `rust-toolchain.toml` is the canonical exact repo toolchain pin. Right now that resolves to
-`1.98.0`. `Cargo.toml` `[workspace.package] rust-version = "1.98"` carries the published
+`1.98.1`. `Cargo.toml` `[workspace.package] rust-version = "1.98.1"` carries the published
 compatibility floor separately.
 
 Install into Cargo's bin directory from this repository root:
@@ -246,6 +246,6 @@ The deeper output rules, bundle behavior, request-file constraints, and discover
 
 - [cli.md](cli.md) for the full command model, output rules, and bundle workflow
 - [core.md](core.md) for the Rust library entrypoints
-- [interop-v1.md](interop-v1.md) for the downstream integration profile
+- [interop-v2.md](interop-v2.md) for the downstream integration profile
 - [schema.md](schema.md) for the maintained public schema registry
 - [README.md](../README.md) for the short product-facing overview

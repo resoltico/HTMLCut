@@ -22,6 +22,31 @@ fn metadata_version_reads_html_comment_metadata() {
 }
 
 #[test]
+fn metadata_version_reads_an_html_comment_after_a_leading_document_prefix() {
+    let text = "\n\n<!--\nAFAD:\n  afad: \"4.0\"\n  version: \"4.1.0\"\n-->\n# Title\n";
+
+    assert_eq!(
+        crate::docs::metadata_version(text, crate::docs::MetadataStyle::HtmlComment),
+        Some("4.1.0".to_owned())
+    );
+}
+
+#[test]
+fn operation_identifier_validation_rejects_an_unknown_identifier_sharing_only_one_known_edge() {
+    let operation_ids = std::collections::BTreeSet::from(["source.inspect", "plan.compile"]);
+    let errors = crate::docs::operation_identifier_errors_for_tests(
+        "docs/operations.md",
+        "The source.execute operation is illustrative only.",
+        &operation_ids,
+    );
+
+    assert_eq!(
+        errors,
+        vec!["docs/operations.md references unknown operation ID: source.execute".to_owned()]
+    );
+}
+
+#[test]
 fn metadata_version_returns_none_for_missing_or_versionless_frontmatter() {
     let missing_frontmatter = "version: \"4.1.0\"\n# Title\n";
     let versionless_frontmatter = "---\nafad: \"4.0\"\n---\n# Title\n";
@@ -269,38 +294,6 @@ fn expected_metadata_style_exempts_the_root_readme_but_keeps_nested_readmes_mana
 }
 
 #[test]
-fn expected_afad_version_reads_and_validates_the_protocol_file() {
-    let repo_root = tempdir().expect("tempdir");
-    write_docs_protocol(repo_root.path(), "4.0");
-
-    assert_eq!(
-        crate::docs::expected_afad_version_for_tests(repo_root.path())
-            .expect("expected AFAD version"),
-        "4.0"
-    );
-
-    fs::write(
-        repo_root.path().join(".codex").join("PROTOCOL_AFAD.md"),
-        "# PROTOCOL_AFAD.md — Agent-First Documentation Protocol\n\n**Version:** 4.1\n",
-    )
-    .expect("write bold protocol");
-    assert_eq!(
-        crate::docs::expected_afad_version_for_tests(repo_root.path())
-            .expect("expected bold AFAD version"),
-        "4.1"
-    );
-
-    fs::write(
-        repo_root.path().join(".codex").join("PROTOCOL_AFAD.md"),
-        "# PROTOCOL_AFAD.md\n\nProtocol: `AGENT_FIRST_DOCUMENTATION`\n",
-    )
-    .expect("write malformed protocol");
-    let error = crate::docs::expected_afad_version_for_tests(repo_root.path())
-        .expect_err("missing protocol version should fail");
-
-    assert!(
-        error
-            .to_string()
-            .contains("could not determine AFAD version")
-    );
+fn documentation_metadata_format_version_is_code_owned() {
+    assert_eq!(crate::docs::DOC_METADATA_FORMAT_VERSION_FOR_TESTS, "4.0");
 }

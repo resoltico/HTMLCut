@@ -1,8 +1,121 @@
 version = 1
 
 # This is an executable ownership contract, not a formatting preference. Every maintained
-# first-party Rust source and test file resolves to the most-specific role below. Vendored parser
-# patches and the frozen semver baseline are deliberately outside this inventory.
+# first-party Rust source and test file resolves to the most-specific role below. The exact
+# HTMLCut-maintained selector and scraper boundary modules are owned here; unrelated upstream
+# sources and the frozen semver baseline remain outside this inventory.
+
+[[rules]]
+path = "patches/rust/selectors/work_budget.rs"
+match = "exact"
+role = "selector-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This owned module defines the selector work-budget state machine and its exhaustion invariant."
+split_trigger = "the work-budget state machine gains matching policy or exceeds any declared budget"
+max_physical_lines = 180
+max_items = 24
+max_public_items = 8
+max_imports = 8
+max_functions = 16
+max_decision_points = 32
+max_match_arms = 8
+allowed_internal_dependencies = []
+
+[[rules]]
+path = "patches/rust/scraper/src/selector/budget.rs"
+match = "exact"
+role = "scraper-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This owned adapter turns selector-budget exhaustion into a typed scraper outcome."
+split_trigger = "the fallible selector adapter gains parsing, traversal, or unrelated DOM policy"
+max_physical_lines = 220
+max_items = 30
+max_public_items = 10
+max_imports = 12
+max_functions = 20
+max_decision_points = 48
+max_match_arms = 12
+allowed_internal_dependencies = ["crate", "selector"]
+
+[[rules]]
+path = "patches/rust/scraper/src/html/clone.rs"
+match = "exact"
+role = "scraper-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This owned adapter clones one selected subtree without reparsing the complete source document."
+split_trigger = "the detached subtree clone gains parsing, rendering, or unrelated DOM policy"
+max_physical_lines = 220
+max_items = 24
+max_public_items = 8
+max_imports = 10
+max_functions = 16
+max_decision_points = 40
+max_match_arms = 8
+allowed_internal_dependencies = ["crate", "html"]
+
+[[rules]]
+path = "patches/rust/selectors/matching.rs"
+match = "exact"
+role = "selector-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This maintained fork owns metered selector matching and must preserve explicit work exhaustion semantics."
+split_trigger = "the matching boundary gains an independent selector subsystem or exceeds any declared budget"
+max_physical_lines = 2200
+max_items = 180
+max_public_items = 95
+max_imports = 45
+max_functions = 145
+max_decision_points = 560
+max_match_arms = 200
+allowed_internal_dependencies = ["attr", "bloom", "context", "kleene_value", "parser", "relative_selector", "tree"]
+
+[[rules]]
+path = "patches/rust/selectors/context.rs"
+match = "exact"
+role = "selector-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This maintained fork carries selector work-budget state into matching without hidden global state."
+split_trigger = "the work-budget carrier accumulates matching policy or exceeds any declared budget"
+max_physical_lines = 650
+max_items = 80
+max_public_items = 55
+max_imports = 25
+max_functions = 45
+max_decision_points = 120
+max_match_arms = 80
+allowed_internal_dependencies = ["attr", "bloom", "nth_index_cache", "parser", "relative_selector", "tree", "work_budget"]
+
+[[rules]]
+path = "patches/rust/scraper/src/html/mod.rs"
+match = "exact"
+role = "scraper-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This maintained fork propagates selector work exhaustion through HTML traversal rather than collapsing it into a non-match."
+split_trigger = "the traversal adapter gains unrelated DOM construction policy or exceeds any declared budget"
+max_physical_lines = 900
+max_items = 100
+max_public_items = 65
+max_imports = 35
+max_functions = 85
+max_decision_points = 300
+max_match_arms = 125
+allowed_internal_dependencies = ["crate", "selector"]
+
+[[rules]]
+path = "patches/rust/scraper/src/selector.rs"
+match = "exact"
+role = "scraper-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "This maintained fork exposes the fallible selector boundary used by HTMLCut extraction."
+split_trigger = "the public selector adapter grows a second responsibility or exceeds any declared budget"
+max_physical_lines = 500
+max_items = 80
+max_public_items = 60
+max_imports = 30
+max_functions = 55
+max_decision_points = 160
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "error"]
 
 [[rules]]
 path = "crates/htmlcut-core/src/tests/"
@@ -21,7 +134,7 @@ max_match_arms = 90
 allowed_internal_dependencies = ["crate", "catalog", "contracts", "diagnostics", "document", "extract", "inspect", "interop", "result", "schema", "selector_parse", "source", "tests", "wire"]
 
 [[rules]]
-path = "crates/htmlcut-core/src/interop/v1/types/"
+path = "crates/htmlcut-core/src/interop/v2/types/"
 match = "prefix"
 role = "core-interop-contract"
 owner = "HTMLCut interop"
@@ -50,7 +163,7 @@ max_imports = 20
 max_functions = 45
 max_decision_points = 130
 max_match_arms = 65
-allowed_internal_dependencies = ["crate", "contracts", "diagnostics", "document", "extract", "interop", "result", "selector_parse", "source"]
+allowed_internal_dependencies = ["crate", "contracts", "diagnostics", "document", "extract", "inspect", "interop", "result", "selector_parse", "source"]
 
 [[rules]]
 path = "crates/htmlcut-core/src/document/"

@@ -35,6 +35,7 @@ fn cli_schema_catalog_guards_reject_drift() {
         "<non-string panic>".to_owned()
     };
     assert!(panic_text.contains("cli schema catalog drifted"));
+    assert_cli_schema_catalog_for_tests(cli_schema_catalog_for_tests());
 
     let unknown_errors =
         cli_schema_catalog_validation_errors_for_tests(&[htmlcut_core::SchemaDescriptor {
@@ -136,8 +137,8 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
                 output_file: None,
                 file_write: default_output_file_write_args(),
                 filter: crate::args::SchemaFilterArgs {
-                    name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
-                    schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+                    name: Some(htmlcut_core::interop::v2::RESULT_SCHEMA_NAME.to_owned()),
+                    schema_version: Some(htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION),
                 },
             },
             0,
@@ -154,8 +155,8 @@ fn catalog_and_schema_commands_fall_back_to_human_errors_when_json_rendering_bre
                 output_file: None,
                 file_write: default_output_file_write_args(),
                 filter: crate::args::SchemaFilterArgs {
-                    name: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned()),
-                    schema_version: Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+                    name: Some(htmlcut_core::interop::v2::RESULT_SCHEMA_NAME.to_owned()),
+                    schema_version: Some(htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION),
                 },
             },
             0,

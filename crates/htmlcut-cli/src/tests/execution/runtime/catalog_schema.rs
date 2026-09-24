@@ -25,7 +25,6 @@ fn catalog_report_and_text_surface_core_operation_catalog() {
     let text = render_catalog_text(&report);
     assert!(text.contains("Operations:"));
     assert!(text.contains("source.inspect | inspect source"));
-    assert!(text.contains("document.parse | engine only"));
 
     let filtered = build_catalog_report(Some("select.preview")).expect("filtered catalog");
     assert_eq!(filtered.operations.len(), 1);
@@ -122,9 +121,9 @@ fn schema_report_surfaces_core_cli_and_interop_contracts() {
             && schema.surface == "engine"
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::interop::v1::PLAN_SCHEMA_NAME
+        schema.schema_name == htmlcut_core::interop::v2::PLAN_SCHEMA_NAME
             && schema.surface == "integration"
-            && schema.profile.as_deref() == Some("htmlcut-v1")
+            && schema.profile.as_deref() == Some("htmlcut-v2")
             && schema.stability == htmlcut_core::SchemaStability::Versioned
     }));
     assert!(report.schemas.iter().any(|schema| {
@@ -137,23 +136,22 @@ fn schema_report_surfaces_core_cli_and_interop_contracts() {
     }));
 
     let filtered = build_schema_report(
-        Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME),
-        Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+        Some(htmlcut_core::interop::v2::RESULT_SCHEMA_NAME),
+        Some(htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION),
     )
     .expect("filtered schema");
     assert_eq!(filtered.schemas.len(), 1);
     assert_eq!(
         filtered.schemas[0].schema_name,
-        htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
+        htmlcut_core::interop::v2::RESULT_SCHEMA_NAME
     );
 
     let error = build_schema_report(None, Some(1)).expect_err("version without name");
     assert_eq!(error.code, "CLI_SCHEMA_VERSION_REQUIRES_NAME");
     let version_error =
         build_schema_report(Some("htmlcut.result"), Some(99)).expect_err("unknown schema version");
-    assert!(
-        version_error
-            .message
-            .contains("Available versions for `htmlcut.result`: 9.")
-    );
+    assert!(version_error.message.contains(&format!(
+        "Available versions for `htmlcut.result`: {}.",
+        htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION
+    )));
 }

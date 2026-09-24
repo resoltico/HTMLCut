@@ -145,6 +145,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
             ensure_coverage_prerequisites(repo_root).expect("coverage preflight");
             ensure_miri_prerequisites(repo_root).expect("Miri preflight");
             ensure_fuzz_smoke_prerequisites(repo_root).expect("fuzz preflight");
+            ensure_mutants_prerequisites(repo_root).expect("mutation preflight");
         },
     );
 
@@ -524,6 +525,10 @@ fn capture_override_fixture(
 ) -> impl FnMut(&Path, &CommandSpec) -> Option<DynResult<Vec<u8>>> {
     let mut outputs: BTreeMap<(String, Vec<String>), Result<Vec<u8>, String>> = BTreeMap::new();
     outputs.insert(
+        command_signature(&cargo_mutants_probe_command()),
+        Ok(b"cargo-mutants 27.1.0\n".to_vec()),
+    );
+    outputs.insert(
         command_signature(&test_command_spec(
             "rustup",
             ["toolchain", "list"],
@@ -597,6 +602,8 @@ fn capture_override_fixture(
             })
     }
 }
+
+mod mutants;
 
 fn missing_toolchain_capture_override_fixture(
     toolchain: RepoToolchain,

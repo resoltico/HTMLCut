@@ -29,7 +29,7 @@ fn nightly_toolchain_preflight_rejects_a_compiler_below_the_workspace_floor() {
             assert!(
                 error
                     .to_string()
-                    .contains("Required workspace floor: `1.98`")
+                    .contains("Required workspace floor: `1.98.1`")
             );
         },
     );

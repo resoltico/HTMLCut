@@ -9,6 +9,10 @@ use crate::{
     CORE_SOURCE_INSPECTION_SCHEMA_NAME, CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
     EXTRACTION_REQUEST_SCHEMA_NAME, INSPECTION_OPTIONS_SCHEMA_NAME, RUNTIME_OPTIONS_SCHEMA_NAME,
     SOURCE_REQUEST_SCHEMA_NAME, SchemaRef,
+    interop::v2::{
+        EXPLORATION_RESULT_SCHEMA_NAME, EXPLORATION_RESULT_SCHEMA_VERSION,
+        TARGET_RESOLUTION_RESULT_SCHEMA_NAME, TARGET_RESOLUTION_RESULT_SCHEMA_VERSION,
+    },
 };
 
 macro_rules! operation_ids {
@@ -68,10 +72,12 @@ macro_rules! operation_ids {
 }
 
 operation_ids! {
-    /// Load and parse HTML into a document tree for in-process callers.
-    DocumentParse => "document.parse",
     /// Inspect the parsed document and summarize structure, samples, and base-URL behavior.
     SourceInspect => "source.inspect",
+    /// Explore bounded static document elements and same-snapshot selector proposals.
+    ElementsExplore => "elements.explore",
+    /// Resolve one complete target hint and propose same-snapshot selectors.
+    TargetPropose => "target.propose",
     /// Preview selector matches without committing to a final extraction payload.
     SelectPreview => "select.preview",
     /// Preview literal or regex slices without committing to a final extraction payload.
@@ -112,11 +118,6 @@ pub struct OperationDescriptor {
     pub description: &'static str,
 }
 
-const NO_SCHEMA_REFS: &[SchemaRef] = &[];
-const SOURCE_RUNTIME_SCHEMA_REFS: &[SchemaRef] = &[
-    SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-    SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
-];
 const SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS: &[SchemaRef] = &[
     SchemaRef::new(SOURCE_REQUEST_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
     SchemaRef::new(RUNTIME_OPTIONS_SCHEMA_NAME, CORE_REQUEST_SCHEMA_VERSION),
@@ -134,23 +135,17 @@ const SOURCE_INSPECTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
     CORE_SOURCE_INSPECTION_SCHEMA_NAME,
     CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
 )];
+const EXPLORATION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
+    EXPLORATION_RESULT_SCHEMA_NAME,
+    EXPLORATION_RESULT_SCHEMA_VERSION,
+)];
+const TARGET_RESOLUTION_RESULT_SCHEMA_REFS: &[SchemaRef] = &[SchemaRef::new(
+    TARGET_RESOLUTION_RESULT_SCHEMA_NAME,
+    TARGET_RESOLUTION_RESULT_SCHEMA_VERSION,
+)];
 
 /// Canonical catalog of every stable HTMLCut operation ID.
 pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
-    OperationDescriptor {
-        id: OperationId::DocumentParse,
-        cli_surface: None,
-        core_api: "parse document",
-        request_contract: OperationContract {
-            family: "source request + runtime options",
-            schema_refs: SOURCE_RUNTIME_SCHEMA_REFS,
-        },
-        result_contract: OperationContract {
-            family: "parsed document result",
-            schema_refs: NO_SCHEMA_REFS,
-        },
-        description: "Load and parse HTML into a document tree for in-process callers.",
-    },
     OperationDescriptor {
         id: OperationId::SourceInspect,
         cli_surface: Some("inspect source"),
@@ -164,6 +159,34 @@ pub const OPERATION_CATALOG: &[OperationDescriptor] = &[
             schema_refs: SOURCE_INSPECTION_RESULT_SCHEMA_REFS,
         },
         description: "Inspect the parsed document and summarize structure, samples, and base-URL behavior.",
+    },
+    OperationDescriptor {
+        id: OperationId::ElementsExplore,
+        cli_surface: Some("inspect elements"),
+        core_api: "prepare source and explore elements",
+        request_contract: OperationContract {
+            family: "source request + runtime options + exploration options",
+            schema_refs: SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            family: "exploration result",
+            schema_refs: EXPLORATION_RESULT_SCHEMA_REFS,
+        },
+        description: "Explore bounded static document elements and same-snapshot selector proposals.",
+    },
+    OperationDescriptor {
+        id: OperationId::TargetPropose,
+        cli_surface: Some("inspect propose"),
+        core_api: "prepare source and resolve target",
+        request_contract: OperationContract {
+            family: "source request + runtime options + target hint",
+            schema_refs: SOURCE_RUNTIME_INSPECTION_SCHEMA_REFS,
+        },
+        result_contract: OperationContract {
+            family: "target resolution result",
+            schema_refs: TARGET_RESOLUTION_RESULT_SCHEMA_REFS,
+        },
+        description: "Resolve one complete target hint and propose same-snapshot selectors.",
     },
     OperationDescriptor {
         id: OperationId::SelectPreview,
@@ -302,4 +325,24 @@ fn operation_catalog_contract_string_errors(catalog: &[OperationDescriptor]) -> 
     }
 
     errors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_id_display_preserves_every_canonical_identifier() {
+        for operation_id in OperationId::ALL {
+            assert_eq!(operation_id.to_string(), operation_id.as_str());
+        }
+    }
+
+    #[test]
+    fn operation_id_parse_error_display_is_actionable_and_stable() {
+        assert_eq!(
+            OperationIdParseError.to_string(),
+            "unknown HTMLCut operation ID"
+        );
+    }
 }

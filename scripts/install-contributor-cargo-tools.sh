@@ -64,10 +64,23 @@ tool_current_version() {
     local version_output
     local parsed_version
 
+    if [[ "${crate_name}" == "cargo-nextest" ]] && command -v "${binary_name}" >/dev/null 2>&1; then
+        version_output="$("${binary_name}" --version 2>/dev/null | head -n1 || true)"
+        parsed_version="$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' <<<"${version_output}" | head -n1 || true)"
+        if [[ -n "${parsed_version}" ]]; then
+            printf '%s\n' "${parsed_version}"
+            return 0
+        fi
+    fi
+
     if [[ -f "${CARGO_HOME}/.crates.toml" ]]; then
         parsed_version="$(
             awk -v crate_name="${crate_name}" -v binary_name="${binary_name}" '
                 index($0, "\"" crate_name " ") == 1 && index($0, "[\"" binary_name "\"]") > 0 {
+                    if (index($0, "(registry+") == 0) {
+                        print "NON_REGISTRY"
+                        exit
+                    }
                     if (match($0, /"[^ ]+ ([0-9]+\.[0-9]+\.[0-9]+) \(/)) {
                         line = substr($0, RSTART, RLENGTH)
                         sub(/^"[^ ]+ /, "", line)
@@ -78,6 +91,9 @@ tool_current_version() {
                 }
             ' "${CARGO_HOME}/.crates.toml"
         )"
+        if [[ "${parsed_version}" == "NON_REGISTRY" ]]; then
+            return 1
+        fi
         if [[ -n "${parsed_version}" ]]; then
             printf '%s\n' "${parsed_version}"
             return 0
@@ -115,19 +131,6 @@ install_tool_if_needed() {
     local binary_name="$3"
     local current_version
 
-    if [[ "${crate_name}" == "cargo-semver-checks" ]]; then
-        printf 'contributor cargo tool: installing %s from pinned upstream revision %s\n' \
-            "${binary_name}" \
-            "${HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION}"
-        cargo install \
-            --git https://github.com/obi1kenobi/cargo-semver-checks.git \
-            --rev "${HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION}" \
-            --locked \
-            --force \
-            cargo-semver-checks
-        return 0
-    fi
-
     current_version="$(tool_current_version "${crate_name}" "${binary_name}" || true)"
     if [[ "${current_version}" == "${version}" ]]; then
         printf 'contributor cargo tool: %s %s already installed as %s\n' "${binary_name}" "${version}" "${current_version}"
@@ -139,7 +142,20 @@ install_tool_if_needed() {
     else
         printf 'contributor cargo tool: installing %s %s\n' "${binary_name}" "${version}"
     fi
-    cargo install "${crate_name}" --locked --version "${version}" --force
+    if [[ "${crate_name}" == "cargo-nextest" ]]; then
+        "${htmlcut_install_contributor_cargo_tools_script_dir}/install-contributor-nextest.sh" \
+            "${version}"
+        return 0
+    fi
+    local install_args=(install "${crate_name}" --version "${version}" --force)
+    if [[ "${crate_name}" == "cargo-deny" ]]; then
+        # Deny's published lockfile has no yanked entries and supplies the packages named by
+        # its profile overrides. An unlocked install drops them and emits stale-profile warnings.
+        install_args+=(--locked)
+    fi
+    # Other tool versions are pinned above, while their transitive crates resolve from the
+    # currently available Rust-compatible registry set instead of stale upstream lockfiles.
+    cargo "+${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${install_args[@]}"
 }
 
 ensure_native_prerequisites

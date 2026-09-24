@@ -63,6 +63,148 @@ pub(super) fn inspect_source_parameters() -> Vec<CliParameterDescriptor> {
     parameters
 }
 
+pub(super) fn inspect_elements_parameters() -> Vec<CliParameterDescriptor> {
+    let mut parameters = common_source_parameters(CliParameterRequirement::Required);
+    parameters.extend([
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::Cursor,
+            CliParameterRequirement::Optional,
+            "JSON",
+            None,
+            Vec::new(),
+            "Exact bounded next_cursor JSON object from a previous page of the same source and exploration options.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::MaxElements,
+            CliParameterRequirement::Optional,
+            "COUNT",
+            Some(CliValue::U32(100)),
+            Vec::new(),
+            "Maximum element descriptors returned in one deterministic page.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::MaxWorkUnits,
+            CliParameterRequirement::Optional,
+            "COUNT",
+            Some(CliValue::U32(100_000)),
+            Vec::new(),
+            "Cumulative traversal and selector-proof work budget for the page.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::MaxProposalsPerElement,
+            CliParameterRequirement::Optional,
+            "COUNT",
+            Some(CliValue::U32(4)),
+            Vec::new(),
+            "Maximum fully proved selector proposals returned for one element.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::PreviewBytes,
+            CliParameterRequirement::Optional,
+            "BYTES",
+            Some(CliValue::U32(256)),
+            Vec::new(),
+            "Maximum UTF-8 bytes retained in one text preview.",
+        ),
+        param_option(
+            CliParameterSection::FilesystemOutput,
+            CliParameterId::OutputFile,
+            CliParameterRequirement::Optional,
+            "PATH",
+            None,
+            Vec::new(),
+            "Write the exploration-result JSON to exactly one file instead of stdout.",
+        ),
+    ]);
+    parameters.extend(output_file_filesystem_output_parameters());
+    parameters
+}
+
+pub(super) fn inspect_propose_parameters() -> Vec<CliParameterDescriptor> {
+    let mut parameters = common_source_parameters(CliParameterRequirement::Required);
+    parameters.extend([
+        param_option(
+            CliParameterSection::Target,
+            CliParameterId::TargetPath,
+            CliParameterRequirement::Required,
+            "PATH",
+            None,
+            Vec::new(),
+            "Complete htmlcut.dom_path.v1 path for the browser target.",
+        ),
+        param_option(
+            CliParameterSection::Target,
+            CliParameterId::TargetNamespace,
+            CliParameterRequirement::Required,
+            "NAMESPACE",
+            None,
+            Vec::new(),
+            "Required target namespace: html, svg, or mathml.",
+        ),
+        param_option(
+            CliParameterSection::Target,
+            CliParameterId::TargetLocalName,
+            CliParameterRequirement::Required,
+            "NAME",
+            None,
+            Vec::new(),
+            "Required parser-preserved target local name.",
+        ),
+        param_option(
+            CliParameterSection::Target,
+            CliParameterId::TargetTextDigestSha256,
+            CliParameterRequirement::Required,
+            "SHA256",
+            None,
+            Vec::new(),
+            "Lowercase SHA-256 of the bytes `htmlcut.dom_text.v1\\0` followed by UTF-8 descendant DOM text with CRLF and lone CR normalized to LF.",
+        ),
+        param_option(
+            CliParameterSection::Target,
+            CliParameterId::TargetSemanticAttribute,
+            CliParameterRequirement::Optional,
+            "NAME=VALUE",
+            None,
+            Vec::new(),
+            "Optional exact semantic attribute. Repeat to require several attributes.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::MaxWorkUnits,
+            CliParameterRequirement::Optional,
+            "COUNT",
+            Some(CliValue::U32(100_000)),
+            Vec::new(),
+            "Cumulative path, fingerprint, and selector-proof work budget.",
+        ),
+        param_option(
+            CliParameterSection::Exploration,
+            CliParameterId::MaxProposals,
+            CliParameterRequirement::Optional,
+            "COUNT",
+            Some(CliValue::U32(4)),
+            Vec::new(),
+            "Maximum fully proved selector proposals returned for the target.",
+        ),
+        param_option(
+            CliParameterSection::FilesystemOutput,
+            CliParameterId::OutputFile,
+            CliParameterRequirement::Optional,
+            "PATH",
+            None,
+            Vec::new(),
+            "Write the target-resolution-result JSON to exactly one file instead of stdout.",
+        ),
+    ]);
+    parameters.extend(output_file_filesystem_output_parameters());
+    parameters
+}
+
 pub(super) fn inspect_select_parameters() -> Vec<CliParameterDescriptor> {
     let mut parameters = common_definition_parameters();
     parameters.extend(request_file_aware_source_parameters());

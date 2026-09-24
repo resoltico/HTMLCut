@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Kleen logic: https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics
+//! Kleen logic: <https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics>
 
 /// A "trilean" value based on Kleen logic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

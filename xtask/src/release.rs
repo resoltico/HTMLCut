@@ -289,6 +289,29 @@ exit 9
     }
 
     #[test]
+    fn release_helpers_accept_successful_script_output() {
+        let repo_root = tempdir().expect("tempdir");
+        let scripts_dir = repo_root.path().join("scripts");
+        fs::create_dir_all(&scripts_dir).expect("create scripts dir");
+        fs::write(
+            scripts_dir.join("release-targets.sh"),
+            r#"#!/usr/bin/env bash
+if [[ "${1:-}" == "triples" ]]; then
+    printf 'aarch64-apple-darwin\nx86_64-unknown-linux-musl\n'
+    exit 0
+fi
+exit 64
+"#,
+        )
+        .expect("write release-targets.sh");
+
+        assert_eq!(
+            release_target_triples(repo_root.path()).expect("successful helper output"),
+            ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"]
+        );
+    }
+
+    #[test]
     fn release_helpers_preserve_shell_stdout_when_stderr_is_empty() {
         let repo_root = tempdir().expect("tempdir");
         let scripts_dir = repo_root.path().join("scripts");
@@ -307,6 +330,7 @@ exit 9
         let rendered = error.to_string();
         assert!(rendered.contains("release_target_triples failed"));
         assert!(rendered.contains("status"));
+        assert!(rendered.contains("stdout:\nboom"));
         assert!(!rendered.contains("stderr:"));
     }
 

@@ -79,8 +79,8 @@ bitflags! {
         const IS = 1 << 1;
         /// The visitor is inside :where(..)
         const WHERE = 1 << 2;
-        /// The visitor is inside :nth-child(.. of <selector list>) or
-        /// :nth-last-child(.. of <selector list>)
+        /// The visitor is inside :nth-child(.. of `selector list`) or
+        /// :nth-last-child(.. of `selector list`)
         const NTH_OF = 1 << 3;
         /// The visitor is inside :has(..)
         const HAS = 1 << 4;
@@ -114,8 +114,8 @@ impl SelectorListKind {
         self.intersects(SelectorListKind::WHERE)
     }
 
-    /// Whether the visitor is inside :nth-child(.. of <selector list>) or
-    /// :nth-last-child(.. of <selector list>)
+    /// Whether the visitor is inside :nth-child(.. of `selector list`) or
+    /// :nth-last-child(.. of `selector list`)
     pub fn in_nth_of(&self) -> bool {
         self.intersects(SelectorListKind::NTH_OF)
     }

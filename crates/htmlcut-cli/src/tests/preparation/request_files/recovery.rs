@@ -1,4 +1,19 @@
 use super::*;
+use serde_json::{Value, json};
+
+fn wire_definition_with_extraction(extraction: Value) -> String {
+    let definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    ));
+    let mut document = serde_json::to_value(
+        htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition)
+            .expect("current wire definition"),
+    )
+    .expect("definition JSON");
+    document["request"]["extraction"] = extraction;
+    serde_json::to_string_pretty(&document).expect("serialize definition")
+}
 
 #[test]
 fn request_file_recovery_hints_cover_preview_and_slice_variants() {
@@ -71,22 +86,14 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     let invalid_slice_shape_path = write_fixture_file(
         tempdir.path(),
         "invalid-slice-shape.json",
-        r#"{
-  "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 4,
-  "request": {
-    "spec_version": 7,
-    "source": { "input": { "type": "stdin" } },
-    "extraction": {
-      "kind": "slice",
-      "pattern": {
-        "mode": "literal",
-        "from": { "literal": "<article>" },
-        "to": "</article>"
-      }
-    }
-  }
-}"#,
+        &wire_definition_with_extraction(json!({
+            "kind": "slice",
+            "pattern": {
+                "mode": "literal",
+                "from": { "literal": "<article>" },
+                "to": "</article>"
+            }
+        })),
     );
     let invalid_slice_shape_error = expect_cli_error(
         load_extraction_definition_for_tests(
@@ -106,18 +113,10 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     let invalid_selector_array_path = write_fixture_file(
         tempdir.path(),
         "invalid-selector-array.json",
-        r#"{
-  "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 4,
-  "request": {
-    "spec_version": 7,
-    "source": { "input": { "type": "stdin" } },
-    "extraction": {
-      "kind": "selector",
-      "selector": ["article"]
-    }
-  }
-}"#,
+        &wire_definition_with_extraction(json!({
+            "kind": "selector",
+            "selector": ["article"]
+        })),
     );
     let invalid_selector_array_error = expect_cli_error(
         load_extraction_definition_for_tests(
@@ -136,22 +135,14 @@ fn request_file_recovery_hints_cover_preview_and_slice_variants() {
     let invalid_slice_array_path = write_fixture_file(
         tempdir.path(),
         "invalid-slice-array.json",
-        r#"{
-  "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 4,
-  "request": {
-    "spec_version": 7,
-    "source": { "input": { "type": "stdin" } },
-    "extraction": {
-      "kind": "slice",
-      "pattern": {
-        "mode": "literal",
-        "from": ["<article>"],
-        "to": "</article>"
-      }
-    }
-  }
-}"#,
+        &wire_definition_with_extraction(json!({
+            "kind": "slice",
+            "pattern": {
+                "mode": "literal",
+                "from": ["<article>"],
+                "to": "</article>"
+            }
+        })),
     );
     let invalid_slice_array_error = expect_cli_error(
         load_extraction_definition_for_tests(

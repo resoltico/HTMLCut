@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: SCHEMA
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
-  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v1, HtmlInput, plain_text, dom_canonicalization, comparison_text_output, schema inventory]
-  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v1 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry plain text and DOM canonicalization?"]
+  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v2, HtmlInput, plain_text, dom_canonicalization, comparison_text_output, schema inventory]
+  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v2 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry plain text and DOM canonicalization?"]
 ---
 
 # Schema Guide
@@ -14,9 +14,9 @@ HTMLCut exports a validator-grade JSON Schema registry for its maintained public
 
 The registry is the authority for JSON shape and every contract rule expressible in standard JSON
 Schema. For complete interop acceptance, validate the document against the exported schema,
-deserialize it, and invoke [`Plan::validate`](../crates/htmlcut-core/src/interop/v1/types/plan/mod.rs),
-[`InteropResult::validate`](../crates/htmlcut-core/src/interop/v1/types/result/mod.rs), or
-[`InteropError::validate`](../crates/htmlcut-core/src/interop/v1/types/result/mod.rs), as appropriate.
+deserialize it, and invoke [`Plan::validate`](../crates/htmlcut-core/src/interop/v2/types/plan/mod.rs),
+[`InteropResult::validate`](../crates/htmlcut-core/src/interop/v2/types/result/mod.rs), or
+[`InteropError::validate`](../crates/htmlcut-core/src/interop/v2/types/result/mod.rs), as appropriate.
 Runtime validation additionally checks semantic relations that standard JSON Schema cannot express,
 such as exact text-projection equality, UTF-8 byte bounds, and duplicate selector-parse equality.
 `stable_json` and digest helpers perform that runtime validation before producing canonical data.
@@ -31,7 +31,7 @@ CLI:
 htmlcut schema --output json
 htmlcut schema --name htmlcut.extraction_result --output json
 htmlcut schema --name htmlcut.extraction_definition --output json
-htmlcut schema --name htmlcut.result --schema-version 9 --output json
+htmlcut schema --name htmlcut.result --schema-version 10 --output json
 ```
 
 Rust:
@@ -54,7 +54,7 @@ assert!(schema_json.is_object());
 
 The exported registry profile is:
 
-- `htmlcut-json-schema-v1`
+- `htmlcut-json-schema-v2`
 
 ## Current Schema Inventory
 
@@ -89,11 +89,15 @@ Maintainer report contracts:
 
 - `htmlcut.gate_run`
 
-Interop v1 contracts:
+Interop v2 contracts:
 
 - `htmlcut.plan`
 - `htmlcut.result`
 - `htmlcut.error`
+- `htmlcut.preparation_error`
+- `htmlcut.exploration_result`
+- `htmlcut.exploration_error`
+- `htmlcut.target_resolution_result`
 
 Use `htmlcut schema --output json` when you need the current integer schema versions for those
 runtime families. The versioned `htmlcut.gate_run@1` document is emitted by `cargo xtask` quality
@@ -102,16 +106,15 @@ its execution, retention, and diagnostic contract.
 
 The interop families are their own published language, not schema aliases for generic core
 request/result types. Their selector text, delimiter boundaries, output contract, diagnostics, and
-byte ranges are owned by `htmlcut_core::interop::v1`.
+byte ranges are owned by `htmlcut_core::interop::v2`.
 
-The current DOM-aware interop revisions are `htmlcut.plan@8`, `htmlcut.result@9`, and
-`htmlcut.error@3`.
-Plan version 8 adds CSS-only `plain_text`: direct DOM descendant text without HTML-aware structural
-decoration. DOM canonicalization is valid only for CSS rendered-text, plain-text, or structured
-plans. Result version 9 carries `plain_text_output` and, when clone canonicalization is configured,
-`comparison_plain_text_output`, while preserving raw rendered and structured evidence. Result and
-error revisions enforce bounded public diagnostic messages; runtime validation additionally
-enforces the closed, duplicated selector-parse detail on invalid-selector errors.
+The current DOM-aware interop revisions are `htmlcut.plan@9`, `htmlcut.result@10`, and
+`htmlcut.error@4`. Plan version 9 adds explicit execution budgets and v2 fixed-width public counts,
+ordinals, and byte ranges. Result version 10 binds every outcome to a prepared source digest. The
+separate preparation, exploration, and target-resolution schemas all begin at version 1. Runtime
+validation additionally enforces the required tagged `InteropError.detail` union, the closed
+selector-parse evidence on invalid-selector errors, and the bounded exploration/target-resolution
+contracts.
 
 ## Catalog Relationship
 
@@ -155,7 +158,7 @@ The request-side schema family also covers:
 - reusable serialized CLI/core requests through `ExtractionDefinition`
 
 Those exported request/result schema roots are owned by the explicit
-`htmlcut_core::wire::v1::*Document` DTO layer. The schema registry does not derive its top-level
+`htmlcut_core::wire::v2::*Document` DTO layer. The schema registry does not derive its top-level
 wire contract directly from the in-process domain structs.
 
 ## Structured Match Metadata
@@ -225,11 +228,12 @@ That applies to:
 - CLI catalog reports
 - CLI schema reports
 - CLI error reports
-- interop v1 plan/result/error documents
+- interop v2 plan/result/error, preparation, exploration, and target-resolution documents
 
 ## Interop Note
 
-The interop v1 schemas are exported through the same registry, but `HtmlInput` is not.
+The interop v2 schemas are exported through the same registry, but `HtmlInput` and
+`PreparedDocument` are not.
 
 That is intentional.
 
@@ -241,9 +245,9 @@ decoded HTML delivery in production flows.
 Generic HTMLCut schemas are versioned and may hard-break by version when architecture quality
 requires it.
 
-Interop v1 documents are versioned under one stable profile string:
+Interop v2 documents are versioned under one stable profile string:
 
-- `htmlcut-v1`
+- `htmlcut-v2`
 
 When the interop plan/result/error contracts change, update their integer schema versions, tests,
 fixtures, and maintained docs in the same change.

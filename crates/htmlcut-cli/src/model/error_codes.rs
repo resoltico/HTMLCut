@@ -138,6 +138,20 @@ cli_error_codes! {
     TlsCaBundleConflict => "CLI_TLS_CA_BUNDLE_CONFLICT",
     /// The supplied preview character count is invalid.
     PreviewCharsInvalid => "CLI_PREVIEW_CHARS_INVALID",
+    /// One bounded exploration limit was zero or outside the supported range.
+    ExplorationLimitInvalid => "CLI_EXPLORATION_LIMIT_INVALID",
+    /// The JSON cursor is malformed or outside the supported input bound.
+    ExplorationCursorInvalid => "CLI_EXPLORATION_CURSOR_INVALID",
+    /// The cursor belongs to a different prepared source snapshot.
+    ExplorationCursorSnapshotMismatch => "CLI_EXPLORATION_CURSOR_SNAPSHOT_MISMATCH",
+    /// The cursor belongs to different exploration options.
+    ExplorationCursorOptionsMismatch => "CLI_EXPLORATION_CURSOR_OPTIONS_MISMATCH",
+    /// HTMLCut could not prepare the requested source for bounded exploration.
+    ExplorationPreparationFailed => "CLI_EXPLORATION_PREPARATION_FAILED",
+    /// Bounded exploration or target resolution did not produce an accepted result.
+    ExplorationFailed => "CLI_EXPLORATION_FAILED",
+    /// The CLI could not form one complete fail-closed browser target hint.
+    TargetHintInvalid => "CLI_TARGET_HINT_INVALID",
     /// The supplied source URL is syntactically invalid.
     SourceUrlInvalid => "CLI_SOURCE_URL_INVALID",
     /// The supplied source URL uses an unsupported scheme.

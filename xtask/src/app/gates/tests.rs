@@ -58,3 +58,51 @@ fn mutation_diff_staging_covers_relative_absolute_and_failure_paths() {
             .contains("failed to remove staged mutation diff")
     );
 }
+
+#[test]
+fn local_mutation_summary_uses_timeout_precedence_and_reports_exact_totals() {
+    let missed_only = LocalMutationSummary {
+        total_mutants: 1,
+        caught: 0,
+        missed: 1,
+        timed_out: 0,
+        unviable: 0,
+    };
+    let missed_error = ensure_local_mutation_summary_is_clean(missed_only)
+        .expect_err("missed mutant must fail the gate")
+        .to_string();
+    assert!(missed_error.contains("missed mutants: 1 missed, 0 timed out"));
+
+    let timeout_with_miss = LocalMutationSummary {
+        total_mutants: 2,
+        caught: 0,
+        missed: 1,
+        timed_out: 1,
+        unviable: 0,
+    };
+    let timeout_error = ensure_local_mutation_summary_is_clean(timeout_with_miss)
+        .expect_err("timed-out mutant must take precedence")
+        .to_string();
+    assert!(timeout_error.contains("timed-out mutants: 1 missed, 1 timed out"));
+}
+
+#[test]
+fn coverage_failure_rendering_retains_lines_and_branches_without_empty_sections() {
+    let rendered = render_coverage_failures(&[
+        CoverageFailure {
+            file: "crates/htmlcut-core/src/lib.rs".to_owned(),
+            uncovered_lines: vec!["12".to_owned(), "18".to_owned()],
+            uncovered_branch_count: 0,
+        },
+        CoverageFailure {
+            file: "xtask/src/lib.rs".to_owned(),
+            uncovered_lines: Vec::new(),
+            uncovered_branch_count: 2,
+        },
+    ]);
+
+    assert_eq!(
+        rendered,
+        "crates/htmlcut-core/src/lib.rs lines: 12, 18\nxtask/src/lib.rs branches: 2 uncovered"
+    );
+}

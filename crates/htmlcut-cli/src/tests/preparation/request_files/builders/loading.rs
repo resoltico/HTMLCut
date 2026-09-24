@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::json;
 
 #[test]
 fn request_file_loading_reports_read_shape_and_schema_failures() {
@@ -39,22 +40,22 @@ fn request_file_loading_reports_read_shape_and_schema_failures() {
             .contains("htmlcut catalog --operation select.extract --output json")
     );
 
-    let invalid_shape_path = write_fixture_file(
-        fixture.tempdir.path(),
-        "invalid-shape.json",
-        r#"{
-  "schema_name": "htmlcut.extraction_definition",
-  "schema_version": 4,
-  "request": {
-    "spec_version": 7,
-    "source": { "input": { "type": "stdin" } },
-    "extraction": {
-      "kind": "selector",
-      "selector": { "css": "article" }
-    }
-  }
-}"#,
-    );
+    let valid_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    ));
+    let mut invalid_shape = serde_json::to_value(
+        htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(valid_definition)
+            .expect("current wire definition"),
+    )
+    .expect("definition JSON");
+    invalid_shape["request"]["extraction"]["selector"] = json!({ "css": "article" });
+    let invalid_shape_path = fixture.tempdir.path().join("invalid-shape.json");
+    fs::write(
+        &invalid_shape_path,
+        serde_json::to_string_pretty(&invalid_shape).expect("serialize invalid definition"),
+    )
+    .expect("write invalid definition");
     let invalid_shape_error = expect_cli_error(
         load_extraction_definition_for_tests(
             &invalid_shape_path,
@@ -101,6 +102,37 @@ fn request_file_loading_reports_read_shape_and_schema_failures() {
         "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
     );
 
+    let valid_wire_definition = ExtractionDefinition::new(ExtractionRequest::new(
+        SourceRequest::stdin(),
+        ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
+    ));
+    let mut nested_identity_drift = serde_json::to_value(
+        htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(valid_wire_definition)
+            .expect("current wire definition"),
+    )
+    .expect("definition JSON");
+    nested_identity_drift["request"]["source"]["wire_profile"] =
+        Value::String("htmlcut-json-schema-invalid".to_owned());
+    let nested_identity_drift_path = fixture.tempdir.path().join("nested-identity-drift.json");
+    fs::write(
+        &nested_identity_drift_path,
+        serde_json::to_string_pretty(&nested_identity_drift).expect("serialize definition"),
+    )
+    .expect("write nested identity drift");
+    let nested_identity_error = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &nested_identity_drift_path,
+            ExtractionStrategy::Selector,
+            "select",
+        ),
+        "nested wire identity drift",
+    );
+    assert_eq!(
+        nested_identity_error.code,
+        "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
+    );
+    assert!(nested_identity_error.message.contains("identity envelope"));
+
     let mut unsupported_version =
         serde_json::to_value(&selector_definition).expect("definition json");
     unsupported_version["schema_version"] = Value::from(99);
@@ -128,29 +160,50 @@ fn request_file_loading_reports_read_shape_and_schema_failures() {
 fn request_file_loading_reports_strategy_mismatches() {
     let fixture = request_file_fixture();
 
-    assert_eq!(
-        expect_cli_error(
-            load_extraction_definition_for_tests(
-                &fixture.selector_definition_path,
-                ExtractionStrategy::Slice,
-                "slice",
-            ),
-            "strategy mismatch",
-        )
-        .code,
-        "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    let selector_for_slice = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &fixture.selector_definition_path,
+            ExtractionStrategy::Slice,
+            "slice",
+        ),
+        "strategy mismatch",
     );
     assert_eq!(
-        expect_cli_error(
-            load_extraction_definition_for_tests(
-                &fixture.slice_definition_path,
-                ExtractionStrategy::Selector,
-                "select",
-            ),
-            "slice strategy mismatch",
-        )
-        .code,
+        selector_for_slice.code,
         "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    );
+    assert!(
+        selector_for_slice
+            .message
+            .contains("cannot execute a selector extraction definition")
+    );
+    assert!(
+        selector_for_slice
+            .message
+            .contains("only accepts slice extraction definitions")
+    );
+
+    let slice_for_selector = expect_cli_error(
+        load_extraction_definition_for_tests(
+            &fixture.slice_definition_path,
+            ExtractionStrategy::Selector,
+            "select",
+        ),
+        "slice strategy mismatch",
+    );
+    assert_eq!(
+        slice_for_selector.code,
+        "CLI_REQUEST_FILE_STRATEGY_MISMATCH"
+    );
+    assert!(
+        slice_for_selector
+            .message
+            .contains("cannot execute a slice extraction definition")
+    );
+    assert!(
+        slice_for_selector
+            .message
+            .contains("only accepts selector extraction definitions")
     );
 }
 
@@ -180,11 +233,14 @@ fn request_file_loading_rejects_schema_less_and_legacy_slice_definitions() {
         ),
         "schema-less request file",
     );
-    assert_eq!(schema_less_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert_eq!(
+        schema_less_error.code,
+        "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
+    );
     assert!(
         schema_less_error
             .message
-            .contains("missing field `schema_name`")
+            .contains("does not carry the current")
     );
 
     let legacy_slice_path = write_fixture_file(
@@ -217,9 +273,13 @@ fn request_file_loading_rejects_schema_less_and_legacy_slice_definitions() {
         ),
         "legacy slice request file",
     );
-    assert_eq!(legacy_slice_error.code, "CLI_REQUEST_FILE_INVALID");
+    assert_eq!(
+        legacy_slice_error.code,
+        "CLI_REQUEST_FILE_SCHEMA_UNSUPPORTED"
+    );
     assert!(
-        legacy_slice_error.message.contains("include_start")
-            || legacy_slice_error.message.contains("include_end")
+        legacy_slice_error
+            .message
+            .contains("does not carry the current")
     );
 }

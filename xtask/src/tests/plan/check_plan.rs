@@ -86,6 +86,21 @@ fn check_plan_includes_all_strict_gates() {
             ]
     }));
     assert!(plan.iter().any(|spec| *spec == miri_contract_command()));
+    assert!(plan.iter().any(|spec| {
+        spec.args
+            == [
+                "test",
+                "-p",
+                "htmlcut-core",
+                "tests::interop_v2::surface::exploration::resource_limits::million_element_page_exhaustion_advances_and_a_tail_page_terminates",
+                "--lib",
+                "--all-features",
+                "--locked",
+                "--",
+                "--ignored",
+                "--exact",
+            ]
+    }));
     assert!(
         !plan
             .iter()
@@ -154,10 +169,10 @@ fn check_plan_includes_all_strict_gates() {
         spec.args.first().map(String::as_str) == Some("nextest")
             && spec.args.iter().any(|arg| arg == "--test")
     }));
-    assert!(
-        plan.iter()
-            .any(|spec| { spec.args == ["doc", "--workspace", "--no-deps", "--locked"] })
-    );
+    assert!(plan.iter().any(|spec| {
+        spec.args == ["doc", "--workspace", "--no-deps", "--locked"]
+            && spec.env.get("RUSTDOCFLAGS").map(String::as_str) == Some("-D warnings")
+    }));
     assert!(plan.iter().all(|spec| {
         !spec.args.iter().any(|arg| {
             arg == repo_root

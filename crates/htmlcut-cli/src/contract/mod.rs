@@ -71,6 +71,7 @@ pub fn render_cli_value(value: CliValue) -> String {
         CliValue::BoundaryRetentionMode(mode) => render_choice_name(mode),
         CliValue::Boolean(value) => value.to_string(),
         CliValue::Usize(value) => value.to_string(),
+        CliValue::U32(value) => value.to_string(),
         CliValue::U64(value) => value.to_string(),
     }
 }

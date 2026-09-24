@@ -89,8 +89,10 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
         )
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
+    plan.push(resource_acceptance_command());
     plan.push(miri_contract_command());
     plan.push(workspace_clippy_command());
+    plan.extend(maintained_fork_quality_specs());
     plan.push(workspace_outdated_command());
     plan.push(workspace_audit_command());
     plan.push(deny_check_command(repo_root)?);
@@ -128,6 +130,7 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         )
+        .with_env("RUSTDOCFLAGS", "-D warnings")
         .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
     );
     plan.push(
@@ -158,6 +161,27 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     Ok(plan)
 }
 
+fn resource_acceptance_command() -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
+        [
+            "test",
+            "-p",
+            "htmlcut-core",
+            "tests::interop_v2::surface::exploration::resource_limits::million_element_page_exhaustion_advances_and_a_tail_page_terminates",
+            "--lib",
+            "--all-features",
+            "--locked",
+            "--",
+            "--ignored",
+            "--exact",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
+}
+
 /// Builds the curated Rust gate executed by cross-platform CI jobs.
 pub fn ci_rust_gate_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     ensure_clean_semver_baseline(repo_root)?;
@@ -165,12 +189,61 @@ pub fn ci_rust_gate_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     let semver_release_type = semver_release_type(repo_root)?;
 
     let mut plan = vec![format_check_command(), workspace_clippy_command()];
+    plan.extend(maintained_fork_quality_specs());
     plan.extend(all_features_test_specs());
     plan.push(workspace_outdated_command());
     plan.push(workspace_audit_command());
     plan.push(deny_check_command(repo_root)?);
     plan.push(semver_check_command(repo_root, &semver_release_type));
     Ok(plan)
+}
+
+fn maintained_fork_quality_specs() -> Vec<CommandSpec> {
+    let manifests = [
+        "patches/rust/selectors/Cargo.toml",
+        "patches/rust/scraper/Cargo.toml",
+    ];
+    let mut specs = Vec::new();
+    for manifest in manifests {
+        specs.push(
+            CommandSpec::new(
+                "cargo",
+                [
+                    "clippy",
+                    "--manifest-path",
+                    manifest,
+                    "--lib",
+                    "--all-features",
+                    "--locked",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
+                CommandStdout::Inherit,
+                CommandToolchainEnv::Inherit,
+            )
+            .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+        );
+        specs.push(
+            CommandSpec::new(
+                "cargo",
+                [
+                    "doc",
+                    "--manifest-path",
+                    manifest,
+                    "--lib",
+                    "--no-deps",
+                    "--all-features",
+                    "--locked",
+                ],
+                CommandStdout::Inherit,
+                CommandToolchainEnv::Inherit,
+            )
+            .with_env("RUSTDOCFLAGS", "-D warnings")
+            .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace),
+        );
+    }
+    specs
 }
 
 /// Lists shell scripts that should be syntax-checked and linted by the maintainer gate.

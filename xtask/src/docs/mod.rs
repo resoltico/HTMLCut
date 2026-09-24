@@ -17,11 +17,12 @@ mod release;
 pub use paths::markdown_doc_paths;
 
 #[cfg(test)]
+pub(crate) use metadata::DOC_METADATA_FORMAT_VERSION as DOC_METADATA_FORMAT_VERSION_FOR_TESTS;
+#[cfg(test)]
 pub(crate) use metadata::{MetadataStyle, metadata_version};
 /// Validates Markdown metadata and local links for the maintained docs set.
 pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     let workspace_version = workspace_version(repo_root)?;
-    let expected_afad_version = metadata::expected_afad_version(repo_root)?;
     let link_pattern = Regex::new(r"\[[^\]]+\]\(([^)]+)\)")?;
     let schema_name_pattern = Regex::new(r"\bhtmlcut\.[a-z_]+\b")?;
     let updated_pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}$")?;
@@ -51,7 +52,7 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
                 &text,
                 metadata_style,
                 &updated_pattern,
-                &expected_afad_version,
+                metadata::DOC_METADATA_FORMAT_VERSION,
             ));
         }
         errors.extend(links::local_link_errors(
@@ -109,6 +110,15 @@ pub(crate) fn metadata_contract_errors_for_tests(
 }
 
 #[cfg(test)]
+pub(crate) fn operation_identifier_errors_for_tests(
+    display_path: &str,
+    text: &str,
+    operation_ids: &std::collections::BTreeSet<&'static str>,
+) -> Vec<String> {
+    identifiers::operation_identifier_errors(display_path, text, operation_ids)
+}
+
+#[cfg(test)]
 pub(crate) fn expected_metadata_style_for_tests(
     repo_root: &Path,
     path: &Path,
@@ -119,11 +129,6 @@ pub(crate) fn expected_metadata_style_for_tests(
 #[cfg(test)]
 pub(crate) fn repo_relative_display_for_tests(repo_root: &Path, path: &Path) -> String {
     paths::repo_relative_display_for_tests(repo_root, path)
-}
-
-#[cfg(test)]
-pub(crate) fn expected_afad_version_for_tests(repo_root: &Path) -> DynResult<String> {
-    metadata::expected_afad_version(repo_root)
 }
 
 #[cfg(test)]

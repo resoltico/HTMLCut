@@ -25,6 +25,9 @@ thread_local! {
     static STREAM_WRITE_OVERRIDE: RefCell<Option<Box<StreamWriteOverride>>> = RefCell::new(None);
 }
 
+#[cfg(test)]
+mod tests;
+
 /// Executes one maintainer command against the repository root.
 pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     #[cfg(test)]
@@ -41,10 +44,10 @@ pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
     command.stderr(Stdio::piped());
     let output = command.output()?;
     if output.status.success() {
-        if spec.stdout == CommandStdout::Inherit {
+        if should_replay_success_stdout(spec.stdout) {
             write_stdout(&output.stdout)?;
         }
-        if spec.stderr == CommandStderr::Inherit {
+        if should_replay_success_stderr(spec.stderr) {
             write_stderr(&output.stderr)?;
         }
         Ok(())
@@ -58,6 +61,18 @@ pub fn run_spec(repo_root: &Path, spec: &CommandSpec) -> DynResult<()> {
             &output.stderr,
         ))
     }
+}
+
+fn should_replay_success_stdout(stream: CommandStdout) -> bool {
+    matches!(stream, CommandStdout::Inherit)
+}
+
+fn should_replay_success_stderr(stream: CommandStderr) -> bool {
+    matches!(stream, CommandStderr::Inherit)
+}
+
+fn should_replay_captured_success_stderr(stream: CommandStderr) -> bool {
+    matches!(stream, CommandStderr::Inherit)
 }
 
 /// Captures stdout for one maintainer command and fails when the command exits non-zero.
@@ -77,7 +92,7 @@ pub fn capture_command_output(repo_root: &Path, spec: &CommandSpec) -> DynResult
 
     let output = command.output()?;
     if output.status.success() {
-        if spec.stderr == CommandStderr::Inherit {
+        if should_replay_captured_success_stderr(spec.stderr) {
             write_stderr(&output.stderr)?;
         }
         Ok(output.stdout)
@@ -211,18 +226,16 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
     let context =
         crate::gate_report::finish_streamed_command(index, spec, status, started.elapsed())
             .unwrap_or_else(|| format!("command failed with status {status}"));
-    if status.success() && context.is_empty() {
-        Ok(())
-    } else if !status.success() {
-        Err(command_failure_with_context(
+    match classify_command_completion(status.success(), context.is_empty()) {
+        CommandCompletion::Succeeded => Ok(()),
+        CommandCompletion::ProcessFailed => Err(command_failure_with_context(
             spec,
             status,
             &[],
             &[],
             &context,
-        ))
-    } else {
-        Err(context.into())
+        )),
+        CommandCompletion::EvidenceFailed => Err(context.into()),
     }
 }
 
@@ -250,18 +263,36 @@ fn capture_reported_command_output(
     };
     let context = crate::gate_report::finish_command(index, spec, &output, started.elapsed())
         .unwrap_or_else(|| format!("command failed with status {}", output.status));
-    if output.status.success() && context.is_empty() {
-        Ok(output.stdout)
-    } else if !output.status.success() {
-        Err(command_failure_with_context(
+    match classify_command_completion(output.status.success(), context.is_empty()) {
+        CommandCompletion::Succeeded => Ok(output.stdout),
+        CommandCompletion::ProcessFailed => Err(command_failure_with_context(
             spec,
             output.status,
             &output.stdout,
             &output.stderr,
             &context,
-        ))
+        )),
+        CommandCompletion::EvidenceFailed => Err(context.into()),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandCompletion {
+    Succeeded,
+    ProcessFailed,
+    EvidenceFailed,
+}
+
+fn classify_command_completion(
+    command_succeeded: bool,
+    evidence_is_clean: bool,
+) -> CommandCompletion {
+    if command_succeeded && evidence_is_clean {
+        CommandCompletion::Succeeded
+    } else if command_succeeded {
+        CommandCompletion::EvidenceFailed
     } else {
-        Err(context.into())
+        CommandCompletion::ProcessFailed
     }
 }
 
@@ -277,10 +308,14 @@ fn configured_command(repo_root: &Path, spec: &CommandSpec, stdin: Stdio) -> Dyn
 }
 
 fn apply_clang_override(command: &mut Command, spec: &CommandSpec) {
-    if spec.toolchain_env == CommandToolchainEnv::ForceClang {
+    if should_force_clang(spec.toolchain_env) {
         command.env("CC", "clang");
         command.env("CXX", "clang++");
     }
+}
+
+fn should_force_clang(environment: CommandToolchainEnv) -> bool {
+    matches!(environment, CommandToolchainEnv::ForceClang)
 }
 
 fn apply_artifact_layout(

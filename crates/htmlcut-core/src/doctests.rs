@@ -8,9 +8,9 @@ pub struct ArchitectureGuideDoctests;
 #[allow(dead_code)]
 pub struct CoreGuideDoctests;
 
-#[doc = include_str!("../../../docs/interop-v1.md")]
+#[doc = include_str!("../../../docs/interop-v2.md")]
 #[allow(dead_code)]
-pub struct InteropV1GuideDoctests;
+pub struct InteropV2GuideDoctests;
 
 #[doc = include_str!("../../../docs/schema.md")]
 #[allow(dead_code)]
@@ -21,7 +21,7 @@ fn maintained_markdown_doctest_paths() -> [&'static str; 4] {
     [
         "../../../docs/architecture.md",
         "../../../docs/core.md",
-        "../../../docs/interop-v1.md",
+        "../../../docs/interop-v2.md",
         "../../../docs/schema.md",
     ]
 }
@@ -37,7 +37,7 @@ mod tests {
             [
                 "../../../docs/architecture.md",
                 "../../../docs/core.md",
-                "../../../docs/interop-v1.md",
+                "../../../docs/interop-v2.md",
                 "../../../docs/schema.md",
             ]
         );

@@ -451,6 +451,7 @@ pub(super) fn raw_element_is_meta_refresh(element: &scraper::node::Element) -> b
     }
 
     element.attrs.iter().any(|(name, value)| {
-        name.local.as_ref() == "http-equiv" && value.eq_ignore_ascii_case("refresh")
+        let local: &str = name.local.as_ref();
+        local == "http-equiv" && value.eq_ignore_ascii_case("refresh")
     })
 }

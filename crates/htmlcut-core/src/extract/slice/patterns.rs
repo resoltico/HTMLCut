@@ -49,7 +49,7 @@ pub(crate) fn extract_slice_candidates(
     slice: &SliceSpec,
 ) -> Result<Vec<SliceCandidate>, Diagnostic> {
     let patterns = CompiledSlicePatterns::compile(slice)?;
-    extract_compiled_slice_candidates(source_text, slice, &patterns, &SelectionSpec::All)
+    extract_compiled_slice_candidates(source_text, slice, &patterns, &SelectionSpec::All, None)
 }
 
 pub(crate) fn extract_compiled_slice_candidates(
@@ -57,6 +57,7 @@ pub(crate) fn extract_compiled_slice_candidates(
     slice: &SliceSpec,
     patterns: &CompiledSlicePatterns,
     selection: &SelectionSpec,
+    max_candidates: Option<usize>,
 ) -> Result<Vec<SliceCandidate>, Diagnostic> {
     let mut candidates = Vec::new();
     let mut cursor = 0usize;
@@ -106,14 +107,17 @@ pub(crate) fn extract_compiled_slice_candidates(
             },
         };
         let candidate = SliceCandidate {
-            inner_html: source_text[inner_range.start..inner_range.end].to_owned(),
-            outer_html: source_text[outer_range.start..outer_range.end].to_owned(),
-            selected_html: source_text[selected_range.start..selected_range.end].to_owned(),
             selected_range,
             inner_range,
             outer_range,
-            matched_start: source_text[start.start..start.end].to_owned(),
-            matched_end: source_text[end.start..end.end].to_owned(),
+            matched_start_range: Range {
+                start: start.start,
+                end: start.end,
+            },
+            matched_end_range: Range {
+                start: end.start,
+                end: end.end,
+            },
         };
 
         let next_cursor = if candidate.outer_range.end > candidate.outer_range.start {
@@ -121,6 +125,15 @@ pub(crate) fn extract_compiled_slice_candidates(
         } else {
             candidate.outer_range.start + 1
         };
+        if let Some(maximum) = max_candidates
+            && candidates.len() >= maximum
+        {
+            return Err(error_diagnostic(
+                DiagnosticCode::CandidateLimitExceeded,
+                "Delimiter-pair execution exceeded its configured candidate limit.",
+                Some(json!({ "maxCandidates": maximum })),
+            ));
+        }
         candidates.push(candidate);
         cursor = require_slice_cursor_progress(cursor, next_cursor)?;
     }

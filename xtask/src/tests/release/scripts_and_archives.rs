@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn benchmark_time_parser_converts_host_units_to_bytes_and_rejects_ambiguity() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let dir = tempdir().expect("tempdir");
+    let darwin = dir.path().join("darwin.time");
+    let linux = dir.path().join("linux.time");
+    let ambiguous = dir.path().join("ambiguous.time");
+    fs::write(&darwin, "  1064960  maximum resident set size\n").expect("Darwin time");
+    fs::write(&linux, "Maximum resident set size (kbytes): 1024\n").expect("Linux time");
+    fs::write(
+        &ambiguous,
+        "  1024  maximum resident set size\n  2048  maximum resident set size\n",
+    )
+    .expect("ambiguous time");
+
+    let common = crate::release::bash_source_argument_for_tests(
+        &repo_root.join("scripts").join("common.sh"),
+    );
+    let helper = crate::release::bash_source_argument_for_tests(
+        &repo_root.join("scripts").join("benchmark-time.sh"),
+    );
+    for (platform, path, expected) in [
+        ("Darwin", &darwin, "1064960\n"),
+        ("Linux", &linux, "1048576\n"),
+    ] {
+        let path = crate::release::bash_source_argument_for_tests(path);
+        let output = bash_command()
+            .args([
+                "-c",
+                &format!(
+                    "set -euo pipefail; source \"{common}\"; source \"{helper}\"; htmlcut_peak_rss_bytes {platform} \"{path}\""
+                ),
+            ])
+            .output()
+            .expect("parse time output");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+    }
+    let ambiguous = crate::release::bash_source_argument_for_tests(&ambiguous);
+    let output = bash_command()
+        .args([
+            "-c",
+            &format!(
+                "set -euo pipefail; source \"{common}\"; source \"{helper}\"; htmlcut_peak_rss_bytes Darwin \"{ambiguous}\""
+            ),
+        ])
+        .output()
+        .expect("reject ambiguous time output");
+    assert!(!output.status.success());
+}
+
+#[test]
 fn release_smoke_script_checks_the_canonical_version_and_real_extraction_flow() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

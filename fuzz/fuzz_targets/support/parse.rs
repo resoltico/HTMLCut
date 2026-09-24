@@ -1,5 +1,6 @@
 use htmlcut_core::{
-    InspectionOptions, MaxBytes, RuntimeOptions, SourceRequest, inspect_source, parse_document,
+    InspectionOptions, MaxBytes, RuntimeOptions, SourceRequest, inspect_source,
+    interop::v2::{HtmlInput, PreparationLimits, prepare_document},
 };
 
 pub fn drive(data: &[u8]) {
@@ -10,6 +11,8 @@ pub fn drive(data: &[u8]) {
         ..RuntimeOptions::default()
     };
 
-    let _ = parse_document(&source, &runtime);
+    if let Ok(input) = HtmlInput::new("fuzz", html.as_ref()) {
+        let _ = prepare_document(input, PreparationLimits::default());
+    }
     let _ = inspect_source(&source, &runtime, &InspectionOptions::default());
 }

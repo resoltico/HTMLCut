@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: ARCHITECTURE
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
-  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v1, ownership boundary, discovery model]
-  questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v1?", "what does HTMLCut own versus downstream consumers?"]
+  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v2, ownership boundary, discovery model]
+  questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v2?", "what does HTMLCut own versus downstream consumers?"]
 ---
 
 # Architecture Guide
@@ -14,7 +14,7 @@ HTMLCut has three maintained product/runtime surfaces:
 
 1. `htmlcut-cli`
 2. `htmlcut-core`
-3. `htmlcut_core::interop::v1`
+3. `htmlcut_core::interop::v2`
 
 They are related, but they are not interchangeable.
 
@@ -45,7 +45,7 @@ Use `htmlcut-core` when you need:
 - operation discovery through `operation_catalog()`
 - schema discovery through `schema_catalog()`
 
-Use `htmlcut_core::interop::v1` when you need the `htmlcut-v1` downstream integration
+Use `htmlcut_core::interop::v2` when you need the `htmlcut-v2` downstream integration
 contract.
 
 It is the versioned interop surface for downstream integrations, not a replacement for the
@@ -77,11 +77,11 @@ broader `htmlcut-core` API, and not a CLI command.
 - bundles
 - exit codes
 
-`htmlcut_core::interop::v1` owns:
+`htmlcut_core::interop::v2` owns:
 
-- downstream plan validation for `htmlcut-v1`
-- the published selector, delimiter, output, diagnostic, and range language for `htmlcut-v1`
-- plan-to-core-request compilation for `htmlcut-v1`
+- downstream plan validation for `htmlcut-v2`
+- the published selector, delimiter, output, diagnostic, and range language for `htmlcut-v2`
+- plan-to-core-request compilation for `htmlcut-v2`
 - typed interop result and error documents
 - stable JSON and digest helpers for the interop profile
 - CSS-only detached-clone canonicalization after source-DOM candidate selection, with raw evidence
@@ -101,7 +101,7 @@ The maintained dependency direction is:
 
 1. `htmlcut-cli` -> `htmlcut-core`
 2. downstream embedders -> `htmlcut-core`
-3. downstream embedders that adopt the interop profile -> `htmlcut_core::interop::v1`
+3. downstream embedders that adopt the interop profile -> `htmlcut_core::interop::v2`
 4. downstream embedders that want HTMLCut-owned HTTP loading opt into
    `htmlcut-core/http-client` explicitly instead of inheriting it by default
 
@@ -171,7 +171,7 @@ The rule is:
 - generic CLI/core contracts may hard-break when architecture quality requires it
 - product-specific downstream interop must be versioned explicitly
 
-That is why downstream consumers integrate through `htmlcut-v1` instead of through ad hoc CLI
+That is why downstream consumers integrate through `htmlcut-v2` instead of through ad hoc CLI
 behavior or a mutable undocumented internal API.
 
 ## Doc Map
@@ -183,7 +183,7 @@ Use these docs together:
 - [CLI Library Guide](cli-library.md)
 - [Core Developer Guide](core.md)
 - [Schema Guide](schema.md)
-- [Interop v1 Guide](interop-v1.md)
+- [Interop v2 Guide](interop-v2.md)
 - [Operation Matrix](operations.md)
 - [Platform Support](platform-support.md)
 - [Quality Gates](quality-gates.md)

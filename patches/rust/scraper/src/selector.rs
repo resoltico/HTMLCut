@@ -17,6 +17,9 @@ use serde::{Deserialize, Serialize, de::Visitor};
 use crate::ElementRef;
 use crate::error::{SelectorErrorKind, SelectorParseError};
 
+mod budget;
+pub use budget::SelectorWorkLimitExceeded;
+
 /// Wrapper around CSS selectors.
 ///
 /// Represents a "selector group", i.e. a comma-separated list of selectors.
@@ -34,12 +37,13 @@ impl Selector {
 
     /// Parses a CSS selector group while preserving a source location on failure.
     pub fn parse_with_location(selectors: &str) -> Result<Self, SelectorParseError<'_>> {
-        let mut parser_input = cssparser::ParserInput::new(selectors);
-        let mut parser = cssparser::Parser::new(&mut parser_input);
+        let mut parser = cssparser::Parser::new(selectors);
 
         SelectorList::parse(&Parser, &mut parser, ParseRelative::No)
             .map(|selectors| Self { selectors })
-            .map_err(SelectorParseError::from)
+            .map_err(|error| {
+                SelectorParseError::from_parser(error, parser.current_source_location())
+            })
     }
 
     /// Returns true if the element matches this selector.

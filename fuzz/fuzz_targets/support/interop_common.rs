@@ -1,5 +1,5 @@
 use arbitrary::Arbitrary;
-use htmlcut_core::interop::v1::{
+use htmlcut_core::interop::v2::{
     AttributeName, HttpUrl, Output, Rendering, Selection, StrategyKind, TextWhitespace,
 };
 
@@ -72,6 +72,6 @@ pub fn sample_base_url() -> HttpUrl {
     HttpUrl::parse("https://example.com/fuzz/index.html").expect("static URL")
 }
 
-fn non_zero_index(raw: u8) -> std::num::NonZeroUsize {
-    std::num::NonZeroUsize::new((raw as usize % 4) + 1).expect("non-zero index")
+fn non_zero_index(raw: u8) -> std::num::NonZeroU32 {
+    std::num::NonZeroU32::new(u32::from(raw % 4) + 1).expect("non-zero index")
 }

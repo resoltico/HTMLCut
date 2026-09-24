@@ -229,7 +229,7 @@ fn public_schema_surface(owner: &str) -> (String, Option<String>) {
     match owner {
         "core" => ("engine".to_owned(), None),
         "cli" => ("cli".to_owned(), None),
-        "interop-v1" => ("integration".to_owned(), Some("htmlcut-v1".to_owned())),
+        "interop-v2" => ("integration".to_owned(), Some("htmlcut-v2".to_owned())),
         other => (other.to_owned(), None),
     }
 }
@@ -410,18 +410,18 @@ mod tests {
     #[test]
     fn schema_inventory_and_surface_helpers_cover_inventory_and_unknown_owners() {
         let inventory = build_schema_inventory_report(
-            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_NAME),
-            Some(htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION),
+            Some(htmlcut_core::interop::v2::RESULT_SCHEMA_NAME),
+            Some(htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION),
         )
         .expect("schema inventory");
         assert_eq!(inventory.command, "schema");
         assert_eq!(inventory.schemas.len(), 1);
         assert_eq!(
             inventory.schemas[0].schema_name,
-            htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
+            htmlcut_core::interop::v2::RESULT_SCHEMA_NAME
         );
         assert_eq!(inventory.schemas[0].surface, "integration");
-        assert_eq!(inventory.schemas[0].profile.as_deref(), Some("htmlcut-v1"));
+        assert_eq!(inventory.schemas[0].profile.as_deref(), Some("htmlcut-v2"));
 
         assert_eq!(
             public_schema_surface("synthetic-owner"),

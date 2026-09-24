@@ -1,13 +1,13 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "13.2.0"
+  version: "14.0.0"
   domain: MAINTAINER
-  updated: "2026-08-27"
+  updated: "2026-09-24"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
-  related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v1.md]
+  related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v2.md]
 -->
 
 # Contributing
@@ -26,7 +26,7 @@ compiler-override commands plus the reasoning behind them.
 Use [docs/workspace-layout.md](docs/workspace-layout.md) when you need the current workspace-member
 map or the package-name versus Rust-path naming rule.
 
-Rust `1.98.0` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
+Rust `1.98.1` is the pinned development toolchain through `rust-toolchain.toml`. The workspace
 manifest mirrors that compiler contract through `[workspace.package] rust-version`, and nightly
 exists separately for the coverage gate plus live `cargo-fuzz` campaigns.
 
@@ -49,7 +49,8 @@ or directly:
 The maintained gate definition lives in [docs/quality-gates.md](docs/quality-gates.md).
 For a short live libFuzzer pass that stages the checked-in corpora into disposable scratch, use
 `./scripts/xtask.sh fuzz-smoke`.
-For mutation testing against first-party runtime code, use `./scripts/xtask.sh mutants`.
+For mutation testing against first-party runtime code and the maintained selector/scraper
+resource-boundary modules, use `./scripts/xtask.sh mutants`.
 If you changed `.devcontainer/`, the contributor-container lifecycle scripts, or the contributor
 container docs, also run `./scripts/validate-devcontainer.sh` plus
 `./scripts/devcontainer-check.sh` from the host shell.
@@ -85,15 +86,13 @@ lockfile. Maintainer review is still required before merging dependency PRs.
 
 ## Frozen Interop Work
 
-`htmlcut-v1` is frozen.
+`htmlcut-v2` is frozen.
 
 If you change anything that touches frozen interop plan/result/error documents, digests, or schema
 identity:
 
 ```bash
-cargo test -p htmlcut-core --test v1
-cargo test -p htmlcut-core --test v1_properties
-cargo test -p htmlcut-core --test v1_acceptance
+cargo test -p htmlcut-core --lib interop_v2
 ```
 
 If the frozen fixtures must be deliberately regenerated:
@@ -104,8 +103,7 @@ UPDATE_FIXTURES=1 cargo test -p htmlcut-core -- --ignored update_fixtures
 
 Inspect that diff carefully before keeping it. The acceptance test must pass afterwards.
 
-Do not mutate `htmlcut-v1` casually. If downstream requirements exceed the frozen profile, add a
-new interop profile instead of changing v1 in place.
+Treat `htmlcut-v2` as the current maintained major contract. Breaking changes require a new major profile rather than an in-place compatibility path.
 
 ## Documentation Sync Loop
 
@@ -121,7 +119,9 @@ When behavior or public contract changes:
 Keep docs current-state only. Historical provenance belongs in `changelog.md`, not in reference
 docs.
 
-For docs under `docs/`, keep AFAD metadata current. For special top-level files such as
+For docs under `docs/`, keep AFAD metadata current. The docs-contract code in
+`xtask/src/docs/metadata.rs` owns the `afad` format version and validates the required
+metadata fields; it does not depend on agent instruction files. For special top-level files such as
 `README.md`, `CONTRIBUTING.md`, `PATENTS.md`, and `fuzz/README.md`, use HTML-comment metadata
 rather than YAML frontmatter.
 
@@ -130,7 +130,7 @@ and `htmlcut catalog`. The Markdown docs contract validates those identifiers di
 
 Concrete fenced `htmlcut ...` examples are expected to stay runnable under the docs-contract
 sandbox, and the maintained public Rust fences in `docs/architecture.md`, `docs/core.md`,
-`docs/interop-v1.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
+`docs/interop-v2.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
 change those examples, treat them as executable code, not prose.
 
 Default repo search intentionally excludes `semver-baseline/` through `.ignore` so day-to-day

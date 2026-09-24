@@ -11,7 +11,9 @@ use crate::{
     CommandStdout, CommandToolchainEnv, capture_command_output, gate_report_dir, run_spec,
 };
 
+mod progress;
 mod streams;
+mod summary;
 
 fn output_options(format: GateOutputFormat) -> GateOutputOptions {
     GateOutputOptions {
@@ -48,6 +50,33 @@ fn with_gate_report_root<T>(operation: impl FnOnce(&Path) -> T) -> T {
 fn report_value(run: &GateRun) -> Value {
     serde_json::from_slice(&fs::read(&run.report.report_path).expect("read retained gate report"))
         .expect("parse retained gate report")
+}
+
+#[test]
+fn replay_writer_preserves_one_terminal_line() {
+    let mut output = Vec::new();
+    write_replayed_text(&mut output, "replayed diagnostics");
+    assert_eq!(output, b"replayed diagnostics\n");
+}
+
+#[test]
+fn terminal_replay_routes_each_stream_to_its_own_writer() {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    replay_terminal_text_to(
+        HumanSummaryStream::Stdout,
+        "stdout replay",
+        &mut stdout,
+        &mut stderr,
+    );
+    replay_terminal_text_to(
+        HumanSummaryStream::Stderr,
+        "stderr replay",
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(stdout, b"stdout replay\n");
+    assert_eq!(stderr, b"stderr replay\n");
 }
 
 #[test]
@@ -144,7 +173,11 @@ fn instrumented_command_helpers_record_success_failure_and_spawn_errors() {
             },
         )
         .expect_err("instrumented spawn failure");
-        assert!(spawn_failure.to_string().contains("could not start"));
+        assert!(
+            spawn_failure
+                .to_string()
+                .starts_with("could not start `htmlcut-no-such-maintainer-tool`:")
+        );
 
         let capture_spawn_failure = with_gate_report(
             repo_root,
@@ -167,7 +200,7 @@ fn instrumented_command_helpers_record_success_failure_and_spawn_errors() {
         assert!(
             capture_spawn_failure
                 .to_string()
-                .contains("could not start")
+                .starts_with("could not start `htmlcut-no-such-maintainer-tool`:")
         );
 
         let mut live_options = output_options(GateOutputFormat::Human);
@@ -401,7 +434,11 @@ fn internal_checks_and_wrapper_lifecycle_are_retained_in_execution_order() {
         )
         .expect("parse report");
         assert_eq!(report["outcome"], "failed");
+        assert_eq!(report["steps"][0]["index"], 1);
+        assert_eq!(report["steps"][0]["id"], "lifecycle/001");
         assert_eq!(report["steps"][0]["kind"], "internal_check");
+        assert_eq!(report["steps"][1]["index"], 2);
+        assert_eq!(report["steps"][1]["id"], "lifecycle/002");
         assert_eq!(report["steps"][1]["failure_tail"], "broken invariant");
     });
 }
@@ -482,56 +519,6 @@ fn warning_summaries_deduplicate_repeated_diagnostics() {
 }
 
 #[test]
-fn human_summary_prints_the_retained_tail_for_a_failed_step() {
-    with_gate_report_root(|repo_root| {
-        let mut run = GateRun::start(
-            repo_root,
-            "human-failure",
-            output_options(GateOutputFormat::Human),
-        )
-        .expect("start gate run");
-        run.report.outcome = GateOutcome::Failed;
-        run.report.failure = Some(GateFailure {
-            message: "fixture failure".to_owned(),
-        });
-        run.report.steps.push(GateStep {
-            index: 1,
-            id: "human-failure/001".to_owned(),
-            kind: GateStepKind::InternalCheck,
-            label: "fixture".to_owned(),
-            command: None,
-            outcome: GateOutcome::Failed,
-            exit_code: None,
-            duration_ms: 0,
-            stdout_log: None,
-            stderr_log: None,
-            stdout_bytes: 0,
-            stderr_bytes: 0,
-            warnings: Vec::new(),
-            failure_tail: Some("retained failure tail".to_owned()),
-        });
-        run.report.steps.push(GateStep {
-            index: 2,
-            id: "human-failure/002".to_owned(),
-            kind: GateStepKind::InternalCheck,
-            label: "empty fixture".to_owned(),
-            command: None,
-            outcome: GateOutcome::Failed,
-            exit_code: None,
-            duration_ms: 0,
-            stdout_log: None,
-            stderr_log: None,
-            stdout_bytes: 0,
-            stderr_bytes: 0,
-            warnings: Vec::new(),
-            failure_tail: None,
-        });
-
-        run.render_human_summary();
-    });
-}
-
-#[test]
 fn retention_prunes_the_oldest_completed_reports_and_preserves_the_current_run() {
     with_gate_report_root(|repo_root| {
         let root = prepare_gate_report_root(repo_root).expect("prepare report root");
@@ -563,6 +550,7 @@ fn retention_prunes_the_oldest_completed_reports_and_preserves_the_current_run()
 
 #[test]
 fn helpers_bound_failure_output_and_render_each_stream_kind() {
+    assert_eq!(FAILURE_TAIL_BYTES, 8_192);
     let long_output = vec![b'x'; FAILURE_TAIL_BYTES + 4];
     assert_eq!(bounded_tail(&long_output).len(), FAILURE_TAIL_BYTES);
     assert!(bounded_tail(&long_output).bytes().all(|byte| byte == b'x'));
@@ -570,13 +558,23 @@ fn helpers_bound_failure_output_and_render_each_stream_kind() {
     let combined = combined_failure_tail(&long_output, &vec![b'y'; FAILURE_TAIL_BYTES + 4]);
     assert!(combined.len() <= FAILURE_TAIL_BYTES);
     assert!(combined.ends_with("yyyy"));
+    assert_eq!(
+        combined_failure_tail(b"one", b"two"),
+        "stdout:\none\nstderr:\ntwo"
+    );
     assert_eq!(unix_millis(UNIX_EPOCH).expect("epoch timestamp"), 0);
     assert!(unix_millis(UNIX_EPOCH - Duration::from_millis(1)).is_err());
     assert_eq!(render_stream(GateStream::Stdout), "stdout");
     assert_eq!(render_stream(GateStream::Stderr), "stderr");
-    replay_stream("empty", b"", false);
-    replay_stream("stdout", b"retained output", false);
-    replay_stream("stderr", b"retained error", true);
+    assert_eq!(replay_stream("empty", b""), None);
+    assert_eq!(
+        replay_stream("stdout", b"retained output"),
+        Some("--- stdout ---\nretained output".to_owned())
+    );
+    assert_eq!(
+        replay_stream("stderr", b"retained error"),
+        Some("--- stderr ---\nretained error".to_owned())
+    );
     record_internal_check("outside a gate", Ok(()), Duration::ZERO);
     record_internal_check(
         "outside a gate",

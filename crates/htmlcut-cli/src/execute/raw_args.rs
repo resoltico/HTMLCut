@@ -219,6 +219,8 @@ fn longest_known_command_path<'a>(tokens: &[&'a str]) -> Option<Vec<&'a str>> {
         &["inspect", "source"],
         &["inspect", "select"],
         &["inspect", "slice"],
+        &["inspect", "elements"],
+        &["inspect", "propose"],
         &["catalog"],
         &["schema"],
         &["select"],

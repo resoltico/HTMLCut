@@ -48,12 +48,18 @@ printf '%s\n' "$*" > "{args_path}"
 [[ "$3" == "-p" ]]
 [[ "$4" == "xtask" ]]
 [[ "$5" == "--locked" ]]
+[[ -z "${{MAKEFLAGS+x}}" ]]
+[[ -z "${{MFLAGS+x}}" ]]
+[[ -z "${{CARGO_MAKEFLAGS+x}}" ]]
 target_root="${{CARGO_TARGET_DIR:?xtask launcher must set a detached target directory}}"
 mkdir -p "${{target_root}}/debug"
 cat > "${{target_root}}/debug/xtask.exe" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$1" == "ci-rust-gate" ]]
+[[ -z "${{MAKEFLAGS+x}}" ]]
+[[ -z "${{MFLAGS+x}}" ]]
+[[ -z "${{CARGO_MAKEFLAGS+x}}" ]]
 case "$0" in
   "{managed_target_root}"/*) exit 42 ;;
 esac
@@ -85,6 +91,7 @@ chmod +x "${{target_root}}/debug/xtask.exe"
 export PATH="{fake_bin}:$PATH"
 export OS=Windows_NT
 export CARGO_TARGET_DIR="{managed_target_root}"
+export MAKEFLAGS=stale-jobserver MFLAGS=stale-jobserver CARGO_MAKEFLAGS=stale-jobserver
 cd "{repo_root}"
 bash ./scripts/xtask.sh ci-rust-gate
 "#,
@@ -238,7 +245,7 @@ extract_release_archive "{fake_archive}" "zip" "{fake_extract_root}"
 }
 
 #[test]
-fn maintainer_protocol_paths_are_tracked_but_excluded_from_source_archives() {
+fn source_archives_retain_regular_release_documents() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(
         repo_root.path().join(".gitignore"),
@@ -251,13 +258,9 @@ fn maintainer_protocol_paths_are_tracked_but_excluded_from_source_archives() {
     )
     .expect("write gitattributes");
     fs::write(repo_root.path().join("README.md"), "# Fixture\n").expect("write README");
-    fs::write(repo_root.path().join("AGENTS.md"), "# Agent Entry\n").expect("write AGENTS");
-    let codex_dir = repo_root.path().join(".codex");
-    fs::create_dir_all(&codex_dir).expect("create .codex");
-    fs::write(codex_dir.join("PROTOCOL_AFAD.md"), "# Protocol\n").expect("write protocol");
+    fs::write(repo_root.path().join("LICENSE"), "MIT\n").expect("write LICENSE");
 
     init_git_repo(repo_root.path());
-    assert_visible_as_untracked(repo_root.path(), &["AGENTS.md", ".codex/PROTOCOL_AFAD.md"]);
     git(repo_root.path(), &["add", "."]);
     git(repo_root.path(), &["commit", "-m", "fixture"]);
 
@@ -265,10 +268,5 @@ fn maintainer_protocol_paths_are_tracked_but_excluded_from_source_archives() {
     let entries = tar_entry_names(&archive);
 
     assert!(entries.iter().any(|entry| entry == "README.md"));
-    assert!(!entries.iter().any(|entry| entry == "AGENTS.md"));
-    assert!(
-        !entries
-            .iter()
-            .any(|entry| entry == ".codex/PROTOCOL_AFAD.md")
-    );
+    assert!(entries.iter().any(|entry| entry == "LICENSE"));
 }

@@ -256,6 +256,46 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
 }
 
 #[test]
+fn local_mutation_gate_records_success_and_contract_failures_from_reconciled_evidence() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+
+        let clean = crate::mutants::LocalMutationSummary {
+            total_mutants: 1,
+            caught: 1,
+            missed: 0,
+            timed_out: 0,
+            unviable: 0,
+        };
+        with_ready_preflight(|| {
+            crate::mutants::with_local_mutation_campaign_override(
+                move || Ok(clean),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+            )
+        })
+        .expect("clean local mutation evidence passes");
+
+        let missed = crate::mutants::LocalMutationSummary {
+            total_mutants: 1,
+            caught: 0,
+            missed: 1,
+            timed_out: 0,
+            unviable: 0,
+        };
+        let error = with_ready_preflight(|| {
+            crate::mutants::with_local_mutation_campaign_override(
+                move || Ok(missed),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+            )
+        })
+        .expect_err("missed local mutation evidence fails");
+        assert!(error.to_string().contains("found missed mutants"));
+    });
+}
+
+#[test]
 fn mutation_testing_preserves_a_failed_mutant_result_for_inspection() {
     let repo_root = tempdir().expect("repo tempdir");
     with_isolated_target_dir(repo_root.path(), || {
@@ -278,7 +318,7 @@ fn mutation_testing_preserves_a_failed_mutant_result_for_inspection() {
                     }
                     Some(Ok(()))
                 },
-                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants", "--in-place"]),
             )
         })
         .expect_err("surviving mutant should fail the mutation gate");
@@ -319,7 +359,7 @@ fn mutation_testing_classifies_missed_timed_out_and_broken_baseline_runs() {
                             })
                         })
                     },
-                    || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+                    || main_entry_with(repo_root.path(), ["xtask", "mutants", "--in-place"]),
                 )
             })
             .expect_err("mutation run should fail");

@@ -7,39 +7,78 @@ use crate::model::{
 };
 use crate::plan::coverage_target_dir as workspace_coverage_target_dir;
 
-const COVERAGE_PACKAGES: &[&str] = &["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir", "xtask"];
+const APPLICATION_COVERAGE_PACKAGES: &[&str] =
+    &["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir", "xtask"];
+
+const FORK_COVERAGE_PACKAGES: &[&str] = &["htmlcut-selectors", "htmlcut-scraper"];
 
 /// Builds the `cargo llvm-cov` command used by the one-ring coverage gate.
-pub fn coverage_command(repo_root: &Path) -> CommandSpec {
+pub fn coverage_command(_repo_root: &Path) -> CommandSpec {
     let mut args = vec![
         MAINTAINED_NIGHTLY_TOOLCHAIN.to_owned(),
         "llvm-cov".to_owned(),
         "--branch".to_owned(),
     ];
-    for package in COVERAGE_PACKAGES {
+    for package in APPLICATION_COVERAGE_PACKAGES {
         args.push("-p".to_owned());
         args.push((*package).to_owned());
     }
     args.extend(
+        ["--all-targets", "--all-features", "--locked", "--no-report"]
+            .into_iter()
+            .map(str::to_owned),
+    );
+    CommandSpec::new(
+        "cargo",
+        args,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedCoverage)
+}
+
+/// Builds the default-feature maintained-fork execution that contributes to the shared coverage
+/// profile without enabling optional fork features that alter application semantics.
+pub fn fork_coverage_command() -> CommandSpec {
+    let mut args = vec![
+        MAINTAINED_NIGHTLY_TOOLCHAIN.to_owned(),
+        "llvm-cov".to_owned(),
+        "--branch".to_owned(),
+        "--no-clean".to_owned(),
+    ];
+    for package in FORK_COVERAGE_PACKAGES {
+        args.push("-p".to_owned());
+        args.push((*package).to_owned());
+    }
+    args.extend(["--all-targets", "--locked"].into_iter().map(str::to_owned));
+    CommandSpec::new(
+        "cargo",
+        args,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedCoverage)
+}
+
+/// Builds the final merged LLVM JSON report after application and fork test executions.
+pub fn coverage_report_command(repo_root: &Path) -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
         [
-            "--all-targets",
-            "--all-features",
-            "--locked",
+            MAINTAINED_NIGHTLY_TOOLCHAIN,
+            "llvm-cov",
+            "report",
             "--json",
             "--output-path",
         ]
         .into_iter()
-        .map(str::to_owned),
-    );
-    args.push(
-        coverage_output_path(repo_root)
-            .to_string_lossy()
-            .into_owned(),
-    );
-
-    CommandSpec::new(
-        "cargo",
-        args,
+        .map(str::to_owned)
+        .chain(std::iter::once(
+            coverage_output_path(repo_root)
+                .to_string_lossy()
+                .into_owned(),
+        ))
+        .collect::<Vec<_>>(),
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )

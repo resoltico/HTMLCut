@@ -21,6 +21,12 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
     let slice_preview =
         crate::contract::cli_operation_contract(htmlcut_core::OperationId::SlicePreview)
             .expect("slice preview contract");
+    let elements_explore =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::ElementsExplore)
+            .expect("elements exploration contract");
+    let target_propose =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::TargetPropose)
+            .expect("target proposal contract");
 
     for contract in [
         source_inspect,
@@ -28,8 +34,47 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
         slice_extract,
         select_preview,
         slice_preview,
+        elements_explore,
+        target_propose,
     ] {
         assert_command_path_registered(&command, contract.command_path);
+    }
+
+    for parameter in [
+        crate::contract::CliParameterId::Cursor,
+        crate::contract::CliParameterId::MaxElements,
+        crate::contract::CliParameterId::MaxWorkUnits,
+        crate::contract::CliParameterId::MaxProposalsPerElement,
+        crate::contract::CliParameterId::PreviewBytes,
+        crate::contract::CliParameterId::OutputFile,
+        crate::contract::CliParameterId::Overwrite,
+    ] {
+        assert!(
+            elements_explore
+                .parameters
+                .iter()
+                .any(|descriptor| descriptor.id == parameter),
+            "elements exploration contract must publish {parameter}"
+        );
+    }
+    for parameter in [
+        crate::contract::CliParameterId::TargetPath,
+        crate::contract::CliParameterId::TargetNamespace,
+        crate::contract::CliParameterId::TargetLocalName,
+        crate::contract::CliParameterId::TargetTextDigestSha256,
+        crate::contract::CliParameterId::TargetSemanticAttribute,
+        crate::contract::CliParameterId::MaxWorkUnits,
+        crate::contract::CliParameterId::MaxProposals,
+        crate::contract::CliParameterId::OutputFile,
+        crate::contract::CliParameterId::Overwrite,
+    ] {
+        assert!(
+            target_propose
+                .parameters
+                .iter()
+                .any(|descriptor| descriptor.id == parameter),
+            "target proposal contract must publish {parameter}"
+        );
     }
 
     let select_args = match Cli::try_parse_from(["htmlcut", "select", "page.html", "--css", "a"]) {
@@ -305,9 +350,10 @@ fn contract_lint_clap_defaults_and_command_surfaces_match_core_contracts() {
 
 #[test]
 fn contract_validation_helpers_accept_the_live_cli_catalogs() {
+    let errors = crate::contract::cli_operation_catalog_validation_errors();
     assert!(
-        crate::contract::cli_operation_catalog_validation_errors().is_empty(),
-        "live CLI operation catalog should validate against OPERATION_CATALOG"
+        errors.is_empty(),
+        "live CLI operation catalog should validate against OPERATION_CATALOG: {errors:#?}"
     );
     crate::contract::assert_cli_operation_catalog_consistency_for_tests(
         crate::contract::cli_operation_catalog(),

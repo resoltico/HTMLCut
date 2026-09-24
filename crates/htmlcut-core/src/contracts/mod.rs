@@ -27,9 +27,9 @@ pub use request::{
 pub use results::{
     ContentCandidateInspection, DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel,
     DocumentInspection, ExtractionMatch, ExtractionMatchMetadata, ExtractionResult,
-    ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, ParseDocumentResult,
-    ParsedDocument, Range, SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction,
-    SourceLoadOutcome, SourceLoadStep, SourceMetadata,
+    ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
+    SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction, SourceLoadOutcome,
+    SourceLoadStep, SourceMetadata,
 };
 
 pub(crate) fn default_preview_chars_non_zero() -> NonZeroUsize {

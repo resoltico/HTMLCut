@@ -16,7 +16,7 @@ use self::metrics::{Metrics, measured_internal_dependencies};
 use self::policy::{Policy, Rule};
 
 const POLICY_PATH: &str = "tooling/rust-source-shape-policy.toml";
-const SOURCE_ROOTS: [&str; 8] = [
+const SOURCE_ROOTS: [&str; 15] = [
     "crates/htmlcut-core/src",
     "crates/htmlcut-core/tests",
     "crates/htmlcut-cli/src",
@@ -25,6 +25,13 @@ const SOURCE_ROOTS: [&str; 8] = [
     "xtask/src",
     "xtask/tests",
     "fuzz/fuzz_targets",
+    "patches/rust/selectors/matching.rs",
+    "patches/rust/selectors/context.rs",
+    "patches/rust/scraper/src/html/mod.rs",
+    "patches/rust/scraper/src/selector.rs",
+    "patches/rust/selectors/work_budget.rs",
+    "patches/rust/scraper/src/html/clone.rs",
+    "patches/rust/scraper/src/selector/budget.rs",
 ];
 
 /// Enforces HTMLCut's repository-owned Rust source-structure contract.
@@ -203,7 +210,7 @@ fn source_from_path(repo_root: &Path, path: PathBuf) -> DynResult<Option<Maintai
     let relative_path = relative.to_string_lossy().replace('\\', "/");
     let is_maintained = SOURCE_ROOTS
         .iter()
-        .any(|root| relative_path.starts_with(&format!("{root}/")));
+        .any(|root| relative_path == *root || relative_path.starts_with(&format!("{root}/")));
     if !is_maintained {
         return Ok(None);
     }

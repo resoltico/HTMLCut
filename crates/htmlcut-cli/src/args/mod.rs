@@ -22,7 +22,8 @@ pub(crate) use self::discovery::{CatalogArgs, SchemaArgs};
 pub(crate) use self::discovery::{CatalogFilterArgs, SchemaFilterArgs};
 pub(crate) use self::extract::{SelectArgs, SliceArgs};
 pub(crate) use self::inspect::{
-    InspectArgs, InspectCommands, InspectSelectArgs, InspectSliceArgs, InspectSourceArgs,
+    InspectArgs, InspectCommands, InspectElementsArgs, InspectProposeArgs, InspectSelectArgs,
+    InspectSliceArgs, InspectSourceArgs,
 };
 pub(crate) use self::shared::{
     DefinitionArgs, ExtractOutputArgs, FileWriteArgs, GlobalArgs, InspectOutputArgs,

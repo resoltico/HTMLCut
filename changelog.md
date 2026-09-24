@@ -4,6 +4,42 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [14.0.0] - 2026-09-24
+
+### Added
+
+- Rust integrations can compile a source-independent `htmlcut_core::interop::v2::Plan`, prepare one bounded `HtmlInput` as an opaque, non-serializable `PreparedDocument`, and execute multiple plans against that snapshot; preparation failures have their own typed error document, and successful results identify the prepared source.
+- Interop plans can bound selector work, candidates, selected matches, per-match output bytes, and total output bytes; exhausted limits return typed diagnostics instead of a partial result or a no-match answer.
+- Prepared documents support bounded element exploration in document order under one shared per-page work budget, snapshot-bound pagination, namespace-aware paths, safe attribute and text previews, and selector proposals proved unique on that snapshot; target resolution requires the path, element name, domain-separated descendant-text fingerprint, and any supplied semantic attributes to agree.
+- The JSON-only `htmlcut inspect elements` and `htmlcut inspect propose` commands expose exploration and fail-closed target resolution to CLI users; `inspect elements --cursor` continues an unchanged source and option set, so capture changing web pages to a file before traversing multiple pages. The schema registry includes preparation, exploration, and target-resolution result and error families; see the [Interop v2 guide](docs/interop-v2.md) for the fingerprint contract.
+
+### Changed
+
+- **Breaking for Rust integrations:** `htmlcut-v2` uses `htmlcut.plan@9`, `htmlcut.result@10`, and `htmlcut.error@4`; plans declare execution budgets, results carry prepared-source identity and fixed-width counts and ranges, and errors use a required tagged `detail` union instead of an open-ended map. Update plan builders, validators, and persisted interop documents; older revisions are rejected.
+- **Breaking for serialized core documents:** the core request specification is version `8`, extraction results are schema version `7`, and source-inspection results are schema version `6`. `wire::v2` preflights an identity envelope, rejects unknown fields, and uses fixed-width public numbers; readers and writers of earlier wire or core schema revisions must migrate their documents.
+- The minimum supported Rust version is `1.98.1`, matching the pinned development toolchain; downstream builds and CI using Rust `1.98.0` or earlier must update.
+- Attribute maps use lexical ordering in every build, and the bundled `htmlcut-scraper` fork no longer accepts its optional `deterministic` feature. Direct fork users must drop that feature; consumers comparing serialized HTML or structured attributes byte-for-byte should refresh expectations for the new ordering.
+- The maintained parser dependencies move to `cssparser` 0.38, `phf` 0.14, and `web_atoms` 0.3. Direct users of the bundled `htmlcut-scraper` and `htmlcut-selectors` forks must adjust code that matches selector parse-error variants or relied on their removed token payloads.
+- Local mutation campaigns use parallel disposable workers with isolated build roots, read-only non-Rust inputs, and free-space checks; maintainers may see an early refusal when a complete worker lane cannot fit the available scratch space.
+- Contributor QA tools use pinned releases, a SHA-256-verified Nextest archive, Deny's published lockfile, and the repository's exact Rust toolchain. Contributors who installed the earlier tool set should rerun the maintained installer.
+
+### Removed
+
+- **Breaking:** `htmlcut_core::interop::v1` and its one-shot plan and execution entry points are gone; use `compile_plan`, `prepare_document`, and `execute` through `interop::v2`.
+- **Breaking:** `htmlcut_core::wire::v1`, the public parsed-DOM facade, and the `document.parse` catalog operation are gone; use `wire::v2` for serialized documents and `prepare_document` for reusable parsed HTML.
+
+### Fixed
+
+- Interrupted isolated devcontainer validation reclaims its abandoned, unmounted Cargo, Rustup, and cache volumes before the next run.
+
+### Internal
+
+- Selector URL rewriting and DOM canonicalization use bounded detached selected subtrees instead of cloning the complete source document.
+- The maintained benchmark compares one preparation and 50 compiled-plan executions with the 13.2.0 one-shot workflow and reports peak resident memory in bytes without a performance threshold.
+- Maintainer checks cover the million-element exploration boundary, selector work accounting, detached-subtree cloning, Tendril strict-provenance handling, Miri, fuzz targets, focused mutation-strength fixtures, and warning-denied Rustdoc.
+- The checked-in `htmlcut-core` semver baseline is refreshed from the published `v13.2.0` tag, so compatibility checks use the preceding normal release.
+- Documentation metadata validation is code-owned after removal of repository-specific agent protocol files.
+
 ## [13.2.0] - 2026-08-30
 
 ### Added

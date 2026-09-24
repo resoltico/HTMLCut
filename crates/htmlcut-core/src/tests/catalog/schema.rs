@@ -22,16 +22,16 @@ fn contract_lint_schema_catalog_is_unique_and_covers_core_and_interop_contracts(
         CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::v1::PLAN_SCHEMA_NAME,
-        interop::v1::PLAN_SCHEMA_VERSION,
+        interop::v2::PLAN_SCHEMA_NAME,
+        interop::v2::PLAN_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::v1::RESULT_SCHEMA_NAME,
-        interop::v1::RESULT_SCHEMA_VERSION,
+        interop::v2::RESULT_SCHEMA_NAME,
+        interop::v2::RESULT_SCHEMA_VERSION,
     )));
     assert!(identities.contains(&(
-        interop::v1::ERROR_SCHEMA_NAME,
-        interop::v1::ERROR_SCHEMA_VERSION,
+        interop::v2::ERROR_SCHEMA_NAME,
+        interop::v2::ERROR_SCHEMA_VERSION,
     )));
 
     let extraction_result_schema =
@@ -44,11 +44,11 @@ fn contract_lint_schema_catalog_is_unique_and_covers_core_and_interop_contracts(
     );
 
     let interop_result_schema = schema_descriptor(
-        interop::v1::RESULT_SCHEMA_NAME,
-        interop::v1::RESULT_SCHEMA_VERSION,
+        interop::v2::RESULT_SCHEMA_NAME,
+        interop::v2::RESULT_SCHEMA_VERSION,
     )
     .expect("interop result schema");
-    assert_eq!(interop_result_schema.owner, "interop-v1");
+    assert_eq!(interop_result_schema.owner, "interop-v2");
     assert_eq!(interop_result_schema.stability, SchemaStability::Versioned);
 
     for descriptor in schema_catalog() {

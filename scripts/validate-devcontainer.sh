@@ -163,6 +163,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+cleanup_stale_isolated_volumes() {
+    [[ "${volume_mode}" == "isolated" ]] || return 0
+
+    # An interrupted host process cannot run its EXIT trap. Reclaim only abandoned validation
+    # volumes whose names this script owns and that no live or stopped container still mounts;
+    # this never touches the contributor's shared CI caches or another active validation run.
+    while IFS= read -r volume; do
+        case "${volume}" in
+            htmlcut-devcontainer-validate-cargo-*|htmlcut-devcontainer-validate-rustup-*|htmlcut-devcontainer-validate-cache-*)
+                if docker ps -aq --filter "volume=${volume}" | grep -q .; then
+                    continue
+                fi
+                docker volume rm "${volume}" >/dev/null
+                ;;
+        esac
+    done < <(docker volume ls --format '{{.Name}}')
+}
+
+cleanup_stale_isolated_volumes
+
 printf 'devcontainer validation: build raw contributor image\n'
 docker build \
     --file "${dockerfile_path}" \

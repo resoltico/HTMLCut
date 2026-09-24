@@ -223,7 +223,6 @@ impl TreeSink for HtmlTreeSink {
         };
 
         for attr in attrs {
-            #[cfg(not(feature = "deterministic"))]
             if let Err(idx) = element
                 .attrs
                 .binary_search_by(|(name, _)| name.cmp(&attr.name))
@@ -232,12 +231,6 @@ impl TreeSink for HtmlTreeSink {
                     .attrs
                     .insert(idx, (attr.name, make_tendril(attr.value)));
             }
-
-            #[cfg(feature = "deterministic")]
-            element
-                .attrs
-                .entry(attr.name)
-                .or_insert_with(|| make_tendril(attr.value));
         }
     }
 

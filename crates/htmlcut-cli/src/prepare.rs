@@ -9,19 +9,19 @@ mod reports;
 
 use htmlcut_core::{
     ExtractionRequest, InspectionOptions, RuntimeOptions, SourceRequest, ValueSpec,
-    wire::v1::ExtractionDefinitionDocument,
+    wire::v2::ExtractionDefinitionDocument,
 };
 
 use crate::args::{CliOutputMode, CliWhitespaceMode};
 use crate::error::{CliError, usage_error};
 use crate::model::CliErrorCode;
 
-pub(crate) use self::build::extract_prefers_json;
+pub(crate) use self::build::{build_runtime, build_source_request, extract_prefers_json};
 #[cfg(test)]
 pub(crate) use self::build::{
-    build_runtime, build_source_request, default_output_for_value, parse_byte_size,
-    resolve_extract_output_mode, resolve_extract_output_mode_with_output_file, resolve_regex_flags,
-    resolve_selection_spec, resolve_value_spec, validate_base_url, validate_preview_chars,
+    default_output_for_value, parse_byte_size, resolve_extract_output_mode,
+    resolve_extract_output_mode_with_output_file, resolve_regex_flags, resolve_selection_spec,
+    resolve_value_spec, validate_base_url, validate_preview_chars,
 };
 #[cfg(test)]
 pub(crate) use self::definition::{

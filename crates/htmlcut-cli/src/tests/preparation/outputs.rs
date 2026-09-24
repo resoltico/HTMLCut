@@ -9,7 +9,7 @@ fn request_definition_write_paths_cover_execution_failures_and_preview_success()
     );
     let definition = ExtractionDefinition::new(request.clone());
     let document =
-        htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition.clone())
+        htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition.clone())
             .expect("definition document");
 
     assert_eq!(
@@ -175,9 +175,9 @@ fn catalog_and_schema_output_files_report_verbose_success() {
         "--verbose".to_owned(),
         "schema".to_owned(),
         "--name".to_owned(),
-        htmlcut_core::interop::v1::RESULT_SCHEMA_NAME.to_owned(),
+        htmlcut_core::interop::v2::RESULT_SCHEMA_NAME.to_owned(),
         "--schema-version".to_owned(),
-        htmlcut_core::interop::v1::RESULT_SCHEMA_VERSION.to_string(),
+        htmlcut_core::interop::v2::RESULT_SCHEMA_VERSION.to_string(),
         "--output".to_owned(),
         "json".to_owned(),
         "--output-file".to_owned(),
@@ -252,7 +252,7 @@ fn request_definition_write_reports_json_render_failures_without_panicking() {
         SourceRequest::memory("inline", "<article>Hello</article>"),
         ExtractionSpec::selector(SelectorQuery::new("article").expect("selector")),
     ));
-    let document = htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition)
+    let document = htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition)
         .expect("definition document");
     let output = PendingExtractionDefinitionWrite {
         path: tempdir.path().join("request.json"),

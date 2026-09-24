@@ -174,6 +174,14 @@ fn nightly_toolchain_probe_and_version_floor_check_stay_actionable() {
         !rustc_version_meets_floor("rustc 1.97.0-nightly (hash 2026-05-11)\n", "1.98")
             .expect("parse stale nightly")
     );
+    assert!(
+        !rustc_version_meets_floor("rustc 1.98.0 (hash 2026-08-05)\n", "1.98.1")
+            .expect("patch-level floor rejects the prior compiler")
+    );
+    assert!(
+        rustc_version_meets_floor("rustc 1.98.1 (hash 2026-09-01)\n", "1.98.1")
+            .expect("patch-level floor accepts the pinned compiler")
+    );
     assert!(rustc_version_meets_floor("not a compiler version", "1.98").is_err());
     assert!(rustc_version_meets_floor("rustc 1.100.0-nightly\n", "1.98.0.1").is_err());
 }
@@ -285,6 +293,9 @@ fn tracked_files_canonicalize_the_expected_maintained_sources() {
         "crates/htmlcut-cli/src/execute.rs",
         "crates/htmlcut-cli/src/execute/commands.rs",
         "xtask/src/plan.rs",
+        "patches/rust/selectors/work_budget.rs",
+        "patches/rust/scraper/src/selector/budget.rs",
+        "patches/rust/scraper/src/html/clone.rs",
     ];
 
     assert_eq!(tracked.len(), expected_tracked_paths.len());

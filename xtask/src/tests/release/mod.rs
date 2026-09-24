@@ -22,17 +22,6 @@ fn init_git_repo(repo_root: &Path) {
     );
 }
 
-fn assert_visible_as_untracked(repo_root: &Path, paths: &[&str]) {
-    let output = git_output(repo_root, &["ls-files", "--others", "--exclude-standard"]);
-    let listed_paths = String::from_utf8(output).expect("utf8 git ls-files output");
-    for path in paths {
-        assert!(
-            listed_paths.lines().any(|listed| listed == *path),
-            "expected {path} to stay untracked-and-visible, got:\n{listed_paths}",
-        );
-    }
-}
-
 fn git(repo_root: &Path, args: &[&str]) {
     let output = Command::new("git")
         .args(args)

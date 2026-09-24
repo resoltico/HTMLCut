@@ -12,13 +12,13 @@ use selectors::parser::SelectorParseErrorKind;
 #[derive(Debug, Clone)]
 pub enum SelectorErrorKind<'a> {
     /// A `Token` was not expected
-    UnexpectedToken(Token<'a>),
+    UnexpectedToken,
 
     /// End-Of-Line was unexpected
     EndOfLine,
 
     /// `@` rule is invalid
-    InvalidAtRule(String),
+    InvalidAtRule,
 
     /// The body of an `@` rule is invalid
     InvalidAtRuleBody,
@@ -71,23 +71,32 @@ impl Display for SelectorParseError<'_> {
 
 impl Error for SelectorParseError<'_> {}
 
-impl<'a> From<cssparser::ParseError<'a, SelectorParseErrorKind<'a>>> for SelectorParseError<'a> {
-    fn from(original: cssparser::ParseError<'a, SelectorParseErrorKind<'a>>) -> Self {
+impl<'a> SelectorParseError<'a> {
+    pub(crate) fn from_parser(
+        original: cssparser::ParseError<SelectorParseErrorKind<'a>>,
+        fallback_location: SourceLocation,
+    ) -> Self {
+        let location = match &original.kind {
+            ParseErrorKind::Custom(
+                SelectorParseErrorKind::NoQualifiedNameInAttributeSelector { location, .. },
+            ) => *location,
+            _ => fallback_location,
+        };
         Self {
             kind: SelectorErrorKind::from_parse_error_kind(original.kind),
-            location: original.location,
+            location,
         }
     }
 }
 
-impl<'a> From<cssparser::ParseError<'a, SelectorParseErrorKind<'a>>> for SelectorErrorKind<'a> {
-    fn from(original: cssparser::ParseError<'a, SelectorParseErrorKind<'a>>) -> Self {
+impl<'a> From<cssparser::ParseError<SelectorParseErrorKind<'a>>> for SelectorErrorKind<'a> {
+    fn from(original: cssparser::ParseError<SelectorParseErrorKind<'a>>) -> Self {
         Self::from_parse_error_kind(original.kind)
     }
 }
 
 impl<'a> SelectorErrorKind<'a> {
-    fn from_parse_error_kind(error: ParseErrorKind<'a, SelectorParseErrorKind<'a>>) -> Self {
+    fn from_parse_error_kind(error: ParseErrorKind<SelectorParseErrorKind<'a>>) -> Self {
         match error {
             ParseErrorKind::Basic(err) => SelectorErrorKind::from(err),
             ParseErrorKind::Custom(err) => SelectorErrorKind::from(err),
@@ -95,14 +104,17 @@ impl<'a> SelectorErrorKind<'a> {
     }
 }
 
-impl<'a> From<BasicParseErrorKind<'a>> for SelectorErrorKind<'a> {
-    fn from(err: BasicParseErrorKind<'a>) -> Self {
+impl<'a> From<BasicParseErrorKind> for SelectorErrorKind<'a> {
+    fn from(err: BasicParseErrorKind) -> Self {
         match err {
-            BasicParseErrorKind::UnexpectedToken(token) => Self::UnexpectedToken(token),
+            BasicParseErrorKind::UnexpectedToken => Self::UnexpectedToken,
             BasicParseErrorKind::EndOfInput => Self::EndOfLine,
-            BasicParseErrorKind::AtRuleInvalid(rule) => Self::InvalidAtRule(rule.to_string()),
+            BasicParseErrorKind::AtRuleInvalid => Self::InvalidAtRule,
             BasicParseErrorKind::AtRuleBodyInvalid => Self::InvalidAtRuleBody,
             BasicParseErrorKind::QualifiedRuleInvalid => Self::QualRuleInvalid,
+            BasicParseErrorKind::TooManyNestedBlocks => {
+                Self::UnexpectedSelectorParseError(SelectorParseErrorKind::InvalidState)
+            }
         }
     }
 }
@@ -127,11 +139,9 @@ impl Display for SelectorErrorKind<'_> {
             f,
             "{}",
             match self {
-                Self::UnexpectedToken(token) => {
-                    format!("Token {:?} was not expected", utils::render_token(token))
-                }
+                Self::UnexpectedToken => "Token was not expected".to_string(),
                 Self::EndOfLine => "Unexpected EOL".to_string(),
-                Self::InvalidAtRule(rule) => format!("Invalid @-rule {rule:?}"),
+                Self::InvalidAtRule => "Invalid @-rule".to_string(),
                 Self::InvalidAtRuleBody => "The body of an @-rule was invalid".to_string(),
                 Self::QualRuleInvalid => "The qualified name was invalid".to_string(),
                 Self::ExpectedColonOnPseudoElement(token) => format!(
@@ -153,9 +163,9 @@ impl Display for SelectorErrorKind<'_> {
 impl Error for SelectorErrorKind<'_> {
     fn description(&self) -> &str {
         match self {
-            Self::UnexpectedToken(_) => "Token was not expected",
+            Self::UnexpectedToken => "Token was not expected",
             Self::EndOfLine => "Unexpected EOL",
-            Self::InvalidAtRule(_) => "Invalid @-rule",
+            Self::InvalidAtRule => "Invalid @-rule",
             Self::InvalidAtRuleBody => "The body of an @-rule was invalid",
             Self::QualRuleInvalid => "The qualified name was invalid",
             Self::ExpectedColonOnPseudoElement(_) => "Missing colon character on pseudoelement",

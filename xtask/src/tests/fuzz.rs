@@ -10,6 +10,8 @@ fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
             "selector_parsing",
             "slice_boundaries",
             "extraction_request_building",
+            "prepared_discovery",
+            "relational_selector_budget",
             "cli_parse_error_surface",
         ]
     );

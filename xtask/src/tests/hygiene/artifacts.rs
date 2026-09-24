@@ -90,6 +90,28 @@ fn cargo_path_helpers_follow_the_configured_build_paths() {
 }
 
 #[test]
+fn managed_artifact_container_requires_one_non_repository_parent() {
+    let repo_root = tempdir().expect("repo tempdir");
+    crate::plan::with_cargo_artifact_dir_overrides_for_tests(
+        repo_root.path().join("first/target"),
+        repo_root.path().join("second/build"),
+        || {
+            assert!(crate::plan::managed_artifact_container_dir(repo_root.path()).is_none());
+        },
+    );
+    crate::plan::with_cargo_artifact_dir_overrides_for_tests(
+        repo_root.path().join("artifacts/target"),
+        repo_root.path().join("artifacts/build"),
+        || {
+            assert_eq!(
+                crate::plan::managed_artifact_container_dir(repo_root.path()),
+                Some(repo_root.path().join("artifacts")),
+            );
+        },
+    );
+}
+
+#[test]
 fn normalize_path_reports_missing_paths() {
     let repo_root = tempdir().expect("repo tempdir");
     let error = normalize_path(repo_root.path(), Path::new("missing-path"))
