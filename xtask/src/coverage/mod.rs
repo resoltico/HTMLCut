@@ -97,7 +97,7 @@ pub(crate) fn repo_relative_source_path_for_tests(
     tracking::repo_relative_source_path_for_tests(repo_root, absolute_path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn collect_tracked_files_from_root_for_tests(
     repo_root: &Path,
     current_path: &Path,

@@ -134,21 +134,21 @@ pub fn coverage_preflight_message(failures: &[CoveragePreflightFailure]) -> Stri
     let missing_nightly = failures.contains(&CoveragePreflightFailure::MissingNightlyToolchain);
     let missing_llvm_tools = failures.contains(&CoveragePreflightFailure::MissingNightlyLlvmTools);
 
-    let mut message = String::from(
-        "Rust coverage preflight failed. HTMLCut keeps stable as the default toolchain, but the coverage gate still requires `cargo +nightly llvm-cov --branch` for true branch coverage.\n",
+    let mut message = format!(
+        "Rust coverage preflight failed. HTMLCut keeps stable as the default toolchain, but the coverage gate requires `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} llvm-cov --branch` for true branch coverage.\n"
     );
 
     if missing_nightly {
-        message.push_str(
-            "\nInstall the nightly coverage toolchain first:\n  rustup toolchain install nightly --profile minimal --component llvm-tools-preview\n",
-        );
+        message.push_str(&format!(
+            "\nInstall the nightly coverage toolchain first:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component llvm-tools-preview\n"
+        ));
         return message;
     }
 
     if missing_llvm_tools {
-        message.push_str(
-            "\nNightly is installed, but `llvm-tools-preview` is missing:\n  rustup component add llvm-tools-preview --toolchain nightly\n",
-        );
+        message.push_str(&format!(
+            "\nNightly is installed, but `llvm-tools-preview` is missing:\n  rustup component add llvm-tools-preview --toolchain {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}\n"
+        ));
     }
 
     message

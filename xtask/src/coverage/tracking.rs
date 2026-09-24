@@ -71,7 +71,7 @@ fn collect_tracked_files(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn collect_tracked_files_from_root_for_tests(
     repo_root: &Path,
     current_path: &Path,

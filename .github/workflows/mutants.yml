@@ -86,7 +86,8 @@ jobs:
           htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
             "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
             "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
-          htmlcut_contributor_retry 3 5 rustup toolchain install nightly --profile minimal
+          htmlcut_contributor_retry 3 5 rustup toolchain install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" --profile minimal
 
       - name: Export mutation tool inventory
         id: mutation_tools
@@ -188,17 +189,8 @@ jobs:
           if [[ ! -s "$RUNNER_TEMP/mutants.json" ]]; then
             printf '[]\n' > "$RUNNER_TEMP/mutants.json"
           fi
-          jq -e '
-            all(.[];
-              (
-                ((.file | test("^crates/(htmlcut-cli|htmlcut-core|htmlcut-tempdir)/src/"))
-                  and (.file | test("/src/(tests/|.*/tests/)") | not))
-                or (.file == "patches/rust/selectors/work_budget.rs")
-                or (.file == "patches/rust/scraper/src/html/clone.rs")
-                or (.file == "patches/rust/scraper/src/selector/budget.rs")
-              )
-            )
-          ' "$RUNNER_TEMP/mutants.json" >/dev/null
+          ./scripts/verify-mutation-scope.sh --subset \
+            "$RUNNER_TEMP/mutants.json" "$RUNNER_TEMP/full-mutants.json"
           mutant_count="$(jq 'length' "$RUNNER_TEMP/mutants.json")"
           if (( mutant_count == 0 )); then
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"

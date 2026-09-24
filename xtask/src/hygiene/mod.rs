@@ -476,7 +476,7 @@ pub(crate) use self::support::{
     report_violations_for_tests,
 };
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn checked_reclaimed_bytes_for_tests(
     current: u64,
     bytes: u64,
@@ -485,7 +485,7 @@ pub(crate) fn checked_reclaimed_bytes_for_tests(
     checked_reclaimed_bytes(current, bytes, path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn unmanaged_cleanup_roots_for_tests(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
     unmanaged_cleanup_roots(repo_root)
 }

@@ -92,6 +92,7 @@ fn default_runtime_members() -> Vec<(String, String)> {
         .collect()
 }
 
+#[cfg(unix)]
 fn mutation_tooling_members() -> Vec<(String, String)> {
     vec![("xtask".to_owned(), "xtask".to_owned())]
 }
@@ -111,9 +112,10 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
         workflow
             .matches("./scripts/verify-mutation-scope.sh")
             .count(),
-        2,
+        3,
         "full and pull-request planning must share the canonical scope verifier"
     );
+    assert!(workflow.contains("verify-mutation-scope.sh --subset"));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));
     assert!(workflow.contains(

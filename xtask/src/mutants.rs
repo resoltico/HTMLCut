@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
+use crate::model::MAINTAINED_NIGHTLY_TOOLCHAIN_NAME;
 use crate::{
     CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
     DynResult,
@@ -153,7 +154,7 @@ pub fn mutants_command(
         CommandToolchainEnv::Inherit,
     )
     .with_live_output()
-    .with_env("RUSTUP_TOOLCHAIN", "nightly")
+    .with_env("RUSTUP_TOOLCHAIN", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME)
     .with_env("CARGO_TARGET_DIR", target_dir.to_string_lossy())
     .with_env("CARGO_BUILD_BUILD_DIR", build_dir.to_string_lossy())
     // Each local worker and CI shard owns this target root, so incremental state remains isolated
@@ -199,7 +200,7 @@ pub(crate) fn mutants_package_command(
         CommandToolchainEnv::Inherit,
     )
     .with_live_output()
-    .with_env("RUSTUP_TOOLCHAIN", "nightly")
+    .with_env("RUSTUP_TOOLCHAIN", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME)
     .with_env("CARGO_TARGET_DIR", SAFE_COPY_CARGO_TARGET_DIR)
     .with_env("CARGO_BUILD_BUILD_DIR", SAFE_COPY_CARGO_BUILD_DIR)
     .with_env("CARGO_INCREMENTAL", MUTATION_CARGO_INCREMENTAL)
@@ -227,7 +228,7 @@ pub(crate) fn mutants_list_command(shard: Option<&str>, in_diff: Option<&Path>) 
         CommandToolchainEnv::Inherit,
     )
     .with_stderr(CommandStderr::Quiet)
-    .with_env("RUSTUP_TOOLCHAIN", "nightly")
+    .with_env("RUSTUP_TOOLCHAIN", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME)
 }
 
 /// Builds a non-mutating package-local inventory command for one local worker shard.
@@ -256,7 +257,7 @@ pub(crate) fn mutants_package_list_command(
         CommandToolchainEnv::Inherit,
     )
     .with_stderr(CommandStderr::Quiet)
-    .with_env("RUSTUP_TOOLCHAIN", "nightly")
+    .with_env("RUSTUP_TOOLCHAIN", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME)
 }
 
 #[cfg(test)]
@@ -322,7 +323,7 @@ mod tests {
         ));
         assert_eq!(
             safe_command.env.get("RUSTUP_TOOLCHAIN"),
-            Some(&"nightly".to_owned())
+            Some(&MAINTAINED_NIGHTLY_TOOLCHAIN_NAME.to_owned())
         );
         assert_eq!(
             safe_command.env.get("CARGO_INCREMENTAL"),
@@ -361,7 +362,7 @@ mod tests {
         ));
         assert_eq!(
             ci_command.env.get("RUSTUP_TOOLCHAIN"),
-            Some(&"nightly".to_owned())
+            Some(&MAINTAINED_NIGHTLY_TOOLCHAIN_NAME.to_owned())
         );
         assert_eq!(
             ci_command.env.get("CARGO_INCREMENTAL"),
@@ -401,7 +402,7 @@ mod tests {
         assert!(matches!(command.stderr, CommandStderr::Quiet));
         assert_eq!(
             command.env.get("RUSTUP_TOOLCHAIN"),
-            Some(&"nightly".to_owned())
+            Some(&MAINTAINED_NIGHTLY_TOOLCHAIN_NAME.to_owned())
         );
     }
 

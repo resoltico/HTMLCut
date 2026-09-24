@@ -6,6 +6,8 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
 . "${script_dir}/common.sh"
+# shellcheck source=scripts/contributor-rust-tools.sh
+. "${script_dir}/contributor-rust-tools.sh"
 script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
 readonly script_dir
 repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
@@ -59,8 +61,8 @@ validate_inner_runtime() {
     [[ -f Cargo.toml ]] || htmlcut_die "inner runtime probe requires the HTMLCut workspace checkout"
     "${prepare_script}"
     rustc --version | grep -F "rustc ${stable_toolchain_channel} " >/dev/null
-    cargo +nightly llvm-cov --version >/dev/null
-    cargo +nightly miri --version >/dev/null
+    cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" llvm-cov --version >/dev/null
+    cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" miri --version >/dev/null
     cargo nextest --version >/dev/null
     cargo audit --version >/dev/null
     cargo deny --version >/dev/null
@@ -242,12 +244,13 @@ docker run --rm \
         set -euo pipefail
         /workspaces/htmlcut/scripts/devcontainer-prepare-user-home.sh
         /workspaces/htmlcut/scripts/devcontainer-bootstrap.sh
+        source /workspaces/htmlcut/scripts/contributor-rust-tools.sh
         touch /home/vscode/.cargo/user-writable-marker
         touch /home/vscode/.rustup/user-writable-marker
         touch /home/vscode/.cache/user-writable-marker
         rustc --version | grep -F "rustc ${HTMLCUT_STABLE_TOOLCHAIN} " >/dev/null
-        cargo +nightly llvm-cov --version >/dev/null
-        cargo +nightly miri --version >/dev/null
+        cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" llvm-cov --version >/dev/null
+        cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" miri --version >/dev/null
         cargo nextest --version >/dev/null
         cargo audit --version >/dev/null
         cargo deny --version >/dev/null

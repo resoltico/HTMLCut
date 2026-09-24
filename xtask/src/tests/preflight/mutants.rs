@@ -17,7 +17,7 @@ fn mutation_preflight_accepts_an_available_tool_and_supported_nightly() {
                 return Some(Ok(b"cargo-mutants 27.1.0\n".to_vec()));
             }
             if command_signature(spec) == command_signature(&toolchain_list) {
-                return Some(Ok(b"nightly-aarch64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-aarch64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec) == command_signature(&nightly_probe) {
                 return Some(Ok(b"rustc 1.100.0-nightly (hash 2026-08-23)\n".to_vec()));

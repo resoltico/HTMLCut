@@ -6,7 +6,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
     let test = miri_contract_command();
 
     assert_eq!(probe.program, PathBuf::from("cargo"));
-    assert_eq!(probe.args, vec!["+nightly", "miri", "--version"]);
+    assert_eq!(probe.args, vec!["+nightly-2026-08-25", "miri", "--version"]);
     assert!(command_is_quiet(&probe));
     assert!(command_quiets_stderr(&probe));
     assert!(!command_forces_clang(&probe));
@@ -16,7 +16,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
     assert_eq!(
         test.args,
         vec![
-            "+nightly",
+            "+nightly-2026-08-25",
             "miri",
             "test",
             "-p",
@@ -49,7 +49,7 @@ fn miri_preflight_reports_missing_toolchain_components_and_binary() {
         ]
     );
     assert_eq!(
-        miri_preflight_failures("nightly-aarch64-apple-darwin\n", "", false),
+        miri_preflight_failures("nightly-2026-08-25-aarch64-apple-darwin\n", "", false),
         vec![
             MiriPreflightFailure::MissingNightlyMiri,
             MiriPreflightFailure::MissingNightlyRustSrc,
@@ -57,7 +57,7 @@ fn miri_preflight_reports_missing_toolchain_components_and_binary() {
     );
     assert_eq!(
         miri_preflight_failures(
-            "nightly-aarch64-apple-darwin\n",
+            "nightly-2026-08-25-aarch64-apple-darwin\n",
             "miri-aarch64-apple-darwin (installed)\nrust-src (installed)\n",
             false,
         ),
@@ -65,7 +65,7 @@ fn miri_preflight_reports_missing_toolchain_components_and_binary() {
     );
     assert!(
         miri_preflight_failures(
-            "nightly-aarch64-apple-darwin\n",
+            "nightly-2026-08-25-aarch64-apple-darwin\n",
             "miri-aarch64-apple-darwin (installed)\nrust-src (installed)\n",
             true,
         )
@@ -82,17 +82,20 @@ fn miri_preflight_message_is_actionable() {
     ]);
     assert!(missing_nightly.contains("selector-and-slice proof"));
     assert!(missing_nightly.contains(
-        "rustup toolchain install nightly --profile minimal --component miri --component rust-src"
+        "rustup toolchain install nightly-2026-08-25 --profile minimal --component miri --component rust-src"
     ));
 
     let missing_components = miri_preflight_message(&[
         MiriPreflightFailure::MissingNightlyMiri,
         MiriPreflightFailure::MissingNightlyRustSrc,
     ]);
-    assert!(missing_components.contains("rustup component add miri rust-src --toolchain nightly"));
+    assert!(
+        missing_components
+            .contains("rustup component add miri rust-src --toolchain nightly-2026-08-25")
+    );
     assert!(!missing_components.contains("toolchain uninstall nightly"));
 
     let broken_binary = miri_preflight_message(&[MiriPreflightFailure::BrokenNightlyMiriBinary]);
-    assert!(broken_binary.contains("cargo +nightly miri --version"));
-    assert!(broken_binary.contains("rustup toolchain uninstall nightly"));
+    assert!(broken_binary.contains("cargo +nightly-2026-08-25 miri --version"));
+    assert!(broken_binary.contains("rustup toolchain uninstall nightly-2026-08-25"));
 }

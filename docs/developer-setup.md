@@ -61,7 +61,7 @@ Why this shape:
   resolves to `1.98.1`.
 - the workspace manifest carries the published compatibility floor separately through
   `[workspace.package] rust-version = "1.98.1"`.
-- `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
+- The maintained `nightly-2026-08-25` toolchain is pinned because `cargo +nightly-2026-08-25 llvm-cov --branch` is required for the maintained
   coverage gate, because `cargo xtask miri` now proves the selector and delimiter-slice paths
   under strict provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
@@ -181,7 +181,7 @@ cargo deny --version
 cargo semver-checks --version
 cargo outdated --version
 cargo llvm-cov --version
-cargo +nightly miri --version
+cargo +nightly-2026-08-25 miri --version
 cargo fuzz --version
 cargo mutants --version
 shellcheck --version

@@ -1,7 +1,10 @@
 //! Narrow test-only adapters for private hygiene operations.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
+#[cfg(unix)]
 use crate::DynResult;
 
 use super::*;
@@ -44,6 +47,7 @@ pub(crate) fn aggregate_entry_for_tests(path: &Path, roots: &[PathBuf]) -> DynRe
     )
 }
 
+#[cfg(unix)]
 pub(crate) fn checked_aggregate_bytes_for_tests(
     left: u64,
     right: u64,
@@ -52,12 +56,14 @@ pub(crate) fn checked_aggregate_bytes_for_tests(
     checked_aggregate_bytes(left, right, root)
 }
 
+#[cfg(unix)]
 pub(crate) fn managed_artifact_container_entry_for_tests(
     container: &Path,
 ) -> DynResult<HygieneEntry> {
     managed_artifact_container_entry(container)
 }
 
+#[cfg(unix)]
 pub(crate) fn unmanaged_artifact_container_entry_for_tests(
     container: &Path,
     managed_roots: &[PathBuf],
@@ -65,6 +71,7 @@ pub(crate) fn unmanaged_artifact_container_entry_for_tests(
     unmanaged_artifact_container_entry(container, managed_roots)
 }
 
+#[cfg(unix)]
 pub(crate) fn remove_artifact_path_if_exists_for_tests(path: &Path) -> DynResult<()> {
     remove_artifact_path_if_exists(path)
 }

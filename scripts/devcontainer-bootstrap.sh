@@ -82,7 +82,7 @@ cargo deny --version >/dev/null
 cargo semver-checks --version >/dev/null
 cargo outdated --version >/dev/null
 cargo llvm-cov --version >/dev/null
-cargo +nightly miri --version >/dev/null
+cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" miri --version >/dev/null
 cargo fuzz --version >/dev/null
 cargo mutants --version >/dev/null
 printf 'devcontainer bootstrap: ready\n'

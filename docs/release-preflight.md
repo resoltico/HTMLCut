@@ -116,9 +116,7 @@ Install the local maintainer toolchain if it is not already available by followi
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.1`).
-Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
-coverage gate, and live `cargo-fuzz` campaigns, because `cargo xtask miri`, `cargo +nightly
-llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly.
+The maintained `nightly-2026-08-25` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns.
 
 Run the single local quality gate first:
 

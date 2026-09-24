@@ -13,6 +13,8 @@ use std::collections::BTreeSet;
 
 #[cfg(test)]
 use crate::CommandArtifactLayout;
+#[cfg(test)]
+use crate::model::MAINTAINED_NIGHTLY_TOOLCHAIN_NAME;
 use crate::{CommandSpec, DynResult, XtaskError};
 
 use super::super::{mutants_command, mutants_package_command};
@@ -310,7 +312,7 @@ mod tests {
                 "CARGO_BUILD_BUILD_DIR",
                 explicit_build.to_string_lossy().into_owned(),
             )
-            .with_env("RUSTUP_TOOLCHAIN", "nightly"),
+            .with_env("RUSTUP_TOOLCHAIN", MAINTAINED_NIGHTLY_TOOLCHAIN_NAME),
         };
 
         let cargo_home = worker.workspace.path().join("worker-cargo-home");
@@ -332,7 +334,7 @@ mod tests {
         );
         assert_eq!(
             environment.get("RUSTUP_TOOLCHAIN"),
-            Some(&"nightly".to_owned())
+            Some(&MAINTAINED_NIGHTLY_TOOLCHAIN_NAME.to_owned())
         );
         assert_eq!(environment.get("CARGO_BUILD_JOBS"), Some(&"3".to_owned()));
         assert_eq!(

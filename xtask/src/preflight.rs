@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::command_exec::capture_command_output;
 use crate::model::{
     CommandSpec, CommandStdout, CommandToolchainEnv, CoveragePreflightFailure, DynResult,
+    MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 use crate::{
     FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, cargo_fuzz_probe_command,
@@ -65,7 +66,13 @@ pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
         repo_root,
         &CommandSpec::new(
             "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
+            [
+                "component",
+                "list",
+                "--toolchain",
+                MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+                "--installed",
+            ],
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         ),
@@ -100,7 +107,13 @@ pub fn ensure_miri_prerequisites(repo_root: &Path) -> DynResult<()> {
         repo_root,
         &CommandSpec::new(
             "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
+            [
+                "component",
+                "list",
+                "--toolchain",
+                MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+                "--installed",
+            ],
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         ),
@@ -153,12 +166,12 @@ fn ensure_nightly_toolchain_supports_workspace_floor(
     if !toolchains
         .lines()
         .map(str::trim)
-        .any(|line| line.starts_with("nightly"))
+        .any(|line| line.starts_with(MAINTAINED_NIGHTLY_TOOLCHAIN_NAME))
     {
-        return Err(
-            "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows require the `nightly` toolchain.\n\nInstall it with:\n  rustup toolchain install nightly --profile minimal\n"
-                .into(),
-        );
+        return Err(format!(
+            "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows require the `{MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}` toolchain.\n\nInstall it with:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal\n"
+        )
+        .into());
     }
 
     let compiler = capture_utf8(
@@ -172,7 +185,7 @@ fn ensure_nightly_toolchain_supports_workspace_floor(
     }
 
     Err(format!(
-        "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows need a nightly compiler that supports the published Rust floor.\n\nDetected nightly: `{}`\nRequired workspace floor: `{floor}`\n\nRefresh nightly, then restore its required components:\n  rustup update nightly\n  rustup component add llvm-tools-preview miri rust-src --toolchain nightly\n",
+        "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows need a nightly compiler that supports the published Rust floor.\n\nDetected nightly: `{}`\nRequired workspace floor: `{floor}`\n\nInstall the maintained nightly and its required components:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component llvm-tools-preview --component miri --component rust-src\n",
         compiler.trim()
     )
     .into())

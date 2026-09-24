@@ -45,6 +45,10 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
 
     assert!(script.contains("HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS=("));
     assert!(script.contains("HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS=("));
+    assert!(script.contains(&format!(
+        "HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN=\"{}\"",
+        crate::model::MAINTAINED_NIGHTLY_TOOLCHAIN_NAME
+    )));
     assert!(script.contains("\"llvm-tools-preview\""));
     assert!(script.contains("\"miri\""));
     assert!(script.contains("\"rust-src\""));
@@ -175,10 +179,14 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
     assert!(!validator.contains("cargo xtask --help >/dev/null"));
     assert!(validator.contains("HTMLCUT_STABLE_TOOLCHAIN"));
     assert!(!validator.contains("rustc 1\\.95\\.0"));
-    assert!(bootstrap.contains("cargo +nightly miri --version >/dev/null"));
+    assert!(bootstrap.contains(
+        "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}\" miri --version >/dev/null"
+    ));
     assert_eq!(
         validator
-            .matches("cargo +nightly miri --version >/dev/null")
+            .matches(
+                "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}\" miri --version >/dev/null"
+            )
             .count(),
         2
     );

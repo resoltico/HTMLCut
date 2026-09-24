@@ -343,7 +343,7 @@ fn coverage_commands_split_application_and_fork_execution_before_one_merged_repo
     assert_eq!(
         command.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "--branch".to_owned(),
             "-p".to_owned(),
@@ -365,7 +365,7 @@ fn coverage_commands_split_application_and_fork_execution_before_one_merged_repo
     assert_eq!(
         fork_command.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "--branch".to_owned(),
             "--no-clean".to_owned(),
@@ -382,7 +382,7 @@ fn coverage_commands_split_application_and_fork_execution_before_one_merged_repo
     assert_eq!(
         report_command.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "report".to_owned(),
             "--json".to_owned(),
@@ -396,7 +396,7 @@ fn coverage_commands_split_application_and_fork_execution_before_one_merged_repo
     assert_eq!(
         clean.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "clean".to_owned(),
             "--workspace".to_owned(),

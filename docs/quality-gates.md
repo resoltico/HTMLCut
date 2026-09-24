@@ -25,10 +25,8 @@ compiler-override safeguard for native crate builds.
 Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred contributor-container
 workflow on Ubuntu `24.04`.
 
-`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.1`).
-Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
-coverage gate, and live `cargo-fuzz` campaigns because `cargo xtask miri`, `cargo +nightly
-llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly. The workspace manifest carries the
+`rust-toolchain.toml` owns the exact HTMLCut stable toolchain pin (currently `1.98.1`).
+The maintained `nightly-2026-08-25` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
 published compatibility floor separately through
 `[workspace.package] rust-version = "1.98.1"`.
 
@@ -285,7 +283,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   mutation-test inventory, so the checked shared-work budget proves advancing truncation and
   terminal tail pagination without multiplying a resource test across every mutant
 - the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
-  miri`, which runs `cargo +nightly miri test -p htmlcut-core --lib --no-default-features
+  miri`, which runs `cargo +nightly-2026-08-25 miri test -p htmlcut-core --lib --no-default-features
   --locked tests::extract_api::selector_and_slice_contract_remain_miri_sound -- --exact` with
   `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
@@ -308,7 +306,7 @@ Before any of those gate steps begin, `cargo xtask check` preflights the exact r
 toolchain declared in `rust-toolchain.toml`, the nightly Miri prerequisites, and the nightly
 coverage prerequisites. If the pinned compiler itself is missing, if its required
 `clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if its
-compiler is below the workspace's published Rust floor, if `cargo +nightly miri --version` is
+compiler is below the workspace's published Rust floor, if `cargo +nightly-2026-08-25 miri --version` is
 broken despite rustup reporting the components, or if the coverage prerequisites are absent, the
 gate stops immediately with the exact repair command instead of failing later inside the Rust gate.
 
@@ -370,7 +368,7 @@ Short live libFuzzer smoke is intentionally a separate maintainer step rather th
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
-`cargo +nightly fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
+`cargo +nightly-2026-08-25 fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
 stable after local smoke runs while still building the real libFuzzer harnesses explicitly. It
 also preflights nightly plus `cargo-fuzz` before launching so missing fuzz tooling fails early
 with one actionable message. Use `--target <name>` to focus one maintained target or `--runs

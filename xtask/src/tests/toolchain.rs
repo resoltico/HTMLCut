@@ -163,7 +163,7 @@ fn nightly_toolchain_probe_and_version_floor_check_stay_actionable() {
     let probe = nightly_toolchain_probe_command();
 
     assert_eq!(probe.program, PathBuf::from("rustup"));
-    assert_eq!(probe.args, vec!["run", "nightly", "rustc", "-V"]);
+    assert_eq!(probe.args, vec!["run", "nightly-2026-08-25", "rustc", "-V"]);
     assert!(command_is_quiet(&probe));
     assert!(command_quiets_stderr(&probe));
     assert!(
@@ -249,12 +249,16 @@ fn coverage_preflight_failures_require_nightly_toolchain_first() {
             CoveragePreflightFailure::MissingNightlyLlvmTools,
         ]
     );
-    assert!(coverage_preflight_message(&failures).contains("rustup toolchain install nightly"));
+    assert!(
+        coverage_preflight_message(&failures)
+            .contains("rustup toolchain install nightly-2026-08-25")
+    );
 }
 
 #[test]
 fn coverage_preflight_failures_require_llvm_tools_when_nightly_exists() {
-    let failures = coverage_preflight_failures("nightly-x86_64-apple-darwin\n", "clippy\n");
+    let failures =
+        coverage_preflight_failures("nightly-2026-08-25-x86_64-apple-darwin\n", "clippy\n");
 
     assert_eq!(
         failures,
@@ -262,14 +266,14 @@ fn coverage_preflight_failures_require_llvm_tools_when_nightly_exists() {
     );
     assert!(
         coverage_preflight_message(&failures)
-            .contains("rustup component add llvm-tools-preview --toolchain nightly")
+            .contains("rustup component add llvm-tools-preview --toolchain nightly-2026-08-25")
     );
 }
 
 #[test]
 fn coverage_preflight_passes_when_nightly_and_llvm_tools_are_installed() {
     let failures = coverage_preflight_failures(
-        "stable-x86_64-apple-darwin (default)\nnightly-x86_64-apple-darwin\n",
+        "stable-x86_64-apple-darwin (default)\nnightly-2026-08-25-x86_64-apple-darwin\n",
         "llvm-tools-x86_64-apple-darwin\nrustfmt\n",
     );
 

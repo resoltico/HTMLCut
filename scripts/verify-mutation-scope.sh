@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 
-# Proves that cargo-mutants is examining every default runtime crate, the maintainer gate tooling,
-# and the exact maintained fork boundary files.
+# Proves the complete mutation inventory covers the maintained source scope, or that a diff
+# inventory is a subset of that already-verified complete inventory.
 set -euo pipefail
+
+if [[ "${1:-}" == "--subset" ]]; then
+    if (( $# != 3 )); then
+        echo "usage: $0 --subset <diff-mutants-json> <full-mutants-json>" >&2
+        exit 64
+    fi
+    subset_json="$2"
+    full_json="$3"
+    if [[ ! -f "$subset_json" || ! -f "$full_json" ]]; then
+        echo "mutation subset or full inventory does not exist" >&2
+        exit 1
+    fi
+    jq -e --slurpfile full "$full_json" '
+      ($full[0] | map({name, package, file})) as $full_identities
+      | all(.[]; {name, package, file} as $identity
+          | $full_identities | index($identity) != null)
+    ' "$subset_json" >/dev/null || {
+        echo "pull-request mutation inventory contains an identity outside the verified full scope" >&2
+        exit 1
+    }
+    exit 0
+fi
 
 if (( $# != 1 )); then
     echo "usage: $0 <cargo-mutants-list-json>" >&2

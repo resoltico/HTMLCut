@@ -105,9 +105,9 @@ pub fn fuzz_smoke_preflight_message(failures: &[FuzzSmokePreflightFailure]) -> S
     );
 
     if missing_nightly {
-        message.push_str(
-            "\nInstall nightly first:\n  rustup toolchain install nightly --profile minimal\n",
-        );
+        message.push_str(&format!(
+            "\nInstall the maintained nightly first:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal\n"
+        ));
     }
 
     if missing_cargo_fuzz {

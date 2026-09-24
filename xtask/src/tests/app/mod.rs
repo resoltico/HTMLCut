@@ -120,14 +120,16 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
             let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
             if spec.program == Path::new("rustup") && args == ["toolchain", "list"] {
                 return Some(Ok(
-                    b"stable-aarch64-apple-darwin (default)\nnightly-aarch64-apple-darwin\n"
+                    b"stable-aarch64-apple-darwin (default)\nnightly-2026-08-25-aarch64-apple-darwin\n"
                         .to_vec(),
                 ));
             }
             if spec.program == Path::new("rustup") && args == ["run", "stable", "rustc", "-Vv"] {
                 return Some(Ok(b"rustc 1.97.0\n".to_vec()));
             }
-            if spec.program == Path::new("rustup") && args == ["run", "nightly", "rustc", "-V"] {
+            if spec.program == Path::new("rustup")
+                && args == ["run", "nightly-2026-08-25", "rustc", "-V"]
+            {
                 return Some(Ok(b"rustc 1.100.0-nightly (hash 2026-08-23)\n".to_vec()));
             }
             if spec.program == Path::new("rustup")
@@ -138,7 +140,14 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                 ));
             }
             if spec.program == Path::new("rustup")
-                && args == ["component", "list", "--toolchain", "nightly", "--installed"]
+                && args
+                    == [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ]
             {
                 return Some(Ok(
                     b"llvm-tools-preview-aarch64-apple-darwin\nmiri-aarch64-apple-darwin\nrust-src\n"
@@ -155,7 +164,9 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
             {
                 return Some(Ok(b"rustfmt 1.0.0\n".to_vec()));
             }
-            if spec.program == Path::new("cargo") && args == ["+nightly", "miri", "--version"] {
+            if spec.program == Path::new("cargo")
+                && args == ["+nightly-2026-08-25", "miri", "--version"]
+            {
                 return Some(Ok(b"miri 0.1.0\n".to_vec()));
             }
             if spec.program == Path::new("cargo") && args == ["fuzz", "--help"] {
