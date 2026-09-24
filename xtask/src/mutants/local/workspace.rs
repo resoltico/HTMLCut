@@ -411,9 +411,15 @@ mod tests {
     #[test]
     fn worker_supervisor_returns_a_completed_child_status_after_live_pruning() {
         let output_root = tempdir().expect("output root");
+        let headroom_marker = output_root.path().join("headroom-checked");
         let mut command = Command::new("sh");
-        command.args(["-c", "exit 0"]);
+        command
+            .arg("-c")
+            .arg("count=0; while [ \"$count\" -lt 100 ]; do [ -f \"$1\" ] && exit 0; count=$((count + 1)); sleep 0.01; done; exit 1")
+            .arg("sh")
+            .arg(&headroom_marker);
         let prunes = std::cell::Cell::new(0_usize);
+        let headroom_checks = std::cell::Cell::new(0_usize);
         let status = supervise_worker_with(
             &mut command,
             output_root.path(),
@@ -421,12 +427,17 @@ mod tests {
                 prunes.set(prunes.get() + 1);
                 Ok(())
             },
-            || Ok(()),
+            || {
+                headroom_checks.set(headroom_checks.get() + 1);
+                fs::write(&headroom_marker, "ready")?;
+                Ok(())
+            },
             Duration::ZERO,
         )
         .expect("completed child status");
         assert!(status.success());
         assert!(prunes.get() >= 1);
+        assert!(headroom_checks.get() >= 1);
     }
 
     #[test]
