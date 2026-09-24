@@ -118,6 +118,13 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("verify-mutation-scope.sh --subset"));
     assert!(workflow.contains("shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}"));
     assert!(workflow.contains("mutation-diff-plan:"));
+    assert_eq!(
+        workflow
+            .matches("\"${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}\" --profile minimal")
+            .count(),
+        2,
+        "both full and pull-request mutation workers require the maintained nightly"
+    );
     assert!(workflow.contains(
         "cargo mutants --config .cargo/mutants.toml --workspace --in-diff \"$diff_path\" --list --json"
     ));

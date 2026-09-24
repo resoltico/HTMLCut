@@ -231,6 +231,8 @@ jobs:
           htmlcut_contributor_retry 3 5 htmlcut_contributor_rustup_toolchain_install \
             "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" \
             "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS[@]}"
+          htmlcut_contributor_retry 3 5 rustup toolchain install \
+            "${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" --profile minimal
 
       - name: Export mutation tool inventory
         id: mutation_tools
