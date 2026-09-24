@@ -56,6 +56,8 @@ pub(crate) fn with_local_mutation_campaign_override<T>(
 
 const SAFE_COPY_CARGO_TARGET_DIR: &str = ".htmlcut-mutant-cargo/target";
 const SAFE_COPY_CARGO_BUILD_DIR: &str = ".htmlcut-mutant-cargo/build";
+pub(crate) const IN_PLACE_CARGO_TARGET_DIR: &str = "cargo-target";
+pub(crate) const IN_PLACE_CARGO_BUILD_DIR: &str = "cargo-build";
 /// Each isolated mutation workspace retains one incremental graph so source edits recompile only
 /// their affected crate instead of rebuilding the package from scratch for every mutant.
 const MUTATION_CARGO_INCREMENTAL: &str = "1";
@@ -116,8 +118,8 @@ pub fn mutants_command(
 ) -> CommandSpec {
     let (target_dir, build_dir) = if in_place {
         (
-            output_dir.join("cargo-target"),
-            output_dir.join("cargo-build"),
+            output_dir.join(IN_PLACE_CARGO_TARGET_DIR),
+            output_dir.join(IN_PLACE_CARGO_BUILD_DIR),
         )
     } else {
         (

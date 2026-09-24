@@ -27,6 +27,26 @@ fn elements_cursor_pages_a_static_file_and_rejects_stale_or_malformed_inputs() {
     let (first_status, first) = page(None, "2");
     assert_eq!(first_status, Some(0));
     let first_cursor = serde_json::to_string(&first["next_cursor"]).expect("cursor JSON");
+    let padding = 1_024_usize
+        .checked_sub(first_cursor.len())
+        .expect("cursor fits the published JSON limit");
+    let at_limit = format!("{}{}", " ".repeat(padding), first_cursor);
+    assert_eq!(at_limit.len(), 1_024);
+    let (at_limit_status, _) = page(Some(&at_limit), "2");
+    assert_eq!(at_limit_status, Some(0));
+    let over_limit = format!(" {at_limit}");
+    let (over_limit_status, over_limit_error) = page(Some(&over_limit), "2");
+    assert_eq!(over_limit_status, Some(2));
+    assert_eq!(
+        over_limit_error["error"]["code"],
+        "CLI_EXPLORATION_CURSOR_INVALID"
+    );
+    assert!(
+        over_limit_error["error"]["message"]
+            .as_str()
+            .expect("cursor error message")
+            .contains("exceeds the 1024-byte JSON limit")
+    );
     let (second_status, second) = page(Some(&first_cursor), "2");
     assert_eq!(second_status, Some(0));
     let second_cursor = serde_json::to_string(&second["next_cursor"]).expect("cursor JSON");

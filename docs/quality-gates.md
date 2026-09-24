@@ -174,6 +174,8 @@ the preceding cargo-mutants run restored the copied source tree. This prevents a
 stale jobserver from multiplying work or stalling every lane. Every lane reuses its temporary
 workspace-local Cargo target and build roots, so a campaign pays the all-feature dependency build
 once per bounded lane rather than once per mutant while never mutating the contributor's checkout.
+CI in-place shards also use isolated Cargo target and build roots, then discard those rebuildable
+roots after evaluation while retaining `mutants.out` results for the required artifact upload.
 Local execution requests at most four lanes, then derives a lower safe count from the free space on
 the temporary-workspace volume: 12 GiB stays reserved for the host and every admitted lane receives
 a 10 GiB temporary-state budget. If even one lane cannot fit, the command fails before it stages a

@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use htmlcut_tempdir::tempdir;
 
-use crate::mutants::{LocalMutationSummary, run_local_mutation_campaign_for_gate};
+use crate::mutants::{
+    IN_PLACE_CARGO_BUILD_DIR, IN_PLACE_CARGO_TARGET_DIR, LocalMutationSummary,
+    run_local_mutation_campaign_for_gate,
+};
 use crate::plan::materialize_semver_baseline;
 use crate::{
     CommandArtifactLayout, CommandSpec, CoverageFailure, DynResult, HygieneCleanMode, XtaskError,
@@ -205,14 +208,28 @@ pub(super) fn run_mutants(
         local.and_then(ensure_local_mutation_summary_is_clean)
     };
     let cleanup = remove_staged_mutation_diff(staged_diff.as_deref());
+    let build_cleanup = if in_place {
+        remove_in_place_mutation_build_roots(&output_dir)
+    } else {
+        Ok(())
+    };
     let hygiene = ensure_hygiene(repo_root);
 
     if let Err(error) = execution {
         cleanup?;
+        build_cleanup?;
         return Err(mutation_execution_error(error));
     }
     cleanup?;
+    build_cleanup?;
     hygiene
+}
+
+fn remove_in_place_mutation_build_roots(output_dir: &Path) -> DynResult<()> {
+    let target_cleanup = remove_dir_if_exists(&output_dir.join(IN_PLACE_CARGO_TARGET_DIR));
+    let build_cleanup = remove_dir_if_exists(&output_dir.join(IN_PLACE_CARGO_BUILD_DIR));
+    target_cleanup?;
+    build_cleanup
 }
 
 fn ensure_local_mutation_summary_is_clean(summary: LocalMutationSummary) -> DynResult<()> {

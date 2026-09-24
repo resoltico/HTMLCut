@@ -20,7 +20,7 @@ Notable changes to this project are documented in this file. The format is based
 - The minimum supported Rust version is `1.98.1`, matching the pinned development toolchain; downstream builds and CI using Rust `1.98.0` or earlier must update.
 - Attribute maps use lexical ordering in every build, and the bundled `htmlcut-scraper` fork no longer accepts its optional `deterministic` feature. Direct fork users must drop that feature; consumers comparing serialized HTML or structured attributes byte-for-byte should refresh expectations for the new ordering.
 - The maintained parser dependencies move to `cssparser` 0.38, `phf` 0.14, and `web_atoms` 0.3. Direct users of the bundled `htmlcut-scraper` and `htmlcut-selectors` forks must adjust code that matches selector parse-error variants or relied on their removed token payloads.
-- Local mutation campaigns use parallel disposable workers with isolated build roots, read-only non-Rust inputs, and free-space checks; maintainers may see an early refusal when a complete worker lane cannot fit the available scratch space.
+- Local mutation campaigns use parallel disposable workers with isolated build roots, read-only non-Rust inputs, and free-space checks; maintainers may see an early refusal when a complete worker lane cannot fit the available scratch space. CI mutation shards retain result evidence while discarding rebuildable Cargo caches after evaluation.
 - Contributor QA tools use pinned releases, a SHA-256-verified Nextest archive, Deny's published lockfile, and the exact Rust `1.98.1` and `nightly-2026-08-25` toolchains. Contributors who installed the earlier tool set should rerun the maintained installer.
 
 ### Removed

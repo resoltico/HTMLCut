@@ -283,6 +283,33 @@ fn structural_fast_proof_charges_ancestry_and_selector_matching() {
 }
 
 #[test]
+fn html_structural_proof_succeeds_with_less_work_than_a_document_scan() {
+    let source = format!("<main>One</main>{}", "<aside>Other</aside>".repeat(300));
+    let document = scraper::Html::parse_document(&source);
+    let main = main_element(&document);
+    let selector = Selector::parse("html > body > main:nth-of-type(1)").expect("selector");
+
+    assert!(matches!(
+        structural_uniquely_selects(
+            &document,
+            &selector,
+            main.id(),
+            &SelectorWorkBudget::new(100)
+        ),
+        UniqueProof::Proved
+    ));
+    assert!(matches!(
+        uniquely_selects(
+            &document,
+            &selector,
+            main.id(),
+            &SelectorWorkBudget::new(100)
+        ),
+        UniqueProof::WorkTruncated
+    ));
+}
+
+#[test]
 fn html_descendant_of_foreign_ancestry_keeps_full_selector_proof() {
     let document =
         scraper::Html::parse_document("<svg><foreignObject><main>One</main></foreignObject></svg>");
