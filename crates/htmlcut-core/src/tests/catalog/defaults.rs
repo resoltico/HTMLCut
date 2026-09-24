@@ -30,7 +30,7 @@ fn contract_lint_defaults_cover_public_default_contracts() {
         RuntimeOptions::default().max_bytes,
         max_bytes_limit(DEFAULT_MAX_BYTES)
     );
-    assert_eq!(CORE_SPEC_VERSION, 7);
+    assert_eq!(CORE_SPEC_VERSION, 8);
     assert_eq!(default_preview_chars(), DEFAULT_PREVIEW_CHARS);
     assert_eq!(
         InspectionOptions::default().sample_limit,
@@ -62,23 +62,20 @@ fn contract_lint_operation_catalog_is_unique_and_complete() {
         .map(|descriptor| descriptor.id.as_str())
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(operation_catalog().len(), 6);
+    assert_eq!(operation_catalog().len(), 7);
     assert_eq!(ids.len(), operation_catalog().len());
     assert_eq!(
         id_strings,
         BTreeSet::from([
-            "document.parse",
             "source.inspect",
+            "elements.explore",
+            "target.propose",
             "select.preview",
             "slice.preview",
             "select.extract",
             "slice.extract",
         ])
     );
-    let document_parse = operation_catalog()
-        .iter()
-        .find(|descriptor| descriptor.id == OperationId::DocumentParse)
-        .expect("document.parse should stay in the catalog");
     let select_extract = operation_catalog()
         .iter()
         .find(|descriptor| descriptor.id == OperationId::SelectExtract)
@@ -88,12 +85,10 @@ fn contract_lint_operation_catalog_is_unique_and_complete() {
         .find(|descriptor| descriptor.id == OperationId::SelectPreview)
         .expect("select.preview should stay in the catalog");
 
-    assert_eq!(document_parse.cli_surface, None);
     assert_eq!(select_extract.cli_surface, Some("select"));
     assert!(select_extract.core_api.contains("extract"));
     assert_eq!(select_preview.cli_surface, Some("inspect select"));
     assert!(select_preview.core_api.contains("preview"));
-    assert_eq!(OperationId::DocumentParse.to_string(), "document.parse");
     assert_eq!(
         "slice.extract"
             .parse::<OperationId>()

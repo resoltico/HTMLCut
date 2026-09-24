@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use assert_cmd::Command;
 use htmlcut_core::{
     ExtractionDefinition, ExtractionRequest, ExtractionSpec, SelectorQuery, SliceBoundary,
-    SliceSpec, SourceRequest, wire::v1::ExtractionDefinitionDocument,
+    SliceSpec, SourceRequest, wire::v2::ExtractionDefinitionDocument,
 };
 use htmlcut_tempdir::tempdir;
 use predicates::prelude::*;
@@ -135,9 +135,7 @@ fn unsupported_request_file_schema_carries_recovery_guidance() {
         .failure()
         .code(2)
         .stdout("")
-        .stderr(predicate::str::contains(
-            "Unsupported extraction definition schema",
-        ))
+        .stderr(predicate::str::contains("does not carry the current"))
         .stderr(predicate::str::contains(
             "htmlcut schema --name htmlcut.extraction_definition --output json",
         ))
@@ -196,7 +194,8 @@ fn request_file_schema_fixtures_stay_parseable_for_regression_tests() {
     let serialized = serde_json::to_string_pretty(&document).expect("serialize definition");
     let parsed_document: ExtractionDefinitionDocument =
         serde_json::from_str(&serialized).expect("parse serialized definition");
-    let parsed = ExtractionDefinition::from(parsed_document);
+    let parsed = ExtractionDefinition::try_from(parsed_document)
+        .expect("current extraction definition document");
     assert_eq!(
         parsed.request.extraction.strategy(),
         definition.request.extraction.strategy()

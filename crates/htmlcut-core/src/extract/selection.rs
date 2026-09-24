@@ -9,7 +9,17 @@ pub(crate) fn select_candidates<T: Clone>(
     candidates: &[T],
     selection: &SelectionSpec,
 ) -> (Vec<SelectedCandidate<T>>, Vec<Diagnostic>) {
-    if candidates.is_empty() {
+    select_candidates_with_count(candidates, candidates.len(), selection)
+}
+
+/// Selects retained candidates while preserving the total cardinality observed during a bounded
+/// scan. `candidates` may intentionally retain only the candidates needed by the selection mode.
+pub(crate) fn select_candidates_with_count<T: Clone>(
+    candidates: &[T],
+    candidate_count: usize,
+    selection: &SelectionSpec,
+) -> (Vec<SelectedCandidate<T>>, Vec<Diagnostic>) {
+    if candidate_count == 0 {
         return (
             Vec::new(),
             vec![error_diagnostic(
@@ -33,17 +43,17 @@ pub(crate) fn select_candidates<T: Clone>(
             Vec::new(),
         ),
         SelectionSpec::Single => {
-            if candidates.len() > 1 {
+            if candidate_count > 1 {
                 return (
                     Vec::new(),
                     vec![error_diagnostic(
                         DiagnosticCode::AmbiguousMatch,
                         format!(
                             "Exact-one selection requires exactly one candidate, but {} were found.",
-                            candidates.len()
+                            candidate_count
                         ),
                         Some(json!({
-                            "candidateCount": candidates.len(),
+                            "candidateCount": candidate_count,
                         })),
                     )],
                 );
@@ -58,15 +68,15 @@ pub(crate) fn select_candidates<T: Clone>(
             )
         }
         SelectionSpec::First => {
-            let diagnostics = if candidates.len() > 1 {
+            let diagnostics = if candidate_count > 1 {
                 vec![warning_diagnostic(
                     DiagnosticCode::MultipleMatches,
                     format!(
                         "Matched {} candidates while using match type first.",
-                        candidates.len()
+                        candidate_count
                     ),
                     Some(json!({
-                        "candidateCount": candidates.len(),
+                        "candidateCount": candidate_count,
                         "selectedIndex": 1,
                     })),
                 )]
@@ -84,19 +94,18 @@ pub(crate) fn select_candidates<T: Clone>(
         }
         SelectionSpec::Nth { index } => {
             let requested_index = index.get();
-            if requested_index > candidates.len() {
+            if requested_index > candidate_count {
                 return (
                     Vec::new(),
                     vec![error_diagnostic(
                         DiagnosticCode::MatchIndexOutOfRange,
                         format!(
                             "Match index {} is out of range for {} candidates.",
-                            requested_index,
-                            candidates.len()
+                            requested_index, candidate_count
                         ),
                         Some(json!({
                             "requestedIndex": requested_index,
-                            "candidateCount": candidates.len(),
+                            "candidateCount": candidate_count,
                         })),
                     )],
                 );

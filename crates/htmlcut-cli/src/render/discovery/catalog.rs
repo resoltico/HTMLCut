@@ -103,7 +103,6 @@ pub(crate) fn render_catalog_surface(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{CatalogContractSurface, CatalogOperationReport};
 
     #[test]
     fn catalog_surface_rendering_covers_cli_without_explicit_command() {
@@ -122,48 +121,41 @@ mod tests {
     }
 
     #[test]
-    fn catalog_operation_rendering_skips_optional_sections_when_contracts_are_sparse() {
-        let lines = render_catalog_operation_lines(&CatalogOperationReport {
-            operation_id: htmlcut_core::OperationId::DocumentParse,
-            command: None,
-            availability: CatalogAvailability::EngineOnly,
-            summary: "Parse a document".to_owned(),
-            engine_capability: "parse_document(SourceRequest, RuntimeOptions)".to_owned(),
-            request_contract: CatalogContractSurface {
-                artifact: "SourceRequest + RuntimeOptions".to_owned(),
-                schema_refs: Vec::new(),
-            },
-            result_contract: CatalogContractSurface {
-                artifact: "ParseDocumentResult".to_owned(),
-                schema_refs: Vec::new(),
-            },
-            command_contract: Some(crate::model::CatalogCommandContract {
-                invocation: "htmlcut parse".to_owned(),
-                inputs: Vec::new(),
-                default_match: None,
-                selection_modes: Vec::new(),
-                default_value: None,
-                value_modes: Vec::new(),
-                default_output: None,
-                default_output_overrides: Vec::new(),
-                output_modes: Vec::new(),
-                constraints: Vec::new(),
-                notes: Vec::new(),
-                examples: Vec::new(),
-                parameters: Vec::new(),
-            }),
-        });
+    fn catalog_text_handles_empty_singular_and_schema_less_contracts() {
+        let mut empty = crate::prepare::build_catalog_report(None).expect("catalog report");
+        empty.operations.clear();
+        assert!(render_catalog_text(&empty).contains("Catalog: 0 operations."));
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line == "  request: SourceRequest + RuntimeOptions")
-        );
-        assert!(lines.iter().all(|line| !line.contains("schemas:")));
-        assert!(
-            lines
-                .iter()
-                .all(|line| !line.contains("Use `--output json` for parameters"))
-        );
+        let mut singular = crate::prepare::build_catalog_report(None).expect("catalog report");
+        singular.operations.truncate(1);
+        singular.operations[0].command = None;
+        singular.operations[0].command_contract = None;
+        singular.operations[0].availability = CatalogAvailability::EngineOnly;
+        singular.operations[0].request_contract.schema_refs.clear();
+        singular.operations[0].result_contract.schema_refs.clear();
+        let rendered = render_catalog_text(&singular);
+        assert!(rendered.contains("Catalog: 1 operation."));
+        assert!(rendered.contains("Operation:"));
+        assert!(!rendered.contains("request schemas:"));
+        assert!(!rendered.contains("Use `--output json` for parameters"));
+
+        let mut commandless = crate::prepare::build_catalog_report(None).expect("catalog report");
+        commandless.operations.truncate(1);
+        commandless.operations[0].command = None;
+        let expected_schema_refs = commandless.operations[0]
+            .request_contract
+            .schema_refs
+            .iter()
+            .chain(commandless.operations[0].result_contract.schema_refs.iter())
+            .map(|schema| format!("{}@{}", schema.schema_name, schema.schema_version))
+            .collect::<Vec<_>>();
+        let rendered = render_catalog_text(&commandless);
+        assert!(!rendered.contains("Use `--output json` for parameters"));
+        for expected_schema_ref in expected_schema_refs {
+            assert!(
+                rendered.contains(&expected_schema_ref),
+                "catalog text must preserve every emitted schema identity"
+            );
+        }
     }
 }

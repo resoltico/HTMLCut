@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: SETUP
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
@@ -27,8 +27,8 @@ campaigns. The maintainer workflow also depends on Rust-native QA commands plus 
 shell-script checks.
 
 The workspace manifest carries the published compatibility floor through
-`[workspace.package] rust-version = "1.98"`, while `rust-toolchain.toml` owns the exact
-day-to-day repository pin (currently `1.98.0`).
+`[workspace.package] rust-version = "1.98.1"`, while `rust-toolchain.toml` owns the exact
+day-to-day repository pin (currently `1.98.1`).
 
 Use `rustup` directly for Rust instead of Homebrew Rust. HTMLCut needs explicit control over
 stable, nightly, and per-toolchain components, which is exactly what `rustup` is designed to
@@ -58,10 +58,10 @@ Why this shape:
 - `./scripts/contributor-rust-tools.sh` is the canonical owner for the exact stable/nightly
   bootstrap values shared by docs, bootstrap scripts, and CI.
 - `rust-toolchain.toml` owns the exact stable repository pin for day-to-day work. Right now that
-  resolves to `1.98.0`.
+  resolves to `1.98.1`.
 - the workspace manifest carries the published compatibility floor separately through
-  `[workspace.package] rust-version = "1.98"`.
-- `nightly` exists because `cargo +nightly llvm-cov --branch` is still required for the maintained
+  `[workspace.package] rust-version = "1.98.1"`.
+- The maintained `nightly-2026-08-25` toolchain is pinned because `cargo +nightly-2026-08-25 llvm-cov --branch` is required for the maintained
   coverage gate, because `cargo xtask miri` now proves the selector and delimiter-slice paths
   under strict provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
@@ -82,15 +82,19 @@ Why this shape:
 
 - `./scripts/install-contributor-cargo-tools.sh` installs the repo-owned pinned contributor tool
   inventory instead of whichever helper versions crates.io happens to serve on that day.
-- The script uses each tool's checked-in lockfile and keeps the QA commands in the same
-  Rust-managed toolchain path as `cargo` itself.
+- The script pins each tool's released version. It installs Nextest from the official archive
+  after checking a pinned SHA-256 digest, because Nextest requires source installs to use its
+  upstream lockfile and that lockfile can retain yanked crates. Deny builds from its clean
+  published lockfile because its profile names packages in that graph. The other tools build
+  with the workspace's explicit Rust toolchain and resolve available transitive dependencies.
 - `pkgconf` plus `openssl@3` provide the native metadata needed by the pinned cargo-tool graph on
   the maintained macOS path, especially `cargo-outdated`.
 - `CC=clang CXX=clang++` protects fresh macOS machines from stale shell overrides that point at a
   removed Homebrew LLVM install.
 - `cargo-fuzz` is installed with the default contributor inventory because HTMLCut keeps checked-in
-  fuzz targets and seed corpora. `cargo-mutants` is intentionally opt-in because full mutation
-  testing is scheduled/manual rather than part of the normal contributor gate.
+  fuzz targets and seed corpora. `cargo-mutants` is also installed by default because the full
+  maintainer gate executes a real disposable mutation-workspace integration test; full mutation
+  campaigns remain separate scheduled or manual work.
 
 The installer also preflights those macOS native prerequisites now. If `pkg-config` cannot see
 OpenSSL metadata, it stops immediately with the exact Homebrew repair command instead of failing
@@ -110,19 +114,11 @@ stay on the LLVM toolchain. The strict-provenance selector-and-slice Miri proof 
 but it does require the nightly `miri` plus `rust-src` components. Keep `clang` and `clang++`
 available on `PATH` on any host where you plan to run the maintained coverage or fuzz commands.
 
-Install cargo-mutants only when you will run the mutation workflow locally:
+The CI mutation workflow installs the same pinned `cargo-mutants` release independently for its
+sharded campaigns.
 
-```bash
-CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-mutants
-```
-
-The CI mutation workflow installs this same pinned tool independently, so normal devcontainer
-bootstrap and ordinary contributor setup do not pay to build an optional multi-hour quality tool.
-
-The contributor installer temporarily builds `cargo-semver-checks` from its exact checked-in
-upstream revision because crates.io `0.50.0` cannot read Rust `1.98` Rustdoc JSON. The pinned
-revision restores the maintained semver gate and should be replaced by a published release once it
-contains Rustdoc-v60 support.
+The pinned `cargo-semver-checks` `0.50.0` release includes Rustdoc-v60 support for the
+maintained Rust `1.98.1` semver gate.
 
 ## Install Host-Native ShellCheck
 
@@ -185,9 +181,8 @@ cargo deny --version
 cargo semver-checks --version
 cargo outdated --version
 cargo llvm-cov --version
-cargo +nightly miri --version
+cargo +nightly-2026-08-25 miri --version
 cargo fuzz --version
-# Optional: install cargo-mutants first when you need mutation testing.
 cargo mutants --version
 shellcheck --version
 ```
@@ -206,7 +201,7 @@ supported gate path outside Cargo's mutable artifact roots:
 ./scripts/xtask.sh miri
 ./scripts/xtask.sh outdated-check
 ./scripts/xtask.sh fuzz-smoke
-# Optional: requires the cargo-mutants installation above.
+# Full mutation campaigns are separate from the normal maintainer gate.
 ./scripts/xtask.sh mutants
 ```
 
@@ -218,10 +213,29 @@ For a short live libFuzzer pass that keeps the checked-in seed corpora clean, us
 then enables the real `fuzzing` harness mode explicitly before it launches, so missing fuzz
 prerequisites fail fast with one actionable message and broad default Cargo test loops stay
 finite.
-For mutation testing, use `./scripts/xtask.sh mutants`; it copies the workspace before mutating
-and retains the resulting `mutants.out` tree under `../.htmlcut-artifacts/mutation-runs`. The
-scheduled CI workflow is the only maintained caller that adds `--in-place`, because its checkout
-is disposable.
+For mutation testing, use `./scripts/xtask.sh mutants`; it materializes a bounded number of
+disposable complete source workspaces, assigns deterministic package-local partitions to those
+lanes, runs cargo-mutants in place only inside the copies, and reconciles the resulting `mutants.out`
+tree under `../.htmlcut-artifacts/mutation-runs`. Outer sharding alone controls concurrency:
+cargo-mutants' sequential in-place worker mode receives a proportionate Cargo build budget and never
+inherits an outer GNU Make jobserver. Each lane uses a private offline Cargo home and lock domain,
+with its already-cached registry and Git trees linked read-only, so concurrent baselines do not
+contend on the contributor's global Cargo cache. Within a copied worker, only Rust source files are
+writable; configuration, documentation, and other non-Rust inputs stay read-only. A lane may execute later partitions only after a
+content fingerprint proves cargo-mutants restored its copied source tree; it then reuses that lane's
+temporary Cargo target. Local execution requests at most four lanes, then derives a lower safe count
+from the free space on the temporary-workspace volume, reserving 12 GiB for the host and 10 GiB per
+lane; insufficient space fails before any worker is staged. Before each later partition in an
+already-staged lane, the runner also requires 2 GiB of runtime headroom: it stops before launching
+that partition rather than allowing unrelated host activity to exhaust the filesystem mid-campaign.
+Small selections retain at least
+sixty-four planned mutants per partition to avoid duplicate cold baselines, so local mutation testing protects a dirty checkout without
+recompiling the workspace from scratch for every mutant. The canonical aggregate records the exact
+planned inventory. As each worker progresses, it retains runner and baseline diagnostics plus
+per-mutant evidence only for missed or timed-out mutants; caught and unviable outcomes remain in the
+aggregate documents and compact lists without retaining their non-actionable log and diff trees.
+The scheduled CI workflow is the only maintained caller that applies `--in-place` to its checkout,
+because that checkout is disposable.
 
 To test only mutations in a reviewed source diff, pass a unified diff file:
 

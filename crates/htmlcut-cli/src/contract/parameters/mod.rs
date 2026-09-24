@@ -46,6 +46,14 @@ pub(super) fn inspect_slice_parameters() -> Vec<CliParameterDescriptor> {
     commands::inspect_slice_parameters()
 }
 
+pub(super) fn inspect_elements_parameters() -> Vec<CliParameterDescriptor> {
+    commands::inspect_elements_parameters()
+}
+
+pub(super) fn inspect_propose_parameters() -> Vec<CliParameterDescriptor> {
+    commands::inspect_propose_parameters()
+}
+
 pub(super) fn select_extract_parameters() -> Vec<CliParameterDescriptor> {
     commands::select_extract_parameters()
 }

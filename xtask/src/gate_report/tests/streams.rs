@@ -7,6 +7,39 @@ use std::time::Duration;
 use super::*;
 
 #[test]
+fn active_gate_mirrors_only_verbose_human_live_commands() {
+    with_gate_report_root(|repo_root| {
+        let quiet_spec = command_spec(["--version"]);
+        let live_spec = quiet_spec.clone().with_live_output();
+
+        assert!(!should_mirror_live_output(&live_spec));
+
+        with_gate_report(
+            repo_root,
+            "human-mirroring",
+            output_options(GateOutputFormat::Human),
+            || -> DynResult<()> {
+                assert!(!should_mirror_live_output(&quiet_spec));
+                assert!(should_mirror_live_output(&live_spec));
+                Ok(())
+            },
+        )
+        .expect("human gate report");
+
+        with_gate_report(
+            repo_root,
+            "json-mirroring",
+            output_options(GateOutputFormat::Json),
+            || -> DynResult<()> {
+                assert!(!should_mirror_live_output(&live_spec));
+                Ok(())
+            },
+        )
+        .expect("JSON gate report");
+    });
+}
+
+#[test]
 fn warning_extraction_preserves_stream_and_ignores_progress_noise() {
     let warnings = warnings_from_output(
         b"Compiling htmlcut-core\nwarning: first\n",
@@ -112,7 +145,7 @@ fn streamed_command_preserves_human_diagnostics_and_fails_closed_on_missing_evid
             Duration::from_millis(7),
         );
         assert!(explicit_evidence_failure.contains("retention denied"));
-        replay_log_stream("missing", &run.run_dir.join("missing.log"), false);
+        assert!(replay_log_stream("missing", &run.run_dir.join("missing.log")).is_err());
 
         run.finish(Some(&failure)).expect("finish failed report");
         let report = report_value(&run);
@@ -121,6 +154,72 @@ fn streamed_command_preserves_human_diagnostics_and_fails_closed_on_missing_evid
             report["steps"][1]["failure_tail"]
                 .as_str()
                 .is_some_and(|tail| tail.contains("failed stderr"))
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn verbose_human_reporting_replays_stdout_and_accepts_empty_retained_streams() {
+    with_gate_report_root(|repo_root| {
+        let mut options = output_options(GateOutputFormat::Human);
+        options.verbose = true;
+        let mut run =
+            GateRun::start(repo_root, "verbose-streams", options).expect("start gate run");
+        let spec = CommandSpec::new(
+            "sh",
+            ["-c", "printf stdout; printf stderr >&2"],
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        );
+        let output = Command::new("sh")
+            .args(["-c", "printf stdout; printf stderr >&2"])
+            .output()
+            .expect("run stream fixture");
+        let command_index = run.begin_command(&spec);
+        assert_eq!(
+            run.finish_command(command_index, &spec, &output, Duration::from_millis(1)),
+            ""
+        );
+
+        let empty_index = run.begin_command(&spec);
+        let (stdout_log, stderr_log) = run.command_log_paths(empty_index);
+        fs::write(stdout_log, "").expect("write empty stdout log");
+        fs::write(stderr_log, "").expect("write empty stderr log");
+        assert_eq!(
+            run.finish_streamed_command(
+                empty_index,
+                &spec,
+                output.status,
+                Duration::from_millis(1)
+            ),
+            ""
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn verbose_human_reporting_ignores_an_empty_captured_stdout_stream() {
+    with_gate_report_root(|repo_root| {
+        let mut options = output_options(GateOutputFormat::Human);
+        options.verbose = true;
+        let mut run =
+            GateRun::start(repo_root, "empty-captured-stream", options).expect("start gate run");
+        let spec = CommandSpec::new(
+            "sh",
+            ["-c", "exit 0"],
+            CommandStdout::Quiet,
+            CommandToolchainEnv::Inherit,
+        );
+        let output = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .output()
+            .expect("run empty stream fixture");
+        let index = run.begin_command(&spec);
+        assert_eq!(
+            run.finish_command(index, &spec, &output, Duration::from_millis(1)),
+            ""
         );
     });
 }

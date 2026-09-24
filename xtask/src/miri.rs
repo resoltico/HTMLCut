@@ -81,14 +81,14 @@ pub fn miri_preflight_message(failures: &[MiriPreflightFailure]) -> String {
     let missing_rust_src = failures.contains(&MiriPreflightFailure::MissingNightlyRustSrc);
     let broken_binary = failures.contains(&MiriPreflightFailure::BrokenNightlyMiriBinary);
 
-    let mut message = String::from(
-        "Rust Miri preflight failed. HTMLCut keeps stable as the default toolchain, but the maintained strict-provenance selector-and-slice proof runs through `cargo +nightly miri test`.\n",
+    let mut message = format!(
+        "Rust Miri preflight failed. HTMLCut keeps stable as the default toolchain, but the maintained strict-provenance selector-and-slice proof runs through `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} miri test`.\n"
     );
 
     if missing_nightly {
-        message.push_str(
-            "\nInstall the nightly Miri toolchain first:\n  rustup toolchain install nightly --profile minimal --component miri --component rust-src\n",
-        );
+        message.push_str(&format!(
+            "\nInstall the nightly Miri toolchain first:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component miri --component rust-src\n"
+        ));
         return message;
     }
 
@@ -102,15 +102,15 @@ pub fn miri_preflight_message(failures: &[MiriPreflightFailure]) -> String {
 
     if !missing_components.is_empty() {
         message.push_str(&format!(
-            "\nInstall the missing nightly Miri components:\n  rustup component add {} --toolchain nightly\n",
+            "\nInstall the missing nightly Miri components:\n  rustup component add {} --toolchain {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}\n",
             missing_components.join(" ")
         ));
     }
 
     if broken_binary {
-        message.push_str(
-            "\nNightly reports the Miri components as installed, but `cargo +nightly miri --version` still does not run.\nRepair the nightly toolchain cleanly with:\n  rustup toolchain uninstall nightly\n  rustup toolchain install nightly --profile minimal --component miri --component rust-src\n",
-        );
+        message.push_str(&format!(
+            "\nNightly reports the Miri components as installed, but `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} miri --version` still does not run.\nRepair the nightly toolchain cleanly with:\n  rustup toolchain uninstall {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component miri --component rust-src\n"
+        ));
     }
 
     message

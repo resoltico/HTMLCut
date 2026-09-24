@@ -2,6 +2,30 @@ use super::*;
 use crate::extract::SliceCandidate;
 use crate::result::Range;
 
+macro_rules! slice_match {
+    (
+        $request:expr,
+        $source_text:expr,
+        $effective_base_url:expr,
+        $candidate:expr,
+        $match_index:expr,
+        $match_count:expr,
+        $candidate_index:expr,
+        $candidate_count:expr $(,)?
+    ) => {
+        crate::extract::build_slice_match(crate::extract::SliceMatchInput {
+            request: $request,
+            source_text: $source_text,
+            effective_base_url: $effective_base_url,
+            candidate: $candidate,
+            match_index: $match_index,
+            match_count: $match_count,
+            candidate_index: $candidate_index,
+            candidate_count: $candidate_count,
+        })
+    };
+}
+
 #[test]
 fn slice_match_builder_covers_value_modes() {
     let mut request = ExtractionRequest::new(
@@ -31,8 +55,9 @@ fn slice_match_builder_covers_value_modes() {
     .expect("candidate")
     .remove(0);
 
-    let html_match = build_slice_match(
+    let html_match = slice_match!(
         &request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -53,8 +78,9 @@ fn slice_match_builder_covers_value_modes() {
         .extraction
         .clone()
         .with_value(attribute_value("href"));
-    let attribute_match = build_slice_match(
+    let attribute_match = slice_match!(
         &attribute_request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -72,8 +98,9 @@ fn slice_match_builder_covers_value_modes() {
         .extraction
         .clone()
         .with_value(attribute_value("title"));
-    let missing = build_slice_match(
+    let missing = slice_match!(
         &attribute_request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -91,8 +118,9 @@ fn slice_match_builder_covers_value_modes() {
 
     let mut inconsistent_candidate = candidate.clone();
     inconsistent_candidate.selected_range.start += 1;
-    let unhinted_missing = build_slice_match(
+    let unhinted_missing = slice_match!(
         &attribute_request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &inconsistent_candidate,
         1,
@@ -124,8 +152,9 @@ fn slice_match_builder_covers_value_modes() {
     )
     .expect("candidate")
     .remove(0);
-    let hinted_missing = build_slice_match(
+    let hinted_missing = slice_match!(
         &inner_capture_request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &inner_candidate,
         1,
@@ -154,8 +183,9 @@ fn slice_match_builder_covers_value_modes() {
         .extraction
         .clone()
         .with_value(ValueSpec::Structured);
-    let structured = build_slice_match(
+    let structured = slice_match!(
         &structured_request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -226,8 +256,9 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
     .expect("candidate")
     .remove(0);
 
-    let text_match = build_slice_match(
+    let text_match = slice_match!(
         &request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -244,8 +275,9 @@ fn slice_match_builder_covers_text_and_outer_html_modes() {
     request.extraction = request.extraction.clone().with_value(ValueSpec::OuterHtml);
     request.output.include_html = false;
     request.output.include_text = false;
-    let outer_html_match = build_slice_match(
+    let outer_html_match = slice_match!(
         &request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -295,8 +327,9 @@ fn slice_match_builder_covers_inner_html_without_text_projection() {
     .expect("candidate")
     .remove(0);
 
-    let inner_html_match = build_slice_match(
+    let inner_html_match = slice_match!(
         &request,
+        &loaded.text,
         effective_base_url.as_deref(),
         &candidate,
         1,
@@ -337,7 +370,8 @@ fn slice_match_builder_preserves_selected_fragment_roots_that_only_look_like_uti
     .expect("candidate")
     .remove(0);
 
-    let text_match = build_slice_match(&request, None, &candidate, 1, 1, 1, 1).expect("text");
+    let text_match =
+        slice_match!(&request, &loaded.text, None, &candidate, 1, 1, 1, 1).expect("text");
     assert_eq!(text_match.value.as_str(), Some("All Systems Operational"));
     assert_eq!(text_match.text.as_deref(), Some("All Systems Operational"));
 
@@ -363,7 +397,17 @@ fn slice_match_builder_preserves_selected_fragment_roots_that_only_look_like_uti
     .expect("candidate")
     .remove(0);
 
-    let nav_match = build_slice_match(&nav_request, None, &nav_candidate, 1, 1, 1, 1).expect("nav");
+    let nav_match = slice_match!(
+        &nav_request,
+        &nav_loaded.text,
+        None,
+        &nav_candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect("nav");
     assert_eq!(nav_match.value.as_str(), Some("Docs [/docs]"));
     assert_eq!(nav_match.text.as_deref(), Some("Docs [/docs]"));
 }
@@ -398,10 +442,11 @@ fn slice_candidate_extraction_and_regex_builder_cover_error_paths() {
     assert_eq!(zero_width[0].selected_range.start, 0);
     assert_eq!(zero_width[1].selected_range.start, 3);
 
-    let nested = extract_slice_candidates("<a><a>inner</a>", &slice_spec("<a>", "</a>"))
+    let nested_source = "<a><a>inner</a>";
+    let nested = extract_slice_candidates(nested_source, &slice_spec("<a>", "</a>"))
         .expect("nested candidate");
     assert_eq!(nested.len(), 1);
-    assert_eq!(nested[0].outer_html, "<a><a>inner</a>");
+    assert_eq!(nested[0].outer_html(nested_source), "<a><a>inner</a>");
 }
 
 #[test]
@@ -490,18 +535,25 @@ fn slice_runtime_reports_misrouted_requests_and_missing_boundaries() {
     assert!(invalid_run.matches.is_empty());
     assert_eq!(invalid_run.diagnostics[0].code, "INVALID_SLICE_PATTERN");
 
+    let candidate_source = "<article>Hello</article>";
     let candidate = SliceCandidate {
-        inner_html: "Hello".to_owned(),
-        outer_html: "<article>Hello</article>".to_owned(),
-        selected_html: "Hello".to_owned(),
         selected_range: Range { start: 9, end: 14 },
         inner_range: Range { start: 9, end: 14 },
         outer_range: Range { start: 0, end: 24 },
-        matched_start: "<article>".to_owned(),
-        matched_end: "</article>".to_owned(),
+        matched_start_range: Range { start: 0, end: 9 },
+        matched_end_range: Range { start: 14, end: 24 },
     };
-    let invalid_match =
-        build_slice_match(&selector_request, None, &candidate, 1, 1, 1, 1).expect_err("invalid");
+    let invalid_match = slice_match!(
+        &selector_request,
+        candidate_source,
+        None,
+        &candidate,
+        1,
+        1,
+        1,
+        1,
+    )
+    .expect_err("invalid");
     assert_eq!(invalid_match.code, "INVALID_SLICE_PATTERN");
 }
 

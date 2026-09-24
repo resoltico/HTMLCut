@@ -1,48 +1,3 @@
-use super::*;
-
-#[test]
-fn contract_validation_helpers_report_catalog_membership_drift_and_assert_failures() {
-    let select_extract =
-        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
-            .expect("select extract contract")
-            .clone();
-    let mut duplicate = select_extract.clone();
-    duplicate.command_path = &["broken"];
-
-    let mut core_only = select_extract.clone();
-    core_only.operation_id = htmlcut_core::OperationId::DocumentParse;
-
-    let document_parse =
-        htmlcut_core::operation_descriptor(htmlcut_core::OperationId::DocumentParse)
-            .copied()
-            .expect("document.parse descriptor");
-
-    let errors = crate::contract::cli_operation_catalog_validation_errors_for(
-        &[document_parse],
-        &[select_extract, duplicate.clone(), core_only],
-    );
-
-    for expected in [
-        "select.extract is missing from OPERATION_CATALOG",
-        "select.extract appears more than once in cli_operation_catalog()",
-        "document.parse appears in cli_operation_catalog() but is marked core-only in OPERATION_CATALOG",
-        "document.parse display command drifted",
-    ] {
-        assert!(
-            errors.iter().any(|error| error.contains(expected)),
-            "missing operation catalog error containing {expected:?}: {errors:#?}"
-        );
-    }
-
-    assert!(
-        catch_unwind(|| {
-            crate::contract::assert_cli_operation_catalog_consistency_for_tests(&[duplicate])
-        })
-        .is_err(),
-        "operation catalog assertion should panic on drift"
-    );
-}
-
 #[test]
 fn contract_validation_helpers_report_parameter_default_and_constraint_drift() {
     let mut contract =
@@ -285,6 +240,79 @@ fn contract_validation_helpers_cover_missing_optional_output_and_empty_restricti
         }),
         "empty restriction domains should skip impossible value-subset checks: {empty_restriction_domain_errors:#?}"
     );
+}
+
+#[test]
+fn cli_catalog_validation_rejects_visibility_duplicate_and_command_drift() {
+    let descriptor = *htmlcut_core::operation_descriptor(htmlcut_core::OperationId::SelectExtract)
+        .expect("select descriptor");
+    let contract =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select contract")
+            .clone();
+
+    let missing_cli =
+        crate::contract::cli_operation_catalog_validation_errors_for(&[descriptor], &[]);
+    assert!(
+        missing_cli
+            .iter()
+            .any(|error| error.contains("missing from cli_operation_catalog"))
+    );
+
+    let mut core_only = descriptor;
+    core_only.cli_surface = None;
+    let core_only_errors = crate::contract::cli_operation_catalog_validation_errors_for(
+        &[core_only],
+        std::slice::from_ref(&contract),
+    );
+    assert!(
+        core_only_errors
+            .iter()
+            .any(|error| error.contains("marked core-only"))
+    );
+
+    let mut command_drift = descriptor;
+    command_drift.cli_surface = Some("wrong command");
+    let duplicate_and_drift = crate::contract::cli_operation_catalog_validation_errors_for(
+        &[command_drift],
+        &[contract.clone(), contract],
+    );
+    assert!(
+        duplicate_and_drift
+            .iter()
+            .any(|error| error.contains("appears more than once"))
+    );
+    assert!(
+        duplicate_and_drift
+            .iter()
+            .any(|error| error.contains("display command drifted"))
+    );
+
+    let mut unknown_operation =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select contract")
+            .clone();
+    unknown_operation.operation_id = htmlcut_core::OperationId::SliceExtract;
+    let unknown_errors = crate::contract::cli_operation_catalog_validation_errors_for(
+        &[descriptor],
+        &[unknown_operation],
+    );
+    assert!(
+        unknown_errors
+            .iter()
+            .any(|error| error.contains("is missing from OPERATION_CATALOG"))
+    );
+}
+
+#[test]
+#[should_panic(expected = "cli_operation_catalog drifted from OPERATION_CATALOG")]
+fn cli_catalog_assertion_surfaces_the_collected_drift() {
+    let mut contract =
+        crate::contract::cli_operation_contract(htmlcut_core::OperationId::SelectExtract)
+            .expect("select contract")
+            .clone();
+    contract.operation_id = htmlcut_core::OperationId::SliceExtract;
+    crate::contract::assert_cli_operation_catalog_consistency_for_tests(&[contract]);
 }
 
 #[test]

@@ -144,11 +144,11 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-nextest cargo-audit cargo-deny cargo-outdated)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust QA tools
-        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: ${{ steps.rust_qa_tools.outputs.tool_csv }}
 
-      - name: Install cargo-semver-checks from pinned upstream revision
+      - name: Install pinned cargo-semver-checks release
         shell: bash
         run: ./scripts/install-contributor-cargo-tools.sh cargo-semver-checks
 

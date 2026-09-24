@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
-use scraper::Html;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -377,39 +376,6 @@ pub struct SourceInspectionResult {
     /// Diagnostics emitted while validating, loading, or parsing.
     pub diagnostics: Vec<Diagnostic>,
 }
-
-/// Parsed document tree plus the source metadata that produced it.
-#[derive(Clone, Debug)]
-pub struct ParsedDocument {
-    /// Metadata for the loaded source.
-    pub source: SourceMetadata,
-    /// Parsed HTML tree.
-    pub document: Html,
-}
-
-// Parsed documents are immutable post-parse snapshots at the HTMLCut contract boundary.
-// Keep the historical catch_unwind friendliness of the wrapper stable even though the
-// vendored parser stack now uses local package identities internally.
-impl std::panic::RefUnwindSafe for ParsedDocument {}
-impl std::panic::UnwindSafe for ParsedDocument {}
-
-/// Parse-only result produced by [`crate::parse_document`].
-#[derive(Clone, Debug)]
-pub struct ParseDocumentResult {
-    /// The canonical operation that produced this result.
-    pub operation_id: OperationId,
-    /// Whether parsing finished without error diagnostics.
-    pub ok: bool,
-    /// Source metadata for the loaded input.
-    pub source: SourceMetadata,
-    /// Diagnostics emitted while validating, loading, or parsing.
-    pub diagnostics: Vec<Diagnostic>,
-    /// The parsed document tree when parsing succeeded.
-    pub document: Option<ParsedDocument>,
-}
-
-impl std::panic::RefUnwindSafe for ParseDocumentResult {}
-impl std::panic::UnwindSafe for ParseDocumentResult {}
 
 /// Half-open source range using byte offsets.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::command_exec::capture_command_output;
 use crate::model::{
     CommandSpec, CommandStdout, CommandToolchainEnv, CoveragePreflightFailure, DynResult,
+    MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 use crate::{
     FuzzSmokePreflightFailure, RepoToolchainPreflightFailure, cargo_fuzz_probe_command,
@@ -56,23 +57,22 @@ pub fn ensure_repo_toolchain_prerequisites(repo_root: &Path) -> DynResult<()> {
 
 /// Validates nightly plus LLVM prerequisites before the coverage gate starts.
 pub fn ensure_coverage_prerequisites(repo_root: &Path) -> DynResult<()> {
-    let toolchains = capture_utf8(
+    let toolchains = ensure_installed_nightly_toolchain(
         repo_root,
-        &CommandSpec::new(
-            "rustup",
-            ["toolchain", "list"],
-            CommandStdout::Inherit,
-            CommandToolchainEnv::Inherit,
-        ),
         "coverage preflight could not query rustup toolchains",
         "coverage preflight received invalid rustup output",
     )?;
-    ensure_nightly_toolchain_supports_workspace_floor(repo_root, &toolchains)?;
     let components = capture_utf8(
         repo_root,
         &CommandSpec::new(
             "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
+            [
+                "component",
+                "list",
+                "--toolchain",
+                MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+                "--installed",
+            ],
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         ),
@@ -107,7 +107,13 @@ pub fn ensure_miri_prerequisites(repo_root: &Path) -> DynResult<()> {
         repo_root,
         &CommandSpec::new(
             "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
+            [
+                "component",
+                "list",
+                "--toolchain",
+                MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
+                "--installed",
+            ],
             CommandStdout::Inherit,
             CommandToolchainEnv::Inherit,
         ),
@@ -160,12 +166,12 @@ fn ensure_nightly_toolchain_supports_workspace_floor(
     if !toolchains
         .lines()
         .map(str::trim)
-        .any(|line| line.starts_with("nightly"))
+        .any(|line| line.starts_with(MAINTAINED_NIGHTLY_TOOLCHAIN_NAME))
     {
-        return Err(
-            "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows require the `nightly` toolchain.\n\nInstall it with:\n  rustup toolchain install nightly --profile minimal\n"
-                .into(),
-        );
+        return Err(format!(
+            "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows require the `{MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}` toolchain.\n\nInstall it with:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal\n"
+        )
+        .into());
     }
 
     let compiler = capture_utf8(
@@ -179,7 +185,7 @@ fn ensure_nightly_toolchain_supports_workspace_floor(
     }
 
     Err(format!(
-        "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows need a nightly compiler that supports the published Rust floor.\n\nDetected nightly: `{}`\nRequired workspace floor: `{floor}`\n\nRefresh nightly, then restore its required components:\n  rustup update nightly\n  rustup component add llvm-tools-preview miri rust-src --toolchain nightly\n",
+        "Nightly Rust preflight failed. HTMLCut's maintained Miri, coverage, and fuzzing flows need a nightly compiler that supports the published Rust floor.\n\nDetected nightly: `{}`\nRequired workspace floor: `{floor}`\n\nInstall the maintained nightly and its required components:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component llvm-tools-preview --component miri --component rust-src\n",
         compiler.trim()
     )
     .into())
@@ -191,11 +197,16 @@ pub fn ensure_mutants_prerequisites(repo_root: &Path) -> DynResult<()> {
         capture_command_output(repo_root, &cargo_mutants_probe_command()).is_ok();
     let failures = mutants_preflight_failures(cargo_mutants_installed);
 
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(mutants_preflight_message(&failures).into())
+    if !failures.is_empty() {
+        return Err(mutants_preflight_message(&failures).into());
     }
+
+    ensure_installed_nightly_toolchain(
+        repo_root,
+        "mutation-testing preflight could not query rustup toolchains",
+        "mutation-testing preflight received invalid rustup output",
+    )
+    .map(|_| ())
 }
 
 fn capture_utf8(
@@ -207,6 +218,34 @@ fn capture_utf8(
     let output = capture_command_output(repo_root, spec)
         .map_err(|error| format!("{}: {error}", command_error.into()))?;
     String::from_utf8(output).map_err(|error| format!("{decode_error}: {error}").into())
+}
+
+fn installed_toolchains(
+    repo_root: &Path,
+    command_error: impl Into<String>,
+    decode_error: &str,
+) -> DynResult<String> {
+    capture_utf8(
+        repo_root,
+        &CommandSpec::new(
+            "rustup",
+            ["toolchain", "list"],
+            CommandStdout::Inherit,
+            CommandToolchainEnv::Inherit,
+        ),
+        command_error,
+        decode_error,
+    )
+}
+
+fn ensure_installed_nightly_toolchain(
+    repo_root: &Path,
+    command_error: impl Into<String>,
+    decode_error: &str,
+) -> DynResult<String> {
+    let toolchains = installed_toolchains(repo_root, command_error, decode_error)?;
+    ensure_nightly_toolchain_supports_workspace_floor(repo_root, &toolchains)?;
+    Ok(toolchains)
 }
 
 fn repo_toolchain_preflight_error<F>(

@@ -161,7 +161,7 @@ impl<Impl: SelectorImpl> Default for SelectorBuilder<Impl> {
 }
 
 // This is effectively a Chain<>, but Chain isn't an ExactSizeIterator, see
-// https://github.com/rust-lang/rust/issues/34433
+// <https://github.com/rust-lang/rust/issues/34433>
 struct ExactChain<A, B>(A, B);
 
 impl<A, B, Item> ExactSizeIterator for ExactChain<A, B>
@@ -323,7 +323,7 @@ where
                     // matter, but we do it still for consistency with other
                     // pseudo-elements.
                     //
-                    // See: https://github.com/w3c/csswg-drafts/issues/1915
+                    // See: <https://github.com/w3c/csswg-drafts/issues/1915>
                     *specificity += Specificity::from(selector.specificity());
                 }
                 flags.insert(selector.flags());
@@ -332,7 +332,7 @@ where
                 flags.insert(SelectorFlags::HAS_HOST);
                 specificity.class_like_selectors += 1;
                 if let Some(ref selector) = *selector {
-                    // See: https://github.com/w3c/csswg-drafts/issues/1915
+                    // See: <https://github.com/w3c/csswg-drafts/issues/1915>
                     *specificity += Specificity::from(selector.specificity());
                     flags.insert(selector.flags());
                 }
@@ -357,7 +357,7 @@ where
                 }
             }
             Component::NthOf(ref nth_of_data) => {
-                // https://drafts.csswg.org/selectors/#specificity-rules:
+                // <https://drafts.csswg.org/selectors/#specificity-rules:>
                 //
                 //     The specificity of the :nth-last-child() pseudo-class,
                 //     like the :nth-child() pseudo-class, combines the
@@ -371,7 +371,7 @@ where
                 *specificity += Specificity::from(sf.specificity);
                 flags.insert(sf.flags);
             }
-            // https://drafts.csswg.org/selectors/#specificity-rules:
+            // <https://drafts.csswg.org/selectors/#specificity-rules:>
             //
             //     The specificity of an :is(), :not(), or :has() pseudo-class
             //     is replaced by the specificity of the most specific complex

@@ -97,7 +97,7 @@ pub(crate) type BranchCoverageByFile = BTreeMap<PathBuf, BTreeMap<BranchSpan, Br
 
 // Coverage is intentionally enforced as a 100% line-and-branch bar over the
 // tracked executable modules that define HTMLCut's maintained extraction, CLI
-// adapter, and maintainer-gate logic. The tracked set is derived from the
+// adapter, maintainer-gate logic, and owned selector/scraper resource boundaries. The tracked set is derived from the
 // maintained worktree inventory so future seam splits are scored automatically
 // without letting ignored scratch files pollute the gate. Declarative module
 // surfaces and constant-only vocabulary files stay in the tracked inventory,
@@ -107,6 +107,9 @@ pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "crates/htmlcut-core/src",
     "crates/htmlcut-cli/src",
     "xtask/src",
+    "patches/rust/selectors/work_budget.rs",
+    "patches/rust/scraper/src/selector/budget.rs",
+    "patches/rust/scraper/src/html/clone.rs",
 ];
 
 pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
@@ -172,8 +175,8 @@ impl TrackedCoverageFile {
 // HTMLCut stays on stable for normal development. The maintained safety and
 // coverage proofs intentionally hop to nightly because Miri, cargo-fuzz, and
 // `cargo llvm-cov --branch` still require it.
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly";
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly-2026-08-25";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly-2026-08-25";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Missing prerequisite for the branch-coverage gate.
@@ -193,7 +196,7 @@ pub enum MiriPreflightFailure {
     MissingNightlyMiri,
     /// Nightly exists, but it does not include the `rust-src` component.
     MissingNightlyRustSrc,
-    /// `cargo +nightly miri --version` still does not run after rustup reports the components.
+    /// The maintained nightly Miri command still does not run after rustup reports the components.
     BrokenNightlyMiriBinary,
 }
 

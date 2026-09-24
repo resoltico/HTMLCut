@@ -1,4 +1,24 @@
 use super::*;
+use crate::interop::v2::{
+    preparation_parse_count_for_tests, reset_preparation_parse_count_for_tests,
+};
+
+#[test]
+fn source_inspection_reuses_the_single_prepared_document_parse() {
+    reset_preparation_parse_count_for_tests();
+    let inspection = inspect_source(
+        &memory_source("prepared-inspection", "<main><p>One</p></main>"),
+        &RuntimeOptions::default(),
+        &InspectionOptions::default(),
+    );
+
+    assert!(inspection.ok);
+    assert_eq!(
+        preparation_parse_count_for_tests(),
+        1,
+        "source inspection must build its report from the prepared document"
+    );
+}
 
 #[test]
 fn inspect_source_summarizes_document_structure() {

@@ -37,9 +37,9 @@ pub mod result {
     pub use crate::contracts::{
         ContentCandidateInspection, DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel,
         DocumentInspection, ExtractionMatch, ExtractionMatchMetadata, ExtractionResult,
-        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, ParseDocumentResult,
-        ParsedDocument, Range, SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction,
-        SourceLoadOutcome, SourceLoadStep, SourceMetadata,
+        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
+        SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction, SourceLoadOutcome,
+        SourceLoadStep, SourceMetadata,
     };
 }
 
@@ -56,11 +56,11 @@ pub use contracts::{
     DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS, Diagnostic,
     DiagnosticLevel, DisplayedHttpUrl, ExtractionDefinition, ExtractionRequest, ExtractionResult,
     ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs,
-    HttpUrl, InspectionOptions, MaxBytes, OutputOptions, ParseDocumentResult, PatternMode,
-    PersistedHttpUrl, RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery,
-    SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult, SourceKind,
-    SourceLoadAction, SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest,
-    TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
+    HttpUrl, InspectionOptions, MaxBytes, OutputOptions, PatternMode, PersistedHttpUrl,
+    RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
+    SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult, SourceKind, SourceLoadAction,
+    SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest, TlsTrustPolicy, ValueSpec,
+    ValueType, WhitespaceMode,
 };
 pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};
 #[cfg(test)]
@@ -68,8 +68,8 @@ pub(crate) use document::{
     render_document_body_as_text, render_selected_document_body_as_text,
     rewrite_urls_in_document_with_node_ids_for_tests,
 };
-pub(crate) use extract::{SelectorDomCanonicalization, extract_with_selector_dom_canonicalization};
-pub use extract::{extract, inspect_source, parse_document, preview_extraction};
+pub(crate) use extract::SelectorDomCanonicalization;
+pub use extract::{extract, inspect_source, preview_extraction};
 pub use fmt::format_byte_size;
 pub use schema::{
     CORE_REQUEST_SCHEMA_VERSION, EXTRACTION_DEFINITION_SCHEMA_NAME,

@@ -3,12 +3,19 @@ use super::*;
 #[test]
 fn request_documents_without_http_client_feature_keep_url_shape_stable() {
     let definition =
-        serde_json::from_value::<crate::wire::v1::ExtractionDefinitionDocument>(json!({
+        serde_json::from_value::<crate::wire::v2::ExtractionDefinitionDocument>(json!({
+            "wire_profile": crate::HTMLCUT_JSON_SCHEMA_PROFILE,
             "schema_name": crate::EXTRACTION_DEFINITION_SCHEMA_NAME,
             "schema_version": crate::EXTRACTION_DEFINITION_SCHEMA_VERSION,
             "request": {
+                "wire_profile": crate::HTMLCUT_JSON_SCHEMA_PROFILE,
+                "schema_name": crate::EXTRACTION_REQUEST_SCHEMA_NAME,
+                "schema_version": crate::CORE_REQUEST_SCHEMA_VERSION,
                 "spec_version": crate::CORE_SPEC_VERSION,
                 "source": {
+                    "wire_profile": crate::HTMLCUT_JSON_SCHEMA_PROFILE,
+                    "schema_name": crate::SOURCE_REQUEST_SCHEMA_NAME,
+                    "schema_version": crate::CORE_REQUEST_SCHEMA_VERSION,
                     "input": {
                         "type": "url",
                         "href": "https://example.com/articles"
@@ -19,11 +26,17 @@ fn request_documents_without_http_client_feature_keep_url_shape_stable() {
                     "selector": "article"
                 }
             },
-            "runtime": {}
+            "runtime": {
+                "wire_profile": crate::HTMLCUT_JSON_SCHEMA_PROFILE,
+                "schema_name": crate::RUNTIME_OPTIONS_SCHEMA_NAME,
+                "schema_version": crate::CORE_REQUEST_SCHEMA_VERSION
+            }
         }))
         .expect("url request document");
 
-    let request: crate::ExtractionDefinition = definition.into();
+    let request: crate::ExtractionDefinition = definition
+        .try_into()
+        .expect("current extraction definition document");
     assert!(matches!(
         request.request.source.input,
         crate::SourceInput::Url { .. }

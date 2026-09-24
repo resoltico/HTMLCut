@@ -8,10 +8,9 @@ use serde::Serialize;
 use crate::model::{CommandArtifactLayout, DynResult};
 use crate::plan::{
     cargo_build_dir, cargo_target_dir, coverage_build_dir, coverage_cargo_build_dir,
-    coverage_cargo_target_dir, coverage_target_dir, gate_report_dir, mutation_report_dir,
-    semver_scratch_dir,
+    coverage_cargo_target_dir, coverage_target_dir, gate_report_dir,
+    managed_artifact_container_dir, mutation_report_dir, semver_scratch_dir,
 };
-use crate::remove_dir_if_exists;
 
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIB: u64 = 1024 * 1024;
@@ -32,6 +31,7 @@ const REPO_TMP_BUDGET_BYTES: u64 = 256 * MIB;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum ManagedArtifactKind {
+    ArtifactContainer,
     WorkspaceTarget,
     WorkspaceBuild,
     CoverageTarget,
@@ -143,6 +143,7 @@ pub fn prepare_artifact_layout(
         CommandArtifactLayout::ManagedWorkspace => {
             let target_dir = cargo_target_dir(repo_root);
             let build_dir = cargo_build_dir(repo_root);
+            prepare_managed_artifact_container(repo_root)?;
             prepare_managed_artifact_roots(
                 repo_root,
                 [
@@ -165,6 +166,7 @@ pub fn prepare_artifact_layout(
             let build_dir = coverage_build_dir(repo_root);
             let cargo_target_dir = coverage_cargo_target_dir(repo_root);
             let cargo_build_dir = coverage_cargo_build_dir(repo_root);
+            prepare_managed_artifact_container(repo_root)?;
             prepare_managed_artifact_roots(
                 repo_root,
                 [
@@ -198,6 +200,7 @@ pub fn prepare_artifact_layout(
 /// Prepares and returns the managed root that retains completed maintainer-gate evidence.
 pub fn prepare_gate_report_root(repo_root: &Path) -> DynResult<PathBuf> {
     let root = gate_report_dir(repo_root);
+    prepare_managed_artifact_container(repo_root)?;
     prepare_managed_artifact_roots(
         repo_root,
         [(
@@ -212,6 +215,7 @@ pub fn prepare_gate_report_root(repo_root: &Path) -> DynResult<PathBuf> {
 /// Prepares and returns the managed root that retains completed mutation-testing evidence.
 pub fn prepare_mutation_report_root(repo_root: &Path) -> DynResult<PathBuf> {
     let root = mutation_report_dir(repo_root);
+    prepare_managed_artifact_container(repo_root)?;
     prepare_managed_artifact_roots(
         repo_root,
         [(
@@ -234,6 +238,7 @@ pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
     let managed_coverage_build = coverage_build_dir(repo_root);
     let managed_gate_reports = gate_report_dir(repo_root);
     let managed_mutation_reports = mutation_report_dir(repo_root);
+    let managed_container = managed_artifact_container_dir(repo_root);
 
     let tmp_cargo_entry = repo_tmp_cargo_entry(&tmp_root, &tmp_cargo_roots)?;
 
@@ -287,6 +292,13 @@ pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
             ],
         ),
     ])?);
+    if let Some(container) = managed_container {
+        entries.push(managed_artifact_container_entry(&container)?);
+        entries.push(unmanaged_artifact_container_entry(
+            &container,
+            &managed_artifact_roots(repo_root),
+        )?);
+    }
     entries.push(repo_tmp_entry(&tmp_root, &tmp_cargo_roots)?);
     entries.push(tmp_cargo_entry);
 
@@ -397,6 +409,11 @@ pub fn clean_hygiene(repo_root: &Path, mode: HygieneCleanMode) -> DynResult<Hygi
         removal_roots.push(mutation_report_dir(repo_root));
     }
 
+    // The sibling container is project-owned and contains only managed Cargo roots and retained
+    // evidence. Any other direct child is unowned disposable output and must never outlive a
+    // hygiene cleanup just because it was created by an ad-hoc maintainer probe.
+    removal_roots.extend(unmanaged_cleanup_roots(repo_root)?);
+
     let removal_roots = deduplicate_root_set(removal_roots);
     let mut result = HygieneCleanResult::default();
 
@@ -406,29 +423,76 @@ pub fn clean_hygiene(repo_root: &Path, mode: HygieneCleanMode) -> DynResult<Hygi
         }
 
         let bytes = dir_size_bytes(&path)?;
-        remove_dir_if_exists(&path).map_err(|error| {
+        remove_artifact_path_if_exists(&path).map_err(|error| {
             format!(
                 "failed to remove hygiene artifact root {}: {error}",
                 path.display()
             )
         })?;
-        result.reclaimed_bytes += bytes;
+        result.reclaimed_bytes = checked_reclaimed_bytes(result.reclaimed_bytes, bytes, &path)?;
         result.removed_paths.push(path);
     }
 
+    // A clean command is also the recovery boundary for a pre-existing unmarked container. The
+    // marker is recreated after unknown children have been removed, never used to bless them.
+    prepare_managed_artifact_container(repo_root)?;
+    if mode == HygieneCleanMode::Safe {
+        // Direct Cargo invocation can create the configured workspace cache before xtask runs. A
+        // safe cleanup must repair those owned roots as well, otherwise its own recovery command
+        // leaves hygiene verification permanently red. Rebuildable cleanup intentionally leaves
+        // the target and build roots absent so it actually releases their storage.
+        prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
+    }
+
     Ok(result)
+}
+
+fn unmanaged_cleanup_roots(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
+    unmanaged_artifact_container_paths(repo_root, &managed_artifact_roots(repo_root))
+}
+
+fn checked_reclaimed_bytes(current: u64, bytes: u64, path: &Path) -> DynResult<u64> {
+    current.checked_add(bytes).ok_or_else(|| {
+        format!(
+            "hygiene reclaimed-byte total overflowed while removing {}",
+            path.display()
+        )
+        .into()
+    })
 }
 
 mod support;
 
 #[cfg(all(test, unix))]
 pub(crate) use self::support::{
-    aggregate_entry_for_tests, dir_size_bytes_for_tests, dir_size_bytes_result_for_tests,
-};
-use self::support::{
-    deduplicate_root_set, dir_size_bytes, format_bytes, managed_entries,
-    prepare_managed_artifact_roots, repo_tmp_cargo_entry, repo_tmp_cargo_roots, repo_tmp_entry,
-    report_violations, unmanaged_entries,
+    aggregate_entry_for_tests, checked_aggregate_bytes_for_tests,
+    dir_size_bytes_excluding_roots_for_tests, dir_size_bytes_result_for_tests,
+    managed_artifact_container_entry_for_tests, remove_artifact_path_if_exists_for_tests,
+    unmanaged_artifact_container_entry_for_tests,
 };
 #[cfg(test)]
-pub(crate) use self::support::{format_bytes_for_tests, looks_like_cargo_target_dir_for_tests};
+pub(crate) use self::support::{
+    dir_size_bytes_for_tests, format_bytes_for_tests, looks_like_cargo_target_dir_for_tests,
+    report_violations_for_tests,
+};
+
+#[cfg(all(test, unix))]
+pub(crate) fn checked_reclaimed_bytes_for_tests(
+    current: u64,
+    bytes: u64,
+    path: &Path,
+) -> DynResult<u64> {
+    checked_reclaimed_bytes(current, bytes, path)
+}
+
+#[cfg(all(test, unix))]
+pub(crate) fn unmanaged_cleanup_roots_for_tests(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
+    unmanaged_cleanup_roots(repo_root)
+}
+use self::support::{
+    deduplicate_root_set, dir_size_bytes, format_bytes, managed_artifact_container_entry,
+    managed_artifact_roots, managed_entries, prepare_managed_artifact_container,
+    prepare_managed_artifact_roots, remove_artifact_path_if_exists, repo_tmp_cargo_entry,
+    repo_tmp_cargo_roots, repo_tmp_entry, report_violations, unmanaged_artifact_container_entry,
+    unmanaged_artifact_container_paths, unmanaged_entries,
+};

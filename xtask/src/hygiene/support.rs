@@ -49,6 +49,130 @@ pub(super) fn prepare_managed_artifact_roots<const N: usize>(
     Ok(())
 }
 
+pub(super) fn prepare_managed_artifact_container(repo_root: &Path) -> DynResult<()> {
+    let Some(container) = crate::plan::managed_artifact_container_dir(repo_root) else {
+        return Ok(());
+    };
+    prepare_managed_artifact_root(
+        repo_root,
+        &container,
+        ManagedArtifactKind::ArtifactContainer,
+        "project-owned container for managed Cargo artifacts and retained maintainer evidence",
+    )
+}
+
+pub(super) fn managed_artifact_roots(repo_root: &Path) -> Vec<PathBuf> {
+    vec![
+        cargo_target_dir(repo_root),
+        cargo_build_dir(repo_root),
+        coverage_target_dir(repo_root),
+        coverage_build_dir(repo_root),
+        gate_report_dir(repo_root),
+        mutation_report_dir(repo_root),
+    ]
+}
+
+pub(super) fn managed_artifact_container_entry(container: &Path) -> DynResult<HygieneEntry> {
+    let present = match fs::symlink_metadata(container) {
+        Ok(metadata) => metadata.is_dir(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect managed artifact container {}: {error}",
+                container.display()
+            )
+            .into());
+        }
+    };
+    Ok(HygieneEntry {
+        id: "managed-artifact-container".to_owned(),
+        kind: "artifact-container".to_owned(),
+        path: container.display().to_string(),
+        present,
+        // Child roots are reported independently. The container exists only to prove ownership and
+        // marker integrity, never to double-count or recursively scan the whole artifact tree.
+        bytes: 0,
+        budget_bytes: None,
+        managed: true,
+        safe_to_delete: false,
+        details: vec![
+            "Project-owned parent of managed Cargo artifact roots. Its direct children are closed by the hygiene policy."
+                .to_owned(),
+        ],
+    })
+}
+
+pub(super) fn unmanaged_artifact_container_entry(
+    container: &Path,
+    managed_roots: &[PathBuf],
+) -> DynResult<HygieneEntry> {
+    let unmanaged = unmanaged_artifact_container_paths_at(container, managed_roots)?;
+    aggregate_entry(
+        "unmanaged-artifact-container-entries",
+        "unmanaged-artifact-container-entries",
+        container,
+        &unmanaged,
+        None,
+        false,
+        true,
+    )
+}
+
+pub(super) fn unmanaged_artifact_container_paths(
+    repo_root: &Path,
+    managed_roots: &[PathBuf],
+) -> DynResult<Vec<PathBuf>> {
+    let Some(container) = crate::plan::managed_artifact_container_dir(repo_root) else {
+        return Ok(Vec::new());
+    };
+    unmanaged_artifact_container_paths_at(&container, managed_roots)
+}
+
+fn unmanaged_artifact_container_paths_at(
+    container: &Path,
+    managed_roots: &[PathBuf],
+) -> DynResult<Vec<PathBuf>> {
+    if !container.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let entries = fs::read_dir(container)
+        .map_err(|error| {
+            format!(
+                "failed to inspect managed artifact container {}: {error}",
+                container.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut paths = entries
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| !managed_roots.iter().any(|root| path == root))
+        .filter(|path| {
+            !matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some(CACHEDIR_TAG_NAME | ARTIFACT_MANIFEST_NAME)
+            )
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
+}
+
+pub(super) fn remove_artifact_path_if_exists(path: &Path) -> DynResult<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 fn write_cachedir_tag(path: &Path) -> DynResult<()> {
     let tag_path = path.join(CACHEDIR_TAG_NAME);
     if tag_path.exists() {
@@ -94,9 +218,8 @@ pub(super) fn unmanaged_entries<const N: usize>(
 }
 
 fn repo_tmp_details(tmp_cargo_roots: &[PathBuf]) -> Vec<String> {
-    let mut details = vec![
-        "Repository scratch root mandated by AGENTS.md for temporary investigations.".to_owned(),
-    ];
+    let mut details =
+        vec!["Ignored repository scratch root for temporary investigations.".to_owned()];
     if !tmp_cargo_roots.is_empty() {
         details.push(format!(
             "Excludes {} repo-local Cargo target roots reported separately under repo-tmp-cargo-targets.",
@@ -150,12 +273,13 @@ fn aggregate_entry(
 ) -> DynResult<HygieneEntry> {
     let mut bytes = 0u64;
     for root in roots {
-        bytes += dir_size_bytes(root).map_err(|error| {
+        let root_bytes = dir_size_bytes(root).map_err(|error| {
             format!(
                 "failed to inspect hygiene aggregate member {}: {error}",
                 root.display()
             )
         })?;
+        bytes = checked_aggregate_bytes(bytes, root_bytes, root)?;
     }
     let details = roots
         .iter()
@@ -172,6 +296,16 @@ fn aggregate_entry(
         managed,
         safe_to_delete,
         details,
+    })
+}
+
+fn checked_aggregate_bytes(left: u64, right: u64, root: &Path) -> DynResult<u64> {
+    left.checked_add(right).ok_or_else(|| {
+        format!(
+            "hygiene aggregate byte count overflowed while adding {}",
+            root.display()
+        )
+        .into()
     })
 }
 
@@ -257,6 +391,16 @@ pub(super) fn report_violations(entries: &[HygieneEntry]) -> Vec<HygieneViolatio
                 id: entry.id.clone(),
                 message: format!(
                     "repository tmp contains {} cargo target roots; move those builds to the managed artifact roots",
+                    entry.details.len()
+                ),
+            });
+        }
+
+        if entry.id == "unmanaged-artifact-container-entries" && entry.present {
+            violations.push(HygieneViolation {
+                id: entry.id.clone(),
+                message: format!(
+                    "managed artifact container contains {} unowned direct entries; remove them with `cargo xtask hygiene clean --mode safe`",
                     entry.details.len()
                 ),
             });
@@ -406,34 +550,7 @@ pub(super) fn format_bytes(bytes: u64) -> String {
 }
 
 #[cfg(test)]
-pub(crate) fn looks_like_cargo_target_dir_for_tests(path: &Path) -> bool {
-    looks_like_cargo_target_dir(path)
-}
+mod test_support;
 
 #[cfg(test)]
-pub(crate) fn format_bytes_for_tests(bytes: u64) -> String {
-    format_bytes(bytes)
-}
-
-#[cfg(all(test, unix))]
-pub(crate) fn dir_size_bytes_for_tests(path: &Path) -> u64 {
-    dir_size_bytes(path).expect("dir size bytes")
-}
-
-#[cfg(all(test, unix))]
-pub(crate) fn dir_size_bytes_result_for_tests(path: &Path) -> DynResult<u64> {
-    dir_size_bytes(path)
-}
-
-#[cfg(all(test, unix))]
-pub(crate) fn aggregate_entry_for_tests(path: &Path, roots: &[PathBuf]) -> DynResult<HygieneEntry> {
-    aggregate_entry(
-        "test-aggregate",
-        "test-aggregate",
-        path,
-        roots,
-        Some(0),
-        false,
-        true,
-    )
-}
+pub(crate) use test_support::*;

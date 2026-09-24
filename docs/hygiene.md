@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: OPERATIONS
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, cargo-mutants, mutation results, gate reports, xtask hygiene, cache cleanup]
   questions: ["where do HTMLCut build artifacts live?", "where are cargo-mutants results stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "which artifact roots are managed and disposable?"]
@@ -28,6 +28,11 @@ layout:
   `../.htmlcut-artifacts/gate-runs` tree outside the repo root
 - cargo-mutants result trees go under the sibling evidence root
   `../.htmlcut-artifacts/mutation-runs/mutants.out`, outside the managed Cargo target cache
+
+The `../.htmlcut-artifacts/` directory itself is a managed, project-owned container, not a
+general-purpose scratch area. Its direct children are closed to the six roots above. The container
+also has `CACHEDIR.TAG` and a manifest that identify it as disposable project output without
+making the source checkout disposable.
 
 That means routine `cargo build`, `cargo test`, `cargo run`, `cargo xtask ...`, and `./check.sh`
 do not grow the repository directory with multi-gigabyte `target/debug` and
@@ -63,7 +68,12 @@ HTMLCut enforces these hygiene rules:
   visible to hygiene reporting and removed only by `cargo xtask hygiene clean --mode rebuildable`
 - each `cargo xtask mutants` run clears only its previous generated mutation result tree before
   writing fresh outcomes; safe cleanup preserves it, while `cargo xtask hygiene clean --mode
-  rebuildable` removes the dedicated evidence root
+  rebuildable` removes the dedicated evidence root; its bounded disposable copied source workspaces
+  and reused Cargo roots live under the system temporary directory and disappear when the run ends;
+  before staging them, the command reserves 12 GiB for the host and 10 GiB per admitted workspace
+- an unrecognized direct entry in `../.htmlcut-artifacts/` is a hygiene violation, even when it
+  falls below every individual root budget; `cargo xtask hygiene clean --mode safe` removes it
+  because it is unowned, rebuildable project output rather than retained evidence
 - the maintainer Rust gates run a hygiene cleanup and a hygiene verification pass before and after
   the command plan
 
@@ -97,8 +107,9 @@ Fail when the current inventory violates policy:
 cargo xtask hygiene verify
 ```
 
-Remove the repo-local temporary workspace, legacy repo-local `target/`, coverage scratch, and
-other disposable state while keeping the main managed caches:
+Remove the repo-local temporary workspace, legacy repo-local `target/`, coverage scratch,
+unrecognized artifact-container entries, and other disposable state while keeping the managed
+workspace caches and retained evidence:
 
 ```bash
 cargo xtask hygiene clean --mode safe
@@ -115,7 +126,8 @@ cargo xtask hygiene clean --mode rebuildable
 If disk usage spikes:
 
 1. run `cargo xtask hygiene report`
-2. inspect whether the growth is in the managed caches, repo-local `target/`, or repo-local `tmp/`
+2. inspect whether the growth is in a managed root, an unrecognized artifact-container entry,
+   repo-local `target/`, or repo-local `tmp/`
 3. run `cargo xtask hygiene clean --mode safe` first
 4. use `cargo xtask hygiene clean --mode rebuildable` only when you want to reclaim everything
    that Cargo can regenerate

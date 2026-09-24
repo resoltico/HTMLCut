@@ -101,7 +101,10 @@ pub fn evaluate_coverage_report(
                 let uncovered_branch_count = branch_records
                     .values()
                     .map(|(first_count, second_count)| {
-                        usize::from(*first_count == 0) + usize::from(*second_count == 0)
+                        [*first_count, *second_count]
+                            .into_iter()
+                            .filter(|count| *count == 0)
+                            .count()
                     })
                     .sum();
                 (branch_count, uncovered_branch_count)

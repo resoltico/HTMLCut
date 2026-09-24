@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: MAINTAINER
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [versioning policy, interop profile, generic contracts, semver baseline, schema naming, interop_profile]
   questions: ["how does HTMLCut version generic contracts versus interop profiles?", "when should the semver baseline be refreshed?", "what does interop_profile mean in HTMLCut documents?"]
@@ -11,7 +11,7 @@ route:
 # Versioning Policy
 
 **Purpose**: Define how HTMLCut versions generic contracts, interop profiles, release tags, and schema identities.
-**Prerequisites**: [Schema Guide](schema.md), [Interop v1 Guide](interop-v1.md), and [Release Protocol](release-protocol.md).
+**Prerequisites**: [Schema Guide](schema.md), [Interop v2 Guide](interop-v2.md), and [Release Protocol](release-protocol.md).
 
 ## 1. Version Sources
 
@@ -68,9 +68,9 @@ Interop profiles are the maintained downstream adapter surfaces.
 
 Current profile:
 
-- module: `htmlcut_core::interop::v1`
-- profile string: `htmlcut-v1`
-- schemas: `htmlcut.plan`, `htmlcut.result`, `htmlcut.error` under the `htmlcut-v1` profile
+- module: `htmlcut_core::interop::v2`
+- profile string: `htmlcut-v2`
+- schemas: `htmlcut.plan`, `htmlcut.result`, `htmlcut.error` under the `htmlcut-v2` profile
 
 Interop profiles keep stable module paths and profile strings, but their JSON documents still use
 explicit integer `schema_version` values.
@@ -134,10 +134,10 @@ Maintainer expectations:
 - downstream routing must use `interop_profile` together with `schema_name` and `schema_version`
 - the module path, profile string, schema set, fixture directory, and acceptance tests must stay aligned
 
-For `htmlcut-v1`, that alignment is:
+For `htmlcut-v2`, that alignment is:
 
-- module: `htmlcut_core::interop::v1`
-- fixtures: `crates/htmlcut-core/tests/fixtures/htmlcut-v1/`
+- module: `htmlcut_core::interop::v2`
+- fixtures: `crates/htmlcut-core/tests/fixtures/htmlcut-v2/`
 - acceptance runner: `crates/htmlcut-core/tests/v1_acceptance.rs`
 
 ## 5. Release-Time Expectations

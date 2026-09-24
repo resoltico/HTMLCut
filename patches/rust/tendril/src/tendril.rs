@@ -165,8 +165,8 @@ pub enum SubtendrilError {
 ///
 /// Whereas `String` allocates in the heap for any non-empty string, `Tendril`
 /// can store small strings (up to 8 bytes) in-line, without a heap allocation.
-/// `Tendril` is also smaller than `String` on 64-bit platforms — 16 bytes
-/// versus 24.
+/// `Tendril` retains a separate heap-header provenance pointer, so its current
+/// representation is three machine words on 64-bit platforms.
 ///
 /// The type parameter `F` specifies the format of the tendril, for example
 /// UTF-8 text or uninterpreted bytes. The parameter will be instantiated
@@ -1625,22 +1625,12 @@ mod test {
     #[test]
     fn assert_sizes() {
         use std::mem;
-        struct EmptyWithDrop;
-        impl Drop for EmptyWithDrop {
-            fn drop(&mut self) {}
-        }
-        let compiler_uses_inline_drop_flags = mem::size_of::<EmptyWithDrop>() > 0;
+        // Tendrils retain a tagged pointer, a strict-provenance heap-header pointer, and an
+        // eight-byte inline-or-heap payload. The old test omitted the provenance pointer.
+        let handle_size = mem::size_of::<*const ()>() * 2 + 8;
 
-        let correct = mem::size_of::<*const ()>()
-            + 8
-            + if compiler_uses_inline_drop_flags {
-                1
-            } else {
-                0
-            };
-
-        assert_eq!(correct, mem::size_of::<ByteTendril>());
-        assert_eq!(correct, mem::size_of::<StrTendril>());
+        assert_eq!(handle_size, mem::size_of::<ByteTendril>());
+        assert_eq!(handle_size, mem::size_of::<StrTendril>());
 
         // This is no longer true. See https://github.com/servo/tendril/issues/66
         // assert_eq!(correct, mem::size_of::<Option<ByteTendril>>());

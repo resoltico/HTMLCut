@@ -118,6 +118,17 @@ pub fn mutation_report_dir(repo_root: &Path) -> PathBuf {
     sibling_artifact_dir(&cargo_target_dir(repo_root), "mutation-runs")
 }
 
+/// Returns the project-owned container of the managed sibling artifact roots when Cargo's target
+/// and build roots are configured as siblings below one dedicated directory.
+///
+/// A repository-local `target` default has the repository itself as its parent and is deliberately
+/// not an artifact container: hygiene must never mistake source files for disposable output.
+pub fn managed_artifact_container_dir(repo_root: &Path) -> Option<PathBuf> {
+    let target_parent = cargo_target_dir(repo_root).parent()?.to_path_buf();
+    let build_parent = cargo_build_dir(repo_root).parent()?.to_path_buf();
+    (target_parent == build_parent && target_parent != repo_root).then_some(target_parent)
+}
+
 /// Returns the nested Cargo target directory created by `cargo llvm-cov` inside the managed coverage root.
 pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
     coverage_target_dir(repo_root).join("llvm-cov-target")
@@ -129,15 +140,13 @@ pub(crate) fn coverage_cargo_build_dir(repo_root: &Path) -> PathBuf {
 }
 
 #[cfg(windows)]
-/// Returns the platform-specific HTMLCut binary name.
-pub fn binary_name() -> &'static str {
-    "htmlcut.exe"
-}
-
+const PLATFORM_BINARY_NAME: &str = "htmlcut.exe";
 #[cfg(not(windows))]
+const PLATFORM_BINARY_NAME: &str = "htmlcut";
+
 /// Returns the platform-specific HTMLCut binary name.
 pub fn binary_name() -> &'static str {
-    "htmlcut"
+    PLATFORM_BINARY_NAME
 }
 
 fn cargo_target_dir_from_sources(
@@ -355,4 +364,17 @@ fn test_cargo_build_dir_override() -> Option<PathBuf> {
 #[cfg(test)]
 fn test_ignores_process_env() -> bool {
     TEST_IGNORE_PROCESS_ENV.with_borrow(|slot| *slot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_binary_name_is_the_public_htmlcut_program_name() {
+        #[cfg(windows)]
+        assert_eq!(binary_name(), "htmlcut.exe");
+        #[cfg(not(windows))]
+        assert_eq!(binary_name(), "htmlcut");
+    }
 }

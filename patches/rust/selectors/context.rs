@@ -9,6 +9,7 @@ use crate::parser::{Selector, SelectorImpl};
 use crate::relative_selector::cache::RelativeSelectorCache;
 use crate::relative_selector::filter::RelativeSelectorFilterMap;
 use crate::tree::{Element, OpaqueElement};
+use crate::work_budget::SelectorWorkBudget;
 
 /// What kind of selector matching mode we should use.
 ///
@@ -95,7 +96,7 @@ impl MatchingForInvalidation {
 
 /// Which quirks mode is this document in.
 ///
-/// See: https://quirks.spec.whatwg.org/
+/// See: <https://quirks.spec.whatwg.org/>
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QuirksMode {
     /// Quirks mode.
@@ -148,7 +149,7 @@ where
     ///
     /// When this is None, :scope will match the root element.
     ///
-    /// See https://drafts.csswg.org/selectors-4/#scope-pseudo
+    /// See <https://drafts.csswg.org/selectors-4/#scope-pseudo>
     pub scope_element: Option<OpaqueElement>,
 
     /// The current shadow host we're collecting :host rules for.
@@ -189,6 +190,7 @@ where
     pub selector_caches: &'a mut SelectorCaches,
 
     classes_and_ids_case_sensitivity: CaseSensitivity,
+    work_budget: Option<&'a SelectorWorkBudget>,
     _impl: ::std::marker::PhantomData<Impl>,
 }
 
@@ -215,6 +217,16 @@ where
             matching_for_invalidation,
             false,
         )
+    }
+
+    /// Installs bounded work accounting for this matching context.
+    pub fn set_work_budget(&mut self, work_budget: Option<&'a SelectorWorkBudget>) {
+        self.work_budget = work_budget;
+    }
+
+    /// Consumes one selector matching work unit when this context is budgeted.
+    pub fn consume_work(&self) -> bool {
+        self.work_budget.is_none_or(SelectorWorkBudget::consume)
     }
 
     /// Constructs a new `MatchingContext` for revalidation.
@@ -288,6 +300,7 @@ where
             extra_data: Default::default(),
             current_relative_selector_anchor: None,
             selector_caches,
+            work_budget: None,
             _impl: ::std::marker::PhantomData,
         }
     }

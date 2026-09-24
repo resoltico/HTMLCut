@@ -45,6 +45,10 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
 
     assert!(script.contains("HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS=("));
     assert!(script.contains("HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS=("));
+    assert!(script.contains(&format!(
+        "HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN=\"{}\"",
+        crate::model::MAINTAINED_NIGHTLY_TOOLCHAIN_NAME
+    )));
     assert!(script.contains("\"llvm-tools-preview\""));
     assert!(script.contains("\"miri\""));
     assert!(script.contains("\"rust-src\""));
@@ -52,7 +56,7 @@ fn contributor_rust_tool_inventory_pins_nightly_miri_components() {
 }
 
 #[test]
-fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
+fn default_contributor_inventory_includes_the_gate_required_mutation_tool() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
@@ -64,7 +68,7 @@ fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
                 set -euo pipefail
                 source ./scripts/contributor-rust-tools.sh
                 htmlcut_contributor_default_cargo_tool_inventory
-                printf '%s\n' '-- optional --'
+                printf '%s\n' '-- selected --'
                 htmlcut_selected_contributor_cargo_tools cargo-mutants
             "#,
         )
@@ -78,13 +82,46 @@ fn default_contributor_inventory_excludes_the_optional_mutation_tool() {
         String::from_utf8_lossy(&output.stderr)
     );
     let inventory = String::from_utf8(output.stdout).expect("utf8 inventory");
-    let (default_tools, optional_tool) = inventory
-        .split_once("-- optional --\n")
+    let (default_tools, selected_tool) = inventory
+        .split_once("-- selected --\n")
         .expect("inventory separator");
-    assert!(default_tools.contains("cargo-nextest 0.9.143 cargo-nextest"));
+    assert!(default_tools.contains("cargo-nextest 0.9.146 cargo-nextest"));
+    assert!(default_tools.contains("cargo-semver-checks 0.50.0 cargo-semver-checks"));
+    assert!(default_tools.contains("cargo-llvm-cov 0.9.1 cargo-llvm-cov"));
     assert!(default_tools.contains("cargo-fuzz 0.13.2 cargo-fuzz"));
-    assert!(!default_tools.contains("cargo-mutants"));
-    assert_eq!(optional_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
+    assert!(default_tools.contains("cargo-mutants 27.1.0 cargo-mutants"));
+    assert_eq!(selected_tool, "cargo-mutants 27.1.0 cargo-mutants\n");
+}
+
+#[test]
+fn contributor_tool_installer_uses_explicit_toolchain_and_available_dependency_resolution() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root");
+    let installer = fs::read_to_string(
+        repo_root
+            .join("scripts")
+            .join("install-contributor-cargo-tools.sh"),
+    )
+    .expect("read contributor installer");
+    assert!(installer.contains(
+        "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}\" \"${install_args[@]}\""
+    ));
+    assert!(installer.contains("install-contributor-nextest.sh"));
+    assert!(installer.contains("install_args+=(--locked)"));
+    assert!(!installer.contains("--git https://github.com/obi1kenobi/cargo-semver-checks.git"));
+
+    let invalid = Command::new("bash")
+        .arg(
+            repo_root
+                .join("scripts")
+                .join("install-contributor-nextest.sh"),
+        )
+        .arg("0.0.0")
+        .output()
+        .expect("reject unsupported nextest version");
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("unsupported nextest version"));
 }
 
 #[test]
@@ -142,10 +179,14 @@ fn devcontainer_bootstrap_and_validation_cover_nightly_miri() {
     assert!(!validator.contains("cargo xtask --help >/dev/null"));
     assert!(validator.contains("HTMLCUT_STABLE_TOOLCHAIN"));
     assert!(!validator.contains("rustc 1\\.95\\.0"));
-    assert!(bootstrap.contains("cargo +nightly miri --version >/dev/null"));
+    assert!(bootstrap.contains(
+        "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}\" miri --version >/dev/null"
+    ));
     assert_eq!(
         validator
-            .matches("cargo +nightly miri --version >/dev/null")
+            .matches(
+                "cargo \"+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}\" miri --version >/dev/null"
+            )
             .count(),
         2
     );

@@ -1,9 +1,9 @@
-use std::fs;
 use std::path::Path;
 
 use regex::Regex;
 
-use crate::model::DynResult;
+/// Version of the maintained public-document metadata shape validated here.
+pub(crate) const DOC_METADATA_FORMAT_VERSION: &str = "4.0";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MetadataStyle {
@@ -28,23 +28,6 @@ pub(crate) fn metadata_version(text: &str, style: MetadataStyle) -> Option<Strin
         MetadataStyle::Frontmatter => frontmatter_version(text),
         MetadataStyle::HtmlComment => html_comment_version(text),
     }
-}
-
-pub(crate) fn expected_afad_version(repo_root: &Path) -> DynResult<String> {
-    let protocol_path = repo_root.join(".codex").join("PROTOCOL_AFAD.md");
-    let protocol = fs::read_to_string(&protocol_path)
-        .map_err(|error| format!("could not read {}: {error}", protocol_path.display()))?;
-
-    protocol
-        .lines()
-        .find_map(parse_protocol_version)
-        .ok_or_else(|| {
-            format!(
-                "could not determine AFAD version from {}",
-                protocol_path.display()
-            )
-            .into()
-        })
 }
 
 pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> Option<MetadataStyle> {
@@ -190,8 +173,10 @@ fn metadata_block(text: &str, style: MetadataStyle) -> Option<&str> {
         }
         MetadataStyle::HtmlComment => {
             let start = text.find("<!--")?;
-            let end = text[start..].find("-->")?;
-            Some(&text[start + 4..start + end])
+            let comment = text.get(start..)?;
+            let body = comment.strip_prefix("<!--")?;
+            let end = body.find("-->")?;
+            Some(&body[..end])
         }
     }
 }
@@ -219,18 +204,6 @@ fn parse_metadata_field(line: &str, key: &str) -> Option<String> {
     }
 
     Some(value.to_owned())
-}
-
-fn parse_protocol_version(line: &str) -> Option<String> {
-    let value = line
-        .trim()
-        .strip_prefix("Version:")
-        .or_else(|| line.trim().strip_prefix("**Version:**"))?
-        .trim();
-    value
-        .strip_prefix('`')
-        .and_then(|value| value.strip_suffix('`'))
-        .map_or_else(|| Some(value.to_owned()), |value| Some(value.to_owned()))
 }
 
 impl MetadataStyle {

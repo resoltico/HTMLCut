@@ -57,20 +57,20 @@ fn allowed_license_families(policy_path: &Path) -> DynResult<BTreeSet<String>> {
             continue;
         }
 
-        if !in_allow_list {
-            if let Some(rest) = line.strip_prefix("allow = [") {
-                in_allow_list = true;
-                collect_quoted_values(rest, &mut allowed);
-                if rest.contains(']') {
-                    break;
-                }
+        if in_allow_list {
+            collect_quoted_values(line, &mut allowed);
+            if line.contains(']') {
+                break;
             }
             continue;
         }
 
-        collect_quoted_values(line, &mut allowed);
-        if line.contains(']') {
-            break;
+        if let Some(rest) = line.strip_prefix("allow = [") {
+            in_allow_list = true;
+            collect_quoted_values(rest, &mut allowed);
+            if rest.contains(']') {
+                break;
+            }
         }
     }
 
@@ -86,6 +86,28 @@ fn collect_quoted_values(line: &str, values: &mut BTreeSet<String>) {
         };
         values.insert(after_start[..end].to_owned());
         cursor = &after_start[end + 1..];
+    }
+}
+
+#[cfg(test)]
+mod mutation_contract_tests {
+    use super::*;
+    use htmlcut_tempdir::tempdir;
+
+    #[test]
+    fn license_allowlist_starts_only_after_the_allow_assignment() {
+        let root = tempdir().expect("policy root");
+        let policy = root.path().join("deny.toml");
+        fs::write(
+            &policy,
+            "[licenses]\nconfidence-threshold = 0.93\nallow = [\"MIT\", \"Apache-2.0\"]\n",
+        )
+        .expect("write policy");
+
+        assert_eq!(
+            allowed_license_families(&policy).expect("read allowlist"),
+            BTreeSet::from(["Apache-2.0".to_owned(), "MIT".to_owned()])
+        );
     }
 }
 
@@ -226,6 +248,27 @@ allow = ["Apache-2.0"]
         let families = allowed_license_families(&policy_path).expect("allowlist");
 
         assert_eq!(families, BTreeSet::from(["Apache-2.0".to_owned()]));
+    }
+
+    #[test]
+    fn allowed_license_families_ignores_allowlists_outside_the_licenses_section() {
+        let repo_root = htmlcut_tempdir::tempdir().expect("tempdir");
+        let policy_path = repo_root.path().join("deny.toml");
+        fs::write(
+            &policy_path,
+            r#"
+[advisories]
+allow = ["Not-A-License"]
+
+[licenses]
+allow = ["MIT"]
+"#,
+        )
+        .expect("write deny.toml");
+
+        let families = allowed_license_families(&policy_path).expect("allowlist");
+
+        assert_eq!(families, BTreeSet::from(["MIT".to_owned()]));
     }
 
     #[test]

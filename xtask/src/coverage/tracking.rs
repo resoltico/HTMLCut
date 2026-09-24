@@ -42,7 +42,16 @@ fn collect_tracked_files(
     excluded_paths: &BTreeSet<&str>,
     tracked_files: &mut BTreeMap<PathBuf, TrackedCoverageFile>,
 ) -> DynResult<()> {
-    if !current_path.is_dir() {
+    let metadata = match fs::symlink_metadata(current_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.is_file() {
+        insert_tracked_file(repo_root, current_path, excluded_paths, tracked_files)?;
+        return Ok(());
+    }
+    if !metadata.is_dir() {
         return Ok(());
     }
 
@@ -56,22 +65,45 @@ fn collect_tracked_files(
             continue;
         }
 
-        if path.extension() != Some(OsStr::new("rs")) {
-            continue;
-        }
-
-        let absolute_path = normalize_path(repo_root, &path)?;
-        let relative_path = repo_relative_source_path(repo_root, &absolute_path)?;
-        if should_skip_coverage_path(&relative_path, excluded_paths) {
-            continue;
-        }
-
-        tracked_files.insert(
-            absolute_path.clone(),
-            tracked_coverage_file(&absolute_path, relative_path)?,
-        );
+        insert_tracked_file(repo_root, &path, excluded_paths, tracked_files)?;
     }
 
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+pub(crate) fn collect_tracked_files_from_root_for_tests(
+    repo_root: &Path,
+    current_path: &Path,
+) -> DynResult<BTreeMap<PathBuf, TrackedCoverageFile>> {
+    let mut tracked_files = BTreeMap::new();
+    collect_tracked_files(
+        repo_root,
+        current_path,
+        &coverage_excluded_paths(),
+        &mut tracked_files,
+    )?;
+    Ok(tracked_files)
+}
+
+fn insert_tracked_file(
+    repo_root: &Path,
+    path: &Path,
+    excluded_paths: &BTreeSet<&str>,
+    tracked_files: &mut BTreeMap<PathBuf, TrackedCoverageFile>,
+) -> DynResult<()> {
+    if path.extension() != Some(OsStr::new("rs")) {
+        return Ok(());
+    }
+    let absolute_path = normalize_path(repo_root, path)?;
+    let relative_path = repo_relative_source_path(repo_root, &absolute_path)?;
+    if should_skip_coverage_path(&relative_path, excluded_paths) {
+        return Ok(());
+    }
+    tracked_files.insert(
+        absolute_path.clone(),
+        tracked_coverage_file(&absolute_path, relative_path)?,
+    );
     Ok(())
 }
 

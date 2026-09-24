@@ -207,14 +207,7 @@ impl fmt::Debug for Text {
     }
 }
 
-/// A Map of attributes that preserves the order of the attributes.
-#[cfg(feature = "deterministic")]
-pub type Attributes = indexmap::IndexMap<QualName, StrTendril>;
-
-/// A Map of attributes that doesn't preserve the order of the attributes.
-/// Please enable the `deterministic` feature for order-preserving
-/// (de)serialization.
-#[cfg(not(feature = "deterministic"))]
+/// A lexically ordered map of element attributes used for deterministic serialization.
 pub type Attributes = Vec<(QualName, StrTendril)>;
 
 /// An HTML element.
@@ -234,13 +227,11 @@ pub struct Element {
 impl Element {
     #[doc(hidden)]
     pub fn new(name: QualName, attributes: Vec<Attribute>) -> Self {
-        #[allow(unused_mut)]
         let mut attrs = attributes
             .into_iter()
             .map(|attr| (attr.name, crate::tendril_util::make(attr.value)))
             .collect::<Attributes>();
 
-        #[cfg(not(feature = "deterministic"))]
         attrs.sort_unstable_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
 
         Element {
@@ -262,7 +253,10 @@ impl Element {
             .get_or_init(|| {
                 self.attrs
                     .iter()
-                    .find(|(name, _)| name.local.as_ref() == "id")
+                    .find(|(name, _)| {
+                        let local: &str = name.local.as_ref();
+                        local == "id"
+                    })
                     .map(|(_, value)| value.clone())
             })
             .as_deref()
@@ -280,7 +274,10 @@ impl Element {
             let mut classes = self
                 .attrs
                 .iter()
-                .filter(|(name, _)| name.local.as_ref() == "class")
+                .filter(|(name, _)| {
+                    let local: &str = name.local.as_ref();
+                    local == "class"
+                })
                 .flat_map(|(_, value)| value.split_ascii_whitespace().map(LocalName::from))
                 .collect::<Vec<_>>();
 
@@ -299,15 +296,11 @@ impl Element {
     pub fn attr(&self, attr: &str) -> Option<&str> {
         let qualname = QualName::new(None, ns!(), LocalName::from(attr));
 
-        #[cfg(not(feature = "deterministic"))]
         let value = self
             .attrs
             .binary_search_by(|attr| attr.0.cmp(&qualname))
             .ok()
             .map(|idx| &*self.attrs[idx].1);
-
-        #[cfg(feature = "deterministic")]
-        let value = self.attrs.get(&qualname).map(Deref::deref);
 
         value
     }
@@ -321,10 +314,6 @@ impl Element {
 
     /// Retains only attributes accepted by `predicate` and invalidates attribute-derived caches.
     pub fn retain_attributes(&mut self, mut predicate: impl FnMut(&str) -> bool) {
-        #[cfg(feature = "deterministic")]
-        self.attrs.retain(|name, _| predicate(name.local.as_ref()));
-
-        #[cfg(not(feature = "deterministic"))]
         self.attrs
             .retain(|(name, _)| predicate(name.local.as_ref()));
 
@@ -353,11 +342,6 @@ impl<'a> Iterator for Classes<'a> {
 }
 
 /// An iterator over a node's attributes.
-#[cfg(feature = "deterministic")]
-pub type AttributesIter<'a> = indexmap::map::Iter<'a, QualName, StrTendril>;
-
-/// An iterator over a node's attributes.
-#[cfg(not(feature = "deterministic"))]
 pub type AttributesIter<'a> = SliceIter<'a, (QualName, StrTendril)>;
 
 /// Iterator over attributes.

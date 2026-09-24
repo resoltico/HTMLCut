@@ -61,3 +61,17 @@ path = "fuzz_targets/cli_parse_error_surface.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "prepared_discovery"
+path = "fuzz_targets/prepared_discovery.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "relational_selector_budget"
+path = "fuzz_targets/relational_selector_budget.rs"
+test = false
+doc = false
+bench = false

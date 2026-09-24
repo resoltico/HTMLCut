@@ -16,6 +16,8 @@ use tendril::TendrilSink;
 use crate::selector::Selector;
 use crate::{ElementRef, Node};
 
+mod clone;
+
 pub use tree_sink::HtmlTreeSink;
 
 /// An HTML tree.
@@ -201,8 +203,7 @@ mod tree_sink;
 
 #[cfg(test)]
 mod tests {
-    use super::Html;
-    use super::Selector;
+    use super::{Html, Selector};
 
     #[test]
     fn root_element_fragment() {

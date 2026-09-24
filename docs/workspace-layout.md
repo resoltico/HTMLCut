@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: WORKSPACE
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
   questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]
@@ -56,7 +56,7 @@ The important dependency direction is:
 
 `htmlcut-tempdir`, `fuzz`, and `xtask` are real maintained workspace members, but they are not
 runtime product surfaces in the same sense as `htmlcut-core`, `htmlcut-cli`, and
-`htmlcut_core::interop::v1`.
+`htmlcut_core::interop::v2`.
 
 ## Trees Outside The Workspace
 

@@ -243,6 +243,8 @@ mod fuzz;
 mod host_tools;
 mod hygiene;
 mod miri;
+#[cfg(unix)]
+mod mutation_execution;
 mod outdated;
 mod plan;
 mod policy;
@@ -265,6 +267,9 @@ fn seed_tracked_files(repo_root: &Path) -> BTreeMap<PathBuf, TrackedCoverageFile
         "crates/htmlcut-cli/src/execute.rs",
         "crates/htmlcut-cli/src/execute/commands.rs",
         "xtask/src/plan.rs",
+        "patches/rust/selectors/work_budget.rs",
+        "patches/rust/scraper/src/selector/budget.rs",
+        "patches/rust/scraper/src/html/clone.rs",
     ]
     .into_iter()
     .chain(COVERAGE_EXCLUDED_RELATIVE_PATHS.iter().copied())

@@ -65,6 +65,8 @@ fn input_descriptions_and_parameter_sections_are_stable_public_copy() {
         (CliParameterSection::Selection, "Selection"),
         (CliParameterSection::Extraction, "Extraction"),
         (CliParameterSection::InspectionOutput, "Inspection Output"),
+        (CliParameterSection::Exploration, "Exploration"),
+        (CliParameterSection::Target, "Target"),
         (CliParameterSection::FilesystemOutput, "Filesystem Output"),
     ] {
         assert_eq!(section.label(), label);

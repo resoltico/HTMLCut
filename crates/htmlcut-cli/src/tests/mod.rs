@@ -270,7 +270,7 @@ fn assert_command_path_registered(command: &clap::Command, command_path: &[&str]
 fn write_definition_file(dir: &Path, name: &str, definition: &ExtractionDefinition) -> PathBuf {
     let path = dir.join(name);
     let document =
-        htmlcut_core::wire::v1::ExtractionDefinitionDocument::try_from(definition.clone())
+        htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition.clone())
             .expect("definition document");
     fs::write(
         &path,

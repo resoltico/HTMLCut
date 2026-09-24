@@ -5,17 +5,22 @@ use std::path::{Path, PathBuf};
 
 use htmlcut_tempdir::tempdir;
 
+use crate::mutants::{
+    IN_PLACE_CARGO_BUILD_DIR, IN_PLACE_CARGO_TARGET_DIR, LocalMutationSummary,
+    run_local_mutation_campaign_for_gate,
+};
 use crate::plan::materialize_semver_baseline;
 use crate::{
-    CommandArtifactLayout, CommandSpec, CoverageFailure, DynResult, HygieneCleanMode,
+    CommandArtifactLayout, CommandSpec, CoverageFailure, DynResult, HygieneCleanMode, XtaskError,
     assert_known_fuzz_target, check_plan, check_source_structure, ci_rust_gate_plan, clean_hygiene,
-    coverage_clean_command, coverage_command, coverage_output_path, ensure_coverage_output_dir,
-    ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites, ensure_hygiene,
-    ensure_miri_prerequisites, ensure_mutants_prerequisites, ensure_repo_toolchain_prerequisites,
-    evaluate_coverage_report, fuzz_smoke_command, fuzz_smoke_targets, is_semver_check_spec,
-    miri_contract_command, mutants_command, mutants_output_dir, prepare_artifact_layout,
-    prepare_mutation_report_root, read_coverage_report, remove_dir_if_exists, run_spec,
-    semver_scratch_dir, stage_fuzz_corpus, tracked_files,
+    coverage_clean_command, coverage_command, coverage_output_path, coverage_report_command,
+    ensure_coverage_output_dir, ensure_coverage_prerequisites, ensure_fuzz_smoke_prerequisites,
+    ensure_hygiene, ensure_miri_prerequisites, ensure_mutants_prerequisites,
+    ensure_repo_toolchain_prerequisites, evaluate_coverage_report, fork_coverage_command,
+    fuzz_smoke_command, fuzz_smoke_targets, is_semver_check_spec, miri_contract_command,
+    mutants_command, mutants_output_dir, prepare_artifact_layout, prepare_mutation_report_root,
+    read_coverage_report, remove_dir_if_exists, run_spec, semver_scratch_dir, stage_fuzz_corpus,
+    tracked_files,
 };
 
 /// Runs the complete maintainer quality gate.
@@ -97,22 +102,23 @@ pub(super) fn run_coverage(repo_root: &Path) -> DynResult<()> {
     prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedCoverage)?;
     ensure_hygiene(repo_root)?;
     let coverage_clean_spec = coverage_clean_command();
-    let coverage_spec = coverage_command(repo_root);
+    let application_coverage_spec = coverage_command(repo_root);
+    let fork_coverage_spec = fork_coverage_command();
+    let coverage_report_spec = coverage_report_command(repo_root);
     run_spec(repo_root, &coverage_clean_spec)?;
     ensure_coverage_output_dir(repo_root)?;
 
     let result = (|| -> DynResult<()> {
-        run_spec(repo_root, &coverage_spec)?;
+        run_spec(repo_root, &application_coverage_spec)?;
+        run_spec(repo_root, &fork_coverage_spec)?;
+        run_spec(repo_root, &coverage_report_spec)?;
 
         let tracked = tracked_files(repo_root)?;
         let report = read_coverage_report(&coverage_output_path(repo_root))?;
         let summary = evaluate_coverage_report(repo_root, &tracked, report)?;
 
         if !summary.failures.is_empty() {
-            record_coverage_failure(
-                &summary.failures,
-                render_coverage_failures(&summary.failures),
-            );
+            record_coverage_failure(render_coverage_failures(&summary.failures));
             return Err("coverage gate failed".into());
         }
 
@@ -167,6 +173,11 @@ pub(super) fn run_mutants(
     ensure_repo_toolchain_prerequisites(repo_root)?;
     ensure_mutants_prerequisites(repo_root)?;
     let diff_contents = read_mutation_diff(repo_root, in_diff)?;
+    let output_dir = mutants_output_dir(repo_root);
+    // A fresh campaign supersedes prior mutation evidence. Clear it before the hygiene preflight:
+    // an interrupted legacy run can otherwise strand multi-gigabyte build roots beside the
+    // retained result and prevent the very gate that would replace it.
+    remove_dir_if_exists(&output_dir)?;
     clean_hygiene(repo_root, HygieneCleanMode::Safe)?;
     if in_place {
         prepare_artifact_layout(repo_root, CommandArtifactLayout::ManagedWorkspace)?;
@@ -174,30 +185,70 @@ pub(super) fn run_mutants(
     prepare_mutation_report_root(repo_root)?;
     ensure_hygiene(repo_root)?;
 
-    let output_dir = mutants_output_dir(repo_root);
-    remove_dir_if_exists(&output_dir.join("mutants.out"))?;
-    remove_dir_if_exists(&output_dir.join("mutants.out.old"))?;
     let staged_diff = stage_mutation_diff(&output_dir, diff_contents.as_deref())?;
-    let local_scratch = (!in_place).then(tempdir).transpose()?;
-    let mut mutation_spec = mutants_command(&output_dir, in_place, shard, staged_diff.as_deref());
-    if let Some(local_scratch) = &local_scratch {
-        let temp_root = local_scratch.path().to_string_lossy().into_owned();
-        mutation_spec = mutation_spec
-            .with_env("TMPDIR", &temp_root)
-            .with_env("TMP", &temp_root)
-            .with_env("TEMP", temp_root);
-    }
-    let execution = run_spec(repo_root, &mutation_spec);
-    drop(local_scratch);
+    let execution = if in_place {
+        run_spec(
+            repo_root,
+            &mutants_command(&output_dir, true, shard, staged_diff.as_deref()),
+        )
+    } else {
+        let started = std::time::Instant::now();
+        let local = run_local_mutation_campaign_for_gate(
+            repo_root,
+            &output_dir,
+            shard,
+            staged_diff.as_deref(),
+        );
+        let report_result = local.as_ref().map(|_| ()).map_err(ToString::to_string);
+        crate::gate_report::record_internal_check(
+            "Local mutation shard reconciliation",
+            report_result,
+            started.elapsed(),
+        );
+        local.and_then(ensure_local_mutation_summary_is_clean)
+    };
     let cleanup = remove_staged_mutation_diff(staged_diff.as_deref());
+    let build_cleanup = if in_place {
+        remove_in_place_mutation_build_roots(&output_dir)
+    } else {
+        Ok(())
+    };
     let hygiene = ensure_hygiene(repo_root);
 
     if let Err(error) = execution {
         cleanup?;
+        build_cleanup?;
         return Err(mutation_execution_error(error));
     }
     cleanup?;
+    build_cleanup?;
     hygiene
+}
+
+fn remove_in_place_mutation_build_roots(output_dir: &Path) -> DynResult<()> {
+    let target_cleanup = remove_dir_if_exists(&output_dir.join(IN_PLACE_CARGO_TARGET_DIR));
+    let build_cleanup = remove_dir_if_exists(&output_dir.join(IN_PLACE_CARGO_BUILD_DIR));
+    target_cleanup?;
+    build_cleanup
+}
+
+fn ensure_local_mutation_summary_is_clean(summary: LocalMutationSummary) -> DynResult<()> {
+    if summary.is_clean() {
+        return Ok(());
+    }
+
+    let (exit_code, reason) = if summary.timed_out != 0 {
+        (3, "timed-out mutant")
+    } else {
+        (2, "missed mutant")
+    };
+    Err(XtaskError::CommandFailed {
+        exit_code: Some(exit_code),
+        message: format!(
+            "local mutation shard reconciliation found {reason}s: {} missed, {} timed out; retained aggregate evidence is under `mutants.out`",
+            summary.missed, summary.timed_out
+        ),
+    })
 }
 
 fn read_mutation_diff(repo_root: &Path, in_diff: Option<&Path>) -> DynResult<Option<Vec<u8>>> {
@@ -300,7 +351,7 @@ fn record_coverage_success(message: &str) {
     }
 }
 
-fn record_coverage_failure(failures: &[CoverageFailure], message: String) {
+fn record_coverage_failure(message: String) {
     if crate::gate_report::is_active() {
         crate::gate_report::record_internal_check(
             "Rust coverage ledger",
@@ -310,22 +361,7 @@ fn record_coverage_failure(failures: &[CoverageFailure], message: String) {
         return;
     }
 
-    eprintln!("Rust coverage gate failed.");
-    for failure in failures {
-        if !failure.uncovered_lines.is_empty() {
-            eprintln!(
-                "- {} lines: {}",
-                failure.file,
-                failure.uncovered_lines.join(", ")
-            );
-        }
-        if failure.uncovered_branch_count != 0 {
-            eprintln!(
-                "- {} branches: {} uncovered",
-                failure.file, failure.uncovered_branch_count
-            );
-        }
-    }
+    eprintln!("Rust coverage gate failed.\n{message}");
 }
 
 fn render_coverage_failures(failures: &[CoverageFailure]) -> String {

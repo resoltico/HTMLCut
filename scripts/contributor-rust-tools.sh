@@ -48,10 +48,8 @@ raise SystemExit(1)
 PY
 )"
 export HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
-HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly"
+HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly-2026-08-25"
 export HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
-HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION="966ade348570e9bc4fb0a8a9651be10e26909671"
-export HTMLCUT_CONTRIBUTOR_CARGO_SEMVER_CHECKS_REVISION
 readonly HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN
 readonly HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN
 readonly -a HTMLCUT_CONTRIBUTOR_RUST_STABLE_COMPONENTS=("clippy" "rustfmt")
@@ -60,6 +58,21 @@ readonly -a HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_COMPONENTS=(
     "miri"
     "rust-src"
 )
+
+htmlcut_contributor_retry() {
+    local retry_limit="$1"
+    local retry_delay_seconds="$2"
+    shift 2
+
+    local retry_index=1
+    until "$@"; do
+        if (( retry_index >= retry_limit )); then
+            return 1
+        fi
+        sleep "${retry_delay_seconds}"
+        retry_index=$((retry_index + 1))
+    done
+}
 
 htmlcut_contributor_rustup_toolchain_install() {
     local toolchain="$1"
@@ -88,12 +101,12 @@ htmlcut_contributor_install_stable_toolchain_components() {
 
 htmlcut_contributor_cargo_tool_inventory() {
     cat <<'EOF'
-cargo-nextest 0.9.143 cargo-nextest
+cargo-nextest 0.9.146 cargo-nextest
 cargo-audit 0.22.2 cargo-audit
 cargo-deny 0.20.2 cargo-deny
-cargo-semver-checks 0.50.0-git.966ade348570 cargo-semver-checks
+cargo-semver-checks 0.50.0 cargo-semver-checks
 cargo-outdated 0.19.0 cargo-outdated
-cargo-llvm-cov 0.9.0 cargo-llvm-cov
+cargo-llvm-cov 0.9.1 cargo-llvm-cov
 cargo-fuzz 0.13.2 cargo-fuzz
 cargo-mutants 27.1.0 cargo-mutants
 EOF
@@ -107,7 +120,8 @@ htmlcut_contributor_default_cargo_tool_inventory() {
         cargo-semver-checks \
         cargo-outdated \
         cargo-llvm-cov \
-        cargo-fuzz
+        cargo-fuzz \
+        cargo-mutants
 }
 
 htmlcut_selected_contributor_cargo_tools() {

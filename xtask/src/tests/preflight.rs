@@ -25,77 +25,6 @@ fn repo_toolchain_preflight_error_covers_missing_toolchain_and_broken_component(
 }
 
 #[test]
-fn coverage_miri_and_fuzz_preflight_helpers_report_missing_prerequisites() {
-    let missing_nightly = crate::preflight::coverage_preflight_error_for_tests("", "", |_| true)
-        .expect("missing nightly");
-    assert!(missing_nightly.contains("Install the nightly coverage toolchain"));
-
-    let missing_clang = crate::preflight::coverage_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        "llvm-tools-x86_64-unknown-linux-gnu (installed)\n",
-        |_| false,
-    )
-    .expect("missing clang");
-    assert!(missing_clang.contains("clang, clang++"));
-
-    let missing_llvm_tools = crate::preflight::coverage_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        "",
-        |_| true,
-    )
-    .expect("missing llvm-tools");
-    assert!(missing_llvm_tools.contains("llvm-tools-preview"));
-
-    let missing_miri_toolchain = crate::preflight::miri_preflight_error_for_tests("", "", false)
-        .expect("missing nightly Miri toolchain");
-    assert!(missing_miri_toolchain.contains("Install the nightly Miri toolchain first"));
-
-    let missing_miri_components = crate::preflight::miri_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        "",
-        false,
-    )
-    .expect("missing nightly Miri components");
-    assert!(
-        missing_miri_components.contains("rustup component add miri rust-src --toolchain nightly")
-    );
-
-    let broken_miri = crate::preflight::miri_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        "miri-x86_64-unknown-linux-gnu (installed)\nrust-src (installed)\n",
-        false,
-    )
-    .expect("broken nightly Miri binary");
-    assert!(broken_miri.contains("cargo +nightly miri --version"));
-
-    let missing_cargo_fuzz = crate::preflight::fuzz_smoke_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        false,
-        |_| true,
-    )
-    .expect("missing cargo-fuzz");
-    assert!(missing_cargo_fuzz.contains("install-contributor-cargo-tools.sh cargo-fuzz"));
-
-    let missing_fuzz_clang = crate::preflight::fuzz_smoke_preflight_error_for_tests(
-        "nightly-x86_64-unknown-linux-gnu\n",
-        true,
-        |_| false,
-    )
-    .expect("missing clang");
-    assert!(missing_fuzz_clang.contains("fuzz-smoke preflight failed"));
-
-    let missing_fuzz_nightly =
-        crate::preflight::fuzz_smoke_preflight_error_for_tests("", true, |_| true)
-            .expect("missing nightly");
-    assert!(missing_fuzz_nightly.contains("nightly"));
-
-    let clang_only =
-        crate::preflight::clang_toolchain_preflight_error_for_tests("coverage", |_| false)
-            .expect("clang tool message");
-    assert!(clang_only.contains("coverage preflight failed"));
-}
-
-#[test]
 fn mutation_preflight_reports_an_unavailable_cargo_subcommand() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -125,7 +54,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
         .expect("workspace root");
     let toolchain = repo_toolchain(repo_root).expect("repo toolchain");
     let toolchain_list = format!(
-        "{}-x86_64-apple-darwin\nnightly-x86_64-apple-darwin\n",
+        "{}-x86_64-apple-darwin\nnightly-2026-08-25-x86_64-apple-darwin\n",
         toolchain.channel
     );
     let component_list = toolchain
@@ -145,6 +74,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
             ensure_coverage_prerequisites(repo_root).expect("coverage preflight");
             ensure_miri_prerequisites(repo_root).expect("Miri preflight");
             ensure_fuzz_smoke_prerequisites(repo_root).expect("fuzz preflight");
+            ensure_mutants_prerequisites(repo_root).expect("mutation preflight");
         },
     );
 
@@ -251,12 +181,18 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
-                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ],
                     false,
                     false,
                 ))
@@ -282,12 +218,18 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
-                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ],
                     false,
                     false,
                 ))
@@ -304,7 +246,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             assert!(
                 error
                     .to_string()
-                    .contains("rustup component add miri rust-src --toolchain nightly")
+                    .contains("rustup component add miri rust-src --toolchain nightly-2026-08-25")
             );
         },
     );
@@ -363,12 +305,18 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
-                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ],
                     false,
                     false,
                 )))
@@ -395,12 +343,18 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
-                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ],
                     false,
                     false,
                 )))
@@ -427,12 +381,18 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
                     "rustup",
-                    ["component", "list", "--toolchain", "nightly", "--installed"],
+                    [
+                        "component",
+                        "list",
+                        "--toolchain",
+                        "nightly-2026-08-25",
+                        "--installed",
+                    ],
                     false,
                     false,
                 ))
@@ -447,7 +407,11 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
         || {
             let error =
                 ensure_miri_prerequisites(repo_root).expect_err("broken nightly Miri binary");
-            assert!(error.to_string().contains("cargo +nightly miri --version"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("cargo +nightly-2026-08-25 miri --version")
+            );
         },
     );
 
@@ -461,7 +425,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec) == command_signature(&cargo_fuzz_probe_command()))
                 .then(|| Err("missing cargo-fuzz".into()))
@@ -524,6 +488,10 @@ fn capture_override_fixture(
 ) -> impl FnMut(&Path, &CommandSpec) -> Option<DynResult<Vec<u8>>> {
     let mut outputs: BTreeMap<(String, Vec<String>), Result<Vec<u8>, String>> = BTreeMap::new();
     outputs.insert(
+        command_signature(&cargo_mutants_probe_command()),
+        Ok(b"cargo-mutants 27.1.0\n".to_vec()),
+    );
+    outputs.insert(
         command_signature(&test_command_spec(
             "rustup",
             ["toolchain", "list"],
@@ -563,7 +531,7 @@ fn capture_override_fixture(
     outputs.insert(
         command_signature(&test_command_spec(
             "rustup",
-            ["component", "list", "--toolchain", "nightly", "--installed"],
+            ["component", "list", "--toolchain", "nightly-2026-08-25", "--installed"],
             false,
             false,
         )),
@@ -597,6 +565,8 @@ fn capture_override_fixture(
             })
     }
 }
+
+mod mutants;
 
 fn missing_toolchain_capture_override_fixture(
     toolchain: RepoToolchain,

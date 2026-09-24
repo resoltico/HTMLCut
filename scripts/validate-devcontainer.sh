@@ -6,6 +6,8 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/common.sh
 . "${script_dir}/common.sh"
+# shellcheck source=scripts/contributor-rust-tools.sh
+. "${script_dir}/contributor-rust-tools.sh"
 script_dir="$(htmlcut_resolve_script_dir "${BASH_SOURCE[0]}")"
 readonly script_dir
 repo_root="$(htmlcut_repo_root_from_script_dir "${script_dir}")"
@@ -59,14 +61,15 @@ validate_inner_runtime() {
     [[ -f Cargo.toml ]] || htmlcut_die "inner runtime probe requires the HTMLCut workspace checkout"
     "${prepare_script}"
     rustc --version | grep -F "rustc ${stable_toolchain_channel} " >/dev/null
-    cargo +nightly llvm-cov --version >/dev/null
-    cargo +nightly miri --version >/dev/null
+    cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" llvm-cov --version >/dev/null
+    cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" miri --version >/dev/null
     cargo nextest --version >/dev/null
     cargo audit --version >/dev/null
     cargo deny --version >/dev/null
     cargo semver-checks --version >/dev/null
     cargo outdated --version >/dev/null
     cargo fuzz --version >/dev/null
+    cargo mutants --version >/dev/null
 }
 
 if [[ "${HTMLCUT_DEVCONTAINER:-}" == "1" ]]; then
@@ -163,6 +166,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+cleanup_stale_isolated_volumes() {
+    [[ "${volume_mode}" == "isolated" ]] || return 0
+
+    # An interrupted host process cannot run its EXIT trap. Reclaim only abandoned validation
+    # volumes whose names this script owns and that no live or stopped container still mounts;
+    # this never touches the contributor's shared CI caches or another active validation run.
+    while IFS= read -r volume; do
+        case "${volume}" in
+            htmlcut-devcontainer-validate-cargo-*|htmlcut-devcontainer-validate-rustup-*|htmlcut-devcontainer-validate-cache-*)
+                if docker ps -aq --filter "volume=${volume}" | grep -q .; then
+                    continue
+                fi
+                docker volume rm "${volume}" >/dev/null
+                ;;
+        esac
+    done < <(docker volume ls --format '{{.Name}}')
+}
+
+cleanup_stale_isolated_volumes
+
 printf 'devcontainer validation: build raw contributor image\n'
 docker build \
     --file "${dockerfile_path}" \
@@ -221,18 +244,20 @@ docker run --rm \
         set -euo pipefail
         /workspaces/htmlcut/scripts/devcontainer-prepare-user-home.sh
         /workspaces/htmlcut/scripts/devcontainer-bootstrap.sh
+        source /workspaces/htmlcut/scripts/contributor-rust-tools.sh
         touch /home/vscode/.cargo/user-writable-marker
         touch /home/vscode/.rustup/user-writable-marker
         touch /home/vscode/.cache/user-writable-marker
         rustc --version | grep -F "rustc ${HTMLCUT_STABLE_TOOLCHAIN} " >/dev/null
-        cargo +nightly llvm-cov --version >/dev/null
-        cargo +nightly miri --version >/dev/null
+        cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" llvm-cov --version >/dev/null
+        cargo "+${HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN}" miri --version >/dev/null
         cargo nextest --version >/dev/null
         cargo audit --version >/dev/null
         cargo deny --version >/dev/null
         cargo semver-checks --version >/dev/null
         cargo outdated --version >/dev/null
         cargo fuzz --version >/dev/null
+        cargo mutants --version >/dev/null
         cd /workspaces/htmlcut
         case "${HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES}" in
             full)

@@ -5,17 +5,11 @@ use serde_json::json;
 
 use crate::catalog::OperationId;
 use crate::contracts::{
-    CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, Diagnostic, ExtractionRequest,
-    ExtractionResult, ExtractionSpec, ExtractionStats, ExtractionStrategy, InspectionOptions,
-    ParseDocumentResult, ParsedDocument, RuntimeOptions, SliceSpec, SourceInspectionResult,
-    SourceRequest, ValueSpec,
+    CORE_RESULT_SCHEMA_NAME, CORE_RESULT_SCHEMA_VERSION, CORE_SPEC_VERSION, Diagnostic,
+    ExtractionRequest, ExtractionResult, ExtractionSpec, ExtractionStats, ExtractionStrategy,
+    InspectionOptions, RuntimeOptions, SliceSpec, SourceInspectionResult, SourceRequest, ValueSpec,
 };
-use crate::diagnostics::{
-    DiagnosticCode, error_diagnostic, has_errors, unresolved_effective_base_diagnostic,
-};
-use crate::document::{parse_document_node, resolve_document_base_url};
-use crate::inspect::build_document_inspection;
+use crate::diagnostics::{DiagnosticCode, error_diagnostic, has_errors};
 use crate::source::{empty_source_metadata, load_source, source_metadata};
 
 use super::slice::CompiledSlicePatterns;
@@ -33,92 +27,13 @@ pub(crate) enum PreparedExtraction {
     },
 }
 
-/// Loads and parses a source so callers can inspect the document tree directly.
-pub fn parse_document(source: &SourceRequest, runtime: &RuntimeOptions) -> ParseDocumentResult {
-    match load_source(source, runtime) {
-        Ok(loaded) => {
-            let document = parse_document_node(&loaded.text);
-            let effective_base_url =
-                resolve_document_base_url(&document, loaded.input_base_url.as_deref());
-            let metadata = source_metadata(&loaded, false, effective_base_url);
-            ParseDocumentResult {
-                operation_id: OperationId::DocumentParse,
-                ok: true,
-                source: metadata.clone(),
-                diagnostics: Vec::new(),
-                document: Some(ParsedDocument {
-                    source: metadata,
-                    document,
-                }),
-            }
-        }
-        Err(failure) => {
-            let (source, diagnostic) = failure.into_parts();
-            ParseDocumentResult {
-                operation_id: OperationId::DocumentParse,
-                ok: false,
-                source,
-                diagnostics: vec![diagnostic],
-                document: None,
-            }
-        }
-    }
-}
-
 /// Produces a structured source summary that helps callers choose extraction strategies.
 pub fn inspect_source(
     source: &SourceRequest,
     runtime: &RuntimeOptions,
     options: &InspectionOptions,
 ) -> SourceInspectionResult {
-    match load_source(source, runtime) {
-        Ok(loaded) => {
-            let document = parse_document_node(&loaded.text);
-            let effective_base_url =
-                resolve_document_base_url(&document, loaded.input_base_url.as_deref());
-            let document_inspection = build_document_inspection(
-                &document,
-                effective_base_url.as_deref(),
-                options.sample_limit,
-            );
-            let diagnostics = if document_inspection.document_base_href.is_some()
-                && effective_base_url.is_none()
-            {
-                vec![unresolved_effective_base_diagnostic(
-                    document_inspection.document_base_href.as_deref(),
-                    false,
-                )]
-            } else {
-                Vec::new()
-            };
-            let metadata = source_metadata(
-                &loaded,
-                options.include_source_text,
-                effective_base_url.clone(),
-            );
-            SourceInspectionResult {
-                operation_id: OperationId::SourceInspect,
-                schema_name: CORE_SOURCE_INSPECTION_SCHEMA_NAME.to_owned(),
-                schema_version: CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-                ok: true,
-                source: metadata,
-                document: Some(document_inspection),
-                diagnostics,
-            }
-        }
-        Err(failure) => {
-            let (source, diagnostic) = failure.into_parts();
-            SourceInspectionResult {
-                operation_id: OperationId::SourceInspect,
-                schema_name: CORE_SOURCE_INSPECTION_SCHEMA_NAME.to_owned(),
-                schema_version: CORE_SOURCE_INSPECTION_SCHEMA_VERSION,
-                ok: false,
-                source,
-                document: None,
-                diagnostics: vec![diagnostic],
-            }
-        }
-    }
+    crate::interop::v2::inspect_source(source, runtime, options)
 }
 
 /// Executes the extraction request but keeps the full structured report for inspection.
@@ -132,15 +47,6 @@ pub fn preview_extraction(
 /// Executes the extraction request and returns the final structured extraction result.
 pub fn extract(request: &ExtractionRequest, runtime: &RuntimeOptions) -> ExtractionResult {
     run_extraction(request, runtime, false, None)
-}
-
-/// Executes selector extraction with an interop-owned detached-clone canonicalization policy.
-pub(crate) fn extract_with_selector_dom_canonicalization(
-    request: &ExtractionRequest,
-    runtime: &RuntimeOptions,
-    dom_canonicalization: Option<&SelectorDomCanonicalization>,
-) -> ExtractionResult {
-    run_extraction(request, runtime, false, dom_canonicalization)
 }
 
 const fn extraction_operation_id(strategy: ExtractionStrategy, preview: bool) -> OperationId {

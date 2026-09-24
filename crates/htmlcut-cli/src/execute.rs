@@ -15,8 +15,8 @@ pub(crate) use self::cli_io::{
 #[cfg(test)]
 pub(crate) use self::commands::operation_error_outcome_for_tests;
 pub(crate) use self::commands::{
-    run_catalog, run_inspect_select, run_inspect_slice, run_inspect_source, run_schema, run_select,
-    run_slice,
+    run_catalog, run_inspect_elements, run_inspect_propose, run_inspect_select, run_inspect_slice,
+    run_inspect_source, run_schema, run_select, run_slice,
 };
 pub(crate) use self::outcomes::{error_outcome, execute_extraction, execute_preview};
 #[cfg(test)]
@@ -105,6 +105,8 @@ pub(crate) fn execute(cli: Cli) -> ExecutionOutcome {
             InspectCommands::Source(args) => run_inspect_source(args, verbose, quiet),
             InspectCommands::Select(args) => run_inspect_select(args, verbose, quiet),
             InspectCommands::Slice(args) => run_inspect_slice(args, verbose, quiet),
+            InspectCommands::Elements(args) => run_inspect_elements(args, verbose, quiet),
+            InspectCommands::Propose(args) => run_inspect_propose(args, verbose, quiet),
         },
     }
 }

@@ -223,7 +223,9 @@ fn map_http_url_error(
         | ContractValueError::UrlFragmentUnsupported { .. }
         | ContractValueError::NonPositive { .. }
         | ContractValueError::Empty { .. }
-        | ContractValueError::ContainsWhitespace { .. } => {
+        | ContractValueError::ContainsWhitespace { .. }
+        | ContractValueError::WireEnvelope
+        | ContractValueError::WireNumericRange { .. } => {
             usage_error(invalid_code, error.to_string())
         }
     }

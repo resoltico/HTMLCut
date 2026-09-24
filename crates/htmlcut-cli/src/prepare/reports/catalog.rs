@@ -29,10 +29,7 @@ pub(crate) fn build_catalog_report(
             CatalogOperationReport {
                 operation_id: descriptor.id,
                 command: cli_contract.map(|contract| contract.display_command()),
-                availability: match cli_contract {
-                    Some(_) => CatalogAvailability::Cli,
-                    None => CatalogAvailability::EngineOnly,
-                },
+                availability: catalog_availability(cli_contract),
                 summary: descriptor.description.to_owned(),
                 engine_capability: descriptor.core_api.to_owned(),
                 request_contract: build_contract_surface(&descriptor.request_contract),
@@ -51,6 +48,14 @@ pub(crate) fn build_catalog_report(
         description: HTMLCUT_DESCRIPTION.to_owned(),
         command: "catalog".to_owned(),
         operations,
+    })
+}
+
+fn catalog_availability(
+    cli_contract: Option<&crate::contract::OperationCliContract>,
+) -> CatalogAvailability {
+    cli_contract.map_or(CatalogAvailability::EngineOnly, |_| {
+        CatalogAvailability::Cli
     })
 }
 
@@ -271,4 +276,22 @@ fn render_value_type(value_type: htmlcut_core::ValueType) -> String {
 
 fn render_output_mode(mode: crate::contract::CliOutputMode) -> String {
     crate::contract::render_cli_value(crate::contract::CliValue::OutputMode(mode))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_availability_covers_cli_and_engine_only_operations() {
+        assert_eq!(catalog_availability(None), CatalogAvailability::EngineOnly,);
+        let descriptor = htmlcut_core::operation_catalog()
+            .iter()
+            .find_map(|operation| crate::contract::cli_operation_contract(operation.id))
+            .expect("at least one catalog operation must be CLI-visible");
+        assert_eq!(
+            catalog_availability(Some(descriptor)),
+            CatalogAvailability::Cli
+        );
+    }
 }

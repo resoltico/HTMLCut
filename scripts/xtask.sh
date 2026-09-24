@@ -25,6 +25,10 @@ readonly launcher_build_dir
 
 # Keep the gate driver outside HTMLCut's managed Cargo roots so a clean rebuild cannot create
 # unmarked artifacts before xtask's hygiene policy has prepared them.
+# A parent GNU Make jobserver can name descriptors that no longer exist by the time this launcher
+# runs. Cargo must use its own scheduling here; the compiled xtask process inherits the same clean
+# environment and will apply task-specific bounds itself.
+unset MAKEFLAGS MFLAGS CARGO_MAKEFLAGS
 CARGO_TARGET_DIR="${launcher_target_dir}" \
     CARGO_BUILD_BUILD_DIR="${launcher_build_dir}" \
     cargo build --quiet -p xtask --locked

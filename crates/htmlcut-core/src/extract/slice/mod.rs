@@ -10,10 +10,10 @@ pub(crate) use markup::{
     position_inside_markup_stalled_step_count_for_tests,
 };
 #[cfg(test)]
-pub(crate) use matches::build_slice_match;
-#[cfg(test)]
 pub(crate) use matches::run_slice_extraction;
-pub(crate) use matches::run_validated_slice_extraction;
+#[cfg(test)]
+pub(crate) use matches::{SliceMatchInput, build_slice_match};
+pub(crate) use matches::{run_prepared_slice_extraction, run_validated_slice_extraction};
 pub(crate) use patterns::CompiledSlicePatterns;
 #[cfg(test)]
 pub(crate) use patterns::{

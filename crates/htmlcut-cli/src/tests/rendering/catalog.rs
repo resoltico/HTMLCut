@@ -52,11 +52,16 @@ fn catalog_and_preview_renderers_cover_remaining_branches() {
     assert!(stdout.contains("Operation:"));
     assert!(stdout.contains("engine capability: extract slice values"));
     assert!(stdout.contains("request: extraction request + runtime options"));
-    assert!(
-        stdout.contains("request schemas: htmlcut.extraction_request@7, htmlcut.runtime_options@7")
-    );
+    assert!(stdout.contains(&format!(
+        "request schemas: htmlcut.extraction_request@{}, htmlcut.runtime_options@{}",
+        htmlcut_core::CORE_REQUEST_SCHEMA_VERSION,
+        htmlcut_core::CORE_REQUEST_SCHEMA_VERSION,
+    )));
     assert!(stdout.contains("result: extraction result"));
-    assert!(stdout.contains("result schemas: htmlcut.extraction_result@6"));
+    assert!(stdout.contains(&format!(
+        "result schemas: htmlcut.extraction_result@{}",
+        htmlcut_core::CORE_RESULT_SCHEMA_VERSION,
+    )));
     assert!(
         stdout.contains("Use `--output json` for parameters, defaults, constraints, and examples.")
     );

@@ -14,6 +14,7 @@ default = []
 http-client = ["dep:encoding_rs", "dep:ureq"]
 
 [dependencies]
+cssparser.workspace = true
 ego-tree.workspace = true
 encoding_rs = { workspace = true, optional = true }
 regex.workspace = true
@@ -29,7 +30,6 @@ url.workspace = true
 
 [dev-dependencies]
 boon.workspace = true
-cssparser.workspace = true
 htmlcut-tempdir.workspace = true
 
 [lints]

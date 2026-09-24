@@ -18,6 +18,14 @@ pub fn tempdir() -> io::Result<TempDir> {
     TempDir::new()
 }
 
+/// Creates one unique temporary directory beneath `base`.
+///
+/// The directory is removed recursively when the returned [`TempDir`] drops. The base directory
+/// is created when it does not yet exist and is otherwise retained.
+pub fn tempdir_in(base: impl AsRef<Path>) -> io::Result<TempDir> {
+    TempDir::new_in(base)
+}
+
 /// Temporary directory that is deleted recursively when it drops.
 #[derive(Debug)]
 pub struct TempDir {
@@ -27,7 +35,13 @@ pub struct TempDir {
 impl TempDir {
     /// Creates one unique temporary directory under the system temp root.
     pub fn new() -> io::Result<Self> {
-        let base = env::temp_dir();
+        Self::new_in(env::temp_dir())
+    }
+
+    /// Creates one unique temporary directory beneath `base`.
+    pub fn new_in(base: impl AsRef<Path>) -> io::Result<Self> {
+        let base = base.as_ref();
+        fs::create_dir_all(base)?;
         let pid = process::id();
 
         for _ in 0..MAX_CREATE_ATTEMPTS {
@@ -40,8 +54,7 @@ impl TempDir {
 
             match fs::create_dir(&candidate) {
                 Ok(()) => return Ok(Self { path: candidate }),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error),
+                Err(error) => retry_after_directory_name_collision(error)?,
             }
         }
 
@@ -55,6 +68,12 @@ impl TempDir {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+fn retry_after_directory_name_collision(error: io::Error) -> io::Result<()> {
+    (error.kind() == io::ErrorKind::AlreadyExists)
+        .then_some(())
+        .ok_or(error)
 }
 
 impl Drop for TempDir {
@@ -88,5 +107,33 @@ mod tests {
         };
 
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn tempdir_in_creates_and_cleans_a_child_without_removing_its_parent() {
+        let outer = tempdir().expect("outer tempdir");
+        let base = outer.path().join("nested").join("scratch");
+        let path = {
+            let dir = tempdir_in(&base).expect("nested tempdir");
+            assert!(dir.path().starts_with(&base));
+            dir.path().to_path_buf()
+        };
+
+        assert!(!path.exists());
+        assert!(base.is_dir());
+    }
+
+    #[test]
+    fn only_directory_name_collisions_are_retried() {
+        assert!(
+            retry_after_directory_name_collision(io::Error::from(io::ErrorKind::AlreadyExists))
+                .is_ok()
+        );
+        assert_eq!(
+            retry_after_directory_name_collision(io::Error::from(io::ErrorKind::PermissionDenied))
+                .expect_err("permission error must not be retried")
+                .kind(),
+            io::ErrorKind::PermissionDenied
+        );
     }
 }

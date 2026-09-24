@@ -192,7 +192,11 @@ fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() 
     let definition = ExtractionDefinition::new(request);
     fs::write(
         &definition_path,
-        serde_json::to_string_pretty(&definition).expect("serialize definition"),
+        serde_json::to_string_pretty(
+            &htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition)
+                .expect("current definition document"),
+        )
+        .expect("serialize definition"),
     )
     .expect("write definition");
 

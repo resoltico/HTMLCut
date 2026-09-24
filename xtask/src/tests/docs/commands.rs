@@ -194,6 +194,12 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
         vec!["htmlcut select \"page name.html\" --css 'article.hero'".to_owned()]
     );
     assert_eq!(
+        crate::docs::commands::extract_htmlcut_examples(
+            "htmlcut select outside.md\n```bash\necho htmlcut select ignored.md\nhtmlcut catalog --output json\n```\n"
+        ),
+        vec!["htmlcut catalog --output json".to_owned()]
+    );
+    assert_eq!(
         crate::docs::commands::shell_words(
             "htmlcut select \"page name.html\" --css 'article.hero'"
         )
@@ -249,6 +255,17 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
         ),
         Some("README.md example references unknown CLI command path: inspect".to_owned())
     );
+}
+
+#[test]
+fn clap_error_messages_preserve_the_user_actionable_first_line() {
+    let error = htmlcut_cli::command()
+        .try_get_matches_from(["htmlcut", "unknown-command"])
+        .expect_err("unknown command must fail");
+    let message = crate::docs::commands::clap_error_message_for_tests(&error);
+
+    assert!(message.contains("unrecognized subcommand"));
+    assert!(message.contains("unknown-command"));
 }
 
 #[test]

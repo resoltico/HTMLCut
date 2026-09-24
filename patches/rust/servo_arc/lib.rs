@@ -42,13 +42,12 @@ use std::process;
 use std::ptr;
 use std::sync::atomic;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use std::{isize, usize};
 
 /// A soft limit on the amount of references that may be made to an `Arc`.
 ///
 /// Going above this limit will abort your program (although not
 /// necessarily) at _exactly_ `MAX_REFCOUNT + 1` references.
-const MAX_REFCOUNT: usize = (isize::MAX) as usize;
+const MAX_REFCOUNT: usize = isize::MAX as usize;
 
 /// Special refcount value that means the data is not reference counted,
 /// and that the `Arc` is really acting as a read-only static reference.
@@ -59,7 +58,7 @@ const STATIC_REFCOUNT: usize = usize::MAX;
 /// See the documentation for [`Arc`] in the standard library. Unlike the
 /// standard library `Arc`, this `Arc` does not support weak reference counting.
 ///
-/// See the discussion in https://github.com/rust-lang/rust/pull/60594 for the
+/// See the discussion in <https://github.com/rust-lang/rust/pull/60594> for the
 /// usage of PhantomData.
 ///
 /// [`Arc`]: https://doc.rust-lang.org/stable/std/sync/struct.Arc.html
@@ -133,7 +132,7 @@ impl<T> UniqueArc<T> {
     }
 
     #[inline]
-    /// Convert to a shareable Arc<T> once we're done mutating it
+    /// Convert to a shareable `Arc<T>` once we're done mutating it
     pub fn shareable(self) -> Arc<T> {
         self.0
     }
@@ -243,7 +242,7 @@ impl<T> Arc<T> {
         arc
     }
 
-    /// Convert the Arc<T> to a raw pointer, suitable for use across FFI
+    /// Convert the `Arc<T>` to a raw pointer, suitable for use across FFI
     ///
     /// Note: This returns a pointer to the data T, which is offset in the allocation.
     #[inline]
@@ -253,7 +252,7 @@ impl<T> Arc<T> {
         ptr
     }
 
-    /// Reconstruct the Arc<T> from a raw pointer obtained from into_raw()
+    /// Reconstruct the `Arc<T>` from a raw pointer obtained from into_raw()
     ///
     /// Note: This raw pointer will be offset in the allocation and must be preceded
     /// by the atomic count.
@@ -276,7 +275,7 @@ impl<T> Arc<T> {
         arc
     }
 
-    /// Create a new static Arc<T> (one that won't reference count the object)
+    /// Create a new static `Arc<T>` (one that won't reference count the object)
     /// and place it in the allocation provided by the specified `alloc`
     /// function.
     ///
@@ -920,7 +919,7 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
     }
 }
 
-/// This is functionally equivalent to Arc<(H, [T])>
+/// This is functionally equivalent to `Arc<(H, [T])>`.
 ///
 /// When you create an `Arc` containing a dynamically sized type like a slice, the `Arc` is
 /// represented on the stack as a "fat pointer", where the length of the slice is stored alongside

@@ -8,7 +8,7 @@ fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
     let plan = crate::ci_rust_gate_plan(repo_root.path()).expect("ci rust gate plan");
 
     assert_eq!(
-        &plan[..8],
+        &plan[..12],
         vec![
             test_command_spec("cargo", ["fmt", "--check"], false, false),
             test_command_spec(
@@ -27,6 +27,68 @@ fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
                 false,
                 false,
             ),
+            test_command_spec(
+                "cargo",
+                [
+                    "clippy",
+                    "--manifest-path",
+                    "patches/rust/selectors/Cargo.toml",
+                    "--lib",
+                    "--all-features",
+                    "--locked",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
+                false,
+                false,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "doc",
+                    "--manifest-path",
+                    "patches/rust/selectors/Cargo.toml",
+                    "--lib",
+                    "--no-deps",
+                    "--all-features",
+                    "--locked",
+                ],
+                false,
+                false,
+            )
+            .with_env("RUSTDOCFLAGS", "-D warnings"),
+            test_command_spec(
+                "cargo",
+                [
+                    "clippy",
+                    "--manifest-path",
+                    "patches/rust/scraper/Cargo.toml",
+                    "--lib",
+                    "--all-features",
+                    "--locked",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
+                false,
+                false,
+            ),
+            test_command_spec(
+                "cargo",
+                [
+                    "doc",
+                    "--manifest-path",
+                    "patches/rust/scraper/Cargo.toml",
+                    "--lib",
+                    "--no-deps",
+                    "--all-features",
+                    "--locked",
+                ],
+                false,
+                false,
+            )
+            .with_env("RUSTDOCFLAGS", "-D warnings"),
             test_command_spec(
                 "cargo",
                 [
@@ -266,10 +328,12 @@ fn check_plan_still_builds_core_steps_before_missing_release_registry_errors() {
 }
 
 #[test]
-fn coverage_command_targets_repo_coverage_file() {
+fn coverage_commands_split_application_and_fork_execution_before_one_merged_report() {
     let repo_root = tempdir().expect("tempdir");
 
     let command = coverage_command(repo_root.path());
+    let fork_command = crate::fork_coverage_command();
+    let report_command = crate::coverage_report_command(repo_root.path());
     let clean = coverage_clean_command();
     let expected_output_path = coverage_output_path(repo_root.path());
 
@@ -279,7 +343,7 @@ fn coverage_command_targets_repo_coverage_file() {
     assert_eq!(
         command.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "--branch".to_owned(),
             "-p".to_owned(),
@@ -293,6 +357,34 @@ fn coverage_command_targets_repo_coverage_file() {
             "--all-targets".to_owned(),
             "--all-features".to_owned(),
             "--locked".to_owned(),
+            "--no-report".to_owned(),
+        ]
+    );
+    assert!(command_forces_clang(&fork_command));
+    assert!(command_uses_managed_coverage_artifacts(&fork_command));
+    assert_eq!(
+        fork_command.args,
+        vec![
+            "+nightly-2026-08-25".to_owned(),
+            "llvm-cov".to_owned(),
+            "--branch".to_owned(),
+            "--no-clean".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-selectors".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-scraper".to_owned(),
+            "--all-targets".to_owned(),
+            "--locked".to_owned(),
+        ]
+    );
+    assert!(command_forces_clang(&report_command));
+    assert!(command_uses_managed_coverage_artifacts(&report_command));
+    assert_eq!(
+        report_command.args,
+        vec![
+            "+nightly-2026-08-25".to_owned(),
+            "llvm-cov".to_owned(),
+            "report".to_owned(),
             "--json".to_owned(),
             "--output-path".to_owned(),
             expected_output_path.to_string_lossy().into_owned(),
@@ -304,7 +396,7 @@ fn coverage_command_targets_repo_coverage_file() {
     assert_eq!(
         clean.args,
         vec![
-            "+nightly".to_owned(),
+            "+nightly-2026-08-25".to_owned(),
             "llvm-cov".to_owned(),
             "clean".to_owned(),
             "--workspace".to_owned(),

@@ -41,7 +41,29 @@ fn catalog_json_surfaces_operation_catalog() {
         report.operations[0].result_contract.artifact,
         htmlcut_core::operation_catalog()[0].result_contract.family
     );
-    assert!(report.operations[0].command_contract.is_none());
+    let source_contract = report.operations[0]
+        .command_contract
+        .as_ref()
+        .expect("source.inspect must expose its CLI contract");
+    assert_eq!(
+        source_contract.invocation,
+        "htmlcut inspect source [OPTIONS] [INPUT]"
+    );
+
+    for operation_id in [
+        htmlcut_core::OperationId::ElementsExplore,
+        htmlcut_core::OperationId::TargetPropose,
+    ] {
+        let operation = report
+            .operations
+            .iter()
+            .find(|operation| operation.operation_id == operation_id)
+            .expect("new discovery operation should be cataloged");
+        assert!(
+            operation.command_contract.is_some(),
+            "{operation_id:?} must publish its complete CLI contract"
+        );
+    }
 
     let select_extract = report
         .operations
@@ -156,9 +178,9 @@ fn schema_json_surfaces_registry_for_core_cli_and_interop() {
             && schema.surface == "engine"
     }));
     assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::interop::v1::RESULT_SCHEMA_NAME
+        schema.schema_name == htmlcut_core::interop::v2::RESULT_SCHEMA_NAME
             && schema.surface == "integration"
-            && schema.profile.as_deref() == Some("htmlcut-v1")
+            && schema.profile.as_deref() == Some("htmlcut-v2")
     }));
     assert!(report.schemas.iter().any(|schema| {
         schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.surface == "cli"
@@ -168,6 +190,41 @@ fn schema_json_surfaces_registry_for_core_cli_and_interop() {
             && schema.schema_version == ERROR_COMMAND_REPORT_SCHEMA_VERSION
             && schema.surface == "cli"
     }));
+}
+
+#[test]
+fn schema_command_rejects_an_unknown_schema_in_both_machine_readable_modes() {
+    for output in ["json", "index-json"] {
+        let mut command = Command::cargo_bin("htmlcut").expect("binary");
+        command
+            .args([
+                "schema",
+                "--name",
+                "htmlcut.not_a_schema",
+                "--output",
+                output,
+            ])
+            .assert()
+            .failure()
+            .code(2)
+            .stdout(predicate::str::contains("CLI_SCHEMA_UNKNOWN"));
+    }
+}
+
+#[test]
+fn schema_command_renders_each_successful_catalog_view() {
+    let mut index_json = Command::cargo_bin("htmlcut").expect("binary");
+    index_json
+        .args(["schema", "--output", "index-json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("htmlcut.schema_inventory_report"));
+
+    let mut text = Command::cargo_bin("htmlcut").expect("binary");
+    text.args(["schema", "--output", "text"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Schemas:"));
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use htmlcut_core::{
     CORE_RESULT_SCHEMA_NAME, OperationId,
-    interop::v1::{RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION},
+    interop::v2::{RESULT_SCHEMA_NAME, RESULT_SCHEMA_VERSION},
     operation_descriptor,
 };
 
@@ -371,10 +371,6 @@ mod tests {
         assert_eq!(
             cli_operation_display_command(OperationId::SelectExtract),
             "select"
-        );
-        assert_eq!(
-            cli_operation_display_command(OperationId::DocumentParse),
-            "document.parse"
         );
     }
 }

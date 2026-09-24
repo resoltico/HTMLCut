@@ -225,6 +225,10 @@ pub enum CliParameterSection {
     Extraction,
     /// Parameters that shape inspection output.
     InspectionOutput,
+    /// Parameters that bound deterministic DOM exploration.
+    Exploration,
+    /// Evidence that must identify a browser-selected target exactly.
+    Target,
     /// Parameters that control whether filesystem outputs may replace existing paths.
     FilesystemOutput,
 }
@@ -238,6 +242,8 @@ impl CliParameterSection {
             Self::Selection => "Selection",
             Self::Extraction => "Extraction",
             Self::InspectionOutput => "Inspection Output",
+            Self::Exploration => "Exploration",
+            Self::Target => "Target",
             Self::FilesystemOutput => "Filesystem Output",
         }
     }
@@ -310,6 +316,28 @@ pub enum CliParameterId {
     RegexFlags,
     /// Slice boundary-retention mode.
     BoundaryRetention,
+    /// Maximum returned element descriptors for one exploration page.
+    MaxElements,
+    /// Snapshot- and options-bound exploration continuation cursor.
+    Cursor,
+    /// Cumulative traversal and selector-proof work budget.
+    MaxWorkUnits,
+    /// Maximum proved selector proposals per explored element.
+    MaxProposalsPerElement,
+    /// Maximum retained UTF-8 bytes in one explored text preview.
+    PreviewBytes,
+    /// Complete static DOM path for target resolution.
+    TargetPath,
+    /// Required namespace for target resolution.
+    TargetNamespace,
+    /// Required parser-preserved local name for target resolution.
+    TargetLocalName,
+    /// Required domain-separated normalized descendant-text SHA-256 for target resolution.
+    TargetTextDigestSha256,
+    /// Optional exact semantic target attribute in NAME=VALUE form.
+    TargetSemanticAttribute,
+    /// Maximum proved selector proposals for target resolution.
+    MaxProposals,
 }
 
 impl CliParameterId {
@@ -345,6 +373,17 @@ impl CliParameterId {
             Self::Pattern => "--pattern",
             Self::RegexFlags => "--regex-flags",
             Self::BoundaryRetention => "--boundary-retention",
+            Self::MaxElements => "--max-elements",
+            Self::Cursor => "--cursor",
+            Self::MaxWorkUnits => "--max-work-units",
+            Self::MaxProposalsPerElement => "--max-proposals-per-element",
+            Self::PreviewBytes => "--preview-bytes",
+            Self::TargetPath => "--path",
+            Self::TargetNamespace => "--namespace",
+            Self::TargetLocalName => "--local-name",
+            Self::TargetTextDigestSha256 => "--text-digest-sha256",
+            Self::TargetSemanticAttribute => "--attribute",
+            Self::MaxProposals => "--max-proposals",
         }
     }
 }
@@ -389,6 +428,8 @@ pub enum CliValue {
     Boolean(bool),
     /// One usize literal.
     Usize(usize),
+    /// One u32 literal.
+    U32(u32),
     /// One u64 literal.
     U64(u64),
 }

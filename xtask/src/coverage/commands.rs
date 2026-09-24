@@ -7,39 +7,78 @@ use crate::model::{
 };
 use crate::plan::coverage_target_dir as workspace_coverage_target_dir;
 
-const COVERAGE_PACKAGES: &[&str] = &["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir", "xtask"];
+const APPLICATION_COVERAGE_PACKAGES: &[&str] =
+    &["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir", "xtask"];
+
+const FORK_COVERAGE_PACKAGES: &[&str] = &["htmlcut-selectors", "htmlcut-scraper"];
 
 /// Builds the `cargo llvm-cov` command used by the one-ring coverage gate.
-pub fn coverage_command(repo_root: &Path) -> CommandSpec {
+pub fn coverage_command(_repo_root: &Path) -> CommandSpec {
     let mut args = vec![
         MAINTAINED_NIGHTLY_TOOLCHAIN.to_owned(),
         "llvm-cov".to_owned(),
         "--branch".to_owned(),
     ];
-    for package in COVERAGE_PACKAGES {
+    for package in APPLICATION_COVERAGE_PACKAGES {
         args.push("-p".to_owned());
         args.push((*package).to_owned());
     }
     args.extend(
+        ["--all-targets", "--all-features", "--locked", "--no-report"]
+            .into_iter()
+            .map(str::to_owned),
+    );
+    CommandSpec::new(
+        "cargo",
+        args,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedCoverage)
+}
+
+/// Builds the default-feature maintained-fork execution that contributes to the shared coverage
+/// profile without enabling optional fork features that alter application semantics.
+pub fn fork_coverage_command() -> CommandSpec {
+    let mut args = vec![
+        MAINTAINED_NIGHTLY_TOOLCHAIN.to_owned(),
+        "llvm-cov".to_owned(),
+        "--branch".to_owned(),
+        "--no-clean".to_owned(),
+    ];
+    for package in FORK_COVERAGE_PACKAGES {
+        args.push("-p".to_owned());
+        args.push((*package).to_owned());
+    }
+    args.extend(["--all-targets", "--locked"].into_iter().map(str::to_owned));
+    CommandSpec::new(
+        "cargo",
+        args,
+        CommandStdout::Inherit,
+        CommandToolchainEnv::ForceClang,
+    )
+    .with_artifact_layout(CommandArtifactLayout::ManagedCoverage)
+}
+
+/// Builds the final merged LLVM JSON report after application and fork test executions.
+pub fn coverage_report_command(repo_root: &Path) -> CommandSpec {
+    CommandSpec::new(
+        "cargo",
         [
-            "--all-targets",
-            "--all-features",
-            "--locked",
+            MAINTAINED_NIGHTLY_TOOLCHAIN,
+            "llvm-cov",
+            "report",
             "--json",
             "--output-path",
         ]
         .into_iter()
-        .map(str::to_owned),
-    );
-    args.push(
-        coverage_output_path(repo_root)
-            .to_string_lossy()
-            .into_owned(),
-    );
-
-    CommandSpec::new(
-        "cargo",
-        args,
+        .map(str::to_owned)
+        .chain(std::iter::once(
+            coverage_output_path(repo_root)
+                .to_string_lossy()
+                .into_owned(),
+        ))
+        .collect::<Vec<_>>(),
         CommandStdout::Inherit,
         CommandToolchainEnv::ForceClang,
     )
@@ -95,21 +134,21 @@ pub fn coverage_preflight_message(failures: &[CoveragePreflightFailure]) -> Stri
     let missing_nightly = failures.contains(&CoveragePreflightFailure::MissingNightlyToolchain);
     let missing_llvm_tools = failures.contains(&CoveragePreflightFailure::MissingNightlyLlvmTools);
 
-    let mut message = String::from(
-        "Rust coverage preflight failed. HTMLCut keeps stable as the default toolchain, but the coverage gate still requires `cargo +nightly llvm-cov --branch` for true branch coverage.\n",
+    let mut message = format!(
+        "Rust coverage preflight failed. HTMLCut keeps stable as the default toolchain, but the coverage gate requires `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} llvm-cov --branch` for true branch coverage.\n"
     );
 
     if missing_nightly {
-        message.push_str(
-            "\nInstall the nightly coverage toolchain first:\n  rustup toolchain install nightly --profile minimal --component llvm-tools-preview\n",
-        );
+        message.push_str(&format!(
+            "\nInstall the nightly coverage toolchain first:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal --component llvm-tools-preview\n"
+        ));
         return message;
     }
 
     if missing_llvm_tools {
-        message.push_str(
-            "\nNightly is installed, but `llvm-tools-preview` is missing:\n  rustup component add llvm-tools-preview --toolchain nightly\n",
-        );
+        message.push_str(&format!(
+            "\nNightly is installed, but `llvm-tools-preview` is missing:\n  rustup component add llvm-tools-preview --toolchain {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME}\n"
+        ));
     }
 
     message

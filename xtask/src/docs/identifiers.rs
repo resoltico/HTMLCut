@@ -13,6 +13,9 @@ pub(super) fn identifier_errors(
     let unknown_identifiers = pattern
         .find_iter(text)
         .map(|matched| matched.as_str())
+        // These versioned identities name a digest domain and a benchmark report, not JSON
+        // Schema families. Keep unknown bare htmlcut.* schema names fail-closed.
+        .filter(|identifier| !matches!(*identifier, "htmlcut.dom_text" | "htmlcut.prepared_engine"))
         .filter(|identifier| !allowed.contains(identifier))
         .collect::<BTreeSet<_>>();
 

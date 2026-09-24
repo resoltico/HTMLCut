@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: QUALITY
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
-  keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
-  questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
+  keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, prepared engine benchmark, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
+  questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
@@ -25,12 +25,10 @@ compiler-override safeguard for native crate builds.
 Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred contributor-container
 workflow on Ubuntu `24.04`.
 
-`rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.0`).
-Nightly is installed alongside it for the strict-provenance selector-and-slice Miri proof, the
-coverage gate, and live `cargo-fuzz` campaigns because `cargo xtask miri`, `cargo +nightly
-llvm-cov --branch`, and `cargo +nightly fuzz ...` all need nightly. The workspace manifest carries the
+`rust-toolchain.toml` owns the exact HTMLCut stable toolchain pin (currently `1.98.1`).
+The maintained `nightly-2026-08-25` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
 published compatibility floor separately through
-`[workspace.package] rust-version = "1.98"`.
+`[workspace.package] rust-version = "1.98.1"`.
 
 The LLVM-backed `cargo xtask coverage` and `cargo xtask fuzz-smoke` commands both launch Cargo
 with `CC=clang CXX=clang++`. Keep `clang` and `clang++` available on `PATH` when you use those
@@ -148,27 +146,66 @@ as the contributor container. The coverage gate also manages and tags the nested
 
 ## Mutation Testing
 
-`cargo xtask mutants` runs cargo-mutants `27.1.0` against the first-party runtime source selected
-in [../.cargo/mutants.toml](../.cargo/mutants.toml). The workflow verifies that this selection
-matches Cargo's `workspace.default-members` and their non-test `src` files before it plans a run.
-It runs their all-feature locked Cargo tests and excludes vendored parser code, `xtask`, fuzz
-harnesses, and in-tree test modules. This asks whether the existing tests reject plausible
+`cargo xtask mutants` runs cargo-mutants `27.1.0` against the first-party runtime and `xtask`
+maintainer-tooling source selected in [../.cargo/mutants.toml](../.cargo/mutants.toml), plus the
+three maintained selector/scraper resource-boundary modules that own selector work accounting,
+fallible propagation, and detached subtree cloning. The workflow verifies that this selection is
+exactly Cargo's `workspace.default-members` non-test `src` files, `xtask` non-test `src` files,
+and those named fork files before it plans a run. Each mutant runs the locked all-feature Cargo
+suite owned by its package; the campaign then reconciles the exact union across every maintained
+package and fork boundary. The maintained invocation uses nightly libtest with `--fail-fast`, so
+the first proving failure stops that mutant's test suite; the standard maintainer gate separately
+runs Cargo doctests. The maintained fork packages therefore own direct tests for their
+resource-boundary contracts alongside the complete mutation proof. Local execution materializes a
+bounded number of complete disposable source workspaces and assigns deterministic package-local
+partitions to those reusable lanes. A partition is assigned at least sixty-four planned mutants
+whenever the selection permits, so a small reviewed diff does not pay several duplicate cold
+workspace baselines. Large packages are split across partitions while tiny maintained forks share
+one partition, so no partition recompiles unrelated packages merely to test its assigned mutants.
+Outer sharding is the only concurrency authority: cargo-mutants' in-place mode runs each lane
+sequentially, disables its internal jobserver, removes inherited GNU Make jobserver state, and
+receives a proportionate explicit Cargo build budget. Every lane also owns a private offline Cargo
+home and lock domain while linking the already-cached registry and Git trees read-only, so concurrent
+baselines never serialize on the contributor's global Cargo cache lock. On Unix, lane source
+directories are deletion-protected while their regular source files remain writable for mutation;
+this prevents a destructive test of a filesystem-management mutant from corrupting later
+experiments. A lane may start its next assigned partition only after a content fingerprint proves
+the preceding cargo-mutants run restored the copied source tree. This prevents a launcher-owned or
+stale jobserver from multiplying work or stalling every lane. Every lane reuses its temporary
+workspace-local Cargo target and build roots, so a campaign pays the all-feature dependency build
+once per bounded lane rather than once per mutant while never mutating the contributor's checkout.
+CI in-place shards also use isolated Cargo target and build roots, then discard those rebuildable
+roots after evaluation while retaining `mutants.out` results for the required artifact upload.
+Local execution requests at most four lanes, then derives a lower safe count from the free space on
+the temporary-workspace volume: 12 GiB stays reserved for the host and every admitted lane receives
+a 10 GiB temporary-state budget. If even one lane cannot fit, the command fails before it stages a
+worker. The copied workspaces, their bounded isolated incremental Cargo state, and every mutation
+disappear together at the end of the run. Before execution, xtask enumerates the exact inventory; after execution, it
+rejects duplicate, missing, or unexpected mutants and writes one canonical aggregate
+`mutants.out/outcomes.json`, `mutants.json`, result lists, and `local-aggregate.json`, with the
+complete worker evidence retained under `mutants.out/shards/`. The system-temporary workspaces are
+intentionally separate from the retained result tree. The campaign excludes unrelated parser code,
+fuzz harnesses, and in-tree test modules. This asks whether the existing tests reject plausible
 behavioral changes; it complements coverage, fuzzing, and Miri rather than replacing any of them.
 
-Install the optional pinned tool before a local run:
+The maintained command gives every Cargo invocation in a mutation run an exact 600-second liveness bound. This accommodates the all-feature baseline while ensuring that a stalled mutant, build, or test run is evidence to investigate rather than an unbounded campaign delay.
+
+Install the optional pinned tool before a local run. Mutation testing also requires the repository's
+nightly toolchain, which the existing nightly preflight validates:
 
 ```bash
 ./scripts/install-contributor-cargo-tools.sh cargo-mutants
 ```
 
-Local invocation copies the workspace before applying mutations, routes cargo-mutants scratch data
-to a temporary directory, and writes the retained stdout/stderr evidence as bytes arrive, so it is
-safe and diagnosable on a working checkout without contaminating its shared Cargo cache. Results
-are retained under `../.htmlcut-artifacts/mutation-runs/mutants.out`; every new run clears only that
-prior generated result directory. Safe hygiene cleanup preserves this evidence, while `cargo xtask
-hygiene clean --mode rebuildable` removes it. `--in-place` is reserved for disposable CI checkouts,
-where it avoids copying the workspace and reuses Cargo artifacts. Do not use it in a checkout you
-are editing or preparing to commit.
+Local invocation copies the complete source workspace into a bounded set of system-temporary reusable
+lanes before applying mutations, writes each partition's runner streams and cargo-mutants evidence,
+then reconciles them into one retained aggregate. It is therefore safe and diagnosable on a working
+checkout without contaminating its shared Cargo cache or retaining disposable build trees as
+evidence. Results are retained under `../.htmlcut-artifacts/mutation-runs/mutants.out`; every new
+run clears only that prior generated result directory. Safe hygiene cleanup preserves this
+evidence, while `cargo xtask hygiene clean --mode rebuildable` removes it. `--in-place` is reserved
+for disposable CI checkouts, where it mutates that checkout directly and uses isolated absolute
+Cargo roots. Do not use it in a checkout you are editing or preparing to commit.
 
 The [mutation workflow](../.github/workflows/mutants.yml) runs a complete weekly/manual Ubuntu
 campaign across sixteen zero-based (`0/16` through `15/16`) round-robin shards. Planning and
@@ -195,6 +232,18 @@ For local `--in-diff` runs, xtask reads the requested unified diff before artifa
 stages a temporary copy under the managed mutation evidence root, passes cargo-mutants that absolute
 path, and removes the staged copy after success or failure. A diff stored under repository `tmp/`
 therefore remains valid even though safe hygiene cleanup removes that scratch directory.
+
+## Prepared-engine benchmark
+
+The prepared-engine benchmark is an operational record, not a quality gate. It runs fifty equivalent CSS extraction plans over a 1,024-element document in two separate workflows: the immutable `v13.2.0` CLI baseline performs one one-shot extraction per plan, while the current v14 example prepares one document and executes fifty compiled plans against it. The `htmlcut.prepared_engine@2` report records the explicit full-document parse model and each workflow's `peak_rss_bytes`; Darwin's time output is already in bytes and Linux's KiB output is converted. It deliberately imposes no timing or memory threshold.
+
+Run it with a report path outside the disposable benchmark workspace:
+
+```bash
+./scripts/benchmark-prepared-engine.sh ./tmp/prepared-engine-v14-v13.json
+```
+
+The script builds the two versions with isolated artifact directories, creates and removes a detached local worktree at the immutable baseline tag, and leaves only the requested JSON report. The deterministic preparation-count tests remain the correctness proof for parse-once behavior; benchmark measurements are reproducible operational evidence, not a substitute for those tests.
 
 Validate the committed contributor devcontainer:
 
@@ -224,7 +273,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - the final curated coverage pass, which is the canonical execution owner for the maintained
   `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` package test targets instead of
   replaying those same inventories earlier in `cargo xtask check`
-- recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields, version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
+- recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields checked against the format version owned by `xtask/src/docs/metadata.rs`, workspace-version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
 - targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical registries
 - clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical `htmlcut_cli::contract` registry
 - `cargo clippy -p htmlcut-core --lib --tests --locked -- -D warnings` on the published
@@ -232,11 +281,15 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   workspace build
 - `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
   URL requests fail cleanly unless the `http-client` feature is explicitly enabled
+- the ignored one-million-element exploration acceptance scenario exactly once, outside the
+  mutation-test inventory, so the checked shared-work budget proves advancing truncation and
+  terminal tail pagination without multiplying a resource test across every mutant
 - the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
-  miri`, which runs `cargo +nightly miri test -p htmlcut-core --lib --no-default-features
+  miri`, which runs `cargo +nightly-2026-08-25 miri test -p htmlcut-core --lib --no-default-features
   --locked tests::extract_api::selector_and_slice_contract_remain_miri_sound -- --exact` with
   `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
+- warning-denied `clippy` and Rustdoc builds of the maintained selector and scraper fork crates, so the resource-boundary source shipped with HTMLCut cannot accumulate a separate warning baseline
 - direct dependency freshness across the workspace manifests through `cargo xtask outdated-check`,
   which materializes a sanitized temporary workspace, strips root patch tables, and rewrites the
   repo-owned vendored selector/parser dependencies back to registry coordinates so freshness checks
@@ -245,7 +298,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `[graph] targets` list in `deny.toml` plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
-- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v1.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
+- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v2.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
 - compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
 - distribution-profile CLI build-and-launch smoke
 - 100% executable-line coverage and 100% branch coverage across the maintained tracked executable module set for `htmlcut-core`, `htmlcut-cli`, and `xtask`, with duplicate branch spans deduplicated before scoring
@@ -255,7 +308,7 @@ Before any of those gate steps begin, `cargo xtask check` preflights the exact r
 toolchain declared in `rust-toolchain.toml`, the nightly Miri prerequisites, and the nightly
 coverage prerequisites. If the pinned compiler itself is missing, if its required
 `clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if its
-compiler is below the workspace's published Rust floor, if `cargo +nightly miri --version` is
+compiler is below the workspace's published Rust floor, if `cargo +nightly-2026-08-25 miri --version` is
 broken despite rustup reporting the components, or if the coverage prerequisites are absent, the
 gate stops immediately with the exact repair command instead of failing later inside the Rust gate.
 
@@ -317,7 +370,7 @@ Short live libFuzzer smoke is intentionally a separate maintainer step rather th
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
-`cargo +nightly fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
+`cargo +nightly-2026-08-25 fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
 stable after local smoke runs while still building the real libFuzzer harnesses explicitly. It
 also preflights nightly plus `cargo-fuzz` before launching so missing fuzz tooling fails early
 with one actionable message. Use `--target <name>` to focus one maintained target or `--runs

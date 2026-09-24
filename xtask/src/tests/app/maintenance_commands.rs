@@ -199,6 +199,7 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
             .expect("write stale mutation output");
         fs::write(repo_root.path().join("changes.diff"), "diff evidence")
             .expect("write mutation diff");
+        let output_dir_for_override = output_dir.clone();
         let calls = Rc::new(RefCell::new(Vec::new()));
         let calls_for_override = Rc::clone(&calls);
 
@@ -217,6 +218,12 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
                             "diff evidence"
                         );
                     }
+                    for root in ["cargo-target", "cargo-build"] {
+                        fs::create_dir_all(output_dir_for_override.join(root).join("debug"))
+                            .expect("write mutation build cache");
+                    }
+                    fs::create_dir_all(output_dir_for_override.join("mutants.out"))
+                        .expect("write fresh mutation evidence");
                     calls_for_override.borrow_mut().push(spec.clone());
                     Some(Ok(()))
                 },
@@ -238,11 +245,11 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
         })
         .expect("xtask mutants should pass");
 
-        assert!(
-            !output_dir.join("mutants.out").exists(),
-            "stale mutation results should be cleared while the managed evidence root remains"
-        );
+        assert!(!output_dir.join("mutants.out/stale").exists());
+        assert!(output_dir.join("mutants.out").is_dir());
         assert!(!output_dir.join("input.diff").exists());
+        assert!(!output_dir.join("cargo-target").exists());
+        assert!(!output_dir.join("cargo-build").exists());
         assert_eq!(
             calls.borrow().as_slice(),
             &[crate::mutants_command(
@@ -252,6 +259,46 @@ fn main_entry_with_runs_mutation_testing_in_safe_and_ci_modes() {
                 Some(&output_dir.join("input.diff")),
             )]
         );
+    });
+}
+
+#[test]
+fn local_mutation_gate_records_success_and_contract_failures_from_reconciled_evidence() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+
+        let clean = crate::mutants::LocalMutationSummary {
+            total_mutants: 1,
+            caught: 1,
+            missed: 0,
+            timed_out: 0,
+            unviable: 0,
+        };
+        with_ready_preflight(|| {
+            crate::mutants::with_local_mutation_campaign_override(
+                move || Ok(clean),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+            )
+        })
+        .expect("clean local mutation evidence passes");
+
+        let missed = crate::mutants::LocalMutationSummary {
+            total_mutants: 1,
+            caught: 0,
+            missed: 1,
+            timed_out: 0,
+            unviable: 0,
+        };
+        let error = with_ready_preflight(|| {
+            crate::mutants::with_local_mutation_campaign_override(
+                move || Ok(missed),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+            )
+        })
+        .expect_err("missed local mutation evidence fails");
+        assert!(error.to_string().contains("found missed mutants"));
     });
 }
 
@@ -274,11 +321,15 @@ fn mutation_testing_preserves_a_failed_mutant_result_for_inspection() {
                     {
                         fs::create_dir_all(output_dir_for_override.join("mutants.out"))
                             .expect("write mutation result");
+                        for root in ["cargo-target", "cargo-build"] {
+                            fs::create_dir_all(output_dir_for_override.join(root).join("debug"))
+                                .expect("write mutation build cache");
+                        }
                         return Some(Err("surviving mutant fixture".into()));
                     }
                     Some(Ok(()))
                 },
-                || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+                || main_entry_with(repo_root.path(), ["xtask", "mutants", "--in-place"]),
             )
         })
         .expect_err("surviving mutant should fail the mutation gate");
@@ -288,6 +339,48 @@ fn mutation_testing_preserves_a_failed_mutant_result_for_inspection() {
             output_dir.join("mutants.out").is_dir(),
             "mutation results must remain available after failure"
         );
+        assert!(!output_dir.join("cargo-target").exists());
+        assert!(!output_dir.join("cargo-build").exists());
+    });
+}
+
+#[test]
+fn in_place_mutation_cleanup_rejects_non_directory_build_roots_without_losing_results() {
+    let repo_root = tempdir().expect("repo tempdir");
+    with_isolated_target_dir(repo_root.path(), || {
+        write_repo_scaffold(repo_root.path());
+        write_toolchain_contract(repo_root.path());
+        let output_dir = crate::mutants_output_dir(repo_root.path());
+
+        for (invalid_root, other_root) in [
+            ("cargo-target", "cargo-build"),
+            ("cargo-build", "cargo-target"),
+        ] {
+            let output_for_override = output_dir.clone();
+            let error = with_ready_preflight(|| {
+                crate::command_exec::with_run_spec_override(
+                    move |_, spec| {
+                        if spec.args.first().is_some_and(|arg| arg == "mutants") {
+                            fs::create_dir_all(output_for_override.join("mutants.out"))
+                                .expect("retain mutation results");
+                            fs::write(output_for_override.join(invalid_root), "not a directory")
+                                .expect("write invalid build root");
+                            fs::create_dir_all(output_for_override.join(other_root))
+                                .expect("write other build root");
+                            return Some(Ok(()));
+                        }
+                        None
+                    },
+                    || main_entry_with(repo_root.path(), ["xtask", "mutants", "--in-place"]),
+                )
+            })
+            .expect_err("invalid build root must fail cleanup");
+
+            assert!(!error.to_string().is_empty());
+            assert!(output_dir.join("mutants.out").is_dir());
+            assert!(output_dir.join(invalid_root).is_file());
+            assert!(!output_dir.join(other_root).exists());
+        }
     });
 }
 
@@ -319,7 +412,7 @@ fn mutation_testing_classifies_missed_timed_out_and_broken_baseline_runs() {
                             })
                         })
                     },
-                    || main_entry_with(repo_root.path(), ["xtask", "mutants"]),
+                    || main_entry_with(repo_root.path(), ["xtask", "mutants", "--in-place"]),
                 )
             })
             .expect_err("mutation run should fail");

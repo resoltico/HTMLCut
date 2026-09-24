@@ -86,6 +86,11 @@ pub fn mutation_report_dir(repo_root: &Path) -> PathBuf {
     paths::mutation_report_dir(repo_root)
 }
 
+/// Returns the dedicated parent that owns the managed sibling artifact roots, if configured.
+pub fn managed_artifact_container_dir(repo_root: &Path) -> Option<PathBuf> {
+    paths::managed_artifact_container_dir(repo_root)
+}
+
 /// Returns the nested Cargo target directory created by `cargo llvm-cov`.
 pub(crate) fn coverage_cargo_target_dir(repo_root: &Path) -> PathBuf {
     paths::coverage_cargo_target_dir(repo_root)

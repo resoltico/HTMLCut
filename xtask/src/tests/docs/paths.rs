@@ -66,12 +66,12 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
     .expect("write vendored scraper readme");
     fs::create_dir_all(repo_root.path().join("tmp")).expect("create tmp dir");
     fs::write(repo_root.path().join("tmp").join("notes.md"), "# ignore\n").expect("write tmp");
-    fs::create_dir_all(repo_root.path().join(".codex")).expect("create .codex dir");
+    fs::create_dir_all(repo_root.path().join(".hidden")).expect("create hidden dir");
     fs::write(
-        repo_root.path().join(".codex").join("AGENTS.md"),
+        repo_root.path().join(".hidden").join("notes.md"),
         "# ignore\n",
     )
-    .expect("write agents");
+    .expect("write hidden notes");
     fs::create_dir_all(repo_root.path().join("target")).expect("create target dir");
     fs::write(
         repo_root.path().join("target").join("report.md"),
@@ -102,6 +102,23 @@ fn markdown_doc_paths_walk_repo_recursively_but_skip_internal_and_generated_dirs
             repo_root.path().join("examples").join("guide.md"),
             repo_root.path().join("fuzz").join("README.md"),
             repo_root.path().join("patches").join("README.md"),
+        ]
+    );
+}
+
+#[test]
+fn markdown_doc_paths_includes_regular_root_markdown_in_a_non_git_fallback_tree() {
+    let repo_root = tempdir().expect("temporary repository root");
+    fs::write(repo_root.path().join("README.md"), "# Storefront\n").expect("write README");
+    fs::write(repo_root.path().join("NOTES.md"), "# Maintained notes\n").expect("write notes");
+
+    let docs = markdown_doc_paths(repo_root.path()).expect("collect fallback documentation paths");
+
+    assert_eq!(
+        docs,
+        vec![
+            repo_root.path().join("NOTES.md"),
+            repo_root.path().join("README.md")
         ]
     );
 }
@@ -212,7 +229,7 @@ fn markdown_contract_errors_ignore_external_anchor_and_mail_links() {
 #[test]
 fn should_skip_dir_rejects_hidden_dirs_and_internal_generated_roots() {
     let repo_root = tempdir().expect("tempdir");
-    let hidden = repo_root.path().join(".codex");
+    let hidden = repo_root.path().join(".hidden");
     let target = repo_root.path().join("target");
     let tmp = repo_root.path().join("tmp");
 
@@ -241,10 +258,10 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
     .expect("write manifest");
     write_storefront_readme(repo_root.path(), "# HTMLCut\n");
     fs::write(
-        repo_root.path().join("AGENTS.md"),
+        repo_root.path().join("NOTES.md"),
         "<!-- version: \"4.1.0\" -->\n",
     )
-    .expect("write agents");
+    .expect("write notes");
     fs::create_dir_all(repo_root.path().join("docs")).expect("create docs dir");
     fs::write(
         repo_root.path().join("docs").join("guide.md"),
@@ -280,7 +297,7 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
     let docs = crate::command_exec::with_capture_command_output_override(
         |_, spec| {
             (spec.program == Path::new("git")).then(|| {
-                Ok(b"README.md\0AGENTS.md\0docs/guide.md\0patches/README.md\0patches/rust/scraper/README.md\0.codex/AGENTS.md\0tmp/notes.md\0docs/missing.md\0".to_vec())
+                Ok(b"README.md\0NOTES.md\0docs/guide.md\0patches/README.md\0patches/rust/scraper/README.md\0.hidden/notes.md\0tmp/notes.md\0docs/missing.md\0".to_vec())
             })
         },
         || markdown_doc_paths(repo_root.path()),
@@ -290,6 +307,7 @@ fn markdown_doc_paths_use_git_inventory_and_skip_hidden_missing_and_generated_do
     assert_eq!(
         docs,
         vec![
+            repo_root.path().join("NOTES.md"),
             repo_root.path().join("README.md"),
             repo_root.path().join("docs").join("guide.md"),
             repo_root.path().join("patches").join("README.md"),

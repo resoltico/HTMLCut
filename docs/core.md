@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: CORE
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
   keywords: [core, extract, inspect_source, preview_extraction, operation_catalog, schema_catalog, typed requests, diagnostics]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -87,7 +87,6 @@ Important invariants:
 
 Core execution returns:
 
-- `ParseDocumentResult`
 - `SourceInspectionResult`
 - `ExtractionResult`
 
@@ -168,12 +167,12 @@ That registry covers:
 
 - core request/result contracts
 - reusable extraction-definition documents
-- interop v1 documents
+- interop v2 documents
 
 It does not cover CLI-only report documents. Those are added by `htmlcut-cli` on the CLI side.
 Use the exported schema constants instead of hard-coded version integers when you want one exact
 generic schema from Rust. The exported core schema roots are owned by the explicit
-`htmlcut_core::wire::v1::*Document` DTO layer rather than by the in-process domain structs
+`htmlcut_core::wire::v2::*Document` DTO layer rather than by the in-process domain structs
 directly.
 
 ## Minimal Embedding Example
@@ -247,7 +246,12 @@ For a compact runnable summary that demonstrates the `htmlcut_core::request` and
 `htmlcut_core::result` namespaces directly, see
 `crates/htmlcut-core/examples/request_and_result_namespaces.rs`.
 
-For interop deterministic JSON/digest helpers, see [interop-v1.md](interop-v1.md).
+For an operational prepared-engine comparison against the immutable v13 baseline, see
+`crates/htmlcut-core/examples/prepared_engine_benchmark.rs` and
+`scripts/benchmark-prepared-engine.sh`. The benchmark records parse-model facts and peak resident memory in bytes;
+it is not a performance gate.
+
+For interop deterministic JSON/digest helpers, see [interop-v2.md](interop-v2.md).
 
 ## Design Boundary
 

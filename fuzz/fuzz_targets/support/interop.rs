@@ -1,7 +1,7 @@
 use arbitrary::Arbitrary;
-use htmlcut_core::interop::v1::{
+use htmlcut_core::interop::v2::{
     CssSelectorText, DelimiterBoundaryRetention, DelimiterBoundaryText, DelimiterMode, HtmlInput,
-    Plan, PlanStrategy, RegexFlag, execute_plan,
+    Plan, PlanStrategy, PreparationLimits, RegexFlag, compile_plan, execute, prepare_document,
 };
 
 use crate::interop_common::{FuzzRendering, FuzzSelection, FuzzValueKind, sample_base_url};
@@ -35,7 +35,11 @@ pub fn drive(input: InteropInput) {
     );
 
     let _ = plan.stable_json();
-    let _ = execute_plan(&source, &plan);
+    if let Ok(compiled) = compile_plan(&plan)
+        && let Ok(document) = prepare_document(source, PreparationLimits::default())
+    {
+        let _ = execute(&document, &compiled);
+    }
 }
 
 #[derive(Arbitrary, Debug)]

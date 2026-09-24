@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "13.2.0"
+version: "14.0.0"
 domain: OPERATIONS
-updated: "2026-08-30"
+updated: "2026-09-24"
 route:
-  keywords: [operation matrix, operation catalog, select.extract, slice.extract, source.inspect, interop boundary, change contract]
-  questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v1 not an operation id?"]
+  keywords: [operation matrix, operation catalog, elements.explore, target.propose, select.extract, slice.extract, source.inspect, interop boundary, change contract]
+  questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v2 not an operation id?"]
 ---
 
 # Operation Matrix
@@ -43,8 +43,9 @@ maintained human guide, but it is not allowed to silently drift away from the ca
 
 | Operation ID | CLI surface | Core surface | Request shape | Result shape | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `document.parse` | none | `parse document` | `source request + runtime options` | `parsed document result` | Core-only document loading and parsing for in-process callers. |
 | `source.inspect` | `inspect source` | `inspect source` | `source request + runtime options + inspection options` | `source inspection result` | Source analysis and introspection. |
+| `elements.explore` | `inspect elements` | `explore prepared elements` | `prepared document + exploration options` | `htmlcut.exploration_result@1` | Bounded static element discovery with same-snapshot selector proposals and cursor evidence. |
+| `target.propose` | `inspect propose` | `resolve target and propose` | `prepared document + complete target hint + target-resolution options` | `htmlcut.target_resolution_result@1` | Fail-closed browser-target resolution and same-snapshot selector proposals; path alone is never sufficient. |
 | `select.preview` | `inspect select` | `preview selector extraction` | `extraction request + runtime options` | `extraction result` | Selector preview before final extraction. Preview accepts the same value modes as final selector extraction while surfacing match metadata. |
 | `slice.preview` | `inspect slice` | `preview slice extraction` | `extraction request + runtime options` | `extraction result` | Literal or regex slice preview before final extraction. Slice requests model named boundary-retention modes, while structured match metadata reports the realized `include_start` / `include_end` facts. |
 | `select.extract` | `select` | `extract selector values` | `extraction request + runtime options` | `extraction result` | Final selector extraction. Selection modes include exact-one `single`, `first`, `nth`, and `all`. |
@@ -52,7 +53,8 @@ maintained human guide, but it is not allowed to silently drift away from the ca
 
 ## Interop Boundary
 
-The downstream interop adapter lives in `htmlcut_core::interop::v1`.
+The downstream interop adapter lives in `htmlcut_core::interop::v2`. Its prepared-document APIs own
+the core surfaces behind `elements.explore` and `target.propose`.
 
 It is intentionally **not** an operation ID because it is a versioned library integration profile,
 not a user-facing product operation exposed across the CLI and the generic core catalog.

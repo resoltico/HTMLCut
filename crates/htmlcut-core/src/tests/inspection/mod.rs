@@ -5,6 +5,5 @@ mod candidate_opaque_shells;
 mod candidate_policy_boundaries;
 mod candidate_ranking;
 mod candidate_selection;
-mod entrypoints;
 mod structure;
 mod validation;

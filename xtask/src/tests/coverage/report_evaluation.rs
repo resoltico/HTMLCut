@@ -181,6 +181,63 @@ fn evaluate_coverage_report_deduplicates_duplicate_branch_spans() {
 }
 
 #[test]
+fn evaluate_coverage_report_counts_each_uncovered_branch_edge() {
+    let repo_root = tempdir().expect("tempdir");
+    let tracked = tracked_subset(
+        repo_root.path(),
+        &[
+            "crates/htmlcut-core/src/lib.rs",
+            "crates/htmlcut-cli/src/lib.rs",
+            "crates/htmlcut-cli/src/main.rs",
+            "xtask/src/lib.rs",
+        ],
+    );
+    let report = CoverageReport {
+        data: vec![CoverageDataSet {
+            files: vec![
+                CoverageFile {
+                    filename: repo_root.path().join("crates/htmlcut-core/src/lib.rs"),
+                    segments: vec![(7, 0, 1, false, true, false)],
+                    branches: Vec::new(),
+                    summary: CoverageFileSummary::default(),
+                },
+                CoverageFile {
+                    filename: repo_root.path().join("crates/htmlcut-cli/src/lib.rs"),
+                    segments: vec![(9, 0, 1, false, true, false)],
+                    branches: vec![(12, 0, 12, 24, 0, 3, 0, 0, 4)],
+                    summary: CoverageFileSummary {
+                        branches: CoverageCounter {
+                            count: 2,
+                            covered: 1,
+                            not_covered: 1,
+                        },
+                    },
+                },
+                CoverageFile {
+                    filename: repo_root.path().join("crates/htmlcut-cli/src/main.rs"),
+                    segments: vec![(11, 0, 1, false, true, false)],
+                    branches: Vec::new(),
+                    summary: CoverageFileSummary::default(),
+                },
+                CoverageFile {
+                    filename: repo_root.path().join("xtask/src/lib.rs"),
+                    segments: vec![(13, 0, 1, false, true, false)],
+                    branches: Vec::new(),
+                    summary: CoverageFileSummary::default(),
+                },
+            ],
+        }],
+    };
+
+    let summary =
+        evaluate_coverage_report(repo_root.path(), &tracked, report).expect("coverage summary");
+
+    assert_eq!(summary.tracked_branch_count, 2);
+    assert_eq!(summary.failures.len(), 1);
+    assert_eq!(summary.failures[0].uncovered_branch_count, 1);
+}
+
+#[test]
 fn evaluate_coverage_report_reports_uncovered_and_missing_files() {
     let repo_root = tempdir().expect("tempdir");
     let tracked = seed_tracked_files(repo_root.path());

@@ -6,11 +6,13 @@ use crate::model::{
     DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 
-const FUZZ_SMOKE_TARGETS: [&str; 5] = [
+const FUZZ_SMOKE_TARGETS: [&str; 7] = [
     "parse_document_bytes",
     "selector_parsing",
     "slice_boundaries",
     "extraction_request_building",
+    "prepared_discovery",
+    "relational_selector_budget",
     "cli_parse_error_surface",
 ];
 pub(crate) const FUZZ_PACKAGE_NAME: &str = "htmlcut-fuzz";
@@ -103,9 +105,9 @@ pub fn fuzz_smoke_preflight_message(failures: &[FuzzSmokePreflightFailure]) -> S
     );
 
     if missing_nightly {
-        message.push_str(
-            "\nInstall nightly first:\n  rustup toolchain install nightly --profile minimal\n",
-        );
+        message.push_str(&format!(
+            "\nInstall the maintained nightly first:\n  rustup toolchain install {MAINTAINED_NIGHTLY_TOOLCHAIN_NAME} --profile minimal\n"
+        ));
     }
 
     if missing_cargo_fuzz {

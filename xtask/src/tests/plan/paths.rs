@@ -100,6 +100,28 @@ fn cargo_path_helpers_can_opt_into_process_env_lookup_without_changing_defaults(
 }
 
 #[test]
+fn release_binary_path_uses_configured_target_and_platform_binary_name() {
+    let repo_root = tempdir().expect("tempdir");
+    let cargo_config_dir = repo_root.path().join(".cargo");
+    fs::create_dir_all(&cargo_config_dir).expect("create cargo config directory");
+    fs::write(
+        cargo_config_dir.join("config.toml"),
+        "[build]\ntarget-dir = \"artifacts\"\n",
+    )
+    .expect("write cargo config");
+
+    let binary_name = if cfg!(windows) {
+        "htmlcut.exe"
+    } else {
+        "htmlcut"
+    };
+    assert_eq!(
+        crate::plan::release_binary_path(repo_root.path()),
+        repo_root.path().join("artifacts/dist").join(binary_name)
+    );
+}
+
+#[test]
 fn shell_script_paths_use_git_inventory_when_available() {
     let repo_root = tempdir().expect("tempdir");
     fs::write(repo_root.path().join(".git"), "gitdir: /tmp/htmlcut.git\n").expect("write .git");

@@ -71,3 +71,33 @@ fn render_json_schema_keys(value: &Value) -> String {
         .map(|object| object.keys().cloned().collect::<Vec<_>>().join(", "))
         .unwrap_or_else(|| "(not-an-object)".to_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_text_handles_empty_singular_profileless_and_nonobject_documents() {
+        let mut empty = crate::prepare::build_schema_report(None, None).expect("schema report");
+        empty.schemas.clear();
+        assert!(render_schema_text(&empty).contains("Registry: 0 schemas."));
+
+        let mut singular = crate::prepare::build_schema_report(None, None).expect("schema report");
+        singular.schemas.truncate(1);
+        singular.schemas[0].profile = None;
+        singular.schemas[0].json_schema = Value::Null;
+        let expected_schema_ref = format!(
+            "{}@{}",
+            singular.schemas[0].schema_name, singular.schemas[0].schema_version
+        );
+        let rendered = render_schema_text(&singular);
+        assert!(rendered.contains("Registry: 1 schema."));
+        assert!(rendered.contains("Schema:"));
+        assert!(
+            rendered.contains(&expected_schema_ref),
+            "schema text must preserve the emitted document identity"
+        );
+        assert!(rendered.contains("| versioned"));
+        assert!(rendered.contains("json schema keys: (not-an-object)"));
+    }
+}

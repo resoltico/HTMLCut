@@ -72,11 +72,6 @@ mod tests {
     }
 
     #[test]
-    fn document_parse_remains_core_only_in_operation_help() {
-        assert!(build_cli_operation_help_document(OperationId::DocumentParse).is_none());
-    }
-
-    #[test]
     fn validation_helper_reuses_the_canonical_auxiliary_catalog_validator() {
         let malformed_aux = [
             CliAuxCommandDescriptor {
@@ -155,18 +150,12 @@ mod tests {
     }
 
     #[test]
-    fn validation_helper_reports_help_for_core_only_operations() {
-        let document_parse = operation_descriptor(OperationId::DocumentParse)
+    fn validation_helper_rejects_help_for_a_core_only_operation() {
+        let mut descriptor = operation_descriptor(OperationId::SelectExtract)
             .copied()
-            .expect("document.parse descriptor");
-
-        let errors = cli_help_catalog_validation_errors_with(
-            cli_aux_command_catalog(),
-            &[document_parse],
-            |_| true,
-            false,
-        );
-
+            .expect("select.extract descriptor");
+        descriptor.cli_surface = None;
+        let errors = cli_help_catalog_validation_errors_with(&[], &[descriptor], |_| true, false);
         assert!(
             errors
                 .iter()

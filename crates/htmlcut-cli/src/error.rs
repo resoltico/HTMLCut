@@ -37,7 +37,7 @@ pub(crate) fn primary_extraction_error(diagnostics: &[Diagnostic]) -> CliError {
     };
 
     match diagnostic.code {
-        DiagnosticCode::SourceLoadFailed => source_error(
+        DiagnosticCode::SourceLoadFailed | DiagnosticCode::SourcePreparationFailed => source_error(
             diagnostic.code,
             diagnostic.message.clone(),
             diagnostics.to_vec(),
@@ -53,7 +53,11 @@ pub(crate) fn primary_extraction_error(diagnostics: &[Diagnostic]) -> CliError {
         DiagnosticCode::NoMatch
         | DiagnosticCode::AmbiguousMatch
         | DiagnosticCode::MatchIndexOutOfRange
-        | DiagnosticCode::MissingAttribute => extraction_error(
+        | DiagnosticCode::MissingAttribute
+        | DiagnosticCode::SelectorWorkLimitExceeded
+        | DiagnosticCode::CandidateLimitExceeded
+        | DiagnosticCode::SelectedMatchLimitExceeded
+        | DiagnosticCode::OutputLimitExceeded => extraction_error(
             diagnostic.code,
             diagnostic.message.clone(),
             diagnostics.to_vec(),
@@ -73,11 +77,13 @@ pub(crate) fn primary_source_inspection_error(diagnostics: &[Diagnostic]) -> Cli
         .find(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
     {
         Some(diagnostic) => match diagnostic.code {
-            DiagnosticCode::SourceLoadFailed => source_error(
-                diagnostic.code,
-                diagnostic.message.clone(),
-                diagnostics.to_vec(),
-            ),
+            DiagnosticCode::SourceLoadFailed | DiagnosticCode::SourcePreparationFailed => {
+                source_error(
+                    diagnostic.code,
+                    diagnostic.message.clone(),
+                    diagnostics.to_vec(),
+                )
+            }
             _ => internal_error_with_diagnostics(
                 diagnostic.code,
                 diagnostic.message.clone(),

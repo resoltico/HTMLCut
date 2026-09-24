@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.98"
+rust-version = "1.98.1"
 name = "htmlcut-markup5ever"
-version = "0.39.0-htmlcut.1"
+version = "0.39.0-htmlcut.3"
 authors = ["The html5ever Project Developers"]
 build = false
 autolib = false
@@ -39,12 +39,12 @@ name = "markup5ever"
 path = "lib.rs"
 
 [dependencies.log]
-version = "0.4"
+version = "0.4.34"
 
 [dependencies.tendril]
 package = "htmlcut-tendril"
 path = "../tendril"
-version = "0.5.0-htmlcut.1"
+version = "0.5.0-htmlcut.3"
 
 [dependencies.web_atoms]
-version = "0.2.5"
+version = "0.3.0"

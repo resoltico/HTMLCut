@@ -10,6 +10,8 @@ fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
             "selector_parsing",
             "slice_boundaries",
             "extraction_request_building",
+            "prepared_discovery",
+            "relational_selector_budget",
             "cli_parse_error_surface",
         ]
     );
@@ -42,7 +44,7 @@ fn fuzz_smoke_command_uses_the_staged_corpus_and_runs_budget() {
     assert_eq!(
         command.args,
         vec![
-            "+nightly",
+            "+nightly-2026-08-25",
             "fuzz",
             "run",
             "--fuzz-dir",
@@ -69,7 +71,7 @@ fn fuzz_smoke_preflight_requires_nightly_and_cargo_fuzz() {
         ]
     );
     assert_eq!(
-        fuzz_smoke_preflight_failures("nightly-aarch64-apple-darwin", true),
+        fuzz_smoke_preflight_failures("nightly-2026-08-25-aarch64-apple-darwin", true),
         Vec::new()
     );
 }
@@ -82,7 +84,7 @@ fn fuzz_smoke_preflight_message_lists_every_missing_prerequisite() {
     ]);
 
     assert!(message.contains("requires nightly plus the `cargo-fuzz` runner"));
-    assert!(message.contains("rustup toolchain install nightly --profile minimal"));
+    assert!(message.contains("rustup toolchain install nightly-2026-08-25 --profile minimal"));
     assert!(
         message.contains(
             "CC=clang CXX=clang++ ./scripts/install-contributor-cargo-tools.sh cargo-fuzz"
@@ -94,13 +96,13 @@ fn fuzz_smoke_preflight_message_lists_every_missing_prerequisite() {
 fn fuzz_smoke_preflight_message_lists_only_the_missing_prerequisite() {
     let nightly_only =
         fuzz_smoke_preflight_message(&[FuzzSmokePreflightFailure::MissingNightlyToolchain]);
-    assert!(nightly_only.contains("rustup toolchain install nightly --profile minimal"));
+    assert!(nightly_only.contains("rustup toolchain install nightly-2026-08-25 --profile minimal"));
     assert!(!nightly_only.contains("install-contributor-cargo-tools.sh"));
 
     let cargo_fuzz_only =
         fuzz_smoke_preflight_message(&[FuzzSmokePreflightFailure::MissingCargoFuzz]);
     assert!(cargo_fuzz_only.contains("install-contributor-cargo-tools.sh cargo-fuzz"));
-    assert!(!cargo_fuzz_only.contains("rustup toolchain install nightly"));
+    assert!(!cargo_fuzz_only.contains("rustup toolchain install nightly-2026-08-25"));
 }
 
 #[test]
