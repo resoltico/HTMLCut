@@ -176,7 +176,7 @@ fn native_socket_policy_resets_nonblocking_and_sets_both_timeouts() {
         Some(Duration::from_secs(2))
     );
     let mut byte = [0];
-    assert_eq!(stream.read(&mut byte).unwrap(), 1);
+    stream.read_exact(&mut byte).unwrap();
     assert_eq!(byte, [b'x']);
     worker.join().unwrap();
 }
