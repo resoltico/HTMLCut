@@ -127,8 +127,7 @@ impl ExtractionPlan {
             Selection::Nth { index } if *index > 0 && *index <= self.limits.max_candidates => (),
             Selection::All { min, max }
                 if *min <= max.unwrap_or(self.limits.max_selected)
-                    && max.unwrap_or(self.limits.max_selected) <= self.limits.max_selected =>
-            {}
+                    && max.unwrap_or(self.limits.max_selected) <= self.limits.max_selected => {}
             _ => return Err(invalid()),
         }
         if let Projection::Attribute { name } = &self.projection {
@@ -179,8 +178,7 @@ impl ExtractionPlan {
                         if matches!(
                             name.as_str(),
                             "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
-                        ) =>
-                    {}
+                        ) => {}
                     _ => return Err(invalid()),
                 },
                 _ => (),

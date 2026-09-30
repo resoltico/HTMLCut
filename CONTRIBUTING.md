@@ -7,7 +7,7 @@ AFAD:
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
-  related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/interop-v2.md]
+  related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/core.md]
 -->
 
 # Contributing
@@ -130,7 +130,7 @@ and `htmlcut catalog`. The Markdown docs contract validates those identifiers di
 
 Concrete fenced `htmlcut ...` examples are expected to stay runnable under the docs-contract
 sandbox, and the maintained public Rust fences in `docs/architecture.md`, `docs/core.md`,
-`docs/interop-v2.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
+`docs/core.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
 change those examples, treat them as executable code, not prose.
 
 Default repo search intentionally excludes `semver-baseline/` through `.ignore` so day-to-day

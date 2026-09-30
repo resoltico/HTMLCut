@@ -24,7 +24,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
             "--lib",
             "--no-default-features",
             "--locked",
-            "tests::extract_api::selector_and_slice_contract_remain_miri_sound",
+            "tests::selector_and_slice_contract_remain_miri_sound",
             "--",
             "--exact",
         ]

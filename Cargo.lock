@@ -789,8 +789,16 @@ name = "htmlcut-fuzz"
 version = "15.0.0"
 dependencies = [
  "arbitrary",
+ "clap",
+ "encoding_rs",
+ "flate2",
  "htmlcut-core",
  "libfuzzer-sys",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq",
  "url",
 ]
 

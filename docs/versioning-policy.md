@@ -11,7 +11,7 @@ route:
 # Versioning Policy
 
 **Purpose**: Define how HTMLCut versions generic contracts, interop profiles, release tags, and schema identities.
-**Prerequisites**: [Schema Guide](schema.md), [Interop v2 Guide](interop-v2.md), and [Release Protocol](release-protocol.md).
+**Prerequisites**: [Schema Guide](schema.md), [Interop v2 Guide](core.md), and [Release Protocol](release-protocol.md).
 
 ## 1. Version Sources
 

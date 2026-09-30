@@ -9,6 +9,33 @@ fn prepared(html: &str) -> PreparedDocument {
 }
 
 #[test]
+fn selector_and_slice_contract_remain_miri_sound() {
+    let invalid = ExtractionPlan::css("[").unwrap();
+    assert_eq!(
+        CompiledPlan::compile(&invalid).err().unwrap().code,
+        ErrorCode::InvalidSelector
+    );
+    let document =
+        prepared("<article><p>Hello</p><template>T</template></article>BEGIN\r\n✓\r\nEND");
+    let selector = CompiledPlan::compile(&ExtractionPlan::css("article").unwrap()).unwrap();
+    assert_eq!(document.execute(&selector).unwrap().values, ["HelloT"]);
+    let slice = CompiledPlan::compile(
+        &ExtractionPlan::slice(
+            Boundary::Literal {
+                value: "BEGIN".into(),
+            },
+            Boundary::Literal {
+                value: "END".into(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(document.execute(&slice).unwrap().values, ["\r\n✓\r\n"]);
+    assert_eq!(document.parse_count(), 1);
+}
+
+#[test]
 fn literal_default_is_lazy_reused_and_includes_hidden_content() {
     let source = prepared("<p hidden>A<span>B</span>C</p>");
     assert_eq!(source.parse_count(), 0);

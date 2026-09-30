@@ -483,7 +483,7 @@ max_imports = 16
 max_functions = 24
 max_decision_points = 70
 max_match_arms = 35
-allowed_internal_dependencies = ["interop_common", "request_common"]
+allowed_internal_dependencies = ["crate", "snapshot", "plan", "selector", "slice", "parse", "discovery", "relational"]
 
 [[rules]]
 path = "crates/htmlcut-core/src/compilation.rs"

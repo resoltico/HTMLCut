@@ -4,7 +4,7 @@ use crate::model::{
 };
 
 pub(crate) const MIRI_CONTRACT_TEST_NAME: &str =
-    "tests::extract_api::selector_and_slice_contract_remain_miri_sound";
+    "tests::selector_and_slice_contract_remain_miri_sound";
 
 /// Builds the direct cargo-Miri probe used by the maintained preflight.
 pub fn miri_probe_command() -> CommandSpec {

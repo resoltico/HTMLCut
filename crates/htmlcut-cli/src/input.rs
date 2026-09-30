@@ -8,6 +8,7 @@ use encoding_rs::{DecoderResult, Encoding, UTF_8};
 use htmlcut_core::{ErrorCode, ExtractionError, ExtractionPlan, SnapshotMetadata, SourceSnapshot};
 use serde::{Deserialize, Serialize};
 
+#[path = "input/http.rs"]
 mod http;
 
 pub(crate) const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;

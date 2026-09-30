@@ -19,6 +19,14 @@ fuzzing = []
 
 [dependencies]
 arbitrary.workspace = true
+clap.workspace = true
+encoding_rs.workspace = true
+flate2.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+ureq.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
 url.workspace = true

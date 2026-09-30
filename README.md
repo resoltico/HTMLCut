@@ -75,7 +75,7 @@ Both commands print `/guide`. The request stores the source and extraction setti
 
 ## Use HTMLCut from Rust
 
-The `htmlcut-core` crate exposes extraction primitives and the versioned `htmlcut_core::interop::v2` API for downstream Rust applications. In the interop API, the application supplies decoded HTML, compiles a typed plan, prepares a document snapshot, and executes one or more plans against it. The same snapshot supports bounded element exploration and target resolution. The application remains responsible for fetching and for keeping a browser target aligned with the supplied HTML. See the [Interop v2 guide](docs/interop-v2.md) for the API and its contracts, or the [Core guide](docs/core.md) for lower-level entry points.
+The `htmlcut-core` crate exposes extraction primitives and the versioned `htmlcut_core::interop::v2` API for downstream Rust applications. In the interop API, the application supplies decoded HTML, compiles a typed plan, prepares a document snapshot, and executes one or more plans against it. The same snapshot supports bounded element exploration and target resolution. The application remains responsible for fetching and for keeping a browser target aligned with the supplied HTML. See the [Interop v2 guide](docs/core.md) for the API and its contracts, or the [Core guide](docs/core.md) for lower-level entry points.
 
 ## Project references
 

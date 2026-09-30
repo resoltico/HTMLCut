@@ -4,6 +4,8 @@
 
 mod compilation;
 mod discovery;
+#[cfg(any(test, doctest))]
+mod doctests;
 mod execution;
 mod identity;
 mod json;
@@ -29,7 +31,8 @@ pub use plan::{
     Strategy, Transform,
 };
 pub use result::{
-    ErrorCode, ErrorEvidence, ExtractionError, ExtractionResult, SCHEMA_VERSION, SEMANTICS_VERSION, SourceRange,
+    ErrorCode, ErrorEvidence, ExtractionError, ExtractionResult, SCHEMA_VERSION, SEMANTICS_VERSION,
+    SourceRange,
 };
 pub use schemas::{SCHEMA_NAMES, schema};
 pub use snapshot::{PreparedDocument, SnapshotMetadata, SourceSnapshot};

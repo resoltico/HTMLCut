@@ -32,10 +32,10 @@ when they drift.
 - [Architecture Guide](architecture.md)
 - [Workspace Layout](workspace-layout.md)
 - [CLI Developer Guide](cli.md)
-- [CLI Library Guide](cli-library.md)
+- [CLI Library Guide](cli.md)
 - [Core Developer Guide](core.md)
 - [Schema Guide](schema.md)
-- [Interop v2 Guide](interop-v2.md)
+- [Interop v2 Guide](core.md)
 - [Operation Matrix](operations.md)
 - [Platform Support](platform-support.md)
 
@@ -60,11 +60,11 @@ when they drift.
 - [Patent Notes](../PATENTS.md)
 
 The core crate also ships a runnable namespace example at
-[crates/htmlcut-core/examples/request_and_result_namespaces.rs](../crates/htmlcut-core/examples/request_and_result_namespaces.rs).
+[crates/htmlcut-core/examples/snapshot_reuse.rs](../crates/htmlcut-core/examples/snapshot_reuse.rs).
 Run `cargo run -q -p htmlcut-core --example request_and_result_namespaces` to print a compact JSON
 summary that shows the `htmlcut_core::request` / `htmlcut_core::result` namespace split in action.
 
 Reusable extraction-definition workflows are illustrated in
-[crates/htmlcut-core/examples/reusable_extraction_definition.rs](../crates/htmlcut-core/examples/reusable_extraction_definition.rs).
+[crates/htmlcut-core/examples/extraction_plan.rs](../crates/htmlcut-core/examples/extraction_plan.rs).
 Run `cargo run -q -p htmlcut-core --example reusable_extraction_definition` to print the reusable
 JSON definition that the example round-trips before extraction.

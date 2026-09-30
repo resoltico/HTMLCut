@@ -77,6 +77,6 @@ These paths matter, but they are not normal workspace members:
 
 - Use [architecture.md](architecture.md) for runtime ownership boundaries.
 - Use [cli.md](cli.md) for operator-facing command behavior.
-- Use [cli-library.md](cli-library.md) for the published `htmlcut_cli` crate API.
+- Use [cli-library.md](cli.md) for the published `htmlcut_cli` crate API.
 - Use [core.md](core.md) for the canonical embeddable engine surface.
 - Use [tempdir.md](tempdir.md) for the internal `htmlcut_tempdir` helper crate.

@@ -1,18 +1,12 @@
-use htmlcut_core::{
-    InspectionOptions, MaxBytes, RuntimeOptions, SourceRequest, inspect_source,
-    interop::v2::{HtmlInput, PreparationLimits, prepare_document},
-};
+use htmlcut_core::{CompiledPlan, ExtractionPlan};
 
 pub fn drive(data: &[u8]) {
-    let html = String::from_utf8_lossy(data);
-    let source = SourceRequest::memory("fuzz", html.as_ref());
-    let runtime = RuntimeOptions {
-        max_bytes: MaxBytes::new(html.len().max(1)).expect("non-zero fuzz byte limit"),
-        ..RuntimeOptions::default()
+    let Ok(html) = std::str::from_utf8(data.get(..data.len().min(32768)).unwrap()) else {
+        return;
     };
-
-    if let Ok(input) = HtmlInput::new("fuzz", html.as_ref()) {
-        let _ = prepare_document(input, PreparationLimits::default());
-    }
-    let _ = inspect_source(&source, &runtime, &InspectionOptions::default());
+    let Some(document) = crate::snapshot::document(html) else {
+        return;
+    };
+    let compiled = CompiledPlan::compile(&ExtractionPlan::css("body").unwrap()).unwrap();
+    assert_eq!(document.execute(&compiled), document.execute(&compiled));
 }

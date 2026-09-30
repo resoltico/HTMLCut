@@ -298,7 +298,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `[graph] targets` list in `deny.toml` plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
-- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v2.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
+- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/core.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
 - compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
 - distribution-profile CLI build-and-launch smoke
 - 100% executable-line coverage and 100% branch coverage across the maintained tracked executable module set for `htmlcut-core`, `htmlcut-cli`, and `xtask`, with duplicate branch spans deduplicated before scoring

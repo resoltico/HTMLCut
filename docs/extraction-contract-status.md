@@ -11,7 +11,8 @@ route:
 # Extraction contract implementation status
 
 Authority: [extraction-contract-spec.md](extraction-contract-spec.md).
-Starting/current committed revision: `b52ddadaab0c03a36a64de86e28b016ab56f6ac1`.
+Starting revision: `b52ddadaab0c03a36a64de86e28b016ab56f6ac1`.
+Current committed checkpoint: `fabc814` (foundation; not release-ready).
 Branch: `codex/extraction-contract-15`. Starting worktree was clean; origin/main was fetched and equals the starting revision.
 Current work unit: W2 foundation checkpoint established; W3/W4 fidelity, adapters and conformance remain in progress. W5 consumer/deletion/verification integration is next.
 Release status: not implemented; no merge/tag/publication authorized or performed.
@@ -70,3 +71,26 @@ Evidence root: `../.htmlcut-artifacts/gate-runs/implementation-15/`. Retained in
 Source ownership: new modules have responsibility-based rules, with existing core cohesion ceilings retained. The two new parser/serializer boundary modules are added to the maintained scored and mutation inventories; fixture inventories and complete coverage still need reconciliation. Prior successful structure report: `../.htmlcut-artifacts/gate-runs/run-1790759779787-53897-0/report.json`; later changes require a fresh final proof.
 
 Remaining priorities: port existing examples, integration tests, fuzz/Miri/benchmark and docs consumers; complete saved-run environment/redirect/deadline/fault and all-budget boundary assertions; account for and delete superseded live code; repair required Linux CI and immutable-source/changelog packaging; close genuine 100% coverage and mutation outcomes; run the complete conformance/economics/native package campaign on the final candidate. Do not mark any D/T family verified solely from this foundation checkpoint.
+
+## Deletion and consumer ledger (W5 in progress)
+
+| Retired responsibility | Current owner / disposition | Tests and scoring |
+|---|---|---|
+| Generic request/interop-v2/wire/schema translation families | One plan/result/error and generated named schemas; old envelopes and adapter namespaces deliberately rejected. | Old serialization/profile fixtures are obsolete contracts; closed JSON, role/version/default/schema and identity assertions move to contract tests. New executable validation remains scored. |
+| Core source loading/HTTP/decoding | CLI input/http; core only accepts immutable snapshots. | GET/query/charset/compression/parity and strict decoding/fault tests replace HEAD/preflight and lossy-decoding expectations. |
+| Reader policy/vocabulary/signals and caption suppression | Literal and structural projections over original DOM; heuristic omissions removed. | A–F, hidden/payload/template, lists/tables/preformatted/URL/full-value tests replace old reader/boilerplate expectations. More boundary/corpus assertions remain required. |
+| First-match/default human output, universal structured reports, comparison canonicalization | Default single/dom_text compact result; exact raw and explicit projections/transforms. | Strict zero/multiple/missing/empty/nth/count and immutable serialization tests port valuable selection/value behavior; old report-field/alias expectations are deliberately removed. |
+| Supported CLI library and direct xtask imports | Binary-private composition and once-built bounded docs subprocesses. | CLI black-box help/select/slice/discovery/exploration/parity/run/transport scenarios port to new syntax; nested old inspect/report helpers removed. Eleven docs command checks pass. |
+| Old request/result namespace and definition examples | snapshot_reuse and extraction_plan examples; prepared-engine example uses compiled plans and one prepared snapshot. | Examples checked against the current public API; old namespace-specific helpers removed. Documentation/doctest inclusion still needs updating. |
+| Interop/request fuzz generators and CLI library fuzzing | Seven existing maintained target names now exercise bounded snapshot/plan/selector/slice/discovery/relational paths and source-included private CLI modules. | Targets compile with fuzzing enabled; live smoke is still unverified. Original parser/selector safety forks remain and two new boundaries are included in scoring/mutation. |
+| Miri selector/slice test via removed generic API | tests::selector_and_slice_contract_remain_miri_sound over the new API, including templates and source bytes. | Native targeted assertion passes; actual strict-provenance Miri run remains required. |
+
+The old source modules are disconnected from the supported entrypoints and are being removed, not retained as a compatibility product. Historical input fixtures and the immutable published baseline remain evidence. This ledger records contract-directed deletion; it does not authorize dropping unrelated safety tests or claiming final coverage from the targeted tests.
+
+## W5 continuation checkpoint
+
+The complete CLI package suite currently passes: 9 private unit tests plus 14 binary integration tests, including file/stdin/library equality, saved-run replay/relative paths, environment-reference persistence, descriptor/proposal adoption, error parity and no source clobber. Core has 21 passing unit tests and 2 current API doctests; examples check. All seven fuzz targets compile with fuzzing enabled through the new API. Actual live fuzz and Miri are not yet run.
+
+Disconnected old core and CLI production modules and wrapper-specific tests have been removed according to the ledger; frozen published baseline and historical input fixture data are retained. Product core/CLI/operation/schema/getting-started guides are rewritten; remaining README/index/operational docs and exact ownership/coverage/mutation fixtures still need reconciliation. Old integration wrappers were rewritten to the new black-box contract rather than preserving a CLI library.
+
+Next concrete commands: `cargo test --locked -p xtask --lib tests::docs::contracts -- --nocapture` to resolve the remaining documentation consumers; then `./scripts/xtask.sh structure check` and targeted coverage after removing stale ownership/exclusion entries. Complete all missing T29 budget triplets, parser/serializer boundary assertions and corpus/economics checks before claiming D/T verification. CI full-gate/source-revision/changelog repairs and full final campaigns remain unfinished. No PR, merge, tag, release or package publication has occurred.

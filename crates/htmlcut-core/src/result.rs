@@ -159,11 +159,15 @@ impl ExtractionError {
 
 impl std::ops::Deref for ExtractionError {
     type Target = ErrorEvidence;
-    fn deref(&self) -> &Self::Target { &self.evidence }
+    fn deref(&self) -> &Self::Target {
+        &self.evidence
+    }
 }
 
 impl std::ops::DerefMut for ExtractionError {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.evidence }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.evidence
+    }
 }
 
 /// Half-open UTF-8 byte range in the original accepted snapshot.

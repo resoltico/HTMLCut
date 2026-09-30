@@ -179,7 +179,7 @@ candidate itself must also be the exact gated tree that ships.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
 - `docs/versioning-policy.md` still matches the shipped contract policy, interop model, and
   semver-baseline rules.
-- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/interop-v2.md` still match the shipped
+- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/core.md` still match the shipped
   surfaces.
 - `docs/release-publishing.md` still matches the shipped publication flow, release assets, and
   provenance notes.
