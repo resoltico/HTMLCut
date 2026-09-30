@@ -27,14 +27,10 @@ impl<'a> ValueBuffer<'a> {
         }
     }
     pub(crate) fn push(&mut self, value: &str) -> Result<(), ExtractionError> {
-        let size = self
-            .value
-            .len()
-            .checked_add(value.len())
-            .ok_or_else(|| ExtractionError::limit("projection"))?;
-        if size > self.maximum {
+        if value.len() > self.maximum.saturating_sub(self.value.len()) {
             return Err(ExtractionError::limit("projection"));
         }
+        let size = self.value.len() + value.len(); // The preceding remaining-capacity check proves no overflow.
         crate::execution::charge(
             self.budget,
             size.div_ceil(64) - self.value.len().div_ceil(64),
@@ -107,7 +103,7 @@ pub(crate) fn project(
                 return Err(ExtractionError::limit("projection"));
             }
             let value = if resolve {
-                resolve_url(value, base)?
+                resolve_url(value, base, maximum)?
             } else {
                 value.to_owned()
             };
@@ -132,13 +128,8 @@ pub(crate) fn project(
                 budget,
             )
             .map_err(|_| ExtractionError::limit("serialization"))?;
-            String::from_utf8(writer.bytes).map_err(|_| {
-                ExtractionError::new(
-                    ErrorCode::InternalInvariant,
-                    "serialization",
-                    "The DOM serializer produced invalid UTF-8.",
-                )
-            })
+            // The HTML serializer emits UTF-8; the owned buffer cannot be externally corrupted.
+            Ok(String::from_utf8(writer.bytes).expect("HTML serializer produces UTF-8"))
         }
         Projection::Source => Err(ExtractionError::new(
             ErrorCode::InternalInvariant,
@@ -195,27 +186,38 @@ fn dom_text(
     Ok(value.finish())
 }
 
-pub(crate) fn resolve_url(value: &str, base: Option<&str>) -> Result<String, ExtractionError> {
-    if let Ok(url) = url::Url::parse(value) {
-        return Ok(url.into());
+pub(crate) fn resolve_url(
+    value: &str,
+    base: Option<&str>,
+    maximum: usize,
+) -> Result<String, ExtractionError> {
+    if value.len() > crate::limits::MAX_URL_INPUT_BYTES {
+        return Err(ExtractionError::limit("url"));
     }
-    let base = base.ok_or_else(|| {
-        ExtractionError::new(
-            ErrorCode::InvalidBaseUrl,
-            "projection",
-            "Resolving a relative URL requires explicit effective base metadata.",
-        )
-    })?;
-    url::Url::parse(base)
-        .and_then(|base| base.join(value))
-        .map(String::from)
-        .map_err(|_| {
+    let parsed = if let Ok(url) = url::Url::parse(value) {
+        url
+    } else {
+        let base = base.ok_or_else(|| {
             ExtractionError::new(
                 ErrorCode::InvalidBaseUrl,
                 "projection",
-                "The requested URL could not be resolved.",
+                "Resolving a relative URL requires explicit effective base metadata.",
             )
-        })
+        })?;
+        url::Url::parse(base)
+            .and_then(|base| base.join(value))
+            .map_err(|_| {
+                ExtractionError::new(
+                    ErrorCode::InvalidBaseUrl,
+                    "projection",
+                    "The requested URL could not be resolved.",
+                )
+            })?
+    };
+    if parsed.as_str().len() > maximum.min(crate::limits::MAX_URL_PROCESSING_BYTES) {
+        return Err(ExtractionError::limit("url"));
+    }
+    Ok(parsed.into())
 }
 
 struct HtmlBuffer {

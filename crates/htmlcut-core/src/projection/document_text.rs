@@ -4,7 +4,7 @@ use super::*;
 
 struct List {
     ordered: bool,
-    next: i64,
+    next: Option<i64>,
     reversed: bool,
 }
 struct Table {
@@ -81,7 +81,9 @@ pub(super) fn render(
                             let mut count = 0_i64;
                             for child in node.children() {
                                 crate::execution::charge(budget, 1)?;
-                                if child.value().as_element().is_some_and(|e| e.name() == "li") {
+                                if !excluded.contains(&child.id())
+                                    && child.value().as_element().is_some_and(|e| e.name() == "li")
+                                {
                                     count += 1;
                                 }
                             }
@@ -92,10 +94,7 @@ pub(super) fn render(
                         lists.push(List {
                             ordered: name == "ol",
                             reversed,
-                            next: element
-                                .attr("start")
-                                .and_then(|s| s.parse().ok())
-                                .unwrap_or(default_start),
+                            next: Some(ordinal(element.attr("start"))?.unwrap_or(default_start)),
                         });
                     }
                     "li" => {
@@ -103,17 +102,15 @@ pub(super) fn render(
                         pending = false;
                         output.push(&"  ".repeat(lists.len().saturating_sub(1)))?;
                         if let Some(list) = lists.last_mut().filter(|list| list.ordered) {
-                            let number = element
-                                .attr("value")
-                                .and_then(|s| s.parse().ok())
-                                .unwrap_or(list.next);
+                            let number = ordinal(element.attr("value"))?
+                                .or(list.next)
+                                .ok_or_else(|| ExtractionError::limit("rendering"))?;
                             output.push(&format!("{number}. "))?;
                             list.next = if list.reversed {
                                 number.checked_sub(1)
                             } else {
                                 number.checked_add(1)
-                            }
-                            .ok_or_else(|| ExtractionError::limit("rendering"))?;
+                            };
                         } else {
                             output.push("- ")?;
                         }
@@ -198,7 +195,7 @@ pub(super) fn render(
                         let destination = element.attr("href").unwrap();
                         let resolved;
                         let destination = if resolve {
-                            resolved = resolve_url(destination, base)?;
+                            resolved = resolve_url(destination, base, maximum)?;
                             &resolved
                         } else {
                             destination
@@ -241,17 +238,45 @@ fn pre_fence(
     let mut longest = 0;
     let mut run = 0;
     let mut skipped = 0;
+    let mut nested_pre = 0_usize;
+    let mut deepest_pre = 0_usize;
     for edge in root.traverse() {
         crate::execution::charge(budget, 1)?;
         match edge {
             Edge::Open(node) => {
-                if skipped > 0 || excluded.contains(&node.id()) {
+                if skipped > 0
+                    || excluded.contains(&node.id())
+                    || node
+                        .value()
+                        .as_element()
+                        .is_some_and(|e| matches!(e.name(), "script" | "style" | "template"))
+                {
                     skipped += 1;
                     continue;
                 }
+                let mut segments = Vec::new();
+                if let Some(element) = node.value().as_element() {
+                    if element.name() == "pre" && node.id() != root.id() {
+                        nested_pre += 1;
+                        deepest_pre = deepest_pre.max(nested_pre);
+                    }
+                    if element.name() == "img"
+                        && let Some(alt) = element.attr("alt")
+                    {
+                        segments.push(alt);
+                    }
+                    if element.name() == "a"
+                        && let Some(href) = element.attr("href")
+                    {
+                        segments.push(href);
+                    }
+                }
                 if let Node::Text(text) = node.value() {
-                    crate::execution::charge(budget, text.text.len().div_ceil(64))?;
-                    for c in text.text.chars() {
+                    segments.push(&text.text);
+                }
+                for segment in segments {
+                    crate::execution::charge(budget, segment.len().div_ceil(64))?;
+                    for c in segment.chars() {
                         if c == '`' {
                             run += 1;
                             longest = longest.max(run);
@@ -262,12 +287,34 @@ fn pre_fence(
                 }
             }
             Edge::Close(_) if skipped > 0 => skipped -= 1,
+            Edge::Close(node)
+                if node.id() != root.id()
+                    && node.value().as_element().is_some_and(|e| e.name() == "pre") =>
+            {
+                nested_pre -= 1
+            }
             _ => (),
         }
     }
-    let length = 3.max(longest + 1);
+    let length = 3.max(longest + 1) + deepest_pre;
     if length > maximum {
         return Err(ExtractionError::limit("projection"));
     }
     Ok("`".repeat(length))
+}
+
+fn ordinal(value: Option<&str>) -> Result<Option<i64>, ExtractionError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let sign = usize::from(value.starts_with('+') || value.starts_with('-'));
+    let digits = value[sign..].bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 {
+        return Ok(None);
+    }
+    value[..sign + digits]
+        .parse()
+        .map(Some)
+        .map_err(|_| ExtractionError::limit("rendering"))
 }

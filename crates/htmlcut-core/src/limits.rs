@@ -236,3 +236,7 @@ pub const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_CHECKS: usize = 32;
 /// Maximum nesting of incoming JSON containers.
 pub const MAX_JSON_DEPTH: usize = 64;
+/// Maximum raw URL input and accepted base-metadata bytes; URL parsing scratch is bounded separately.
+pub const MAX_URL_INPUT_BYTES: usize = 8 * 1024;
+/// Maximum URL-processing scratch/result bytes before publication-value limits are applied.
+pub const MAX_URL_PROCESSING_BYTES: usize = 32 * 1024;

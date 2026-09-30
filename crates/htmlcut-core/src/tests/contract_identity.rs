@@ -112,3 +112,42 @@ fn t05_schema_and_runtime_agree_on_closed_role_version_and_defaults() {
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&invalid).unwrap()).is_err());
     }
 }
+
+#[test]
+fn t22_serializer_faults_are_typed_and_canonical_escaping_is_bounded() {
+    struct Fault;
+    impl serde::Serialize for Fault {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("synthetic serializer fault"))
+        }
+    }
+    assert_eq!(
+        canonical_json(&Fault).unwrap_err().code,
+        ErrorCode::InternalInvariant
+    );
+    assert_eq!(
+        crate::identity::canonical_json_bounded(&Fault, 128)
+            .unwrap_err()
+            .code,
+        ErrorCode::InternalInvariant
+    );
+    let data = serde_json::json!({"z":["é",0],"a":{"quoted":"\"\n"}});
+    let expected = "{\"a\":{\"quoted\":\"\\\"\\n\"},\"z\":[\"é\",0]}";
+    assert_eq!(canonical_json(&data).unwrap(), expected);
+    for (maximum, valid) in [
+        (expected.len() - 1, false),
+        (expected.len(), true),
+        (expected.len() + 1, true),
+    ] {
+        assert_eq!(
+            crate::identity::canonical_json_bounded(&data, maximum).is_ok(),
+            valid
+        );
+    }
+    assert_eq!(
+        schema("htmlcut.unsupported").unwrap_err().code,
+        ErrorCode::InvalidSchema
+    );
+    assert_eq!(ErrorCode::ResourceLimit.exit_class(), 4);
+    assert_eq!(ErrorCode::InternalInvariant.exit_class(), 6);
+}

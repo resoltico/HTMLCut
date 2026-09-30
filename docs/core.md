@@ -42,3 +42,7 @@ assert_eq!(result.ranges.unwrap()[0].start, 5);
 One plan selects once and projects once. Single is the default; all and one-based nth are explicit. Present empty attributes/text are valid; absence fails. Context guards are conjunctive and every matched value must satisfy the exact or regex-search predicate. Their original-DOM reads cannot be weakened by output exclusions or transforms.
 
 Core preparation/execution limits bind identities. Adapter acquisition/framing limits do not. Source and normalized-plan digests prove identity, not authenticity or business correctness. Callers own browsers, domain mapping, history and comparison policy.
+
+URL processing accepts at most 8 KiB raw URL/base inputs and uses a finite 32 KiB processing cap; the requested value cap is enforced before returning the resolved string. Oversized metadata is an explicit limit error. This does not change untransformed attribute extraction.
+
+Structural list ordinals follow HTML signed-integer prefix parsing, including leading ASCII whitespace. Invalid prefixes use default ordinals; numeric overflow fails. Reversed default counts reflect the explicitly filtered direct list items. An unused terminal next-ordinal overflow does not discard the current value. Fences account for literal text, alternative text, destinations and nested formatting.

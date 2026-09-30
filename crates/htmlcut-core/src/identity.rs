@@ -79,11 +79,6 @@ pub(crate) fn canonical_json_bounded(
         maximum,
     };
     serde_json::to_writer(&mut buffer, &value).map_err(|_| ExtractionError::limit("plan"))?;
-    String::from_utf8(buffer.value).map_err(|_| {
-        ExtractionError::new(
-            ErrorCode::InternalInvariant,
-            "serialization",
-            "The canonical serializer produced invalid UTF-8.",
-        )
-    })
+    // serde_json writes UTF-8 JSON into this owned buffer, which is never externally mutated.
+    Ok(String::from_utf8(buffer.value).expect("serde_json produces UTF-8"))
 }

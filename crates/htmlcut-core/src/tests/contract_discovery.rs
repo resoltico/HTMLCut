@@ -128,3 +128,116 @@ fn million_element_pagination_reaches_the_tail_and_terminates() {
     assert!(tail);
     assert_eq!(document.parse_count(), 1);
 }
+
+fn reseal(token: &mut serde_json::Value) {
+    let position = (token["position"].as_u64().unwrap() as u32).to_be_bytes();
+    token["seal"] = serde_json::json!(crate::identity::framed(
+        "htmlcut.discovery-token/1",
+        &[
+            token["prepared"].as_str().unwrap().as_bytes(),
+            token["options"].as_str().unwrap().as_bytes(),
+            &position,
+            token["role"].as_str().unwrap().as_bytes()
+        ]
+    ));
+}
+
+#[test]
+fn t25_cursor_handles_reject_malformed_tampered_role_and_out_of_range_evidence() {
+    let doc = prepared("<p>x</p>");
+    let page = doc.inspect(1, None).unwrap();
+    for value in ["x".to_string(), "{}".into(), "x".repeat(1025)] {
+        assert!(doc.inspect(1, Some(&value)).is_err());
+    }
+    let cursor = page.next_cursor.unwrap();
+    let mut token: serde_json::Value = serde_json::from_str(&cursor).unwrap();
+    token["position"] = serde_json::json!(100);
+    let altered = serde_json::to_string(&token).unwrap();
+    assert!(doc.inspect(1, Some(&altered)).is_err());
+    reseal(&mut token);
+    let out_of_range = serde_json::to_string(&token).unwrap();
+    assert!(doc.inspect(1, Some(&out_of_range)).is_err());
+    assert!(doc.propose(&cursor, 1).is_err());
+    assert!(doc.propose(&page.elements[0].handle, 0).is_err());
+    assert!(doc.propose(&page.elements[0].handle, 101).is_err());
+    let mut handle: serde_json::Value = serde_json::from_str(&page.elements[0].handle).unwrap();
+    handle["position"] = serde_json::json!(100);
+    reseal(&mut handle);
+    assert!(
+        doc.propose(&serde_json::to_string(&handle).unwrap(), 1)
+            .is_err()
+    );
+    let changed = PreparedDocument::new(
+        SourceSnapshot::new(
+            "<p>x</p>",
+            SnapshotMetadata {
+                base_url: Some("https://example.test/".into()),
+            },
+        )
+        .unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(changed.inspect(1, Some(&cursor)).is_err());
+    let mut fields: serde_json::Value = serde_json::from_str(&cursor).unwrap();
+    fields["extra"] = serde_json::json!(true);
+    assert!(
+        doc.inspect(1, Some(&serde_json::to_string(&fields).unwrap()))
+            .is_err()
+    );
+    let empty = doc
+        .inspect(
+            1,
+            Some(
+                &crate::canonical_json(&{
+                    token["position"] = serde_json::json!(4);
+                    reseal(&mut token);
+                    token
+                })
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+    assert!(empty.elements.is_empty());
+    assert!(empty.next_cursor.is_none());
+}
+
+#[test]
+fn t23_t24_descriptors_are_bounded_and_mark_attribute_or_value_truncation() {
+    let html = format!(
+        "<p a='{}' b='2' c='3' d='4' e='5' f='6' g='7' h='8' i='9'>{}</p>",
+        "é".repeat(65),
+        "x".repeat(65)
+    );
+    let doc = prepared(&html);
+    let page = doc.inspect(20, None).unwrap();
+    let p = page.elements.iter().find(|e| e.tag == "p").unwrap();
+    assert_eq!(p.attributes.len(), 8);
+    assert!(!p.attributes_complete);
+    assert!(!p.attributes[0].complete);
+    assert_eq!(p.attributes[0].value.chars().count(), 64);
+    assert!(!p.complete);
+    assert_eq!(p.preview.len(), 64);
+    let long = format!("<{}>x</{}>", "a".repeat(129), "a".repeat(129));
+    assert_eq!(
+        prepared(&long).inspect(20, None).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+    let long = format!("<p {}='x'>x</p>", "a".repeat(129));
+    assert_eq!(
+        prepared(&long).inspect(20, None).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+    let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
+    for maximum in [0, 4097] {
+        assert!(doc.preview(&plan, maximum).is_err());
+    }
+    let many = prepared(&"<p></p>".repeat(21));
+    let mut all = ExtractionPlan::css("p").unwrap();
+    all.selection = Selection::All { min: 1, max: None };
+    let preview = many
+        .preview(&CompiledPlan::compile(&all).unwrap(), 128)
+        .unwrap();
+    assert_eq!(preview.values.len(), 20);
+    assert!(!preview.complete);
+}

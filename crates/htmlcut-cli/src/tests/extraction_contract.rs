@@ -50,3 +50,6 @@ fn minimal_cli_raw_json_error_and_slice_paths() {
         (0, "\r\n✓\r\n".as_bytes().to_vec(), Vec::new())
     );
 }
+
+#[path = "contract_options.rs"]
+mod options;

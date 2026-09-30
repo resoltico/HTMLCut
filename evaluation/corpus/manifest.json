@@ -1,0 +1,31 @@
+{
+  "license": "MIT (original HTMLCut-authored synthetic fixtures)",
+  "origin": "Authored offline to cover the extraction contract; no third-party article bodies redistributed. Technical identifiers are regression inputs from the accepted brief, not claims about current platform behavior.",
+  "files": [
+    {
+      "path": "books.html",
+      "sha256": "5496b49d62198174f2b68763d5bd74cd51a8426c4fff341153284fa79d1a5b35",
+      "bytes": 4558
+    },
+    {
+      "path": "context.html",
+      "sha256": "e5465642492ca0aef6b3337cbe8acb623e9c2254069b51d0e250adc3e27ac36f",
+      "bytes": 109
+    },
+    {
+      "path": "malformed.html",
+      "sha256": "925f002bfbff7289728b4fadfc743ce815736bf535c81598012b501452e33011",
+      "bytes": 140
+    },
+    {
+      "path": "rendered.html",
+      "sha256": "ff34c02491f9e86eb83ed6d8a08517ab4da00c9630e3f48434afefb4820acf0e",
+      "bytes": 184
+    },
+    {
+      "path": "technical.html",
+      "sha256": "01dfc6f4a62ab6a6b1434d8485b1758127999a7df457988dafb1877fcb97e9ee",
+      "bytes": 454
+    }
+  ]
+}

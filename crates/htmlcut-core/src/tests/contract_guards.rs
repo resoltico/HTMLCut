@@ -186,3 +186,58 @@ fn t13_t15_all_slice_inclusions_progress_and_unmatched_tail() {
     };
     assert!(CompiledPlan::compile(&plan).is_err());
 }
+
+#[test]
+fn t18_guard_cardinality_scope_and_search_predicate_are_declared() {
+    let source = prepared("<p id='root'><span>prefix VALUE suffix</span></p><span>outside</span>");
+    let mut plan = ExtractionPlan::css("#root").unwrap();
+    plan.guards = vec![Guard {
+        scope: GuardScope::Selected,
+        selector: "span".into(),
+        min: 1,
+        max: Some(1),
+        read: GuardRead::DomText,
+        predicate: Some(Predicate::Regex {
+            pattern: "VALUE".into(),
+            flags: String::new(),
+        }),
+    }];
+    assert!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .is_ok()
+    );
+    plan.guards[0].selector = "aside".into();
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap_err()
+            .code,
+        ErrorCode::GuardFailed
+    );
+    plan.guards[0].min = 0;
+    assert!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .is_ok()
+    );
+    plan.guards[0].scope = GuardScope::Document;
+    plan.guards[0].selector = "span".into();
+    plan.guards[0].min = 1;
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap_err()
+            .code,
+        ErrorCode::GuardFailed
+    );
+    plan.guards.clear();
+    plan.selection = Selection::Nth { index: 2 };
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap_err()
+            .code,
+        ErrorCode::Cardinality
+    );
+}

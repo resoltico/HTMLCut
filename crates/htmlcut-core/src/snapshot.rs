@@ -36,6 +36,9 @@ impl SourceSnapshot {
         let metadata = match metadata.base_url {
             None => SnapshotMetadata::default(),
             Some(value) => {
+                if value.len() > crate::limits::MAX_URL_INPUT_BYTES {
+                    return Err(ExtractionError::limit("metadata"));
+                }
                 let url = Url::parse(&value).map_err(|_| invalid_base())?;
                 if !matches!(url.scheme(), "http" | "https")
                     || url.host_str().is_none()
@@ -43,6 +46,9 @@ impl SourceSnapshot {
                     || url.password().is_some()
                 {
                     return Err(invalid_base());
+                }
+                if url.as_str().len() > crate::limits::MAX_URL_INPUT_BYTES {
+                    return Err(ExtractionError::limit("metadata"));
                 }
                 SnapshotMetadata {
                     base_url: Some(url.into()),

@@ -140,7 +140,16 @@ fn compile_selector(value: &str) -> Result<Selector, ExtractionError> {
     let mut depth = 0_u32;
     let mut quote = None;
     let mut escaped = false;
-    for c in value.chars() {
+    let mut comment = false;
+    let mut characters = value.chars().peekable();
+    while let Some(c) = characters.next() {
+        if comment {
+            if c == '*' && characters.peek() == Some(&'/') {
+                characters.next();
+                comment = false;
+            }
+            continue;
+        }
         if escaped {
             escaped = false;
             continue;
@@ -153,6 +162,11 @@ fn compile_selector(value: &str) -> Result<Selector, ExtractionError> {
             if c == q {
                 quote = None;
             }
+            continue;
+        }
+        if c == '/' && characters.peek() == Some(&'*') {
+            characters.next();
+            comment = true;
             continue;
         }
         if c == '\'' || c == '"' {

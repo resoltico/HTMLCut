@@ -74,8 +74,10 @@ fn source_slices_preserve_unicode_crlf_and_never_parse() {
 
 #[test]
 fn preparation_failure_is_cached_and_not_partial_success() {
-    let mut limits = PreparationLimits::default();
-    limits.max_elements = 2;
+    let limits = PreparationLimits {
+        max_elements: 2,
+        ..Default::default()
+    };
     let source = PreparedDocument::new(
         SourceSnapshot::new("<p>value</p>", SnapshotMetadata::default()).unwrap(),
         limits,
@@ -155,3 +157,10 @@ mod fidelity;
 mod guards;
 #[path = "contract_identity.rs"]
 mod identity;
+
+#[path = "contract_budgets.rs"]
+mod budgets;
+#[path = "contract_corpus.rs"]
+mod corpus;
+#[path = "contract_validation.rs"]
+mod validation;

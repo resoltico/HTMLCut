@@ -33,11 +33,5 @@ pub fn schema(name: &str) -> Result<Value, ExtractionError> {
             ));
         }
     };
-    serde_json::to_value(schema).map_err(|_| {
-        ExtractionError::new(
-            ErrorCode::InternalInvariant,
-            "schema",
-            "The maintained schema could not be serialized.",
-        )
-    })
+    Ok(schema.as_value().clone())
 }
