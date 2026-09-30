@@ -130,9 +130,7 @@ fn capture(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
         if let Some(status) = child.try_wait()? {
             break status;
         }
-        let oversized = [&stdout_path, &stderr_path]
-            .into_iter()
-            .any(|path| fs::metadata(path).is_ok_and(|m| m.len() > MAX_CAPTURE_BYTES));
+        let oversized = capture_exceeded(&stdout_path, &stderr_path);
         if oversized || started.elapsed() >= timeout {
             return Err(io::Error::other(
                 "Documentation CLI exceeded its capture or time budget.",
@@ -141,6 +139,12 @@ fn capture(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
         std::thread::sleep(Duration::from_millis(10));
     };
     finish(status, &stdout_path, &stderr_path)
+}
+
+fn capture_exceeded(stdout: &Path, stderr: &Path) -> bool {
+    [stdout, stderr]
+        .into_iter()
+        .any(|path| fs::metadata(path).is_ok_and(|metadata| metadata.len() > MAX_CAPTURE_BYTES))
 }
 
 fn write_fixture(writer: &mut impl Write, input: &[u8]) -> io::Result<()> {

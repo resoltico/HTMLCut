@@ -249,3 +249,23 @@ fn exact_fixture_and_completed_capture_byte_bounds_are_inclusive() {
         }
     }
 }
+
+#[test]
+fn live_capture_monitor_detects_growth_past_the_bound_even_when_it_skips_the_exact_size() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let stdout = root.path().join("stdout");
+    let stderr = root.path().join("stderr");
+    for growing in [&stdout, &stderr] {
+        fs::write(&stdout, b"").unwrap();
+        fs::write(&stderr, b"").unwrap();
+        for (size, exceeded) in [
+            (2_097_151, false),
+            (2_097_152, false),
+            (2_097_153, true),
+            (2_097_154, true),
+        ] {
+            File::create(growing).unwrap().set_len(size).unwrap();
+            assert_eq!(capture_exceeded(&stdout, &stderr), exceeded);
+        }
+    }
+}
