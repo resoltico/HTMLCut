@@ -164,3 +164,34 @@ mod budgets;
 mod corpus;
 #[path = "contract_validation.rs"]
 mod validation;
+
+#[test]
+fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_preview_paths() {
+    let document = prepared(
+        "<article data-key='chosen'><pre>large <b>body</b></pre><script>payload</script></article>",
+    );
+    let mut plan = ExtractionPlan::css("article").unwrap();
+    plan.projection = Projection::Attribute {
+        name: "data-key".into(),
+    };
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    crate::projection::take_projection_calls();
+    for _ in 0..3 {
+        assert_eq!(document.execute(&compiled).unwrap().values, ["chosen"]);
+    }
+    assert_eq!(document.parse_count(), 1);
+    assert_eq!(crate::projection::take_projection_calls(), [3, 0, 0, 0, 0]);
+    // Positive controls prove that all counters observe the actual paths.
+    for projection in [
+        Projection::DomText,
+        Projection::DocumentText,
+        Projection::OuterHtml,
+    ] {
+        plan.projection = projection;
+        document
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap();
+    }
+    document.preview(&compiled, 64).unwrap();
+    assert_eq!(crate::projection::take_projection_calls(), [1, 1, 1, 1, 1]);
+}

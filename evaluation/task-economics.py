@@ -110,6 +110,17 @@ def main():
         command = [binary, 'extract', '--file', str(source), '--plan', str(path)]
         timing, raw = measured(command)
         result = json.loads(raw)
+        audit_path = temporary / f'{task}.audit.json'
+        audit_command = command + ['--audit', str(audit_path), '--audit-field',
+                                   'plan,source_digest,plan_digest,extraction_digest,counts,ranges,values']
+        if audit_path.exists():
+            audit_path.unlink()  # Owned evaluation output; repeated measurements reuse this directory.
+        audit_run = subprocess.run(audit_command, check=True, capture_output=True, timeout=30)
+        assert json.loads(audit_run.stdout) == result, task
+        audit_raw = audit_path.read_bytes()
+        audit_value = json.loads(audit_raw)
+        assert audit_value['values'] == result['values'], task
+        assert audit_value['counts'] == {'candidates': result['candidate_count'], 'selected': result['selected_count']}, task
         actual = result['values']
         if task == 'mapping':
             actual = records(BeautifulSoup(''.join(actual), 'lxml'))
@@ -143,6 +154,10 @@ def main():
                           parser_in_process_ns=in_process,
                           payload_bytes=len(payload.encode()), payload_tokens=len(ENCODING.encode(payload)),
                           default_envelope_bytes=len(raw), default_envelope_tokens=len(ENCODING.encode(raw.decode())),
+                          optional_full_audit={'command': audit_command, 'bytes': len(audit_raw),
+                                               'tokens': len(ENCODING.encode(audit_raw.decode())),
+                                               'values_equal_intermediate_projection': True,
+                                               'excluded_from_default_output_and_timing': True},
                           parser_output_tokens=len(ENCODING.encode(other_raw.decode())),
                           command_tokens_proxy=sum(len(ENCODING.encode(compact(c))) for c in [command,alternative])))
     report = dict(scope='offline synthetic equivalent-correct tasks; not agent billing or a blind multi-agent trial',

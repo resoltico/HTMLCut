@@ -319,6 +319,8 @@ impl PreparedDocument {
                 "Preview character allowance must be between one and 4096.",
             ));
         }
+        #[cfg(test)]
+        crate::projection::record_projection(4);
         let result = self.execute(plan)?;
         let mut remaining = maximum_chars as usize;
         let mut values = Vec::new();
@@ -365,3 +367,7 @@ fn text_preview(
     }
     Ok((value, true))
 }
+
+#[cfg(test)]
+#[path = "tests/discovery_binding.rs"]
+mod binding_tests;

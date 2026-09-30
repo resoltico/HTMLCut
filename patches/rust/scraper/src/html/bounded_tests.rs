@@ -521,3 +521,19 @@ fn script_bookkeeping_callbacks_are_charged_even_when_scripts_are_not_executed()
     assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Work));
     assert_eq!(sink.finish().unwrap_err(), ParseLimitExceeded::Work);
 }
+
+#[test]
+fn ancestor_depth_check_accepts_the_existing_exact_depth() {
+    let sink = BoundedSink::new(ParseLimits {
+        depth: 1,
+        ..limits()
+    });
+    let element = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("div")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    sink.append(&sink.get_document(), NodeOrText::AppendNode(element));
+    assert_eq!(sink.parent_depth(element), Some(1));
+    assert!(!sink.stop_requested());
+}

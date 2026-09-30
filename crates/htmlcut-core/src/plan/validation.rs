@@ -50,7 +50,9 @@ impl ExtractionPlan {
         }
         // Debit remaining materialized-string capacity before serialization can copy
         // caller-owned strings. checked_sub handles both oversize and arithmetic safety.
-        let mut remaining = crate::limits::MAX_PLAN_BYTES - self.schema.len();
+        let mut remaining = crate::limits::MAX_PLAN_BYTES
+            .checked_sub(self.schema.len())
+            .expect("the validated fixed schema name fits the plan byte allowance");
         let mut add = |value: &str| -> Result<(), ExtractionError> {
             remaining = remaining
                 .checked_sub(value.len())

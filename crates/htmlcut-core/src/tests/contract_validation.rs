@@ -398,3 +398,19 @@ fn t29_exact_selector_bytes_are_allowed_and_oversized_strings_fail_before_semant
         ErrorCode::ResourceLimit
     );
 }
+
+#[test]
+fn t29_many_sequential_selector_delimiters_do_not_accumulate_nesting() {
+    let selector = format!("p{}", "[data-x='value']".repeat(100));
+    CompiledPlan::compile(&ExtractionPlan::css(&selector).unwrap()).unwrap();
+}
+
+#[test]
+fn t29_wildcards_inside_nested_pseudo_classes_cannot_hide_excess_grammar_depth() {
+    let selector = format!("{}p{}", ":is(*".repeat(65), ")".repeat(65));
+    let plan = ExtractionPlan::css(&selector).unwrap();
+    assert_eq!(
+        CompiledPlan::compile(&plan).err().unwrap().code,
+        ErrorCode::ResourceLimit
+    );
+}

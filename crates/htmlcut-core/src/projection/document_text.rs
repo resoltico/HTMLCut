@@ -20,6 +20,8 @@ pub(super) fn render(
     maximum: usize,
     budget: &SelectorWorkBudget,
 ) -> Result<String, ExtractionError> {
+    #[cfg(test)]
+    record_projection(2);
     let mut output = ValueBuffer::new(maximum, budget);
     let mut skipped = 0_u32;
     let mut pending = false;

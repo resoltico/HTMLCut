@@ -359,3 +359,70 @@ fn t23_t24_descriptor_and_preview_hard_boundaries_are_inclusive() {
     assert_eq!(document.preview(&compiled, 4096).unwrap().values, ["value"]);
     assert!(document.preview(&compiled, 4097).is_err());
 }
+
+#[test]
+fn t23_proposal_byte_accounting_includes_every_ancestral_component_and_separator() {
+    let tag = "a".repeat(100);
+    for (depth, accepted) in [(70, true), (71, false)] {
+        let html = format!(
+            "{}<p>tail</p>{}",
+            format!("<{tag}>").repeat(depth),
+            format!("</{tag}>").repeat(depth)
+        );
+        let document = prepared(&html);
+        let page = document.inspect(100, None).unwrap();
+        let tail = page
+            .elements
+            .iter()
+            .find(|element| element.tag == "p")
+            .unwrap();
+        let proposal = document.propose(&tail.handle, 100);
+        if accepted {
+            let proposal = proposal.unwrap();
+            assert!(proposal.selector.len() <= 8192);
+            assert_eq!(
+                document
+                    .execute(
+                        &CompiledPlan::compile(&ExtractionPlan::css(&proposal.selector).unwrap())
+                            .unwrap()
+                    )
+                    .unwrap()
+                    .values,
+                ["tail"]
+            );
+        } else {
+            assert_eq!(proposal.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
+}
+
+#[test]
+fn t23_proposal_generation_accepts_its_exact_accounting_bound() {
+    let tag = "a".repeat(100);
+    let leaf = format!("p{}", "a".repeat(15));
+    let html = format!(
+        "{}<{leaf}>tail</{leaf}>{}",
+        format!("<{tag}>").repeat(70),
+        format!("</{tag}>").repeat(70)
+    );
+    let document = prepared(&html);
+    let page = document.inspect(100, None).unwrap();
+    let handle = &page
+        .elements
+        .iter()
+        .find(|element| element.tag == leaf)
+        .unwrap()
+        .handle;
+    let proposal = document.propose(handle, 100).unwrap();
+    // The implementation conservatively charges one additional separator.
+    assert_eq!(proposal.selector.len(), 8189);
+    assert_eq!(
+        document
+            .execute(
+                &CompiledPlan::compile(&ExtractionPlan::css(&proposal.selector).unwrap()).unwrap()
+            )
+            .unwrap()
+            .values,
+        ["tail"]
+    );
+}

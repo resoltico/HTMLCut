@@ -79,3 +79,35 @@ fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
     );
     assert_eq!(source.parse_count(), 1);
 }
+
+#[test]
+fn t33_caption_classes_ids_and_unrelated_siblings_cannot_suppress_selected_content() {
+    let base = "<article><p>BEGIN</p><table><caption>Charges</caption><tr><td>EUR 180</td></tr></table><p>END</p></article>";
+    let variants = [
+        base.to_string(),
+        base.replace(
+            "<caption>",
+            "<caption id='policy' class='reference internal' hidden aria-hidden='true'>",
+        ),
+        format!("<aside id='policy'>unrelated</aside>{base}<footer>unrelated</footer>"),
+    ];
+    for html in variants {
+        let source = prepared(&html);
+        let mut plan = ExtractionPlan::css("article").unwrap();
+        assert_eq!(
+            source
+                .execute(&CompiledPlan::compile(&plan).unwrap())
+                .unwrap()
+                .values,
+            ["BEGINChargesEUR 180END"]
+        );
+        plan.projection = Projection::DocumentText;
+        assert_eq!(
+            source
+                .execute(&CompiledPlan::compile(&plan).unwrap())
+                .unwrap()
+                .values,
+            ["BEGIN\n[table]\nCharges\nEUR 180\n[/table]\nEND"]
+        );
+    }
+}

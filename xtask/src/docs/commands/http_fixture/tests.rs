@@ -102,6 +102,7 @@ fn accept_loop_stops_on_permanent_failure_or_owner_stop_after_would_block() {
     let mut calls = 0;
     accept_loop(&flag, || {
         calls += 1;
+        assert_eq!(calls, 1, "a permanent listener failure must not be retried");
         Err(io::Error::other("listener failed"))
     });
     assert_eq!(calls, 1);

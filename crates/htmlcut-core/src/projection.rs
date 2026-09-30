@@ -91,6 +91,8 @@ pub(crate) fn project(
     let resolve = transforms.contains(&Transform::ResolveUrls);
     match projection {
         Projection::Attribute { name } => {
+            #[cfg(test)]
+            record_projection(0);
             let value = root.attr(name).ok_or_else(|| {
                 ExtractionError::new(
                     ErrorCode::MissingAttribute,
@@ -115,6 +117,8 @@ pub(crate) fn project(
             document_text::render(root, excluded, normalize, resolve, base, maximum, budget)
         }
         Projection::InnerHtml | Projection::OuterHtml => {
+            #[cfg(test)]
+            record_projection(3);
             let mut writer = HtmlBuffer {
                 bytes: Vec::new(),
                 maximum,
@@ -144,6 +148,8 @@ fn dom_text(
     maximum: usize,
     budget: &SelectorWorkBudget,
 ) -> Result<String, ExtractionError> {
+    #[cfg(test)]
+    record_projection(1);
     let mut value = ValueBuffer::new(maximum, budget);
     let mut skipped = 0_u32;
     let mut pre = 0_u32;
@@ -239,3 +245,22 @@ impl std::io::Write for HtmlBuffer {
 #[cfg(test)]
 #[path = "tests/projection_writer.rs"]
 mod writer_tests;
+
+#[cfg(test)]
+std::thread_local! {
+    static PROJECTION_CALLS: std::cell::Cell<[u32; 5]> = const { std::cell::Cell::new([0; 5]) };
+}
+
+#[cfg(test)]
+pub(crate) fn record_projection(index: usize) {
+    PROJECTION_CALLS.with(|calls| {
+        let mut values = calls.get();
+        values[index] += 1;
+        calls.set(values);
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn take_projection_calls() -> [u32; 5] {
+    PROJECTION_CALLS.with(|calls| calls.replace([0; 5]))
+}

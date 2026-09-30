@@ -22,7 +22,7 @@ pub(crate) struct Cli {
 pub(crate) enum Operation {
     /// Extract exactly the requested values; defaults to single/dom_text and compact JSON.
     #[command(about = crate::operation_metadata::EXTRACT_ABOUT, long_about = crate::operation_metadata::EXTRACT_DETAILS)]
-    Extract(Extract),
+    Extract(Box<Extract>),
     /// Execute a closed saved run with caller-owned source configuration.
     #[command(about = crate::operation_metadata::RUN_ABOUT)]
     Run(Run),

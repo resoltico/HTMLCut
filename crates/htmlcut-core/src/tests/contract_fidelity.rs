@@ -528,3 +528,15 @@ fn t12_preformatted_fences_ignore_every_omitted_subtree_and_track_sibling_nestin
         "- A\n4. B\n- C"
     );
 }
+
+#[test]
+fn t12_preformatted_fence_is_longer_than_a_link_destination_backtick_run() {
+    assert_eq!(
+        value(
+            "<pre><a href='````````'>label</a></pre>",
+            "pre",
+            Projection::DocumentText
+        ),
+        "`````````\n[label](````````)\n`````````"
+    );
+}
