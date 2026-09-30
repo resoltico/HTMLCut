@@ -118,12 +118,7 @@ fn binding(page_size: u32) -> String {
     )
 }
 
-fn token(
-    prepared: &str,
-    options: &str,
-    position: u32,
-    role: &str,
-) -> Result<String, ExtractionError> {
+fn token(prepared: &str, options: &str, position: u32, role: &str) -> String {
     let seal = crate::identity::framed(
         "htmlcut.discovery-token/1",
         &[
@@ -140,6 +135,7 @@ fn token(
         role: role.into(),
         seal,
     })
+    .expect("discovery tokens contain only strings and an integer")
 }
 
 fn position(
@@ -156,7 +152,7 @@ fn position(
     if parsed.prepared != prepared
         || parsed.options != options
         || parsed.role != role
-        || token(prepared, options, parsed.position, role)? != crate::canonical_json(&parsed)?
+        || token(prepared, options, parsed.position, role) != crate::canonical_json(&parsed)?
     {
         return Err(stale());
     }
@@ -264,7 +260,7 @@ impl PreparedDocument {
                 &options,
                 stop as u32,
                 "cursor",
-            )?)
+            ))
         } else {
             None
         };
@@ -295,7 +291,7 @@ impl PreparedDocument {
                 });
             }
             elements.push(ElementDescriptor {
-                handle: token(self.prepared_sha256(), &options, ordinal as u32, "handle")?,
+                handle: token(self.prepared_sha256(), &options, ordinal as u32, "handle"),
                 tag: element.value().name().into(),
                 attributes,
                 attributes_complete,

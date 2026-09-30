@@ -318,3 +318,7 @@ fn ordinal(value: Option<&str>) -> Result<Option<i64>, ExtractionError> {
         .map(Some)
         .map_err(|_| ExtractionError::limit("rendering"))
 }
+
+#[cfg(test)]
+#[path = "../tests/document_text_internal.rs"]
+mod tests;

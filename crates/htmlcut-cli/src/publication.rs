@@ -135,3 +135,7 @@ impl Staged {
         .map_err(|_| failure())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/publication_writer.rs"]
+mod writer_tests;

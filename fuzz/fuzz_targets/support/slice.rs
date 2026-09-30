@@ -47,11 +47,11 @@ pub fn drive(input: SliceInput) {
     plan.limits.max_selected = 128;
     plan.limits.max_work = 20_000;
     plan.limits.max_value_bytes = 8192;
-    if let Ok(compiled) = CompiledPlan::compile(&plan) {
-        if let Ok(result) = document.execute(&compiled) {
-            for (value, range) in result.values.iter().zip(result.ranges.unwrap()) {
-                assert_eq!(value, &document.snapshot().html()[range.start..range.end]);
-            }
+    if let Ok(compiled) = CompiledPlan::compile(&plan)
+        && let Ok(result) = document.execute(&compiled)
+    {
+        for (value, range) in result.values.iter().zip(result.ranges.unwrap()) {
+            assert_eq!(value, &document.snapshot().html()[range.start..range.end]);
         }
     }
 }

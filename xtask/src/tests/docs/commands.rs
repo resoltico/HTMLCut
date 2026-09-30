@@ -209,9 +209,14 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
             "json".to_owned(),
         ]
     );
-    assert!(
-        crate::docs::commands::command_path(&[]).is_empty(),
-        "empty token streams should not invent a command path"
+    assert_eq!(
+        crate::docs::commands::command_reference_error(
+            "README.md",
+            &[],
+            &crate::docs::known_schema_names_for_tests(),
+            &crate::docs::known_operation_ids_for_tests(),
+        ),
+        None
     );
     let known_schemas = crate::docs::known_schema_names_for_tests();
     let known_operations = crate::docs::known_operation_ids_for_tests();
@@ -224,10 +229,7 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
         ),
         None
     );
-    assert_eq!(
-        crate::docs::commands::command_path(&["htmlcut".to_owned(), "inspect".to_owned()]),
-        vec!["inspect"]
-    );
+
     assert_eq!(
         crate::docs::commands::command_reference_error(
             "README.md",
@@ -250,7 +252,8 @@ fn binary_argument_errors_remain_actionable_without_exposing_input_values() {
     assert!(
         errors
             .iter()
-            .any(|error| error.contains("non-parsing htmlcut example") && error.contains("--help"))
+            .any(|error| error.contains("non-parsing htmlcut example") && error.contains("--help")),
+        "actual documentation adapter diagnostics: {errors:?}"
     );
 }
 

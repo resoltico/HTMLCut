@@ -48,3 +48,8 @@ all-features = true
 [lib]
 name = "sha2"
 path = "src/lib.rs"
+
+[[bench]]
+name = "mod"
+path = "benches/mod.rs"
+harness = false

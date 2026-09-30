@@ -320,3 +320,19 @@ fn t05_discovery_descriptions_and_inline_inner_html_use_the_closed_dispatch() {
         assert!(!String::from_utf8_lossy(&error).contains("synthetic"));
     }
 }
+
+#[test]
+fn t05_all_selection_parameter_conflicts_are_rejected_before_acquisition() {
+    for extra in [
+        vec!["--max", "1"],
+        vec!["--match", "nth", "--min", "0"],
+        vec!["--match", "nth", "--max", "1"],
+        vec!["--match", "all", "--index", "1"],
+    ] {
+        let mut args = vec!["htmlcut", "extract", "--stdin", "--css", "p"];
+        args.extend(extra);
+        let (code, out, _) = invoke(&args, b"<p>value</p>");
+        assert_eq!(code, 2, "{args:?}");
+        assert!(out.is_empty());
+    }
+}

@@ -62,7 +62,7 @@ fn command_example_errors_with_prepared_sandbox(
 }
 
 #[cfg(test)]
-pub(crate) use parsing::{command_path, extract_htmlcut_examples, shell_words};
+pub(crate) use parsing::{extract_htmlcut_examples, shell_words};
 
 pub(crate) fn command_reference_error(
     display_path: &str,

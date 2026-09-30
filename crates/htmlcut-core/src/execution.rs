@@ -185,7 +185,7 @@ fn selected_positions(
         Selection::Nth { index } if *index > count => Err(cardinality()),
         Selection::Nth { index } => Ok(vec![(*index - 1) as usize]),
         Selection::All { min, max }
-            if count < *min || count > max.unwrap_or(maximum) || count > maximum =>
+            if count < *min || count > max.unwrap_or(maximum).min(maximum) =>
         {
             Err(cardinality())
         }

@@ -46,26 +46,27 @@ pub fn canonical_json(value: &impl Serialize) -> Result<String, ExtractionError>
         })
 }
 
+struct Buffer {
+    value: Vec<u8>,
+    maximum: usize,
+}
+impl std::io::Write for Buffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.maximum.saturating_sub(self.value.len()) {
+            return Err(std::io::Error::other("Canonical JSON size limit."));
+        }
+        self.value.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 pub(crate) fn canonical_json_bounded(
     value: &impl Serialize,
     maximum: usize,
 ) -> Result<String, ExtractionError> {
-    struct Buffer {
-        value: Vec<u8>,
-        maximum: usize,
-    }
-    impl std::io::Write for Buffer {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            if bytes.len() > self.maximum.saturating_sub(self.value.len()) {
-                return Err(std::io::Error::other("Canonical JSON size limit."));
-            }
-            self.value.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
     let mut value = serde_json::to_value(value).map_err(|_| {
         ExtractionError::new(
             ErrorCode::InternalInvariant,
@@ -82,3 +83,7 @@ pub(crate) fn canonical_json_bounded(
     // serde_json writes UTF-8 JSON into this owned buffer, which is never externally mutated.
     Ok(String::from_utf8(buffer.value).expect("serde_json produces UTF-8"))
 }
+
+#[cfg(test)]
+#[path = "tests/identity_writer.rs"]
+mod writer_tests;

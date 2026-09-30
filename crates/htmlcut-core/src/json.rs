@@ -127,3 +127,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
         Ok(Value::Object(values))
     }
 }
+
+#[cfg(test)]
+#[path = "tests/json_deserializer.rs"]
+mod deserializer_tests;

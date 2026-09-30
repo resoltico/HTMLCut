@@ -10,12 +10,12 @@ pub fn drive(data: &[u8]) {
             plan,
             ExtractionPlan::from_json(serialized.as_bytes()).unwrap()
         );
-        if let Ok(compiled) = CompiledPlan::compile(&plan) {
-            if let Some(document) = crate::snapshot::document(
+        if let Ok(compiled) = CompiledPlan::compile(&plan)
+            && let Some(document) = crate::snapshot::document(
                 "<main><p id='amount' data-x=''>180</p><template>text</template></main>",
-            ) {
-                let _ = document.execute(&compiled);
-            }
+            )
+        {
+            let _ = document.execute(&compiled);
         }
     }
 }

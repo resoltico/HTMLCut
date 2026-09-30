@@ -241,3 +241,33 @@ fn t18_guard_cardinality_scope_and_search_predicate_are_declared() {
         ErrorCode::Cardinality
     );
 }
+
+#[test]
+fn t16_t18_declared_selection_and_guard_candidate_caps_fail_whole_operations() {
+    let source = prepared("<p>A</p><p>B</p><b>X</b><b>Y</b>");
+    let mut plan = ExtractionPlan::css("p").unwrap();
+    plan.selection = Selection::All {
+        min: 1,
+        max: Some(1),
+    };
+    let error = source
+        .execute(&CompiledPlan::compile(&plan).unwrap())
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Cardinality);
+    assert_eq!(error.candidate_count, Some(2));
+    let mut plan = ExtractionPlan::css("p:first-of-type").unwrap();
+    plan.limits.max_candidates = 1;
+    plan.guards.push(Guard {
+        scope: GuardScope::Document,
+        selector: "b".into(),
+        min: 0,
+        max: Some(1),
+        read: GuardRead::DomText,
+        predicate: Some(Predicate::Exact { value: "X".into() }),
+    });
+    let error = source
+        .execute(&CompiledPlan::compile(&plan).unwrap())
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::ResourceLimit);
+    assert_eq!(error.observed_at_least, Some(2));
+}

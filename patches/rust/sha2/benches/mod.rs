@@ -1,22 +1,29 @@
-#![feature(test)]
-extern crate test;
+//! Stable benchmark adapter for the upstream SHA-256/SHA-512 update workloads.
 
-use digest::bench_update;
-use sha2::{Sha256, Sha512};
-use test::Bencher;
+use std::hint::black_box;
+use std::time::Instant;
 
-bench_update!(
-    Sha256::default();
-    sha256_10 10;
-    sha256_100 100;
-    sha256_1000 1000;
-    sha256_10000 10000;
-);
+use sha2::{Digest, Sha256, Sha512};
 
-bench_update!(
-    Sha512::default();
-    sha512_10 10;
-    sha512_100 100;
-    sha512_1000 1000;
-    sha512_10000 10000;
-);
+fn update<D: Digest + Default>(name: &str, size: usize) {
+    let input = vec![0_u8; size];
+    let iterations = (16 * 1024 * 1024) / size;
+    let mut digest = D::default();
+    let started = Instant::now();
+    for _ in 0..iterations {
+        digest.update(black_box(&input));
+    }
+    black_box(digest.finalize());
+    println!(
+        "{name}_{size}: {} bytes in {:?}",
+        iterations * size,
+        started.elapsed()
+    );
+}
+
+fn main() {
+    for size in [10, 100, 1000, 10000] {
+        update::<Sha256>("sha256", size);
+        update::<Sha512>("sha512", size);
+    }
+}

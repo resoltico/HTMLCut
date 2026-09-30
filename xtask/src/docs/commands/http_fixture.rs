@@ -26,29 +26,11 @@ impl Fixture {
             while !flag.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
-                        if stream.set_nonblocking(false).is_err()
-                            || stream
-                                .set_read_timeout(Some(Duration::from_secs(2)))
-                                .is_err()
-                            || stream
-                                .set_write_timeout(Some(Duration::from_secs(2)))
-                                .is_err()
-                        {
-                            continue;
-                        }
-                        let mut request = Vec::new();
-                        while !request.ends_with(b"\r\n\r\n") && request.len() < 16_384 {
-                            let mut byte = [0];
-                            match stream.read(&mut byte) {
-                                Ok(1) => request.push(byte[0]),
-                                _ => break,
-                            }
-                        }
-                        let response = format!(
-                            "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{html}",
-                            html.len()
-                        );
-                        let _ = stream.write_all(response.as_bytes());
+                        let _ = serve(&mut stream, html, |stream| {
+                            stream.set_nonblocking(false)?;
+                            stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+                            stream.set_write_timeout(Some(Duration::from_secs(2)))
+                        });
                     }
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                         std::thread::sleep(Duration::from_millis(2))
@@ -73,3 +55,43 @@ impl Drop for Fixture {
         }
     }
 }
+
+// One bounded connection is kept separate from the listener's lifetime. This also
+// allows deterministic read/write/configuration failure verification without OS races.
+fn serve<S: Read + Write>(
+    stream: &mut S,
+    html: &str,
+    configure: impl FnOnce(&mut S) -> io::Result<()>,
+) -> io::Result<()> {
+    configure(stream)?;
+    let mut request = Vec::new();
+    loop {
+        let mut bytes = [0; 512];
+        let count = stream.read(&mut bytes)?;
+        if count == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Incomplete fixture request.",
+            ));
+        }
+        if count > 16_384_usize.saturating_sub(request.len()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Fixture request exceeded its bound.",
+            ));
+        }
+        request.extend_from_slice(&bytes[..count]);
+        if request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{html}",
+        html.len()
+    );
+    stream.write_all(response.as_bytes())
+}
+
+#[cfg(test)]
+#[path = "http_fixture/tests.rs"]
+mod tests;

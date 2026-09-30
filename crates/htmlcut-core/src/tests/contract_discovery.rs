@@ -241,3 +241,45 @@ fn t23_t24_descriptors_are_bounded_and_mark_attribute_or_value_truncation() {
     assert_eq!(preview.values.len(), 20);
     assert!(!preview.complete);
 }
+
+#[test]
+fn t23_proposals_bound_ancestry_and_escape_names_without_using_comment_siblings() {
+    let document = prepared("<p>A</p><!--between--><p>B</p>");
+    let page = document.inspect(20, None).unwrap();
+    let element = page.elements.iter().find(|e| e.preview == "B").unwrap();
+    let proposal = document.propose(&element.handle, 20).unwrap();
+    assert!(proposal.selector.ends_with("p:nth-child(2)"));
+    assert_eq!(
+        document
+            .execute(
+                &CompiledPlan::compile(&ExtractionPlan::css(proposal.selector).unwrap()).unwrap()
+            )
+            .unwrap()
+            .values,
+        ["B"]
+    );
+    let long = prepared(&format!("<{}>x</{}>", "a".repeat(129), "a".repeat(129)));
+    let mut token: serde_json::Value =
+        serde_json::from_str(&long.inspect(1, None).unwrap().elements[0].handle).unwrap();
+    token["position"] = serde_json::json!(3);
+    reseal(&mut token);
+    assert_eq!(
+        long.propose(&crate::canonical_json(&token).unwrap(), 1)
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    let tag = "a".repeat(100);
+    let html = format!(
+        "{}<p>tail</p>{}",
+        format!("<{tag}>").repeat(80),
+        format!("</{tag}>").repeat(80)
+    );
+    let deep = prepared(&html);
+    let page = deep.inspect(100, None).unwrap();
+    let tail = page.elements.iter().find(|e| e.tag == "p").unwrap();
+    assert_eq!(
+        deep.propose(&tail.handle, 100).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+}

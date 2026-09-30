@@ -62,6 +62,7 @@ path = "tests/mod.rs"
 [[bench]]
 name = "mod"
 path = "benches/mod.rs"
+harness = false
 
 [dependencies.cfg-if]
 version = "1"

@@ -24,6 +24,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Export release target matrix
         id: matrix
@@ -47,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Detect devcontainer-relevant changes
@@ -86,6 +90,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Run full maintainer gate through contributor devcontainer
         shell: bash
@@ -99,6 +106,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - name: Validate contributor environment
         shell: bash
         run: |
@@ -122,6 +132,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         shell: bash
@@ -189,6 +202,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Install Linux musl toolchain packages
         if: ${{ matrix.needs_musl_tools }}
@@ -236,9 +252,26 @@ jobs:
         shell: bash
         run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
 
-      - name: Smoke test standalone package
+      - name: Execute native smoke and record package evidence
         shell: bash
-        run: ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
+        run: |
+          set -euo pipefail
+          source ./scripts/release-targets.sh
+          package="$(release_package_name_for_target "${{ steps.version.outputs.version }}" "${{ matrix.target_triple }}")"
+          python3 ./scripts/native-package-evidence.py \
+            --package "dist/${package}" \
+            --target "${{ matrix.target_triple }}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --output dist/native-evidence.json \
+            --smoke-log dist/native-smoke.log
+
+      - name: Preserve verified native package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-proof-${{ matrix.id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
 
   check:
     name: Check

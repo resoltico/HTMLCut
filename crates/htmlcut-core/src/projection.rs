@@ -46,12 +46,12 @@ impl<'a> ValueBuffer<'a> {
         escape: bool,
     ) -> Result<(), ExtractionError> {
         crate::execution::charge(self.budget, value.len().div_ceil(64))?;
-        if (!normalize || pre) && !escape {
+        if pre || (!normalize && !escape) {
             self.source_space = false;
             return self.push(value);
         }
         for c in value.chars() {
-            if normalize && !pre && c.is_ascii_whitespace() {
+            if normalize && c.is_ascii_whitespace() {
                 if !self.source_space {
                     self.push(" ")?;
                     self.source_space = true;
@@ -59,7 +59,7 @@ impl<'a> ValueBuffer<'a> {
                 continue;
             }
             self.source_space = false;
-            if escape && !pre && "\\[]()".contains(c) {
+            if escape && "\\[]()".contains(c) {
                 self.push("\\")?;
             }
             self.push(c.encode_utf8(&mut [0; 4]))?;
@@ -235,3 +235,7 @@ impl std::io::Write for HtmlBuffer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/projection_writer.rs"]
+mod writer_tests;

@@ -444,3 +444,38 @@ fn t12_selected_structural_fragments_do_not_require_ancestors_in_the_projection(
         assert_eq!(value(html, selector, Projection::DocumentText), expected);
     }
 }
+
+#[test]
+fn t28_invalid_destination_with_a_valid_base_reports_resolution_failure() {
+    let source = PreparedDocument::new(
+        SourceSnapshot::new(
+            "<a href='http://['>label</a>",
+            SnapshotMetadata {
+                base_url: Some("https://example.test/path/".into()),
+            },
+        )
+        .unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let mut plan = ExtractionPlan::css("a").unwrap();
+    plan.projection = Projection::Attribute {
+        name: "href".into(),
+    };
+    plan.transforms = vec![Transform::ResolveUrls];
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidBaseUrl
+    );
+    assert_eq!(
+        value(
+            "<pre><img><a>label</a></pre>",
+            "pre",
+            Projection::DocumentText
+        ),
+        "```\nlabel\n```"
+    );
+}
