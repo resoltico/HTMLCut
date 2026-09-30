@@ -356,6 +356,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     fn run(&self, input: &BufferQueue) -> TokenizerResult<Sink::Handle> {
         if self.opts.profile {
             loop {
+                if self.sink.stop_requested() {
+                    return TokenizerResult::Done;
+                }
                 let state = self.state.get();
                 let old_sink = self.time_in_sink.get();
                 let (run, mut dt) = time!(self.step(input));
@@ -382,6 +385,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             }
         } else {
             loop {
+                if self.sink.stop_requested() {
+                    return TokenizerResult::Done;
+                }
                 match self.step(input) {
                     ProcessResult::Continue => (),
                     ProcessResult::Suspend => break,

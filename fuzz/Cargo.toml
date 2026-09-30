@@ -19,7 +19,6 @@ fuzzing = []
 
 [dependencies]
 arbitrary.workspace = true
-htmlcut-cli.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
 url.workspace = true

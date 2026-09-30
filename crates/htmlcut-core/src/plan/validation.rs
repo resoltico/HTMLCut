@@ -1,0 +1,202 @@
+use super::*;
+use crate::limits::{MAX_CHECKS, MAX_PATTERN_BYTES};
+
+fn invalid() -> ExtractionError {
+    ExtractionError::new(
+        ErrorCode::InvalidPlan,
+        "validation",
+        "The plan contains incompatible or invalid options.",
+    )
+}
+
+pub(crate) fn pattern(value: &str) -> Result<(), ExtractionError> {
+    if value.is_empty() {
+        return Err(invalid());
+    }
+    if value.len() > MAX_PATTERN_BYTES {
+        return Err(ExtractionError::limit("plan"));
+    }
+    Ok(())
+}
+
+pub(crate) fn attribute(value: &str) -> Result<(), ExtractionError> {
+    if value.is_empty()
+        || value.len() > 256
+        || value
+            .chars()
+            .any(|c| c.is_whitespace() || "\"'<>/=\0".contains(c))
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+impl ExtractionPlan {
+    /// Checks shared constructor/wire invariants and all incompatible option combinations.
+    pub fn validate(&self) -> Result<(), ExtractionError> {
+        if self.schema != "htmlcut.extraction.plan" || self.version != SCHEMA_VERSION {
+            return Err(ExtractionError::new(
+                ErrorCode::InvalidSchema,
+                "validation",
+                "Unsupported extraction plan schema or version.",
+            ));
+        }
+        self.limits.validate()?;
+        if self.exclude.len() > MAX_CHECKS
+            || self.guards.len() > MAX_CHECKS
+            || self.transforms.len() > 2
+        {
+            return Err(invalid());
+        }
+        let mut string_bytes = self.schema.len();
+        let mut add = |value: &str| -> Result<(), ExtractionError> {
+            string_bytes = string_bytes
+                .checked_add(value.len())
+                .ok_or_else(|| ExtractionError::limit("plan"))?;
+            if string_bytes > crate::limits::MAX_PLAN_BYTES {
+                return Err(ExtractionError::limit("plan"));
+            }
+            Ok(())
+        };
+        match &self.strategy {
+            Strategy::Css { selector } => add(selector)?,
+            Strategy::Slice { start, end, .. } => {
+                for boundary in [start, end] {
+                    match boundary {
+                        Boundary::Literal { value } => add(value)?,
+                        Boundary::Regex { pattern, flags } => {
+                            add(pattern)?;
+                            add(flags)?;
+                        }
+                    }
+                }
+            }
+        }
+        if let Projection::Attribute { name } = &self.projection {
+            add(name)?;
+        }
+        for value in &self.exclude {
+            add(value)?;
+        }
+        for guard in &self.guards {
+            add(&guard.selector)?;
+            if let GuardRead::Attribute { name } = &guard.read {
+                add(name)?;
+            }
+            match &guard.predicate {
+                Some(Predicate::Exact { value }) => add(value)?,
+                Some(Predicate::Regex { pattern, flags }) => {
+                    add(pattern)?;
+                    add(flags)?;
+                }
+                None => (),
+            }
+        }
+        crate::identity::canonical_json_bounded(self, crate::limits::MAX_PLAN_BYTES)?;
+        match &self.strategy {
+            Strategy::Css { selector } => {
+                pattern(selector)?;
+                if matches!(self.projection, Projection::Source) {
+                    return Err(invalid());
+                }
+            }
+            Strategy::Slice { start, end, .. } => {
+                for boundary in [start, end] {
+                    match boundary {
+                        Boundary::Literal { value } => pattern(value)?,
+                        Boundary::Regex {
+                            pattern: value,
+                            flags,
+                        } => {
+                            pattern(value)?;
+                            validate_flags(flags)?;
+                        }
+                    }
+                }
+                if !matches!(self.projection, Projection::Source)
+                    || !self.exclude.is_empty()
+                    || !self.guards.is_empty()
+                    || !self.transforms.is_empty()
+                {
+                    return Err(invalid());
+                }
+            }
+        }
+        match &self.selection {
+            Selection::Single => (),
+            Selection::Nth { index } if *index > 0 && *index <= self.limits.max_candidates => (),
+            Selection::All { min, max }
+                if *min <= max.unwrap_or(self.limits.max_selected)
+                    && max.unwrap_or(self.limits.max_selected) <= self.limits.max_selected =>
+            {}
+            _ => return Err(invalid()),
+        }
+        if let Projection::Attribute { name } = &self.projection {
+            attribute(name)?;
+            if !self.exclude.is_empty() {
+                return Err(invalid());
+            }
+        }
+        for exclusion in &self.exclude {
+            pattern(exclusion)?;
+        }
+        for guard in &self.guards {
+            pattern(&guard.selector)?;
+            let max = guard.max.unwrap_or(self.limits.max_candidates);
+            if guard.min > max || max > self.limits.max_candidates {
+                return Err(invalid());
+            }
+            match &guard.read {
+                GuardRead::Attribute { name } => attribute(name)?,
+                GuardRead::DomText if guard.predicate.is_none() => return Err(invalid()),
+                GuardRead::DomText => (),
+            }
+            if let Some(Predicate::Regex {
+                pattern: value,
+                flags,
+            }) = &guard.predicate
+            {
+                pattern(value)?;
+                validate_flags(flags)?;
+            }
+        }
+        for (index, transform) in self.transforms.iter().enumerate() {
+            if self.transforms[..index].contains(transform) {
+                return Err(invalid());
+            }
+            match transform {
+                Transform::NormalizeWhitespace
+                    if !matches!(
+                        self.projection,
+                        Projection::DomText | Projection::DocumentText
+                    ) =>
+                {
+                    return Err(invalid());
+                }
+                Transform::ResolveUrls => match &self.projection {
+                    Projection::DocumentText => (),
+                    Projection::Attribute { name }
+                        if matches!(
+                            name.as_str(),
+                            "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
+                        ) =>
+                    {}
+                    _ => return Err(invalid()),
+                },
+                _ => (),
+            }
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_flags(flags: &str) -> Result<(), ExtractionError> {
+    let mut seen = String::new();
+    for flag in flags.chars() {
+        if !"imsUx".contains(flag) || seen.contains(flag) {
+            return Err(invalid());
+        }
+        seen.push(flag);
+    }
+    Ok(())
+}

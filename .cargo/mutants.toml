@@ -21,6 +21,8 @@ examine_globs = [
     "patches/rust/selectors/work_budget.rs",
     "patches/rust/scraper/src/html/clone.rs",
     "patches/rust/scraper/src/selector/budget.rs",
+    "patches/rust/scraper/src/html/bounded.rs",
+    "patches/rust/scraper/src/element_ref/filtered.rs",
 ]
 
 exclude_globs = [

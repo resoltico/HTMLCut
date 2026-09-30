@@ -60,6 +60,7 @@ pub(super) fn option_value<'a>(tokens: &'a [String], flag: &str) -> Option<&'a s
     })
 }
 
+#[cfg(test)]
 pub(crate) fn command_path(tokens: &[String]) -> Vec<&str> {
     match tokens.get(1).map(String::as_str) {
         Some("inspect") => tokens.get(2).map_or_else(
@@ -69,14 +70,6 @@ pub(crate) fn command_path(tokens: &[String]) -> Vec<&str> {
         Some(top_level) => vec![top_level],
         None => Vec::new(),
     }
-}
-
-pub(super) fn clap_error_message(error: &clap::Error) -> String {
-    let rendered = error.to_string();
-    rendered
-        .lines()
-        .find_map(|line| line.strip_prefix("error: ").map(ToOwned::to_owned))
-        .unwrap_or_else(|| rendered.trim().to_owned())
 }
 
 #[cfg(test)]

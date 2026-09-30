@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
-use clap::error::ErrorKind;
-
 mod parsing;
+mod process;
 mod runtime;
 mod sandbox;
 #[cfg(test)]
@@ -31,7 +30,6 @@ fn command_example_errors_with_prepared_sandbox(
     prepared_sandbox: Result<(sandbox::ExampleSandbox, sandbox::CurrentDirGuard), Vec<String>>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
-    let command = htmlcut_cli::command();
     let (sandbox, _cwd) = match prepared_sandbox {
         Ok(parts) => parts,
         Err(errors) => return errors,
@@ -47,19 +45,6 @@ fn command_example_errors_with_prepared_sandbox(
                 continue;
             }
         };
-        if let Err(error) = command.clone().try_get_matches_from(tokens.clone()) {
-            if !matches!(
-                error.kind(),
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-            ) {
-                errors.push(format!(
-                    "{display_path} contains a non-parsing htmlcut example: {example} ({})",
-                    parsing::clap_error_message(&error)
-                ));
-            }
-            continue;
-        }
-
         if let Some(error) =
             command_reference_error(display_path, &tokens, schema_names, operation_ids)
         {
@@ -78,11 +63,6 @@ fn command_example_errors_with_prepared_sandbox(
 #[cfg(test)]
 pub(crate) use parsing::{command_path, extract_htmlcut_examples, shell_words};
 
-#[cfg(test)]
-pub(crate) fn clap_error_message_for_tests(error: &clap::Error) -> String {
-    parsing::clap_error_message(error)
-}
-
 pub(crate) fn command_reference_error(
     display_path: &str,
     tokens: &[String],
@@ -90,28 +70,23 @@ pub(crate) fn command_reference_error(
     operation_ids: &BTreeSet<&'static str>,
 ) -> Option<String> {
     match tokens.get(1).map(String::as_str) {
-        Some("catalog") => {
-            let operation_id = parsing::option_value(tokens, "--operation")?;
+        Some("describe") => {
+            let operation_id = tokens.get(2)?.as_str();
+            if operation_id.starts_with('-') {
+                return None;
+            }
             (!operation_ids.contains(operation_id)).then(|| {
                 format!("{display_path} example references unknown operation ID: {operation_id}")
             })
         }
         Some("schema") => {
-            let schema_name = parsing::option_value(tokens, "--name")?;
+            let schema_name = tokens.get(2)?.as_str();
+            if schema_name.starts_with('-') {
+                return None;
+            }
             (!schema_names.contains(schema_name)).then(|| {
                 format!("{display_path} example references unknown schema name: {schema_name}")
             })
-        }
-        Some("inspect") | Some("select") | Some("slice") => {
-            let command_path = parsing::command_path(tokens);
-            htmlcut_cli::contract::find_cli_operation_by_command_path(&command_path)
-                .is_none()
-                .then(|| {
-                    format!(
-                        "{display_path} example references unknown CLI command path: {}",
-                        command_path.join(" ")
-                    )
-                })
         }
         Some(_) | None => None,
     }

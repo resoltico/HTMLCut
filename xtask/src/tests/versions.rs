@@ -276,9 +276,52 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
 }
 
 #[test]
-fn semver_release_type_uses_major_until_the_baseline_catches_up() {
-    assert_eq!(semver_release_type_from_versions("3.0.0", "2.0.0"), "major");
-    assert_eq!(semver_release_type_from_versions("3.0.0", "3.0.0"), "minor");
+fn semver_release_type_classifies_numeric_stable_versions() {
+    for (current, baseline, expected) in [
+        ("15.0.0", "14.0.0", "major"),
+        ("15.1.0", "15.0.0", "minor"),
+        ("15.0.1", "15.0.0", "patch"),
+        ("15.0.0", "15.0.0", "patch"),
+        ("15.10.0", "15.9.0", "minor"),
+        ("15.0.10", "15.0.9", "patch"),
+    ] {
+        assert_eq!(
+            semver_release_type_from_versions(current, baseline).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn semver_release_type_rejects_downgrades_and_nonstable_versions() {
+    for invalid in [
+        "15.0",
+        "15.0.0.1",
+        "015.0.0",
+        "15.00.0",
+        "15.0.01",
+        "15..0",
+        "15.0.x",
+        "15.0.0-alpha.1",
+        "15.0.0+build",
+        "0.1.0",
+        "18446744073709551616.0.0",
+        " 15.0.0",
+        "15.0.0 ",
+    ] {
+        assert!(
+            semver_release_type_from_versions(invalid, "15.0.0").is_err(),
+            "{invalid}"
+        );
+        assert!(
+            semver_release_type_from_versions("15.0.0", invalid).is_err(),
+            "{invalid}"
+        );
+    }
+    assert!(semver_release_type_from_versions("14.9.9", "15.0.0").is_err());
+    for baseline in ["16.0.0", "15.1.0", "15.0.1"] {
+        assert!(semver_release_type_from_versions("15.0.0", baseline).is_err());
+    }
 }
 
 #[test]
@@ -302,8 +345,8 @@ fn semver_release_type_reads_versions_from_the_repo_layout() {
     .expect("write updated baseline Cargo.toml");
 
     assert_eq!(
-        semver_release_type(repo_root.path()).expect("minor semver release type"),
-        "minor"
+        semver_release_type(repo_root.path()).expect("equal-version patch protection"),
+        "patch"
     );
 }
 

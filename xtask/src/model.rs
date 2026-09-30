@@ -110,6 +110,8 @@ pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "patches/rust/selectors/work_budget.rs",
     "patches/rust/scraper/src/selector/budget.rs",
     "patches/rust/scraper/src/html/clone.rs",
+    "patches/rust/scraper/src/html/bounded.rs",
+    "patches/rust/scraper/src/element_ref/filtered.rs",
 ];
 
 pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[

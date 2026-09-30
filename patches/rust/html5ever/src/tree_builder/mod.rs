@@ -474,6 +474,10 @@ where
 {
     type Handle = Handle;
 
+    fn stop_requested(&self) -> bool {
+        self.sink.stop_requested()
+    }
+
     fn process_token(&self, token: tokenizer::Token, line_number: u64) -> TokenSinkResult<Handle> {
         if line_number != self.current_line.get() {
             self.sink.set_current_line(line_number);

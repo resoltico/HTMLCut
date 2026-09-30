@@ -16,7 +16,10 @@ use tendril::TendrilSink;
 use crate::selector::Selector;
 use crate::{ElementRef, Node};
 
+mod bounded;
 mod clone;
+
+pub use bounded::{ParseLimitExceeded, ParseLimits};
 
 pub use tree_sink::HtmlTreeSink;
 

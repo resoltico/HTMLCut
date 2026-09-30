@@ -121,6 +121,10 @@ pub enum TokenSinkResult<Handle> {
 
 /// Types which can receive tokens from the tokenizer.
 pub trait TokenSink {
+    /// Requests termination after a sink resource boundary has failed.
+    fn stop_requested(&self) -> bool {
+        false
+    }
     /// The type of a DOM node.
     type Handle;
 

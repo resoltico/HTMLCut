@@ -19,6 +19,16 @@ impl Selector {
         element: &ElementRef,
         budget: &SelectorWorkBudget,
     ) -> Result<bool, SelectorWorkLimitExceeded> {
+        self.matches_with_scope_and_budget(element, None, budget)
+    }
+
+    /// Evaluates a selector with explicit original-DOM scope and shared work accounting.
+    pub fn matches_with_scope_and_budget(
+        &self,
+        element: &ElementRef,
+        scope: Option<ElementRef>,
+        budget: &SelectorWorkBudget,
+    ) -> Result<bool, SelectorWorkLimitExceeded> {
         let mut caches = SelectorCaches::default();
         let mut context = matching::MatchingContext::new(
             matching::MatchingMode::Normal,
@@ -28,6 +38,7 @@ impl Selector {
             matching::NeedsSelectorFlags::No,
             matching::MatchingForInvalidation::No,
         );
+        context.scope_element = scope.map(|element| selectors::Element::opaque(&element));
         context.set_work_budget(Some(budget));
         let matches =
             self.selectors.slice().iter().any(|selector| {

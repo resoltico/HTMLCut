@@ -1,15 +1,9 @@
 use super::*;
 
 fn write_schema_inventory_doc(repo_root: &Path) {
-    let schema_names = htmlcut_core::schema_catalog()
-        .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name.to_owned())
-        .chain([
-            htmlcut_cli::CATALOG_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-        ])
+    let schema_names = crate::docs::known_schema_names_for_tests()
+        .into_iter()
+        .map(str::to_owned)
         .collect::<std::collections::BTreeSet<_>>();
     let schemas = schema_names
         .into_iter()
@@ -27,9 +21,9 @@ fn write_schema_inventory_doc(repo_root: &Path) {
 }
 
 fn write_operations_inventory_doc(repo_root: &Path) {
-    let operations = htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| format!("| `{}` |", descriptor.id.as_str()))
+    let operations = crate::docs::known_operation_ids_for_tests()
+        .into_iter()
+        .map(|name| format!("| `{name}` |"))
         .collect::<Vec<_>>()
         .join("\n");
 

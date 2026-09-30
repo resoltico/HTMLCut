@@ -12,7 +12,6 @@ description = "Rust-native repository maintenance tasks for HTMLCut."
 
 [dependencies]
 clap.workspace = true
-htmlcut-cli.workspace = true
 htmlcut-core.workspace = true
 htmlcut-tempdir.workspace = true
 regex.workspace = true

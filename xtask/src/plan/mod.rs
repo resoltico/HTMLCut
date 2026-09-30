@@ -115,7 +115,7 @@ pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
 pub fn semver_release_type_from_versions(
     workspace_version: &str,
     baseline_version: &str,
-) -> String {
+) -> DynResult<String> {
     semver::semver_release_type_from_versions(workspace_version, baseline_version)
 }
 

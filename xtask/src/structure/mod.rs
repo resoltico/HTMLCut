@@ -16,7 +16,7 @@ use self::metrics::{Metrics, measured_internal_dependencies};
 use self::policy::{Policy, Rule};
 
 const POLICY_PATH: &str = "tooling/rust-source-shape-policy.toml";
-const SOURCE_ROOTS: [&str; 15] = [
+const SOURCE_ROOTS: [&str; 17] = [
     "crates/htmlcut-core/src",
     "crates/htmlcut-core/tests",
     "crates/htmlcut-cli/src",
@@ -32,6 +32,8 @@ const SOURCE_ROOTS: [&str; 15] = [
     "patches/rust/selectors/work_budget.rs",
     "patches/rust/scraper/src/html/clone.rs",
     "patches/rust/scraper/src/selector/budget.rs",
+    "patches/rust/scraper/src/html/bounded.rs",
+    "patches/rust/scraper/src/element_ref/filtered.rs",
 ];
 
 /// Enforces HTMLCut's repository-owned Rust source-structure contract.

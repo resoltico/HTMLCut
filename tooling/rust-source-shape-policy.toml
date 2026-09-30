@@ -484,3 +484,355 @@ max_functions = 24
 max_decision_points = 70
 max_match_arms = 35
 allowed_internal_dependencies = ["interop_common", "request_common"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/compilation.rs"
+match = "exact"
+role = "core-plan-compilation"
+owner = "HTMLCut extraction contract"
+rationale = "Source-independent bounded selector and regex grammar compilation."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "limits", "plan", "identity", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/execution.rs"
+match = "exact"
+role = "core-execution"
+owner = "HTMLCut extraction contract"
+rationale = "Complete selection and original-DOM guards over a prepared immutable snapshot."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "compilation", "execution", "projection", "identity", "snapshot", "plan", "result", "limits"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/snapshot.rs"
+match = "exact"
+role = "core-snapshot"
+owner = "HTMLCut extraction contract"
+rationale = "Immutable accepted UTF-8 metadata and lazy bounded DOM caching; no input acquisition."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "snapshot", "identity", "limits", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/plan.rs"
+match = "exact"
+role = "core-plan-contract"
+owner = "HTMLCut extraction contract"
+rationale = "The single closed extraction language and constructor/wire validation."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "limits", "plan", "json", "identity", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/limits.rs"
+match = "exact"
+role = "core-resource-policy"
+owner = "HTMLCut extraction contract"
+rationale = "Finite policy defaults, hard maxima and constructor/wire validation."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "limits", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/result.rs"
+match = "exact"
+role = "core-result-contract"
+owner = "HTMLCut extraction contract"
+rationale = "One compact success and typed error family, with truthful identity/count evidence."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/discovery.rs"
+match = "exact"
+role = "core-discovery"
+owner = "HTMLCut extraction contract"
+rationale = "Bounded snapshot-bound descriptors, previews, cursors and explicit suggestions."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "discovery", "identity", "limits", "execution", "projection", "result", "snapshot", "plan"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/identity.rs"
+match = "exact"
+role = "core-identity"
+owner = "HTMLCut extraction contract"
+rationale = "Pure domain-separated framing and canonical JSON, independent of adapter policy."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "identity", "limits", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/json.rs"
+match = "exact"
+role = "core-wire-validation"
+owner = "HTMLCut extraction contract"
+rationale = "Bounded closed JSON parsing and duplicate-key detection before map conversion."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "json", "limits", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/schemas.rs"
+match = "exact"
+role = "core-schema"
+owner = "HTMLCut extraction contract"
+rationale = "Named schemas generated from current serializable public types."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "schemas", "result", "plan", "discovery"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/projection.rs"
+match = "exact"
+role = "core-projection"
+owner = "HTMLCut extraction contract"
+rationale = "Read-only requested representations and explicit transformations."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "projection", "execution", "plan", "result", "snapshot", "limits"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/plan/"
+match = "prefix"
+role = "core-plan-validation"
+owner = "HTMLCut extraction contract"
+rationale = "Cross-field invariants shared by constructors, wire input and compilation."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "limits", "plan", "json", "identity", "result"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/projection/"
+match = "prefix"
+role = "core-structural-projection"
+owner = "HTMLCut extraction contract"
+rationale = "Explicit formatting of original DOM structure without heuristic suppression."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "projection", "execution", "plan", "result", "snapshot", "limits"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/app.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Composition of acquisition, core execution and staged publication."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/command.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Private binary argument grammar; inline flags compile to the core plan."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/input.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Adapter-owned source/run specifications and strict decoding."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/publication.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Bounded staging and native atomic file publication."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/evidence.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Borrowed field-selected evidence under its separate serialization bound."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/operation_metadata.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "One CLI help/discovery vocabulary; no extraction semantics."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+
+[[rules]]
+path = "crates/htmlcut-cli/src/input/"
+match = "prefix"
+role = "cli-acquisition"
+owner = "HTMLCut extraction contract"
+rationale = "Bounded GET acquisition and compression; URL metadata remains adapter-owned."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "input", "http"]
+
+[[rules]]
+path = "patches/rust/scraper/src/html/bounded.rs"
+match = "exact"
+role = "parser-resource-boundary"
+owner = "HTMLCut extraction contract"
+rationale = "Construction-time allocation, attachment/depth and work limits stop the maintained parser before further governed work."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "html", "node"]
+
+[[rules]]
+path = "patches/rust/scraper/src/element_ref/filtered.rs"
+match = "exact"
+role = "serializer-resource-boundary"
+owner = "HTMLCut extraction contract"
+rationale = "Streaming read-only DOM serialization with shared work accounting and immutable exclusions."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "element_ref", "node"]

@@ -590,6 +590,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "errno"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -733,10 +743,12 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "htmlcut-cli"
-version = "14.0.0"
+version = "15.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "encoding_rs",
+ "flate2",
  "htmlcut-core",
  "htmlcut-scraper",
  "htmlcut-tempdir",
@@ -747,18 +759,19 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "shell-words",
+ "tempfile",
  "thiserror",
+ "ureq",
  "url",
 ]
 
 [[package]]
 name = "htmlcut-core"
-version = "14.0.0"
+version = "15.0.0"
 dependencies = [
  "boon",
  "cssparser",
  "ego-tree",
- "encoding_rs",
  "htmlcut-scraper",
  "htmlcut-selectors",
  "htmlcut-tempdir",
@@ -768,16 +781,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ureq",
  "url",
 ]
 
 [[package]]
 name = "htmlcut-fuzz"
-version = "14.0.0"
+version = "15.0.0"
 dependencies = [
  "arbitrary",
- "htmlcut-cli",
  "htmlcut-core",
  "libfuzzer-sys",
  "url",
@@ -843,7 +854,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-tempdir"
-version = "14.0.0"
+version = "15.0.0"
 
 [[package]]
 name = "htmlcut-tendril"
@@ -1101,6 +1112,12 @@ dependencies = [
  "arbitrary",
  "cc",
 ]
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "litemap"
@@ -1549,6 +1566,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rustls"
 version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1921,6 +1951,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tempfile"
+version = "3.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
+dependencies = [
+ "fastrand",
+ "getrandom 0.4.3",
+ "once_cell",
+ "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2072,7 +2115,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc"
 dependencies = [
  "base64 0.23.1",
- "flate2",
  "log",
  "percent-encoding",
  "rustls",
@@ -2396,10 +2438,9 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "14.0.0"
+version = "15.0.0"
 dependencies = [
  "clap",
- "htmlcut-cli",
  "htmlcut-core",
  "htmlcut-tempdir",
  "regex",
