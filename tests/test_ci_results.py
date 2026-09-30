@@ -38,3 +38,13 @@ class PolicyTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class WorkflowTest(unittest.TestCase):
+    def test_aggregate_runner_checks_out_its_validator_before_execution(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/ci.yml').read_text()
+        aggregate = workflow.split('\n  check:\n', 1)[1]
+        checkout = aggregate.index('uses: actions/checkout@')
+        execute = aggregate.index('run: python3 scripts/check-ci-results.py')
+        self.assertLess(checkout, execute)
+        self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', aggregate)
+        self.assertIn('JOB_RESULTS: ${{ toJSON(needs) }}', aggregate)
