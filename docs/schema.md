@@ -4,8 +4,8 @@ version: "15.0.0"
 domain: SCHEMA
 updated: "2026-09-30"
 route:
-  keywords: [schema registry, maintainer gate report, htmlcut.gate_run, htmlcut.plan, htmlcut.result, htmlcut.error, htmlcut-json-schema-v2, HtmlInput, plain_text, dom_canonicalization, comparison_text_output, schema inventory]
-  questions: ["what schemas does HTMLCut export?", "what is the HTMLCut maintainer gate report schema?", "what are the htmlcut-v2 schema names?", "why is HtmlInput not in the schema registry?", "which interop schema versions carry plain text and DOM canonicalization?"]
+  keywords: [schemas, extraction plans, results, errors, discovery]
+  questions: ["What are the current named schemas?"]
 ---
 
 # Schemas

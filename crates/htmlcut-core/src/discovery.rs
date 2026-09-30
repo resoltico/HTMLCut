@@ -189,20 +189,12 @@ impl PreparedDocument {
         )?;
         let budget = SelectorWorkBudget::new(crate::ExecutionLimits::default().max_work);
         let document = self.document()?;
-        let mut seen = 0;
-        let mut target = None;
-        for node in document.tree.root().descendants() {
-            crate::execution::charge(&budget, 1)?;
-            let Some(element) = ElementRef::wrap(node) else {
-                continue;
-            };
-            if seen == ordinal {
-                target = Some(element);
-                break;
-            }
-            seen += 1;
-        }
-        let target = target.ok_or_else(stale)?;
+        let id = *self
+            .element_ids()?
+            .get(ordinal as usize)
+            .ok_or_else(stale)?;
+        crate::execution::charge(&budget, 1)?;
+        let target = ElementRef::wrap(document.tree.get(id).unwrap()).unwrap();
         let mut components = Vec::new();
         let mut total = 0;
         for node in std::iter::once(*target).chain(target.ancestors()) {
@@ -261,21 +253,24 @@ impl PreparedDocument {
         let budget = SelectorWorkBudget::new(crate::ExecutionLimits::default().max_work);
         let document = self.document()?;
         let mut elements = Vec::new();
-        let mut ordinal = 0_u32;
-        let mut next_cursor = None;
-        for node in document.tree.root().descendants() {
+        let ids = self.element_ids()?;
+        if start as usize > ids.len() {
+            return Err(stale());
+        }
+        let stop = (start as usize + page_size as usize).min(ids.len());
+        let next_cursor = if stop < ids.len() {
+            Some(token(
+                self.prepared_sha256(),
+                &options,
+                stop as u32,
+                "cursor",
+            )?)
+        } else {
+            None
+        };
+        for (ordinal, id) in ids.iter().enumerate().take(stop).skip(start as usize) {
             crate::execution::charge(&budget, 1)?;
-            let Some(element) = ElementRef::wrap(node) else {
-                continue;
-            };
-            if ordinal < start {
-                ordinal += 1;
-                continue;
-            }
-            if elements.len() == page_size as usize {
-                next_cursor = Some(token(self.prepared_sha256(), &options, ordinal, "cursor")?);
-                break;
-            }
+            let element = ElementRef::wrap(document.tree.get(*id).unwrap()).unwrap();
             let (preview, complete) = text_preview(element, 64, &budget)?;
             if element.value().name().len() > 128 {
                 return Err(ExtractionError::limit("discovery"));
@@ -300,17 +295,13 @@ impl PreparedDocument {
                 });
             }
             elements.push(ElementDescriptor {
-                handle: token(self.prepared_sha256(), &options, ordinal, "handle")?,
+                handle: token(self.prepared_sha256(), &options, ordinal as u32, "handle")?,
                 tag: element.value().name().into(),
                 attributes,
                 attributes_complete,
                 preview,
                 complete,
             });
-            ordinal += 1;
-        }
-        if start > ordinal {
-            return Err(stale());
         }
         Ok(InspectionResult {
             schema: "htmlcut.inspection".into(),

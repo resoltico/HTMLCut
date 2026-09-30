@@ -75,10 +75,9 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  contributor-devcontainer:
-    name: Contributor devcontainer gate
+  linux-maintainer:
+    name: Linux full maintainer gate
     needs: [devcontainer-changes]
-    if: needs.devcontainer-changes.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -88,13 +87,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Validate contributor devcontainer contract
-        shell: bash
-        run: ./scripts/validate-devcontainer.sh
-
       - name: Run full maintainer gate through contributor devcontainer
         shell: bash
         run: ./scripts/devcontainer-check.sh
+
+  contributor-devcontainer:
+    name: Contributor environment validation
+    needs: [devcontainer-changes]
+    if: needs.devcontainer-changes.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate contributor environment
+        shell: bash
+        run: |
+          ./scripts/validate-devcontainer.sh
+          docker build --file .devcontainer/Dockerfile .devcontainer
 
   cross-platform-rust-gate:
     name: Cross-platform Rust gate (${{ matrix.id }})
@@ -235,8 +244,10 @@ jobs:
     name: Check
     if: always()
     needs:
+      - release-target-matrix
       - devcontainer-changes
       - contributor-devcontainer
+      - linux-maintainer
       - cross-platform-rust-gate
       - release-target-smoke
     runs-on: ubuntu-24.04
@@ -246,15 +257,5 @@ jobs:
       - name: Confirm aggregate gate success
         shell: bash
         env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
-        run: |
-          set -euo pipefail
-          if echo "$RESULTS" | grep -q '"failure"'; then
-            echo "A required job failed."
-            exit 1
-          fi
-          if echo "$RESULTS" | grep -q '"cancelled"'; then
-            echo "A required job was cancelled."
-            exit 1
-          fi
-          echo "All required jobs passed or were skipped."
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python3 scripts/check-ci-results.py

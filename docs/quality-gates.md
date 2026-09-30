@@ -460,3 +460,5 @@ single-ref CI worktrees — the watched-path probe falls back cleanly to `HEAD` 
 misreporting a Git-ref failure as the real gate result.
 The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you
 want to run the full maintainer gate through the committed contributor container.
+
+The required Linux full maintainer lane runs on every relevant PR/push, independently of contributor-environment path filters. Environment validation is conditional and does not duplicate the full suite. The `Check` summary requires each named mandatory job to succeed; only the explicitly conditional environment job may skip. Python policy/source/changelog tests run inside the full gate.

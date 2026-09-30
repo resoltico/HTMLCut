@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "14.0.0"
+  version: "15.0.0"
   domain: DEPENDENCY
   updated: "2026-09-24"
 RETRIEVAL_HINTS:
@@ -59,3 +59,7 @@ shared-memory, and Gecko refcount-logging feature surfaces stay trimmed so the m
 When upstream publishes a clean stack, restore the registry-backed `scraper` dependency in
 [Cargo.toml](../Cargo.toml), remove the vendored `htmlcut-*` path packages under `patches/rust/`,
 and confirm that `cargo xtask miri` still passes.
+
+## `rust/sha2`
+
+The direct `htmlcut-sha2` dependency retains RustCrypto SHA-2 0.11.0 and its MIT/Apache licensing. Eight ARM64 SHA-256 NEON constant-load pointers now originate from complete four-u32 slices, fixing the borrow-range violation detected during snapshot hashing by strict-provenance Miri. Algorithm, hardware backend and Miri flags are unchanged. Independent identity vectors and the maintained Miri selector/slice proof pass with the corrected dependency. See [patch provenance](rust/sha2/HTMLCUT-PATCH.md).

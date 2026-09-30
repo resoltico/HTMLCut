@@ -4,8 +4,8 @@ version: "15.0.0"
 domain: OPERATIONS
 updated: "2026-09-30"
 route:
-  keywords: [operation matrix, operation catalog, elements.explore, target.propose, select.extract, slice.extract, source.inspect, interop boundary, change contract]
-  questions: ["what are HTMLCut's canonical operations?", "which surfaces must stay aligned when an operation changes?", "why is interop v2 not an operation id?"]
+  keywords: [operations, extract, run, inspect, describe, schema]
+  questions: ["What operations does the CLI expose?"]
 ---
 
 # Operations

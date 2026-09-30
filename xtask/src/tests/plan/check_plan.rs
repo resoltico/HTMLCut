@@ -92,7 +92,7 @@ fn check_plan_includes_all_strict_gates() {
                 "test",
                 "-p",
                 "htmlcut-core",
-                "tests::interop_v2::surface::exploration::resource_limits::million_element_page_exhaustion_advances_and_a_tail_page_terminates",
+                "tests::discovery::million_element_pagination_reaches_the_tail_and_terminates",
                 "--lib",
                 "--all-features",
                 "--locked",

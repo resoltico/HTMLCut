@@ -4,6 +4,14 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Intended for 15.0.0
+
+- Replace overlapping extraction contracts with one pure immutable-snapshot core, reusable compiled plans and lazy bounded DOM preparation.
+- Make single/literal DOM text the default; preserve explicit structural text, original source slices, strict guards and compact deterministic results.
+- Move bounded GET acquisition and strict decoding to the binary CLI; saved URL runs keep runtime environment references instead of transient values.
+- Remove heuristic reader suppression, legacy adapters/aliases and the CLI Rust library; preserve parser/selector safeguards and native distribution.
+- Repair numeric SemVer classification, always-required Linux maintainer verification and immutable-source/changelog release publication.
+
 ## [14.0.0] - 2026-09-24
 
 ### Added

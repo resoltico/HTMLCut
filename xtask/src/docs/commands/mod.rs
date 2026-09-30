@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+mod http_fixture;
 mod parsing;
 mod process;
 mod runtime;

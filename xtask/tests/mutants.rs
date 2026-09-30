@@ -1,5 +1,9 @@
 #![forbid(unsafe_code)]
 
+#[cfg(unix)]
+#[path = "mutants/scope.rs"]
+mod scope;
+
 use std::fs;
 use std::process::Command;
 
@@ -161,94 +165,6 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     );
     assert!(workflow.contains("./scripts/summarize-mutation-results.sh"));
     assert!(!workflow.contains("expected outcomes from 16 shards"));
-}
-
-#[cfg(unix)]
-#[test]
-fn mutation_scope_verifier_tracks_cargo_default_members_and_rejects_drift() {
-    let root = tempdir().expect("scope verifier fixture");
-    let valid_path = root.path().join("valid-mutants.json");
-    let invalid_path = root.path().join("invalid-mutants.json");
-    let mut members = default_runtime_members();
-    members.extend(mutation_tooling_members());
-    let mut mutants = members
-        .iter()
-        .map(|(package, member_path)| {
-            json!({
-                "package": package,
-                "file": format!("{member_path}/src/lib.rs"),
-            })
-        })
-        .collect::<Vec<_>>();
-    mutants.extend([
-        json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/work_budget.rs"}),
-        json!({"package": "htmlcut-scraper", "file": "patches/rust/scraper/src/html/clone.rs"}),
-        json!({"package": "htmlcut-scraper", "file": "patches/rust/scraper/src/selector/budget.rs"}),
-    ]);
-    fs::write(
-        &valid_path,
-        serde_json::to_vec(&mutants).expect("serialize valid mutation fixture"),
-    )
-    .expect("write valid mutation fixture");
-    let mut invalid_mutants = mutants;
-    invalid_mutants.pop();
-    fs::write(
-        &invalid_path,
-        serde_json::to_vec(&invalid_mutants).expect("serialize invalid mutation fixture"),
-    )
-    .expect("write invalid mutation fixture");
-
-    for (path, expected_success) in [(valid_path, true), (invalid_path, false)] {
-        let output = Command::new("bash")
-            .arg(repo_root().join("scripts").join("verify-mutation-scope.sh"))
-            .arg(&path)
-            .output()
-            .expect("run mutation scope verifier");
-        assert_eq!(
-            output.status.success(),
-            expected_success,
-            "scope verifier stderr:\n{}\nfixture:\n{}",
-            String::from_utf8_lossy(&output.stderr),
-            // The fixture is included only when this regression fails, to make metadata/path drift actionable.
-            fs::read_to_string(path).expect("read scope verifier fixture")
-        );
-    }
-}
-
-#[cfg(unix)]
-fn two_shard_plan() -> Value {
-    json!([
-        {
-            "selector": "0/2",
-            "artifact_name": "cargo-mutants-shard-0-of-2"
-        },
-        {
-            "selector": "1/2",
-            "artifact_name": "cargo-mutants-shard-1-of-2"
-        }
-    ])
-}
-
-#[cfg(unix)]
-fn generated_shard_plan() -> Value {
-    generated_shard_plan_with_total(None)
-}
-
-#[cfg(unix)]
-fn generated_shard_plan_with_total(shard_total: Option<usize>) -> Value {
-    let mut command = Command::new("bash");
-    command.arg(repo_root().join("scripts").join("mutation-shard-plan.sh"));
-    if let Some(shard_total) = shard_total {
-        command.arg(shard_total.to_string());
-    }
-    let output = command.output().expect("run mutation shard plan");
-    assert!(
-        output.status.success(),
-        "mutation shard plan failed:\n{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    serde_json::from_slice::<Value>(&output.stdout).expect("parse mutation shard plan")
 }
 
 #[cfg(unix)]
@@ -497,4 +413,40 @@ fn mutation_summary_rejects_an_upload_that_flattened_the_mutants_out_root() {
         "flattened artifact layout must fail"
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("mutants.out/outcomes.json"));
+}
+
+#[cfg(unix)]
+fn generated_shard_plan() -> Value {
+    generated_shard_plan_with_total(None)
+}
+
+#[cfg(unix)]
+fn generated_shard_plan_with_total(shard_total: Option<usize>) -> Value {
+    let mut command = Command::new("bash");
+    command.arg(repo_root().join("scripts").join("mutation-shard-plan.sh"));
+    if let Some(shard_total) = shard_total {
+        command.arg(shard_total.to_string());
+    }
+    let output = command.output().expect("run mutation shard plan");
+    assert!(
+        output.status.success(),
+        "mutation shard plan failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    serde_json::from_slice::<Value>(&output.stdout).expect("parse mutation shard plan")
+}
+
+#[cfg(unix)]
+fn two_shard_plan() -> Value {
+    json!([
+        {
+            "selector": "0/2",
+            "artifact_name": "cargo-mutants-shard-0-of-2"
+        },
+        {
+            "selector": "1/2",
+            "artifact_name": "cargo-mutants-shard-1-of-2"
+        }
+    ])
 }

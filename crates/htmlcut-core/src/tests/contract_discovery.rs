@@ -87,3 +87,44 @@ fn t23_proposals_are_suggestions_and_require_explicit_plan_adoption() {
     );
     assert_eq!(document.parse_count(), 1);
 }
+
+#[test]
+#[ignore = "large resource acceptance runs once in the full maintainer gate"]
+fn million_element_pagination_reaches_the_tail_and_terminates() {
+    let html = format!("{}<p>TAIL</p>", "<i>x</i>".repeat(999_996));
+    let limits = PreparationLimits {
+        max_elements: 1_000_000,
+        max_nodes: 4_000_000,
+        max_parse_work: 100_000_000,
+        ..Default::default()
+    };
+    let document = PreparedDocument::new(
+        SourceSnapshot::new(html, SnapshotMetadata::default()).unwrap(),
+        limits,
+    )
+    .unwrap();
+    let mut cursor = None;
+    let mut total = 0;
+    let mut tail = false;
+    loop {
+        let page = document.inspect(100, cursor.as_deref()).unwrap();
+        assert!(!page.elements.is_empty());
+        for element in &page.elements {
+            let token: serde_json::Value = serde_json::from_str(&element.handle).unwrap();
+            assert_eq!(token["position"], total);
+            total += 1;
+            if element.tag == "p" {
+                assert_eq!(element.preview, "TAIL");
+                tail = true;
+            }
+        }
+        if page.next_cursor.is_none() {
+            break;
+        }
+        assert_ne!(cursor, page.next_cursor);
+        cursor = page.next_cursor;
+    }
+    assert_eq!(total, 1_000_000);
+    assert!(tail);
+    assert_eq!(document.parse_count(), 1);
+}

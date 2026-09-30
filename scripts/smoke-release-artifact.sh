@@ -173,7 +173,7 @@ main() {
         [[ -x "${binary_path}" ]] || htmlcut_die "packaged binary is not executable: ${binary_path}"
     fi
 
-    "${binary_path}" --version | tr -d '\r' | grep "^HTMLCut ${version}$"
+    "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
     local smoke_dir="${extract_root}/smoke-fixture"
     local fixture_path="${smoke_dir}/page.html"
     local request_path="${smoke_dir}/article-links.json"
@@ -182,21 +182,21 @@ main() {
 
     local first_output
     first_output="$(
-        "${binary_path}" select "${fixture_path}" \
+        "${binary_path}" extract --file "${fixture_path}" \
             --css 'article a.more' \
-            --value attribute \
+            --projection attribute \
             --attribute href \
-            --emit-request-file "${request_path}" \
+            --save-run "${request_path}" --raw \
             | tr -d '\r'
     )"
-    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit request file ${request_path}"
+    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit saved run ${request_path}"
     [[ "${first_output}" == "../guide.html" ]] || htmlcut_die \
         "packaged binary returned unexpected extraction output: ${first_output}"
 
     local replay_output
-    replay_output="$("${binary_path}" select --request-file "${request_path}" | tr -d '\r')"
+    replay_output="$("${binary_path}" run "${request_path}" --raw | tr -d '\r')"
     [[ "${replay_output}" == "${first_output}" ]] || htmlcut_die \
-        "request-file replay drifted: expected ${first_output}, got ${replay_output}"
+        "saved-run replay drifted: expected ${first_output}, got ${replay_output}"
 
     printf 'Smoke-tested %s\n' "${package_name}"
 }

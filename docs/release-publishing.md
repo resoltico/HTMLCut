@@ -212,3 +212,5 @@ The release workflow already performs runtime smoke on each target's native runn
 post-release command above is an additional asset-integrity check plus a host-native runtime
 verification step for the maintained Unix-like maintainer hosts: Apple Silicon macOS, Intel macOS,
 and x86_64 Linux.
+
+Release jobs resolve the requested immutable tag commit once and every archive/native/publication job checks out that SHA. Source packaging accepts an explicit ref through `scripts/build-source-archives.sh`. Notes come exclusively from the exact version section of the source revision's changelog through `scripts/release-notes.py`; absent, duplicate and empty sections fail. Unreleased preview is explicitly nonpublishing. Publication remains separately authorized.

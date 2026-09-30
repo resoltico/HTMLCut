@@ -2,7 +2,7 @@
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
-pub fn invoke(args: &[&str], input: &[u8]) -> Output {
+pub(crate) fn invoke(args: &[&str], input: &[u8]) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_htmlcut"))
         .args(args)
         .stdin(Stdio::piped())

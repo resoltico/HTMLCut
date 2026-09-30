@@ -82,10 +82,15 @@ fn invalid_base() -> ExtractionError {
 pub struct PreparedDocument {
     pub(crate) snapshot: SourceSnapshot,
     pub(crate) limits: PreparationLimits,
-    dom: OnceCell<Result<Html, ExtractionError>>,
+    dom: OnceCell<Result<PreparedDom, ExtractionError>>,
     digest: String,
     #[cfg(test)]
     parses: std::cell::Cell<u32>,
+}
+
+struct PreparedDom {
+    html: Html,
+    elements: Vec<ego_tree::NodeId>,
 }
 
 impl PreparedDocument {
@@ -125,12 +130,12 @@ impl PreparedDocument {
     pub fn prepared_sha256(&self) -> &str {
         &self.digest
     }
-    pub(crate) fn document(&self) -> Result<&Html, ExtractionError> {
+    fn prepared_dom(&self) -> Result<&PreparedDom, ExtractionError> {
         self.dom
             .get_or_init(|| {
                 #[cfg(test)]
                 self.parses.set(self.parses.get() + 1);
-                Html::parse_document_bounded(
+                Html::parse_document_indexed(
                     self.snapshot.html(),
                     ParseLimits {
                         elements: self.limits.max_elements,
@@ -139,10 +144,17 @@ impl PreparedDocument {
                         work: self.limits.max_parse_work,
                     },
                 )
+                .map(|(html, elements)| PreparedDom { html, elements })
                 .map_err(|_| ExtractionError::limit("preparation"))
             })
             .as_ref()
             .map_err(Clone::clone)
+    }
+    pub(crate) fn document(&self) -> Result<&Html, ExtractionError> {
+        self.prepared_dom().map(|dom| &dom.html)
+    }
+    pub(crate) fn element_ids(&self) -> Result<&[ego_tree::NodeId], ExtractionError> {
+        self.prepared_dom().map(|dom| dom.elements.as_slice())
     }
     #[cfg(test)]
     pub(crate) fn parse_count(&self) -> u32 {

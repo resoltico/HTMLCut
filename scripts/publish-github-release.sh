@@ -42,7 +42,7 @@ ensure_release_draft_exists() {
 
     if gh release create "${tag_name}" \
         --title "${tag_name}" \
-        --generate-notes \
+        --notes-file "${notes_file}" \
         --draft \
         --verify-tag >/dev/null 2>&1; then
         return
@@ -125,6 +125,9 @@ main() {
     [[ -n "${GH_TOKEN:-}" ]] || htmlcut_die "GH_TOKEN is required"
     htmlcut_assert_release_tag_matches_workspace_version "${tag_name}" "${version}"
 
+    notes_file="$(mktemp "${TMPDIR:-/tmp}/htmlcut-release-notes.XXXXXX")"
+    trap 'rm -f -- "${notes_file}"' EXIT
+    python3 "${script_dir}/release-notes.py" --ref "refs/tags/${tag_name}" --version "${version}" >"${notes_file}"
     ensure_release_draft_exists
 
     mapfile -t expected_assets < <(release_asset_names_for_version "${version}")

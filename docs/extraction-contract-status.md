@@ -12,7 +12,7 @@ route:
 
 Authority: [extraction-contract-spec.md](extraction-contract-spec.md).
 Starting revision: `b52ddadaab0c03a36a64de86e28b016ab56f6ac1`.
-Current committed checkpoint: `fabc814` (foundation; not release-ready).
+Current committed checkpoint: `60402d0` (foundation; not release-ready).
 Branch: `codex/extraction-contract-15`. Starting worktree was clean; origin/main was fetched and equals the starting revision.
 Current work unit: W2 foundation checkpoint established; W3/W4 fidelity, adapters and conformance remain in progress. W5 consumer/deletion/verification integration is next.
 Release status: not implemented; no merge/tag/publication authorized or performed.
@@ -94,3 +94,25 @@ The complete CLI package suite currently passes: 9 private unit tests plus 14 bi
 Disconnected old core and CLI production modules and wrapper-specific tests have been removed according to the ledger; frozen published baseline and historical input fixture data are retained. Product core/CLI/operation/schema/getting-started guides are rewritten; remaining README/index/operational docs and exact ownership/coverage/mutation fixtures still need reconciliation. Old integration wrappers were rewritten to the new black-box contract rather than preserving a CLI library.
 
 Next concrete commands: `cargo test --locked -p xtask --lib tests::docs::contracts -- --nocapture` to resolve the remaining documentation consumers; then `./scripts/xtask.sh structure check` and targeted coverage after removing stale ownership/exclusion entries. Complete all missing T29 budget triplets, parser/serializer boundary assertions and corpus/economics checks before claiming D/T verification. CI full-gate/source-revision/changelog repairs and full final campaigns remain unfinished. No PR, merge, tag, release or package publication has occurred.
+
+## Verification integration update
+
+The repository documentation contract now passes, including a real offline loopback saved-URL/run example. A Markdown link-check false positive inside code spans and operation-name false positives on filenames were corrected with regression coverage. Full xtask unit suite passed after removing stale exclusion assumptions (452 tests); later gate additions require fresh final verification.
+
+Indexed bounded preparation now records document-order element IDs under the same preparation work budget. Cursors/handles resolve directly through that index, avoiding rescans of prior pages. The new full-gate resource acceptance executes a real million-element test, reaches ordinal 999,999 and the TAIL element, terminates, and asserts one parse. It passed in 29.22 seconds. The old missing test filter is replaced in the gate plan.
+
+CI now has one required Linux full-maintainer lane for every relevant change and explicit required-job aggregation, with separate conditional environment validation. Tests cover each missing/failing/cancelled/skipped mandatory job and the ordinary core-only path. Release jobs pin one resolved source SHA; source archive and changelog-note extraction have disposable moving-main/tag fixture tests. Native smoke syntax and package examples are ported to the new CLI. These are implemented/partially tested repairs, not final runner/package/publication proof.
+
+Next: inspect current source-structure/release/Miri reports, close any failures, execute live bounded fuzz and start actual maintained coverage to identify missing branches. Corpus/economics, native runners, full mutation campaign and all-budget boundary triplets remain required. No release action is authorized or performed.
+
+## Strict-provenance repair
+
+The actual maintained Miri run found a SHA-2 0.11.0 ARM64 hardware-backend borrow-range violation in vector round-constant loads. Registry update confirmed no published patch upgrade. A direct branded `htmlcut-sha2` fork now uses full four-u32 slices for those eight pointers, carries upstream licenses and patch provenance, and travels with core consumers. No backend or Miri checks are disabled. Core identity/conformance tests pass; strict Miri subsequently passed all 11 gate steps at report `../.htmlcut-artifacts/gate-runs/run-1790765048982-88635-0/report.json`. This is development evidence, not final-candidate proof. Crypto native/upstream known-answer tests, downstream packaging and baseline-refresh ownership remain part of closure.
+
+## Goal-turn verification checkpoint
+
+Actual strict-provenance Miri passes after the downstream-safe SHA-2 ARM64 repair. The SHA-2 upstream integration tests pass 14 known-answer/random/serialization cases. All seven maintained live bounded fuzz targets ran 200 executions each and the fuzz-smoke gate passed 14 steps; report `../.htmlcut-artifacts/gate-runs/run-1790765269109-89729-0/report.json`. These proofs must be repeated/invalidation-checked for the final candidate.
+
+Four maintained Python CI/changelog/source-revision tests pass and are wired into the full maintainer plan. The million-element acceptance and Miri filters now reference real current tests. Source ownership removes only retired paths, and executable modules stay scored; an obsolete coverage-exclusion fixture was corrected to retain declarative inventory rather than restore exclusions. New parser/serializer boundaries are reconciled in mutation-scope configuration and verifier; all 11 mutation workflow integration tests pass.
+
+Coverage is in active diagnosis, not passing. Two actual all-targets runs exposed stale mutation-inventory and source-cohesion integration fixtures; both were repaired without changing thresholds. The subsequent maintained coverage run completed all workspace and owned-fork tests and produced a real line/branch ledger, then failed the genuine 100% bar on uncovered behavior. Report: `../.htmlcut-artifacts/gate-runs/run-1790766459178-9754-0/report.json`; per-file raw coverage: `../.htmlcut-artifacts/coverage-target/coverage.json`; bounded/full uncovered ledger is retained in the evidence root coverage stderr. Next action: inspect that ledger and add meaningful runtime/fault/budget assertions or remove proven unreachable design without weakening coverage policy. No process remains live for this run. Remaining final gates include full mutation campaign, source/package/native runner proof, licensed corpus/economics, all-budget triplets and release-ready PR/archive. No merge/tag/publication occurred.

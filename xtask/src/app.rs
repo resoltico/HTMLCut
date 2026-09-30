@@ -376,6 +376,27 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     if let Some(restored_manifest) =
         restore_vendored_dependency_paths_in_baseline_manifest(&cargo_toml)?
     {
+        let restored_manifest = if published_vendored_stack.join("sha2").exists() {
+            let mut manifest: toml::Value =
+                toml::from_str(&restored_manifest).map_err(|error| {
+                    crate::model::XtaskError::invalid_toml("normalized baseline", error)
+                })?;
+            let dependency = manifest
+                .get_mut("dependencies")
+                .and_then(toml::Value::as_table_mut)
+                .and_then(|dependencies| dependencies.get_mut("sha2"))
+                .and_then(toml::Value::as_table_mut)
+                .ok_or("published SHA-2 fork has no normalized core dependency")?;
+            dependency.insert("package".into(), toml::Value::String("htmlcut-sha2".into()));
+            dependency.insert("path".into(), toml::Value::String("vendor/sha2".into()));
+            dependency.insert(
+                "version".into(),
+                toml::Value::String("0.11.0-htmlcut.1".into()),
+            );
+            toml::to_string_pretty(&manifest)?
+        } else {
+            restored_manifest
+        };
         fs::write(&baseline_manifest, with_workspace_stub(&restored_manifest))?;
         copy_published_vendored_selector_stack(
             &published_vendored_stack,
@@ -398,6 +419,12 @@ fn copy_published_vendored_selector_stack(
         copy_directory_recursively(
             &source_stack_root.join(directory),
             &destination_stack_root.join(directory),
+        )?;
+    }
+    if source_stack_root.join("sha2").exists() {
+        copy_directory_recursively(
+            &source_stack_root.join("sha2"),
+            &destination_stack_root.join("sha2"),
         )?;
     }
     Ok(())

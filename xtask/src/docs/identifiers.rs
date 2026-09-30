@@ -45,7 +45,7 @@ pub(super) fn operation_identifier_errors(
     let unknown_identifiers = pattern
         .find_iter(text)
         .map(|matched| matched.as_str())
-        .filter(|identifier| !identifier.starts_with("htmlcut."))
+        .filter(|identifier| !identifier.starts_with("htmlcut.") && !identifier.ends_with(".md"))
         .filter(|identifier| !operation_ids.contains(identifier))
         .filter(|identifier| {
             identifier
