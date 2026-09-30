@@ -125,19 +125,23 @@ mod tests {
     #[test]
     fn supervisor_allows_a_completed_child_when_pruning_and_headroom_are_healthy() {
         let output_root = tempdir().expect("output root");
-        #[cfg(unix)]
-        let mut command = Command::new("sh");
-        #[cfg(unix)]
-        command.args(["-c", "exit 0"]);
-        #[cfg(windows)]
-        let mut command = Command::new("cmd");
-        #[cfg(windows)]
-        command.args(["/C", "exit 0"]);
+        let marker = output_root.path().join("headroom.checked");
+        let mut command = Command::new(std::env::current_exe().expect("test executable"));
+        command.args([
+            "--exact",
+            "mutants::local::workspace::runner::child_tests::child_waits_for_headroom_marker",
+            "--ignored",
+            "--nocapture",
+        ]);
+        command.env("HTMLCUT_SUPERVISOR_MARKER", &marker);
         let status = supervise_worker_with(
             &mut command,
             output_root.path(),
             |_| Ok(()),
-            || Ok(()),
+            || {
+                std::fs::write(&marker, b"checked")?;
+                Ok(())
+            },
             Duration::ZERO,
         )
         .expect("healthy supervision");
@@ -189,3 +193,7 @@ mod tests {
         assert!(child.try_wait().expect("poll child").is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "runner/tests.rs"]
+mod child_tests;
