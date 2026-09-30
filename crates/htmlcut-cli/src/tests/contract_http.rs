@@ -203,3 +203,66 @@ fn t04_transient_url_persistence_is_rejected_before_network_io() {
             .contains("SYNTHETIC_SENTINEL")
     );
 }
+
+#[test]
+fn t03_transport_failures_and_invalid_response_metadata_are_bounded_and_redacted() {
+    let failed =
+        b"HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".to_vec();
+    let (url, worker) = serve(vec![failed]);
+    let (code, out, error) = invoke(&["htmlcut", "extract", "--url", &url, "--css", "p"], b"");
+    assert_eq!(code, 5);
+    assert!(out.is_empty());
+    assert!(
+        !String::from_utf8(error)
+            .unwrap()
+            .contains("SYNTHETIC_SENTINEL")
+    );
+    worker.join().unwrap();
+    for bytes in [b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: \xff\r\nContent-Length: 0\r\n\r\n".to_vec(),
+        b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Encoding: \xff\r\nContent-Length: 0\r\n\r\n".to_vec()] {
+        let (url,worker)=serve(vec![bytes]);let (code,out,_)=invoke(&["htmlcut","extract","--url",&url,"--css","p"],b"");
+        assert_eq!(code,5);assert!(out.is_empty());worker.join().unwrap();
+    }
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--url",
+            "http://127.0.0.1:1/?secret=SYNTHETIC_SENTINEL",
+            "--css",
+            "p",
+        ],
+        b"",
+    );
+    assert_eq!(code, 5);
+    assert!(out.is_empty());
+    assert!(
+        !String::from_utf8(error)
+            .unwrap()
+            .contains("SYNTHETIC_SENTINEL")
+    );
+}
+
+#[test]
+fn t03_explicit_caller_encoding_overrides_conflicting_http_labels() {
+    let (url, worker) = serve(vec![response(
+        b"<p>\x80</p>",
+        "Content-Type: text/html; charset=utf-8; charset=unknown\r\n",
+    )]);
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--url",
+            &url,
+            "--encoding",
+            "windows-1252",
+            "--css",
+            "p",
+            "--raw",
+        ],
+        b"",
+    );
+    assert_eq!((code, out, error), (0, "€".as_bytes().to_vec(), Vec::new()));
+    worker.join().unwrap();
+}

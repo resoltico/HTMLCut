@@ -263,3 +263,31 @@ fn t29_selector_comments_and_quoted_delimiters_do_not_spend_nesting_budget() {
     }
     assert!(CompiledPlan::compile(&ExtractionPlan::css("p/* unterminated").unwrap()).is_ok());
 }
+
+#[test]
+fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_parser() {
+    let plan = ExtractionPlan::css("p /* *content */").unwrap();
+    assert_eq!(
+        prepared("<p>value</p>")
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        ["value"]
+    );
+    let plan = ExtractionPlan::css("p / div").unwrap();
+    assert_eq!(
+        CompiledPlan::compile(&plan).err().unwrap().code,
+        ErrorCode::InvalidSelector
+    );
+    assert_eq!(
+        SourceSnapshot::new(
+            "",
+            SnapshotMetadata {
+                base_url: Some("https://:synthetic@example.test".into())
+            }
+        )
+        .unwrap_err()
+        .code,
+        ErrorCode::InvalidBaseUrl
+    );
+}

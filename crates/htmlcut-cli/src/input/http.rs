@@ -7,13 +7,21 @@ use url::Url;
 
 use super::*;
 
+#[cfg(test)]
+#[path = "http/tests.rs"]
+mod tests;
+
 const MAX_REDIRECTS: usize = 5;
 const MAX_TRANSFER: usize = 50 * 1024 * 1024;
+// Match the accepted snapshot metadata bound before any request is sent.
+const MAX_SOURCE_URL_BYTES: usize = 8 * 1024;
 
 pub(super) fn validated_url(value: &str) -> Result<Url, ExtractionError> {
+    if value.len() > MAX_SOURCE_URL_BYTES {
+        return Err(limit("acquisition"));
+    }
     let mut url = Url::parse(value).map_err(|_| options("The HTTP source URL is invalid."))?;
     if !matches!(url.scheme(), "http" | "https")
-        || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
     {
@@ -22,91 +30,203 @@ pub(super) fn validated_url(value: &str) -> Result<Url, ExtractionError> {
         ));
     }
     url.set_fragment(None);
+    if url.as_str().len() > MAX_SOURCE_URL_BYTES {
+        return Err(limit("acquisition"));
+    }
     Ok(url)
 }
 
-pub(super) fn fetch(value: &str) -> Result<(Vec<u8>, Option<String>, String), ExtractionError> {
-    let mut url = validated_url(value)?;
-    let deadline = Instant::now() + Duration::from_millis(15_000);
-    for redirects in 0..=MAX_REDIRECTS {
-        let remaining = deadline
-            .checked_duration_since(Instant::now())
-            .ok_or_else(|| limit("acquisition"))?;
+#[derive(Clone, Copy)]
+struct Policy {
+    redirects: usize,
+    transfer_bytes: usize,
+    decompressed_bytes: usize,
+    connect: Duration,
+    total: Duration,
+}
+impl Default for Policy {
+    fn default() -> Self {
+        Self {
+            redirects: MAX_REDIRECTS,
+            transfer_bytes: MAX_TRANSFER,
+            decompressed_bytes: MAX_SOURCE_BYTES,
+            connect: Duration::from_millis(5000),
+            total: Duration::from_millis(15000),
+        }
+    }
+}
+
+trait Clock {
+    fn now(&self) -> Instant;
+}
+struct SystemClock;
+impl Clock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+}
+
+struct Response {
+    status: u16,
+    location: Option<String>,
+    content_type: Option<String>,
+    encoding: Option<String>,
+    body: Box<dyn Read>,
+}
+trait Transport {
+    fn get(
+        &mut self,
+        url: &Url,
+        remaining: Duration,
+        connect: Duration,
+    ) -> Result<Response, ExtractionError>;
+}
+struct HttpTransport;
+impl Transport for HttpTransport {
+    fn get(
+        &mut self,
+        url: &Url,
+        remaining: Duration,
+        connect: Duration,
+    ) -> Result<Response, ExtractionError> {
         let config = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
             .max_redirects_will_error(false)
             .timeout_global(Some(remaining))
-            .timeout_connect(Some(remaining.min(Duration::from_millis(5_000))))
+            .timeout_connect(Some(remaining.min(connect)))
             .build();
         let agent: ureq::Agent = config.into();
-        let mut response = agent.get(url.as_str()).call().map_err(|error| {
-            if matches!(error, ureq::Error::Timeout(_)) {
-                limit("acquisition")
-            } else {
-                acquisition()
-            }
-        })?;
-        let status = response.status().as_u16();
-        if matches!(status, 301 | 302 | 303 | 307 | 308) {
-            if redirects == MAX_REDIRECTS {
+        let response = agent.get(url.as_str()).call().map_err(transport_error)?;
+        let header = |name| {
+            response
+                .headers()
+                .get(name)
+                .map(|v| v.to_str().map(str::to_owned))
+                .transpose()
+                .map_err(|_| acquisition())
+        };
+        Ok(Response {
+            status: response.status().as_u16(),
+            location: header("location")?,
+            content_type: header("content-type")?,
+            encoding: header("content-encoding")?,
+            body: Box::new(response.into_body().into_with_config().reader()),
+        })
+    }
+}
+fn transport_error(error: ureq::Error) -> ExtractionError {
+    if matches!(error, ureq::Error::Timeout(_)) {
+        limit("acquisition")
+    } else {
+        acquisition()
+    }
+}
+
+pub(super) struct Acquired {
+    pub(super) bytes: Vec<u8>,
+    pub(super) charset: Option<String>,
+    pub(super) final_url: String,
+    pub(super) deadline: Instant,
+}
+
+pub(super) fn fetch(value: &str, explicit_encoding: bool) -> Result<Acquired, ExtractionError> {
+    fetch_with(
+        value,
+        explicit_encoding,
+        Policy::default(),
+        &SystemClock,
+        &mut HttpTransport,
+    )
+}
+
+fn fetch_with(
+    value: &str,
+    explicit_encoding: bool,
+    policy: Policy,
+    clock: &impl Clock,
+    transport: &mut impl Transport,
+) -> Result<Acquired, ExtractionError> {
+    let hard = Policy::default();
+    if policy.redirects > hard.redirects
+        || policy.transfer_bytes == 0
+        || policy.transfer_bytes > hard.transfer_bytes
+        || policy.decompressed_bytes == 0
+        || policy.decompressed_bytes > hard.decompressed_bytes
+        || policy.connect.is_zero()
+        || policy.connect > hard.connect
+        || policy.total.is_zero()
+        || policy.total > hard.total
+    {
+        return Err(options(
+            "HTTP acquisition limits are outside the supported range.",
+        ));
+    }
+    let mut url = validated_url(value)?;
+    let deadline = clock.now() + policy.total;
+    let mut redirects = 0;
+    loop {
+        let remaining = deadline
+            .checked_duration_since(clock.now())
+            .filter(|value| !value.is_zero())
+            .ok_or_else(|| limit("acquisition"))?;
+        let response = transport.get(&url, remaining, policy.connect)?;
+        if matches!(response.status, 301 | 302 | 303 | 307 | 308) {
+            if redirects == policy.redirects {
                 return Err(limit("redirect"));
             }
-            let location = response
-                .headers()
-                .get("location")
-                .and_then(|value| value.to_str().ok())
-                .ok_or_else(acquisition)?;
+            let location = response.location.as_deref().ok_or_else(acquisition)?;
             let next = url.join(location).map_err(|_| acquisition())?;
             if url.scheme() == "https" && next.scheme() == "http" {
                 return Err(options(
                     "HTTPS-to-HTTP redirects require a policy this invocation has not enabled.",
                 ));
             }
-            // Every redirected request is built afresh; no authorization/cookie headers exist
-            // in this adapter to forward across origins, and userinfo is rejected again.
+            // A fresh GET is constructed for every redirect; no caller authentication/cookie
+            // headers are carried by this adapter, and redirected userinfo is rejected.
             url = validated_url(next.as_str())?;
+            redirects += 1;
             continue;
         }
-        if !(200..300).contains(&status) {
+        if !(200..300).contains(&response.status) {
             return Err(acquisition());
         }
-        let charset = charset(
-            response
-                .headers()
-                .get("content-type")
-                .map(|v| v.to_str())
-                .transpose()
-                .map_err(|_| acquisition())?,
-        )?;
+        let charset = if explicit_encoding {
+            None
+        } else {
+            charset(response.content_type.as_deref())?
+        };
         let compression = response
-            .headers()
-            .get("content-encoding")
-            .map(|v| v.to_str())
-            .transpose()
-            .map_err(|_| acquisition())?
+            .encoding
+            .as_deref()
             .unwrap_or("identity")
+            .trim()
             .to_ascii_lowercase();
-        let reader = response.body_mut().as_reader();
         let mut transfer = Transfer {
-            inner: reader,
+            inner: response.body,
             read: 0,
             deadline,
+            maximum: policy.transfer_bytes,
+            clock,
         };
-        let body = match compression.trim() {
-            "identity" | "" => read_bounded(&mut transfer, MAX_SOURCE_BYTES),
+        let body = match compression.as_str() {
+            "identity" | "" => read_bounded(&mut transfer, policy.decompressed_bytes),
             "gzip" => read_bounded(
                 &mut flate2::read::MultiGzDecoder::new(&mut transfer),
-                MAX_SOURCE_BYTES,
+                policy.decompressed_bytes,
             ),
             _ => return Err(acquisition()),
         };
-        if transfer.read > MAX_TRANSFER || Instant::now() >= deadline {
+        if transfer.read > policy.transfer_bytes || clock.now() >= deadline {
             return Err(limit("acquisition"));
         }
-        return Ok((body?, charset, url.into()));
+        return Ok(Acquired {
+            bytes: body?,
+            charset,
+            final_url: url.into(),
+            deadline,
+        });
     }
-    Err(limit("redirect"))
 }
 
 fn charset(content_type: Option<&str>) -> Result<Option<String>, ExtractionError> {
@@ -127,15 +247,17 @@ fn charset(content_type: Option<&str>) -> Result<Option<String>, ExtractionError
     Ok(charset)
 }
 
-struct Transfer<R> {
+struct Transfer<'a, R, C> {
     inner: R,
     read: usize,
     deadline: Instant,
+    maximum: usize,
+    clock: &'a C,
 }
 
-impl<R: Read> Read for Transfer<R> {
+impl<R: Read, C: Clock> Read for Transfer<'_, R, C> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        if Instant::now() >= self.deadline || self.read > MAX_TRANSFER {
+        if self.clock.now() >= self.deadline || self.read > self.maximum {
             return Err(std::io::Error::other(
                 "Acquisition resource limit exceeded.",
             ));
@@ -145,7 +267,7 @@ impl<R: Read> Read for Transfer<R> {
             .read
             .checked_add(size)
             .ok_or_else(|| std::io::Error::other("Transfer counter overflow."))?;
-        if self.read > MAX_TRANSFER {
+        if self.read > self.maximum {
             return Err(std::io::Error::other("Transfer byte limit exceeded."));
         }
         Ok(size)

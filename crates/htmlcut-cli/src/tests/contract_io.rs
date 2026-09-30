@@ -156,14 +156,21 @@ fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
         .unwrap();
     assert_eq!(std::fs::read(&target).unwrap(), b"replacement");
     assert!(
-        crate::publication::validate_destinations(&[target.clone()], &[target.clone()], true)
-            .is_err()
+        crate::publication::validate_destinations(
+            std::slice::from_ref(&target),
+            std::slice::from_ref(&target),
+            true
+        )
+        .is_err()
     );
     assert!(
         crate::publication::validate_destinations(&[], &[target.clone(), target.clone()], true)
             .is_err()
     );
-    assert!(crate::publication::validate_destinations(&[], &[target.clone()], false).is_err());
+    assert!(
+        crate::publication::validate_destinations(&[], std::slice::from_ref(&target), false)
+            .is_err()
+    );
     let blocked = root.path().join("directory");
     std::fs::create_dir(&blocked).unwrap();
     assert!(crate::publication::Staged::prepare(&blocked, b"x", true).is_err());
@@ -183,4 +190,29 @@ fn t31_symlink_destinations_cannot_follow_or_clobber_the_source() {
     std::os::unix::fs::symlink(&source, &alias).unwrap();
     assert!(crate::publication::Staged::prepare(&alias, b"changed", true).is_err());
     assert_eq!(std::fs::read_to_string(&source).unwrap(), "<p>180</p>");
+}
+
+#[test]
+fn t31_help_and_version_write_or_flush_failures_do_not_report_success() {
+    for option in ["--help", "--version"] {
+        for flush_only in [false, true] {
+            let mut writer = WriteFailure {
+                flush_only,
+                ..Default::default()
+            };
+            let mut error = Vec::new();
+            let code = app::run(
+                ["htmlcut", option],
+                &mut io::Cursor::new(b""),
+                &mut writer,
+                &mut error,
+            );
+            assert_eq!(code, 5);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&error).unwrap()["code"],
+                "publication"
+            );
+            assert!(!String::from_utf8_lossy(&error).contains("secret"));
+        }
+    }
 }

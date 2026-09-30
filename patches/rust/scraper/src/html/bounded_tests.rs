@@ -128,3 +128,203 @@ fn attachment_reparenting_work_is_finite_and_deep_trees_do_not_recurse() {
         Err(ParseLimitExceeded::Depth)
     );
 }
+
+#[test]
+fn direct_sink_operations_preserve_merging_reparenting_and_foster_boundaries() {
+    let sink = BoundedSink::new(limits());
+    let name = QualName::new(None, ns!(html), local_name!("div"));
+    let root = sink.get_document();
+    let parent = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&root, NodeOrText::AppendNode(parent));
+    sink.append(&parent, NodeOrText::AppendText(StrTendril::from("A")));
+    sink.append(&parent, NodeOrText::AppendText(StrTendril::from("B")));
+    let first = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&parent, NodeOrText::AppendNode(first));
+    sink.append_before_sibling(&first, NodeOrText::AppendText(StrTendril::from("C")));
+    let second = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&parent, NodeOrText::AppendNode(second));
+    let child = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&first, NodeOrText::AppendNode(child));
+    sink.reparent_children(&first, &second);
+    sink.add_attrs_if_missing(
+        &second,
+        vec![Attribute {
+            name: QualName::new(None, ns!(), local_name!("id")),
+            value: StrTendril::from("second"),
+        }],
+    );
+    sink.append_based_on_parent_node(
+        &first,
+        &parent,
+        NodeOrText::AppendText(StrTendril::from("D")),
+    );
+    let orphan = sink.create_element(name, Vec::new(), ElementFlags::default());
+    sink.append_based_on_parent_node(
+        &orphan,
+        &second,
+        NodeOrText::AppendText(StrTendril::from("E")),
+    );
+    sink.append_before_sibling(&orphan, NodeOrText::AppendText(StrTendril::from("ignored")));
+    sink.remove_from_parent(&first);
+    let (document, index) = sink.finish().unwrap();
+    let html = crate::ElementRef::wrap(document.tree.get(parent).unwrap())
+        .unwrap()
+        .html();
+    assert_eq!(html, "<div>ABCD<div id=\"second\"><div></div>E</div></div>");
+    assert_eq!(index.len(), 3);
+}
+
+#[test]
+fn sink_overflow_attachment_and_index_work_fail_before_governed_growth() {
+    let sink = BoundedSink::new(limits());
+    sink.nodes.set(u32::MAX);
+    assert!(!sink.allocate(1, 0));
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Nodes));
+    let sink = BoundedSink::new(limits());
+    sink.elements.set(u32::MAX);
+    assert!(!sink.allocate(0, 1));
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Elements));
+    let sink = BoundedSink::new(limits());
+    let root = sink.get_document();
+    let node = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("div")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    sink.append(&root, NodeOrText::AppendNode(node));
+    sink.remaining.set(0);
+    assert_eq!(sink.finish().unwrap_err(), ParseLimitExceeded::Work);
+    let sink = BoundedSink::new(limits());
+    let root = sink.get_document();
+    let node = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("div")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    sink.append(&root, NodeOrText::AppendNode(node));
+    sink.remaining.set(1);
+    assert!(!sink.attach(node, &NodeOrText::AppendText(StrTendril::from("x"))));
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Work));
+}
+
+#[test]
+fn template_fragment_allocation_is_charged_even_without_the_flag_hint() {
+    let mut policy = limits();
+    policy.nodes = 3;
+    let sink = BoundedSink::new(policy);
+    let template = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("template")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    assert_eq!(template, sink.sentinel);
+    assert_eq!(sink.nodes.get(), 2);
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Nodes));
+    let mut policy = limits();
+    policy.nodes = 4;
+    let sink = BoundedSink::new(policy);
+    let template = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("template")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    assert_ne!(template, sink.sentinel);
+    assert_eq!(sink.nodes.get(), 4);
+    assert_ne!(sink.get_template_contents(&template), sink.sentinel);
+}
+
+#[test]
+fn special_nodes_and_first_failure_obey_construction_limits() {
+    let sink = BoundedSink::new(limits());
+    let pi = sink.create_pi("target".into(), "data".into());
+    assert!(
+        sink.inner
+            .0
+            .borrow()
+            .tree
+            .get(pi)
+            .unwrap()
+            .value()
+            .as_processing_instruction()
+            .is_some()
+    );
+    let sink = BoundedSink::new(ParseLimits {
+        depth: 0,
+        ..limits()
+    });
+    let before = sink.nodes.get();
+    sink.append_doctype_to_document("html".into(), "".into(), "".into());
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Depth));
+    assert_eq!(sink.nodes.get(), before);
+    assert!(!sink.fail(ParseLimitExceeded::Nodes));
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Depth));
+    assert_eq!(sink.finish().unwrap_err(), ParseLimitExceeded::Depth);
+    assert_eq!(
+        Html::parse_document_bounded(
+            "<!doctype html>",
+            ParseLimits {
+                depth: 0,
+                ..limits()
+            }
+        ),
+        Err(ParseLimitExceeded::Depth)
+    );
+}
+
+#[test]
+fn foster_text_allocation_and_reparent_work_failure_leave_the_tree_unchanged() {
+    let name = QualName::new(None, ns!(html), local_name!("div"));
+    let sink = BoundedSink::new(limits());
+    let parent = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    let sibling = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&sink.get_document(), NodeOrText::AppendNode(parent));
+    sink.append(&parent, NodeOrText::AppendNode(sibling));
+    sink.append_before_sibling(&sibling, NodeOrText::AppendText("foster".into()));
+    assert_eq!(
+        sink.inner
+            .0
+            .borrow()
+            .tree
+            .get(sibling)
+            .unwrap()
+            .prev_sibling()
+            .unwrap()
+            .value()
+            .as_text()
+            .unwrap()
+            .text
+            .as_ref(),
+        "foster"
+    );
+    let sink = BoundedSink::new(ParseLimits {
+        nodes: 3,
+        ..limits()
+    });
+    let sibling = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+    sink.append(&sink.get_document(), NodeOrText::AppendNode(sibling));
+    sink.append_before_sibling(&sibling, NodeOrText::AppendText("too many".into()));
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Nodes));
+    assert_eq!(sink.nodes.get(), 3);
+    for work in [0, 1, 2] {
+        let sink = BoundedSink::new(limits());
+        let first = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+        let second = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+        let child = sink.create_element(name.clone(), Vec::new(), ElementFlags::default());
+        sink.append(&first, NodeOrText::AppendNode(child));
+        sink.remaining.set(work);
+        sink.reparent_children(&first, &second);
+        assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Work));
+        assert_eq!(
+            sink.inner
+                .0
+                .borrow()
+                .tree
+                .get(child)
+                .unwrap()
+                .parent()
+                .unwrap()
+                .id(),
+            first
+        );
+    }
+}

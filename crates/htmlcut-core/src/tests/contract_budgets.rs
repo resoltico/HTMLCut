@@ -304,3 +304,53 @@ fn t29_url_metadata_and_resolution_processing_are_bounded() {
         ErrorCode::ResourceLimit
     );
 }
+
+#[test]
+fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
+    let source = prepared(
+        "<article><!--comment--><h3>Header</h3><p>text<img alt='[alternative]'><a href='next'>link</a></p><ol reversed> stray<li>A</li><li>B</li></ol><pre>code<script>ignored</script><span class='omit'>discard</span><a href='```'>label</a><img alt='````'></pre><table><tr><th rowspan='2'>H</th><td colspan='3'>V</td></tr></table></article>",
+    );
+    let mut plan = ExtractionPlan::css("article").unwrap();
+    plan.projection = Projection::DocumentText;
+    plan.exclude = vec![".omit".into()];
+    let expected = "### Header\ntext\\[alternative\\][link](next)\n stray\n2. A\n1. B\n`````\ncode[label](```)````\n`````\n[table]\n[header] [rowspan=2] H | [colspan=3] V\n[/table]";
+    let complete = source
+        .execute(&CompiledPlan::compile(&plan).unwrap())
+        .unwrap();
+    assert_eq!(complete.values, [expected]);
+    for limit in 1..=expected.len() + 1 {
+        plan.limits.max_value_bytes = limit as u32;
+        let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
+        if limit < expected.len() {
+            assert_eq!(
+                result.unwrap_err().code,
+                ErrorCode::ResourceLimit,
+                "limit={limit}"
+            );
+        } else {
+            assert_eq!(result.unwrap().values, [expected]);
+        }
+    }
+    plan.limits.max_value_bytes = 1024;
+    let mut first_success = None;
+    for work in 1..500 {
+        plan.limits.max_work = work;
+        match source.execute(&CompiledPlan::compile(&plan).unwrap()) {
+            Ok(result) => {
+                assert_eq!(result.values, [expected]);
+                first_success = Some(work);
+                break;
+            }
+            Err(error) => assert_eq!(error.code, ErrorCode::ResourceLimit, "work={work}"),
+        }
+    }
+    let work = first_success.expect("finite shared rendering work");
+    plan.limits.max_work = work + 1;
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        [expected]
+    );
+}

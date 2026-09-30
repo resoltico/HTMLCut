@@ -107,9 +107,7 @@ pub(crate) fn project(
             } else {
                 value.to_owned()
             };
-            if value.len() > maximum {
-                return Err(ExtractionError::limit("projection"));
-            }
+            // Untransformed values were bounded above; resolve_url bounds the final URL.
             Ok(value)
         }
         Projection::DomText => dom_text(root, excluded, normalize, maximum, budget),

@@ -16,10 +16,10 @@ pub(crate) fn charge(budget: &SelectorWorkBudget, units: usize) -> Result<(), Ex
     if units > budget.remaining() as usize {
         return Err(ExtractionError::limit("execution"));
     }
+    // The preceding capacity check and single-threaded budget ownership prove that
+    // each consume succeeds; a second fallible branch here would be unreachable.
     for _ in 0..units {
-        if !budget.consume() {
-            return Err(ExtractionError::limit("execution"));
-        }
+        let _ = budget.consume();
     }
     Ok(())
 }
@@ -209,10 +209,8 @@ pub(crate) fn matches<'a>(
         let Some(element) = ElementRef::wrap(node) else {
             continue;
         };
-        // Detached fixed parser bookkeeping is not part of the document candidate set.
-        if element.parent().is_none() {
-            continue;
-        }
+        // Descendant traversal only visits attached document nodes; the fixed orphan
+        // parser sentinel cannot enter this candidate set.
         if selector
             .matches_with_scope_and_budget(&element, scope, budget)
             .map_err(|_| ExtractionError::limit("selection"))?

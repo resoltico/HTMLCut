@@ -55,3 +55,27 @@ fn t34_supplied_rendered_dom_is_data_and_scripts_are_never_executed() {
         ["Externally created one", "Externally created two"]
     );
 }
+
+#[test]
+fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
+    let html = include_str!("../../../../evaluation/corpus/malformed.html");
+    let source = prepared(html);
+    let mut plan = ExtractionPlan::css("main").unwrap();
+    let literal = "FirstSecondoutsideABTMUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}";
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        [literal]
+    );
+    plan.projection = Projection::DocumentText;
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        ["First\nSecondoutside\n[table]\nA | B\n[/table]\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"]
+    );
+    assert_eq!(source.parse_count(), 1);
+}

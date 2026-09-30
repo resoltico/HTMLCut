@@ -111,6 +111,7 @@ impl SourceSpec {
                 },
             )?;
         }
+        let mut deadline = None;
         let (html, effective_base) = match self {
             Self::File { path } => (
                 decode(
@@ -131,19 +132,30 @@ impl SourceSpec {
                     })?,
                     _ => return Err(options("Invalid HTTP source specification.")),
                 };
-                let (bytes, response_charset, final_url) = http::fetch(&runtime_url)?;
-                (
-                    decode(&bytes, encoding.or(response_charset.as_deref()))?,
-                    base.map(str::to_owned).or(Some(final_url)),
-                )
+                let fetched = http::fetch(&runtime_url, encoding.is_some())?;
+                deadline = Some(fetched.deadline);
+                let html = decode_until(
+                    &fetched.bytes,
+                    encoding.or(fetched.charset.as_deref()),
+                    MAX_SOURCE_BYTES,
+                    Some(fetched.deadline),
+                )?;
+                if std::time::Instant::now() >= fetched.deadline {
+                    return Err(limit("acquisition"));
+                }
+                (html, base.map(str::to_owned).or(Some(fetched.final_url)))
             }
         };
-        SourceSnapshot::new(
+        let snapshot = SourceSnapshot::new(
             html,
             SnapshotMetadata {
                 base_url: effective_base,
             },
-        )
+        )?;
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return Err(limit("acquisition"));
+        }
+        Ok(snapshot)
     }
 }
 
@@ -221,6 +233,15 @@ pub(crate) fn decode_with_limit(
     label: Option<&str>,
     maximum: usize,
 ) -> Result<String, ExtractionError> {
+    decode_until(bytes, label, maximum, None)
+}
+
+fn decode_until(
+    bytes: &[u8],
+    label: Option<&str>,
+    maximum: usize,
+    deadline: Option<std::time::Instant>,
+) -> Result<String, ExtractionError> {
     let encoding = encoding_for(label)?;
     let bytes = if let Some((bom_encoding, length)) = Encoding::for_bom(bytes) {
         if bom_encoding != encoding {
@@ -235,6 +256,9 @@ pub(crate) fn decode_with_limit(
     let mut offset = 0;
     let mut output = [0_u8; 8192];
     loop {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return Err(limit("decoding"));
+        }
         let (result, read, written) =
             decoder.decode_to_utf8_without_replacement(&bytes[offset..], &mut output, true);
         if written > maximum.saturating_sub(value.len()) {
@@ -249,3 +273,7 @@ pub(crate) fn decode_with_limit(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "input/tests.rs"]
+mod tests;

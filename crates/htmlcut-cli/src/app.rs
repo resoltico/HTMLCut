@@ -85,8 +85,7 @@ fn dispatch(
         ),
         Operation::Schema { name } => {
             let schema = if name == "htmlcut.run" {
-                serde_json::to_value(schemars::schema_for!(RunSpec))
-                    .map_err(|_| crate::publication::failure())?
+                schemars::schema_for!(RunSpec).as_value().clone()
             } else {
                 htmlcut_core::schema(&name)?
             };

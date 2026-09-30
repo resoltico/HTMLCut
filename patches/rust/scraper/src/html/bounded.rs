@@ -234,7 +234,13 @@ impl TreeSink for BoundedSink {
         self.inner.elem_name(target)
     }
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> NodeId {
-        let nodes = if flags.template { 2 } else { 1 };
+        // Delegate accounting follows the sink's actual allocation rule, even if a caller
+        // supplies incomplete ElementFlags. Template hosts allocate a fragment as well.
+        let nodes = if name.expanded() == expanded_name!(html "template") {
+            2
+        } else {
+            1
+        };
         if self.allocate(nodes, 1) {
             self.inner.create_element(name, attrs, flags)
         } else {
@@ -261,7 +267,14 @@ impl TreeSink for BoundedSink {
         public_id: StrTendril,
         system_id: StrTendril,
     ) {
-        if self.allocate(1, 0) && self.limits.depth > 0 {
+        if self.stop_requested() {
+            return;
+        }
+        if self.limits.depth == 0 {
+            self.fail(ParseLimitExceeded::Depth);
+            return;
+        }
+        if self.allocate(1, 0) {
             self.inner
                 .append_doctype_to_document(name, public_id, system_id);
         }

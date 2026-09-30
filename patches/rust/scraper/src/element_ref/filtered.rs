@@ -92,3 +92,7 @@ impl Serialize for Filtered<'_, '_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "filtered_tests.rs"]
+mod tests;

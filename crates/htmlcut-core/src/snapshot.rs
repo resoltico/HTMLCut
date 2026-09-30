@@ -41,7 +41,6 @@ impl SourceSnapshot {
                 }
                 let url = Url::parse(&value).map_err(|_| invalid_base())?;
                 if !matches!(url.scheme(), "http" | "https")
-                    || url.host_str().is_none()
                     || !url.username().is_empty()
                     || url.password().is_some()
                 {

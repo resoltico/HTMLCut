@@ -430,3 +430,17 @@ fn t12_preformatted_fences_cover_alternative_text_and_nested_formatting() {
         "```````\nA``````B\n```````"
     );
 }
+
+#[test]
+fn t12_selected_structural_fragments_do_not_require_ancestors_in_the_projection() {
+    let html = "<table><tr><th>H</th><td>V</td></tr></table><ul><li>item</li></ul><div><p>A</p><img><img alt=''><img alt='B'><p>C</p><a href=''>D</a></div>";
+    for (selector, expected) in [
+        ("tr", "[header] HV"),
+        ("th", "[header] H"),
+        ("td", "V"),
+        ("li", "- item"),
+        ("div", "A\nB\nC\n[D]()"),
+    ] {
+        assert_eq!(value(html, selector, Projection::DocumentText), expected);
+    }
+}

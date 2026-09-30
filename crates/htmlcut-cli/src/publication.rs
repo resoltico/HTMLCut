@@ -66,10 +66,10 @@ pub(crate) fn normalized_target(path: &Path) -> Result<PathBuf, ExtractionError>
         .unwrap_or_else(|| Path::new("."));
     let parent = fs::canonicalize(parent).map_err(|_| failure())?;
     let target = parent.join(name);
-    if let Ok(metadata) = fs::symlink_metadata(&target) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            return Err(failure());
-        }
+    if let Ok(metadata) = fs::symlink_metadata(&target)
+        && (metadata.file_type().is_symlink() || !metadata.is_file())
+    {
+        return Err(failure());
     }
     Ok(target)
 }

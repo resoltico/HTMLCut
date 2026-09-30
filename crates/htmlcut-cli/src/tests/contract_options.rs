@@ -270,3 +270,53 @@ fn t23_preview_plan_has_its_own_dispatch_and_missing_files_fail() {
     }
     assert!(crate::publication::json(&Fault, 128).is_err());
 }
+
+#[test]
+fn t05_discovery_descriptions_and_inline_inner_html_use_the_closed_dispatch() {
+    for name in ["run", "inspect", "describe", "schema"] {
+        let (code, out, error) = invoke(&["htmlcut", "describe", name], b"");
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+        let description: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(description["name"], name);
+        assert!(description.get("defaults").is_none());
+    }
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--projection",
+            "inner_html",
+            "--raw",
+        ],
+        b"<p>A<b>B</b></p>",
+    );
+    assert_eq!((code, out, error), (0, b"A<b>B</b>".to_vec(), Vec::new()));
+    let directory = tempfile::tempdir().unwrap();
+    let run = directory.path().join("run.json");
+    for base in [
+        "https://example.test/?token=synthetic",
+        "https://example.test/#synthetic",
+    ] {
+        let (code, out, error) = invoke(
+            &[
+                "htmlcut",
+                "extract",
+                "--stdin",
+                "--css",
+                "p",
+                "--base-url",
+                base,
+                "--save-run",
+                run.to_str().unwrap(),
+            ],
+            b"<p>A</p>",
+        );
+        assert_eq!(code, 2);
+        assert!(out.is_empty());
+        assert!(!run.exists());
+        assert!(!String::from_utf8_lossy(&error).contains("synthetic"));
+    }
+}
