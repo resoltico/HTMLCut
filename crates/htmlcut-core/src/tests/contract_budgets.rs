@@ -400,3 +400,45 @@ fn t29_attribute_name_and_projection_value_exact_boundaries_are_accepted() {
         128
     );
 }
+
+#[test]
+fn t29_slice_aggregate_budget_is_debited_for_every_selected_value() {
+    let source = prepared("[AB][CD][EF]");
+    let mut plan = ExtractionPlan::slice(
+        Boundary::Literal { value: "[".into() },
+        Boundary::Literal { value: "]".into() },
+    )
+    .unwrap();
+    plan.selection = Selection::All { min: 1, max: None };
+    for (maximum, success) in [(5, false), (6, true), (7, true)] {
+        plan.limits.max_total_value_bytes = maximum;
+        let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
+        if success {
+            assert_eq!(result.unwrap().values, ["AB", "CD", "EF"]);
+        } else {
+            assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
+}
+
+#[test]
+fn t29_url_raw_and_resolved_lengths_accept_the_exact_bound() {
+    let prefix = "https://example.test/?q=";
+    let value = format!("{prefix}{}", "a".repeat(8192 - prefix.len()));
+    assert_eq!(
+        crate::projection::resolve_url(&value, None, 8192).unwrap(),
+        value
+    );
+    assert_eq!(
+        crate::projection::resolve_url(&value, None, 8191)
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+    assert_eq!(
+        crate::projection::resolve_url(&(value + "a"), None, 10000)
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+}

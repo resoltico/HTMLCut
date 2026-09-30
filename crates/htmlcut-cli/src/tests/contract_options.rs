@@ -394,3 +394,63 @@ fn t03_t23_saved_and_preview_inputs_report_read_decode_and_plan_failures() {
         2
     );
 }
+
+#[test]
+fn t05_nth_parameters_do_not_accept_min_or_max_even_when_an_index_is_present() {
+    for option in ["--min", "--max"] {
+        let (code, output, _) = invoke(
+            &[
+                "htmlcut", "extract", "--stdin", "--css", "p", "--match", "nth", "--index", "1",
+                option, "1",
+            ],
+            b"<p>A</p>",
+        );
+        assert_eq!(code, 2);
+        assert!(output.is_empty());
+    }
+}
+
+#[test]
+fn t23_large_bounded_proposals_are_published_completely() {
+    let tag = "a".repeat(100);
+    let html = format!(
+        "{}<p>value</p>{}",
+        format!("<{tag}>").repeat(25),
+        format!("</{tag}>").repeat(25)
+    );
+    let (code, output, error) = invoke(
+        &["htmlcut", "inspect", "--stdin", "--page-size", "100"],
+        html.as_bytes(),
+    );
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+    let page: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let handle = page["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|element| element["tag"] == "p")
+        .unwrap()["handle"]
+        .as_str()
+        .unwrap();
+    let (code, output, error) = invoke(
+        &[
+            "htmlcut",
+            "inspect",
+            "--stdin",
+            "--page-size",
+            "100",
+            "--propose",
+            handle,
+        ],
+        html.as_bytes(),
+    );
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+    let proposal: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let selector = proposal["selector"].as_str().unwrap();
+    assert!(selector.len() > 2048);
+    let (code, output, error) = invoke(
+        &["htmlcut", "extract", "--stdin", "--css", selector, "--raw"],
+        html.as_bytes(),
+    );
+    assert_eq!((code, output, error), (0, b"value".to_vec(), Vec::new()));
+}

@@ -13,6 +13,9 @@ use crate::command::{Cli, Operation, Output};
 use crate::input::{RunSpec, SourceSpec, options};
 use crate::publication::{MAX_AUDIT_BYTES, MAX_OUTPUT_BYTES, Staged};
 
+// Fixed metadata/proposal envelope allowance, expressed as its byte count.
+const METADATA_BYTES: usize = 16_384;
+
 pub(crate) fn run<I, T>(
     arguments: I,
     stdin: &mut dyn Read,
@@ -78,7 +81,7 @@ fn dispatch(
     match operation {
         Operation::Describe { operation } => emit_json(
             &crate::operation_metadata::describe(operation.as_deref())?,
-            16 * 1024,
+            METADATA_BYTES,
             stdout,
         ),
         Operation::Schema { name } => {
@@ -199,7 +202,7 @@ fn dispatch(
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
             if let Some(handle) = arguments.propose {
                 let proposal = document.propose(&handle, arguments.page_size)?;
-                return emit_json(&proposal, 16 * 1024, stdout);
+                return emit_json(&proposal, METADATA_BYTES, stdout);
             }
             if let Some(plan) = preview_plan {
                 let preview = document.preview(&plan, 1024)?;

@@ -35,3 +35,36 @@ fn source_projection_cannot_accidentally_serialize_a_dom_element() {
         ErrorCode::InternalInvariant
     );
 }
+
+#[test]
+fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_cost_work() {
+    let budget = SelectorWorkBudget::new(4);
+    let mut buffer = ValueBuffer::new(1024, &budget);
+    buffer.push(&"a".repeat(63)).unwrap();
+    assert_eq!(budget.remaining(), 3);
+    buffer.push("b").unwrap();
+    assert_eq!(budget.remaining(), 3);
+    buffer.push("c").unwrap();
+    assert_eq!(budget.remaining(), 2);
+    assert_eq!(buffer.finish().len(), 65);
+    let html = scraper::Html::parse_document("<p data-empty=''></p>");
+    let root = html
+        .select(&scraper::Selector::parse("p").unwrap())
+        .next()
+        .unwrap();
+    let budget = SelectorWorkBudget::new(2);
+    let value = project(
+        root,
+        &Projection::Attribute {
+            name: "data-empty".into(),
+        },
+        &HashSet::new(),
+        &[],
+        None,
+        1024,
+        &budget,
+    )
+    .unwrap();
+    assert_eq!(value, "");
+    assert_eq!(budget.remaining(), 1);
+}

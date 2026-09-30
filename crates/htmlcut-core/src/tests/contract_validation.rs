@@ -371,3 +371,30 @@ fn t29_quote_and_comment_content_cannot_inflate_selector_grammar_depth() {
             .unwrap_or_else(|error| panic!("{selector}: {error:?}"));
     }
 }
+
+#[test]
+fn t29_exact_selector_bytes_are_allowed_and_oversized_strings_fail_before_semantics() {
+    let prefix = "p/*";
+    let suffix = "*/";
+    let selector = format!(
+        "{prefix}{}{suffix}",
+        "x".repeat(8192 - prefix.len() - suffix.len())
+    );
+    let plan = ExtractionPlan::css(&selector).unwrap();
+    CompiledPlan::compile(&plan).unwrap();
+    let mut oversized = ExtractionPlan::css("p").unwrap();
+    oversized.guards.push(Guard {
+        scope: GuardScope::Document,
+        selector: "p".into(),
+        min: 2,
+        max: Some(1),
+        read: GuardRead::DomText,
+        predicate: Some(Predicate::Exact {
+            value: "x".repeat(256 * 1024 + 1),
+        }),
+    });
+    assert_eq!(
+        oversized.validate().unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+}

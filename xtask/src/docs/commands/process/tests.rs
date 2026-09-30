@@ -219,3 +219,33 @@ fn native_reap_waits_for_child_completion() {
             .is_some_and(|status| status.success())
     );
 }
+
+#[test]
+fn exact_fixture_and_completed_capture_byte_bounds_are_inclusive() {
+    let input = vec![b'x'; 4096];
+    let captured = capture(&mut helper("echo"), Some(&input), Duration::from_secs(10)).unwrap();
+    assert_eq!(captured.code, 0);
+    assert!(
+        captured
+            .stdout
+            .windows(input.len())
+            .any(|bytes| bytes == input)
+    );
+    let status = helper("echo")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let stdout = root.path().join("stdout");
+    let stderr = root.path().join("stderr");
+    fs::write(&stderr, b"").unwrap();
+    for (length, success) in [(2_097_151, true), (2_097_152, true), (2_097_153, false)] {
+        File::create(&stdout).unwrap().set_len(length).unwrap();
+        let result = finish(status, &stdout, &stderr);
+        assert_eq!(result.is_ok(), success);
+        if success {
+            assert_eq!(result.unwrap().stdout.len(), length as usize);
+        }
+    }
+}

@@ -448,3 +448,11 @@ fn source_url_raw_and_canonical_byte_limits_are_checked_before_network_io() {
     );
     assert!(transport.urls.is_empty());
 }
+
+#[test]
+fn default_http_transfer_and_decode_bounds_match_accepted_source_capacity() {
+    let policy = Policy::default();
+    let source_bound = htmlcut_core::PreparationLimits::default().max_source_bytes as usize;
+    assert_eq!(policy.transfer_bytes, source_bound);
+    assert_eq!(policy.decompressed_bytes, source_bound);
+}

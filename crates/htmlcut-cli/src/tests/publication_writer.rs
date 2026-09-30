@@ -46,3 +46,33 @@ fn counts_only_audit_is_complete_or_error_at_every_serialization_boundary() {
         }
     }
 }
+
+#[test]
+fn audit_default_one_mebibyte_bound_includes_json_framing_exactly() {
+    use crate::command::AuditField;
+    use htmlcut_core::{
+        CompiledPlan, ExtractionPlan, PreparedDocument, SnapshotMetadata, SourceSnapshot,
+    };
+    let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
+    let framing = b"{\"values\":[\"\"]}\n".len();
+    for (total, accepted) in [(1_048_575, true), (1_048_576, true), (1_048_577, false)] {
+        let value = "x".repeat(total - framing);
+        let source = PreparedDocument::new(
+            SourceSnapshot::new(format!("<p>{value}</p>"), SnapshotMetadata::default()).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        let result = source.execute(&plan).unwrap();
+        let evidence = crate::evidence::Evidence {
+            fields: &[AuditField::Values],
+            result: &result,
+            plan: plan.plan(),
+        };
+        let output = json_stream(&evidence, MAX_AUDIT_BYTES);
+        if accepted {
+            assert_eq!(output.unwrap().len(), total);
+        } else {
+            assert_eq!(output.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
+}

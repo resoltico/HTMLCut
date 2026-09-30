@@ -155,3 +155,36 @@ fn each_socket_policy_failure_short_circuits_before_later_changes() {
         assert_eq!(policy.calls.get(), fail_at.min(3));
     }
 }
+
+#[test]
+fn native_socket_policy_resets_nonblocking_and_sets_both_timeouts() {
+    use std::net::TcpStream;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let worker = std::thread::spawn(move || {
+        let (mut peer, _) = listener.accept().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        peer.write_all(b"x").unwrap();
+    });
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_nonblocking(true).unwrap();
+    configure(&mut stream).unwrap();
+    assert_eq!(stream.read_timeout().unwrap(), Some(Duration::from_secs(2)));
+    assert_eq!(
+        stream.write_timeout().unwrap(),
+        Some(Duration::from_secs(2))
+    );
+    let mut byte = [0];
+    assert_eq!(stream.read(&mut byte).unwrap(), 1);
+    assert_eq!(byte, [b'x']);
+    worker.join().unwrap();
+}
+
+#[test]
+fn dropping_the_fixture_stops_its_owned_listener() {
+    let fixture = Fixture::new("body").unwrap();
+    let stopped = Arc::clone(&fixture.stopped);
+    assert!(!stopped.load(Ordering::Relaxed));
+    drop(fixture);
+    assert!(stopped.load(Ordering::Relaxed));
+}

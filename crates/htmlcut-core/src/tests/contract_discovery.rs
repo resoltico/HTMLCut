@@ -334,3 +334,28 @@ fn t25_valid_padded_tokens_have_exact_byte_bounds_and_bind_every_identity_field(
         );
     }
 }
+
+#[test]
+fn t23_t24_descriptor_and_preview_hard_boundaries_are_inclusive() {
+    let tag = "a".repeat(128);
+    let document = prepared(&format!("<{tag}>value</{tag}>"));
+    let page = document.inspect(20, None).unwrap();
+    let element = page
+        .elements
+        .iter()
+        .find(|element| element.tag == tag)
+        .unwrap();
+    let proposal = document.propose(&element.handle, 20).unwrap();
+    assert_eq!(
+        document
+            .execute(
+                &CompiledPlan::compile(&ExtractionPlan::css(&proposal.selector).unwrap()).unwrap()
+            )
+            .unwrap()
+            .values,
+        ["value"]
+    );
+    let compiled = CompiledPlan::compile(&ExtractionPlan::css(&tag).unwrap()).unwrap();
+    assert_eq!(document.preview(&compiled, 4096).unwrap().values, ["value"]);
+    assert!(document.preview(&compiled, 4097).is_err());
+}

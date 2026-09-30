@@ -48,14 +48,13 @@ impl ExtractionPlan {
         {
             return Err(invalid());
         }
-        let mut string_bytes = self.schema.len();
+        // Debit remaining materialized-string capacity before serialization can copy
+        // caller-owned strings. checked_sub handles both oversize and arithmetic safety.
+        let mut remaining = crate::limits::MAX_PLAN_BYTES - self.schema.len();
         let mut add = |value: &str| -> Result<(), ExtractionError> {
-            string_bytes = string_bytes
-                .checked_add(value.len())
+            remaining = remaining
+                .checked_sub(value.len())
                 .ok_or_else(|| ExtractionError::limit("plan"))?;
-            if string_bytes > crate::limits::MAX_PLAN_BYTES {
-                return Err(ExtractionError::limit("plan"));
-            }
             Ok(())
         };
         match &self.strategy {

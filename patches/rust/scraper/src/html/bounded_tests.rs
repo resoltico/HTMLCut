@@ -470,3 +470,54 @@ fn fixed_node_floor_is_preflighted_before_parser_work_and_two_nodes_are_not_enou
         );
     }
 }
+
+#[test]
+fn reparenting_a_wide_subtree_at_exact_depth_preserves_sibling_height() {
+    let sink = BoundedSink::new(ParseLimits {
+        depth: 3,
+        ..limits()
+    });
+    let element = |tag| {
+        sink.create_element(
+            QualName::new(None, ns!(html), tag),
+            Vec::new(),
+            ElementFlags::default(),
+        )
+    };
+    let origin = element(local_name!("div"));
+    let target = element(local_name!("section"));
+    let branch = element(local_name!("b"));
+    let first = element(local_name!("i"));
+    let second = element(local_name!("span"));
+    sink.append(&sink.get_document(), NodeOrText::AppendNode(origin));
+    sink.append(&sink.get_document(), NodeOrText::AppendNode(target));
+    sink.append(&origin, NodeOrText::AppendNode(branch));
+    sink.append(&branch, NodeOrText::AppendNode(first));
+    sink.append(&branch, NodeOrText::AppendNode(second));
+    sink.reparent_children(&origin, &target);
+    let (document, index) = sink.finish().unwrap();
+    assert_eq!(index, [origin, target, branch, first, second]);
+    assert_eq!(
+        crate::ElementRef::wrap(document.tree.get(target).unwrap())
+            .unwrap()
+            .html(),
+        "<section><b><i></i><span></span></b></section>"
+    );
+}
+
+#[test]
+fn script_bookkeeping_callbacks_are_charged_even_when_scripts_are_not_executed() {
+    let sink = BoundedSink::new(limits());
+    let script = sink.create_element(
+        QualName::new(None, ns!(html), local_name!("script")),
+        Vec::new(),
+        ElementFlags::default(),
+    );
+    sink.remaining.set(1);
+    sink.mark_script_already_started(&script);
+    assert_eq!(sink.remaining.get(), 0);
+    assert!(!sink.stop_requested());
+    sink.mark_script_already_started(&script);
+    assert_eq!(sink.failure.get(), Some(ParseLimitExceeded::Work));
+    assert_eq!(sink.finish().unwrap_err(), ParseLimitExceeded::Work);
+}

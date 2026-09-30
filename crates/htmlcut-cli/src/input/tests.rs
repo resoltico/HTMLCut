@@ -171,3 +171,25 @@ fn malformed_provider_metadata_cannot_become_an_accepted_snapshot() {
         ErrorCode::InvalidBaseUrl
     );
 }
+
+#[test]
+fn invalid_http_environment_names_cannot_skip_closed_source_validation() {
+    for name in ["", "1INVALID", "BAD-NAME", "HAS SPACE"] {
+        let source = SourceSpec::Http {
+            url: None,
+            url_env: Some(name.into()),
+        };
+        assert_eq!(
+            source.validate().unwrap_err().code,
+            ErrorCode::InvalidOptions
+        );
+    }
+}
+
+#[test]
+fn adapter_source_acceptance_bound_matches_the_core_snapshot_contract() {
+    assert_eq!(
+        MAX_SOURCE_BYTES,
+        htmlcut_core::PreparationLimits::default().max_source_bytes as usize
+    );
+}
