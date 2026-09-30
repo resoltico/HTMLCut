@@ -149,11 +149,9 @@ fn position(
     }
     let document = crate::parse_closed_json(value.as_bytes())?;
     let parsed: Token = serde_json::from_value(document).map_err(|_| stale())?;
-    if parsed.prepared != prepared
-        || parsed.options != options
-        || parsed.role != role
-        || token(prepared, options, parsed.position, role) != crate::canonical_json(&parsed)?
-    {
+    // Equality of the complete canonical token binds prepared/options/role and seal;
+    // separate field comparisons would be redundant with this stronger comparison.
+    if token(prepared, options, parsed.position, role) != crate::canonical_json(&parsed)? {
         return Err(stale());
     }
     Ok(parsed.position)

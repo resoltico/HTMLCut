@@ -497,3 +497,34 @@ fn t28_resolved_unicode_urls_may_expand_beyond_input_length_without_early_trunca
         [format!("https://example.test/?q={}", "%C3%A9".repeat(2000))]
     );
 }
+
+#[test]
+fn t12_preformatted_fences_ignore_every_omitted_subtree_and_track_sibling_nesting() {
+    let html = "<pre>A<span class='omit'><b>``````</b></span><script>`````</script><style>``````</style><template><b>````````</b></template>B</pre>";
+    let mut plan = ExtractionPlan::css("pre").unwrap();
+    plan.projection = Projection::DocumentText;
+    plan.exclude = vec![".omit".into()];
+    assert_eq!(
+        prepared(html)
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        ["```\nAB\n```"]
+    );
+    assert_eq!(
+        value(
+            "<pre>A<pre>B</pre>C<pre>D</pre>E</pre>",
+            "body > pre",
+            Projection::DocumentText
+        ),
+        "````\nA\n```\nB\n```\nC\n```\nD\n```\nE\n````"
+    );
+    assert_eq!(
+        value(
+            "<article><ul><li>A</li></ul><ol start='4'><li>B</li></ol><li>C</li></article>",
+            "article",
+            Projection::DocumentText
+        ),
+        "- A\n4. B\n- C"
+    );
+}

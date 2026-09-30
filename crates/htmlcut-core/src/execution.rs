@@ -363,3 +363,7 @@ fn slice_ranges(
     }
     Ok(ranges)
 }
+
+#[cfg(test)]
+#[path = "tests/execution_accounting.rs"]
+mod accounting_tests;

@@ -283,3 +283,54 @@ fn t23_proposals_bound_ancestry_and_escape_names_without_using_comment_siblings(
         ErrorCode::ResourceLimit
     );
 }
+
+#[test]
+fn t24_preview_character_allowance_is_shared_across_complete_values_in_order() {
+    let document = prepared("<p>αβ</p><p>γδε</p><p>ζ</p>");
+    let mut plan = ExtractionPlan::css("p").unwrap();
+    plan.selection = Selection::All { min: 1, max: None };
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    for (maximum, expected, complete) in [
+        (3, vec!["αβ", "γ", ""], false),
+        (6, vec!["αβ", "γδε", "ζ"], true),
+        (7, vec!["αβ", "γδε", "ζ"], true),
+    ] {
+        let preview = document.preview(&compiled, maximum).unwrap();
+        assert_eq!(preview.values, expected);
+        assert_eq!(preview.complete, complete);
+    }
+    assert!(
+        document
+            .propose(&document.inspect(1, None).unwrap().elements[0].handle, 0)
+            .is_err()
+    );
+    assert!(
+        document
+            .propose(&document.inspect(1, None).unwrap().elements[0].handle, 101)
+            .is_err()
+    );
+}
+
+#[test]
+fn t25_valid_padded_tokens_have_exact_byte_bounds_and_bind_every_identity_field() {
+    let document = prepared("<p>A</p><p>B</p>");
+    let token = document.inspect(1, None).unwrap().next_cursor.unwrap();
+    for size in [1024, 1025, 1026] {
+        let padded = format!("{token}{}", " ".repeat(size - token.len()));
+        assert_eq!(document.inspect(1, Some(&padded)).is_ok(), size == 1024);
+    }
+    let parsed: serde_json::Value = serde_json::from_str(&token).unwrap();
+    for field in ["prepared", "options", "role", "seal"] {
+        let mut changed = parsed.clone();
+        changed[field] = serde_json::json!("changed");
+        if field != "seal" {
+            reseal(&mut changed);
+        }
+        assert!(
+            document
+                .inspect(1, Some(&crate::canonical_json(&changed).unwrap()))
+                .is_err(),
+            "{field}"
+        );
+    }
+}

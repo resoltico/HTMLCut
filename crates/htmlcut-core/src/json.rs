@@ -83,7 +83,8 @@ impl<'de> Visitor<'de> for Seed<'_> {
         formatter.write_str("bounded JSON without duplicate object keys")
     }
     fn visit_unit<E: Error>(self) -> Result<Value, E> {
-        Ok(Value::Null)
+        // serde_json::Value's default is JSON null, the exact unit representation.
+        Ok(Default::default())
     }
     fn visit_bool<E: Error>(self, value: bool) -> Result<Value, E> {
         Ok(Value::Bool(value))

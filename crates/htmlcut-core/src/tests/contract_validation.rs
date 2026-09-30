@@ -313,3 +313,61 @@ fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempt
         ErrorCode::Cardinality
     );
 }
+
+#[test]
+fn t29_unicode_regex_programs_share_one_aggregate_compilation_allowance() {
+    // Under the locked regex engine, this valid Unicode program fits the full
+    // allowance, but not a half share. Syntax and source size are unchanged.
+    let boundary = Boundary::Regex {
+        pattern: r"\w{100}".into(),
+        flags: String::new(),
+    };
+    let mut slice = ExtractionPlan::slice(
+        boundary.clone(),
+        Boundary::Literal {
+            value: "end".into(),
+        },
+    )
+    .unwrap();
+    CompiledPlan::compile(&slice).unwrap();
+    if let Strategy::Slice { end, .. } = &mut slice.strategy {
+        *end = boundary;
+    }
+    assert_eq!(
+        CompiledPlan::compile(&slice).err().unwrap().code,
+        ErrorCode::ResourceLimit
+    );
+    let mut css = ExtractionPlan::css("p").unwrap();
+    let guard = Guard {
+        scope: GuardScope::Document,
+        selector: "p".into(),
+        min: 1,
+        max: Some(1),
+        read: GuardRead::DomText,
+        predicate: Some(Predicate::Regex {
+            pattern: r"\w{100}".into(),
+            flags: String::new(),
+        }),
+    };
+    css.guards.push(guard.clone());
+    CompiledPlan::compile(&css).unwrap();
+    css.guards.push(guard);
+    assert_eq!(
+        CompiledPlan::compile(&css).err().unwrap().code,
+        ErrorCode::ResourceLimit
+    );
+}
+
+#[test]
+fn t29_quote_and_comment_content_cannot_inflate_selector_grammar_depth() {
+    let parentheses = "(".repeat(130);
+    for selector in [
+        format!("p[data-value='{parentheses}']"),
+        format!("p[data-value=\"{parentheses}\"]"),
+        format!("p[data-value='\\'{parentheses}']"),
+        format!("p/* *not-close / {parentheses} */"),
+    ] {
+        CompiledPlan::compile(&ExtractionPlan::css(&selector).unwrap())
+            .unwrap_or_else(|error| panic!("{selector}: {error:?}"));
+    }
+}

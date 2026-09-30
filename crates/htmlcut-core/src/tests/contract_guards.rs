@@ -271,3 +271,15 @@ fn t16_t18_declared_selection_and_guard_candidate_caps_fail_whole_operations() {
     assert_eq!(error.code, ErrorCode::ResourceLimit);
     assert_eq!(error.observed_at_least, Some(2));
 }
+
+#[test]
+fn t17_the_last_one_based_position_is_valid_and_preserves_the_complete_count() {
+    let source = prepared("<p>A</p><p>B</p><p>C</p>");
+    let mut plan = ExtractionPlan::css("p").unwrap();
+    plan.selection = Selection::Nth { index: 3 };
+    let result = source
+        .execute(&CompiledPlan::compile(&plan).unwrap())
+        .unwrap();
+    assert_eq!(result.values, ["C"]);
+    assert_eq!(result.candidate_count, 3);
+}
