@@ -377,10 +377,9 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
         restore_vendored_dependency_paths_in_baseline_manifest(&cargo_toml)?
     {
         let restored_manifest = if published_vendored_stack.join("sha2").exists() {
-            let mut manifest: toml::Value =
-                toml::from_str(&restored_manifest).map_err(|error| {
-                    crate::model::XtaskError::invalid_toml("normalized baseline", error)
-                })?;
+            // The restoration helper has parsed and serialized this TOML value already.
+            let mut manifest: toml::Value = toml::from_str(&restored_manifest)
+                .expect("restored baseline is serializer-generated TOML");
             let dependency = manifest
                 .get_mut("dependencies")
                 .and_then(toml::Value::as_table_mut)
@@ -554,3 +553,7 @@ pub(crate) fn run_coverage_for_tests(repo_root: &Path) -> DynResult<()> {
 pub(crate) fn refresh_semver_baseline_for_tests(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     refresh_semver_baseline(repo_root, git_ref)
 }
+
+#[cfg(test)]
+#[path = "tests/app/vendor_copy.rs"]
+mod vendor_copy_tests;

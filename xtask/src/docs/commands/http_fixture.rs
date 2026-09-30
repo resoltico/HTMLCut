@@ -1,7 +1,7 @@
 //! Offline loopback acquisition for executable URL/run documentation examples.
 
 use std::io::{self, Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -23,21 +23,11 @@ impl Fixture {
         let stopped = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stopped);
         let worker = std::thread::spawn(move || {
-            while !flag.load(Ordering::Relaxed) {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        let _ = serve(&mut stream, html, |stream| {
-                            stream.set_nonblocking(false)?;
-                            stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-                            stream.set_write_timeout(Some(Duration::from_secs(2)))
-                        });
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(2))
-                    }
-                    Err(_) => break,
-                }
-            }
+            accept_loop(&flag, || {
+                let (mut stream, _) = listener.accept()?;
+                let _ = serve(&mut stream, html, configure);
+                Ok(())
+            })
         });
         Ok(Self {
             url,
@@ -50,10 +40,46 @@ impl Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::Relaxed);
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+        let worker = self
+            .worker
+            .take()
+            .expect("fixture owns its worker until Drop");
+        let _ = worker.join();
+    }
+}
+
+fn accept_loop(stopped: &AtomicBool, mut accept: impl FnMut() -> io::Result<()>) {
+    while !stopped.load(Ordering::Relaxed) {
+        match accept() {
+            Ok(()) => (),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(_) => break,
         }
     }
+}
+
+trait SocketPolicy {
+    fn blocking(&self) -> io::Result<()>;
+    fn read_deadline(&self) -> io::Result<()>;
+    fn write_deadline(&self) -> io::Result<()>;
+}
+impl SocketPolicy for TcpStream {
+    fn blocking(&self) -> io::Result<()> {
+        self.set_nonblocking(false)
+    }
+    fn read_deadline(&self) -> io::Result<()> {
+        self.set_read_timeout(Some(Duration::from_secs(2)))
+    }
+    fn write_deadline(&self) -> io::Result<()> {
+        self.set_write_timeout(Some(Duration::from_secs(2)))
+    }
+}
+fn configure<S: SocketPolicy>(stream: &mut S) -> io::Result<()> {
+    stream.blocking()?;
+    stream.read_deadline()?;
+    stream.write_deadline()
 }
 
 // One bounded connection is kept separate from the listener's lifetime. This also

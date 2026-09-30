@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import subprocess
+import sys
 
 
 def command(*args):
@@ -31,12 +32,19 @@ def main():
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--smoke-log", type=Path, required=True)
+    parser.add_argument("--shell", default="bash", help="Exact native Bash executable (Git Bash on Windows)")
     args = parser.parse_args()
     if command("git", "status", "--porcelain"):
         raise ValueError("Native source evidence requires a clean checkout")
-    with args.smoke_log.open("wb") as log:
-        subprocess.run(["bash", "./scripts/smoke-release-artifact.sh", args.target],
-                       check=True, stdout=log, stderr=subprocess.STDOUT, timeout=120)
+    try:
+        with args.smoke_log.open("wb") as log:
+            subprocess.run([args.shell, "./scripts/smoke-release-artifact.sh", args.target],
+                           check=True, stdout=log, stderr=subprocess.STDOUT, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        with args.smoke_log.open("rb") as log:
+            log.seek(max(0, args.smoke_log.stat().st_size - 8192))
+            sys.stderr.write(log.read(8192).decode("utf-8", errors="replace"))
+        raise
     if args.smoke_log.stat().st_size > 2 * 1024 * 1024:
         raise ValueError("Native smoke log exceeds its evidence budget")
     size, digest = package_digest(args.package)

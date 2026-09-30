@@ -354,3 +354,49 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         [expected]
     );
 }
+
+#[test]
+fn t05_closed_json_preserves_all_primitive_values_and_large_signedness() {
+    let wire = br#"[null,true,false,-7,4294967296,1.5,"x",{"k":"v"}]"#;
+    assert_eq!(
+        crate::parse_closed_json(wire).unwrap(),
+        json!([null,true,false,-7,4294967296_u64,1.5,"x",{"k":"v"}])
+    );
+}
+
+#[test]
+fn t29_attribute_name_and_projection_value_exact_boundaries_are_accepted() {
+    let name = "a".repeat(256);
+    let html = format!("<p {name}='é'>value</p>");
+    let source = prepared(&html);
+    let mut plan = ExtractionPlan::css("p").unwrap();
+    plan.projection = Projection::Attribute { name };
+    for (maximum, accepted) in [(1, false), (2, true), (3, true)] {
+        plan.limits.max_value_bytes = maximum;
+        let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
+        if accepted {
+            assert_eq!(result.unwrap().values, ["é"]);
+        } else {
+            assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
+    plan.projection = Projection::Attribute {
+        name: "a".repeat(257),
+    };
+    assert_eq!(
+        CompiledPlan::compile(&plan).err().unwrap().code,
+        ErrorCode::InvalidPlan
+    );
+    let discovery = prepared(&format!("<p {}='value'>text</p>", "a".repeat(128)));
+    let page = discovery.inspect(20, None).unwrap();
+    assert_eq!(
+        page.elements
+            .iter()
+            .find(|e| e.tag == "p")
+            .unwrap()
+            .attributes[0]
+            .name
+            .len(),
+        128
+    );
+}

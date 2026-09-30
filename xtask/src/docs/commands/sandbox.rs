@@ -97,11 +97,12 @@ impl ExampleSandbox {
             fs::write(self.root.path().join(file_name), README_FIXTURE_HTML)?;
         }
 
-        let plan =
-            htmlcut_core::ExtractionPlan::css("#amount").map_err(|error| error.to_string())?;
+        let plan = htmlcut_core::ExtractionPlan::css("#amount")
+            .expect("the fixed fixture selector is valid");
         fs::write(
             self.root.path().join("amount.plan.json"),
-            htmlcut_core::canonical_json(&plan).map_err(|error| error.to_string())?,
+            htmlcut_core::canonical_json(&plan)
+                .expect("the fixed plan contains serializable contract values"),
         )?;
 
         Ok(())
@@ -197,3 +198,7 @@ impl Drop for CurrentDirGuard {
         let _ = env::set_current_dir(&self.previous_dir);
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox/tests.rs"]
+mod tests;

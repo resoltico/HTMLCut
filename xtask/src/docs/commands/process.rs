@@ -83,11 +83,23 @@ pub(super) fn invoke(
 
 // Reap on every return, including stdin and status errors. Child's own Drop does not
 // terminate a process, so a fallible adapter must own this cleanup explicitly.
-struct Running(Child);
-impl Drop for Running {
+trait Lifecycle {
+    fn terminate(&mut self) -> io::Result<()>;
+    fn reap(&mut self) -> io::Result<()>;
+}
+impl Lifecycle for Child {
+    fn terminate(&mut self) -> io::Result<()> {
+        self.kill()
+    }
+    fn reap(&mut self) -> io::Result<()> {
+        self.wait().map(|_| ())
+    }
+}
+struct Running<P: Lifecycle>(P);
+impl<P: Lifecycle> Drop for Running<P> {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        let _ = self.0.terminate();
+        let _ = self.0.reap();
     }
 }
 
@@ -111,7 +123,7 @@ fn capture(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
     let mut running = Running(command.spawn()?);
     let child = &mut running.0;
     if let Some(input) = input {
-        child.stdin.take().unwrap().write_all(input)?;
+        write_fixture(&mut child.stdin.take().unwrap(), input)?;
     }
     let started = Instant::now();
     let status = loop {
@@ -129,6 +141,15 @@ fn capture(command: &mut Command, input: Option<&[u8]>, timeout: Duration) -> io
         std::thread::sleep(Duration::from_millis(10));
     };
     finish(status, &stdout_path, &stderr_path)
+}
+
+fn write_fixture(writer: &mut impl Write, input: &[u8]) -> io::Result<()> {
+    match writer.write_all(input) {
+        // Commands such as describe/schema do not consume a source. If they close
+        // stdin early, still collect their actual exit status and output below.
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        result => result,
+    }
 }
 
 fn finish(status: ExitStatus, stdout_path: &Path, stderr_path: &Path) -> io::Result<Capture> {

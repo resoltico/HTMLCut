@@ -479,3 +479,21 @@ fn t28_invalid_destination_with_a_valid_base_reports_resolution_failure() {
         "```\nlabel\n```"
     );
 }
+
+#[test]
+fn t28_resolved_unicode_urls_may_expand_beyond_input_length_without_early_truncation() {
+    let raw = format!("https://example.test/?q={}", "é".repeat(2000));
+    let source = prepared(&format!("<a href='{raw}'>label</a>"));
+    let mut plan = ExtractionPlan::css("a").unwrap();
+    plan.projection = Projection::Attribute {
+        name: "href".into(),
+    };
+    plan.transforms = vec![Transform::ResolveUrls];
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap()
+            .values,
+        [format!("https://example.test/?q={}", "%C3%A9".repeat(2000))]
+    );
+}

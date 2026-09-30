@@ -76,11 +76,9 @@ fn dispatch(
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     match operation {
-        Operation::Describe { operation } => emit(
-            crate::publication::json(
-                &crate::operation_metadata::describe(operation.as_deref())?,
-                16 * 1024,
-            )?,
+        Operation::Describe { operation } => emit_json(
+            &crate::operation_metadata::describe(operation.as_deref())?,
+            16 * 1024,
             stdout,
         ),
         Operation::Schema { name } => {
@@ -89,10 +87,7 @@ fn dispatch(
             } else {
                 htmlcut_core::schema(&name)?
             };
-            emit(
-                crate::publication::json(&schema, crate::input::MAX_CONFIG_BYTES)?,
-                stdout,
-            )
+            emit_json(&schema, crate::input::MAX_CONFIG_BYTES, stdout)
         }
         Operation::Extract(arguments) => {
             let plan = arguments.extraction_plan()?;
@@ -204,14 +199,14 @@ fn dispatch(
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
             if let Some(handle) = arguments.propose {
                 let proposal = document.propose(&handle, arguments.page_size)?;
-                return emit(crate::publication::json(&proposal, 16 * 1024)?, stdout);
+                return emit_json(&proposal, 16 * 1024, stdout);
             }
             if let Some(plan) = preview_plan {
                 let preview = document.preview(&plan, 1024)?;
-                return emit(crate::publication::json(&preview, 256 * 1024)?, stdout);
+                return emit_json(&preview, 256 * 1024, stdout);
             }
             let value = document.inspect(arguments.page_size, arguments.cursor.as_deref())?;
-            emit(crate::publication::json(&value, 512 * 1024)?, stdout)
+            emit_json(&value, 512 * 1024, stdout)
         }
     }
 }
@@ -294,3 +289,16 @@ fn emit(bytes: Vec<u8>, stdout: &mut dyn Write) -> Result<(), ExtractionError> {
         .and_then(|_| stdout.flush())
         .map_err(|_| crate::publication::failure())
 }
+
+// All metadata routes stage bounded JSON before touching stdout.
+fn emit_json(
+    value: &impl serde::Serialize,
+    maximum: usize,
+    stdout: &mut dyn Write,
+) -> Result<(), ExtractionError> {
+    emit(crate::publication::json(value, maximum)?, stdout)
+}
+
+#[cfg(test)]
+#[path = "tests/app_faults.rs"]
+mod fault_tests;

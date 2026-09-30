@@ -95,3 +95,63 @@ fn connection_configuration_read_and_write_failures_are_bounded_and_truthful() {
         io::ErrorKind::BrokenPipe
     );
 }
+
+#[test]
+fn accept_loop_stops_on_permanent_failure_or_owner_stop_after_would_block() {
+    let flag = AtomicBool::new(false);
+    let mut calls = 0;
+    accept_loop(&flag, || {
+        calls += 1;
+        Err(io::Error::other("listener failed"))
+    });
+    assert_eq!(calls, 1);
+    let mut calls = 0;
+    accept_loop(&flag, || {
+        calls += 1;
+        if calls == 1 {
+            Err(io::Error::from(io::ErrorKind::WouldBlock))
+        } else {
+            flag.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+    });
+    assert_eq!(calls, 2);
+}
+
+#[test]
+fn each_socket_policy_failure_short_circuits_before_later_changes() {
+    use std::cell::Cell;
+    struct Policy {
+        calls: Cell<usize>,
+        fail_at: usize,
+    }
+    impl Policy {
+        fn step(&self) -> io::Result<()> {
+            self.calls.set(self.calls.get() + 1);
+            if self.calls.get() == self.fail_at {
+                Err(io::Error::other("socket policy"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+    impl SocketPolicy for Policy {
+        fn blocking(&self) -> io::Result<()> {
+            self.step()
+        }
+        fn read_deadline(&self) -> io::Result<()> {
+            self.step()
+        }
+        fn write_deadline(&self) -> io::Result<()> {
+            self.step()
+        }
+    }
+    for fail_at in 1..=4 {
+        let mut policy = Policy {
+            calls: Cell::new(0),
+            fail_at,
+        };
+        assert_eq!(configure(&mut policy).is_ok(), fail_at == 4);
+        assert_eq!(policy.calls.get(), fail_at.min(3));
+    }
+}

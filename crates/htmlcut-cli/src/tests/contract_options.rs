@@ -336,3 +336,61 @@ fn t05_all_selection_parameter_conflicts_are_rejected_before_acquisition() {
         assert!(out.is_empty());
     }
 }
+
+#[test]
+fn t03_t23_saved_and_preview_inputs_report_read_decode_and_plan_failures() {
+    let root = tempfile::tempdir().unwrap();
+    let run = root.path().join("run.json");
+    let plan = root.path().join("plan.json");
+    file(root.path(), "plan.json", b"not JSON");
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--stdin",
+                "--preview-plan",
+                plan.to_str().unwrap()
+            ],
+            b"<p>A</p>"
+        )
+        .0,
+        2
+    );
+    file(root.path(), "plan.json", br#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"["}}"#);
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--stdin",
+                "--preview-plan",
+                plan.to_str().unwrap()
+            ],
+            b"<p>A</p>"
+        )
+        .0,
+        2
+    );
+    file(root.path(), "run.json", br#"{"schema":"htmlcut.run","version":1,"source":{"kind":"stdin"},"plan":{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}}"#);
+    assert_eq!(
+        invoke(&["htmlcut", "run", run.to_str().unwrap()], &[0xff]).0,
+        5
+    );
+    assert_eq!(invoke(&["htmlcut", "inspect", "--stdin"], &[0xff]).0, 5);
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--url-env",
+                "USER",
+                "--cursor",
+                "stale"
+            ],
+            b""
+        )
+        .0,
+        2
+    );
+}

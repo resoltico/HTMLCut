@@ -24,6 +24,7 @@ fn subprocess_fixture() {
             std::io::stderr().write_all(b"diagnostic").unwrap();
         }
         "wait" => std::thread::sleep(Duration::from_secs(5)),
+        "shortwait" => std::thread::sleep(Duration::from_millis(250)),
         "large" => {
             for _ in 0..100 {
                 let _ = std::io::stdout().write_all(&vec![b'x'; 64 * 1024]);
@@ -136,5 +137,85 @@ fn actual_subprocess_roots_honor_empty_relative_and_absolute_overrides() {
     assert_eq!(
         override_root(&root, Some(absolute.as_os_str()), fallback),
         absolute
+    );
+}
+
+#[test]
+fn optional_fixture_broken_pipe_preserves_consumer_exit_status_and_other_errors() {
+    struct Failure(io::ErrorKind);
+    impl Write for Failure {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(self.0))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    write_fixture(&mut Failure(io::ErrorKind::BrokenPipe), b"unused").unwrap();
+    assert_eq!(
+        write_fixture(&mut Failure(io::ErrorKind::PermissionDenied), b"input")
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    assert_eq!(
+        capture(
+            &mut helper("failure"),
+            Some(b"unused fixture"),
+            Duration::from_secs(10)
+        )
+        .unwrap()
+        .code,
+        17
+    );
+}
+
+#[test]
+fn owned_process_cleanup_reaps_even_when_termination_reports_an_error() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    struct Process {
+        calls: Rc<RefCell<Vec<&'static str>>>,
+        failure: bool,
+    }
+    impl Lifecycle for Process {
+        fn terminate(&mut self) -> io::Result<()> {
+            self.calls.borrow_mut().push("terminate");
+            if self.failure {
+                Err(io::Error::other("termination error"))
+            } else {
+                Ok(())
+            }
+        }
+        fn reap(&mut self) -> io::Result<()> {
+            self.calls.borrow_mut().push("reap");
+            Ok(())
+        }
+    }
+    for failure in [false, true] {
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        {
+            let _running = Running(Process {
+                calls: Rc::clone(&calls),
+                failure,
+            });
+        }
+        assert_eq!(*calls.borrow(), ["terminate", "reap"]);
+    }
+}
+
+#[test]
+fn native_reap_waits_for_child_completion() {
+    let mut child = helper("shortwait")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    Lifecycle::reap(&mut child).unwrap();
+    assert!(
+        child
+            .try_wait()
+            .unwrap()
+            .is_some_and(|status| status.success())
     );
 }

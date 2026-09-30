@@ -382,3 +382,16 @@ fn docs_runtime_helpers_report_cli_output_capture_failures() {
 
     assert!(error.contains("failed to capture CLI output: broken pipe"));
 }
+
+#[test]
+fn help_options_are_executed_without_being_mistaken_for_schema_or_operation_names() {
+    for operation in ["describe", "schema"] {
+        let errors = crate::docs::commands::command_example_errors(
+            "README.md",
+            &format!("```bash\nhtmlcut {operation} --help\n```\n"),
+            &crate::docs::known_schema_names_for_tests(),
+            &crate::docs::known_operation_ids_for_tests(),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+}

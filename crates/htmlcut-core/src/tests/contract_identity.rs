@@ -151,3 +151,24 @@ fn t22_serializer_faults_are_typed_and_canonical_escaping_is_bounded() {
     assert_eq!(ErrorCode::ResourceLimit.exit_class(), 4);
     assert_eq!(ErrorCode::InternalInvariant.exit_class(), 6);
 }
+
+#[test]
+fn t05_every_named_schema_is_retrievable_and_has_its_expected_public_shape() {
+    for (name, title, required_property) in [
+        ("htmlcut.extraction.plan", "ExtractionPlan", "strategy"),
+        ("htmlcut.extraction.result", "ExtractionResult", "values"),
+        ("htmlcut.extraction.error", "ExtractionError", "code"),
+        ("htmlcut.inspection", "InspectionResult", "elements"),
+        ("htmlcut.preview", "PreviewResult", "complete"),
+        ("htmlcut.element_descriptor", "ElementDescriptor", "handle"),
+        ("htmlcut.selector.proposal", "SelectorProposal", "selector"),
+    ] {
+        let schema = crate::schema(name).unwrap();
+        assert_eq!(schema["title"], title);
+        assert!(schema["properties"].get(required_property).is_some());
+    }
+    assert_eq!(
+        crate::schema("htmlcut.unknown").unwrap_err().code,
+        ErrorCode::InvalidSchema
+    );
+}

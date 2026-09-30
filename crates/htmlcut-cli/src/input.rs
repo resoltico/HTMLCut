@@ -99,6 +99,30 @@ impl SourceSpec {
         base: Option<&str>,
         relative_to: &Path,
     ) -> Result<SourceSnapshot, ExtractionError> {
+        self.acquire_with(
+            stdin,
+            encoding,
+            base,
+            relative_to,
+            &mut Acquisition {
+                fetch: http::fetch,
+                now: std::time::Instant::now,
+            },
+        )
+    }
+
+    fn acquire_with<F, C>(
+        &self,
+        stdin: &mut dyn Read,
+        encoding: Option<&str>,
+        base: Option<&str>,
+        relative_to: &Path,
+        adapter: &mut Acquisition<F, C>,
+    ) -> Result<SourceSnapshot, ExtractionError>
+    where
+        F: FnMut(&str, bool) -> Result<http::Acquired, ExtractionError>,
+        C: Fn() -> std::time::Instant,
+    {
         self.validate()?;
         if let Some(encoding) = encoding {
             encoding_for(Some(encoding))?;
@@ -125,14 +149,20 @@ impl SourceSpec {
                 base.map(str::to_owned),
             ),
             Self::Http { url, url_env } => {
-                let runtime_url = match (url, url_env) {
-                    (Some(url), None) => url.clone(),
-                    (None, Some(name)) => std::env::var(name).map_err(|_| {
+                // validate() proves exactly one source reference is present.
+                let runtime_url = if let Some(url) = url {
+                    url.clone()
+                } else {
+                    std::env::var(
+                        url_env
+                            .as_ref()
+                            .expect("validated URL environment reference"),
+                    )
+                    .map_err(|_| {
                         options("The source URL environment variable is unset or not UTF-8.")
-                    })?,
-                    _ => return Err(options("Invalid HTTP source specification.")),
+                    })?
                 };
-                let fetched = http::fetch(&runtime_url, encoding.is_some())?;
+                let fetched = (adapter.fetch)(&runtime_url, encoding.is_some())?;
                 deadline = Some(fetched.deadline);
                 let html = decode_until(
                     &fetched.bytes,
@@ -140,7 +170,7 @@ impl SourceSpec {
                     MAX_SOURCE_BYTES,
                     Some(fetched.deadline),
                 )?;
-                if std::time::Instant::now() >= fetched.deadline {
+                if (adapter.now)() >= fetched.deadline {
                     return Err(limit("acquisition"));
                 }
                 (html, base.map(str::to_owned).or(Some(fetched.final_url)))
@@ -152,11 +182,17 @@ impl SourceSpec {
                 base_url: effective_base,
             },
         )?;
-        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+        if deadline.is_some_and(|deadline| (adapter.now)() >= deadline) {
             return Err(limit("acquisition"));
         }
         Ok(snapshot)
     }
+}
+
+// Private adapter seam covers the deadline through decode and accepted snapshot hashing.
+struct Acquisition<F, C> {
+    fetch: F,
+    now: C,
 }
 
 fn valid_env_name(name: &str) -> bool {

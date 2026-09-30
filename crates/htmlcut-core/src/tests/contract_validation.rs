@@ -291,3 +291,25 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
         ErrorCode::InvalidBaseUrl
     );
 }
+
+#[test]
+fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
+    for wire in [
+        r#"{"schema":"wrong","version":1,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+    ] {
+        assert_eq!(
+            ExtractionPlan::from_json(wire.as_bytes()).unwrap_err().code,
+            ErrorCode::InvalidSchema
+        );
+    }
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
+    assert_eq!(plan.selection, Selection::All { min: 1, max: None });
+    assert_eq!(
+        prepared("<p>value</p>")
+            .execute(&CompiledPlan::compile(&plan).unwrap())
+            .unwrap_err()
+            .code,
+        ErrorCode::Cardinality
+    );
+}
