@@ -2,4 +2,4 @@
 *.sh text eol=lf
 
 # Corpora are exact byte inputs, including HTTP framing and malformed encodings.
-fuzz/corpus/** -text
+fuzz/corpus/** -text -diff
