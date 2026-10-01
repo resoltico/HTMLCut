@@ -150,7 +150,12 @@ fn t03_compressed_and_chunked_bodies_are_complete_and_strict() {
         ),
         (0, b"compressed".to_vec(), Vec::new())
     );
-    worker.join().unwrap();
+    let requests = worker.join().unwrap();
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("\r\naccept-encoding: gzip\r\n")
+    );
     let chunked = b"HTTP/1.1 200 OK\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n3\r\n<p>\r\n5\r\nvalue\r\n4\r\n</p>\r\n0\r\n\r\n".to_vec();
     let (url, worker) = serve(vec![chunked]);
     assert_eq!(

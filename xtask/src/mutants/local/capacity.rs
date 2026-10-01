@@ -65,7 +65,7 @@ fn parse_df_probe(path: &Path, output: std::io::Result<std::process::Output>) ->
     )
 }
 
-#[cfg(not(unix))]
+#[cfg(any(not(unix), test))]
 fn available_bytes_non_unix(path: &Path) -> DynResult<u64> {
     let _ = path;
     Err("safe local mutation workspaces require Unix free-space inspection".into())
@@ -156,6 +156,16 @@ fn ensure_runtime_batch_headroom_from_available_bytes(available_bytes: u64) -> D
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsupported_hosts_refuse_local_mutation_capacity() {
+        assert!(
+            available_bytes_non_unix(Path::new("/temporary-workspace"))
+                .unwrap_err()
+                .to_string()
+                .contains("require Unix free-space inspection")
+        );
+    }
 
     #[cfg(unix)]
     #[test]

@@ -97,7 +97,11 @@ impl Transport for HttpTransport {
             .timeout_connect(Some(remaining.min(connect)))
             .build();
         let agent: ureq::Agent = config.into();
-        let response = agent.get(url.as_str()).call().map_err(transport_error)?;
+        let response = agent
+            .get(url.as_str())
+            .header("accept-encoding", "gzip")
+            .call()
+            .map_err(transport_error)?;
         let header = |name| {
             response
                 .headers()

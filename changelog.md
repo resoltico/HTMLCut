@@ -24,6 +24,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
+- Advertise supported gzip transfer encoding for HTTP acquisition, including origins whose identity response is unavailable; decoding remains bounded and strict.
 - Remove silent deletion caused by reference-link classes, policy IDs and unrelated captions. Technical identifiers, selected sections and image alternatives survive the explicit faithful projections.
 - Preserve strict source/DOM/work/value/output bounds, parser/selector stop hooks, and atomic no-clobber/overwrite publication. Failed assumptions or artifact preparation do not emit successful partial results.
 - Repair numeric SemVer classification and immutable-source release packaging/notes. Required main CI and complete mutation verification now bind publication to the exact merged source.
