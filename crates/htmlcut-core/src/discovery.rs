@@ -184,7 +184,8 @@ impl PreparedDocument {
         let budget = SelectorWorkBudget::new(crate::ExecutionLimits::default().max_work);
         let document = self.document()?;
         let id = *self
-            .element_ids()?
+            .element_ids()
+            .expect("the immutable DOM was prepared successfully above")
             .get(ordinal as usize)
             .ok_or_else(stale)?;
         crate::execution::charge(&budget, 1)?;

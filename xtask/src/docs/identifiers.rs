@@ -180,8 +180,8 @@ fn documented_operation_ids(
 }
 
 fn documented_workspace_members(text: &str) -> BTreeSet<String> {
-    let pattern =
-        Regex::new(r"`((?:crates/[a-z0-9-]+)|fuzz|xtask)`").expect("valid workspace member regex");
+    let pattern = Regex::new(r"`((?:crates/[a-z0-9-]+)|(?:patches/rust/[a-z0-9_-]+)|fuzz|xtask)`")
+        .expect("valid workspace member regex");
     pattern
         .captures_iter(text)
         .filter_map(|captures| captures.get(1).map(|matched| matched.as_str().to_owned()))

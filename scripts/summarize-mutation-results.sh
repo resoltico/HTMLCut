@@ -142,3 +142,8 @@ fi
     echo
     echo "Total: $total mutants; $caught caught; $missed missed; $timed_out timed out; $unviable unviable."
 } >> "$step_summary"
+
+if (( missed > 0 || timed_out > 0 )); then
+    echo "mutation verification failed: missed or timed-out mutants remain" >&2
+    exit 1
+fi

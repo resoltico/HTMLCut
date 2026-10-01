@@ -430,7 +430,16 @@ fn render_hygiene_report_and_ensure_hygiene_surface_policy_failures() {
         assert!(rendered.contains("violations:"));
         assert!(rendered.contains("legacy-repo-target:"));
 
-        let error = ensure_hygiene(repo_root.path()).expect_err("hygiene should fail");
+        let error = crate::gate_report::with_gate_report(
+            repo_root.path(),
+            "hygiene-fault",
+            crate::gate_report::GateOutputOptions {
+                format: crate::gate_report::GateOutputFormat::Json,
+                verbose: false,
+            },
+            || ensure_hygiene(repo_root.path()),
+        )
+        .expect_err("hygiene should fail");
         let message = error.to_string();
         assert!(message.contains("artifact hygiene policy failed."));
         assert!(message.contains("cargo xtask hygiene report"));

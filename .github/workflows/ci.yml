@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
@@ -50,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
@@ -65,6 +67,14 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" HEAD -- \
             '.devcontainer' \
+            'rust-toolchain.toml' \
+            '.cargo/config.toml' \
+            'Cargo.toml' \
+            'Cargo.lock' \
+            'scripts/contributor-rust-tools.sh' \
+            'scripts/install-contributor-cargo-tools.sh' \
+            'scripts/install-contributor-nextest.sh' \
+            'docs/developer-devcontainer.md' \
             'scripts/validate-devcontainer.sh' \
             'scripts/devcontainer-check.sh' \
             'scripts/devcontainer-prepare-user-home.sh' \
@@ -90,6 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
@@ -106,6 +117,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Validate contributor environment
@@ -132,6 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
@@ -140,21 +153,8 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          retry() {
-            local attempts="$1"
-            local delay_seconds="$2"
-            shift 2
-            local attempt=1
-            until "$@"; do
-              if (( attempt >= attempts )); then
-                return 1
-              fi
-              sleep "${delay_seconds}"
-              attempt=$((attempt + 1))
-            done
-          }
-          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          retry 3 5 rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
+          htmlcut_contributor_retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          htmlcut_contributor_retry 3 5 rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
 
       - name: Export contributor Rust QA tool inventory
         id: rust_qa_tools
@@ -165,7 +165,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-nextest cargo-audit cargo-deny cargo-outdated)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust QA tools
-        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: ${{ steps.rust_qa_tools.outputs.tool_csv }}
 
@@ -176,13 +176,16 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
+          workspaces: ". -> ../.htmlcut-artifacts/target"
+          cache-directories: ../.htmlcut-artifacts/build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: cross-platform-${{ matrix.id }}
 
       - name: Exclude build directory from Windows Defender
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path "${{ github.workspace }}" "..\.htmlcut-artifacts"))
+          $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE "..\.htmlcut-artifacts"))
           Add-MpPreference -ExclusionPath (Join-Path $artifactRoot "target"), (Join-Path $artifactRoot "build")
 
       - name: Run cross-platform Rust gate
@@ -202,6 +205,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
@@ -218,25 +222,15 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          retry() {
-            local attempts="$1"
-            local delay_seconds="$2"
-            shift 2
-            local attempt=1
-            until "$@"; do
-              if (( attempt >= attempts )); then
-                return 1
-              fi
-              sleep "${delay_seconds}"
-              attempt=$((attempt + 1))
-            done
-          }
-          retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          retry 3 5 rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
+          htmlcut_contributor_retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          htmlcut_contributor_retry 3 5 rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
+          workspaces: ". -> ../.htmlcut-artifacts/target"
+          cache-directories: ../.htmlcut-artifacts/build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ matrix.target_triple }}
 
       - name: Read workspace version
@@ -265,6 +259,7 @@ jobs:
             --package "dist/${package}" \
             --target "${{ matrix.target_triple }}" \
             --version "${{ steps.version.outputs.version }}" \
+            --source-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --output dist/native-evidence.json \
             --smoke-log dist/native-smoke.log \
             --shell "${smoke_shell}"
@@ -293,6 +288,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 

@@ -3,6 +3,31 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 use std::io::Cursor;
 
+#[test]
+fn malformed_reader_cannot_overflow_transfer_accounting() {
+    struct InvalidCount;
+    impl Read for InvalidCount {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(usize::MAX)
+        }
+    }
+    let clock = clock();
+    let mut transfer = Transfer {
+        inner: InvalidCount,
+        read: 1,
+        maximum: MAX_TRANSFER,
+        deadline: clock.now() + Duration::from_secs(1),
+        clock: &clock,
+    };
+    assert!(
+        transfer
+            .read(&mut [0])
+            .unwrap_err()
+            .to_string()
+            .contains("counter overflow")
+    );
+}
+
 struct TestClock {
     base: Instant,
     calls: Cell<usize>,

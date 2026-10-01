@@ -45,19 +45,30 @@ fn available_bytes(path: &Path) -> DynResult<u64> {
     {
         let output = Command::new("df")
             .args(["-Pk", &path.display().to_string()])
-            .output()?;
-        parse_df_available_bytes(
-            path,
-            output.status.success(),
-            &output.stdout,
-            &output.status.to_string(),
-        )
+            .output();
+        parse_df_probe(path, output)
     }
     #[cfg(not(unix))]
     {
-        let _ = path;
-        Err("safe local mutation workspaces require Unix free-space inspection".into())
+        available_bytes_non_unix(path)
     }
+}
+
+#[cfg(unix)]
+fn parse_df_probe(path: &Path, output: std::io::Result<std::process::Output>) -> DynResult<u64> {
+    let output = output?;
+    parse_df_available_bytes(
+        path,
+        output.status.success(),
+        &output.stdout,
+        &output.status.to_string(),
+    )
+}
+
+#[cfg(not(unix))]
+fn available_bytes_non_unix(path: &Path) -> DynResult<u64> {
+    let _ = path;
+    Err("safe local mutation workspaces require Unix free-space inspection".into())
 }
 
 #[cfg(any(unix, test))]
@@ -96,13 +107,11 @@ fn parse_df_available_blocks(output: &str) -> DynResult<u64> {
         .iter()
         .position(|field| field.ends_with('%'))
         .ok_or("df filesystem row has no capacity column for local mutation workspaces")?;
-    let available = fields
-        .get(
-            capacity_index
-                .checked_sub(1)
-                .ok_or("df filesystem row has no available-block column")?,
-        )
+    let available_index = capacity_index
+        .checked_sub(1)
         .ok_or("df filesystem row has no available-block column")?;
+    // position() came from this same array; its preceding index is in bounds.
+    let available = fields[available_index];
     available.parse::<u64>().map_err(|error| {
         format!("df available-block value {available:?} is not an unsigned integer: {error}").into()
     })
@@ -116,8 +125,8 @@ fn workspace_lane_count_from_available_bytes(
         return Err("local mutation campaign requested zero source-workspace lanes".into());
     }
     let usable = available_bytes.saturating_sub(FREE_SPACE_RESERVE_BYTES);
-    let capacity = usize::try_from(usable / WORKSPACE_BUDGET_BYTES)
-        .map_err(|_| "local mutation workspace capacity does not fit usize")?;
+    let capacity = usize::try_from((usable / WORKSPACE_BUDGET_BYTES).min(requested_lanes as u64))
+        .expect("capacity is clamped to a requested usize lane count");
     let lanes = requested_lanes.min(capacity);
     if lanes == 0 {
         return Err(format!(
@@ -148,8 +157,20 @@ fn ensure_runtime_batch_headroom_from_available_bytes(available_bytes: u64) -> D
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn failed_df_spawn_does_not_admit_mutation_workspaces() {
+        let error = parse_df_probe(
+            Path::new("/"),
+            Err(std::io::Error::other("df spawn failed")),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("df spawn failed"));
+    }
+
     #[test]
     fn df_parser_reads_the_available_column_without_assuming_mountpoint_shape() {
+        assert!(parse_df_available_blocks("Filesystem\n1% /tmp\n").is_err());
         assert_eq!(
             parse_df_available_blocks(
                 "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3s5 100 20 80 20% /System/Volumes/Data\n"

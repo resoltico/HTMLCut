@@ -155,8 +155,8 @@ impl TrackedCoverageFile {
 // HTMLCut stays on stable for normal development. The maintained safety and
 // coverage proofs intentionally hop to nightly because Miri, cargo-fuzz, and
 // `cargo llvm-cov --branch` still require it.
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly-2026-08-25";
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly-2026-08-25";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly-2026-09-30";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly-2026-09-30";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Missing prerequisite for the branch-coverage gate.

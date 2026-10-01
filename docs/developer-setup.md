@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "15.0.0"
 domain: SETUP
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
@@ -61,7 +61,7 @@ Why this shape:
   resolves to `1.98.1`.
 - the workspace manifest carries the published compatibility floor separately through
   `[workspace.package] rust-version = "1.98.1"`.
-- The maintained `nightly-2026-08-25` toolchain is pinned because `cargo +nightly-2026-08-25 llvm-cov --branch` is required for the maintained
+- The maintained `nightly-2026-09-30` toolchain is pinned because `cargo +nightly-2026-09-30 llvm-cov --branch` is required for the maintained
   coverage gate, because `cargo xtask miri` now proves the selector and delimiter-slice paths
   under strict provenance, and because `cargo-fuzz` needs nightly for real fuzzing runs.
 - The `minimal` profile keeps the base install smaller, then HTMLCut adds only the components it
@@ -181,7 +181,7 @@ cargo deny --version
 cargo semver-checks --version
 cargo outdated --version
 cargo llvm-cov --version
-cargo +nightly-2026-08-25 miri --version
+cargo +nightly-2026-09-30 miri --version
 cargo fuzz --version
 cargo mutants --version
 shellcheck --version

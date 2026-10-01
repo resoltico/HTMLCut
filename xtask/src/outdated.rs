@@ -22,7 +22,8 @@ pub fn outdated_check_command() -> CommandSpec {
 
 /// Runs the maintained dependency-freshness gate through a sanitized workspace snapshot.
 pub fn run_outdated_check(repo_root: &Path) -> DynResult<()> {
-    let snapshot_root = tempdir()?.path().join("workspace");
+    let scratch = tempdir()?;
+    let snapshot_root = scratch.path().join("workspace");
     materialize_outdated_workspace(repo_root, &snapshot_root)?;
     run_spec(
         repo_root,
@@ -65,10 +66,24 @@ fn materialize_outdated_workspace(repo_root: &Path, snapshot_root: &Path) -> Dyn
 
 fn copy_member_package_layout(source_root: &Path, destination_root: &Path) -> DynResult<()> {
     fs::create_dir_all(destination_root)?;
-    copy_file(
-        &source_root.join("Cargo.toml"),
-        &destination_root.join("Cargo.toml"),
+    let manifest = fs::read_to_string(source_root.join("Cargo.toml"))?;
+    fs::write(
+        destination_root.join("Cargo.toml"),
+        strip_patch_crates_io(&manifest)?,
     )?;
+
+    // Flat upstream carriers have lib.rs and sibling modules at the package root.
+    for entry in fs::read_dir(source_root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "rs")
+        {
+            copy_file(&entry.path(), &destination_root.join(entry.file_name()))?;
+        }
+    }
 
     for directory in ["src", "tests", "examples", "benches", "fuzz_targets"] {
         let source_dir = source_root.join(directory);
@@ -127,8 +142,24 @@ fn strip_patch_crates_io(manifest: &str) -> DynResult<String> {
         }
     }
     sanitize_repo_owned_workspace_dependencies(&mut value);
+    sanitize_member_dependencies(&mut value);
 
     Ok(toml::to_string(&value)?)
+}
+
+fn sanitize_member_dependencies(value: &mut toml::Value) {
+    for group in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(table) = value.get_mut(group).and_then(toml::Value::as_table_mut) {
+            for (alias, dependency) in table.iter_mut() {
+                sanitize_repo_owned_dependency(alias, dependency);
+            }
+        }
+    }
+    if let Some(targets) = value.get_mut("target").and_then(toml::Value::as_table_mut) {
+        for (_, target) in targets.iter_mut() {
+            sanitize_member_dependencies(target);
+        }
+    }
 }
 
 fn sanitize_repo_owned_workspace_dependencies(value: &mut toml::Value) {
@@ -150,7 +181,7 @@ fn sanitize_repo_owned_workspace_dependencies(value: &mut toml::Value) {
     }
 }
 
-fn sanitize_repo_owned_dependency(_dependency_name: &str, dependency_value: &mut toml::Value) {
+fn sanitize_repo_owned_dependency(dependency_name: &str, dependency_value: &mut toml::Value) {
     let Some(dependency_table) = dependency_value.as_table_mut() else {
         return;
     };
@@ -172,13 +203,21 @@ fn sanitize_repo_owned_dependency(_dependency_name: &str, dependency_value: &mut
     };
 
     if !package_name.starts_with("htmlcut-")
-        || !path.starts_with("patches/rust/")
+        || !(path.starts_with("patches/rust/") || path.starts_with("../"))
         || !version.contains("-htmlcut.")
     {
         return;
     }
 
-    dependency_table.remove("package");
+    let upstream = package_name
+        .strip_prefix("htmlcut-")
+        .unwrap()
+        .replace("servo-arc", "servo_arc");
+    if dependency_name == upstream {
+        dependency_table.remove("package");
+    } else {
+        dependency_table.insert("package".into(), toml::Value::String(upstream));
+    }
     dependency_table.remove("path");
     dependency_table.insert(
         "version".to_owned(),

@@ -127,8 +127,14 @@ main() {
 
     notes_file="$(mktemp "${TMPDIR:-/tmp}/htmlcut-release-notes.XXXXXX")"
     trap 'rm -f -- "${notes_file}"' EXIT
-    python3 "${script_dir}/release-notes.py" --ref "refs/tags/${tag_name}" --version "${version}" >"${notes_file}"
+    python3 "${script_dir}/release-notes.py" --ref "${RELEASE_SOURCE_SHA:-refs/tags/${tag_name}}" --version "${version}" >"${notes_file}"
     ensure_release_draft_exists
+    python3 "${script_dir}/release-assets.py" --tag "${tag_name}" --version "${version}" \
+        --dist "${repo_root}/dist" --notes "${notes_file}" --allow-missing
+    if [[ "$(release_is_draft)" == "false" ]]; then
+        printf 'Existing published release %s has matching immutable bytes; no edit performed.\n' "${tag_name}"
+        return 0
+    fi
 
     mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
     (( ${#expected_assets[@]} > 0 )) || htmlcut_die "release asset inventory is empty"
@@ -137,6 +143,8 @@ main() {
         upload_if_missing "${repo_root}/dist/${asset_name}"
     done
 
+    python3 "${script_dir}/release-assets.py" --tag "${tag_name}" --version "${version}" \
+        --dist "${repo_root}/dist" --notes "${notes_file}"
     publish_release
 
     printf 'GitHub release publication converged for %s\n' "${tag_name}"

@@ -260,9 +260,9 @@ impl<T> Arc<T> {
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         // To find the corresponding pointer to the `ArcInner` we need
         // to subtract the offset of the `data` field from the pointer.
-        let ptr = (ptr as *const u8).sub(data_offset::<T>());
+        let ptr = unsafe { (ptr as *const u8).sub(data_offset::<T>()) };
         Arc {
-            p: ptr::NonNull::new_unchecked(ptr as *mut ArcInner<T>),
+            p: unsafe { ptr::NonNull::new_unchecked(ptr as *mut ArcInner<T>) },
             phantom: PhantomData,
         }
     }
@@ -270,7 +270,7 @@ impl<T> Arc<T> {
     /// Like from_raw, but returns an addrefed arc instead.
     #[inline]
     pub unsafe fn from_raw_addrefed(ptr: *const T) -> Self {
-        let arc = Self::from_raw(ptr);
+        let arc = unsafe { Self::from_raw(ptr) };
         mem::forget(arc.clone());
         arc
     }
@@ -297,10 +297,12 @@ impl<T> Arc<T> {
             data,
         };
 
-        ptr::write(ptr, x);
+        unsafe {
+            ptr::write(ptr, x);
+        }
 
         Arc {
-            p: ptr::NonNull::new_unchecked(ptr),
+            p: unsafe { ptr::NonNull::new_unchecked(ptr) },
             phantom: PhantomData,
         }
     }
@@ -351,9 +353,14 @@ impl<T: ?Sized> Arc<T> {
     ///
     /// It's a logic error to call this more than once, but it's not unsafe, as
     /// it'd just report negative leaks.
+    ///
+    /// The allocation is expected to live for the rest of the process, so this
+    /// also marks it static: clone()/drop() then skip the atomic refcount
+    /// updates.
     #[inline(always)]
     pub fn mark_as_intentionally_leaked(&self) {
         self.record_drop();
+        self.inner().count.store(STATIC_REFCOUNT, Relaxed);
     }
 
     // Non-inlined part of `drop`. Just invokes the destructor and calls the
@@ -363,12 +370,14 @@ impl<T: ?Sized> Arc<T> {
         self.record_drop();
         let inner = self.ptr();
 
-        let layout = Layout::for_value(&*inner);
-        #[cfg(feature = "track_alloc_size")]
-        let layout = Layout::from_size_align_unchecked((*inner).alloc_size, layout.align());
+        unsafe {
+            let layout = Layout::for_value(&*inner);
+            #[cfg(feature = "track_alloc_size")]
+            let layout = Layout::from_size_align_unchecked((*inner).alloc_size, layout.align());
 
-        std::ptr::drop_in_place(inner);
-        alloc::dealloc(inner as *mut _, layout);
+            std::ptr::drop_in_place(inner);
+            alloc::dealloc(inner as *mut _, layout);
+        }
     }
 
     /// Test pointer equality between the two Arcs, i.e. they must be the _same_
@@ -389,7 +398,7 @@ impl<T: ?Sized> Arc<T> {
 }
 
 #[cfg(any())]
-extern "C" {
+unsafe extern "C" {
     fn NS_LogCtor(
         aPtr: *mut std::os::raw::c_void,
         aTypeName: *const std::os::raw::c_char,
@@ -1021,15 +1030,19 @@ impl<'a, T> ArcBorrow<'a, T> {
     /// e.g. if we obtain such a reference over FFI
     #[inline]
     pub unsafe fn from_ref(r: &'a T) -> Self {
-        let ptr = (r as *const T as *const u8).sub(data_offset::<T>());
-        Self::from_inner_ptr(ptr as *const ArcInner<T>)
+        unsafe {
+            let ptr = (r as *const T as *const u8).sub(data_offset::<T>());
+            Self::from_inner_ptr(ptr as *const ArcInner<T>)
+        }
     }
 
     #[inline]
     unsafe fn from_inner_ptr(ptr: *const ArcInner<T>) -> Self {
-        ArcBorrow {
-            ptr: ptr::NonNull::new_unchecked(ptr as *mut ArcInner<T>),
-            phantom: PhantomData,
+        unsafe {
+            ArcBorrow {
+                ptr: ptr::NonNull::new_unchecked(ptr as *mut ArcInner<T>),
+                phantom: PhantomData,
+            }
         }
     }
 
@@ -1118,7 +1131,7 @@ pub enum ArcUnionBorrow<'a, A: 'a, B: 'a> {
 impl<A, B> ArcUnion<A, B> {
     unsafe fn new(ptr: *mut ()) -> Self {
         ArcUnion {
-            p: ptr::NonNull::new_unchecked(ptr),
+            p: unsafe { ptr::NonNull::new_unchecked(ptr) },
             phantom_a: PhantomData,
             phantom_b: PhantomData,
         }

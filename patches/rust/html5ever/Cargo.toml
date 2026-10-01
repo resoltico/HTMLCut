@@ -10,10 +10,11 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
+publish = false
 edition = "2021"
 rust-version = "1.98.1"
 name = "htmlcut-html5ever"
-version = "0.39.0-htmlcut.3"
+version = "0.40.1-htmlcut.1"
 authors = ["The html5ever Project Developers"]
 build = false
 autolib = false
@@ -74,16 +75,19 @@ name = "html5ever"
 path = "benches/html5ever.rs"
 harness = false
 
+[dependencies.memchr]
+version = "2.8.2"
+
 [dependencies.log]
 version = "0.4.34"
 
 [dependencies.markup5ever]
 package = "htmlcut-markup5ever"
 path = "../markup5ever"
-version = "0.39.0-htmlcut.3"
+version = "0.40.0-htmlcut.1"
 
 [dev-dependencies.criterion]
-version = "0.8"
+version = "0.8.2"
 
 [dev-dependencies.typed-arena]
 version = "2.0.2"

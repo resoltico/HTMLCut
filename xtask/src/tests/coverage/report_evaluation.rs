@@ -1,12 +1,36 @@
 use super::*;
 
 #[test]
+fn llvm_segment_counter_flag_is_independent_of_region_entry_and_gap_flags() {
+    let root = tempdir().unwrap();
+    let tracked = tracked_subset(root.path(), &["xtask/src/lib.rs"]);
+    let report = CoverageReport {
+        data: vec![CoverageDataSet {
+            files: vec![CoverageFile {
+                filename: root.path().join("xtask/src/lib.rs"),
+                segments: vec![
+                    (1, 1, 0, false, true, false), // no counter, despite entry flag
+                    (2, 1, 0, true, true, true),   // non-executable gap
+                    (3, 1, 5, true, false, false), // counter-bearing continuation
+                    (4, 1, 0, true, true, false),  // real uncovered executable region
+                ],
+                branches: Vec::new(),
+                summary: CoverageFileSummary::default(),
+            }],
+        }],
+    };
+    let summary = evaluate_coverage_report(root.path(), &tracked, report).unwrap();
+    assert_eq!(summary.tracked_line_count, 2);
+    assert_eq!(summary.failures[0].uncovered_lines, ["4"]);
+}
+
+#[test]
 fn read_coverage_report_loads_json_from_disk() {
     let repo_root = tempdir().expect("tempdir");
     let coverage_path = repo_root.path().join("coverage.json");
     fs::write(
             &coverage_path,
-            r#"{"data":[{"files":[{"filename":"tracked.rs","segments":[[7,0,1,false,true,false]],"summary":{"branches":{"count":1,"covered":1,"notcovered":0}}}]}]}"#,
+            r#"{"data":[{"files":[{"filename":"tracked.rs","segments":[[7,0,1,true,true,false]],"summary":{"branches":{"count":1,"covered":1,"notcovered":0}}}]}]}"#,
         )
         .expect("write coverage report");
 
@@ -42,7 +66,7 @@ fn evaluate_coverage_report_merges_duplicate_segments_and_ignores_untracked_file
                     CoverageFile {
                         filename: repo_root.path().join("crates/htmlcut-core/src/lib.rs"),
                         segments: vec![
-                            (10, 0, 0, false, true, false),
+                            (10, 0, 0, true, true, false),
                             (11, 0, 0, false, false, false),
                         ],
                         branches: Vec::new(),
@@ -56,7 +80,7 @@ fn evaluate_coverage_report_merges_duplicate_segments_and_ignores_untracked_file
                     },
                     CoverageFile {
                         filename: extra_file,
-                        segments: vec![(99, 0, 1, false, true, false)],
+                        segments: vec![(99, 0, 1, true, true, false)],
                         branches: Vec::new(),
                         summary: CoverageFileSummary::default(),
                     },
@@ -66,7 +90,7 @@ fn evaluate_coverage_report_merges_duplicate_segments_and_ignores_untracked_file
                 files: vec![
                     CoverageFile {
                         filename: repo_root.path().join("crates/htmlcut-core/src/lib.rs"),
-                        segments: vec![(10, 0, 2, false, true, false)],
+                        segments: vec![(10, 0, 2, true, true, false)],
                         branches: Vec::new(),
                         summary: CoverageFileSummary {
                             branches: CoverageCounter {
@@ -78,7 +102,7 @@ fn evaluate_coverage_report_merges_duplicate_segments_and_ignores_untracked_file
                     },
                     CoverageFile {
                         filename: repo_root.path().join("crates/htmlcut-cli/src/lib.rs"),
-                        segments: vec![(20, 0, 1, false, true, false)],
+                        segments: vec![(20, 0, 1, true, true, false)],
                         branches: Vec::new(),
                         summary: CoverageFileSummary {
                             branches: CoverageCounter {
@@ -90,13 +114,13 @@ fn evaluate_coverage_report_merges_duplicate_segments_and_ignores_untracked_file
                     },
                     CoverageFile {
                         filename: repo_root.path().join("crates/htmlcut-cli/src/main.rs"),
-                        segments: vec![(30, 0, 1, false, true, false)],
+                        segments: vec![(30, 0, 1, true, true, false)],
                         branches: Vec::new(),
                         summary: CoverageFileSummary::default(),
                     },
                     CoverageFile {
                         filename: repo_root.path().join("xtask/src/lib.rs"),
-                        segments: vec![(40, 0, 1, false, true, false)],
+                        segments: vec![(40, 0, 1, true, true, false)],
                         branches: Vec::new(),
                         summary: CoverageFileSummary {
                             branches: CoverageCounter {
@@ -137,13 +161,13 @@ fn evaluate_coverage_report_deduplicates_duplicate_branch_spans() {
             files: vec![
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-core/src/lib.rs"),
-                    segments: vec![(7, 0, 1, false, true, false)],
+                    segments: vec![(7, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-cli/src/lib.rs"),
-                    segments: vec![(9, 0, 1, false, true, false)],
+                    segments: vec![(9, 0, 1, true, true, false)],
                     branches: vec![
                         (12, 0, 12, 24, 0, 0, 0, 0, 4),
                         (12, 0, 12, 24, 3, 2, 0, 0, 4),
@@ -158,13 +182,13 @@ fn evaluate_coverage_report_deduplicates_duplicate_branch_spans() {
                 },
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-cli/src/main.rs"),
-                    segments: vec![(11, 0, 1, false, true, false)],
+                    segments: vec![(11, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
                 CoverageFile {
                     filename: repo_root.path().join("xtask/src/lib.rs"),
-                    segments: vec![(13, 0, 1, false, true, false)],
+                    segments: vec![(13, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
@@ -197,13 +221,13 @@ fn evaluate_coverage_report_counts_each_uncovered_branch_edge() {
             files: vec![
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-core/src/lib.rs"),
-                    segments: vec![(7, 0, 1, false, true, false)],
+                    segments: vec![(7, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-cli/src/lib.rs"),
-                    segments: vec![(9, 0, 1, false, true, false)],
+                    segments: vec![(9, 0, 1, true, true, false)],
                     branches: vec![(12, 0, 12, 24, 0, 3, 0, 0, 4)],
                     summary: CoverageFileSummary {
                         branches: CoverageCounter {
@@ -215,13 +239,13 @@ fn evaluate_coverage_report_counts_each_uncovered_branch_edge() {
                 },
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-cli/src/main.rs"),
-                    segments: vec![(11, 0, 1, false, true, false)],
+                    segments: vec![(11, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
                 CoverageFile {
                     filename: repo_root.path().join("xtask/src/lib.rs"),
-                    segments: vec![(13, 0, 1, false, true, false)],
+                    segments: vec![(13, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary::default(),
                 },
@@ -248,7 +272,7 @@ fn evaluate_coverage_report_reports_uncovered_and_missing_files() {
                 filename: repo_root
                     .path()
                     .join("crates/htmlcut-core/src/contracts/mod.rs"),
-                segments: vec![(7, 0, 0, false, true, false)],
+                segments: vec![(7, 0, 0, true, true, false)],
                 branches: Vec::new(),
                 summary: CoverageFileSummary {
                     branches: CoverageCounter {

@@ -136,14 +136,12 @@ fn unmanaged_artifact_container_paths_at(
         return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(container)
-        .map_err(|error| {
-            format!(
-                "failed to inspect managed artifact container {}: {error}",
-                container.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    let entries = collect_directory_entries(fs::read_dir(container).map_err(|error| {
+        format!(
+            "failed to inspect managed artifact container {}: {error}",
+            container.display()
+        )
+    })?)?;
     let mut paths = entries
         .into_iter()
         .map(|entry| entry.path())
@@ -157,6 +155,22 @@ fn unmanaged_artifact_container_paths_at(
         .collect::<Vec<_>>();
     paths.sort();
     Ok(paths)
+}
+
+fn collect_directory_entries(
+    entries: impl Iterator<Item = std::io::Result<fs::DirEntry>>,
+) -> DynResult<Vec<fs::DirEntry>> {
+    Ok(entries.collect::<std::io::Result<Vec<_>>>()?)
+}
+
+#[cfg(test)]
+#[test]
+fn directory_iteration_errors_propagate_without_a_partial_inventory() {
+    let error = collect_directory_entries(std::iter::once(Err(std::io::Error::other(
+        "directory enumeration failed",
+    ))))
+    .unwrap_err();
+    assert!(error.to_string().contains("directory enumeration failed"));
 }
 
 pub(super) fn remove_artifact_path_if_exists(path: &Path) -> DynResult<()> {

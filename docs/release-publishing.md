@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "15.0.0"
 domain: RELEASE
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -192,12 +192,12 @@ gh release download vX.Y.Z \
   tar -xzf "./htmlcut-X.Y.Z-${HOST_TARGET}.tar.gz"
   grep "${HOST_TARGET}" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
   ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
-  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^HTMLCut X.Y.Z$"
+  "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^htmlcut X.Y.Z$"
   printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select ./page.html --css 'article a.more' --value attribute --attribute href --emit-request-file ./article-link.request.json)"
-  [ -f ./article-link.request.json ]
-  [ "${FIRST_OUTPUT}" = "../guide.html" ]
-  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" select --request-file ./article-link.request.json)"
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --projection attribute --attribute href --save-run ./article-link.run.json)"
+  [ -f ./article-link.run.json ]
+  printf '%s' "${FIRST_OUTPUT}" | python3 -c 'import json,sys; assert json.load(sys.stdin)["values"] == ["../guide.html"]'
+  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" run ./article-link.run.json)"
   [ "${REPLAY_OUTPUT}" = "${FIRST_OUTPUT}" ]
 )
 
@@ -206,7 +206,7 @@ rm -rf "$TMP_DIR"
 
 Do not declare the release complete until the checksum manifest validates, the packaged README
 identifies the target package without leaking source-build instructions, and the downloaded
-host-native binary completes one extraction-plus-request-replay flow from the extracted package.
+host-native binary completes one extraction-plus-saved-run replay from the extracted package.
 
 The release workflow already performs runtime smoke on each target's native runner. The local
 post-release command above is an additional asset-integrity check plus a host-native runtime
@@ -214,3 +214,21 @@ verification step for the maintained Unix-like maintainer hosts: Apple Silicon m
 and x86_64 Linux.
 
 Release jobs resolve the requested immutable tag commit once and every archive/native/publication job checks out that SHA. Source packaging accepts an explicit ref through `scripts/build-source-archives.sh`. Notes come exclusively from the exact version section of the source revision's changelog through `scripts/release-notes.py`; absent, duplicate and empty sections fail. Unreleased preview is explicitly nonpublishing. Publication remains separately authorized.
+
+Dispatch tag input is canonicalized before checkout and never inserted into shell program text.
+The producer requires an annotated tag reachable from main, then checks successful same-source
+main CI and a full mutation workflow before distributing one source/tag/version binding. Every
+downstream release helper receives `RELEASE_SOURCE_SHA` and rejects a tag that moved afterward.
+
+Before publishing a draft, `release-assets.py` verifies immutable notes/title, the exact registry
+asset set and prepared checksum manifest, and hashes the bytes of every existing uploaded asset.
+Missing draft assets can be uploaded; mismatched assets fail without clobbering them. A matching
+public release is verification-only, with no latest/title/status edit on a retry. New drafts below
+an existing stable release are rejected. Publication workflows serialize across tags and preserve
+in-progress work rather than cancelling it for a newer dispatch.
+
+Post-publication consumer verification streams the published checksum file and assets without
+requiring all four native builds locally. Downloads are bounded and hashed as exact raw bytes;
+terminal escape processing is explicitly disabled for the private hash pipe. This verifies provider
+bytes/checksum consistency; GitHub build attestations separately carry source provenance. The
+initial publication additionally compares uploads to the locally prepared package bytes.

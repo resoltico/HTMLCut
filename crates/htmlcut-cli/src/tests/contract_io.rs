@@ -2,6 +2,114 @@ use super::*;
 use htmlcut_core::{ErrorCode, ExtractionError};
 use std::io::{self, Read, Write};
 
+#[cfg(unix)]
+#[test]
+fn non_utf8_file_options_and_resolved_replay_paths_are_typed_failures() {
+    use std::os::unix::ffi::OsStringExt;
+    #[cfg(not(target_os = "macos"))]
+    use std::os::unix::fs::symlink;
+    let mut args: Vec<std::ffi::OsString> = ["htmlcut", "extract", "--file"]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    args.push(std::ffi::OsString::from_vec(vec![0xff]));
+    args.extend(["--css", "p"].into_iter().map(Into::into));
+    let mut output = Vec::new();
+    let mut errors = Vec::new();
+    assert_eq!(
+        app::run(args, &mut io::empty(), &mut output, &mut errors),
+        2
+    );
+    assert!(output.is_empty());
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "extract",
+                "--file",
+                "/htmlcut-missing-replay-source",
+                "--css",
+                "p",
+                "--save-run",
+                "/htmlcut-missing-run"
+            ],
+            b""
+        )
+        .0,
+        5
+    );
+    // APFS rejects invalid UTF-8 names; exercise the actual filesystem route on Unix filesystems
+    // that support such names, while the conversion decision is tested on every Unix host above.
+    #[cfg(not(target_os = "macos"))]
+    {
+        let root = htmlcut_tempdir::tempdir().unwrap();
+        let invalid = root.path().join(std::ffi::OsString::from_vec(vec![0xff]));
+        std::fs::create_dir(&invalid).unwrap();
+        std::fs::write(invalid.join("page.html"), "<p>value</p>").unwrap();
+        let alias = root.path().join("page.html");
+        symlink(invalid.join("page.html"), &alias).unwrap();
+        let run = root.path().join("run.json");
+        let args = [
+            "htmlcut",
+            "extract",
+            "--file",
+            alias.to_str().unwrap(),
+            "--css",
+            "p",
+            "--save-run",
+            run.to_str().unwrap(),
+        ];
+        assert_eq!(invoke(&args, b"").0, 2);
+        assert!(!run.exists());
+        std::fs::remove_file(&alias).unwrap();
+        assert_eq!(invoke(&args, b"").0, 5);
+    }
+}
+
+#[test]
+fn destination_changed_during_acquisition_never_publishes_a_result() {
+    struct ChangeDestination {
+        path: std::path::PathBuf,
+        once: bool,
+    }
+    impl Read for ChangeDestination {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.once {
+                return Ok(0);
+            }
+            self.once = true;
+            std::fs::create_dir(&self.path)?;
+            let bytes = b"<p>value</p>";
+            buffer[..bytes.len()].copy_from_slice(bytes);
+            Ok(bytes.len())
+        }
+    }
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let target = root.path().join("output.json");
+    let mut source = ChangeDestination {
+        path: target.clone(),
+        once: false,
+    };
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = app::run(
+        [
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--output",
+            target.to_str().unwrap(),
+        ],
+        &mut source,
+        &mut out,
+        &mut err,
+    );
+    assert_eq!(code, 5);
+    assert!(out.is_empty());
+}
+
 struct ReadFailure;
 impl Read for ReadFailure {
     fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {

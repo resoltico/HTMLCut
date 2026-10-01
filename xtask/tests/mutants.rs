@@ -302,7 +302,7 @@ fn run_mutation_summary(
 
 #[cfg(unix)]
 #[test]
-fn mutation_summary_verifies_exact_artifacts_and_aggregates_completed_outcomes() {
+fn mutation_summary_rejects_survivors_but_preserves_completed_accounting() {
     let root = tempdir().expect("mutation summary fixture");
     let artifact_root = root.path().join("artifacts");
     let summary_path = root.path().join("summary.md");
@@ -322,11 +322,12 @@ fn mutation_summary_verifies_exact_artifacts_and_aggregates_completed_outcomes()
 
     let output = run_mutation_summary(&plan, &artifact_root, &summary_path, 5);
     assert!(
-        output.status.success(),
-        "mutation summary failed:\n{}",
+        !output.status.success(),
+        "survivor summary unexpectedly succeeded:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missed or timed-out mutants"));
     let summary = fs::read_to_string(summary_path).expect("read mutation summary");
     assert!(summary.contains("| `0/2` | 2 | 1 | 1 | 0 | 0 |"));
     assert!(summary.contains("| `1/2` | 3 | 2 | 0 | 1 | 0 |"));

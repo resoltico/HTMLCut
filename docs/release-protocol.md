@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "15.0.0"
 domain: RELEASE
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
   questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]
@@ -38,6 +38,10 @@ Release choreography lives in this document set. Contract-versioning policy live
 - Tag publication is authoritative for release automation. PR merge alone does not publish.
 - Release tags are annotated, immutable records pointing at the merged `origin/main` commit; a
   release tag must never be created from an ambiguous local `HEAD`.
+- The release workflow requires the tagged source to be reachable from `origin/main` and have
+  successful exact-source main CI and full mutation runs. PR-diff mutation success is insufficient.
+- Publication is serialized across tags. Matching already-published releases are verified without
+  edits; an older unpublished draft cannot replace a newer stable release as latest.
 - Every post-tag publication action derives the release version and asset names from the immutable
   tagged `Cargo.toml`; a newer `main` checkout may supply repaired release tooling but must not
   redefine an existing release's identity.
@@ -51,8 +55,8 @@ Release choreography lives in this document set. Contract-versioning policy live
 
 - [Quality Gates](quality-gates.md) defines the maintained local gate.
 - [Platform Support](platform-support.md) defines the release-target matrix and deployment floors.
-- [Versioning Policy](versioning-policy.md) defines generic-contract versioning, interop
-  rules, and semver-baseline policy.
+- [Versioning Policy](versioning-policy.md) defines package, schema and extraction-semantics
+  versioning plus the immutable published API baseline policy.
 - `scripts/release-targets.sh`, `.github/workflows/ci.yml`, and `.github/workflows/release.yml`
   implement the published target matrix and release asset inventory.
 

@@ -213,6 +213,6 @@ fn contributor_images_pin_multi_platform_manifest_indexes() {
     );
     assert!(cli_helper.contains("multi-platform image index"));
     assert!(cli_helper.contains(
-        "docker:29.7.2-cli@sha256:000bb62ff495f986c9f5578eb67cc2cb98b91138eda81d7762d5371eb8a497fe"
+        "docker:29.8.2-cli@sha256:b1805116a6a86cc591b5d5f60a910a0715cdcc9d18d866ad68b1457ead25c35c"
     ));
 }

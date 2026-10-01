@@ -99,9 +99,18 @@ pub(super) fn combined_failure_tail_from_logs(
     stdout_path: &Path,
     stderr_path: &Path,
 ) -> std::io::Result<String> {
+    #[cfg(test)]
+    if FAILURE_TAIL_READ_FAULT.with(|fault| fault.replace(false)) {
+        return Err(std::io::Error::other("test-owned failure-tail read fault"));
+    }
     let stdout = log_tail(stdout_path)?;
     let stderr = log_tail(stderr_path)?;
     Ok(combined_failure_tail(&stdout, &stderr))
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static FAILURE_TAIL_READ_FAULT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 pub(super) fn bounded_tail(bytes: &[u8]) -> String {

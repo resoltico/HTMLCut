@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn staging_write_flush_and_sync_faults_are_fatal() {
+    struct Fault {
+        stage: u8,
+    }
+    impl Write for Fault {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.stage == 0 {
+                Err(io::Error::other("write fault"))
+            } else {
+                Ok(bytes.len())
+            }
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            if self.stage == 1 {
+                Err(io::Error::other("flush fault"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+    for stage in 0..=2 {
+        let error = write_staged_bytes(&mut Fault { stage }, b"payload", |_| {
+            Err(io::Error::other("sync fault"))
+        })
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Publication);
+    }
+}
+
+#[test]
 fn publication_buffer_flush_never_resets_serialization_capacity() {
     let mut buffer = Buffer {
         bytes: Vec::new(),

@@ -105,6 +105,18 @@ pub(crate) struct Staged {
     overwrite: bool,
 }
 
+fn write_staged_bytes<W: Write>(
+    writer: &mut W,
+    bytes: &[u8],
+    sync: impl FnOnce(&mut W) -> io::Result<()>,
+) -> Result<(), ExtractionError> {
+    writer
+        .write_all(bytes)
+        .and_then(|_| writer.flush())
+        .and_then(|_| sync(writer))
+        .map_err(|_| failure())
+}
+
 impl Staged {
     pub(crate) fn prepare(
         target: &Path,
@@ -113,10 +125,7 @@ impl Staged {
     ) -> Result<Self, ExtractionError> {
         let target = normalized_target(target)?;
         let mut file = NamedTempFile::new_in(target.parent().unwrap()).map_err(|_| failure())?;
-        file.write_all(bytes)
-            .and_then(|_| file.flush())
-            .and_then(|_| file.as_file().sync_all())
-            .map_err(|_| failure())?;
+        write_staged_bytes(&mut file, bytes, |file| file.as_file().sync_all())?;
         Ok(Self {
             file,
             target,

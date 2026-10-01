@@ -2,15 +2,33 @@
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [15.0.0] - 2026-10-01
 
-### Intended for 15.0.0
+### Changed
 
-- Replace overlapping extraction contracts with one pure immutable-snapshot core, reusable compiled plans and lazy bounded DOM preparation.
-- Make single/literal DOM text the default; preserve explicit structural text, original source slices, strict guards and compact deterministic results.
-- Move bounded GET acquisition and strict decoding to the binary CLI; saved URL runs keep runtime environment references instead of transient values.
-- Remove heuristic reader suppression, legacy adapters/aliases and the CLI Rust library; preserve parser/selector safeguards and native distribution.
-- Repair numeric SemVer classification, always-required Linux maintainer verification and immutable-source/changelog release publication.
+- **Breaking CLI change:** the supported commands are `extract`, `run`, `inspect`, `describe`, and `schema`. Old commands, request envelopes and aliases are rejected. Default extraction uses exactly one match, literal `dom_text`, and compact deterministic JSON; `--raw` emits one exact value without an added newline.
+- **Breaking Rust API change:** `htmlcut-core` is the single execution contract, with immutable UTF-8 snapshots, reusable compiled plans, lazy bounded prepared documents, requested projections and one typed error family. The interop runtime, translation profiles and CLI Rust library are removed.
+- Text extraction preserves the selected payload. Explicit `document_text` retains headings, links, image alternatives, lists, tables and preformatted text; hidden content remains included. Exclusions and whitespace/URL transforms are caller-declared rather than inferred.
+- Source slicing is a separate byte-preserving strategy with half-open UTF-8 ranges. It does not prepare a DOM or automatically render/reparse its result. Inner/outer HTML remain parsed-DOM serialization.
+- Acquisition belongs to the CLI: bounded HTTP(S) GET, strict charset/BOM decoding and file/stdin input. Saved runs separate acquisition from the plan; automatic URL persistence stores runtime environment-variable references rather than their values.
+- Discovery is bounded and snapshot-bound. Descriptions and schemas are individually retrievable, shortened previews are visibly incomplete, and selector proposals require explicit adoption.
+- Refresh the owned stack to selectors 0.41.0, servo_arc 0.5.0, html5ever 0.40.1, markup5ever 0.40.0 and tendril 0.5.1, preserving applicable resource/provenance safeguards and adapting scraper diagnostics. Update encoding_rs to 0.8.42 and the resolved dependency graph.
+- Rust 1.98.1 remains the current stable compiler and minimum supported version. Maintainer Miri/coverage/fuzz uses nightly-2026-09-30. Update the CI install action to v2.87.22, Docker CLI helper to 29.8.2 and devcontainer CLI to 0.89.0.
+- Owned forks are explicit workspace members. Freshness checks include their dependency tables and flat source layouts. Remove unused dependency integrations; distribution remains GitHub native/source archives with git/path Rust consumption, and unsupported Cargo registry publication is disabled.
+
+### Added
+
+- Strict selection/cardinality, required-attribute and exact/regex context guards. Guards evaluate the original DOM before exclusions/transforms, and any unmet assumption fails the entire extraction.
+- Source, normalized-plan and extraction identities; opt-in field-selected audit evidence; immutable prepared-document reuse with fresh shared execution budgets.
+- Complete-value fidelity fixtures, independent task-economics comparisons, adversarial/live/captured test methodology, and exact source-bound mutation/native release evidence.
+
+### Fixed
+
+- Remove silent deletion caused by reference-link classes, policy IDs and unrelated captions. Technical identifiers, selected sections and image alternatives survive the explicit faithful projections.
+- Preserve strict source/DOM/work/value/output bounds, parser/selector stop hooks, and atomic no-clobber/overwrite publication. Failed assumptions or artifact preparation do not emit successful partial results.
+- Repair numeric SemVer classification and immutable-source release packaging/notes. Required main CI and complete mutation verification now bind publication to the exact merged source.
+- Validate existing release asset bytes, checksums and metadata before publication or retry; matching published releases are verification-only. Serialize publication, reject stable downgrades, and bind native evidence to the canonical package/source before and after smoke testing.
+- Reclaim freshness scratch after its subprocess completes; align workflow source refs, credential/cache handling and contributor bootstrap triggers. Update maintained documentation to the v15 contract.
 
 ## [14.0.0] - 2026-09-24
 

@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "15.0.0"
 domain: INDEX
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [documentation index, extraction contract, maintainer guides]
   questions: ["Where is the maintained documentation index?"]
@@ -40,6 +40,8 @@ when they drift.
 ## Maintainer Workflow
 
 - [Quality Gates](quality-gates.md)
+- [Dependency Refresh](dependency-refresh.md)
+- [Configuration and Workflow Audit](configuration-audit.md)
 - [Artifact Hygiene](hygiene.md)
 - [Release Protocol Overview](release-protocol.md)
 - [Release Preflight](release-preflight.md)
@@ -59,7 +61,7 @@ when they drift.
 
 The core crate also ships a runnable snapshot-reuse example at
 [crates/htmlcut-core/examples/snapshot_reuse.rs](../crates/htmlcut-core/examples/snapshot_reuse.rs).
-Run `cargo run -q -p htmlcut-core --example snapshot_reuse` to print a compact JSON
+Run `cargo run -q -p htmlcut-core --example snapshot_reuse` to print compact JSON
 results that reuse one prepared snapshot.
 
 Reusable extraction-definition workflows are illustrated in

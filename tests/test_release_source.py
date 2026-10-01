@@ -8,6 +8,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 class SourceTest(unittest.TestCase):
+    def test_tag_syntax_is_closed_before_git_or_shell_expansion(self):
+        script = ROOT / "scripts/release-tag.sh"
+        for tag in ["main", "v01.0.0", "v15.0.0-rc1", "v15.0.0+meta", "v15.$(false).0", ""]:
+            result = subprocess.run(["bash", str(script), tag], cwd=ROOT,
+                env={**__import__('os').environ, "RELEASE_TAG": "", "GITHUB_REF_NAME": ""}, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b"canonical stable", result.stderr)
+
     def test_moving_main_differs_from_tag_but_archives_and_notes_use_tag(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
@@ -23,6 +31,11 @@ class SourceTest(unittest.TestCase):
             git('commit', '-m', 'release source')
             git('tag', '-a', 'v15.0.0', '-m', 'fixture tag')
             intended = git('rev-parse', 'HEAD')
+            shell = f'source "{ROOT / "scripts/common.sh"}"; source "{ROOT / "scripts/release-tag.sh"}"; htmlcut_release_version_for_tag "{ROOT / "scripts"}" "$PWD" v15.0.0'
+            bound = subprocess.run(['bash', '-c', shell], cwd=repo,
+                env={**__import__('os').environ, 'RELEASE_SOURCE_SHA': '0'*40}, capture_output=True)
+            self.assertNotEqual(bound.returncode, 0)
+            self.assertIn(b"resolved source commit", bound.stderr)
             (repo / 'Cargo.toml').write_text('[workspace.package]\nversion = "99.0.0"\n')
             (repo / 'payload.txt').write_text('moving main')
             git('commit', '-am', 'advance main')

@@ -1,6 +1,13 @@
 use super::*;
 
 #[test]
+fn compiler_floor_rejects_missing_or_malformed_patch_tokens() {
+    for output in ["rustc", "rustc 1.98.bad", "rustc 1.98.18446744073709551616"] {
+        assert!(crate::toolchain::rustc_version_meets_floor(output, "1.98.1").is_err());
+    }
+}
+
+#[test]
 fn repo_toolchain_from_manifest_extracts_channel_and_components() {
     let toolchain = repo_toolchain_from_manifest(
         "[toolchain]\nchannel = \"1.97.0\"\ncomponents = [\"clippy\", \"rustfmt\"]\n",
@@ -163,7 +170,7 @@ fn nightly_toolchain_probe_and_version_floor_check_stay_actionable() {
     let probe = nightly_toolchain_probe_command();
 
     assert_eq!(probe.program, PathBuf::from("rustup"));
-    assert_eq!(probe.args, vec!["run", "nightly-2026-08-25", "rustc", "-V"]);
+    assert_eq!(probe.args, vec!["run", "nightly-2026-09-30", "rustc", "-V"]);
     assert!(command_is_quiet(&probe));
     assert!(command_quiets_stderr(&probe));
     assert!(
@@ -251,14 +258,14 @@ fn coverage_preflight_failures_require_nightly_toolchain_first() {
     );
     assert!(
         coverage_preflight_message(&failures)
-            .contains("rustup toolchain install nightly-2026-08-25")
+            .contains("rustup toolchain install nightly-2026-09-30")
     );
 }
 
 #[test]
 fn coverage_preflight_failures_require_llvm_tools_when_nightly_exists() {
     let failures =
-        coverage_preflight_failures("nightly-2026-08-25-x86_64-apple-darwin\n", "clippy\n");
+        coverage_preflight_failures("nightly-2026-09-30-x86_64-apple-darwin\n", "clippy\n");
 
     assert_eq!(
         failures,
@@ -266,14 +273,14 @@ fn coverage_preflight_failures_require_llvm_tools_when_nightly_exists() {
     );
     assert!(
         coverage_preflight_message(&failures)
-            .contains("rustup component add llvm-tools-preview --toolchain nightly-2026-08-25")
+            .contains("rustup component add llvm-tools-preview --toolchain nightly-2026-09-30")
     );
 }
 
 #[test]
 fn coverage_preflight_passes_when_nightly_and_llvm_tools_are_installed() {
     let failures = coverage_preflight_failures(
-        "stable-x86_64-apple-darwin (default)\nnightly-2026-08-25-x86_64-apple-darwin\n",
+        "stable-x86_64-apple-darwin (default)\nnightly-2026-09-30-x86_64-apple-darwin\n",
         "llvm-tools-x86_64-apple-darwin\nrustfmt\n",
     );
 

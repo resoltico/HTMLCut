@@ -54,7 +54,7 @@ fn public_preflight_wrappers_use_the_capture_override_surface() {
         .expect("workspace root");
     let toolchain = repo_toolchain(repo_root).expect("repo toolchain");
     let toolchain_list = format!(
-        "{}-x86_64-apple-darwin\nnightly-2026-08-25-x86_64-apple-darwin\n",
+        "{}-x86_64-apple-darwin\nnightly-2026-09-30-x86_64-apple-darwin\n",
         toolchain.channel
     );
     let component_list = toolchain
@@ -181,7 +181,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -190,7 +190,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ],
                     false,
@@ -218,7 +218,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -227,7 +227,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ],
                     false,
@@ -246,7 +246,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             assert!(
                 error
                     .to_string()
-                    .contains("rustup component add miri rust-src --toolchain nightly-2026-08-25")
+                    .contains("rustup component add miri rust-src --toolchain nightly-2026-09-30")
             );
         },
     );
@@ -305,7 +305,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -314,7 +314,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ],
                     false,
@@ -343,7 +343,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -352,7 +352,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ],
                     false,
@@ -381,7 +381,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             if command_signature(spec)
                 == command_signature(&test_command_spec(
@@ -390,7 +390,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ],
                     false,
@@ -410,7 +410,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
             assert!(
                 error
                     .to_string()
-                    .contains("cargo +nightly-2026-08-25 miri --version")
+                    .contains("cargo +nightly-2026-09-30 miri --version")
             );
         },
     );
@@ -425,7 +425,7 @@ fn public_preflight_wrappers_report_missing_manifests_and_command_failures() {
                     false,
                 ))
             {
-                return Some(Ok(b"nightly-2026-08-25-x86_64-apple-darwin\n".to_vec()));
+                return Some(Ok(b"nightly-2026-09-30-x86_64-apple-darwin\n".to_vec()));
             }
             (command_signature(spec) == command_signature(&cargo_fuzz_probe_command()))
                 .then(|| Err("missing cargo-fuzz".into()))
@@ -531,7 +531,7 @@ fn capture_override_fixture(
     outputs.insert(
         command_signature(&test_command_spec(
             "rustup",
-            ["component", "list", "--toolchain", "nightly-2026-08-25", "--installed"],
+            ["component", "list", "--toolchain", "nightly-2026-09-30", "--installed"],
             false,
             false,
         )),

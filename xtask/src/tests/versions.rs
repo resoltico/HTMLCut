@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn baseline_packaging_rejects_malformed_toml_in_each_manifest_role() {
+    for result in [
+        crate::plan::sanitize_snapshot_workspace_manifest_for_packaging("[broken"),
+        crate::plan::snapshot_uses_vendored_selector_stack("[broken").map(|_| String::new()),
+        crate::plan::restore_vendored_dependency_paths_in_baseline_manifest("[broken")
+            .map(|_| String::new()),
+    ] {
+        assert!(result.unwrap_err().to_string().contains("Cargo.toml"));
+    }
+}
+
+#[test]
 fn workspace_version_from_manifest_extracts_workspace_package_version() {
     let version = workspace_version_from_manifest(
         "[workspace.package]\nversion = \"3.1.4\"\nedition = \"2024\"\n",

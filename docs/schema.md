@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "15.0.0"
 domain: SCHEMA
-updated: "2026-09-30"
+updated: "2026-10-01"
 route:
   keywords: [schemas, extraction plans, results, errors, discovery]
   questions: ["What are the current named schemas?"]
@@ -16,7 +16,7 @@ Retrieve one named schema at a time. Types own schema generation; runtime valida
 htmlcut schema htmlcut.extraction.plan
 ```
 
-Current roles:
+Individually retrievable schemas:
 
 - `htmlcut.extraction.plan`
 - `htmlcut.extraction.result`
@@ -26,6 +26,9 @@ Current roles:
 - `htmlcut.element_descriptor`
 - `htmlcut.selector.proposal`
 - `htmlcut.run`
+
+Additional emitted document roles (not individually retrievable schemas):
+
 - `htmlcut.operations`
 - `htmlcut.operation`
 - `htmlcut.gate_run`

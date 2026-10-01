@@ -16,6 +16,25 @@ use crate::publication::{MAX_AUDIT_BYTES, MAX_OUTPUT_BYTES, Staged};
 // Fixed metadata/proposal envelope allowance, expressed as its byte count.
 const METADATA_BYTES: usize = 16_384;
 
+#[cfg(test)]
+thread_local! {
+    static CANONICAL_PATH_RESPONSE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+fn canonical_path(path: &str) -> std::io::Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(response) = CANONICAL_PATH_RESPONSE.with_borrow_mut(Option::take) {
+        return Ok(response);
+    }
+    std::fs::canonicalize(path)
+}
+
+fn saved_path_utf8(path: &Path) -> Result<String, ExtractionError> {
+    path.to_str()
+        .map(str::to_owned)
+        .ok_or_else(|| options("Saved file paths must be valid UTF-8."))
+}
+
 pub(crate) fn run<I, T>(
     arguments: I,
     stdin: &mut dyn Read,
@@ -119,6 +138,15 @@ fn dispatch(
             if let Some(path) = &arguments.plan {
                 inputs.push(path.clone());
             }
+            // Capture the replay path before reading/executing, avoiding a second resolution
+            // after a successful immutable snapshot has already been extracted.
+            if arguments.save_run.is_some()
+                && let SourceSpec::File { path: source_path } = &mut source
+            {
+                *source_path = saved_path_utf8(
+                    &canonical_path(source_path).map_err(|_| crate::input::acquisition())?,
+                )?;
+            }
             validate(&inputs, &arguments.output, arguments.save_run.as_deref())?;
             let snapshot = source.acquire(
                 stdin,
@@ -129,13 +157,6 @@ fn dispatch(
             let result = PreparedDocument::new(snapshot, PreparationLimits::default())?
                 .execute(&compiled)?;
             let saved = if let Some(path) = &arguments.save_run {
-                if let SourceSpec::File { path: source_path } = &mut source {
-                    *source_path = std::fs::canonicalize(&*source_path)
-                        .map_err(|_| crate::input::acquisition())?
-                        .to_str()
-                        .ok_or_else(|| options("Saved file paths must be valid UTF-8."))?
-                        .into();
-                }
                 let run = RunSpec {
                     schema: "htmlcut.run".into(),
                     version: 1,

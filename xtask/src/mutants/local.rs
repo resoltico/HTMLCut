@@ -321,6 +321,35 @@ fn mutant_names(mutants: &[Value], context: &str) -> DynResult<BTreeSet<String>>
 mod tests {
     use super::*;
 
+    #[test]
+    fn malformed_inventory_fields_fail_and_equal_package_sizes_use_stable_ties() {
+        assert!(
+            parse_mutant_inventory(b"{")
+                .unwrap_err()
+                .to_string()
+                .contains("invalid JSON inventory")
+        );
+        assert!(package_groups(&[serde_json::json!({"name":"missing package"})]).is_err());
+        assert!(mutant_names(&[serde_json::json!({"package":"p"})], "fixture").is_err());
+        let groups = vec![
+            PackageGroup {
+                packages: vec!["c".into()],
+                mutant_count: 2,
+            },
+            PackageGroup {
+                packages: vec!["a".into()],
+                mutant_count: 2,
+            },
+            PackageGroup {
+                packages: vec!["b".into()],
+                mutant_count: 2,
+            },
+        ];
+        let result = coalesce_package_groups(groups, 2);
+        assert_eq!(result[0].packages, ["a", "b"]);
+        assert_eq!(result[1].packages, ["c"]);
+    }
+
     fn inventory(package: &str, count: usize) -> Vec<Value> {
         (0..count)
             .map(|index| serde_json::json!({"name": format!("{package}-{index}"), "package": package}))

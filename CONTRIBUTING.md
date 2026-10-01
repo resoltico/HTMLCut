@@ -3,17 +3,17 @@ AFAD:
   afad: "4.0"
   version: "15.0.0"
   domain: MAINTAINER
-  updated: "2026-09-24"
+  updated: "2026-10-01"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
-  questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update frozen interop fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
+  questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update extraction contract fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
   related: [docs/developer-setup.md, docs/developer-devcontainer.md, docs/quality-gates.md, docs/release-protocol.md, docs/versioning-policy.md, docs/core.md]
 -->
 
 # Contributing
 
-HTMLCut prefers coherent current-state design over compatibility scaffolding. Generic public
-surfaces may change when the architecture needs to improve; frozen interop profiles may not.
+HTMLCut maintains one core execution contract and one binary CLI. Public changes follow the
+package/schema/semantics policy; published API evidence is preserved in the frozen baseline.
 
 ## Setup
 
@@ -67,7 +67,7 @@ machine-specific absolute paths, and use the canonical names exported by the pro
 
 Dependency updates that affect workspace crates must refresh `Cargo.lock`. The fuzz package is now
 a normal workspace member, so the maintainer gate picks it up through the shared `fmt`, `clippy`,
-dependency-freshness, audit, and `cargo nextest` library/integration-test passes, then adds one explicit
+dependency-freshness, audit, and maintained all-targets coverage/test pass, then adds one explicit
 `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked` compile-smoke to prove the
 maintained libFuzzer targets still build in their explicit harness mode. The same gate resolves `cargo deny` target coverage from the canonical
 `scripts/release-targets.sh` registry, so dependency policy always follows the shipped standalone
@@ -82,28 +82,20 @@ lockfile. Maintainer review is still required before merging dependency PRs.
 - If a generic JSON contract changes, update the corresponding schema version and docs in the same change.
 - Keep schema names product-owned and generic; do not introduce consumer-specific naming.
 - Keep one canonical CLI command surface. Do not add undocumented aliases or shadow entrypoints.
-- Treat [docs/versioning-policy.md](docs/versioning-policy.md) as the authority for versioning, schema naming, frozen interop policy, and semver-baseline usage.
+- Treat [docs/versioning-policy.md](docs/versioning-policy.md) as the authority for versioning, schema naming, extraction-semantics policy, and semver-baseline usage.
 
-## Frozen Interop Work
+## Extraction Contract Work
 
-`htmlcut-v2` is frozen.
+Maintain full expected values, structural relationships, source ranges and typed failures when
+changing extraction. Do not regenerate goldens from the current output merely to make a test pass.
+The core owns plan validation, execution, limits and identities; CLI acquisition/publication are
+adapter responsibilities. Compile/prepare reuse and unused-projection instrumentation remain
+part of the acceptance evidence.
 
-If you change anything that touches frozen interop plan/result/error documents, digests, or schema
-identity:
-
-```bash
-cargo test -p htmlcut-core --lib interop_v2
-```
-
-If the frozen fixtures must be deliberately regenerated:
-
-```bash
-UPDATE_FIXTURES=1 cargo test -p htmlcut-core -- --ignored update_fixtures
-```
-
-Inspect that diff carefully before keeping it. The acceptance test must pass afterwards.
-
-Treat `htmlcut-v2` as the current maintained major contract. Breaking changes require a new major profile rather than an in-place compatibility path.
+The historical `htmlcut-v2` runtime is removed. Its published API snapshot is immutable evidence,
+not a supported compatibility path. Use [docs/core.md](docs/core.md) and
+[docs/schema.md](docs/schema.md) for the current contract; changes to behavior require the relevant
+schema or semantics revision and complete validation before publication.
 
 ## Documentation Sync Loop
 
@@ -126,11 +118,11 @@ metadata fields; it does not depend on agent instruction files. For special top-
 rather than YAML frontmatter.
 
 When docs mention a schema family or operation ID, use the canonical names from `htmlcut schema`
-and `htmlcut catalog`. The Markdown docs contract validates those identifiers directly.
+and `htmlcut describe`. The Markdown docs contract validates those identifiers directly.
 
 Concrete fenced `htmlcut ...` examples are expected to stay runnable under the docs-contract
 sandbox, and the maintained public Rust fences in `docs/architecture.md`, `docs/core.md`,
-`docs/core.md`, and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
+and `docs/schema.md` are exercised through `htmlcut-core` doctests. If you
 change those examples, treat them as executable code, not prose.
 
 Default repo search intentionally excludes `semver-baseline/` through `.ignore` so day-to-day

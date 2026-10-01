@@ -2,13 +2,19 @@
 afad: "4.0"
 version: "15.0.0"
 domain: RELEASE
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]
 ---
 
 # Release Preflight
+
+Before tagging the merged source, wait for its main `CI` run and dispatch the complete mutation
+workflow on that main revision with `gh workflow run mutants.yml --ref main`. Record the exact
+commit and verify that the completed runs belong to it. If main moves before dispatch, select and
+verify the intended source again. Release admission reads those results without rerunning gates;
+the latest matching run must succeed. A green PR diff or a different commit's report is not enough.
 
 Use this guide for Step 0 through Step 4 of the HTMLCut release flow.
 
@@ -116,7 +122,7 @@ Install the local maintainer toolchain if it is not already available by followi
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.1`).
-The maintained `nightly-2026-08-25` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns.
+The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns.
 
 Run the single local quality gate first:
 
@@ -162,7 +168,7 @@ candidate itself must also be the exact gated tree that ships.
   workspace crates still inherit that floor through `rust-version.workspace = true`.
 - `Cargo.toml` `[workspace.package] description` still reflects the current product in task-facing
   language. `htmlcut-cli` inherits it for CLI help and for the second line of `htmlcut --version`.
-- `docs/operations.md` still reflects the current canonical operation catalog exposed by
+- `docs/operations.md` still reflects the current compact operation index exposed by
   `htmlcut-core`.
 - `changelog.md` has a `## [X.Y.Z] - YYYY-MM-DD` section with at least one entry.
 - release-bound `changelog.md` entries have been moved out of `## [Unreleased]` and into the
@@ -177,9 +183,9 @@ candidate itself must also be the exact gated tree that ships.
 - `CONTRIBUTING.md` still matches the maintained contributor workflow, fixture-update flow, and
   release expectations.
 - `docs/README.md` still points at the maintained developer and maintainer docs.
-- `docs/versioning-policy.md` still matches the shipped contract policy, interop model, and
+- `docs/versioning-policy.md` still matches the shipped schema and extraction-semantics policy, and
   semver-baseline rules.
-- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/core.md` still match the shipped
+- `docs/cli.md`, `docs/core.md`, `docs/schema.md`, and `docs/architecture.md` still match the shipped
   surfaces.
 - `docs/release-publishing.md` still matches the shipped publication flow, release assets, and
   provenance notes.

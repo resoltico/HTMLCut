@@ -173,6 +173,11 @@ fn current_dir_lock() -> &'static Mutex<()> {
     CURRENT_DIR_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn acquire_cwd_lock(lock: &Mutex<()>) -> DynResult<MutexGuard<'_, ()>> {
+    lock.lock()
+        .map_err(|_| "cwd mutex poisoned".to_owned().into())
+}
+
 pub(super) struct CurrentDirGuard {
     _lock: MutexGuard<'static, ()>,
     previous_dir: PathBuf,
@@ -180,9 +185,7 @@ pub(super) struct CurrentDirGuard {
 
 impl CurrentDirGuard {
     fn enter(dir: &Path) -> DynResult<Self> {
-        let lock = current_dir_lock()
-            .lock()
-            .map_err(|_| "cwd mutex poisoned".to_owned())?;
+        let lock = acquire_cwd_lock(current_dir_lock())?;
         let previous_dir = env::current_dir()?;
         env::set_current_dir(dir)?;
 

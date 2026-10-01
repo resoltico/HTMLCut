@@ -84,7 +84,7 @@ fn reconcile_workers_with(
         let outcomes = document
             .get("outcomes")
             .and_then(Value::as_array)
-            .ok_or("worker outcome has no outcomes array after successful validation")?;
+            .expect("baseline validation required the worker outcomes array");
         let shard_mutants = read_worker_mutants(&shard_root)?;
         let shard_names = ensure_unique_mutant_names(&shard_mutants, "worker")?;
         if shard_names != worker.expected_names {
@@ -143,11 +143,11 @@ fn reconcile_workers_with(
     let start_time = start_times
         .into_iter()
         .min()
-        .ok_or("local mutation campaign had no worker start time")?;
+        .expect("one validated worker version implies worker start times");
     let end_time = end_times
         .into_iter()
         .max()
-        .ok_or("local mutation campaign had no worker end time")?;
+        .expect("one validated worker version implies worker end times");
     aggregate_mutants.sort_by(|left, right| mutant_name(left).cmp(&mutant_name(right)));
     let outcomes = json!({
         "cargo_mutants_version": versions.into_iter().next().expect("one version"),

@@ -5,7 +5,8 @@ set -euo pipefail
 htmlcut_resolve_release_tag() {
     local candidate="$1"
 
-    [[ -n "${candidate}" ]] || htmlcut_die "tag name is required"
+    [[ "${candidate}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || htmlcut_die \
+        "release tag must be canonical stable vMAJOR.MINOR.PATCH"
     printf '%s\n' "${candidate}"
 }
 
@@ -30,6 +31,10 @@ htmlcut_release_version_for_tag() {
         "invalid release tag name: ${tag_version_tag_name}"
     tag_version_commit="$(git -C "${tag_version_repo_root}" rev-parse --verify --quiet "refs/tags/${tag_version_tag_name}^{commit}")" || htmlcut_die \
         "release tag ${tag_version_tag_name} does not resolve to a commit"
+    if [[ -n "${RELEASE_SOURCE_SHA:-}" ]]; then
+        [[ "${RELEASE_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ && "${tag_version_commit}" == "${RELEASE_SOURCE_SHA}" ]] || htmlcut_die \
+            "release tag no longer matches its resolved source commit"
+    fi
 
     tag_version_manifest="$(mktemp "${TMPDIR:-/tmp}/htmlcut-release-manifest.XXXXXX")"
     if ! git -C "${tag_version_repo_root}" show "${tag_version_commit}:Cargo.toml" >"${tag_version_manifest}"; then

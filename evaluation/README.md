@@ -3,7 +3,7 @@ AFAD:
   afad: "4.0"
   version: "15.0.0"
   domain: EVALUATION
-  updated: "2026-09-30"
+  updated: "2026-10-01"
 RETRIEVAL_HINTS:
   keywords: [fidelity, corpus, task economics, tokenizer]
   questions: ["How is extraction correctness and task cost measured?"]
@@ -16,3 +16,7 @@ The offline corpus is original synthetic HTML authored for HTMLCut under the rep
 Task economics are correctness-qualified measurements. Value payload, complete default envelope, one-time discovery/setup and opt-in audit costs are distinct. Named tokenizer counts are proxies, not agent billing or measured model reasoning. Fresh-process timing and prepared in-process reuse are separate. Domain mapping remains caller code. No universal performance or market-adoption claim is implied.
 
 The maintained benchmark script records commands, fixture hashes, tool versions, complete validated values, observed repair steps and raw timing samples. Final-candidate results belong in the implementation evidence summary after actual execution; a configured benchmark is not a result.
+
+Install the current evaluation dependencies from [requirements.txt](requirements.txt) into a
+caller-owned Python environment. The report records actual installed versions and a named
+tokenizer; it does not silently reuse a historical measurement after a dependency/source change.

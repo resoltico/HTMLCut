@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn canonical_registry_rejects_invalid_json_and_non_utf8_output() {
+    let root = tempdir().unwrap();
+    fs::create_dir(root.path().join("scripts")).unwrap();
+    fs::write(root.path().join("scripts/release-targets.sh"),
+        "#!/usr/bin/env bash\nif [[ $1 == matrix-json ]]; then printf '{'; else printf '\\377'; fi\n").unwrap();
+    assert!(
+        crate::release::release_matrix(root.path())
+            .unwrap_err()
+            .to_string()
+            .contains("parse release_matrix_json")
+    );
+    assert!(
+        crate::release::release_target_triples(root.path())
+            .unwrap_err()
+            .to_string()
+            .contains("non-UTF-8")
+    );
+}
+
+#[test]
 fn release_helpers_read_the_canonical_shell_registry() {
     let repo_root = tempdir().expect("tempdir");
     let scripts_dir = repo_root.path().join("scripts");

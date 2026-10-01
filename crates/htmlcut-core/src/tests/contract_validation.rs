@@ -1,5 +1,15 @@
 use super::*;
 
+#[test]
+fn invalid_exclusion_selector_fails_the_whole_compiled_plan() {
+    let mut plan = ExtractionPlan::css("p").unwrap();
+    plan.exclude = vec!["[a=]".into()];
+    assert_eq!(
+        CompiledPlan::compile(&plan).err().unwrap().code,
+        ErrorCode::InvalidSelector
+    );
+}
+
 fn guard() -> Guard {
     Guard {
         scope: GuardScope::Document,
