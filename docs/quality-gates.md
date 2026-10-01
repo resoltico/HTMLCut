@@ -17,6 +17,24 @@ that must run outside Cargo's mutable artifact roots.
 Contributor workflow lives in [../CONTRIBUTING.md](../CONTRIBUTING.md). Contract-versioning policy
 lives in [versioning-policy.md](versioning-policy.md).
 
+## Published release evaluation
+
+The [v15 native release controls](../.github/workflows/v15-platform-controls.yml) verify the
+published macOS arm64 and Windows x64 archives against pinned hashes and assert complete values,
+typed failures, Unicode paths, exact raw framing and publication behavior. Failed controls fail
+the job after their observations are written for artifact retention.
+
+The [v15 released-binary evaluation](../.github/workflows/v15-live-stress.yml) records native
+observations on Linux, macOS and Windows and bounded public-web acquisition/replay observations
+on Linux. This is an observational evaluation: extraction failures remain visible in retained
+results rather than being presented as passed fidelity assertions. Release metadata uses the
+read-only workflow token through the GitHub CLI; asset and public-page downloads remain ordinary
+HTTP requests. Bootstrap failures retain diagnostics and fail the job.
+
+Both workflows can be dispatched manually and run when their workflow files change in a pull
+request or on `main`. They remain pinned to the published 15.0.0 artifact contract; tests of
+current source and current release packages belong to the maintainer and native smoke gates.
+
 ## Toolchain
 
 Use [developer-setup.md](developer-setup.md) as the canonical machine bootstrap guide. It owns the

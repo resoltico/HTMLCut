@@ -1,0 +1,79 @@
+name: V15 native release controls
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/v15-platform-controls.yml]
+  push:
+    branches: [main]
+    paths: [.github/workflows/v15-platform-controls.yml]
+permissions:
+  contents: read
+jobs:
+  controls:
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            digest: 8d343a64af4d96eb99f27d3e0bbd4ef4693a8f86a9f2220c5d4f0aae43c68712
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            digest: 55d81a6e60778051c42595b3055ebba9a041c12bcb60fdcb4836eb6cda53256c
+    runs-on: ${{ matrix.os }}
+    env:
+      EVAL_TARGET: ${{ matrix.target }}
+      EVAL_DIGEST: ${{ matrix.digest }}
+      PYTHONUTF8: '1'
+    steps:
+      - name: Test the actual native binary without a build
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,pathlib,platform,subprocess,tarfile,time,urllib.request,zipfile
+          r=pathlib.Path('native-controls');r.mkdir();target=os.environ['EVAL_TARGET'];suffix='.zip' if 'windows' in target else '.tar.gz';name='htmlcut-15.0.0-'+target+suffix
+          req=urllib.request.Request('https://github.com/resoltico/HTMLCut/releases/download/v15.0.0/'+name,headers={'User-Agent':'HTMLCut-evaluation'})
+          data=urllib.request.urlopen(req,timeout=35).read();digest=hashlib.sha256(data).hexdigest();assert digest==os.environ['EVAL_DIGEST'];p=r/name;p.write_bytes(data)
+          if suffix=='.zip':
+              with zipfile.ZipFile(p) as z:z.extractall(r/'tool')
+          else:
+              with tarfile.open(p) as t:t.extractall(r/'tool',filter='data')
+          b=next((r/'tool').rglob('htmlcut.exe' if 'windows' in target else 'htmlcut')).resolve();b.chmod(0o755);rows=[]
+          def run(label,args,data=None,values=None,raw=None,error=None):
+              start=time.perf_counter();p=subprocess.run([str(b),*args],input=data,capture_output=True,timeout=20);s=p.stdout.decode('utf-8');e=p.stderr.decode('utf-8');ok=p.returncode==(0 if error is None else error)
+              if error is not None:ok=ok and not p.stdout and bool(json.loads(e).get('code'))
+              elif raw is not None:ok=ok and s==raw
+              else:ok=ok and json.loads(s)['values']==values
+              rows.append({'label':label,'args':args,'exit_code':p.returncode,'stdout':s,'stderr':e,'passed':ok,'seconds':time.perf_counter()-start})
+          for label,html,projection,values in [
+              ('link','<p>Before <a class="reference internal" href="relative.html">IMPORTANT</a> after.</p>','document_text',['Before [IMPORTANT](relative.html) after.']),
+              ('hidden','<p>A<b hidden>B</b></p>','dom_text',['AB']),
+              ('template','<p>A<template>T<template>N</template></template>B</p>','dom_text',['ATNB']),
+              ('unicode','<p>Āžu € 日本 😀</p>','dom_text',['Āžu € 日本 😀']),
+              ('pre','<pre> a\n```\n</pre>','document_text',['````\n a\n```\n````'])]:
+              run(label,['extract','--stdin','--css','pre' if label=='pre' else 'p','--projection',projection],html.encode(),values=values)
+          run('multiple',['extract','--stdin','--css','p'],b'<p>A</p><p>B</p>',error=3)
+          run('missing',['extract','--stdin','--css','p'],b'<b>A</b>',error=3)
+          run('invalid-encoding',['extract','--stdin','--css','p'],b'<p>\xff</p>',error=5)
+          run('bad-selector',['extract','--stdin','--css','['],b'<p>A</p>',error=2)
+          run('old-command',['select'],error=2)
+          run('raw-byte-framing',['extract','--stdin','--start','A','--end','B','--raw'],'Aé\r\nB'.encode(),raw='é\r\n')
+          f=r/'Āžu space 日本.html';f.write_text('<p>File €</p>',encoding='utf-8');out=r/'out.txt'
+          run('unicode-file',['extract','--file',str(f),'--css','p','--raw'],raw='File €')
+          run('atomic-file-create',['extract','--file',str(f),'--css','p','--raw','--output',str(out)],raw='');assert out.read_text(encoding='utf-8')=='File €'
+          run('no-overwrite',['extract','--file',str(f),'--css','p','--output',str(out)],error=5)
+          run('input-collision',['extract','--file',str(f),'--css','p','--output',str(f),'--overwrite'],error=2)
+          (r/'results.json').write_text(json.dumps({'target':target,'platform':platform.platform(),'archive_sha256':digest,'results':rows},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'checks':len(rows),'passed':sum(x['passed'] for x in rows)},indent=2))
+          if not all(x['passed'] for x in rows):raise SystemExit('One or more native release controls failed; retained results identify each failure.')
+          PY
+      - name: Upload native observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: v15-native-controls-${{ matrix.target }}
+          path: native-controls
+          retention-days: 7
+          if-no-files-found: error
