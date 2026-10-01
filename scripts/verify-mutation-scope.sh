@@ -62,6 +62,13 @@ jq -e --slurpfile mutants "$mutants_json" '
     ] as $tooling_members
   | [
       { package: "htmlcut-selectors", file: "patches/rust/selectors/work_budget.rs" },
+      { package: "htmlcut-servo-arc", file: "patches/rust/servo_arc/tagged_union.rs" },
+      { package: "htmlcut-selectors", file: "patches/rust/selectors/matching.rs" },
+      { package: "htmlcut-selectors", file: "patches/rust/selectors/relative_selector/filter.rs" },
+      { package: "htmlcut-selectors", file: "patches/rust/selectors/context.rs" },
+      { package: "ureq-proto", file: "patches/rust/ureq-proto/src/client/response_limits.rs" },
+      { package: "ureq-proto", file: "patches/rust/ureq-proto/src/client/recvresp.rs" },
+      { package: "ureq-proto", file: "patches/rust/ureq-proto/src/client/await100.rs" },
       { package: "htmlcut-scraper", file: "patches/rust/scraper/src/html/clone.rs" },
       { package: "htmlcut-scraper", file: "patches/rust/scraper/src/selector/budget.rs" },
       { package: "htmlcut-scraper", file: "patches/rust/scraper/src/html/bounded.rs" },

@@ -2,6 +2,21 @@
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Prepare the 16.0.0 candidate with wire version 2 and extraction semantics 2. Current contracts are strict; old versions and obsolete interfaces are rejected without adapters.
+- Structural fragments derive bounded original pre/list/table context, source list ordinals, semantic block boundaries and balanced cell/caption encoding.
+- Selector passes reuse scoped matching scratch and meter inner traversal/predicate work; relative-subtree traversal is iterative.
+
+### Fixed
+
+- Reject unknown members on fieldless plan and saved-source variants before source consumption or publication.
+- Parse quoted HTTP parameters correctly and consume complete informational responses under finite header/count limits; reject unsolicited partial representations.
+- Detect real standard-stream delivery failures and reject nonregular file-path inputs without FIFO waits; retain file-only and empty-raw behavior.
+- Add safe closed recovery causes and definition-owned option constraints without echoing supplied values.
+
 ## [15.0.0] - 2026-10-01
 
 ### Changed

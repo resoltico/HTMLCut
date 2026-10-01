@@ -143,7 +143,7 @@ fn t29_shared_work_does_not_reset_for_guards_or_exclusions() {
         selector: "span".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: "guard".into(),
         }),
@@ -209,7 +209,7 @@ fn t05_t29_closed_json_depth_size_primitives_and_duplicates() {
         selector: "p".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: "x".repeat(crate::limits::MAX_PLAN_BYTES),
         }),
@@ -295,7 +295,7 @@ fn t29_url_metadata_and_resolution_processing_are_bounded() {
     plan.projection = Projection::Attribute {
         name: "href".into(),
     };
-    plan.transforms = vec![Transform::ResolveUrls];
+    plan.transforms = vec![Transform::ResolveUrls {}];
     assert_eq!(
         document
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -311,9 +311,9 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         "<article><!--comment--><h3>Header</h3><p>text<img alt='[alternative]'><a href='next'>link</a></p><ol reversed> stray<li>A</li><li>B</li></ol><pre>code<script>ignored</script><span class='omit'>discard</span><a href='```'>label</a><img alt='````'></pre><table><tr><th rowspan='2'>H</th><td colspan='3'>V</td></tr></table></article>",
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::DocumentText;
+    plan.projection = Projection::DocumentText {};
     plan.exclude = vec![".omit".into()];
-    let expected = "### Header\ntext\\[alternative\\][link](next)\n stray\n2. A\n1. B\n`````\ncode[label](```)````\n`````\n[table]\n[header] [rowspan=2] H | [colspan=3] V\n[/table]";
+    let expected = "### Header\ntext\\[alternative\\][link](next)\n stray\n2. A\n1. B\n`````\ncode[label](```)````\n`````\n[table]\n[cell][header] [rowspan=2] H[/cell] | [cell][colspan=3] V[/cell]\n[/table]";
     let complete = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();

@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: WORKSPACE
 updated: "2026-10-01"
 route:
@@ -89,3 +89,5 @@ These paths matter, but they are not normal workspace members:
 - Use [cli.md](cli.md) for operator-facing command behavior.
 - Use [core.md](core.md) for the canonical embeddable engine surface.
 - Use [tempdir.md](tempdir.md) for the internal `htmlcut_tempdir` helper crate.
+
+The unpublished patched HTTP protocol member is `patches/rust/ureq-proto`; its canonical package name permits one transitive Cargo patch. It owns complete informational response consumption and finite header accounting.

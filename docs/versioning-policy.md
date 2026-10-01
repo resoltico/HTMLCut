@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: MAINTAINER
 updated: "2026-09-24"
 route:
@@ -12,9 +12,9 @@ route:
 
 The workspace package version in Cargo.toml is the sole release-version authority. Manifests, lockfiles, docs and native packages follow it. Stable publication uses an immutable annotated release tag after explicit authorization.
 
-One extraction wire family has schema version 1; extraction semantics independently start at 1. Incompatible wire shapes require a schema change, and selection/projection meaning changes require a semantics change. Packaging alone does not change extraction identity. Unknown versions/fields/enums and obsolete envelopes are rejected, without adapters or migration shims.
+The current extraction wire family has schema version 2; extraction semantics independently have version 2. Incompatible wire shapes require a schema change, and selection/projection meaning changes require a semantics change. Packaging alone does not change extraction identity. Unknown versions/fields/enums and obsolete envelopes are rejected, without adapters or migration shims.
 
-The frozen published 14.0.0 API baseline remains immutable during the intentional 15.0.0 major break. A baseline refresh comes only from an actual authorized immutable release, using the maintained mechanism. Never refresh from a worktree to hide an API change.
+The frozen published 15.0.0 API baseline remains immutable during the intentional 16.0.0 major break. A baseline refresh comes only from an actual authorized immutable release, using the maintained mechanism. Never refresh from a worktree to hide an API change.
 
 Numeric major increases permit major changes; minor increases permit minor; patch increases and equal versions enforce patch protection. Downgrades, malformed versions and prerelease/build metadata on stable publication are rejected. Future patch/minor releases cannot bypass protection through an unconditional major override.
 

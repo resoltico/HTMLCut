@@ -98,7 +98,7 @@ impl PreparedDocument {
                 let mut values = Vec::new();
                 let mut remaining = plan.limits.max_total_value_bytes as usize;
                 for root in selected {
-                    let exclusions = exclusions(root, &compiled.exclusions, &budget)?;
+                    let exclusions = exclusions(document, root, &compiled.exclusions, &budget)?;
                     let limit = (plan.limits.max_value_bytes as usize).min(remaining);
                     let value = crate::projection::project(
                         root,
@@ -167,12 +167,12 @@ fn selected_positions(
         error
     };
     match selection {
-        Selection::Single if count == 0 => Err(ExtractionError::new(
+        Selection::Single {} if count == 0 => Err(ExtractionError::new(
             ErrorCode::NoMatch,
             "selection",
             "The plan selected no candidates.",
         )),
-        Selection::Single if count > 1 => {
+        Selection::Single {} if count > 1 => {
             let mut error = ExtractionError::new(
                 ErrorCode::AmbiguousSelection,
                 "selection",
@@ -181,7 +181,7 @@ fn selected_positions(
             error.candidate_count = Some(count);
             Err(error)
         }
-        Selection::Single => Ok(vec![0]),
+        Selection::Single {} => Ok(vec![0]),
         Selection::Nth { index } if *index > count => Err(cardinality()),
         Selection::Nth { index } => Ok(vec![(*index - 1) as usize]),
         Selection::All { min, max }
@@ -204,6 +204,9 @@ pub(crate) fn matches<'a>(
         .map(|element| *element)
         .unwrap_or_else(|| document.tree.root());
     let mut result = Vec::new();
+    let mut matcher = selector
+        .budgeted(document, scope, budget)
+        .map_err(|error| selector_failure(error, "selection"))?;
     for node in root.descendants() {
         charge(budget, 1)?;
         let Some(element) = ElementRef::wrap(node) else {
@@ -211,9 +214,9 @@ pub(crate) fn matches<'a>(
         };
         // Descendant traversal only visits attached document nodes; the fixed orphan
         // parser sentinel cannot enter this candidate set.
-        if selector
-            .matches_with_scope_and_budget(&element, scope, budget)
-            .map_err(|_| ExtractionError::limit("selection"))?
+        if matcher
+            .matches(&element)
+            .map_err(|error| selector_failure(error, "selection"))?
         {
             if result.len() >= maximum as usize {
                 let mut error = ExtractionError::limit("selection");
@@ -226,7 +229,22 @@ pub(crate) fn matches<'a>(
     Ok(result)
 }
 
+fn selector_failure(
+    error: scraper::selector::SelectorMatchError,
+    stage: &'static str,
+) -> ExtractionError {
+    match error {
+        scraper::selector::SelectorMatchError::WorkLimitExceeded => ExtractionError::limit(stage),
+        scraper::selector::SelectorMatchError::DocumentMismatch => ExtractionError::new(
+            ErrorCode::InternalInvariant,
+            stage,
+            "Selector scope and candidates must belong to one document.",
+        ),
+    }
+}
+
 fn exclusions(
+    document: &Html,
     root: ElementRef<'_>,
     selectors: &[Selector],
     budget: &SelectorWorkBudget,
@@ -235,15 +253,20 @@ fn exclusions(
     if selectors.is_empty() {
         return Ok(excluded);
     }
+    let mut matchers: Vec<_> = selectors
+        .iter()
+        .map(|selector| selector.budgeted(document, Some(root), budget))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| selector_failure(error, "exclusion"))?;
     for node in root.descendants() {
         charge(budget, 1)?;
         let Some(element) = ElementRef::wrap(node) else {
             continue;
         };
-        for selector in selectors {
-            if selector
-                .matches_with_scope_and_budget(&element, Some(root), budget)
-                .map_err(|_| ExtractionError::limit("exclusion"))?
+        for matcher in &mut matchers {
+            if matcher
+                .matches(&element)
+                .map_err(|error| selector_failure(error, "exclusion"))?
             {
                 excluded.insert(node.id());
                 break;
@@ -277,7 +300,7 @@ fn check_guards(
             }
             for node in nodes {
                 let projection = match &guard.read {
-                    GuardRead::DomText => Projection::DomText,
+                    GuardRead::DomText {} => Projection::DomText {},
                     GuardRead::Attribute { name } => Projection::Attribute { name: name.clone() },
                 };
                 let value = crate::projection::project(

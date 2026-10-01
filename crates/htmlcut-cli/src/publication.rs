@@ -19,6 +19,28 @@ pub(crate) fn failure() -> ExtractionError {
     )
 }
 
+pub(crate) fn io_failure(
+    error: io::Error,
+    operation: htmlcut_core::IoOperation,
+) -> ExtractionError {
+    let problem = match error.kind() {
+        io::ErrorKind::PermissionDenied => htmlcut_core::IoProblem::PermissionDenied,
+        io::ErrorKind::NotFound => htmlcut_core::IoProblem::NotFound,
+        io::ErrorKind::BrokenPipe => htmlcut_core::IoProblem::BrokenPipe,
+        _ => {
+            #[cfg(unix)]
+            if error.raw_os_error() == Some(rustix::io::Errno::BADF.raw_os_error()) {
+                return failure().with_cause(htmlcut_core::FailureCause::Io {
+                    operation,
+                    problem: htmlcut_core::IoProblem::InvalidDescriptor,
+                });
+            }
+            htmlcut_core::IoProblem::Other
+        }
+    };
+    failure().with_cause(htmlcut_core::FailureCause::Io { operation, problem })
+}
+
 pub(crate) fn json(value: &impl Serialize, maximum: usize) -> Result<Vec<u8>, ExtractionError> {
     // Value uses sorted maps, so emitted object order is deterministic at every level.
     let mut value = serde_json::to_value(value).map_err(|_| failure())?;
@@ -114,7 +136,7 @@ fn write_staged_bytes<W: Write>(
         .write_all(bytes)
         .and_then(|_| writer.flush())
         .and_then(|_| sync(writer))
-        .map_err(|_| failure())
+        .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))
 }
 
 impl Staged {

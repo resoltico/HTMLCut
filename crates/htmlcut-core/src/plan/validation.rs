@@ -97,7 +97,7 @@ impl ExtractionPlan {
         match &self.strategy {
             Strategy::Css { selector } => {
                 pattern(selector)?;
-                if matches!(self.projection, Projection::Source) {
+                if matches!(self.projection, Projection::Source {}) {
                     return Err(invalid());
                 }
             }
@@ -114,7 +114,7 @@ impl ExtractionPlan {
                         }
                     }
                 }
-                if !matches!(self.projection, Projection::Source)
+                if !matches!(self.projection, Projection::Source {})
                     || !self.exclude.is_empty()
                     || !self.guards.is_empty()
                     || !self.transforms.is_empty()
@@ -124,7 +124,7 @@ impl ExtractionPlan {
             }
         }
         match &self.selection {
-            Selection::Single => (),
+            Selection::Single {} => (),
             Selection::Nth { index } if *index > 0 && *index <= self.limits.max_candidates => (),
             Selection::All { min, max }
                 if *min <= max.unwrap_or(self.limits.max_selected)
@@ -148,8 +148,8 @@ impl ExtractionPlan {
             }
             match &guard.read {
                 GuardRead::Attribute { name } => attribute(name)?,
-                GuardRead::DomText if guard.predicate.is_none() => return Err(invalid()),
-                GuardRead::DomText => (),
+                GuardRead::DomText {} if guard.predicate.is_none() => return Err(invalid()),
+                GuardRead::DomText {} => (),
             }
             if let Some(Predicate::Regex {
                 pattern: value,
@@ -165,16 +165,16 @@ impl ExtractionPlan {
                 return Err(invalid());
             }
             match transform {
-                Transform::NormalizeWhitespace
+                Transform::NormalizeWhitespace {}
                     if !matches!(
                         self.projection,
-                        Projection::DomText | Projection::DocumentText
+                        Projection::DomText {} | Projection::DocumentText {}
                     ) =>
                 {
                     return Err(invalid());
                 }
-                Transform::ResolveUrls => match &self.projection {
-                    Projection::DocumentText => (),
+                Transform::ResolveUrls {} => match &self.projection {
+                    Projection::DocumentText {} => (),
                     Projection::Attribute { name }
                         if matches!(
                             name.as_str(),

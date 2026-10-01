@@ -61,7 +61,7 @@ fn authored_run_paths_are_relative_to_the_run_and_unknown_or_duplicate_fields_fa
     let run = root.path().join("run.json");
     std::fs::write(root.path().join("source.html"), "<p>180</p>").unwrap();
     let plan = htmlcut_core::ExtractionPlan::css("p").unwrap();
-    let valid = serde_json::json!({"schema":"htmlcut.run","version":1,"source":{"kind":"file","path":"source.html"},"plan":plan});
+    let valid = serde_json::json!({"schema":"htmlcut.run","version":2,"source":{"kind":"file","path":"source.html"},"plan":plan});
     std::fs::write(&run, serde_json::to_vec(&valid).unwrap()).unwrap();
     let output = invoke(&["run", run.to_str().unwrap(), "--raw"], b"");
     assert!(output.status.success());
@@ -69,7 +69,7 @@ fn authored_run_paths_are_relative_to_the_run_and_unknown_or_duplicate_fields_fa
     for text in [
         serde_json::to_string(&valid)
             .unwrap()
-            .replace("\"version\":1", "\"version\":1,\"version\":1"),
+            .replace("\"version\":2", "\"version\":2,\"version\":2"),
         serde_json::to_string(&valid).unwrap().replace(
             "\"kind\":\"file\"",
             "\"kind\":\"file\",\"authentication\":\"secret\"",

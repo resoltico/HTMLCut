@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: ENGINEERING
 updated: "2026-10-01"
 route:
@@ -15,11 +15,17 @@ D1–D10 are implemented together. The implementation authority is
 immutable-snapshot Rust core and the `htmlcut` binary. The old CLI library, reader heuristics,
 interop runtime and command aliases are removed.
 
-Implementation and configuration work are complete. The release process validates the refreshed
+The historical v15 implementation/configuration delivery completed its defined checks. Its release process validated the refreshed
 source and new packages through the required gates, source-bound mutation accounting and native
 proofs. Authoritative publication state is the [public release](https://github.com/resoltico/HTMLCut/releases/tag/v15.0.0);
 exact-source verification is retained in [GitHub Actions](https://github.com/resoltico/HTMLCut/actions).
 The historical evidence below identifies its tested revision; it does not attest later changes.
+
+## Current unpublished candidate
+
+The 16.0.0 reliability candidate is under implementation and verification. Its current contract is wire version 2 and semantics 2. Targeted closure, fragment, protocol and OS tests exist; final scored coverage, fuzz/Miri/full mutation, required CI, four source-bound native packages and portable conformance evidence remain mandatory before completion. No 16.0.0 release is published by this work.
+
+Historical v15 verification below identifies its own exact source and test scope; it is not proof that the independently recorded v15 audit findings were absent or that this changed candidate has passed final verification.
 
 ## Published 15.0.0 verification
 

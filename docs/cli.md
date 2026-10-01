@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: CLI
 updated: "2026-10-01"
 route:
@@ -31,3 +31,13 @@ Automatic URL persistence requires `--url-env NAME`; saved runs store the name r
 Output files use bounded staging and atomic create/replace; overwrite requires explicit consent. Input/result/evidence destinations cannot collide. Audit fields are explicit and bounded, and audit preparation failure fails the operation. Multiple files are not an OS transaction. An I/O error on a pipe may leave bytes already delivered and returns failure.
 
 Exit classes: 0 success/help; 2 input/options/plan/schema; 3 unmet expectations; 4 resource limits; 5 acquisition/decoding/publication I/O; 6 internal invariants.
+
+## Acquisition and delivery boundaries
+
+File-path sources, plan files and saved runs require regular opened files; intentional streams use stdin. Nonregular paths fail promptly rather than waiting for a FIFO writer. Regular symlink targets remain supported.
+
+HTTP consumes complete informational headers before final metadata, with finite per-hop informational/header limits. Ordinary full-source GET does not accept unsolicited partial representations. Media parameters use quoted-string and quoted-pair grammar; text inside an unrelated quoted parameter cannot become a charset declaration. Explicit encoding takes precedence; invalid explicit encoding is a configuration error.
+
+Safe causes distinguish known option constraints, I/O roles, received HTTP status, protocol/metadata/charset/compression and typed transport categories without echoing source, URL, header, path or supplied-value text. Opaque lower-level errors remain honestly generic.
+
+The real stream adapter acquires handles lazily. Nonempty stdout delivery cannot succeed after an invalid/read-only descriptor write. File-only output and empty raw values do not require an unused stdout. Partial bytes already delivered to a pipe cannot be rolled back; later failure remains nonzero.

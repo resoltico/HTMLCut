@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "input/http.rs"]
 mod http;
+#[path = "input/regular_file.rs"]
+mod regular_file;
 
 pub(crate) const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 pub(crate) const MAX_CONFIG_BYTES: usize = 256 * 1024;
@@ -20,7 +22,7 @@ pub(crate) enum SourceSpec {
     File {
         path: String,
     },
-    Stdin,
+    Stdin {},
     Http {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         url: Option<String>,
@@ -34,7 +36,7 @@ pub(crate) enum SourceSpec {
 pub(crate) struct RunSpec {
     #[schemars(extend("const" = "htmlcut.run"))]
     pub(crate) schema: String,
-    #[schemars(extend("const" = 1))]
+    #[schemars(extend("const" = htmlcut_core::SCHEMA_VERSION))]
     pub(crate) version: u32,
     pub(crate) source: SourceSpec,
     pub(crate) plan: ExtractionPlan,
@@ -50,7 +52,7 @@ impl RunSpec {
         let value = htmlcut_core::parse_closed_json(&bytes)?;
         let run: Self = serde_json::from_value(value)
             .map_err(|_| options("The saved run contains invalid or unknown fields."))?;
-        if run.schema != "htmlcut.run" || run.version != 1 {
+        if run.schema != "htmlcut.run" || run.version != htmlcut_core::SCHEMA_VERSION {
             return Err(options("Unsupported saved-run schema or version."));
         }
         run.source.validate()?;
@@ -63,7 +65,7 @@ impl RunSpec {
             )?;
         }
         if let Some(encoding) = &run.encoding {
-            encoding_for(Some(encoding))?;
+            configured_encoding(encoding)?;
         }
         Ok(run)
     }
@@ -125,7 +127,7 @@ impl SourceSpec {
     {
         self.validate()?;
         if let Some(encoding) = encoding {
-            encoding_for(Some(encoding))?;
+            configured_encoding(encoding)?;
         }
         if let Some(base) = base {
             SourceSnapshot::new(
@@ -144,7 +146,7 @@ impl SourceSpec {
                 )?,
                 base.map(str::to_owned),
             ),
-            Self::Stdin => (
+            Self::Stdin {} => (
                 decode(&read_bounded(stdin, MAX_SOURCE_BYTES)?, encoding)?,
                 base.map(str::to_owned),
             ),
@@ -204,7 +206,12 @@ fn valid_env_name(name: &str) -> bool {
 }
 
 pub(crate) fn options(message: &'static str) -> ExtractionError {
-    ExtractionError::new(ErrorCode::InvalidOptions, "options", message)
+    ExtractionError::new(ErrorCode::InvalidOptions, "options", message).with_cause(
+        htmlcut_core::FailureCause::Configuration {
+            role: htmlcut_core::ConfigurationRole::Arguments,
+            problem: htmlcut_core::ConfigurationProblem::InvalidValue,
+        },
+    )
 }
 
 pub(crate) fn acquisition() -> ExtractionError {
@@ -215,8 +222,30 @@ pub(crate) fn acquisition() -> ExtractionError {
     )
 }
 
+pub(crate) fn io_failure(error: std::io::Error) -> ExtractionError {
+    let problem = match error.kind() {
+        std::io::ErrorKind::NotFound => htmlcut_core::IoProblem::NotFound,
+        std::io::ErrorKind::PermissionDenied => htmlcut_core::IoProblem::PermissionDenied,
+        std::io::ErrorKind::BrokenPipe => htmlcut_core::IoProblem::BrokenPipe,
+        _ => {
+            #[cfg(unix)]
+            if error.raw_os_error() == Some(rustix::io::Errno::BADF.raw_os_error()) {
+                return acquisition().with_cause(htmlcut_core::FailureCause::Io {
+                    operation: htmlcut_core::IoOperation::Input,
+                    problem: htmlcut_core::IoProblem::InvalidDescriptor,
+                });
+            }
+            htmlcut_core::IoProblem::Other
+        }
+    };
+    acquisition().with_cause(htmlcut_core::FailureCause::Io {
+        operation: htmlcut_core::IoOperation::Input,
+        problem,
+    })
+}
+
 pub(crate) fn read_file(path: &Path, maximum: usize) -> Result<Vec<u8>, ExtractionError> {
-    read_bounded(&mut File::open(path).map_err(|_| acquisition())?, maximum)
+    read_bounded(&mut regular_file::open(path)?, maximum)
 }
 
 pub(crate) fn read_bounded(
@@ -226,7 +255,7 @@ pub(crate) fn read_bounded(
     let mut value = Vec::new();
     let mut chunk = [0_u8; 8192];
     loop {
-        let size = reader.read(&mut chunk).map_err(|_| acquisition())?;
+        let size = reader.read(&mut chunk).map_err(io_failure)?;
         if size == 0 {
             return Ok(value);
         }
@@ -243,6 +272,18 @@ pub(crate) fn limit(stage: &'static str) -> ExtractionError {
         stage,
         "The operation exceeded its configured resource limit.",
     )
+    .with_cause(htmlcut_core::FailureCause::Resource {})
+}
+
+fn configured_encoding(label: &str) -> Result<&'static Encoding, ExtractionError> {
+    Encoding::for_label(label.as_bytes()).ok_or_else(|| {
+        options("The configured encoding is unsupported.").with_cause(
+            htmlcut_core::FailureCause::Configuration {
+                role: htmlcut_core::ConfigurationRole::Encoding,
+                problem: htmlcut_core::ConfigurationProblem::InvalidValue,
+            },
+        )
+    })
 }
 
 fn encoding_for(label: Option<&str>) -> Result<&'static Encoding, ExtractionError> {
@@ -258,6 +299,7 @@ fn decoding() -> ExtractionError {
         "decoding",
         "Source bytes, declared encoding and BOM must form valid, consistent Unicode.",
     )
+    .with_cause(htmlcut_core::FailureCause::Charset {})
 }
 
 pub(crate) fn decode(bytes: &[u8], label: Option<&str>) -> Result<String, ExtractionError> {

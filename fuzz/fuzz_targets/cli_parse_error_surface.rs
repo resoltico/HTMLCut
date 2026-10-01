@@ -8,11 +8,17 @@ mod app;
 #[path = "../../crates/htmlcut-cli/src/command.rs"]
 mod command;
 #[cfg(all(feature = "fuzzing", not(test)))]
+#[path = "../../crates/htmlcut-cli/src/command_diagnostics.rs"]
+mod command_diagnostics;
+#[cfg(all(feature = "fuzzing", not(test)))]
 #[path = "../../crates/htmlcut-cli/src/evidence.rs"]
 mod evidence;
 #[cfg(all(feature = "fuzzing", not(test)))]
 #[path = "../../crates/htmlcut-cli/src/input.rs"]
 mod input;
+#[cfg(all(feature = "fuzzing", not(test)))]
+#[path = "../../crates/htmlcut-cli/src/input/http/media_type.rs"]
+mod media_type;
 #[cfg(all(feature = "fuzzing", not(test)))]
 #[path = "../../crates/htmlcut-cli/src/operation_metadata.rs"]
 mod operation_metadata;

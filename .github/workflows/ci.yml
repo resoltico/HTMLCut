@@ -267,7 +267,28 @@ jobs:
             --smoke-log dist/native-smoke.log \
             --shell "${smoke_shell}"
 
-      - name: Preserve verified native package
+      - name: Record native job context even after failure
+        if: always()
+        shell: bash
+        env:
+          NATIVE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NATIVE_TARGET: ${{ matrix.target_triple }}
+          NATIVE_JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p dist
+          python3 - <<'PY'
+          import json, os, platform
+          from pathlib import Path
+          Path("dist/native-job-context.json").write_text(json.dumps({
+              "source_commit": os.environ["NATIVE_SOURCE_SHA"],
+              "target": os.environ["NATIVE_TARGET"],
+              "job_status": os.environ["NATIVE_JOB_STATUS"],
+              "runner_system": platform.system(), "runner_machine": platform.machine(),
+          }, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Preserve native package and test evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-proof-${{ matrix.id }}

@@ -33,6 +33,29 @@ fn selector_and_slice_contract_remain_miri_sound() {
     .unwrap();
     assert_eq!(document.execute(&slice).unwrap().values, ["\r\n✓\r\n"]);
     assert_eq!(document.parse_count(), 1);
+
+    // The same strict-provenance proof owns scoped cache reuse and fragment context in v16.
+    let document = prepared(
+        "<main><ol start='7'><li>A</li><li id='selected'>B</li></ol><table><tr><td>X | Y</td><td>Z</td></tr></table><pre><code id='code'>x\n</code></pre></main>",
+    );
+    for (css, expected) in [
+        ("#selected", "8. B"),
+        ("tr", "[cell]X \\| Y[/cell] | [cell]Z[/cell]"),
+        ("#code", "```\nx\n\n```"),
+    ] {
+        let mut plan = ExtractionPlan::css(css).unwrap();
+        plan.projection = Projection::DocumentText {};
+        let compiled = CompiledPlan::compile(&plan).unwrap();
+        for _ in 0..2 {
+            assert_eq!(document.execute(&compiled).unwrap().values, [expected]);
+        }
+    }
+    let mut plan = ExtractionPlan::css("main:has(> ol) li:nth-child(2)").unwrap();
+    plan.projection = Projection::Attribute { name: "id".into() };
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    for _ in 0..2 {
+        assert_eq!(document.execute(&compiled).unwrap().values, ["selected"]);
+    }
 }
 
 #[test]
@@ -62,7 +85,7 @@ fn source_slices_preserve_unicode_crlf_and_never_parse() {
         include_start: false,
         include_end: false,
     };
-    plan.projection = Projection::Source;
+    plan.projection = Projection::Source {};
     let compiled = CompiledPlan::compile(&plan).unwrap();
     for _ in 0..2 {
         let result = source.execute(&compiled).unwrap();
@@ -131,16 +154,16 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
 
 #[test]
 fn closed_json_rejects_nested_duplicates_unknown_fields_and_old_schema() {
-    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}"#;
+    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#;
     assert!(ExtractionPlan::from_json(minimal.as_bytes()).is_ok());
     for value in [
         minimal.replace(
             "\"selector\":\"p\"",
             "\"selector\":\"p\",\"selector\":\"aside\"",
         ),
-        minimal.replace("\"version\":1", "\"version\":1,\"unknown\":true"),
+        minimal.replace("\"version\":2", "\"version\":2,\"unknown\":true"),
         minimal.replace("htmlcut.extraction.plan", "htmlcut.plan"),
-        minimal.replace("\"version\":1", "\"version\":2"),
+        minimal.replace("\"version\":2", "\"version\":3"),
     ] {
         assert!(
             ExtractionPlan::from_json(value.as_bytes()).is_err(),
@@ -160,8 +183,14 @@ mod identity;
 
 #[path = "contract_budgets.rs"]
 mod budgets;
+#[path = "contract_closure.rs"]
+mod closure;
 #[path = "contract_corpus.rs"]
 mod corpus;
+#[path = "fragment_context.rs"]
+mod fragment_context;
+#[path = "selector_accounting.rs"]
+mod selector_accounting;
 #[path = "contract_validation.rs"]
 mod validation;
 
@@ -183,9 +212,9 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
     assert_eq!(crate::projection::take_projection_calls(), [3, 0, 0, 0, 0]);
     // Positive controls prove that all counters observe the actual paths.
     for projection in [
-        Projection::DomText,
-        Projection::DocumentText,
-        Projection::OuterHtml,
+        Projection::DomText {},
+        Projection::DocumentText {},
+        Projection::OuterHtml {},
     ] {
         plan.projection = projection;
         document

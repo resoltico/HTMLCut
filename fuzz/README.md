@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "15.0.0"
+  version: "16.0.0"
   domain: QUALITY
   updated: "2026-10-01"
 RETRIEVAL_HINTS:
@@ -90,3 +90,7 @@ cargo xtask fuzz-smoke --runs 500
 `cargo xtask fuzz-smoke` preflights nightly plus `cargo-fuzz`, then stages each checked-in corpus
 into a temporary directory before calling `cargo +nightly-2026-09-30 fuzz run --features fuzzing ...`, so
 the checked-in seed inventory stays clean after local smoke runs.
+
+The maintained inventory also exercises incremental informational response framing (`http_response_framing`), the actual raw-byte media parameter parser (`media_parameters`), and independently decoded plain/pre cell payloads (`structural_cells`). Protocol whole-buffer and segmented outcomes must agree; generated valid controls assert full final headers. Media controls distinguish quoted fake charset declarations. Cell inverse controls preserve reserved delimiters and literal pre trailing newlines. These bounded properties supplement real socket/OS/native tests; they do not establish universal conformance.
+
+`closed_wire_objects` exercises owning enum deserializers, raw duplicate-key refusal, and nested plan/saved-run closure with valid current-contract controls. Schema parity and semantic validation remain separately tested; structural JSON acceptance does not authorize execution.

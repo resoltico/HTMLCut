@@ -27,9 +27,13 @@ serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 ureq.workspace = true
+ureq-proto.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
 url.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
 
 [lints]
 workspace = true
@@ -79,6 +83,34 @@ bench = false
 [[bin]]
 name = "relational_selector_budget"
 path = "fuzz_targets/relational_selector_budget.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http_response_framing"
+path = "fuzz_targets/http_response_framing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "media_parameters"
+path = "fuzz_targets/media_parameters.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "structural_cells"
+path = "fuzz_targets/structural_cells.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "closed_wire_objects"
+path = "fuzz_targets/closed_wire_objects.rs"
 test = false
 doc = false
 bench = false

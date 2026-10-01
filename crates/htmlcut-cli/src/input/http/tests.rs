@@ -74,6 +74,8 @@ fn response(status: u16, location: Option<&str>, body: &[u8]) -> Result<Response
         status,
         location: location.map(str::to_owned),
         content_type: None,
+        duplicate_content_type: false,
+        partial: false,
         encoding: None,
         body: Box::new(Cursor::new(body.to_vec())),
     })
@@ -281,14 +283,14 @@ fn transfer_decompression_and_deadline_triplets_fail_closed() {
 fn explicit_encoding_priority_and_invalid_compression_are_unambiguous() {
     assert_eq!(
         charset(Some(
-            "text/html; foo; other=x; CHARSET=\"UTF-8\"; charset=utf-8"
+            b"text/html; foo=ignored; other=x; CHARSET=\"UTF-8\"; charset=utf-8"
         ))
         .unwrap(),
         Some("utf-8".into())
     );
-    assert!(charset(Some("text/html; charset=utf-8; charset=windows-1252")).is_err());
+    assert!(charset(Some(b"text/html; charset=utf-8; charset=windows-1252")).is_err());
     let mut reply = response(200, None, b"body").unwrap();
-    reply.content_type = Some("text/html; charset=utf-8; charset=windows-1252".into());
+    reply.content_type = Some(b"text/html; charset=utf-8; charset=windows-1252".to_vec());
     let mut transport = queue(vec![Ok(reply)]);
     assert!(
         fetch_with(
@@ -480,4 +482,76 @@ fn default_http_transfer_and_decode_bounds_match_accepted_source_capacity() {
     let source_bound = htmlcut_core::PreparationLimits::default().max_source_bytes as usize;
     assert_eq!(policy.transfer_bytes, source_bound);
     assert_eq!(policy.decompressed_bytes, source_bound);
+}
+
+#[test]
+fn transport_recovery_causes_are_closed_and_discard_dependency_messages() {
+    use htmlcut_core::{FailureCause, TransportProblem};
+    for (error, problem) in [
+        (ureq::Error::HostNotFound, TransportProblem::Dns),
+        (ureq::Error::ConnectionFailed, TransportProblem::Connection),
+        (ureq::Error::Tls("SYNTHETIC_SECRET"), TransportProblem::Tls),
+        (
+            ureq::Error::Protocol(ureq_proto::Error::HttpParseFail("SYNTHETIC_SECRET".into())),
+            TransportProblem::Framing,
+        ),
+        (
+            ureq::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "SYNTHETIC_SECRET",
+            )),
+            TransportProblem::IncompleteBody,
+        ),
+        (
+            ureq::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                "SYNTHETIC_SECRET",
+            )),
+            TransportProblem::Connection,
+        ),
+        (
+            ureq::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "SYNTHETIC_SECRET",
+            )),
+            TransportProblem::Connection,
+        ),
+        (
+            ureq::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "SYNTHETIC_SECRET",
+            )),
+            TransportProblem::Connection,
+        ),
+        (
+            ureq::Error::Io(std::io::Error::other("SYNTHETIC_SECRET")),
+            TransportProblem::Other,
+        ),
+        (
+            ureq::Error::BadUri("SYNTHETIC_SECRET".into()),
+            TransportProblem::Other,
+        ),
+    ] {
+        let result = transport_error(error);
+        assert_eq!(result.code.exit_class(), 5);
+        assert_eq!(
+            result.evidence.cause,
+            Some(FailureCause::Transport { problem })
+        );
+        assert!(
+            !serde_json::to_string(&result)
+                .unwrap()
+                .contains("SYNTHETIC_SECRET")
+        );
+    }
+    for error in [
+        ureq::Error::Protocol(ureq_proto::Error::ResponseHeaderLimit),
+        ureq::Error::Protocol(ureq_proto::Error::InformationalResponseLimit),
+        ureq::Error::Protocol(ureq_proto::Error::HttpParseTooManyHeaders),
+        ureq::Error::LargeResponseHeader(65537, 65536),
+    ] {
+        let result = transport_error(error);
+        assert_eq!(result.code.exit_class(), 4);
+        assert_eq!(result.evidence.cause, Some(FailureCause::Resource {}));
+    }
 }

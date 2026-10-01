@@ -3883,7 +3883,12 @@ pub mod tests {
     }
 
     impl DummyParser {
-        fn default_with_namespace(default_ns: DummyAtom) -> DummyParser {
+        pub fn with_namespace(mut self, prefix: &str, url: &str) -> Self {
+            self.ns_prefixes.insert(prefix.into(), url.into());
+            self
+        }
+
+        pub fn default_with_namespace(default_ns: DummyAtom) -> DummyParser {
             DummyParser {
                 default_ns: Some(default_ns),
                 ns_prefixes: Default::default(),
@@ -3906,6 +3911,12 @@ pub mod tests {
 
     #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
     pub struct DummyAttrValue(String);
+
+    impl AsRef<str> for DummyAttrValue {
+        fn as_ref(&self) -> &str {
+            &self.0
+        }
+    }
 
     impl ToCss for DummyAttrValue {
         fn to_css<W>(&self, dest: &mut W) -> fmt::Result
@@ -3952,7 +3963,10 @@ pub mod tests {
 
     impl PrecomputedHash for DummyAtom {
         fn precomputed_hash(&self) -> u32 {
-            self.0.as_ptr() as u32
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            self.0.hash(&mut hash);
+            hash.finish() as u32
         }
     }
 

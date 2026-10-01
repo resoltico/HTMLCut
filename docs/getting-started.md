@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: SETUP
 updated: "2026-10-01"
 route:
@@ -26,4 +26,4 @@ Use a plan file for guards, exclusions and transforms. Source slices are byte ex
 
 See [CLI](cli.md), [Core](core.md), [Schemas](schema.md) and [Platform support](platform-support.md).
 
-For release packages, select the exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The candidate workspace version is not a claim that its assets are published. Shell download scripts use `VERSION=15.0.0`; PowerShell scripts use `$Version = "15.0.0"` after that release is authorized and published.
+For release packages, select the exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The candidate workspace version is not a claim that its assets are published. Shell download scripts use `VERSION=16.0.0`; PowerShell scripts use `$Version = "16.0.0"` after that release is authorized and published.

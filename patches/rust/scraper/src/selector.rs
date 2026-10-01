@@ -18,7 +18,7 @@ use crate::ElementRef;
 use crate::error::{SelectorErrorKind, SelectorParseError};
 
 mod budget;
-pub use budget::SelectorWorkLimitExceeded;
+pub use budget::{BudgetedMatcher, SelectorMatchError};
 
 /// Wrapper around CSS selectors.
 ///
@@ -293,3 +293,7 @@ mod tests {
         let _sel: Selector = s.try_into().unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "selector/tests/context.rs"]
+mod context_tests;

@@ -6,46 +6,111 @@ use selectors::{
 };
 
 use super::Selector;
-use crate::ElementRef;
+use crate::{ElementRef, Html};
 
-/// Failure returned when one selector evaluation exhausts its explicit work budget.
+/// Closed refusal reasons for one document-bound selector evaluation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SelectorWorkLimitExceeded;
+pub enum SelectorMatchError {
+    /// Finite matching work was exhausted.
+    WorkLimitExceeded,
+    /// A scope or candidate belongs to a different document.
+    DocumentMismatch,
+}
+
+/// Matching scratch tied to one immutable selector, document scope and operation budget.
+pub struct BudgetedMatcher<'selector, 'document> {
+    selector: &'selector Selector,
+    document: &'document Html,
+    scope: Option<ElementRef<'document>>,
+    budget: &'selector SelectorWorkBudget,
+    caches: SelectorCaches,
+}
+
+impl std::fmt::Debug for BudgetedMatcher<'_, '_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BudgetedMatcher")
+            .field("selector", &self.selector)
+            .field("scope", &self.scope)
+            .field("remaining_work", &self.budget.remaining())
+            .finish_non_exhaustive()
+    }
+}
 
 impl Selector {
-    /// Returns whether this selector matches one element within an explicit work budget.
-    pub fn matches_with_budget(
-        &self,
-        element: &ElementRef,
-        budget: &SelectorWorkBudget,
-    ) -> Result<bool, SelectorWorkLimitExceeded> {
-        self.matches_with_scope_and_budget(element, None, budget)
+    /// Starts one scoped candidate pass with shared selector caches and work accounting.
+    ///
+    /// The document stays borrowed while scratch is usable:
+    ///
+    /// ```
+    /// use scraper::{Html, Selector};
+    /// use selectors::work_budget::SelectorWorkBudget;
+    /// let document = Html::parse_document("<p>A</p>");
+    /// let selector = Selector::parse("p").unwrap();
+    /// let budget = SelectorWorkBudget::new(100);
+    /// let mut matcher = selector.budgeted(&document, None, &budget).unwrap();
+    /// let element = document.select(&selector).next().unwrap();
+    /// assert!(matcher.matches(&element).unwrap());
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use scraper::{Html, Selector};
+    /// use selectors::work_budget::SelectorWorkBudget;
+    /// let document = Html::parse_document("<p>A</p>");
+    /// let other = Html::parse_document("<p>B</p>");
+    /// let selector = Selector::parse("p").unwrap();
+    /// let budget = SelectorWorkBudget::new(100);
+    /// let mut matcher = selector.budgeted(&document, None, &budget).unwrap();
+    /// drop(document);
+    /// let element = other.select(&selector).next().unwrap();
+    /// let _ = matcher.matches(&element);
+    /// ```
+    pub fn budgeted<'selector, 'document>(
+        &'selector self,
+        document: &'document Html,
+        scope: Option<ElementRef<'document>>,
+        budget: &'selector SelectorWorkBudget,
+    ) -> Result<BudgetedMatcher<'selector, 'document>, SelectorMatchError> {
+        if scope.is_some_and(|scope| !std::ptr::eq(scope.tree(), &document.tree)) {
+            return Err(SelectorMatchError::DocumentMismatch);
+        }
+        Ok(BudgetedMatcher {
+            selector: self,
+            document,
+            scope,
+            budget,
+            caches: SelectorCaches::default(),
+        })
     }
+}
 
-    /// Evaluates a selector with explicit original-DOM scope and shared work accounting.
-    pub fn matches_with_scope_and_budget(
-        &self,
-        element: &ElementRef,
-        scope: Option<ElementRef>,
-        budget: &SelectorWorkBudget,
-    ) -> Result<bool, SelectorWorkLimitExceeded> {
-        let mut caches = SelectorCaches::default();
+impl<'document> BudgetedMatcher<'_, 'document> {
+    /// Matches one candidate, retaining scratch only for this selector and original scope.
+    pub fn matches(&mut self, element: &ElementRef<'document>) -> Result<bool, SelectorMatchError> {
+        if !std::ptr::eq(element.tree(), &self.document.tree) {
+            return Err(SelectorMatchError::DocumentMismatch);
+        }
+        if !self.budget.consume() {
+            return Err(SelectorMatchError::WorkLimitExceeded);
+        }
         let mut context = matching::MatchingContext::new(
             matching::MatchingMode::Normal,
             None,
-            &mut caches,
+            &mut self.caches,
             matching::QuirksMode::NoQuirks,
             matching::NeedsSelectorFlags::No,
             matching::MatchingForInvalidation::No,
         );
-        context.scope_element = scope.map(|element| selectors::Element::opaque(&element));
-        context.set_work_budget(Some(budget));
+        context.scope_element = self
+            .scope
+            .map(|element| selectors::Element::opaque(&element));
+        context.set_work_budget(Some(self.budget));
         let matches =
-            self.selectors.slice().iter().any(|selector| {
+            self.selector.selectors.slice().iter().any(|selector| {
                 matching::matches_selector(selector, 0, None, element, &mut context)
             });
-        if budget.exhausted() {
-            Err(SelectorWorkLimitExceeded)
+        if self.budget.exhausted() {
+            Err(SelectorMatchError::WorkLimitExceeded)
         } else {
             Ok(matches)
         }
@@ -53,53 +118,5 @@ impl Selector {
 }
 
 #[cfg(test)]
-mod tests {
-    use selectors::work_budget::SelectorWorkBudget;
-
-    use super::{Selector, SelectorWorkLimitExceeded};
-    use crate::ElementRef;
-
-    #[test]
-    fn budgeted_matching_returns_match_and_non_match_before_exhaustion() {
-        let document = crate::Html::parse_document("<main><article>One</article></main>");
-        let article = document
-            .tree
-            .root()
-            .descendants()
-            .filter_map(ElementRef::wrap)
-            .find(|element| element.value().name() == "article")
-            .expect("article element");
-
-        assert_eq!(
-            Selector::parse("article")
-                .expect("selector")
-                .matches_with_budget(&article, &SelectorWorkBudget::new(10)),
-            Ok(true)
-        );
-        assert_eq!(
-            Selector::parse("aside")
-                .expect("selector")
-                .matches_with_budget(&article, &SelectorWorkBudget::new(10)),
-            Ok(false)
-        );
-    }
-
-    #[test]
-    fn budgeted_matching_reports_exhaustion_instead_of_non_match() {
-        let document = crate::Html::parse_document("<main><article>One</article></main>");
-        let element = document
-            .tree
-            .root()
-            .descendants()
-            .filter_map(ElementRef::wrap)
-            .find(|element| element.value().name() == "article")
-            .expect("article element");
-        let selector = Selector::parse("article").expect("selector");
-        let budget = SelectorWorkBudget::new(1);
-
-        assert_eq!(
-            selector.matches_with_budget(&element, &budget),
-            Err(SelectorWorkLimitExceeded)
-        );
-    }
-}
+#[path = "tests/budget.rs"]
+mod tests;

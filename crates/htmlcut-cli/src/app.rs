@@ -53,22 +53,18 @@ where
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
             ) =>
         {
-            return if stdout
+            return match stdout
                 .write_all(error.to_string().as_bytes())
                 .and_then(|_| stdout.flush())
-                .is_ok()
             {
-                0
-            } else {
-                report(crate::publication::failure(), stderr)
+                Ok(()) => 0,
+                Err(error) => report(
+                    crate::publication::io_failure(error, htmlcut_core::IoOperation::Stdout),
+                    stderr,
+                ),
             };
         }
-        Err(_) => {
-            return report(
-                options("Invalid command options; use --help for the closed command vocabulary."),
-                stderr,
-            );
-        }
+        Err(error) => return report(crate::command_diagnostics::failure(&error), stderr),
     };
     match dispatch(cli.operation, stdin, stdout) {
         Ok(()) => 0,
@@ -159,7 +155,7 @@ fn dispatch(
             let saved = if let Some(path) = &arguments.save_run {
                 let run = RunSpec {
                     schema: "htmlcut.run".into(),
-                    version: 1,
+                    version: htmlcut_core::SCHEMA_VERSION,
                     source,
                     plan: compiled.plan().clone(),
                     encoding: arguments.source.encoding,
@@ -311,7 +307,7 @@ fn emit(bytes: Vec<u8>, stdout: &mut dyn Write) -> Result<(), ExtractionError> {
     stdout
         .write_all(&bytes)
         .and_then(|_| stdout.flush())
-        .map_err(|_| crate::publication::failure())
+        .map_err(|error| crate::publication::io_failure(error, htmlcut_core::IoOperation::Stdout))
 }
 
 // All metadata routes stage bounded JSON before touching stdout.

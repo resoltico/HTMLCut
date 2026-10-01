@@ -106,3 +106,56 @@ fn audit_default_one_mebibyte_bound_includes_json_framing_exactly() {
         }
     }
 }
+
+#[test]
+fn io_recovery_categories_keep_operations_and_remove_raw_messages() {
+    use htmlcut_core::{FailureCause, IoOperation, IoProblem};
+    for (kind, problem) in [
+        (
+            std::io::ErrorKind::PermissionDenied,
+            IoProblem::PermissionDenied,
+        ),
+        (std::io::ErrorKind::NotFound, IoProblem::NotFound),
+        (std::io::ErrorKind::BrokenPipe, IoProblem::BrokenPipe),
+        (std::io::ErrorKind::Other, IoProblem::Other),
+    ] {
+        let error = super::io_failure(
+            std::io::Error::new(kind, "SYNTHETIC_SECRET"),
+            IoOperation::Stdout,
+        );
+        assert_eq!(
+            error.evidence.cause,
+            Some(FailureCause::Io {
+                operation: IoOperation::Stdout,
+                problem
+            })
+        );
+        assert!(
+            !serde_json::to_string(&error)
+                .unwrap()
+                .contains("SYNTHETIC_SECRET")
+        );
+        let error = crate::input::io_failure(std::io::Error::new(kind, "SYNTHETIC_SECRET"));
+        assert_eq!(
+            error.evidence.cause,
+            Some(FailureCause::Io {
+                operation: IoOperation::Input,
+                problem
+            })
+        );
+        assert!(
+            !serde_json::to_string(&error)
+                .unwrap()
+                .contains("SYNTHETIC_SECRET")
+        );
+    }
+}
+
+#[test]
+fn bare_output_names_resolve_in_the_actual_working_directory() {
+    let name = format!("htmlcut-output-boundary-{}.json", std::process::id());
+    assert_eq!(
+        super::normalized_target(std::path::Path::new(&name)).unwrap(),
+        std::env::current_dir().unwrap().join(name),
+    );
+}

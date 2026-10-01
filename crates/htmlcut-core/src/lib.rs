@@ -7,6 +7,7 @@ mod discovery;
 #[cfg(any(test, doctest))]
 mod doctests;
 mod execution;
+mod failure_cause;
 mod identity;
 mod json;
 mod limits;
@@ -22,6 +23,9 @@ mod tests;
 pub use compilation::CompiledPlan;
 pub use discovery::{
     AttributePreview, ElementDescriptor, InspectionResult, PreviewResult, SelectorProposal,
+};
+pub use failure_cause::{
+    ConfigurationProblem, ConfigurationRole, FailureCause, IoOperation, IoProblem, TransportProblem,
 };
 pub use identity::canonical_json;
 pub use json::parse_closed_json;
