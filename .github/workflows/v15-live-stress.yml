@@ -24,19 +24,27 @@ jobs:
     steps:
       - name: Verify released binary; run native controls and modest public GET checks
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
-          import datetime,hashlib,json,os,pathlib,platform,subprocess,tarfile,time,urllib.request,zipfile
+          import datetime,hashlib,json,os,pathlib,platform,subprocess,sys,tarfile,time,urllib.request,zipfile
           root=pathlib.Path('evaluation-output');root.mkdir()
           target=os.environ['EVAL_TARGET'];suffix='.zip' if 'windows' in target else '.tar.gz'
           name='htmlcut-15.0.0-'+target+suffix
+          bootstrap=root/'bootstrap.json'
+          bootstrap.write_text(json.dumps({'status':'started','target':target}),encoding='utf-8')
+          def bootstrap_failure(kind,error,traceback):
+              bootstrap.write_text(json.dumps({'status':'failed','target':target,'error_type':kind.__name__,'message':str(error)},indent=2),encoding='utf-8')
+              sys.__excepthook__(kind,error,traceback)
+          sys.excepthook=bootstrap_failure
           def fetch(url,maximum=60*1024*1024):
               req=urllib.request.Request(url,headers={'User-Agent':'HTMLCut-release-evaluation/1.0','Accept-Encoding':'identity'})
               with urllib.request.urlopen(req,timeout=25) as response:
                   data=response.read(maximum+1)
                   if len(data)>maximum:raise ValueError('capture cap exceeded')
                   return data,{'status':response.status,'final_url':response.url,'content_type':response.headers.get('Content-Type'),'captured_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}
-          release=json.loads(fetch('https://api.github.com/repos/resoltico/HTMLCut/releases/tags/v15.0.0')[0]);asset=next(a for a in release['assets'] if a['name']==name)
+          release=json.loads(subprocess.check_output(['gh','api','repos/resoltico/HTMLCut/releases/tags/v15.0.0'],timeout=25));asset=next(a for a in release['assets'] if a['name']==name)
           data,_=fetch(asset['browser_download_url']);digest=hashlib.sha256(data).hexdigest();assert asset['digest']=='sha256:'+digest
           archive=root/name;archive.write_bytes(data)
           if suffix=='.zip':
@@ -44,6 +52,8 @@ jobs:
           else:
               with tarfile.open(archive) as t:t.extractall(root/'tool',filter='data')
           binary=next((root/'tool').rglob('htmlcut.exe' if 'windows' in target else 'htmlcut'));binary=binary.resolve();binary.chmod(0o755)
+          bootstrap.write_text(json.dumps({'status':'complete','target':target,'archive_sha256':digest},indent=2),encoding='utf-8')
+          sys.excepthook=sys.__excepthook__
           records=[]
           def run(label,args,html=None):
               start=time.perf_counter();record={'label':label,'arguments':args}
