@@ -17,7 +17,7 @@ use rustc_hash::FxHashMap;
 use std::hash::Hash;
 
 use crate::parser::{RelativeSelector, SelectorKey};
-use crate::{tree::OpaqueElement, SelectorImpl};
+use crate::{SelectorImpl, tree::OpaqueElement};
 
 /// Match data for a given element and a selector.
 #[derive(Clone, Copy)]

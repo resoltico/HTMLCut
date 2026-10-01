@@ -12,6 +12,8 @@ use selectors::matching::SelectorCaches;
 use crate::node::Element;
 use crate::{Node, Selector};
 
+mod filtered;
+
 /// Wrapper around a reference to an element node.
 ///
 /// This wrapper implements the `Element` trait from the `selectors` crate, which allows it to be

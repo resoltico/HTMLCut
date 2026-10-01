@@ -4,8 +4,8 @@ version: "15.0.0"
 domain: ENGINEERING
 updated: "2026-10-01"
 route:
-  keywords: [HTMLCut, implementation status, conformance, live QA, dependency refresh, release candidate]
-  questions: ["What remains before HTMLCut 15.0.0 publication?", "Which revision was verified?", "Do previous proofs cover the dependency refresh?"]
+  keywords: [HTMLCut, implementation status, conformance, live QA, dependency refresh, published release]
+  questions: ["Which source was published as HTMLCut 15.0.0?", "Which revision was verified?", "Do previous proofs cover the dependency refresh?"]
 ---
 
 # Extraction contract implementation status
@@ -20,6 +20,31 @@ source and new packages through the required gates, source-bound mutation accoun
 proofs. Authoritative publication state is the [public release](https://github.com/resoltico/HTMLCut/releases/tag/v15.0.0);
 exact-source verification is retained in [GitHub Actions](https://github.com/resoltico/HTMLCut/actions).
 The historical evidence below identifies its tested revision; it does not attest later changes.
+
+## Published 15.0.0 verification
+
+The annotated `v15.0.0` tag binds the public release to
+`a075c33fbc47b0edfaafad45fca70d6b70486d46`. Its tree equals the final clean PR candidate,
+which passed all 58 local maintainer steps, strict Miri, 100% scored lines and branches,
+seven fuzz targets with 200 executions each, and 214 live plus 214 captured-page cases.
+
+- [Exact-source main CI](https://github.com/resoltico/HTMLCut/actions/runs/36830550660) passed
+  the Linux maintainer gate, macOS/Windows Rust gates, contributor lifecycle validation and
+  all four native package smoke jobs.
+- [Complete mutation verification](https://github.com/resoltico/HTMLCut/actions/runs/36830564220)
+  reconciled 3,519 planned/tested identities: 1,916 caught, 1,603 unviable, zero missed/timeouts,
+  with successful build/test baselines for all 16 shards.
+- [Publication](https://github.com/resoltico/HTMLCut/actions/runs/36832998421) succeeded.
+  All seven public assets downloaded anonymously; six payload hashes matched the checksum
+  manifest. All seven build attestations verified the tag, source commit, release workflow
+  and GitHub-hosted runner identity. The downloaded macOS arm64 binary passed native smoke
+  and all 214 captured-page matrix cases.
+
+The refreshed source-bound matrix, complete command streams, failed/repaired rounds, public
+downloads, attestations and mutation evidence are retained in the maintainer's
+`Downloads/HTMLCut-15.0.0-release-2026-10-01` directory. Live availability is recorded separately
+from captured fidelity: transient Python CDN HTTP 503 responses were reproduced independently,
+and failed live rounds are retained rather than reclassified as successful extraction.
 
 ## Verified implementation before the refresh
 
@@ -48,7 +73,7 @@ The portable live matrix, methodology, native package, binary, captures, scripts
 proofs are in the maintainer's `Downloads/HTMLCut-15.0.0-live-qa-2026-10-01` directory. That local
 archive is supporting evidence, not a runtime dependency or a public install endpoint.
 
-## Changed candidate and next release work
+## Dependency and configuration refresh
 
 The [configuration/workflow audit](configuration-audit.md) follows the separate design/QA pass
 through dependency employment, complete freshness inventory and scratch ownership, same-source

@@ -31,12 +31,12 @@ pub struct Selector {
 
 impl Selector {
     /// Parses a CSS selector group.
-    pub fn parse(selectors: &str) -> Result<Self, SelectorErrorKind<'_>> {
+    pub fn parse(selectors: &str) -> Result<Self, SelectorErrorKind> {
         Self::parse_with_location(selectors).map_err(SelectorParseError::into_kind)
     }
 
     /// Parses a CSS selector group while preserving a source location on failure.
-    pub fn parse_with_location(selectors: &str) -> Result<Self, SelectorParseError<'_>> {
+    pub fn parse_with_location(selectors: &str) -> Result<Self, SelectorParseError> {
         let mut parser = cssparser::Parser::new(selectors);
 
         SelectorList::parse(&Parser, &mut parser, ParseRelative::No)
@@ -127,7 +127,7 @@ impl Visitor<'_> for SelectorVisitor {
 pub struct Parser;
 impl<'i> parser::Parser<'i> for Parser {
     type Impl = Simple;
-    type Error = SelectorParseErrorKind<'i>;
+    type Error = SelectorParseErrorKind;
 
     fn parse_is_and_where(&self) -> bool {
         true
@@ -213,8 +213,6 @@ impl PrecomputedHash for CssLocalName {
 pub enum NonTSPseudoClass {}
 
 impl parser::NonTSPseudoClass for NonTSPseudoClass {
-    type Impl = Simple;
-
     fn is_active_or_hover(&self) -> bool {
         false
     }
@@ -237,9 +235,7 @@ impl ToCss for NonTSPseudoClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PseudoElement {}
 
-impl parser::PseudoElement for PseudoElement {
-    type Impl = Simple;
-}
+impl parser::PseudoElement for PseudoElement {}
 
 impl ToCss for PseudoElement {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result
@@ -251,7 +247,7 @@ impl ToCss for PseudoElement {
 }
 
 impl<'i> TryFrom<&'i str> for Selector {
-    type Error = SelectorErrorKind<'i>;
+    type Error = SelectorErrorKind;
 
     fn try_from(s: &'i str) -> Result<Self, Self::Error> {
         Selector::parse(s)

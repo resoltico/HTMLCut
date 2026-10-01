@@ -1,85 +1,38 @@
-//! HTMLCut's embeddable extraction and inspection engine.
+//! Immutable, bounded extraction over caller-supplied UTF-8 snapshots.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-mod catalog;
-mod cli_choice;
-mod contracts;
-mod diagnostics;
+mod compilation;
+mod discovery;
 #[cfg(any(test, doctest))]
 mod doctests;
-mod document;
-mod extract;
-mod fmt;
-mod inspect;
-pub mod interop;
-mod schema;
-mod selector_parse;
-mod source;
+mod execution;
+mod identity;
+mod json;
+mod limits;
+mod plan;
+mod projection;
+mod result;
+mod schemas;
+mod snapshot;
 #[cfg(test)]
+#[path = "tests/extraction_contract.rs"]
 mod tests;
-pub mod wire;
 
-/// Typed request-side contracts for embeddable HTMLCut callers.
-pub mod request {
-    pub use crate::contracts::{
-        AttributeName, BoundaryRetention, ContractValueError, DisplayedHttpUrl,
-        ExtractionDefinition, ExtractionRequest, ExtractionSpec, ExtractionStrategy,
-        FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs, HttpUrl, InspectionOptions,
-        MaxBytes, OutputOptions, PatternMode, PersistedHttpUrl, RenderingOptions, RuntimeOptions,
-        SelectionSpec, SelectorQuery, SliceBoundary, SlicePatternSpec, SliceSpec, SourceInput,
-        SourceKind, SourceRequest, TlsTrustPolicy, ValueSpec, ValueType, WhitespaceMode,
-    };
-}
-
-/// Typed result-side contracts for embeddable HTMLCut callers.
-pub mod result {
-    pub use crate::contracts::{
-        ContentCandidateInspection, DelimiterPairMatchMetadata, Diagnostic, DiagnosticLevel,
-        DocumentInspection, ExtractionMatch, ExtractionMatchMetadata, ExtractionResult,
-        ExtractionStats, HeadingInspection, InspectionCount, LinkInspection, Range,
-        SelectorMatchMetadata, SourceInspectionResult, SourceLoadAction, SourceLoadOutcome,
-        SourceLoadStep, SourceMetadata,
-    };
-}
-
-pub use catalog::{
-    OPERATION_CATALOG, OperationContract, OperationDescriptor, OperationId, OperationIdParseError,
-    operation_catalog, operation_descriptor,
+pub use compilation::CompiledPlan;
+pub use discovery::{
+    AttributePreview, ElementDescriptor, InspectionResult, PreviewResult, SelectorProposal,
 };
-pub use cli_choice::CliChoice;
-pub use contracts::{
-    AttributeName, BUILTIN_HTTP_CLIENT_AVAILABLE, BoundaryRetention, CORE_RESULT_SCHEMA_NAME,
-    CORE_RESULT_SCHEMA_VERSION, CORE_SOURCE_INSPECTION_SCHEMA_NAME,
-    CORE_SOURCE_INSPECTION_SCHEMA_VERSION, CORE_SPEC_VERSION, ContractValueError,
-    DEFAULT_FETCH_CONNECT_TIMEOUT_MS, DEFAULT_FETCH_PREFLIGHT_MODE, DEFAULT_FETCH_TIMEOUT_MS,
-    DEFAULT_INSPECTION_SAMPLE_LIMIT, DEFAULT_MAX_BYTES, DEFAULT_PREVIEW_CHARS, Diagnostic,
-    DiagnosticLevel, DisplayedHttpUrl, ExtractionDefinition, ExtractionRequest, ExtractionResult,
-    ExtractionSpec, ExtractionStrategy, FetchConnectTimeoutMs, FetchPreflightMode, FetchTimeoutMs,
-    HttpUrl, InspectionOptions, MaxBytes, OutputOptions, PatternMode, PersistedHttpUrl,
-    RenderingOptions, RuntimeOptions, SelectionSpec, SelectorQuery, SliceBoundary,
-    SlicePatternSpec, SliceSpec, SourceInput, SourceInspectionResult, SourceKind, SourceLoadAction,
-    SourceLoadOutcome, SourceLoadStep, SourceMetadata, SourceRequest, TlsTrustPolicy, ValueSpec,
-    ValueType, WhitespaceMode,
+pub use identity::canonical_json;
+pub use json::parse_closed_json;
+pub use limits::{ExecutionLimits, PreparationLimits};
+pub use plan::{
+    Boundary, ExtractionPlan, Guard, GuardRead, GuardScope, Predicate, Projection, Selection,
+    Strategy, Transform,
 };
-pub use diagnostics::{DiagnosticCode, DiagnosticCodeParseError};
-#[cfg(test)]
-pub(crate) use document::{
-    render_document_body_as_text, render_selected_document_body_as_text,
-    rewrite_urls_in_document_with_node_ids_for_tests,
+pub use result::{
+    ErrorCode, ErrorEvidence, ExtractionError, ExtractionResult, SCHEMA_VERSION, SEMANTICS_VERSION,
+    SourceRange,
 };
-pub(crate) use extract::SelectorDomCanonicalization;
-pub use extract::{extract, inspect_source, preview_extraction};
-pub use fmt::format_byte_size;
-pub use schema::{
-    CORE_REQUEST_SCHEMA_VERSION, EXTRACTION_DEFINITION_SCHEMA_NAME,
-    EXTRACTION_DEFINITION_SCHEMA_VERSION, EXTRACTION_REQUEST_SCHEMA_NAME,
-    HTMLCUT_JSON_SCHEMA_PROFILE, INSPECTION_OPTIONS_SCHEMA_NAME, RUNTIME_OPTIONS_SCHEMA_NAME,
-    SOURCE_REQUEST_SCHEMA_NAME, SchemaDescriptor, SchemaExportError, SchemaRef, SchemaStability,
-    schema_catalog, schema_descriptor,
-};
-
-/// Returns whether one HTML string already looks like a full document.
-pub fn looks_like_html_document(fragment: &str) -> bool {
-    document::looks_like_full_document(fragment)
-}
+pub use schemas::{SCHEMA_NAMES, schema};
+pub use snapshot::{PreparedDocument, SnapshotMetadata, SourceSnapshot};

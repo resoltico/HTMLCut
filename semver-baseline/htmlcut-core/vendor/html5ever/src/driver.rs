@@ -129,6 +129,10 @@ impl<Sink: TreeSink> TendrilSink<tendril::fmt::UTF8> for Parser<Sink> {
     fn finish(self) -> Self::Output {
         self.loop_until_done();
 
+        if self.tokenizer.sink.sink.stop_requested() {
+            return self.tokenizer.sink.sink.finish();
+        }
+
         assert!(
             self.input_buffer.is_empty(),
             "parser finished with remaining input"
