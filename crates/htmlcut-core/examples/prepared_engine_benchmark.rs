@@ -1,4 +1,4 @@
-//! Records the prepared-engine side of the v13-to-v14 operational benchmark.
+//! Records the reusable prepared-engine model for the current extraction contract.
 //!
 //! The companion `scripts/benchmark-prepared-engine.sh` program measures this example against the
 //! immutable `v13.2.0` CLI workflow. This executable deliberately reports model facts only; its
@@ -8,17 +8,18 @@
 
 use std::fmt::Write as _;
 
-use htmlcut_core::interop::v2::{
-    CssSelectorText, HtmlInput, Output, Plan, PlanStrategy, PreparationLimits, Rendering,
-    Selection, TextWhitespace, compile_plan, execute, prepare_document,
+use htmlcut_core::{
+    CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, SnapshotMetadata,
+    SourceSnapshot,
 };
 
 const PLAN_COUNT: usize = 50;
 const DOCUMENT_ARTICLE_COUNT: usize = 1_024;
 
 fn main() {
-    let document = prepare_document(
-        HtmlInput::new("prepared-engine-benchmark", benchmark_html()).expect("benchmark source"),
+    let document = PreparedDocument::new(
+        SourceSnapshot::new(benchmark_html(), SnapshotMetadata::default())
+            .expect("benchmark source"),
         PreparationLimits::default(),
     )
     .expect("prepare benchmark document");
@@ -28,8 +29,8 @@ fn main() {
         .expect("compile benchmark plans");
     let selected_match_count = plans
         .iter()
-        .map(|plan| execute(&document, plan).expect("execute benchmark plan"))
-        .map(|result| result.selected_matches.len())
+        .map(|plan| document.execute(plan).expect("execute benchmark plan"))
+        .map(|result| result.values.len())
         .sum::<usize>();
 
     assert_eq!(
@@ -50,17 +51,10 @@ fn main() {
     );
 }
 
-fn compiled_plan(
-    index: usize,
-) -> Result<htmlcut_core::interop::v2::CompiledPlan, Box<htmlcut_core::interop::v2::InteropError>> {
-    let selector = CssSelectorText::new(format!("article[data-benchmark-index=\"{index}\"]"))
-        .expect("benchmark selector text");
-    compile_plan(&Plan::new(
-        PlanStrategy::css_selector(selector),
-        Selection::single(),
-        Output::text(),
-        Rendering::new(TextWhitespace::Normalize, false),
-    ))
+fn compiled_plan(index: usize) -> Result<CompiledPlan, htmlcut_core::ExtractionError> {
+    CompiledPlan::compile(&ExtractionPlan::css(format!(
+        "article[data-benchmark-index=\"{index}\"]"
+    ))?)
 }
 
 fn benchmark_html() -> String {

@@ -24,7 +24,7 @@ fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
     fs::create_dir_all(repo_root.join("docs")).expect("create docs dir");
     fs::write(
         repo_root.join("docs").join("guide.md"),
-        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction_result` and `select.extract`.\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction.result` and `extract`.\n",
     )
     .expect("write guide");
     write_schema_inventory_doc(repo_root);
@@ -32,17 +32,9 @@ fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
 }
 
 fn write_schema_inventory_doc(repo_root: &Path) {
-    let schema_names = htmlcut_core::schema_catalog()
-        .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name.to_owned())
-        .chain([
-            htmlcut_cli::CATALOG_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::SCHEMA_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            htmlcut_cli::ERROR_COMMAND_REPORT_SCHEMA_NAME.to_owned(),
-            crate::gate_report::GATE_RUN_REPORT_SCHEMA_NAME.to_owned(),
-        ])
+    let schema_names = crate::docs::known_schema_names_for_tests()
+        .into_iter()
+        .map(str::to_owned)
         .collect::<std::collections::BTreeSet<_>>();
     let schemas = schema_names
         .into_iter()
@@ -60,9 +52,9 @@ fn write_schema_inventory_doc(repo_root: &Path) {
 }
 
 fn write_operations_inventory_doc(repo_root: &Path) {
-    let operations = htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| format!("| `{}` |", descriptor.id.as_str()))
+    let operations = crate::docs::known_operation_ids_for_tests()
+        .into_iter()
+        .map(|name| format!("| `{name}` |"))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -102,18 +94,19 @@ fn markdown_contract_errors_report_non_parsing_htmlcut_examples_but_ignore_synop
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```text\nhtmlcut select [INPUT] --css <SELECTOR> [options]\nhtmlcut select page.html --css\n```\n",
+        "```text\nhtmlcut extract --file [INPUT] --css <SELECTOR> [options]\nhtmlcut extract --file page.html --css\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
 
     assert!(errors.iter().any(|error| error.contains(
-        "README.md contains a non-parsing htmlcut example: htmlcut select page.html --css"
+        "README.md contains a non-parsing htmlcut example: htmlcut extract --file page.html --css"
     )));
     assert!(
         errors
             .iter()
-            .all(|error| !error.contains("htmlcut select [INPUT] --css <SELECTOR> [options]"))
+            .all(|error| !error
+                .contains("htmlcut extract --file [INPUT] --css <SELECTOR> [options]"))
     );
 }
 
@@ -122,13 +115,13 @@ fn markdown_contract_errors_report_non_runnable_htmlcut_examples() {
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```bash\nhtmlcut select missing.html --css article\n```\n",
+        "```bash\nhtmlcut extract --file missing.html --css article\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
 
     assert!(errors.iter().any(|error| error.contains(
-        "README.md contains a non-runnable htmlcut example: htmlcut select missing.html --css article"
+        "README.md contains a non-runnable htmlcut example: htmlcut extract --file missing.html --css article"
     )));
 }
 
@@ -137,7 +130,7 @@ fn markdown_contract_errors_execute_examples_and_verify_emitted_artifacts() {
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```bash\nhtmlcut select ./page.html \\\n  --css 'article a.more' \\\n  --value attribute \\\n  --attribute href \\\n  --emit-request-file ./article-links.json\nhtmlcut select --request-file ./article-links.json\nhtmlcut select ./page.html --css article --output-file ./article.txt\nhtmlcut select ./page.html --css article --bundle ./bundle\n```\n",
+        "```bash\nhtmlcut extract --file ./page.html \\\n  --css 'article a.more' \\\n  --projection attribute \\\n  --attribute href \\\n  --save-run ./article-links.json\nhtmlcut run ./article-links.json\nhtmlcut extract --file ./page.html --css article --output ./article.txt\nhtmlcut extract --file ./page.html --css article --audit ./audit.json --audit-field counts\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
@@ -150,18 +143,12 @@ fn markdown_contract_errors_report_invalid_catalog_schema_and_command_examples()
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```bash\nhtmlcut catalog --operation unknown.operation\nhtmlcut schema --name htmlcut.unknown_schema\nhtmlcut inspect --help\nhtmlcut select \"page name.html\" \\\n  --css 'article.hero'\n```\n",
+        "```bash\nhtmlcut describe unknown.operation\nhtmlcut schema htmlcut.unknown_schema\nhtmlcut inspect --help\nhtmlcut extract --file \"page name.html\" \\\n  --css 'article.hero'\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
-    let known_schemas = htmlcut_core::schema_catalog()
-        .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name)
-        .collect::<std::collections::BTreeSet<_>>();
-    let known_operations = htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| descriptor.id.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
+    let known_schemas = crate::docs::known_schema_names_for_tests();
+    let known_operations = crate::docs::known_operation_ids_for_tests();
 
     assert!(errors.iter().any(
         |error| error == "README.md example references unknown operation ID: unknown.operation"
@@ -181,7 +168,7 @@ fn markdown_contract_errors_report_invalid_catalog_schema_and_command_examples()
             &known_schemas,
             &known_operations,
         ),
-        Some("README.md example references unknown CLI command path: inspect mystery".to_owned())
+        None
     );
 }
 
@@ -189,24 +176,25 @@ fn markdown_contract_errors_report_invalid_catalog_schema_and_command_examples()
 fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths() {
     assert_eq!(
         crate::docs::commands::extract_htmlcut_examples(
-            "```bash\nhtmlcut select \"page name.html\" \\\n  --css 'article.hero'\n```\n"
+            "```bash\nhtmlcut extract --file \"page name.html\" \\\n  --css 'article.hero'\n```\n"
         ),
-        vec!["htmlcut select \"page name.html\" --css 'article.hero'".to_owned()]
+        vec!["htmlcut extract --file \"page name.html\" --css 'article.hero'".to_owned()]
     );
     assert_eq!(
         crate::docs::commands::extract_htmlcut_examples(
-            "htmlcut select outside.md\n```bash\necho htmlcut select ignored.md\nhtmlcut catalog --output json\n```\n"
+            "htmlcut extract --file outside.md\n```bash\necho htmlcut extract --file ignored.md\nhtmlcut catalog --output json\n```\n"
         ),
         vec!["htmlcut catalog --output json".to_owned()]
     );
     assert_eq!(
         crate::docs::commands::shell_words(
-            "htmlcut select \"page name.html\" --css 'article.hero'"
+            "htmlcut extract --file \"page name.html\" --css 'article.hero'"
         )
         .expect("shell words"),
         vec![
             "htmlcut".to_owned(),
-            "select".to_owned(),
+            "extract".to_owned(),
+            "--file".to_owned(),
             "page name.html".to_owned(),
             "--css".to_owned(),
             "article.hero".to_owned(),
@@ -221,18 +209,17 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
             "json".to_owned(),
         ]
     );
-    assert!(
-        crate::docs::commands::command_path(&[]).is_empty(),
-        "empty token streams should not invent a command path"
+    assert_eq!(
+        crate::docs::commands::command_reference_error(
+            "README.md",
+            &[],
+            &crate::docs::known_schema_names_for_tests(),
+            &crate::docs::known_operation_ids_for_tests(),
+        ),
+        None
     );
-    let known_schemas = htmlcut_core::schema_catalog()
-        .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name)
-        .collect::<std::collections::BTreeSet<_>>();
-    let known_operations = htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| descriptor.id.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
+    let known_schemas = crate::docs::known_schema_names_for_tests();
+    let known_operations = crate::docs::known_operation_ids_for_tests();
     assert_eq!(
         crate::docs::commands::command_reference_error(
             "README.md",
@@ -242,10 +229,7 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
         ),
         None
     );
-    assert_eq!(
-        crate::docs::commands::command_path(&["htmlcut".to_owned(), "inspect".to_owned()]),
-        vec!["inspect"]
-    );
+
     assert_eq!(
         crate::docs::commands::command_reference_error(
             "README.md",
@@ -253,35 +237,34 @@ fn docs_helper_parsers_cover_quotes_multiline_examples_and_empty_command_paths()
             &known_schemas,
             &known_operations,
         ),
-        Some("README.md example references unknown CLI command path: inspect".to_owned())
+        None
     );
 }
 
 #[test]
-fn clap_error_messages_preserve_the_user_actionable_first_line() {
-    let error = htmlcut_cli::command()
-        .try_get_matches_from(["htmlcut", "unknown-command"])
-        .expect_err("unknown command must fail");
-    let message = crate::docs::commands::clap_error_message_for_tests(&error);
-
-    assert!(message.contains("unrecognized subcommand"));
-    assert!(message.contains("unknown-command"));
+fn binary_argument_errors_remain_actionable_without_exposing_input_values() {
+    let errors = crate::docs::commands::command_example_errors(
+        "README.md",
+        "```bash\nhtmlcut unknown-command\n```\n",
+        &crate::docs::known_schema_names_for_tests(),
+        &crate::docs::known_operation_ids_for_tests(),
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("non-parsing htmlcut example") && error.contains("--help")),
+        "actual documentation adapter diagnostics: {errors:?}"
+    );
 }
 
 #[test]
 fn command_example_lint_reports_shell_parse_failures() {
-    let schema_names = htmlcut_core::schema_catalog()
-        .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name)
-        .collect::<std::collections::BTreeSet<_>>();
-    let operation_ids = htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| descriptor.id.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
+    let schema_names = crate::docs::known_schema_names_for_tests();
+    let operation_ids = crate::docs::known_operation_ids_for_tests();
 
     let errors = crate::docs::commands::command_example_errors(
         "README.md",
-        "```bash\nhtmlcut select \"unterminated\n```\n",
+        "```bash\nhtmlcut extract --file \"unterminated\n```\n",
         &schema_names,
         &operation_ids,
     );
@@ -301,14 +284,15 @@ fn docs_runtime_helpers_report_missing_artifacts_and_execution_failure_fallbacks
 
     let file_error = crate::docs::commands::testing::documented_artifact_error_for_tests(
         "README.md",
-        "htmlcut select page.html --css article --output-file /tmp/missing.txt",
+        "htmlcut extract --file page.html --css article --output /tmp/missing.txt",
         &[
             "htmlcut".to_owned(),
-            "select".to_owned(),
+            "extract".to_owned(),
+            "--file".to_owned(),
             "page.html".to_owned(),
             "--css".to_owned(),
             "article".to_owned(),
-            "--output-file".to_owned(),
+            "--output".to_owned(),
             missing_file.to_string_lossy().into_owned(),
         ],
     )
@@ -319,26 +303,22 @@ fn docs_runtime_helpers_report_missing_artifacts_and_execution_failure_fallbacks
 
     let bundle_error = crate::docs::commands::testing::documented_artifact_error_for_tests(
         "README.md",
-        "htmlcut select page.html --css article --bundle /tmp/bundle",
+        "htmlcut extract --file page.html --css article --audit /tmp/bundle",
         &[
             "htmlcut".to_owned(),
-            "select".to_owned(),
+            "extract".to_owned(),
+            "--file".to_owned(),
             "page.html".to_owned(),
             "--css".to_owned(),
             "article".to_owned(),
-            "--bundle".to_owned(),
+            "--audit".to_owned(),
             missing_bundle.to_string_lossy().into_owned(),
         ],
     )
     .expect("missing bundle error");
     assert!(
-        bundle_error.contains(
-            format!(
-                "expected bundle artifact {} to exist",
-                missing_bundle.join("selection.html").display()
-            )
-            .as_str()
-        )
+        bundle_error
+            .contains(format!("expected file {} to exist", missing_bundle.display()).as_str())
     );
 
     assert_eq!(
@@ -393,7 +373,7 @@ fn docs_runtime_helpers_report_injected_sandbox_failures() {
 fn docs_runtime_helpers_report_cli_output_capture_failures() {
     let error = crate::docs::commands::testing::command_runtime_error_message_for_tests(
         "README.md",
-        "htmlcut select page.html --css article",
+        "htmlcut extract --file page.html --css article",
         Err(io::Error::other("broken pipe")),
         &[],
         &[],
@@ -401,4 +381,17 @@ fn docs_runtime_helpers_report_cli_output_capture_failures() {
     .expect("runtime error");
 
     assert!(error.contains("failed to capture CLI output: broken pipe"));
+}
+
+#[test]
+fn help_options_are_executed_without_being_mistaken_for_schema_or_operation_names() {
+    for operation in ["describe", "schema"] {
+        let errors = crate::docs::commands::command_example_errors(
+            "README.md",
+            &format!("```bash\nhtmlcut {operation} --help\n```\n"),
+            &crate::docs::known_schema_names_for_tests(),
+            &crate::docs::known_operation_ids_for_tests(),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+    }
 }

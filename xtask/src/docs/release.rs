@@ -207,15 +207,15 @@ fn merge_handoff_errors(display_path: &str, text: &str) -> Vec<String> {
 fn version_banner_check_errors(display_path: &str, text: &str) -> Vec<String> {
     let mut errors = Vec::new();
 
-    if !text.contains("grep \"^HTMLCut X.Y.Z$\"") {
+    if !text.contains("grep \"^htmlcut X.Y.Z$\"") {
         errors.push(format!(
-            "{display_path} must validate the canonical `HTMLCut X.Y.Z` first version line during host-native release verification"
+            "{display_path} must validate the canonical `htmlcut X.Y.Z` first version line during host-native release verification"
         ));
     }
 
-    if text.contains("grep \"^htmlcut X.Y.Z$\"") {
+    if text.contains("grep \"^HTMLCut X.Y.Z$\"") {
         errors.push(format!(
-            "{display_path} still documents the stale lowercase `htmlcut X.Y.Z` version-line check"
+            "{display_path} still documents the stale uppercase `HTMLCut X.Y.Z` version-line check"
         ));
     }
 
@@ -383,15 +383,15 @@ mod tests {
             "docs/release-publishing.md",
             r#"# Release Publishing
 
-./htmlcut-X.Y.Z-host/htmlcut --version | grep "^htmlcut X.Y.Z$"
+./htmlcut-X.Y.Z-host/htmlcut --version | grep "^HTMLCut X.Y.Z$"
 "#,
         );
 
         assert!(errors.iter().any(|error| {
-            error.contains("must validate the canonical `HTMLCut X.Y.Z` first version line")
+            error.contains("must validate the canonical `htmlcut X.Y.Z` first version line")
         }));
         assert!(errors.iter().any(|error| {
-            error.contains("still documents the stale lowercase `htmlcut X.Y.Z` version-line check")
+            error.contains("still documents the stale uppercase `HTMLCut X.Y.Z` version-line check")
         }));
     }
 }

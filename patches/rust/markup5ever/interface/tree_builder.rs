@@ -131,6 +131,11 @@ pub trait ElemName: Debug {
 /// Having this as a trait potentially allows multiple implementations of the DOM to be used with
 /// the same parser.
 pub trait TreeSink {
+    /// Requests termination after a maintained resource boundary has failed.
+    /// Ordinary HTML sinks keep their historical behavior through the default.
+    fn stop_requested(&self) -> bool {
+        false
+    }
     /// `Handle` is a reference to a DOM node.  The tree builder requires
     /// that a `Handle` implements `Clone` to get another reference to
     /// the same node.

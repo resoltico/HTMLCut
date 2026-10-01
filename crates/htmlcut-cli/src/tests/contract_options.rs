@@ -1,0 +1,456 @@
+use super::*;
+use htmlcut_core::{CompiledPlan, ExtractionPlan};
+
+fn file(root: &std::path::Path, name: &str, value: &[u8]) -> std::path::PathBuf {
+    let path = root.join(name);
+    std::fs::write(&path, value).unwrap();
+    path
+}
+
+#[test]
+fn t05_cli_mode_conflicts_fail_before_stdin_or_acquisition() {
+    for args in [
+        vec!["htmlcut", "extract", "--stdin"],
+        vec![
+            "htmlcut", "extract", "--stdin", "--css", "p", "--match", "nth",
+        ],
+        vec![
+            "htmlcut", "extract", "--stdin", "--css", "p", "--index", "1",
+        ],
+        vec!["htmlcut", "extract", "--stdin", "--css", "p", "--min", "0"],
+        vec![
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--projection",
+            "attribute",
+        ],
+        vec![
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--attribute",
+            "href",
+        ],
+        vec![
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--start",
+            "x",
+            "--end",
+            "y",
+            "--projection",
+            "dom_text",
+        ],
+        vec![
+            "htmlcut",
+            "inspect",
+            "--stdin",
+            "--cursor",
+            "x",
+            "--preview-plan",
+            "missing",
+        ],
+    ] {
+        let (code, out, error) = invoke(&args, b"<p>A</p>");
+        assert_eq!(code, 2, "{args:?}: {}", String::from_utf8_lossy(&error));
+        assert!(out.is_empty());
+    }
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--start",
+            "X",
+            "--end",
+            "Y",
+            "--regex",
+            "--regex-flags",
+            "i",
+            "--raw",
+        ],
+        b"xvaluey",
+    );
+    assert_eq!((code, out, error), (0, b"value".to_vec(), Vec::new()));
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut", "extract", "--stdin", "--css", "p", "--match", "all", "--min", "0", "--max",
+            "0",
+        ],
+        b"<div>A</div>",
+    );
+    assert_eq!(code, 0);
+    assert!(error.is_empty());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&out).unwrap()["values"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn t22_field_selected_audit_is_complete_bounded_and_off_stdout() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let audit = root.path().join("audit.json");
+    let result = root.path().join("result.json");
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--audit",
+            audit.to_str().unwrap(),
+            "--audit-field",
+            "plan,source_digest,plan_digest,extraction_digest,counts,ranges,values,values",
+            "--output",
+            result.to_str().unwrap(),
+        ],
+        b"<p>180</p>",
+    );
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+    assert!(out.is_empty());
+    assert!(error.is_empty());
+    let evidence: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&audit).unwrap()).unwrap();
+    assert_eq!(evidence["values"], serde_json::json!(["180"]));
+    assert_eq!(evidence["counts"]["selected"], 1);
+    assert!(evidence["ranges"].is_null());
+    assert_eq!(evidence["plan"]["projection"]["kind"], "dom_text");
+    let payload = format!("<p>{}</p>", "x".repeat(1_048_576));
+    let large = root.path().join("large.json");
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--audit",
+            large.to_str().unwrap(),
+            "--audit-field",
+            "values",
+        ],
+        payload.as_bytes(),
+    );
+    assert_eq!(code, 4);
+    assert!(out.is_empty());
+    assert!(!large.exists());
+    assert!(!error.is_empty());
+    let bad_audit = root.path().join("absent/audit.json");
+    let (code, out, _) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--audit",
+            bad_audit.to_str().unwrap(),
+            "--audit-field",
+            "counts",
+        ],
+        b"<p>180</p>",
+    );
+    assert_eq!(code, 5);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn t03_t05_saved_run_identity_encoding_and_source_are_closed() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let path = root.path().join("run.json");
+    let valid = serde_json::json!({"schema":"htmlcut.run","version":1,"source":{"kind":"stdin"},"plan":ExtractionPlan::css("p").unwrap(),"encoding":"utf-8","base_url":"https://example.test/"});
+    file(
+        root.path(),
+        "run.json",
+        &serde_json::to_vec(&valid).unwrap(),
+    );
+    let (code, out, error) = invoke(
+        &["htmlcut", "run", path.to_str().unwrap(), "--raw"],
+        b"<p>180</p>",
+    );
+    assert_eq!((code, out, error), (0, b"180".to_vec(), Vec::new()));
+    for (key, bad) in [
+        ("schema", serde_json::json!("other")),
+        ("version", serde_json::json!(2)),
+        ("encoding", serde_json::json!("invalid")),
+        ("base_url", serde_json::json!("bad")),
+    ] {
+        let mut value = valid.clone();
+        value[key] = bad;
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let (code, out, _) = invoke(&["htmlcut", "run", path.to_str().unwrap()], b"<p>180</p>");
+        assert!(code != 0);
+        assert!(out.is_empty());
+    }
+    for source in [
+        serde_json::json!({"kind":"file","path":""}),
+        serde_json::json!({"kind":"http"}),
+        serde_json::json!({"kind":"http","url_env":"1BAD"}),
+        serde_json::json!({"kind":"http","url":"http://user:pass@example.test"}),
+        serde_json::json!({"kind":"http","url_env":"X","url":"https://example.test"}),
+    ] {
+        let mut value = valid.clone();
+        value["source"] = source;
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let (code, out, _) = invoke(&["htmlcut", "run", path.to_str().unwrap()], b"<p>180</p>");
+        assert_eq!(code, 2);
+        assert!(out.is_empty());
+    }
+    let plan = file(
+        root.path(),
+        "plan.json",
+        htmlcut_core::canonical_json(
+            CompiledPlan::compile(&ExtractionPlan::css("p").unwrap())
+                .unwrap()
+                .plan(),
+        )
+        .unwrap()
+        .as_bytes(),
+    );
+    let (code, out, _) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--plan",
+            plan.to_str().unwrap(),
+            "--encoding",
+            "utf-8",
+        ],
+        b"<p>180</p>",
+    );
+    assert_eq!(code, 0);
+    assert!(!out.is_empty());
+}
+
+#[test]
+fn t23_preview_plan_has_its_own_dispatch_and_missing_files_fail() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let plan = file(
+        root.path(),
+        "plan.json",
+        htmlcut_core::canonical_json(&ExtractionPlan::css("p").unwrap())
+            .unwrap()
+            .as_bytes(),
+    );
+    let (code, out, _) = invoke(
+        &[
+            "htmlcut",
+            "inspect",
+            "--stdin",
+            "--preview-plan",
+            plan.to_str().unwrap(),
+        ],
+        b"<p>180</p>",
+    );
+    assert_eq!(code, 0);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&out).unwrap()["schema"],
+        "htmlcut.preview"
+    );
+    let (code, out, _) = invoke(&["htmlcut", "run", "missing-run.json"], b"");
+    assert_eq!(code, 5);
+    assert!(out.is_empty());
+    let (code, out, _) = invoke(&["htmlcut", "describe", "unsupported"], b"");
+    assert_eq!(code, 2);
+    assert!(out.is_empty());
+    struct Fault;
+    impl serde::Serialize for Fault {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("test failure"))
+        }
+    }
+    assert!(crate::publication::json(&Fault, 128).is_err());
+}
+
+#[test]
+fn t05_discovery_descriptions_and_inline_inner_html_use_the_closed_dispatch() {
+    for name in ["run", "inspect", "describe", "schema"] {
+        let (code, out, error) = invoke(&["htmlcut", "describe", name], b"");
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+        let description: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(description["name"], name);
+        assert!(description.get("defaults").is_none());
+    }
+    let (code, out, error) = invoke(
+        &[
+            "htmlcut",
+            "extract",
+            "--stdin",
+            "--css",
+            "p",
+            "--projection",
+            "inner_html",
+            "--raw",
+        ],
+        b"<p>A<b>B</b></p>",
+    );
+    assert_eq!((code, out, error), (0, b"A<b>B</b>".to_vec(), Vec::new()));
+    let directory = tempfile::tempdir().unwrap();
+    let run = directory.path().join("run.json");
+    for base in [
+        "https://example.test/?token=synthetic",
+        "https://example.test/#synthetic",
+    ] {
+        let (code, out, error) = invoke(
+            &[
+                "htmlcut",
+                "extract",
+                "--stdin",
+                "--css",
+                "p",
+                "--base-url",
+                base,
+                "--save-run",
+                run.to_str().unwrap(),
+            ],
+            b"<p>A</p>",
+        );
+        assert_eq!(code, 2);
+        assert!(out.is_empty());
+        assert!(!run.exists());
+        assert!(!String::from_utf8_lossy(&error).contains("synthetic"));
+    }
+}
+
+#[test]
+fn t05_all_selection_parameter_conflicts_are_rejected_before_acquisition() {
+    for extra in [
+        vec!["--max", "1"],
+        vec!["--match", "nth", "--min", "0"],
+        vec!["--match", "nth", "--max", "1"],
+        vec!["--match", "all", "--index", "1"],
+    ] {
+        let mut args = vec!["htmlcut", "extract", "--stdin", "--css", "p"];
+        args.extend(extra);
+        let (code, out, _) = invoke(&args, b"<p>value</p>");
+        assert_eq!(code, 2, "{args:?}");
+        assert!(out.is_empty());
+    }
+}
+
+#[test]
+fn t03_t23_saved_and_preview_inputs_report_read_decode_and_plan_failures() {
+    let root = tempfile::tempdir().unwrap();
+    let run = root.path().join("run.json");
+    let plan = root.path().join("plan.json");
+    file(root.path(), "plan.json", b"not JSON");
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--stdin",
+                "--preview-plan",
+                plan.to_str().unwrap()
+            ],
+            b"<p>A</p>"
+        )
+        .0,
+        2
+    );
+    file(root.path(), "plan.json", br#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"["}}"#);
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--stdin",
+                "--preview-plan",
+                plan.to_str().unwrap()
+            ],
+            b"<p>A</p>"
+        )
+        .0,
+        2
+    );
+    file(root.path(), "run.json", br#"{"schema":"htmlcut.run","version":1,"source":{"kind":"stdin"},"plan":{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}}"#);
+    assert_eq!(
+        invoke(&["htmlcut", "run", run.to_str().unwrap()], &[0xff]).0,
+        5
+    );
+    assert_eq!(invoke(&["htmlcut", "inspect", "--stdin"], &[0xff]).0, 5);
+    assert_eq!(
+        invoke(
+            &[
+                "htmlcut",
+                "inspect",
+                "--url-env",
+                "USER",
+                "--cursor",
+                "stale"
+            ],
+            b""
+        )
+        .0,
+        2
+    );
+}
+
+#[test]
+fn t05_nth_parameters_do_not_accept_min_or_max_even_when_an_index_is_present() {
+    for option in ["--min", "--max"] {
+        let (code, output, _) = invoke(
+            &[
+                "htmlcut", "extract", "--stdin", "--css", "p", "--match", "nth", "--index", "1",
+                option, "1",
+            ],
+            b"<p>A</p>",
+        );
+        assert_eq!(code, 2);
+        assert!(output.is_empty());
+    }
+}
+
+#[test]
+fn t23_large_bounded_proposals_are_published_completely() {
+    let tag = "a".repeat(100);
+    let html = format!(
+        "{}<p>value</p>{}",
+        format!("<{tag}>").repeat(25),
+        format!("</{tag}>").repeat(25)
+    );
+    let (code, output, error) = invoke(
+        &["htmlcut", "inspect", "--stdin", "--page-size", "100"],
+        html.as_bytes(),
+    );
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+    let page: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let handle = page["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|element| element["tag"] == "p")
+        .unwrap()["handle"]
+        .as_str()
+        .unwrap();
+    let (code, output, error) = invoke(
+        &[
+            "htmlcut",
+            "inspect",
+            "--stdin",
+            "--page-size",
+            "100",
+            "--propose",
+            handle,
+        ],
+        html.as_bytes(),
+    );
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&error));
+    let proposal: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let selector = proposal["selector"].as_str().unwrap();
+    assert!(selector.len() > 2048);
+    let (code, output, error) = invoke(
+        &["htmlcut", "extract", "--stdin", "--css", selector, "--raw"],
+        html.as_bytes(),
+    );
+    assert_eq!((code, output, error), (0, b"value".to_vec(), Vec::new()));
+}

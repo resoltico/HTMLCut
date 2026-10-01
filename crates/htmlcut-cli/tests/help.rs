@@ -1,225 +1,33 @@
 mod support;
-use support::*;
+use support::invoke;
 
 #[test]
-fn help_prints_the_new_workflows_and_contract_language() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::starts_with(format!(
-            "HTMLCut {}\n{}\n",
-            expected_version(),
-            env!("CARGO_PKG_DESCRIPTION")
-        )))
-        .stdout(predicate::str::contains("help     Print this message or the help of the given subcommand(s)."))
-        .stdout(predicate::str::contains("\n\nExamples:\n"))
-        .stdout(predicate::str::contains("Guidance:").not())
-        .stdout(predicate::str::contains("catalog"))
-        .stdout(predicate::str::contains("schema"))
-        .stdout(predicate::str::contains("select"))
-        .stdout(predicate::str::contains("slice"))
-        .stdout(predicate::str::contains("inspect"))
-        .stdout(predicate::str::contains("help"))
-        .stdout(predicate::str::contains("--verbose"))
-        .stdout(predicate::str::contains(
-            "htmlcut select --request-file ./article-link.request.json --output-file ./article-link.txt",
-        ));
-}
-
-#[test]
-fn select_help_stays_select_specific() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\n\nExamples:\n"))
-        .stdout(predicate::str::contains("Guidance:").not())
-        .stdout(predicate::str::contains(
-            "Compatibility Rules:",
-        ))
-        .stdout(predicate::str::contains(
-            "`--bundle` is required when `--output` is `none`.",
-        ))
-        .stdout(predicate::str::contains(
-            "Attribute name to extract when `--value attribute` is used",
-        ))
-        .stdout(predicate::str::contains(
-            "Write `selection.json`, `selection.html`, `selection.txt`, and `report.json` to this directory.",
-        ))
-        .stdout(predicate::str::contains("The selected fragment excludes").not());
-}
-
-#[test]
-fn slice_help_clarifies_boundary_consumption_and_attribute_recovery() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["slice", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\n\nExamples:\n"))
-        .stdout(predicate::str::contains("Guidance:").not())
-        .stdout(predicate::str::contains(
-            "Regex flags for `--pattern regex`. Accepts `i`, `m`, `s`, `U`, and `x`",
-        ))
-        .stdout(predicate::str::contains(
-            "Which matched boundaries become part of the selected fragment",
-        ))
-        .stdout(predicate::str::contains(
-            "`--bundle` is required when `--output` is `none`.",
-        ))
-        .stdout(predicate::str::contains(
-            "htmlcut slice ./page.html --from 'START::' --to '::END' --pattern regex --value outer-html",
-        ))
-        .stdout(predicate::str::contains(
-            "htmlcut slice ./page.html --from '<a' --to '</a>' --boundary-retention include-both --value attribute --attribute href --rewrite-urls",
-        ));
-}
-
-#[test]
-fn inspect_and_discovery_help_scope_overwrite_to_real_targets() {
-    let mut inspect_source = Command::cargo_bin("htmlcut").expect("binary");
-    inspect_source
-        .args(["inspect", "source", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "Allow HTMLCut to replace an existing `--output-file`",
-        ))
-        .stdout(predicate::str::contains("--emit-request-file").not())
-        .stdout(predicate::str::contains("bundle paths").not());
-
-    let mut inspect_select = Command::cargo_bin("htmlcut").expect("binary");
-    inspect_select
-        .args(["inspect", "select", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "Allow HTMLCut to replace existing `--output-file` and `--emit-request-file` paths",
-        ))
-        .stdout(predicate::str::contains("bundle paths").not());
-
-    let mut schema = Command::cargo_bin("htmlcut").expect("binary");
-    schema
-        .args(["schema", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "Allow HTMLCut to replace an existing `--output-file`",
-        ))
-        .stdout(predicate::str::contains("--emit-request-file").not())
-        .stdout(predicate::str::contains("bundle paths").not());
-}
-
-#[test]
-fn version_prints_workspace_version_and_description() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(expected_version_banner());
-}
-
-#[test]
-fn help_subcommand_reuses_the_root_identity_banner() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .arg("help")
-        .assert()
-        .success()
-        .stdout(predicate::str::starts_with(format!(
-            "HTMLCut {}\n{}\n",
-            expected_version(),
-            env!("CARGO_PKG_DESCRIPTION")
-        )))
-        .stdout(predicate::str::contains(
-            "Usage: htmlcut [OPTIONS] <COMMAND>",
-        ));
-}
-
-#[test]
-fn subcommand_version_is_rejected_as_usage_error() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select", "--version"])
-        .assert()
-        .failure()
-        .code(2)
-        .stdout("")
-        .stderr(predicate::str::contains("unexpected argument '--version'"));
-}
-
-#[test]
-fn parse_errors_do_not_switch_to_json_just_because_a_positional_argument_is_named_inspect() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select", "inspect"])
-        .assert()
-        .failure()
-        .code(2)
-        .stdout("")
-        .stderr(predicate::str::contains(
-            "the following required arguments were not provided:",
-        ))
-        .stderr(predicate::str::contains("\"tool\":").not());
-}
-
-#[test]
-fn request_file_runs_reusable_select_definitions_and_rejects_inline_conflicts() {
-    let tempdir = tempdir().expect("tempdir");
-    let input_path = write_fixture(
-        tempdir.path(),
-        "request-file.html",
-        "<article>Hello from definition</article>",
+fn current_help_version_and_retired_vocabulary() {
+    for args in [
+        vec!["--help"],
+        vec!["extract", "--help"],
+        vec!["inspect", "--help"],
+        vec!["run", "--help"],
+    ] {
+        let output = invoke(&args, b"");
+        assert!(output.status.success());
+        assert!(!output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+    }
+    let output = invoke(&["--version"], b"");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("htmlcut {}\n", env!("CARGO_PKG_VERSION"))
     );
-    let definition_path = tempdir.path().join("select-request.json");
-
-    let mut request = ExtractionRequest::new(
-        source_request(&input_path, None),
-        selector_extraction("article")
-            .with_selection(SelectionSpec::single())
-            .with_value(ValueSpec::Text),
-    );
-    request.output = extraction_output();
-    request.output.rendering = RenderingOptions {
-        whitespace: WhitespaceMode::Rendered,
-        rewrite_urls: false,
-    };
-
-    let definition = ExtractionDefinition::new(request);
-    fs::write(
-        &definition_path,
-        serde_json::to_string_pretty(
-            &htmlcut_core::wire::v2::ExtractionDefinitionDocument::try_from(definition)
-                .expect("current definition document"),
-        )
-        .expect("serialize definition"),
-    )
-    .expect("write definition");
-
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select", "--request-file"])
-        .arg(&definition_path)
-        .assert()
-        .success()
-        .stdout("Hello from definition\n")
-        .stderr("");
-
-    let mut conflicting = Command::cargo_bin("htmlcut").expect("binary");
-    conflicting
-        .args(["select", "--request-file"])
-        .arg(&definition_path)
-        .args(["--css", "article"])
-        .assert()
-        .failure()
-        .code(2)
-        .stdout("")
-        .stderr(predicate::str::contains(
-            "--request-file owns the extraction definition",
-        ))
-        .stderr(predicate::str::contains("--emit-request-file <PATH>"));
+    for args in [
+        vec!["select"],
+        vec!["slice"],
+        vec!["catalog"],
+        vec!["extract", "--stdin", "--css", "p", "--match", "first"],
+    ] {
+        let output = invoke(&args, b"<p>A</p>");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
 }

@@ -1,11 +1,11 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "14.0.0"
+  version: "15.0.0"
   domain: QUALITY
-  updated: "2026-09-24"
+  updated: "2026-10-01"
 RETRIEVAL_HINTS:
-  keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, interop builder]
+  keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, closed plans, prepared snapshots]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
   related: [../docs/quality-gates.md, ../docs/developer-setup.md, ../README.md]
 -->
@@ -18,13 +18,13 @@ dependency floor while still letting live fuzzing use nightly through `cargo-fuz
 
 ## Targets
 
-- `parse_document_bytes`: feeds arbitrary decoded byte streams through the prepared-document and source-inspection surfaces.
-- `selector_parsing`: builds selector extraction requests from arbitrary HTML, selectors, value modes, and selection policies.
-- `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and output modes.
-- `extraction_request_building`: exercises the frozen `htmlcut_core::interop::v2` plan builder and executor with arbitrary selector and delimiter strategies.
-- `prepared_discovery`: exercises bounded document preparation, exploration pagination, target-hint validation, and same-snapshot selector synthesis with arbitrary text and resource limits.
+- `parse_document_bytes`: accepts bounded valid UTF-8 byte streams, prepares immutable snapshots and checks repeated DOM execution determinism.
+- `selector_parsing`: compiles CSS extraction plans from bounded HTML, selectors, projections and selection policies.
+- `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and source-only projection.
+- `extraction_request_building`: reads the closed extraction-plan JSON, verifies canonical round-trip equality and executes valid CSS/slice plans on a prepared snapshot.
+- `prepared_discovery`: exercises bounded document preparation, inspection pagination, stale/malformed cursor rejection and same-snapshot suggestions with arbitrary text and resource limits.
 - `relational_selector_budget`: exercises `:has(...)` work exhaustion and fallible propagation through the maintained selector and scraper forks.
-- `cli_parse_error_surface`: asserts that missing-argument parse failures stay human by default and switch to JSON only when the public CLI surface explicitly requests structured output.
+- `cli_parse_error_surface`: feeds unknown arguments to source-included private CLI modules and asserts exit 2, empty stdout and a typed JSON error on stderr.
 
 ## Seed Corpora
 
@@ -55,7 +55,7 @@ source "$HOME/.cargo/env"
 On macOS, keep the maintained `CC=clang CXX=clang++` override from
 [`docs/developer-setup.md`](../docs/developer-setup.md) when installing `cargo-fuzz`.
 
-The smoke command itself runs `cargo +nightly fuzz run --features fuzzing ...` with
+The smoke command itself runs `cargo +nightly-2026-09-30 fuzz run --features fuzzing ...` with
 `CC=clang CXX=clang++`, so keep `clang` and `clang++` available on `PATH` on any host where you
 use `cargo xtask fuzz-smoke`.
 
@@ -88,5 +88,5 @@ cargo xtask fuzz-smoke --runs 500
 ```
 
 `cargo xtask fuzz-smoke` preflights nightly plus `cargo-fuzz`, then stages each checked-in corpus
-into a temporary directory before calling `cargo +nightly fuzz run --features fuzzing ...`, so
+into a temporary directory before calling `cargo +nightly-2026-09-30 fuzz run --features fuzzing ...`, so
 the checked-in seed inventory stays clean after local smoke runs.

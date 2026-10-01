@@ -28,8 +28,9 @@ pub fn evaluate_coverage_report(
             let line_counts = coverage_by_file
                 .entry(normalized_filename.clone())
                 .or_default();
-            for (line, _, count, _, has_count, _) in file.segments {
-                if !has_count {
+            // LLVM exports Line, Col, Count, HasCount, IsRegionEntry, IsGapRegion.
+            for (line, _, count, has_count, _, is_gap) in file.segments {
+                if !has_count || is_gap {
                     continue;
                 }
 

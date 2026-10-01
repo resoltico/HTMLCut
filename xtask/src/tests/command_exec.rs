@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn git_inventory_rejects_non_utf8_paths_before_traversing_the_workspace() {
+    with_isolated_managed_workspace_artifacts(|root, _, _| {
+        fs::write(root.join(".git"), "fixture marker").unwrap();
+        let error = crate::command_exec::with_capture_command_output_override(
+            |_, _| Some(Ok(vec![0xff, 0])),
+            || crate::command_exec::repo_worktree_files(root),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("utf-8"));
+    });
+}
+
+#[test]
 fn run_spec_executes_successfully_with_and_without_clang_override() {
     with_isolated_managed_workspace_artifacts(|repo_root, target_dir, build_dir| {
         run_spec(

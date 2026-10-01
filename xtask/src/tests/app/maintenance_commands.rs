@@ -466,6 +466,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                     "selectors",
                     "servo_arc",
                     "tendril",
+                    "sha2",
                 ] {
                     let vendor_dir = snapshot_root.join("patches/rust").join(directory);
                     fs::create_dir_all(&vendor_dir).expect("create snapshot vendor dir");
@@ -528,7 +529,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                 fs::create_dir_all(&extracted_dir).expect("create extracted dir");
                 fs::write(
                     extracted_dir.join("Cargo.toml"),
-                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n\n[dependencies.scraper]\nversion = \"0.27.0\"\ndefault-features = false\nfeatures = [\"errors\"]\n\n[dependencies.selectors]\nversion = \"0.38.0\"\n",
+                    "[package]\nname = \"htmlcut-core\"\nversion = \"4.2.0\"\n\n[dependencies.scraper]\nversion = \"0.27.0\"\ndefault-features = false\nfeatures = [\"errors\"]\n\n[dependencies.selectors]\nversion = \"0.38.0\"\n\n[dependencies.sha2]\nversion = \"0.11.0\"\n",
                 )
                     .expect("write extracted manifest");
                 return Some(Ok(()));
@@ -562,6 +563,21 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
             .exists()
     );
     assert!(baseline_dir.join("vendor/tendril/source.rs").exists());
+    assert!(baseline_dir.join("vendor/sha2/source.rs").exists());
+    assert!(baseline_dir.join("vendor/sha2/nested/source.rs").exists());
+    let manifest: toml::Value = toml::from_str(&refreshed_manifest).unwrap();
+    assert_eq!(
+        manifest["dependencies"]["sha2"]["package"].as_str(),
+        Some("htmlcut-sha2")
+    );
+    assert_eq!(
+        manifest["dependencies"]["sha2"]["path"].as_str(),
+        Some("vendor/sha2")
+    );
+    assert_eq!(
+        manifest["dependencies"]["sha2"]["version"].as_str(),
+        Some("0.11.0-htmlcut.1")
+    );
     assert!(refreshed_provenance.contains("schema = \"htmlcut.semver_baseline_provenance@1\""));
     assert!(refreshed_provenance.contains("package = \"htmlcut-core\""));
     assert!(refreshed_provenance.contains("package_version = \"4.2.0\""));

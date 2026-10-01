@@ -65,11 +65,11 @@ fn release_smoke_script_checks_the_canonical_version_and_real_extraction_flow() 
     let script = fs::read_to_string(repo_root.join("scripts").join("smoke-release-artifact.sh"))
         .expect("read smoke-release-artifact.sh");
 
-    assert!(script.contains("grep \"^HTMLCut ${version}$\""));
-    assert!(!script.contains("grep \"^htmlcut ${version}$\""));
-    assert!(script.contains("--emit-request-file"));
+    assert!(script.contains("grep \"^htmlcut ${version}$\""));
+    assert!(!script.contains("grep \"^HTMLCut ${version}$\""));
+    assert!(script.contains("--save-run"));
     assert!(script.contains("packaged README.md leaked source-build instructions"));
-    assert!(script.contains("request-file replay drifted"));
+    assert!(script.contains("saved-run replay drifted"));
 }
 
 #[test]
@@ -105,7 +105,15 @@ fn release_workflow_uses_immutable_tag_identity_for_all_publication_side_effects
     let verify_script = fs::read_to_string(repo_root.join("scripts/verify-github-release.sh"))
         .expect("read verification script");
 
-    assert!(workflow.contains("immutable tag manifest"));
+    assert!(workflow.contains("Resolve and validate one immutable source commit"));
+    assert!(!workflow.contains("ref: ${{ github.event.repository.default_branch }}"));
+    assert_eq!(
+        workflow
+            .matches("ref: ${{ needs.release-target-matrix.outputs.source_sha }}")
+            .count(),
+        3
+    );
+    assert!(workflow.contains("./scripts/build-source-archives.sh"));
     assert!(workflow.contains("RELEASE_TAG: ${{ steps.release.outputs.tag }}"));
     for script in [checksum_script, publish_script, verify_script] {
         assert!(script.contains("htmlcut_release_version_for_tag"));

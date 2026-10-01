@@ -1,38 +1,34 @@
 use arbitrary::Arbitrary;
-use htmlcut_core::{
-    ExtractionRequest, ExtractionSpec, SelectorQuery, SourceRequest, extract, preview_extraction,
-};
-
-use crate::request_common::{
-    FuzzRendering, FuzzSelection, FuzzValueKind, runtime_for_html, sample_base_url,
-};
+use htmlcut_core::{CompiledPlan, ExtractionPlan, Selection};
 
 #[derive(Arbitrary, Debug)]
 pub struct SelectorInput {
     html: String,
     selector: String,
-    value_kind: FuzzValueKind,
-    selection: FuzzSelection,
-    rendering: FuzzRendering,
+    all: bool,
 }
 
 pub fn drive(input: SelectorInput) {
-    let Ok(selector) = SelectorQuery::new(input.selector) else {
+    let Some(document) = crate::snapshot::document(&input.html) else {
         return;
     };
-
-    let mut request = ExtractionRequest::new(
-        SourceRequest::memory("fuzz", &input.html).with_base_url(sample_base_url()),
-        ExtractionSpec::selector(selector),
-    );
-    request.extraction = request
-        .extraction
-        .clone()
-        .with_selection(input.selection.to_selection_spec())
-        .with_value(input.value_kind.to_value_spec());
-    input.rendering.apply_to_request(&mut request);
-
-    let runtime = runtime_for_html(&input.html);
-    let _ = preview_extraction(&request, &runtime);
-    let _ = extract(&request, &runtime);
+    let Ok(mut plan) = ExtractionPlan::css(crate::snapshot::text(&input.selector, 1024)) else {
+        return;
+    };
+    if input.all {
+        plan.selection = Selection::All {
+            min: 0,
+            max: Some(128),
+        };
+    }
+    plan.limits.max_candidates = 512;
+    plan.limits.max_selected = 128;
+    plan.limits.max_work = 20_000;
+    plan.limits.max_value_bytes = 8192;
+    plan.limits.max_total_value_bytes = 32768;
+    if let Ok(compiled) = CompiledPlan::compile(&plan) {
+        let first = document.execute(&compiled);
+        let second = document.execute(&compiled);
+        assert_eq!(first, second);
+    }
 }

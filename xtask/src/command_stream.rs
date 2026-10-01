@@ -226,6 +226,41 @@ mod tests {
     }
 
     #[test]
+    fn command_stream_rejects_absent_pipes_and_reports_reader_panics() {
+        let root = tempdir().unwrap();
+        for stdout_pipe in [false, true] {
+            let mut command = std::process::Command::new("cargo");
+            command.arg("--version").stderr(std::process::Stdio::null());
+            command.stdout(if stdout_pipe {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            });
+            let mut child = command.spawn().unwrap();
+            child.wait().unwrap();
+            let error = stream_child_to_logs(
+                child,
+                File::create(root.path().join("out")).unwrap(),
+                File::create(root.path().join("err")).unwrap(),
+                false,
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains(if stdout_pipe { "stderr" } else { "stdout" })
+            );
+        }
+        let reader = thread::spawn(|| -> io::Result<()> { panic!("test-owned reader failure") });
+        assert!(
+            join_retained_stream(reader)
+                .unwrap_err()
+                .to_string()
+                .contains("reader thread panicked")
+        );
+    }
+
+    #[test]
     fn live_stream_forwarding_preserves_destination_and_bytes() {
         let writes = Rc::new(RefCell::new(Vec::new()));
         let writes_for_override = Rc::clone(&writes);

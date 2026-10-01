@@ -17,6 +17,11 @@ mod release;
 pub use paths::markdown_doc_paths;
 
 #[cfg(test)]
+pub(crate) use identifiers::{
+    known_operation_ids as known_operation_ids_for_tests,
+    known_schema_names as known_schema_names_for_tests,
+};
+#[cfg(test)]
 pub(crate) use metadata::DOC_METADATA_FORMAT_VERSION as DOC_METADATA_FORMAT_VERSION_FOR_TESTS;
 #[cfg(test)]
 pub(crate) use metadata::{MetadataStyle, metadata_version};
@@ -24,7 +29,7 @@ pub(crate) use metadata::{MetadataStyle, metadata_version};
 pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
     let workspace_version = workspace_version(repo_root)?;
     let link_pattern = Regex::new(r"\[[^\]]+\]\(([^)]+)\)")?;
-    let schema_name_pattern = Regex::new(r"\bhtmlcut\.[a-z_]+\b")?;
+    let schema_name_pattern = Regex::new(r"\bhtmlcut(?:\.[a-z_]+)+\b")?;
     let updated_pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}$")?;
     let schema_names = identifiers::known_schema_names();
     let operation_ids = identifiers::known_operation_ids();

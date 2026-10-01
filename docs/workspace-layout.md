@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "14.0.0"
+version: "15.0.0"
 domain: WORKSPACE
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
   questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]
@@ -19,13 +19,25 @@ to Rust paths.
 
 ## Workspace Members
 
-| Path | Package / Rust path | Role | Published |
+| Path | Package / Rust path | Role | Cargo registry publication |
 | --- | --- | --- | --- |
-| `crates/htmlcut-core` | package `htmlcut-core`, Rust crate `htmlcut_core` | Canonical extraction engine, schema registry, operation catalog, interop surface, and typed request/result contracts. | yes |
-| `crates/htmlcut-cli` | package `htmlcut-cli`, Rust crate `htmlcut_cli`, binary `htmlcut` | Operator-facing CLI adapter plus typed CLI report models and clap-command helpers. | yes |
+| `crates/htmlcut-core` | package `htmlcut-core`, Rust crate `htmlcut_core` | Immutable snapshots, compiled plans, lazy prepared documents, requested projections, typed results/errors and bounded discovery. | disabled |
+| `crates/htmlcut-cli` | package `htmlcut-cli`, binary `htmlcut` | Acquisition, strict decoding, five commands, saved runs, framing and atomic publication; no Rust library API. | disabled |
 | `crates/htmlcut-tempdir` | package `htmlcut-tempdir`, Rust crate `htmlcut_tempdir` | Small internal temporary-directory helper shared by tests and maintainer tooling. | no |
 | `fuzz` | package `htmlcut-fuzz` | Checked-in libFuzzer targets and seed corpora kept on the main workspace lockfile. | no |
 | `xtask` | package `xtask` | Maintainer automation for the gate, docs contract, coverage, fuzz smoke, and semver-baseline refresh. | no |
+| `patches/rust/scraper` | package `htmlcut-scraper`, Rust crate `scraper` | Owned bounded DOM, selector adapter and immutable serialization carrier. | disabled |
+| `patches/rust/selectors` | package `htmlcut-selectors`, Rust crate `selectors` | Owned CSS selector engine and shared work accounting. | disabled |
+| `patches/rust/servo_arc` | package `htmlcut-servo-arc`, Rust crate `servo_arc` | Paired selector allocation/provenance carrier. | disabled |
+| `patches/rust/html5ever` | package `htmlcut-html5ever`, Rust crate `html5ever` | Paired tokenizer/tree builder and stop hooks. | disabled |
+| `patches/rust/markup5ever` | package `htmlcut-markup5ever`, Rust crate `markup5ever` | Paired parser/serializer interfaces. | disabled |
+| `patches/rust/tendril` | package `htmlcut-tendril`, Rust crate `tendril` | Paired text buffering/provenance carrier. | disabled |
+| `patches/rust/sha2` | package `htmlcut-sha2`, Rust crate `sha2` | SHA-256 identity backend with ARM64 correction. | disabled |
+
+The supported publication is GitHub native/source archives, with Rust consumption through git/path
+dependencies. No complete branded-fork crates.io distribution is configured; `publish = false`
+prevents an accidental partial registry publication. All twelve packages are explicit members;
+default-members stays limited to core, CLI and the temporary-directory helper.
 
 ## Naming Rule
 
@@ -38,7 +50,6 @@ Cargo package names are hyphenated:
 Rust crate paths use underscores:
 
 - `htmlcut_core`
-- `htmlcut_cli`
 - `htmlcut_tempdir`
 
 Use the package spelling in Cargo manifests, install commands, and release assets.
@@ -49,14 +60,13 @@ Use the Rust-path spelling in `use` statements, doctests, and library code.
 The important dependency direction is:
 
 1. `htmlcut-cli` depends on `htmlcut-core`.
-2. `xtask` depends on the maintained workspace crates so the gate can validate their live
-   contracts.
+2. `xtask` depends on core and temporary-directory helpers. It validates CLI behavior through a
+   bounded invocation of a once-built binary rather than importing CLI internals.
 3. Tests and maintainer helpers use `htmlcut-tempdir` instead of each crate carrying its own ad
    hoc temp-directory helper.
 
 `htmlcut-tempdir`, `fuzz`, and `xtask` are real maintained workspace members, but they are not
-runtime product surfaces in the same sense as `htmlcut-core`, `htmlcut-cli`, and
-`htmlcut_core::interop::v2`.
+runtime product surfaces. The supported products are the core Rust API and the `htmlcut` binary.
 
 ## Trees Outside The Workspace
 
@@ -77,6 +87,5 @@ These paths matter, but they are not normal workspace members:
 
 - Use [architecture.md](architecture.md) for runtime ownership boundaries.
 - Use [cli.md](cli.md) for operator-facing command behavior.
-- Use [cli-library.md](cli-library.md) for the published `htmlcut_cli` crate API.
 - Use [core.md](core.md) for the canonical embeddable engine surface.
 - Use [tempdir.md](tempdir.md) for the internal `htmlcut_tempdir` helper crate.

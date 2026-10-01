@@ -48,7 +48,7 @@ fn write_coverage_report(
             "data": [{
                 "files": [{
                     "filename": tracked_file,
-                    "segments": [[1, 0, line_count, false, true, false]],
+                    "segments": [[1, 0, line_count, true, true, false]],
                     "branches": [],
                     "summary": {
                         "branches": {
@@ -120,7 +120,7 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
             let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
             if spec.program == Path::new("rustup") && args == ["toolchain", "list"] {
                 return Some(Ok(
-                    b"stable-aarch64-apple-darwin (default)\nnightly-2026-08-25-aarch64-apple-darwin\n"
+                    b"stable-aarch64-apple-darwin (default)\nnightly-2026-09-30-aarch64-apple-darwin\n"
                         .to_vec(),
                 ));
             }
@@ -128,7 +128,7 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                 return Some(Ok(b"rustc 1.97.0\n".to_vec()));
             }
             if spec.program == Path::new("rustup")
-                && args == ["run", "nightly-2026-08-25", "rustc", "-V"]
+                && args == ["run", "nightly-2026-09-30", "rustc", "-V"]
             {
                 return Some(Ok(b"rustc 1.100.0-nightly (hash 2026-08-23)\n".to_vec()));
             }
@@ -145,7 +145,7 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                         "component",
                         "list",
                         "--toolchain",
-                        "nightly-2026-08-25",
+                        "nightly-2026-09-30",
                         "--installed",
                     ]
             {
@@ -165,7 +165,7 @@ fn with_ready_preflight<T>(operation: impl FnOnce() -> T) -> T {
                 return Some(Ok(b"rustfmt 1.0.0\n".to_vec()));
             }
             if spec.program == Path::new("cargo")
-                && args == ["+nightly-2026-08-25", "miri", "--version"]
+                && args == ["+nightly-2026-09-30", "miri", "--version"]
             {
                 return Some(Ok(b"miri 0.1.0\n".to_vec()));
             }

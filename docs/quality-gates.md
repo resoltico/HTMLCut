@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "14.0.0"
+version: "15.0.0"
 domain: QUALITY
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, prepared engine benchmark, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
@@ -26,7 +26,7 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred con
 workflow on Ubuntu `24.04`.
 
 `rust-toolchain.toml` owns the exact HTMLCut stable toolchain pin (currently `1.98.1`).
-The maintained `nightly-2026-08-25` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
+The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
 published compatibility floor separately through
 `[workspace.package] rust-version = "1.98.1"`.
 
@@ -274,19 +274,19 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   `xtask`, `htmlcut-core`, `htmlcut-cli`, and `htmlcut-tempdir` package test targets instead of
   replaying those same inventories earlier in `cargo xtask check`
 - recursive Markdown docs-contract lint for the maintained public docs set except `changelog.md`, including required AFAD metadata fields checked against the format version owned by `xtask/src/docs/metadata.rs`, workspace-version drift, ISO-date formatting, required retrieval `keywords` and `questions`, broken local links, stale canonical schema-name or operation-ID references, completeness drift in the maintained schema/operation inventory docs, release-target and release-asset drift against the canonical shell registry, `PATENTS.md` license-family drift against `deny.toml`, and concrete fenced `htmlcut ...` examples that no longer parse or run in a fixture-backed sandbox
-- targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, catalog/schema summaries, or representative recovery errors drift away from the canonical registries
-- clap-surface contract-lint that parses the real CLI command tree and fails if command names or applied default values drift away from the canonical `htmlcut_cli::contract` registry
+- targeted contract-lint tests that fail when rendered help text, operation examples, parser enums, operation/schema summaries, or representative recovery errors drift away from the canonical registries
+- private CLI clap-surface assertions that parse the real command tree and compare command names/defaults with the maintained operation metadata; xtask observes the binary rather than a CLI library
 - `cargo clippy -p htmlcut-core --lib --tests --locked -- -D warnings` on the published
   default-feature core surface so cfg-specific warnings cannot hide behind the all-features
   workspace build
-- `htmlcut-core` lib tests with default features disabled so fetch-free embeddings stay supported and
-  URL requests fail cleanly unless the `http-client` feature is explicitly enabled
+- `htmlcut-core` lib tests with default features disabled so immutable-snapshot embeddings remain
+  independent of acquisition; HTTP and charset dependencies belong exclusively to the CLI
 - the ignored one-million-element exploration acceptance scenario exactly once, outside the
   mutation-test inventory, so the checked shared-work budget proves advancing truncation and
   terminal tail pagination without multiplying a resource test across every mutant
 - the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
-  miri`, which runs `cargo +nightly-2026-08-25 miri test -p htmlcut-core --lib --no-default-features
-  --locked tests::extract_api::selector_and_slice_contract_remain_miri_sound -- --exact` with
+  miri`, which runs `cargo +nightly-2026-09-30 miri test -p htmlcut-core --lib --no-default-features
+  --locked tests::selector_and_slice_contract_remain_miri_sound -- --exact` with
   `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - warning-denied `clippy` and Rustdoc builds of the maintained selector and scraper fork crates, so the resource-boundary source shipped with HTMLCut cannot accumulate a separate warning baseline
@@ -294,21 +294,30 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   which materializes a sanitized temporary workspace, strips root patch tables, and rewrites the
   repo-owned vendored selector/parser dependencies back to registry coordinates so freshness checks
   do not break on the downstream-safe local stack
+  (including every explicit owned-fork member, nested/target dependency tables and flat root sources;
+  the snapshot owner survives the subprocess and reclaims scratch afterward)
 - RustSec advisory auditing with warnings denied
 - dependency policy checks through `cargo deny` with warnings denied across the shipped standalone release-target graphs, using the canonical `[graph] targets` list in `deny.toml` plus the repository's configured advisory, yanked, unmaintained, ban, license, and source rules
 - semver regression checks for `htmlcut-core` against the checked-in baseline
 - compile-smoke of the checked-in libFuzzer targets through `cargo check -p htmlcut-fuzz --bins --features fuzzing --locked`
-- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v2.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
-- compiler-enforced `missing_docs` coverage for the public `htmlcut-core`, `htmlcut-cli`, and `xtask` library surfaces
+- workspace doc tests, including the maintained external Rust examples in `docs/architecture.md`, `docs/core.md`, and `docs/schema.md` through `htmlcut-core` doctest harnesses
+- compiler-enforced `missing_docs` coverage for the public `htmlcut-core` and maintained `xtask` library surfaces; CLI modules are private to the binary
 - distribution-profile CLI build-and-launch smoke
 - 100% executable-line coverage and 100% branch coverage across the maintained tracked executable module set for `htmlcut-core`, `htmlcut-cli`, and `xtask`, with duplicate branch spans deduplicated before scoring
-- CLI/core parity checks through a matrix-driven integration suite that compares CLI JSON reports with direct `htmlcut-core` results
+- CLI/core parity checks through a matrix-driven integration suite that compares CLI extraction results with direct `htmlcut-core` results
+
+Mutation workflow summaries also compare exact global planner identities, per-shard inventories
+and completed outcomes, successful baseline build/test phases, source commits and counters.
+Duplicates, missing identities, changed sources, misses and timeouts fail. Zero-mutant PR diffs
+require a source-bound empty plan, zero count and the explicitly skipped shard job.
+Rust cache configuration names both sibling target/build directories and only saves shared state
+from main. Checkout credentials are not retained in tested working trees.
 
 Before any of those gate steps begin, `cargo xtask check` preflights the exact repository
 toolchain declared in `rust-toolchain.toml`, the nightly Miri prerequisites, and the nightly
 coverage prerequisites. If the pinned compiler itself is missing, if its required
 `clippy`/`rustfmt` components are absent, if nightly is missing `miri` or `rust-src`, if its
-compiler is below the workspace's published Rust floor, if `cargo +nightly-2026-08-25 miri --version` is
+compiler is below the workspace's published Rust floor, if `cargo +nightly-2026-09-30 miri --version` is
 broken despite rustup reporting the components, or if the coverage prerequisites are absent, the
 gate stops immediately with the exact repair command instead of failing later inside the Rust gate.
 
@@ -370,7 +379,7 @@ Short live libFuzzer smoke is intentionally a separate maintainer step rather th
 ```
 
 That workflow stages each checked-in seed corpus into temporary scratch before launching
-`cargo +nightly-2026-08-25 fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
+`cargo +nightly-2026-09-30 fuzz run --features fuzzing ...`, which keeps the repository-owned fuzz corpora
 stable after local smoke runs while still building the real libFuzzer harnesses explicitly. It
 also preflights nightly plus `cargo-fuzz` before launching so missing fuzz tooling fails early
 with one actionable message. Use `--target <name>` to focus one maintained target or `--runs
@@ -460,3 +469,5 @@ single-ref CI worktrees — the watched-path probe falls back cleanly to `HEAD` 
 misreporting a Git-ref failure as the real gate result.
 The heavier `./scripts/devcontainer-check.sh` path remains the dedicated host-side proof when you
 want to run the full maintainer gate through the committed contributor container.
+
+The required Linux full maintainer lane runs on every relevant PR/push, independently of contributor-environment path filters. Environment validation is conditional and does not duplicate the full suite. The `Check` summary requires each named mandatory job to succeed; only the explicitly conditional environment job may skip. Python policy/source/changelog tests run inside the full gate.

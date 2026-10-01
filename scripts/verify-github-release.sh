@@ -60,6 +60,13 @@ main() {
     is_prerelease="$(gh release view "${tag_name}" --json isPrerelease --jq '.isPrerelease')"
     [[ "${is_prerelease}" == "false" ]] || htmlcut_die "release ${tag_name} is marked prerelease"
 
+    notes_file="$(mktemp "${TMPDIR:-/tmp}/htmlcut-verify-notes.XXXXXX")"
+    trap 'rm -f -- "${notes_file}"' EXIT
+    python3 "${script_dir}/release-notes.py" --ref "${RELEASE_SOURCE_SHA:-refs/tags/${tag_name}}" --version "${version}" >"${notes_file}"
+    # Consumer verification does not assume all four platform packages were built locally.
+    python3 "${script_dir}/release-assets.py" --tag "${tag_name}" --version "${version}" \
+        --notes "${notes_file}"
+
     mapfile -t expected_assets < <(release_asset_names_for_version "${version}")
     (( ${#expected_assets[@]} > 0 )) || htmlcut_die "release asset inventory is empty"
 

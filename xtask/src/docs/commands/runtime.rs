@@ -2,42 +2,11 @@ use std::path::PathBuf;
 
 use super::parsing::option_value;
 
-enum ExpectedArtifact {
-    File(PathBuf),
-    Bundle(PathBuf),
-}
-
-impl ExpectedArtifact {
-    fn missing_message(self) -> Option<String> {
-        match self {
-            Self::File(path) => {
-                (!path.is_file()).then(|| format!("expected file {} to exist", path.display()))
-            }
-            Self::Bundle(dir) => [
-                dir.join("selection.html"),
-                dir.join("selection.txt"),
-                dir.join("report.json"),
-            ]
-            .into_iter()
-            .find(|path| !path.is_file())
-            .map(|path| format!("expected bundle artifact {} to exist", path.display())),
-        }
-    }
-}
-
-fn expected_artifacts(tokens: &[String]) -> Vec<ExpectedArtifact> {
-    let mut artifacts = Vec::new();
-
-    for flag in ["--emit-request-file", "--output-file"] {
-        if let Some(path) = option_value(tokens, flag) {
-            artifacts.push(ExpectedArtifact::File(PathBuf::from(path)));
-        }
-    }
-    if let Some(path) = option_value(tokens, "--bundle") {
-        artifacts.push(ExpectedArtifact::Bundle(PathBuf::from(path)));
-    }
-
-    artifacts
+fn expected_artifacts(tokens: &[String]) -> Vec<PathBuf> {
+    ["--output", "--save-run", "--audit"]
+        .into_iter()
+        .filter_map(|flag| option_value(tokens, flag).map(PathBuf::from))
+        .collect()
 }
 
 pub(super) fn documented_artifact_error(
@@ -47,7 +16,7 @@ pub(super) fn documented_artifact_error(
 ) -> Option<String> {
     expected_artifacts(tokens)
         .into_iter()
-        .find_map(ExpectedArtifact::missing_message)
+        .find_map(|path| (!path.is_file()).then(|| format!("expected file {} to exist", path.display())))
         .map(|message| {
             format!(
                 "{display_path} example did not produce the documented artifact for `{example}` ({message})"

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to build, publish, and verify (for example v4.0.0)
+        description: Existing release tag to build, publish, and verify (for example v15.0.0)
         required: true
         type: string
 
@@ -15,22 +15,70 @@ permissions:
   contents: read
 
 concurrency:
-  group: publication-${{ github.workflow }}-${{ inputs.release_tag || github.ref_name }}
-  cancel-in-progress: true
+  # Serialize publications across tags as well as retries; an older draft cannot race latest.
+  group: publication-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   release-target-matrix:
     name: Compute release target matrix
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      release_tag: ${{ steps.source.outputs.release_tag }}
+      version: ${{ steps.source.outputs.version }}
 
     steps:
+      - name: Validate release tag before checkout
+        id: candidate
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          echo "tag=$CANDIDATE_TAG" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ steps.candidate.outputs.tag }}
+
+      - name: Resolve and validate one immutable source commit
+        id: source
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="$(./scripts/release-tag.sh "$CANDIDATE_TAG")"
+          [[ "$(git cat-file -t "refs/tags/$TAG")" == "tag" ]]
+          SOURCE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Require completed verification of this exact main source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$RELEASE_SOURCE_SHA" -f branch=main -f per_page=100 > "$RUNNER_TEMP/release-ci.json"
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/mutants.yml/runs" \
+            -f head_sha="$RELEASE_SOURCE_SHA" -f branch=main -f per_page=100 > "$RUNNER_TEMP/release-mutants.json"
+          python3 scripts/check-release-verification.py --source-sha "$RELEASE_SOURCE_SHA" \
+            --ci "$RUNNER_TEMP/release-ci.json" --mutations "$RUNNER_TEMP/release-mutants.json"
 
       - name: Export release target matrix
         id: matrix
@@ -46,8 +94,12 @@ jobs:
 
   build-archives:
     name: Build release archives
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
+      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
     permissions:
       contents: read
       id-token: write
@@ -56,30 +108,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ needs.release-target-matrix.outputs.source_sha }}
 
       - name: Resolve target release tag and version
         id: release
         shell: bash
         run: |
           set -euo pipefail
-          TAG_INPUT="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
-          TAG="$(./scripts/release-tag.sh "${TAG_INPUT}")"
+          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Create release archives
+      - name: Create release archives from the validated source
         shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.release.outputs.version }}"
-          source ./scripts/release-targets.sh
-          BASENAME="$(release_source_archive_basename_for_version "$VERSION")"
-
-          mkdir -p dist
-          git archive --format=zip --prefix="${BASENAME}/" -o "dist/${BASENAME}.zip" HEAD
-          git archive --format=tar.gz --prefix="${BASENAME}/" -o "dist/${BASENAME}.tar.gz" HEAD
+        run: ./scripts/build-source-archives.sh "${{ needs.release-target-matrix.outputs.source_sha }}" dist
 
       - name: Generate source archive attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -102,6 +146,9 @@ jobs:
       - release-target-matrix
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
+      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
     permissions:
       contents: read
       id-token: write
@@ -113,8 +160,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ needs.release-target-matrix.outputs.source_sha }}
 
       - name: Install Linux musl toolchain packages
         if: ${{ matrix.needs_musl_tools }}
@@ -135,6 +183,9 @@ jobs:
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
+          workspaces: ". -> ../.htmlcut-artifacts/target"
+          cache-directories: ../.htmlcut-artifacts/build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ matrix.target_triple }}
 
       - name: Resolve target release tag and version
@@ -142,8 +193,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG_INPUT="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
-          TAG="$(./scripts/release-tag.sh "${TAG_INPUT}")"
+          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
@@ -161,9 +211,20 @@ jobs:
         shell: bash
         run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
 
-      - name: Smoke test standalone package
+      - name: Verify native package and bind source evidence
         shell: bash
-        run: ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
+        run: |
+          set -euo pipefail
+          smoke_shell="$BASH"
+          if command -v cygpath >/dev/null 2>&1; then
+            smoke_shell="$(cygpath -w "$smoke_shell")"
+          fi
+          python3 scripts/native-package-evidence.py \
+            --package "dist/${{ steps.artifact.outputs.package }}" \
+            --version "${{ steps.release.outputs.version }}" \
+            --target "${{ matrix.target_triple }}" --source-sha "$RELEASE_SOURCE_SHA" \
+            --output "dist/native-evidence-${{ matrix.id }}.json" \
+            --smoke-log "dist/native-smoke-${{ matrix.id }}.log" --shell "$smoke_shell"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -174,15 +235,22 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact_bundle_name }}
-          path: dist/${{ steps.artifact.outputs.package }}
+          path: |
+            dist/${{ steps.artifact.outputs.package }}
+            dist/native-evidence-${{ matrix.id }}.json
+            dist/native-smoke-${{ matrix.id }}.log
           if-no-files-found: error
           retention-days: 7
 
   release:
     name: Build and publish release
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
+      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
     needs:
+      - release-target-matrix
       - build-archives
       - build-standalone
     permissions:
@@ -193,19 +261,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-          # Publication logic comes from the maintained default branch so a rerun can repair
-          # tooling without mutating an existing tag. The scripts resolve release identity from
-          # the immutable tag manifest, not this checkout's newer workspace manifest.
-          ref: ${{ github.event.repository.default_branch }}
+          # All assets and publication metadata use the commit resolved once above.
+          ref: ${{ needs.release-target-matrix.outputs.source_sha }}
 
       - name: Resolve target release tag and version
         id: release
         shell: bash
         run: |
           set -euo pipefail
-          TAG_INPUT="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
-          TAG="$(./scripts/release-tag.sh "${TAG_INPUT}")"
+          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 

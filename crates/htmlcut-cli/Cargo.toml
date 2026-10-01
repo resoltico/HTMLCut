@@ -8,10 +8,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-
-[lib]
-name = "htmlcut_cli"
-path = "src/lib.rs"
+autolib = false
+publish = false
 
 [[bin]]
 name = "htmlcut"
@@ -19,20 +17,17 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-htmlcut-core = { workspace = true, features = ["http-client"] }
+htmlcut-core.workspace = true
+encoding_rs.workspace = true
+ureq.workspace = true
+flate2.workspace = true
+tempfile.workspace = true
 schemars.workspace = true
-scraper.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_path_to_error.workspace = true
-thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-assert_cmd.workspace = true
-predicates.workspace = true
-regex.workspace = true
-shell-words.workspace = true
 htmlcut-tempdir.workspace = true
 
 [lints]

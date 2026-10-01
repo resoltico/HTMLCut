@@ -178,7 +178,7 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
                 &error,
                 started.elapsed(),
             )
-            .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+            .expect("reported command keeps its active gate reporter");
             return Err(context.into());
         }
     };
@@ -191,7 +191,7 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
                 &error,
                 started.elapsed(),
             )
-            .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+            .expect("reported command keeps its active gate reporter");
             return Err(context.into());
         }
     };
@@ -204,7 +204,7 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
                 &error,
                 started.elapsed(),
             )
-            .unwrap_or_else(|| format!("could not start command: {error}"));
+            .expect("reported command keeps its active gate reporter");
             return Err(context.into());
         }
     };
@@ -219,13 +219,13 @@ fn run_reported_spec(repo_root: &Path, spec: &CommandSpec, index: usize) -> DynR
                     &error,
                     started.elapsed(),
                 )
-                .unwrap_or_else(|| format!("could not retain command evidence: {error}"));
+                .expect("reported command keeps its active gate reporter");
                 return Err(context.into());
             }
         };
     let context =
         crate::gate_report::finish_streamed_command(index, spec, status, started.elapsed())
-            .unwrap_or_else(|| format!("command failed with status {status}"));
+            .expect("reported command keeps its active gate reporter");
     match classify_command_completion(status.success(), context.is_empty()) {
         CommandCompletion::Succeeded => Ok(()),
         CommandCompletion::ProcessFailed => Err(command_failure_with_context(
@@ -257,12 +257,12 @@ fn capture_reported_command_output(
                 &error,
                 started.elapsed(),
             )
-            .unwrap_or_else(|| format!("could not start command: {error}"));
+            .expect("reported command keeps its active gate reporter");
             return Err(context.into());
         }
     };
     let context = crate::gate_report::finish_command(index, spec, &output, started.elapsed())
-        .unwrap_or_else(|| format!("command failed with status {}", output.status));
+        .expect("reported command keeps its active gate reporter");
     match classify_command_completion(output.status.success(), context.is_empty()) {
         CommandCompletion::Succeeded => Ok(output.stdout),
         CommandCompletion::ProcessFailed => Err(command_failure_with_context(

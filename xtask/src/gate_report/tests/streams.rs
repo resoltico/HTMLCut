@@ -252,3 +252,21 @@ fn streamed_runner_rejects_successful_commands_when_their_evidence_disappears() 
         assert!(error.to_string().contains("could not retain evidence"));
     });
 }
+
+#[test]
+fn streamed_failure_tail_read_fault_cannot_report_successful_evidence() {
+    with_gate_report_root(|root| {
+        let mut run =
+            GateRun::start(root, "tail-fault", output_options(GateOutputFormat::Json)).unwrap();
+        let spec = command_spec(["__htmlcut_invalid_command__"]);
+        let index = run.begin_command(&spec);
+        let (out, err) = run.command_log_paths(index);
+        fs::write(out, b"stdout").unwrap();
+        fs::write(err, b"stderr").unwrap();
+        crate::gate_report::streams::FAILURE_TAIL_READ_FAULT.with(|fault| fault.set(true));
+        let status = cargo_output(["__htmlcut_invalid_command__"].as_slice()).status;
+        let message = run.finish_streamed_command(index, &spec, status, Duration::ZERO);
+        assert!(message.contains("failure-tail read fault"));
+        assert_eq!(run.report.steps[0].outcome, GateOutcome::Failed);
+    });
+}

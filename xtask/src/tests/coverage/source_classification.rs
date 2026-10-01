@@ -145,7 +145,7 @@ fn evaluate_coverage_report_accepts_declarative_only_tracked_files_without_segme
         data: vec![CoverageDataSet {
             files: vec![CoverageFile {
                 filename: catalog_path,
-                segments: vec![(7, 0, 1, false, true, false)],
+                segments: vec![(7, 0, 1, true, true, false)],
                 branches: Vec::new(),
                 summary: CoverageFileSummary::default(),
             }],
@@ -171,7 +171,7 @@ fn evaluate_coverage_report_reports_branch_only_failures() {
                     filename: repo_root
                         .path()
                         .join("crates/htmlcut-core/src/contracts/mod.rs"),
-                    segments: vec![(7, 0, 1, false, true, false)],
+                    segments: vec![(7, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary {
                         branches: CoverageCounter {
@@ -183,7 +183,7 @@ fn evaluate_coverage_report_reports_branch_only_failures() {
                 },
                 CoverageFile {
                     filename: repo_root.path().join("crates/htmlcut-cli/src/execute.rs"),
-                    segments: vec![(9, 0, 1, false, true, false)],
+                    segments: vec![(9, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary {
                         branches: CoverageCounter {
@@ -195,7 +195,7 @@ fn evaluate_coverage_report_reports_branch_only_failures() {
                 },
                 CoverageFile {
                     filename: repo_root.path().join("xtask/src/plan.rs"),
-                    segments: vec![(11, 0, 1, false, true, false)],
+                    segments: vec![(11, 0, 1, true, true, false)],
                     branches: Vec::new(),
                     summary: CoverageFileSummary {
                         branches: CoverageCounter {

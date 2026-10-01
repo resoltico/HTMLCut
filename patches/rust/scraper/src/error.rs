@@ -1,16 +1,14 @@
 //! Custom error types for diagnostics
 //! Includes re-exported error types from dependencies
 
-mod utils;
-
 use std::{error::Error, fmt::Display};
 
-use cssparser::{BasicParseErrorKind, ParseErrorKind, SourceLocation, Token};
+use cssparser::{BasicParseErrorKind, ParseErrorKind, SourceLocation};
 use selectors::parser::SelectorParseErrorKind;
 
 /// Error type that is returned when calling `Selector::parse`
 #[derive(Debug, Clone)]
-pub enum SelectorErrorKind<'a> {
+pub enum SelectorErrorKind {
     /// A `Token` was not expected
     UnexpectedToken,
 
@@ -27,13 +25,13 @@ pub enum SelectorErrorKind<'a> {
     QualRuleInvalid,
 
     /// Expected a `::` for a pseudoelement
-    ExpectedColonOnPseudoElement(Token<'a>),
+    ExpectedColonOnPseudoElement,
 
     /// Expected an identity for a pseudoelement
-    ExpectedIdentityOnPseudoElement(Token<'a>),
+    ExpectedIdentityOnPseudoElement,
 
     /// A `SelectorParseErrorKind` error that isn't really supposed to happen did
-    UnexpectedSelectorParseError(SelectorParseErrorKind<'a>),
+    UnexpectedSelectorParseError(SelectorParseErrorKind),
 }
 
 /// A CSS selector parse failure together with its source location.
@@ -41,14 +39,14 @@ pub enum SelectorErrorKind<'a> {
 /// [`Selector::parse_with_location`](crate::Selector::parse_with_location) preserves this
 /// location before converting the parser's error kind into [`SelectorErrorKind`].
 #[derive(Debug, Clone)]
-pub struct SelectorParseError<'a> {
-    kind: SelectorErrorKind<'a>,
+pub struct SelectorParseError {
+    kind: SelectorErrorKind,
     location: SourceLocation,
 }
 
-impl<'a> SelectorParseError<'a> {
+impl SelectorParseError {
     /// Returns the classified selector parse error.
-    pub const fn kind(&self) -> &SelectorErrorKind<'a> {
+    pub const fn kind(&self) -> &SelectorErrorKind {
         &self.kind
     }
 
@@ -58,22 +56,22 @@ impl<'a> SelectorParseError<'a> {
     }
 
     /// Returns the classified selector parse error, discarding its location.
-    pub fn into_kind(self) -> SelectorErrorKind<'a> {
+    pub fn into_kind(self) -> SelectorErrorKind {
         self.kind
     }
 }
 
-impl Display for SelectorParseError<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for SelectorParseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.kind.fmt(formatter)
     }
 }
 
-impl Error for SelectorParseError<'_> {}
+impl Error for SelectorParseError {}
 
-impl<'a> SelectorParseError<'a> {
+impl SelectorParseError {
     pub(crate) fn from_parser(
-        original: cssparser::ParseError<SelectorParseErrorKind<'a>>,
+        original: cssparser::ParseError<SelectorParseErrorKind>,
         fallback_location: SourceLocation,
     ) -> Self {
         let location = match &original.kind {
@@ -89,14 +87,14 @@ impl<'a> SelectorParseError<'a> {
     }
 }
 
-impl<'a> From<cssparser::ParseError<SelectorParseErrorKind<'a>>> for SelectorErrorKind<'a> {
-    fn from(original: cssparser::ParseError<SelectorParseErrorKind<'a>>) -> Self {
+impl From<cssparser::ParseError<SelectorParseErrorKind>> for SelectorErrorKind {
+    fn from(original: cssparser::ParseError<SelectorParseErrorKind>) -> Self {
         Self::from_parse_error_kind(original.kind)
     }
 }
 
-impl<'a> SelectorErrorKind<'a> {
-    fn from_parse_error_kind(error: ParseErrorKind<SelectorParseErrorKind<'a>>) -> Self {
+impl SelectorErrorKind {
+    fn from_parse_error_kind(error: ParseErrorKind<SelectorParseErrorKind>) -> Self {
         match error {
             ParseErrorKind::Basic(err) => SelectorErrorKind::from(err),
             ParseErrorKind::Custom(err) => SelectorErrorKind::from(err),
@@ -104,7 +102,7 @@ impl<'a> SelectorErrorKind<'a> {
     }
 }
 
-impl<'a> From<BasicParseErrorKind> for SelectorErrorKind<'a> {
+impl From<BasicParseErrorKind> for SelectorErrorKind {
     fn from(err: BasicParseErrorKind) -> Self {
         match err {
             BasicParseErrorKind::UnexpectedToken => Self::UnexpectedToken,
@@ -119,22 +117,22 @@ impl<'a> From<BasicParseErrorKind> for SelectorErrorKind<'a> {
     }
 }
 
-impl<'a> From<SelectorParseErrorKind<'a>> for SelectorErrorKind<'a> {
-    fn from(err: SelectorParseErrorKind<'a>) -> Self {
+impl From<SelectorParseErrorKind> for SelectorErrorKind {
+    fn from(err: SelectorParseErrorKind) -> Self {
         match err {
-            SelectorParseErrorKind::PseudoElementExpectedColon(token) => {
-                Self::ExpectedColonOnPseudoElement(token)
+            SelectorParseErrorKind::PseudoElementExpectedColon => {
+                Self::ExpectedColonOnPseudoElement
             }
-            SelectorParseErrorKind::PseudoElementExpectedIdent(token) => {
-                Self::ExpectedIdentityOnPseudoElement(token)
+            SelectorParseErrorKind::PseudoElementExpectedIdent => {
+                Self::ExpectedIdentityOnPseudoElement
             }
             other => Self::UnexpectedSelectorParseError(other),
         }
     }
 }
 
-impl Display for SelectorErrorKind<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for SelectorErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
@@ -144,14 +142,10 @@ impl Display for SelectorErrorKind<'_> {
                 Self::InvalidAtRule => "Invalid @-rule".to_string(),
                 Self::InvalidAtRuleBody => "The body of an @-rule was invalid".to_string(),
                 Self::QualRuleInvalid => "The qualified name was invalid".to_string(),
-                Self::ExpectedColonOnPseudoElement(token) => format!(
-                    "Expected a ':' token for pseudoelement, got {:?} instead",
-                    utils::render_token(token)
-                ),
-                Self::ExpectedIdentityOnPseudoElement(token) => format!(
-                    "Expected identity for pseudoelement, got {:?} instead",
-                    utils::render_token(token)
-                ),
+                Self::ExpectedColonOnPseudoElement =>
+                    "Expected a colon for pseudoelement".to_string(),
+                Self::ExpectedIdentityOnPseudoElement =>
+                    "Expected identity for pseudoelement".to_string(),
                 Self::UnexpectedSelectorParseError(err) => format!(
                     "Unexpected error occurred. Please report this to the developer\n{err:#?}"
                 ),
@@ -160,7 +154,7 @@ impl Display for SelectorErrorKind<'_> {
     }
 }
 
-impl Error for SelectorErrorKind<'_> {
+impl Error for SelectorErrorKind {
     fn description(&self) -> &str {
         match self {
             Self::UnexpectedToken => "Token was not expected",
@@ -168,9 +162,18 @@ impl Error for SelectorErrorKind<'_> {
             Self::InvalidAtRule => "Invalid @-rule",
             Self::InvalidAtRuleBody => "The body of an @-rule was invalid",
             Self::QualRuleInvalid => "The qualified name was invalid",
-            Self::ExpectedColonOnPseudoElement(_) => "Missing colon character on pseudoelement",
-            Self::ExpectedIdentityOnPseudoElement(_) => "Missing pseudoelement identity",
+            Self::ExpectedColonOnPseudoElement => "Missing colon character on pseudoelement",
+            Self::ExpectedIdentityOnPseudoElement => "Missing pseudoelement identity",
             Self::UnexpectedSelectorParseError(_) => "Unexpected error",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn regression_test_issue212() {
+        let err = crate::Selector::parse("div138293@!#@!!@#").unwrap_err();
+        assert_eq!(err.to_string(), "Token was not expected");
     }
 }

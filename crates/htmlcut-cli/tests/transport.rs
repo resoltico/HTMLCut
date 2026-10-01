@@ -1,179 +1,76 @@
-mod support;
-use support::*;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
 
 #[test]
-fn url_select_recovers_when_head_preflight_returns_forbidden() {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind forbidden-head server");
-    let address = listener.local_addr().expect("forbidden-head server addr");
-    let methods = Arc::new(Mutex::new(Vec::new()));
-    let methods_for_server = Arc::clone(&methods);
-    let server = thread::spawn(move || {
-        for _ in 0..2 {
-            let (mut stream, _) = accept_test_connection(&listener, "forbidden-head request");
-            let mut request_buffer = [0u8; 512];
-            let read = stream.read(&mut request_buffer).expect("read request");
-            let request = String::from_utf8_lossy(&request_buffer[..read]);
-            let method = request
-                .lines()
-                .next()
-                .expect("request line")
-                .split_whitespace()
-                .next()
-                .expect("request method")
-                .to_owned();
-            methods_for_server
-                .lock()
-                .expect("lock methods")
-                .push(method.clone());
-
-            let response = if method == "HEAD" {
-                "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
-                    .to_owned()
-            } else {
-                let body = "<html><body><article>Recovered</article></body></html>";
-                format!(
-                    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-                    body.len(),
-                    body
-                )
-            };
-            stream
-                .write_all(response.as_bytes())
-                .expect("write response");
-        }
-    });
-
-    let url = format!("http://{address}");
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select", &url, "--css", "article"])
-        .assert()
-        .success()
-        .stdout("Recovered\n");
-
-    server.join().expect("join server");
-    assert_eq!(
-        methods.lock().expect("lock methods").as_slice(),
-        ["HEAD", "GET"]
+fn runtime_url_environment_references_are_persisted_without_their_values() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://{}/?token=SYNTHETIC_RUNTIME_SECRET",
+        listener.local_addr().unwrap()
     );
-}
-
-#[test]
-fn url_select_recovers_when_head_preflight_transport_breaks() {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind broken-head server");
-    let address = listener.local_addr().expect("broken-head server addr");
-    let methods = Arc::new(Mutex::new(Vec::new()));
-    let methods_for_server = Arc::clone(&methods);
-    let server = thread::spawn(move || {
-        for _ in 0..2 {
-            let (mut stream, _) = accept_test_connection(&listener, "broken-head request");
-            let mut request_buffer = [0u8; 512];
-            let read = stream.read(&mut request_buffer).expect("read request");
-            let request = String::from_utf8_lossy(&request_buffer[..read]);
-            let method = request
-                .lines()
-                .next()
-                .expect("request line")
-                .split_whitespace()
-                .next()
-                .expect("request method")
-                .to_owned();
-            methods_for_server
-                .lock()
-                .expect("lock methods")
-                .push(method.clone());
-
-            if method == "HEAD" {
-                continue;
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let (mut stream, _) = loop {
+            match listener.accept() {
+                Ok(pair) => break pair,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(std::time::Instant::now() < deadline);
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(error) => panic!("accept failed: {error}"),
             }
-
-            let body = "<html><body><article>Recovered</article></body></html>";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            stream
-                .write_all(response.as_bytes())
-                .expect("write response");
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            assert_eq!(stream.read(&mut byte).unwrap(), 1);
+            request.push(byte[0]);
+            assert!(request.len() < 16384);
         }
+        assert!(
+            String::from_utf8(request)
+                .unwrap()
+                .starts_with("GET /?token=SYNTHETIC_RUNTIME_SECRET HTTP/1.1")
+        );
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 10\r\n\r\n<p>180</p>",
+            )
+            .unwrap();
     });
-
-    let url = format!("http://{address}");
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let run = root.path().join("run.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_htmlcut"))
         .args([
-            "select",
-            &url,
+            "extract",
+            "--url-env",
+            "HTMLCUT_TEST_SOURCE",
             "--css",
-            "article",
-            "--fetch-timeout-ms",
-            "250",
+            "p",
+            "--save-run",
+            run.to_str().unwrap(),
         ])
-        .assert()
-        .success()
-        .stdout("Recovered\n");
-
-    server.join().expect("join server");
-    assert_eq!(
-        methods.lock().expect("lock methods").as_slice(),
-        ["HEAD", "GET"]
+        .env("HTMLCUT_TEST_SOURCE", url)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    server.join().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
-}
-
-#[test]
-fn output_file_writes_the_stdout_payload_without_emitting_stdout() {
-    let tempdir = tempdir().expect("tempdir");
-    let input_path = write_fixture(
-        tempdir.path(),
-        "output-file.html",
-        "<article><p>Hello file output</p></article>",
+    let saved = std::fs::read_to_string(run).unwrap();
+    assert!(saved.contains("HTMLCUT_TEST_SOURCE"));
+    assert!(!saved.contains("SYNTHETIC_RUNTIME_SECRET"));
+    assert!(
+        !String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("SYNTHETIC_RUNTIME_SECRET")
     );
-    let output_path = tempdir.path().join("selection.txt");
-
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["select"])
-        .arg(&input_path)
-        .args(["--css", "article", "--output-file"])
-        .arg(&output_path)
-        .assert()
-        .success()
-        .stdout("")
-        .stderr(predicate::str::contains("wrote output file"));
-
-    assert_eq!(
-        fs::read_to_string(&output_path).expect("read output file"),
-        "Hello file output\n"
-    );
-}
-
-#[test]
-fn quiet_suppresses_non_fatal_success_stderr() {
-    let tempdir = tempdir().expect("tempdir");
-    let input_path = write_fixture(
-        tempdir.path(),
-        "quiet.html",
-        "<article>First</article><article>Second</article>",
-    );
-
-    let mut noisy = Command::cargo_bin("htmlcut").expect("binary");
-    noisy
-        .args(["select"])
-        .arg(&input_path)
-        .args(["--css", "article"])
-        .assert()
-        .success()
-        .stdout("First\n")
-        .stderr(predicate::str::contains("warning MULTIPLE_MATCHES"));
-
-    let mut quiet = Command::cargo_bin("htmlcut").expect("binary");
-    quiet
-        .args(["select", "--quiet"])
-        .arg(&input_path)
-        .args(["--css", "article"])
-        .assert()
-        .success()
-        .stdout("First\n")
-        .stderr("");
 }

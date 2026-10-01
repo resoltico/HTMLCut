@@ -110,32 +110,12 @@ pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "patches/rust/selectors/work_budget.rs",
     "patches/rust/scraper/src/selector/budget.rs",
     "patches/rust/scraper/src/html/clone.rs",
+    "patches/rust/scraper/src/html/bounded.rs",
+    "patches/rust/scraper/src/element_ref/filtered.rs",
 ];
 
-pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] = &[
-    "crates/htmlcut-cli/src/args/discovery.rs",
-    "crates/htmlcut-cli/src/args/extract.rs",
-    "crates/htmlcut-cli/src/args/inspect.rs",
-    "crates/htmlcut-cli/src/args/shared.rs",
-    "crates/htmlcut-cli/src/model/catalog.rs",
-    "crates/htmlcut-cli/src/model/mod.rs",
-    "crates/htmlcut-cli/src/model/reports.rs",
-    "crates/htmlcut-cli/src/model/schema.rs",
-    "crates/htmlcut-cli/src/prepare/build/mod.rs",
-    "crates/htmlcut-cli/src/prepare/definition/mod.rs",
-    "crates/htmlcut-cli/src/render/inspection/mod.rs",
-    "crates/htmlcut-cli/src/prepare/reports/mod.rs",
-    "crates/htmlcut-core/src/contracts/request/mod.rs",
-    "crates/htmlcut-cli/src/contract/help/mod.rs",
-    "crates/htmlcut-core/src/document/mod.rs",
-    "crates/htmlcut-core/src/extract/mod.rs",
-    "crates/htmlcut-core/src/extract/slice/mod.rs",
-    "crates/htmlcut-core/src/interop/mod.rs",
-    "crates/htmlcut-core/src/source/http.rs",
-    "crates/htmlcut-core/src/lib.rs",
-    "crates/htmlcut-core/src/wire/mod.rs",
-    "xtask/src/lib.rs",
-];
+pub(crate) const COVERAGE_EXCLUDED_RELATIVE_PATHS: &[&str] =
+    &["crates/htmlcut-core/src/lib.rs", "xtask/src/lib.rs"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Coverage scoring expectation for one tracked Rust source file.
@@ -175,8 +155,8 @@ impl TrackedCoverageFile {
 // HTMLCut stays on stable for normal development. The maintained safety and
 // coverage proofs intentionally hop to nightly because Miri, cargo-fuzz, and
 // `cargo llvm-cov --branch` still require it.
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly-2026-08-25";
-pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly-2026-08-25";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN: &str = "+nightly-2026-09-30";
+pub(crate) const MAINTAINED_NIGHTLY_TOOLCHAIN_NAME: &str = "nightly-2026-09-30";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Missing prerequisite for the branch-coverage gate.

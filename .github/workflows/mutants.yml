@@ -20,11 +20,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       shards: ${{ steps.shards.outputs.shards }}
       mutant_count: ${{ steps.shards.outputs.mutant_count }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Record selected source
+        id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         shell: bash
@@ -44,7 +53,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -64,6 +73,27 @@ jobs:
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
           echo "mutant_count=$mutant_count" >> "$GITHUB_OUTPUT"
 
+      - name: Bind the complete selected inventory
+        shell: bash
+        env:
+          MUTATION_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/selected-mutation-plan"
+          cp "$RUNNER_TEMP/mutants.json" "$RUNNER_TEMP/selected-mutation-plan/plan.json"
+          python3 scripts/verify-mutation-results.py --record-plan \
+            --plan "$RUNNER_TEMP/selected-mutation-plan/plan.json" \
+            --metadata "$RUNNER_TEMP/selected-mutation-plan/source.json" \
+            --source-sha "$MUTATION_SOURCE_SHA"
+
+      - name: Preserve selected inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: selected-mutation-plan
+          path: ${{ runner.temp }}/selected-mutation-plan/
+          if-no-files-found: error
+          retention-days: 14
+
   mutants:
     if: github.event_name != 'pull_request'
     needs: mutation-plan
@@ -77,6 +107,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.mutation-plan.outputs.source_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Install Rust toolchain
         shell: bash
@@ -98,7 +131,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -124,6 +157,7 @@ jobs:
           test -d "$source_dir"
           mkdir -p "$stage_dir"
           cp -R "$source_dir" "$stage_dir/mutants.out"
+          git rev-parse HEAD > "$stage_dir/mutants.out/source-commit.txt"
 
       - name: Upload mutation results
         if: always()
@@ -139,6 +173,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       has_mutants: ${{ steps.diff.outputs.has_mutants }}
       shards: ${{ steps.diff.outputs.shards }}
       mutant_count: ${{ steps.diff.outputs.mutant_count }}
@@ -146,7 +181,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
           fetch-depth: 0
+
+      - name: Record selected source
+        id: source
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         shell: bash
@@ -166,7 +208,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -207,6 +249,27 @@ jobs:
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
           echo "mutant_count=$mutant_count" >> "$GITHUB_OUTPUT"
 
+      - name: Bind the complete selected inventory
+        shell: bash
+        env:
+          MUTATION_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/selected-mutation-plan"
+          cp "$RUNNER_TEMP/mutants.json" "$RUNNER_TEMP/selected-mutation-plan/plan.json"
+          python3 scripts/verify-mutation-results.py --record-plan \
+            --plan "$RUNNER_TEMP/selected-mutation-plan/plan.json" \
+            --metadata "$RUNNER_TEMP/selected-mutation-plan/source.json" \
+            --source-sha "$MUTATION_SOURCE_SHA"
+
+      - name: Preserve selected inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: selected-mutation-plan
+          path: ${{ runner.temp }}/selected-mutation-plan/
+          if-no-files-found: error
+          retention-days: 14
+
   mutants-diff:
     if: github.event_name == 'pull_request' && needs.mutation-diff-plan.outputs.has_mutants == 'true'
     needs: mutation-diff-plan
@@ -221,6 +284,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.mutation-diff-plan.outputs.source_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install Rust toolchain
@@ -243,7 +308,7 @@ jobs:
           echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-mutants)" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
@@ -273,6 +338,7 @@ jobs:
           test -d "$source_dir"
           mkdir -p "$stage_dir"
           cp -R "$source_dir" "$stage_dir/mutants.out"
+          git rev-parse HEAD > "$stage_dir/mutants.out/source-commit.txt"
 
       - name: Upload mutation results
         if: always()
@@ -291,6 +357,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.mutation-diff-plan.outputs.source_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Download the selected source-bound inventory
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: selected-mutation-plan
+          path: selected-mutation-plan/
 
       - name: Download mutation results
         if: needs.mutation-diff-plan.outputs.has_mutants == 'true'
@@ -305,6 +380,7 @@ jobs:
         env:
           MUTATION_DIFF_HAS_MUTANTS: ${{ needs.mutation-diff-plan.outputs.has_mutants }}
           MUTATION_SHARDS: ${{ needs.mutation-diff-plan.outputs.shards }}
+          MUTATION_SOURCE_SHA: ${{ needs.mutation-diff-plan.outputs.source_sha }}
           MUTATION_EXPECTED_TOTAL: ${{ needs.mutation-diff-plan.outputs.mutant_count }}
         run: |
           set -euo pipefail
@@ -312,7 +388,15 @@ jobs:
             echo "pull-request mutation planning did not complete successfully" >&2
             exit 1
           fi
-          if [[ "$MUTATION_DIFF_HAS_MUTANTS" != "true" ]]; then
+          python3 scripts/verify-mutation-results.py \
+            --plan selected-mutation-plan/plan.json \
+            --metadata selected-mutation-plan/source.json \
+            --source-sha "$MUTATION_SOURCE_SHA" \
+            --shards "$MUTATION_SHARDS" --artifacts mutation-artifacts
+          [[ "$MUTATION_DIFF_HAS_MUTANTS" == "true" || "$MUTATION_DIFF_HAS_MUTANTS" == "false" ]] || exit 1
+          if [[ "$MUTATION_DIFF_HAS_MUTANTS" == "false" ]]; then
+            [[ "$MUTATION_EXPECTED_TOTAL" == "0" ]] || exit 1
+            [[ "${{ needs.mutants-diff.result }}" == "skipped" ]] || exit 1
             echo "No production Rust mutants overlap this pull request." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -336,6 +420,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.mutation-plan.outputs.source_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Download the selected source-bound inventory
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: selected-mutation-plan
+          path: selected-mutation-plan/
 
       - name: Download mutation results
         if: always()
@@ -350,6 +443,7 @@ jobs:
         shell: bash
         env:
           MUTATION_SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+          MUTATION_SOURCE_SHA: ${{ needs.mutation-plan.outputs.source_sha }}
           MUTATION_EXPECTED_TOTAL: ${{ needs.mutation-plan.outputs.mutant_count }}
         run: |
           set -euo pipefail
@@ -357,6 +451,11 @@ jobs:
             echo "full mutation planning did not complete successfully" >&2
             exit 1
           fi
+          python3 scripts/verify-mutation-results.py \
+            --plan selected-mutation-plan/plan.json \
+            --metadata selected-mutation-plan/source.json \
+            --source-sha "$MUTATION_SOURCE_SHA" \
+            --shards "$MUTATION_SHARDS" --artifacts mutation-artifacts
           ./scripts/summarize-mutation-results.sh \
             "$MUTATION_SHARDS" \
             mutation-artifacts \

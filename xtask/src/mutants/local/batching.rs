@@ -78,3 +78,7 @@ pub(super) fn run_partition_batches_with_lanes(
     completed_workers.sort_by_key(|worker| worker.index);
     Ok((completed_workers, worker_results))
 }
+
+#[cfg(test)]
+#[path = "batching/tests.rs"]
+mod tests;

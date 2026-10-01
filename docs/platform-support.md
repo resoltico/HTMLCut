@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "14.0.0"
+version: "15.0.0"
 domain: PLATFORM
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 24.04]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]
@@ -90,7 +90,7 @@ GitHub release builds run on:
 - `windows-2022` for `x86_64-pc-windows-msvc`
 
 GitHub CI also runs release-target smoke on that same target matrix, including packaged-README
-checks plus one extraction-and-request-replay flow from the unpacked binary, before the aggregate
+checks plus one extraction-and-saved-run replay flow from the unpacked binary, before the aggregate
 required check reports success.
 
 The release workflow also generates GitHub build-provenance attestations for the source archives,

@@ -1,264 +1,39 @@
 mod support;
-use support::*;
+use support::invoke;
 
 #[test]
-fn catalog_json_surfaces_operation_catalog() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    let report = parse_catalog_report(
-        command
-            .args(["catalog", "--output", "json"])
-            .assert()
-            .success(),
-    );
-
-    assert_eq!(report.tool, "htmlcut");
-    assert_eq!(report.version, expected_version());
-    assert_eq!(report.schema_name, CATALOG_REPORT_SCHEMA_NAME);
-    assert_eq!(report.schema_version, CATALOG_SCHEMA_VERSION);
-    assert_eq!(
-        report.schema_profile,
-        htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE
-    );
-    assert_eq!(report.description, env!("CARGO_PKG_DESCRIPTION"));
-    assert_eq!(report.command, "catalog");
-    assert_eq!(
-        report.operations.len(),
-        htmlcut_core::operation_catalog().len()
-    );
-    assert_eq!(
-        report.operations[0].operation_id,
-        htmlcut_core::operation_catalog()[0].id
-    );
-    assert_eq!(
-        report.operations[0].engine_capability,
-        htmlcut_core::operation_catalog()[0].core_api
-    );
-    assert_eq!(
-        report.operations[0].request_contract.artifact,
-        htmlcut_core::operation_catalog()[0].request_contract.family
-    );
-    assert_eq!(
-        report.operations[0].result_contract.artifact,
-        htmlcut_core::operation_catalog()[0].result_contract.family
-    );
-    let source_contract = report.operations[0]
-        .command_contract
-        .as_ref()
-        .expect("source.inspect must expose its CLI contract");
-    assert_eq!(
-        source_contract.invocation,
-        "htmlcut inspect source [OPTIONS] [INPUT]"
-    );
-
-    for operation_id in [
-        htmlcut_core::OperationId::ElementsExplore,
-        htmlcut_core::OperationId::TargetPropose,
-    ] {
-        let operation = report
-            .operations
-            .iter()
-            .find(|operation| operation.operation_id == operation_id)
-            .expect("new discovery operation should be cataloged");
+fn index_one_description_and_named_schemas_share_closed_vocabulary() {
+    let output = invoke(&["describe"], b"");
+    assert!(output.status.success());
+    let index: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(index["operations"].as_array().unwrap().len(), 5);
+    let output = invoke(&["describe", "extract"], b"");
+    assert!(output.status.success());
+    let description: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(description["defaults"]["selection"], "single");
+    for name in htmlcut_core::SCHEMA_NAMES
+        .iter()
+        .copied()
+        .chain(["htmlcut.run"])
+    {
+        let output = invoke(&["schema", name], b"");
         assert!(
-            operation.command_contract.is_some(),
-            "{operation_id:?} must publish its complete CLI contract"
+            output.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                .unwrap()
+                .is_object()
         );
     }
-
-    let select_extract = report
-        .operations
-        .iter()
-        .find(|operation| operation.operation_id == htmlcut_core::OperationId::SelectExtract)
-        .expect("select.extract should be cataloged");
-    let command_contract = select_extract
-        .command_contract
-        .as_ref()
-        .expect("cli operation should expose a command contract");
-    assert_eq!(
-        command_contract.invocation,
-        "htmlcut select [OPTIONS] --css <CSS> [INPUT]"
-    );
-    assert_eq!(command_contract.default_match.as_deref(), Some("first"));
-    assert_eq!(command_contract.default_value.as_deref(), Some("text"));
-    assert_eq!(command_contract.default_output.as_deref(), Some("text"));
-    assert_eq!(command_contract.default_output_overrides.len(), 2);
-    assert_eq!(command_contract.default_output_overrides[0].value, "html");
-    assert_eq!(
-        command_contract.default_output_overrides[0].when.parameter,
-        "--value"
-    );
-    assert_eq!(
-        command_contract.default_output_overrides[0].when.values,
-        vec!["inner-html".to_owned(), "outer-html".to_owned()]
-    );
-    assert_eq!(command_contract.default_output_overrides[1].value, "json");
-    assert_eq!(
-        command_contract.default_output_overrides[1].when.parameter,
-        "--value"
-    );
-    assert_eq!(
-        command_contract.default_output_overrides[1].when.values,
-        vec!["structured".to_owned()]
-    );
-    assert!(
-        command_contract
-            .constraints
-            .iter()
-            .any(|constraint| matches!(
-                constraint,
-                htmlcut_cli::CatalogConstraint::RequiresParameter { parameter, when }
-                    if parameter == "--bundle"
-                        && when.parameter == "--output"
-                        && when.values == vec!["none".to_owned()]
-            ))
-    );
-    assert!(command_contract.parameters.iter().any(|parameter| {
-        parameter.name == "--css"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Conditional
-            && parameter.requirement_note.as_deref()
-                == Some("required unless --request-file is used")
-    }));
-    assert!(command_contract.parameters.iter().any(|parameter| {
-        parameter.name == "--request-file"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
-    }));
-    assert!(command_contract.parameters.iter().any(|parameter| {
-        parameter.name == "--fetch-preflight"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
-    }));
-    assert!(command_contract.parameters.iter().any(|parameter| {
-        parameter.name == "--output-file"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Optional
-    }));
-    assert!(command_contract.parameters.iter().any(|parameter| {
-        parameter.name == "--attribute"
-            && parameter.requirement == htmlcut_cli::CatalogParameterRequirement::Conditional
-            && parameter.requirement_note.as_deref()
-                == Some("required when --value attribute is used")
-    }));
-    assert!(
-        command_contract
-            .constraints
-            .iter()
-            .any(|constraint| matches!(
-                constraint,
-                htmlcut_cli::CatalogConstraint::RestrictsParameterValues {
-                    parameter,
-                    allowed_values,
-                    when,
-                } if parameter == "--output"
-                    && allowed_values == &vec!["json".to_owned(), "none".to_owned()]
-                    && when.parameter == "--value"
-                    && when.values == vec!["structured".to_owned()]
-            ))
-    );
-}
-
-#[test]
-fn schema_json_surfaces_registry_for_core_cli_and_interop() {
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    let report = parse_schema_report(
-        command
-            .args(["schema", "--output", "json"])
-            .assert()
-            .success(),
-    );
-
-    assert_eq!(report.tool, "htmlcut");
-    assert_eq!(report.version, expected_version());
-    assert_eq!(report.schema_name, SCHEMA_COMMAND_REPORT_SCHEMA_NAME);
-    assert_eq!(report.schema_version, SCHEMA_COMMAND_REPORT_SCHEMA_VERSION);
-    assert_eq!(
-        report.schema_profile,
-        htmlcut_core::HTMLCUT_JSON_SCHEMA_PROFILE
-    );
-    assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::EXTRACTION_REQUEST_SCHEMA_NAME
-            && schema.schema_version == htmlcut_core::CORE_REQUEST_SCHEMA_VERSION
-            && schema.surface == "engine"
-    }));
-    assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == htmlcut_core::interop::v2::RESULT_SCHEMA_NAME
-            && schema.surface == "integration"
-            && schema.profile.as_deref() == Some("htmlcut-v2")
-    }));
-    assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == CATALOG_REPORT_SCHEMA_NAME && schema.surface == "cli"
-    }));
-    assert!(report.schemas.iter().any(|schema| {
-        schema.schema_name == ERROR_COMMAND_REPORT_SCHEMA_NAME
-            && schema.schema_version == ERROR_COMMAND_REPORT_SCHEMA_VERSION
-            && schema.surface == "cli"
-    }));
-}
-
-#[test]
-fn schema_command_rejects_an_unknown_schema_in_both_machine_readable_modes() {
-    for output in ["json", "index-json"] {
-        let mut command = Command::cargo_bin("htmlcut").expect("binary");
-        command
-            .args([
-                "schema",
-                "--name",
-                "htmlcut.not_a_schema",
-                "--output",
-                output,
-            ])
-            .assert()
-            .failure()
-            .code(2)
-            .stdout(predicate::str::contains("CLI_SCHEMA_UNKNOWN"));
+    for args in [
+        vec!["describe", "unknown"],
+        vec!["schema", "htmlcut.unknown"],
+    ] {
+        let output = invoke(&args, b"");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
     }
-}
-
-#[test]
-fn schema_command_renders_each_successful_catalog_view() {
-    let mut index_json = Command::cargo_bin("htmlcut").expect("binary");
-    index_json
-        .args(["schema", "--output", "index-json"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("htmlcut.schema_inventory_report"));
-
-    let mut text = Command::cargo_bin("htmlcut").expect("binary");
-    text.args(["schema", "--output", "text"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Schemas:"));
-}
-
-#[test]
-fn inspect_source_directory_input_reports_directory_specific_failure() {
-    let tempdir = tempdir().expect("tempdir");
-    let input_dir = tempdir.path().join("input dir");
-    fs::create_dir_all(&input_dir).expect("create dir");
-
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["inspect", "source"])
-        .arg(&input_dir)
-        .args(["--output", "text"])
-        .assert()
-        .failure()
-        .code(3)
-        .stderr(predicate::str::contains(
-            "Input path is a directory, not a file:",
-        ));
-}
-
-#[test]
-fn inspect_source_invalid_utf8_input_reports_utf8_failure() {
-    let tempdir = tempdir().expect("tempdir");
-    let input_path = tempdir.path().join("bad.bin");
-    fs::write(&input_path, [0xff, 0xfe]).expect("write invalid utf8");
-
-    let mut command = Command::cargo_bin("htmlcut").expect("binary");
-    command
-        .args(["inspect", "source"])
-        .arg(&input_path)
-        .args(["--output", "text"])
-        .assert()
-        .failure()
-        .code(3)
-        .stderr(predicate::str::contains("File is not valid UTF-8:"));
 }

@@ -1,190 +1,23 @@
 ---
 afad: "4.0"
-version: "14.0.0"
+version: "15.0.0"
 domain: ARCHITECTURE
-updated: "2026-09-24"
+updated: "2026-10-01"
 route:
-  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, interop v2, ownership boundary, discovery model]
-  questions: ["what are the maintained HTMLCut surfaces?", "when should I use htmlcut_core::interop::v2?", "what does HTMLCut own versus downstream consumers?"]
+  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, extraction contract, ownership boundary, discovery model]
+  questions: ["what are the maintained HTMLCut surfaces?", "when should I reuse compiled plans and prepared documents?", "what does HTMLCut own versus downstream consumers?"]
 ---
 
-# Architecture Guide
+# Architecture
 
-HTMLCut has three maintained product/runtime surfaces:
+HTMLCut has one supported Rust product API, `htmlcut-core`, and a binary CLI. The core accepts immutable UTF-8 snapshots, validates and compiles one extraction plan, lazily prepares a bounded DOM only when needed, and returns requested strings or one typed error family.
 
-1. `htmlcut-cli`
-2. `htmlcut-core`
-3. `htmlcut_core::interop::v2`
+The CLI owns files, stdin, bounded GET acquisition, strict decoding, saved runs, output framing and atomic file publication. The core performs no filesystem, network, environment, clock, process or terminal I/O. Parser and DOM types remain private. Compiled plans and prepared documents are reusable; each execution gets fresh shared work counters. Preparation failures are cached too.
 
-They are related, but they are not interchangeable.
+`dom_text` is literal parsed descendant text, including hidden and template/script/style content. `document_text` is explicit structural formatting with links, image alt, lists and tables, excluding only script/style/template payloads. Exclusions are explicit and immutable. Guards read the original DOM before exclusions or transforms. Default selection requires exactly one candidate.
 
-Maintainer-only surfaces such as `xtask`, the release shell scripts, and the checked-in fuzz
-targets are real maintained repository surfaces too, but they sit outside this runtime split and
-are documented through the maintainer guides instead of this architecture map.
+Source slicing is a separate parse-free strategy with half-open UTF-8 byte ranges. DOM HTML serialization is not original-source preservation. URL resolution is explicit and uses caller/final-response base metadata; HTML base elements are ignored.
 
-This runtime split also does not enumerate every workspace member. For the full package/crate map,
-including `htmlcut-tempdir`, `xtask`, `fuzz`, and the package-name versus Rust-path naming rule,
-use [workspace-layout.md](workspace-layout.md).
+Compact results contain identities, complete counts and requested values. JSON has one framing LF; raw emits one exact value without an added LF. Semantic failures publish no values. Logical budgets are not OS isolation, and extracted data is not sanitized or prompt-injection protected.
 
-## Use The Right Surface
-
-Use `htmlcut-cli` when you need:
-
-- command-line operation
-- file, URL, or stdin workflows
-- schema export for CLI/agent validation
-- stdout rendering
-- bundle artifacts
-- exit-code semantics
-
-Use `htmlcut-core` when you need:
-
-- in-process extraction or inspection
-- typed request and result contracts
-- canonical diagnostics
-- operation discovery through `operation_catalog()`
-- schema discovery through `schema_catalog()`
-
-Use `htmlcut_core::interop::v2` when you need the `htmlcut-v2` downstream integration
-contract.
-
-It is the versioned interop surface for downstream integrations, not a replacement for the
-broader `htmlcut-core` API, and not a CLI command.
-
-## Ownership Boundary
-
-`htmlcut-core` owns:
-
-- source loading for generic HTMLCut workflows
-- the bundled trust-root policy used by HTMLCut-owned HTTPS loading when `http-client` is enabled
-- HTML parsing
-- selector extraction
-- slice extraction
-- inspection and preview
-- diagnostics
-- canonical operation IDs and operation catalog entries
-- canonical CLI choice domains and spellings for match, value, output, pattern, whitespace, and
-  fetch-preflight modes
-
-`htmlcut-cli` owns:
-
-- argument parsing
-- clap tree assembly from the `htmlcut_cli::contract` command/help registries
-- canonical CLI command/help metadata in `htmlcut_cli::contract`, including display summaries,
-  discovery narratives, operation-analysis guidance, examples, and command constraints that the
-  CLI renders without rewriting
-- human vs JSON rendering
-- bundles
-- exit codes
-
-`htmlcut_core::interop::v2` owns:
-
-- downstream plan validation for `htmlcut-v2`
-- the published selector, delimiter, output, diagnostic, and range language for `htmlcut-v2`
-- plan-to-core-request compilation for `htmlcut-v2`
-- typed interop result and error documents
-- stable JSON and digest helpers for the interop profile
-- CSS-only detached-clone canonicalization after source-DOM candidate selection, with raw evidence
-  preserved separately from comparison text
-
-Those owners are maintained as focused domain modules, not giant mixed-role files. In practice that
-means HTMLCut keeps request contracts, source loading, document handling, extraction execution, and
-interop execution/stable-JSON logic in separate seams so the canonical owner for one concern
-does not disappear into a monolith.
-
-Downstream applications own fetch, retries, orchestration, comparison, and persistence. HTMLCut
-does not fetch on a downstream application's behalf in production interop flows.
-
-## Dependency Direction
-
-The maintained dependency direction is:
-
-1. `htmlcut-cli` -> `htmlcut-core`
-2. downstream embedders -> `htmlcut-core`
-3. downstream embedders that adopt the interop profile -> `htmlcut_core::interop::v2`
-4. downstream embedders that want HTMLCut-owned HTTP loading opt into
-   `htmlcut-core/http-client` explicitly instead of inheriting it by default
-
-Forbidden shapes:
-
-- downstreams shelling out to `htmlcut-cli` instead of using `htmlcut-core`
-- downstream products relying on HTMLCut URL loading in production when they already own fetch
-- the CLI inventing behavior that `htmlcut-core` does not own
-
-## Discovery Model
-
-For CLI and agent discovery, use:
-
-```bash
-htmlcut catalog --output json
-htmlcut catalog --operation select.extract --output text
-htmlcut schema --name htmlcut.extraction_report --output json
-```
-
-For Rust-side discovery, use:
-
-```rust
-use htmlcut_core::{operation_catalog, schema_catalog};
-
-let operations = operation_catalog();
-assert!(!operations.is_empty());
-let schemas = schema_catalog();
-assert!(!schemas.is_empty());
-```
-
-The catalog is owned by `htmlcut-core`. The CLI projects that same catalog and the
-`htmlcut_cli::contract` command-contract registry; it does not maintain a separate capability map
-or a shadow command-contract builder.
-
-That ownership line is enforced, not merely described. The maintainer gate parses the real clap
-command tree and defaulted arguments and fails if they drift away from the `htmlcut_cli::contract`
-registry. The CLI help surface is expected to render the same canonical summaries, analysis text,
-mode facts, default overrides, notes, and examples instead of hand-authoring a second behavioral
-description. The CLI also parses the canonical choice types directly instead of defining its own
-parallel enums for those user-facing values.
-
-For CLI-exposed operations, the catalog also carries a machine-readable command contract:
-
-- invocation
-- defaults
-- modes
-- request/result schema refs
-- parameter inventory with requiredness and allowed values
-- notes
-- examples
-
-That is the stable capability-discovery surface agents should prefer over parsing help text ad hoc.
-
-The same gate also renders the real clap help text, catalog/schema text summaries, and
-representative recovery errors and fails if those surfaces mention operation IDs or schema names
-that are not registered in `htmlcut-core`.
-
-For validator-grade contract discovery, use `htmlcut schema` or `schema_catalog()`. Do not treat
-catalog prose as a schema substitute.
-
-## Versioning And Breakage
-
-HTMLCut does not preserve weak architecture for the sake of compatibility theater.
-
-The rule is:
-
-- generic CLI/core contracts may hard-break when architecture quality requires it
-- product-specific downstream interop must be versioned explicitly
-
-That is why downstream consumers integrate through `htmlcut-v2` instead of through ad hoc CLI
-behavior or a mutable undocumented internal API.
-
-## Doc Map
-
-Use these docs together:
-
-- [Workspace Layout](workspace-layout.md)
-- [CLI Developer Guide](cli.md)
-- [CLI Library Guide](cli-library.md)
-- [Core Developer Guide](core.md)
-- [Schema Guide](schema.md)
-- [Interop v2 Guide](interop-v2.md)
-- [Operation Matrix](operations.md)
-- [Platform Support](platform-support.md)
-- [Quality Gates](quality-gates.md)
-- [Release Protocol](release-protocol.md)
+See [Core](core.md), [CLI](cli.md), [Schemas](schema.md), and the [implementation authority](extraction-contract-spec.md).

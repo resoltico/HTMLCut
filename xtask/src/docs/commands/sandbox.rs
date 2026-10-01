@@ -20,6 +20,8 @@ const README_FIXTURE_HTML: &str = r#"<!doctype html>
   <main>
     <article>
       <h1>Guide</h1>
+      <p id="amount">EUR 180</p>
+      <a class="item" href="relative.html">Item</a>
       <div class="card">Card alpha</div>
       <div class="card">Card beta</div>
       <p><a class="more" href="../guide.html">Read more</a></p>
@@ -30,7 +32,7 @@ const README_FIXTURE_HTML: &str = r#"<!doctype html>
 </html>
 "#;
 
-const SANDBOX_FIXTURE_FILES: &[&str] = &["page.html", "page name.html"];
+const SANDBOX_FIXTURE_FILES: &[&str] = &["page.html", "page name.html", "fixture.html"];
 
 pub(super) fn prepare_sandbox(
     display_path: &str,
@@ -73,11 +75,15 @@ where
 
 pub(super) struct ExampleSandbox {
     root: TempDir,
+    http: super::http_fixture::Fixture,
 }
 
 impl ExampleSandbox {
     pub(super) fn new() -> DynResult<Self> {
-        let sandbox = Self { root: tempdir()? };
+        let sandbox = Self {
+            root: tempdir()?,
+            http: super::http_fixture::Fixture::new(README_FIXTURE_HTML)?,
+        };
         sandbox.seed()?;
         Ok(sandbox)
     }
@@ -91,6 +97,14 @@ impl ExampleSandbox {
             fs::write(self.root.path().join(file_name), README_FIXTURE_HTML)?;
         }
 
+        let plan = htmlcut_core::ExtractionPlan::css("#amount")
+            .expect("the fixed fixture selector is valid");
+        fs::write(
+            self.root.path().join("amount.plan.json"),
+            htmlcut_core::canonical_json(&plan)
+                .expect("the fixed plan contains serializable contract values"),
+        )?;
+
         Ok(())
     }
 
@@ -100,15 +114,19 @@ impl ExampleSandbox {
         example: &str,
         tokens: &[String],
     ) -> Option<String> {
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        if let Some(error) = command_runtime_error_message(
-            display_path,
-            example,
-            htmlcut_cli::run(tokens.iter().cloned(), &mut stdout, &mut stderr),
-            &stdout,
-            &stderr,
-        ) {
+        let captured = super::process::invoke(
+            tokens,
+            self.root.path(),
+            README_FIXTURE_HTML.as_bytes(),
+            &self.http.url,
+        );
+        let (result, stdout, stderr) = match captured {
+            Ok(output) => (Ok(output.code), output.stdout, output.stderr),
+            Err(error) => (Err(error), Vec::new(), Vec::new()),
+        };
+        if let Some(error) =
+            command_runtime_error_message(display_path, example, result, &stdout, &stderr)
+        {
             return Some(error);
         }
 
@@ -125,6 +143,10 @@ fn command_runtime_error_message(
 ) -> Option<String> {
     match result {
         Ok(0) => None,
+        Ok(2) => Some(format!(
+            "{display_path} contains a non-parsing htmlcut example: {example} ({})",
+            render_execution_failure(2, stdout, stderr)
+        )),
         Ok(exit_code) => Some(format!(
             "{display_path} contains a non-runnable htmlcut example: {example} ({})",
             render_execution_failure(exit_code, stdout, stderr)
@@ -151,6 +173,11 @@ fn current_dir_lock() -> &'static Mutex<()> {
     CURRENT_DIR_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn acquire_cwd_lock(lock: &Mutex<()>) -> DynResult<MutexGuard<'_, ()>> {
+    lock.lock()
+        .map_err(|_| "cwd mutex poisoned".to_owned().into())
+}
+
 pub(super) struct CurrentDirGuard {
     _lock: MutexGuard<'static, ()>,
     previous_dir: PathBuf,
@@ -158,9 +185,7 @@ pub(super) struct CurrentDirGuard {
 
 impl CurrentDirGuard {
     fn enter(dir: &Path) -> DynResult<Self> {
-        let lock = current_dir_lock()
-            .lock()
-            .map_err(|_| "cwd mutex poisoned".to_owned())?;
+        let lock = acquire_cwd_lock(current_dir_lock())?;
         let previous_dir = env::current_dir()?;
         env::set_current_dir(dir)?;
 
@@ -176,3 +201,7 @@ impl Drop for CurrentDirGuard {
         let _ = env::set_current_dir(&self.previous_dir);
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox/tests.rs"]
+mod tests;

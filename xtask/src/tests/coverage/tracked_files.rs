@@ -30,7 +30,7 @@ fn tracked_files_skip_missing_roots_non_rust_entries_and_explicit_exclusions() {
     assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/main.rs".to_owned()));
     assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/tests/helper.rs".to_owned()));
     assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/tests.rs".to_owned()));
-    assert!(!tracked_paths.contains(&"crates/htmlcut-cli/src/model/catalog.rs".to_owned()));
+    assert!(tracked_paths.contains(&"crates/htmlcut-cli/src/model/catalog.rs".to_owned())); // Declarative files stay inventoried; removed runtime exclusions are not retained.
 }
 
 #[test]

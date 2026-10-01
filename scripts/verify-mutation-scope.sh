@@ -63,7 +63,9 @@ jq -e --slurpfile mutants "$mutants_json" '
   | [
       { package: "htmlcut-selectors", file: "patches/rust/selectors/work_budget.rs" },
       { package: "htmlcut-scraper", file: "patches/rust/scraper/src/html/clone.rs" },
-      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/selector/budget.rs" }
+      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/selector/budget.rs" },
+      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/html/bounded.rs" },
+      { package: "htmlcut-scraper", file: "patches/rust/scraper/src/element_ref/filtered.rs" }
     ] as $fork_files
   | ($mutants[0]) as $mutants
   | (($default_members | map(.name)) + ($tooling_members | map(.name)) + ($fork_files | map(.package)) | sort | unique) as $expected_packages

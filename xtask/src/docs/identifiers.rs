@@ -34,16 +34,18 @@ pub(super) fn operation_identifier_errors(
         Regex::new(r"\b[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+\b").expect("valid operation regex");
     let known_prefixes = operation_ids
         .iter()
-        .filter_map(|operation_id| operation_id.split_once('.').map(|(prefix, _)| prefix))
+        .map(|operation_id| operation_id.split('.').next().unwrap())
+        .chain(["select", "slice", "source"])
         .collect::<BTreeSet<_>>();
     let known_suffixes = operation_ids
         .iter()
-        .filter_map(|operation_id| operation_id.rsplit_once('.').map(|(_, suffix)| suffix))
+        .map(|operation_id| operation_id.rsplit('.').next().unwrap())
         .collect::<BTreeSet<_>>();
 
     let unknown_identifiers = pattern
         .find_iter(text)
         .map(|matched| matched.as_str())
+        .filter(|identifier| !identifier.starts_with("htmlcut.") && !identifier.ends_with(".md"))
         .filter(|identifier| !operation_ids.contains(identifier))
         .filter(|identifier| {
             identifier
@@ -158,7 +160,7 @@ pub(super) fn inventory_errors(
 }
 
 fn documented_schema_names(text: &str) -> BTreeSet<String> {
-    let pattern = Regex::new(r"\bhtmlcut\.[a-z_]+\b").expect("valid schema regex");
+    let pattern = Regex::new(r"\bhtmlcut(?:\.[a-z_]+)+\b").expect("valid schema regex");
     pattern
         .find_iter(text)
         .map(|matched| matched.as_str().to_owned())
@@ -178,8 +180,8 @@ fn documented_operation_ids(
 }
 
 fn documented_workspace_members(text: &str) -> BTreeSet<String> {
-    let pattern =
-        Regex::new(r"`((?:crates/[a-z0-9-]+)|fuzz|xtask)`").expect("valid workspace member regex");
+    let pattern = Regex::new(r"`((?:crates/[a-z0-9-]+)|(?:patches/rust/[a-z0-9_-]+)|fuzz|xtask)`")
+        .expect("valid workspace member regex");
     pattern
         .captures_iter(text)
         .filter_map(|captures| captures.get(1).map(|matched| matched.as_str().to_owned()))
@@ -223,23 +225,19 @@ fn documented_docs_index_entries(repo_root: &Path) -> crate::model::DynResult<BT
         .collect())
 }
 
-pub(super) fn known_schema_names() -> BTreeSet<&'static str> {
-    let mut names = htmlcut_core::schema_catalog()
+pub(crate) fn known_schema_names() -> BTreeSet<&'static str> {
+    htmlcut_core::SCHEMA_NAMES
         .iter()
-        .map(|descriptor| descriptor.schema_ref.schema_name)
-        .collect::<BTreeSet<_>>();
-    names.insert(htmlcut_cli::CATALOG_REPORT_SCHEMA_NAME);
-    names.insert(htmlcut_cli::SCHEMA_COMMAND_REPORT_SCHEMA_NAME);
-    names.insert(htmlcut_cli::EXTRACTION_COMMAND_REPORT_SCHEMA_NAME);
-    names.insert(htmlcut_cli::SOURCE_INSPECTION_COMMAND_REPORT_SCHEMA_NAME);
-    names.insert(htmlcut_cli::ERROR_COMMAND_REPORT_SCHEMA_NAME);
-    names.insert(crate::gate_report::GATE_RUN_REPORT_SCHEMA_NAME);
-    names
+        .copied()
+        .chain([
+            "htmlcut.run",
+            "htmlcut.operations",
+            "htmlcut.operation",
+            crate::gate_report::GATE_RUN_REPORT_SCHEMA_NAME,
+        ])
+        .collect()
 }
 
-pub(super) fn known_operation_ids() -> BTreeSet<&'static str> {
-    htmlcut_core::operation_catalog()
-        .iter()
-        .map(|descriptor| descriptor.id.as_str())
-        .collect()
+pub(crate) fn known_operation_ids() -> BTreeSet<&'static str> {
+    BTreeSet::from(["extract", "run", "inspect", "describe", "schema"])
 }

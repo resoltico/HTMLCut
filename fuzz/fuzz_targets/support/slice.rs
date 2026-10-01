@@ -1,86 +1,57 @@
 use arbitrary::Arbitrary;
-use htmlcut_core::{
-    BoundaryRetention, ExtractionRequest, ExtractionSpec, SliceBoundary, SliceSpec, SourceRequest,
-    extract, preview_extraction,
-};
-
-use crate::request_common::{
-    FuzzRendering, FuzzSelection, FuzzValueKind, runtime_for_html, sample_base_url,
-};
+use htmlcut_core::{Boundary, CompiledPlan, ExtractionPlan, Selection, Strategy};
 
 #[derive(Arbitrary, Debug)]
 pub struct SliceInput {
     html: String,
     start: String,
     end: String,
-    regex_mode: bool,
-    flags: FuzzRegexFlags,
+    regex: bool,
     include_start: bool,
     include_end: bool,
-    value_kind: FuzzValueKind,
-    selection: FuzzSelection,
-    rendering: FuzzRendering,
-}
-
-#[derive(Arbitrary, Clone, Copy, Debug)]
-struct FuzzRegexFlags {
-    case_insensitive: bool,
-    multi_line: bool,
-    dot_matches_new_line: bool,
-    swap_greed: bool,
-    ignore_whitespace: bool,
 }
 
 pub fn drive(input: SliceInput) {
-    let Ok(start) = SliceBoundary::new(input.start) else {
+    let Some(document) = crate::snapshot::document(&input.html) else {
         return;
     };
-    let Ok(end) = SliceBoundary::new(input.end) else {
+    let boundary = |text: &str| {
+        if input.regex {
+            Boundary::Regex {
+                pattern: crate::snapshot::text(text, 128).into(),
+                flags: String::new(),
+            }
+        } else {
+            Boundary::Literal {
+                value: crate::snapshot::text(text, 128).into(),
+            }
+        }
+    };
+    let Ok(mut plan) = ExtractionPlan::slice(boundary(&input.start), boundary(&input.end)) else {
         return;
     };
-
-    let slice = if input.regex_mode {
-        SliceSpec::regex(start, end, regex_flags_string(input.flags))
-    } else {
-        SliceSpec::new(start, end)
+    if let Strategy::Slice {
+        include_start,
+        include_end,
+        ..
+    } = &mut plan.strategy
+    {
+        *include_start = input.include_start;
+        *include_end = input.include_end;
     }
-    .with_boundary_retention(BoundaryRetention::from_flags(
-        input.include_start,
-        input.include_end,
-    ));
-
-    let mut request = ExtractionRequest::new(
-        SourceRequest::memory("fuzz", &input.html).with_base_url(sample_base_url()),
-        ExtractionSpec::slice(slice),
-    );
-    request.extraction = request
-        .extraction
-        .clone()
-        .with_selection(input.selection.to_selection_spec())
-        .with_value(input.value_kind.to_value_spec());
-    input.rendering.apply_to_request(&mut request);
-
-    let runtime = runtime_for_html(&input.html);
-    let _ = preview_extraction(&request, &runtime);
-    let _ = extract(&request, &runtime);
-}
-
-fn regex_flags_string(flags: FuzzRegexFlags) -> String {
-    let mut rendered = String::new();
-    if flags.case_insensitive {
-        rendered.push('i');
+    plan.selection = Selection::All {
+        min: 0,
+        max: Some(128),
+    };
+    plan.limits.max_candidates = 512;
+    plan.limits.max_selected = 128;
+    plan.limits.max_work = 20_000;
+    plan.limits.max_value_bytes = 8192;
+    if let Ok(compiled) = CompiledPlan::compile(&plan)
+        && let Ok(result) = document.execute(&compiled)
+    {
+        for (value, range) in result.values.iter().zip(result.ranges.unwrap()) {
+            assert_eq!(value, &document.snapshot().html()[range.start..range.end]);
+        }
     }
-    if flags.multi_line {
-        rendered.push('m');
-    }
-    if flags.dot_matches_new_line {
-        rendered.push('s');
-    }
-    if flags.swap_greed {
-        rendered.push('U');
-    }
-    if flags.ignore_whitespace {
-        rendered.push('x');
-    }
-    rendered
 }

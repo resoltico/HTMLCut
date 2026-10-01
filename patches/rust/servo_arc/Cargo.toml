@@ -10,10 +10,11 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+publish = false
+edition = "2024"
 rust-version = "1.98.1"
 name = "htmlcut-servo-arc"
-version = "0.4.3-htmlcut.2"
+version = "0.5.0-htmlcut.1"
 authors = ["The Servo Project Developers"]
 build = false
 autolib = false

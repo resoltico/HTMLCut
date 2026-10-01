@@ -53,6 +53,20 @@ pub fn check_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
     }
 
     plan.push(format_check_command());
+    plan.push(CommandSpec::new(
+        "python3",
+        [
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_*.py",
+        ],
+        CommandStdout::Inherit,
+        CommandToolchainEnv::Inherit,
+    ));
     plan.push(
         CommandSpec::new(
             "cargo",
@@ -168,7 +182,7 @@ fn resource_acceptance_command() -> CommandSpec {
             "test",
             "-p",
             "htmlcut-core",
-            "tests::interop_v2::surface::exploration::resource_limits::million_element_page_exhaustion_advances_and_a_tail_page_terminates",
+            "tests::discovery::million_element_pagination_reaches_the_tail_and_terminates",
             "--lib",
             "--all-features",
             "--locked",
@@ -519,7 +533,8 @@ fn all_features_test_specs() -> Vec<CommandSpec> {
                 "test",
                 "-p",
                 "htmlcut-cli",
-                "--lib",
+                "--bin",
+                "htmlcut",
                 "--tests",
                 "--all-features",
                 "--locked",

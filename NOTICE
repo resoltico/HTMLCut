@@ -60,7 +60,8 @@ The following crates are licensed under the Mozilla Public License 2.0:
 MPL-2.0 is a file-level copyleft license. HTMLCut carries the `selectors`
 source under `patches/rust/selectors/` so the downstream-safe selector stack
 travels with `htmlcut-core`; the vendored copy keeps the upstream MPL-2.0
-license and only rewires manifest dependencies onto the paired local crates.
+license. HTMLCut also carries selector work accounting and parser-diagnostic adaptations,
+and rewires dependencies onto paired local crates.
 The MPL-2.0 license text and source are available at
 https://github.com/servo/servo and the corresponding crates.io pages.
 

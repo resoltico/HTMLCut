@@ -25,7 +25,8 @@ pub(super) fn local_link_errors(
     let display_path = repo_relative_display(repo_root, doc_path);
     let mut errors = Vec::new();
 
-    for capture in link_pattern.captures_iter(text) {
+    let prose = without_code(text);
+    for capture in link_pattern.captures_iter(&prose) {
         let target = capture
             .get(1)
             .map_or("", |target_match| target_match.as_str())
@@ -59,11 +60,54 @@ pub(super) fn local_link_errors(
     errors
 }
 
+fn without_code(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fence = !fence;
+            output.push('\n');
+            continue;
+        }
+        if fence {
+            output.push('\n');
+            continue;
+        }
+        let mut code = false;
+        for character in line.chars() {
+            if character == '`' {
+                code = !code;
+                output.push(' ');
+            } else {
+                output.push(if code { ' ' } else { character });
+            }
+        }
+        output.push('\n');
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use htmlcut_tempdir::tempdir;
     use std::fs;
+
+    #[test]
+    fn code_examples_are_not_markdown_links_but_prose_links_remain_checked() {
+        let root = tempdir().unwrap();
+        let doc = root.path().join("guide.md");
+        fs::write(&doc, "").unwrap();
+        let regex = Regex::new(r"\[[^\]]+\]\(([^)]+)\)").unwrap();
+        let errors = local_link_errors(
+            root.path(),
+            &doc,
+            "`[label](destination)`\n```text\n[label](example)\n```\n[real](missing.md)",
+            &regex,
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("missing.md"));
+    }
 
     #[test]
     fn local_link_errors_trim_wrapped_targets_and_recognize_absolute_forms() {

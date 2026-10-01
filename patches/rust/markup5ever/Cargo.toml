@@ -10,10 +10,11 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
+publish = false
 edition = "2021"
 rust-version = "1.98.1"
 name = "htmlcut-markup5ever"
-version = "0.39.0-htmlcut.3"
+version = "0.40.0-htmlcut.1"
 authors = ["The html5ever Project Developers"]
 build = false
 autolib = false
@@ -44,7 +45,7 @@ version = "0.4.34"
 [dependencies.tendril]
 package = "htmlcut-tendril"
 path = "../tendril"
-version = "0.5.0-htmlcut.3"
+version = "0.5.1-htmlcut.1"
 
 [dependencies.web_atoms]
 version = "0.3.0"

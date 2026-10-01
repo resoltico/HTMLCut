@@ -1,4 +1,10 @@
 use super::*;
+
+#[test]
+fn freshness_rejects_invalid_manifest_before_snapshot_publication() {
+    let error = crate::outdated::strip_patch_crates_io_for_tests("[workspace").unwrap_err();
+    assert!(error.to_string().contains("Cargo.toml"));
+}
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -190,6 +196,56 @@ regex = "1.12.3"
         Some(false)
     );
     assert_eq!(dependencies["regex"].as_str(), Some("1.12.3"));
+}
+
+#[test]
+fn freshness_sanitizes_renamed_carriers_and_target_tables_and_copies_flat_roots() {
+    let original = r#"[package]
+name = "htmlcut-selectors"
+version = "0.41.0-htmlcut.1"
+[dependencies]
+arc = { package = "htmlcut-servo-arc", path = "../servo_arc", version = "0.5.0-htmlcut.1", default-features = false }
+[target.'cfg(unix)'.dev-dependencies]
+sha2 = { package = "htmlcut-sha2", path = "../sha2", version = "0.11.0-htmlcut.1", features = ["alloc"] }
+"#;
+    let cleaned = crate::outdated::strip_patch_crates_io_for_tests(original).unwrap();
+    let value: toml::Value = toml::from_str(&cleaned).unwrap();
+    assert_eq!(
+        value["dependencies"]["arc"]["package"].as_str(),
+        Some("servo_arc")
+    );
+    assert_eq!(
+        value["dependencies"]["arc"]["version"].as_str(),
+        Some("0.5.0")
+    );
+    assert_eq!(
+        value["dependencies"]["arc"]["default-features"].as_bool(),
+        Some(false)
+    );
+    assert!(
+        value["target"]["cfg(unix)"]["dev-dependencies"]["sha2"]
+            .get("path")
+            .is_none()
+    );
+    assert_eq!(
+        value["target"]["cfg(unix)"]["dev-dependencies"]["sha2"]["features"][0].as_str(),
+        Some("alloc")
+    );
+    let root = tempdir().unwrap();
+    let source = root.path().join("source");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("Cargo.toml"), original).unwrap();
+    fs::write(source.join("lib.rs"), "pub fn flat() {}\n").unwrap();
+    fs::write(source.join("helper.rs"), "pub fn helper() {}\n").unwrap();
+    fs::write(source.join("not-source.txt"), "not copied").unwrap();
+    let target = root.path().join("snapshot");
+    crate::outdated::copy_member_package_layout_for_tests(&source, &target).unwrap();
+    assert_eq!(
+        fs::read_to_string(target.join("lib.rs")).unwrap(),
+        "pub fn flat() {}\n"
+    );
+    assert!(target.join("helper.rs").is_file());
+    assert!(!target.join("not-source.txt").exists());
 }
 
 #[test]
@@ -470,6 +526,15 @@ fn run_outdated_check_builds_a_sanitized_snapshot_before_invoking_cargo_outdated
         .borrow()
         .clone()
         .expect("captured outdated command");
+    let manifest_path = PathBuf::from(
+        &spec.args[spec
+            .args
+            .iter()
+            .position(|arg| arg == "--manifest-path")
+            .unwrap()
+            + 1],
+    );
+    assert!(!manifest_path.parent().unwrap().parent().unwrap().exists());
     assert_eq!(
         spec.args[0..5],
         [

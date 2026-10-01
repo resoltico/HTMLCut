@@ -165,7 +165,7 @@ Create a tiny fixture and extract one link:
 
 \`\`\`bash
 printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-${binary_command} select ./page.html --css 'article a.more' --value attribute --attribute href
+${binary_command} extract --file ./page.html --css 'article a.more' --projection attribute --attribute href --raw
 \`\`\`
 
 ## More

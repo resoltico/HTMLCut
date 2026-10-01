@@ -57,22 +57,52 @@ pub fn semver_release_type(repo_root: &Path) -> DynResult<String> {
     let baseline_manifest_path = semver_baseline_path(repo_root).join("Cargo.toml");
     let baseline_manifest = fs::read_to_string(baseline_manifest_path)?;
     let baseline_version = package_version_from_manifest(&baseline_manifest)?;
-    Ok(semver_release_type_from_versions(
-        &workspace_version,
-        &baseline_version,
-    ))
+    semver_release_type_from_versions(&workspace_version, &baseline_version)
 }
 
 /// Maps the workspace and baseline versions to the semver release type checked in CI.
 pub fn semver_release_type_from_versions(
     workspace_version: &str,
     baseline_version: &str,
-) -> String {
-    if workspace_version == baseline_version {
-        "minor".to_owned()
-    } else {
-        "major".to_owned()
+) -> DynResult<String> {
+    let current = stable_version(workspace_version)?;
+    let baseline = stable_version(baseline_version)?;
+    if current < baseline {
+        return Err("workspace version must not decrease from its published baseline".into());
     }
+    let release_type = if current[0] > baseline[0] {
+        "major"
+    } else if current[1] > baseline[1] {
+        "minor"
+    } else {
+        "patch"
+    };
+    Ok(release_type.to_owned())
+}
+
+fn stable_version(value: &str) -> DynResult<[u64; 3]> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 3 {
+        return Err("stable version requires exactly three numeric components".into());
+    }
+    let mut version = [0; 3];
+    for (index, part) in parts.into_iter().enumerate() {
+        if part.is_empty()
+            || !part.bytes().all(|byte| byte.is_ascii_digit())
+            || (part.len() > 1 && part.starts_with('0'))
+        {
+            return Err(
+                "stable version rejects leading zeroes, prereleases and build metadata".into(),
+            );
+        }
+        version[index] = part.parse()?;
+    }
+    if version[0] == 0 {
+        return Err(
+            "the maintained stable-publication path requires a positive major version".into(),
+        );
+    }
+    Ok(version)
 }
 
 /// Adds a minimal workspace stub to isolated manifests used by the semver baseline flow.

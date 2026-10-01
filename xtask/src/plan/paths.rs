@@ -371,6 +371,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parentless_artifact_path_uses_the_explicit_sibling_name() {
+        assert_eq!(
+            sibling_artifact_dir(Path::new("/"), "build"),
+            PathBuf::from("build")
+        );
+    }
+
+    #[test]
     fn native_binary_name_is_the_public_htmlcut_program_name() {
         #[cfg(windows)]
         assert_eq!(binary_name(), "htmlcut.exe");

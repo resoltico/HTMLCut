@@ -179,12 +179,22 @@ pub(super) fn run_workers(
             .collect::<Vec<_>>();
         joins
             .into_iter()
-            .map(|join| {
-                join.join()
-                    .map_err(|_| XtaskError::from("local cargo-mutants worker panicked"))?
-            })
+            .map(|join| finished_worker_result(join.join()))
             .collect()
     })
+}
+
+fn finished_worker_result(
+    result: thread::Result<DynResult<std::process::ExitStatus>>,
+) -> DynResult<std::process::ExitStatus> {
+    result.map_err(|_| XtaskError::from("local cargo-mutants worker panicked"))?
+}
+
+#[cfg(test)]
+#[test]
+fn worker_thread_panic_is_reported_as_campaign_failure() {
+    let error = finished_worker_result(Err(Box::new("test-owned worker panic"))).unwrap_err();
+    assert!(error.to_string().contains("worker panicked"));
 }
 
 fn clear_inherited_jobserver(command: &mut Command) {
