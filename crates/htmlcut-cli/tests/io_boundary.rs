@@ -17,6 +17,10 @@ fn command() -> Command {
 #[path = "io_replacement.rs"]
 mod replacement;
 
+#[cfg(unix)]
+#[path = "io_file_kinds.rs"]
+mod file_kinds;
+
 #[cfg(windows)]
 #[test]
 fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels() {
@@ -59,6 +63,50 @@ fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels()
     let proof: serde_json::Value = serde_json::from_str(&proof).unwrap();
     assert_eq!(proof["passed"], true);
     assert_eq!(proof["rows"].as_array().unwrap().len(), 8);
+}
+
+#[cfg(windows)]
+#[test]
+fn native_named_pipe_paths_are_refused_for_every_file_role() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let evidence = root.path().join("windows-pipe-input.json");
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/native-windows-pipe-input.ps1");
+    let mut child = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(script)
+        .arg("-Binary")
+        .arg(binary())
+        .arg("-Evidence")
+        .arg(&evidence)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            let _ = child.wait();
+            panic!("native named-pipe fixture exceeded its bound");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let output = child.wait_with_output().unwrap();
+    let proof = std::fs::read_to_string(&evidence).unwrap_or_default();
+    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_PIPE_EVIDENCE") {
+        if evidence.is_file() {
+            std::fs::copy(&evidence, destination).unwrap();
+        }
+    }
+    assert!(
+        output.status.success(),
+        "{proof}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let proof: serde_json::Value = serde_json::from_str(&proof).unwrap();
+    assert_eq!(proof["passed"], true);
+    assert_eq!(proof["rows"].as_array().unwrap().len(), 3);
 }
 
 #[test]

@@ -34,7 +34,7 @@ def certificates(root, records):
             "-subj", "/CN=HTMLCut disposable TLS proof", "-days", "2",
             "-addext", "basicConstraints=critical,CA:TRUE",
             "-keyout", str(root / "root.key"), "-out", str(root / "root.crt"))
-    for name in ["valid", "wrong-host", "expired", "untrusted"]:
+    for name in ["valid", "wrong-host", "expired", "not-yet-valid", "untrusted"]:
         command(records, "openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes",
                 "-subj", f"/CN={name}.fixture", "-keyout", str(root / f"{name}.key"),
                 "-out", str(root / f"{name}.csr"))
@@ -69,19 +69,28 @@ extendedKeyUsage=serverAuth
 subjectAltName={san}
 """)
         dates = ["-startdate", "20200101000000Z", "-enddate", "20200102000000Z"] if name == "expired" else []
+        if name == "not-yet-valid":
+            dates = ["-startdate", "20700101000000Z", "-enddate", "20700102000000Z"]
         command(records, "openssl", "ca", "-batch", "-notext", "-config", str(config),
                 "-in", str(root / f"{name}.csr"), "-out", str(root / f"{name}.crt"), *dates)
 
 
 def exercise(binary, root, name):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(root / f"{name}.crt", root / f"{name}.key")
+    certificate = "valid" if name == "downgrade" else name
+    context.load_cert_chain(root / f"{certificate}.crt", root / f"{certificate}.key")
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
     listener.settimeout(5)
     port = listener.getsockname()[1]
     server = []
+    downgrade = None
+    if name == "downgrade":
+        downgrade = socket.socket()
+        downgrade.bind(("127.0.0.1", 0))
+        downgrade.listen(1)
+        downgrade.settimeout(0.25)
 
     def serve():
         try:
@@ -94,10 +103,15 @@ def exercise(binary, root, name):
                         if not data or len(request) + len(data) > 16384:
                             raise ValueError("bounded request")
                         request += data
-                    body = "<p>Café €</p>".encode()
-                    stream.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
-                                   + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
-                    server.append("http-served")
+                    if downgrade is not None:
+                        location = f"http://127.0.0.1:{downgrade.getsockname()[1]}/SYNTHETIC_SECRET".encode()
+                        stream.sendall(b"HTTP/1.1 302 Found\r\nLocation: " + location + b"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        server.append("https-redirect-served")
+                    else:
+                        body = "<p>Café €</p>".encode()
+                        stream.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
+                                       + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
+                        server.append("http-served")
         except ssl.SSLError:
             server.append("peer-refused-tls")
         except Exception as error:
@@ -106,8 +120,8 @@ def exercise(binary, root, name):
     worker = threading.Thread(target=serve, daemon=True)
     worker.start()
     begin = time.monotonic()
-    expected = 0 if name == "valid" else 5
-    row = {"case": name, "expected_exit": expected, "certificate_sha256": digest(root / f"{name}.crt"), "passed": False}
+    expected = 0 if name == "valid" else 2 if name == "downgrade" else 5
+    row = {"case": name, "expected_exit": expected, "certificate_sha256": digest(root / f"{certificate}.crt"), "passed": False}
     try:
         run = subprocess.run([str(binary), "extract", "--url",
                               f"https://127.0.0.1:{port}/fixture?token=SYNTHETIC_SECRET",
@@ -118,6 +132,19 @@ def exercise(binary, root, name):
         passed = run.returncode == expected and not worker.is_alive()
         if expected == 0:
             passed = passed and run.stdout == "Café €".encode() and not run.stderr and server == ["http-served"]
+        elif name == "downgrade":
+            error = json.loads(run.stderr)
+            contacted = False
+            try:
+                connection, _ = downgrade.accept()
+                connection.close()
+                contacted = True
+            except socket.timeout:
+                pass
+            row["downgraded_endpoint_contacted"] = contacted
+            passed = passed and not run.stdout and error["code"] == "invalid_options" and not contacted
+            passed = passed and error["cause"] == {"kind": "configuration", "role": "arguments", "problem": "invalid_value"}
+            passed = passed and b"SYNTHETIC_SECRET" not in run.stderr and server == ["https-redirect-served"]
         else:
             error = json.loads(run.stderr)
             passed = passed and not run.stdout and error["cause"] == {"kind": "transport", "problem": "tls"}
@@ -127,6 +154,8 @@ def exercise(binary, root, name):
         row["harness_error"] = type(error).__name__
     finally:
         listener.close()
+        if downgrade is not None:
+            downgrade.close()
         worker.join(timeout=6)
         row["seconds"] = time.monotonic() - begin
     return row
@@ -165,12 +194,12 @@ def main():
             try:
                 command(proof["commands"], "sudo", "install", "-m", "0644", str(root / "root.crt"), str(trust))
                 command(proof["commands"], "sudo", "update-ca-certificates")
-                for name in ["valid", "wrong-host", "expired", "untrusted"]:
+                for name in ["valid", "wrong-host", "expired", "not-yet-valid", "untrusted", "downgrade"]:
                     proof["rows"].append(exercise(binary, root, name))
             finally:
                 command(proof["commands"], "sudo", "rm", "-f", str(trust))
                 command(proof["commands"], "sudo", "update-ca-certificates", "--fresh")
-            proof["passed"] = all(row["passed"] for row in proof["rows"]) and len(proof["rows"]) == 4 and digest(binary) == before
+            proof["passed"] = all(row["passed"] for row in proof["rows"]) and len(proof["rows"]) == 6 and digest(binary) == before
     finally:
         args.output.write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n")
     raise SystemExit(0 if proof["passed"] else 1)

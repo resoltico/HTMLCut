@@ -117,6 +117,8 @@ def main():
                 if "windows" in args.target:
                     windows_path = args.output.with_name(args.output.stem + "-windows-stdio.json")
                     environment["HTMLCUT_WINDOWS_STDIO_EVIDENCE"] = str(windows_path.resolve())
+                    windows_pipe_path = args.output.with_name(args.output.stem + "-windows-pipe-input.json")
+                    environment["HTMLCUT_WINDOWS_PIPE_EVIDENCE"] = str(windows_pipe_path.resolve())
                 subprocess.run(io_command, check=True, stdout=log, stderr=subprocess.STDOUT,
                                env=environment, timeout=600)
                 if "linux" in args.target:
@@ -166,6 +168,11 @@ def main():
             raise ValueError("Native Windows stdio proof differs from the packaged executable")
         evidence["windows_stdio"] = windows_path.name
         evidence["windows_stdio_sha256"] = hashlib.sha256(windows_path.read_bytes()).hexdigest()
+        windows_pipe_proof = json.loads(windows_pipe_path.read_text(encoding="utf-8"))
+        if not windows_pipe_proof["passed"] or windows_pipe_proof["binary_sha256"] != binary_sha256:
+            raise ValueError("Native Windows pipe proof differs from the packaged executable")
+        evidence["windows_pipe_input"] = windows_pipe_path.name
+        evidence["windows_pipe_input_sha256"] = hashlib.sha256(windows_pipe_path.read_bytes()).hexdigest()
     args.output.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 
 
