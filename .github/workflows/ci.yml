@@ -198,13 +198,26 @@ jobs:
           HTMLCUT_WINDOWS_PIPE_EVIDENCE: ${{ runner.temp }}/htmlcut-windows-pipe-input.json
         run: ./scripts/xtask.sh ci-rust-gate
 
+      - name: Resolve Rust gate evidence path
+        if: always()
+        id: rust_gate_evidence
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          path = Path(os.environ["GITHUB_WORKSPACE"]).parent / ".htmlcut-artifacts" / "gate-runs"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"path={path.resolve()}\n")
+          PYTHON
+
       - name: Preserve cross-platform Rust gate evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-gate-proof-${{ matrix.id }}
           path: |
-            ../.htmlcut-artifacts/gate-runs/
+            ${{ steps.rust_gate_evidence.outputs.path }}
             ${{ runner.temp }}/htmlcut-windows-stdio.json
             ${{ runner.temp }}/htmlcut-windows-pipe-input.json
           if-no-files-found: warn
