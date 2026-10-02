@@ -10,8 +10,17 @@ def main():
     if subprocess.check_output(['git','status','--porcelain'],text=True):raise ValueError('Counterfactual source must begin clean')
     sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();stdout=root/'crates/htmlcut-cli/src/stdio.rs';file_kind=root/'crates/htmlcut-cli/src/input/regular_file.rs';originals={p:p.read_bytes() for p in [stdout,file_kind]};rows=[]
     patches=[('terminal-query-role',stdout,'let terminal = if self.error','let terminal = if !self.error'),('console-flush-omitted',stdout,'console.flush()?;',''),('terminal-routing-inverted',stdout,'(false, true) => ConsoleBackend::Stdout','(false, true) => ConsoleBackend::Stderr'),('regular-kind-inverted',file_kind,'if regular {','if !regular {')]
+    def bounded(command, seconds):
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            stdout, stderr = process.communicate(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True, timeout=30)
+            process.communicate(timeout=10)
+            raise
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     def build(label):
-        command=['cargo','build','--locked','-p','htmlcut-cli','--message-format=json'];start=time.monotonic();run=subprocess.run(command,capture_output=True,timeout=900);(dest/(label+'-build.log')).write_bytes(run.stdout+run.stderr)
+        command=['cargo','build','--locked','-p','htmlcut-cli','--message-format=json'];start=time.monotonic();run=bounded(command,900);(dest/(label+'-build.log')).write_bytes(run.stdout+run.stderr)
         binary=None
         if run.returncode==0:
             for line in run.stdout.splitlines():
@@ -20,7 +29,7 @@ def main():
                 if value.get('reason')=='compiler-artifact' and value.get('target',{}).get('name')=='htmlcut' and value.get('executable'):binary=Path(value['executable'])
         return run.returncode,binary,time.monotonic()-start
     def test(label,binary):
-        evidence=dest/(label+'-stdio.json');command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(root/'scripts/native-windows-stdio.ps1'),'-Binary',str(binary),'-Evidence',str(evidence)];run=subprocess.run(command,capture_output=True,timeout=120);(dest/(label+'-test.log')).write_bytes(run.stdout+run.stderr);proof=json.loads(evidence.read_text(encoding='utf-8')) if evidence.exists() else None
+        evidence=dest/(label+'-stdio.json');command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(root/'scripts/native-windows-stdio.ps1'),'-Binary',str(binary),'-Evidence',str(evidence)];run=bounded(command,120);(dest/(label+'-test.log')).write_bytes(run.stdout+run.stderr);proof=json.loads(evidence.read_text(encoding='utf-8')) if evidence.exists() else None
         return run.returncode,proof
     try:
         code,binary,seconds=build('baseline')
