@@ -14,51 +14,57 @@ fn token(byte: u8) -> bool {
 }
 
 struct Parameters<'a> {
-    bytes: &'a [u8],
-    offset: usize,
+    remaining: &'a [u8],
 }
 impl Parameters<'_> {
     fn spaces(&mut self) {
-        while self
-            .bytes
-            .get(self.offset)
-            .is_some_and(|b| matches!(b, b' ' | b'\t'))
-        {
-            self.offset += 1;
-        }
+        let length = self
+            .remaining
+            .iter()
+            .take_while(|byte| matches!(byte, b' ' | b'\t'))
+            .count();
+        self.remaining = &self.remaining[length..];
     }
     fn take_token(&mut self) -> Result<&[u8], ExtractionError> {
-        let start = self.offset;
-        while self.bytes.get(self.offset).is_some_and(|b| token(*b)) {
-            self.offset += 1;
-        }
-        if start == self.offset {
-            Err(invalid())
-        } else {
-            Ok(&self.bytes[start..self.offset])
-        }
-    }
-    fn delimiter(&mut self, expected: u8) -> Result<(), ExtractionError> {
-        if self.bytes.get(self.offset) != Some(&expected) {
+        let length = self
+            .remaining
+            .iter()
+            .take_while(|byte| token(**byte))
+            .count();
+        if length == 0 {
             return Err(invalid());
         }
-        self.offset += 1;
+        let (value, tail) = self.remaining.split_at(length);
+        self.remaining = tail;
+        Ok(value)
+    }
+    fn delimiter(&mut self, expected: u8) -> Result<(), ExtractionError> {
+        let Some((&byte, tail)) = self.remaining.split_first() else {
+            return Err(invalid());
+        };
+        if byte != expected {
+            return Err(invalid());
+        }
+        self.remaining = tail;
         Ok(())
     }
+    fn byte(&mut self) -> Result<u8, ExtractionError> {
+        let (&byte, tail) = self.remaining.split_first().ok_or_else(invalid)?;
+        self.remaining = tail;
+        Ok(byte)
+    }
     fn value(&mut self) -> Result<Vec<u8>, ExtractionError> {
-        if self.bytes.get(self.offset) != Some(&b'"') {
+        if self.remaining.first() != Some(&b'"') {
             return self.take_token().map(<[u8]>::to_vec);
         }
-        self.offset += 1;
+        self.delimiter(b'"')?;
         let mut value = Vec::new();
         loop {
-            let byte = *self.bytes.get(self.offset).ok_or_else(invalid)?;
-            self.offset += 1;
+            let byte = self.byte()?;
             match byte {
                 b'"' => return Ok(value),
                 b'\\' => {
-                    let next = *self.bytes.get(self.offset).ok_or_else(invalid)?;
-                    self.offset += 1;
+                    let next = self.byte()?;
                     if !(matches!(next, b' ' | b'\t') || next >= 0x21) || next == 0x7f {
                         return Err(invalid());
                     }
@@ -78,7 +84,7 @@ pub(super) fn charset(header: Option<&[u8]>) -> Result<Option<String>, Extractio
     if bytes.len() > MAX_HEADER_BYTES {
         return Err(limit("acquisition"));
     }
-    let mut parser = Parameters { bytes, offset: 0 };
+    let mut parser = Parameters { remaining: bytes };
     parser.spaces();
     parser.take_token()?;
     parser.delimiter(b'/')?;
@@ -86,12 +92,12 @@ pub(super) fn charset(header: Option<&[u8]>) -> Result<Option<String>, Extractio
     let mut charset: Option<String> = None;
     loop {
         parser.spaces();
-        if parser.offset == bytes.len() {
+        if parser.remaining.is_empty() {
             return Ok(charset);
         }
         parser.delimiter(b';')?;
         parser.spaces();
-        if parser.offset == bytes.len() || parser.bytes.get(parser.offset) == Some(&b';') {
+        if parser.remaining.is_empty() || parser.remaining.first() == Some(&b';') {
             continue;
         }
         let name = parser.take_token()?.to_vec();
@@ -116,8 +122,28 @@ pub(super) fn charset(header: Option<&[u8]>) -> Result<Option<String>, Extractio
 mod tests {
     use super::*;
     #[test]
+    fn independently_declared_byte_limit_accepts_exact_size_and_refuses_excess() {
+        let prefix = b"text/html; note=\"";
+        let suffix = b"\"; charset=utf-8";
+        let mut header = prefix.to_vec();
+        header.extend(vec![b'x'; 65_536 - prefix.len() - suffix.len()]);
+        header.extend(suffix);
+        assert_eq!(header.len(), 65_536);
+        assert_eq!(charset(Some(&header)).unwrap(), Some("utf-8".into()));
+        header.insert(prefix.len(), b'x');
+        assert_eq!(header.len(), 65_537);
+        assert_eq!(charset(Some(&header)).unwrap_err().code.exit_class(), 4);
+        assert_eq!(
+            charset(Some(b" \ttext/html; charset=utf-8")).unwrap(),
+            Some("utf-8".into())
+        );
+    }
+
+    #[test]
     fn invalid_media_values_have_closed_safe_causes() {
         let cases: &[&[u8]] = &[
+            b"text",
+            b"text/html; note",
             b"text/html; note=\"bad\\\x00\"",
             b"text/html; note=\"bad\\\x7f\"",
             b"text/html; charset=\"\"",

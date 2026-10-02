@@ -299,3 +299,29 @@ fn excluded_pre_fragment_root_emits_no_synthetic_fence_or_payload() {
     assert_eq!(result.values, [""]);
     assert_eq!((result.candidate_count, result.selected_count), (1, 1));
 }
+
+#[test]
+fn fragment_list_depth_follows_selected_root_and_its_parent_role() {
+    for (html, selector, expected) in [
+        (
+            "<ol><li id='target'>A<ul><li>B</li></ul></li></ol>",
+            "#target",
+            "1. A\n  - B",
+        ),
+        (
+            "<ol><div id='target'><ul><li>B</li></ul></div></ol>",
+            "#target",
+            "- B",
+        ),
+        (
+            "<main><li id='target'>A<ul><li>B</li></ul></li></main>",
+            "#target",
+            "- A\n- B",
+        ),
+    ] {
+        assert_eq!(
+            render(html, selector, Projection::DocumentText {}, false),
+            expected
+        );
+    }
+}

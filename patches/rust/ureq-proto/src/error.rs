@@ -138,7 +138,7 @@ mod tests_client {
         let (mut call, output) = setup_recv_response_call();
 
         // Try to parse the response
-        let (_, _) = call.try_response(response, false)?;
+        let (_, _) = call.try_response(response)?;
 
         // Proceed to Redirect state
         let RecvResponseResult::Redirect(call) = call.proceed().unwrap() else {
@@ -375,7 +375,7 @@ mod tests_client {
                 Transfer-Encoding: chunked\r\n\
                 \r\n";
 
-        call.try_response(RES_PREFIX, false).unwrap();
+        call.try_response(RES_PREFIX).unwrap();
 
         let RecvResponseResult::RecvBody(mut call) = call.proceed().unwrap() else {
             panic!("Expected RecvResponseResult::RecvBody");
@@ -450,7 +450,7 @@ mod tests_client {
         // Invalid HTTP response (missing space after HTTP/1.1)
         const RES: &[u8] = b"HTTP/1.1200 OK\r\n\r\n";
 
-        let err = call.try_response(RES, false).unwrap_err();
+        let err = call.try_response(RES).unwrap_err();
 
         assert!(matches!(err, Error::HttpParseFail(_)));
     }
@@ -467,7 +467,7 @@ mod tests_client {
         }
         res.push_str("\r\n");
 
-        let err = call.try_response(res.as_bytes(), false).unwrap_err();
+        let err = call.try_response(res.as_bytes()).unwrap_err();
 
         assert!(matches!(err, Error::HttpParseTooManyHeaders));
     }
@@ -512,12 +512,12 @@ mod tests_client {
             Content-Type: text/plain\r\n\
             \r\n";
 
-        let (used, response) = call.try_response(RES, false).unwrap();
+        let (used, response) = call.try_response(RES).unwrap();
         assert_eq!(used, RES.len());
         assert!(response.is_none());
         assert!(!call.can_proceed());
         let (_, response) = call
-            .try_response(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello", false)
+            .try_response(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello")
             .unwrap();
         assert_eq!(response.unwrap().status(), StatusCode::OK);
     }

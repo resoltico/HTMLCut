@@ -178,13 +178,13 @@
 //! // try_response can be used repeatedly until we
 //! // get enough content including all headers.
 //! let (input_used, maybe_response) =
-//!     call.try_response(part, false).unwrap();
+//!     call.try_response(part).unwrap();
 //!
 //! assert_eq!(input_used, 0);
 //! assert!(maybe_response.is_none());
 //!
 //! let (input_used, maybe_response) =
-//!     call.try_response(full, false).unwrap();
+//!     call.try_response(full).unwrap();
 //!
 //! assert_eq!(input_used, 38);
 //! let response = maybe_response.unwrap();
@@ -1294,7 +1294,7 @@ mod tests {
         };
 
         let input = b"HTTP/1.1 200 OK\r\n\r\n";
-        let (n, res) = call.try_response(input, false).unwrap();
+        let (n, res) = call.try_response(input).unwrap();
         assert_eq!(n, 19);
 
         let Some(res) = res else {
@@ -1338,7 +1338,7 @@ mod tests {
         call.force_recv_body();
 
         let input = b"HTTP/1.1 200 OK\r\ncontent-length: 1024\r\n\r\n";
-        let (_n, res) = call.try_response(input, false).unwrap();
+        let (_n, res) = call.try_response(input).unwrap();
 
         let Some(_res) = res else {
             panic!("`try_response()` should return a response");

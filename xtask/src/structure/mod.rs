@@ -16,7 +16,7 @@ use self::metrics::{Metrics, measured_internal_dependencies};
 use self::policy::{Policy, Rule};
 
 const POLICY_PATH: &str = "tooling/rust-source-shape-policy.toml";
-const SOURCE_ROOTS: [&str; 32] = [
+const SOURCE_ROOTS: [&str; 28] = [
     "crates/htmlcut-core/src",
     "crates/htmlcut-core/tests",
     "crates/htmlcut-cli/src",
@@ -25,19 +25,14 @@ const SOURCE_ROOTS: [&str; 32] = [
     "xtask/src",
     "xtask/tests",
     "fuzz/fuzz_targets",
+    "patches/rust/ureq/src/run/response.rs",
+    "patches/rust/ureq/src/run/response_tests.rs",
+    "patches/rust/ureq/src/body/reader.rs",
     "patches/rust/ureq-proto/src/client/response_limits.rs",
     "patches/rust/ureq-proto/src/client/recvresp.rs",
     "patches/rust/ureq-proto/src/client/await100.rs",
     "patches/rust/selectors/matching.rs",
     "patches/rust/servo_arc/tagged_union.rs",
-    "patches/rust/selectors/tests/matching.rs",
-    "patches/rust/selectors/tests/matching_states.rs",
-    "patches/rust/selectors/tests/matching_contexts.rs",
-    "patches/rust/selectors/tests/matching_failures.rs",
-    "patches/rust/selectors/tests/matching_diagnostics.rs",
-    "patches/rust/selectors/tests/matching_attributes.rs",
-    "patches/rust/selectors/tests/matching_budget_states.rs",
-    "patches/rust/selectors/tests/element.rs",
     "patches/rust/selectors/relative_selector/filter.rs",
     "patches/rust/selectors/context.rs",
     "patches/rust/scraper/src/html/mod.rs",
@@ -49,6 +44,7 @@ const SOURCE_ROOTS: [&str; 32] = [
     "patches/rust/scraper/src/selector/tests/context.rs",
     "patches/rust/scraper/src/html/bounded.rs",
     "patches/rust/scraper/src/element_ref/filtered.rs",
+    "patches/rust/selectors/tests",
 ];
 
 /// Enforces HTMLCut's repository-owned Rust source-structure contract.

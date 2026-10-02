@@ -76,68 +76,6 @@ fn status_code(v: u16) -> Result<StatusCode, Error> {
         .map_err(|_| Error::HttpParseFail(format!("invalid status code: {:03}", v)))
 }
 
-/// Try parsing as much as possible of a response.
-///
-/// To get a result we need at least the complete initial status row,
-/// but we don't need complete headers.
-///
-/// The const `N` is the number of headers to max expect. If the input has more
-/// headers than `N` you get an error [`Error::HttpParseTooManyHeaders`].
-pub fn try_parse_partial_response<const N: usize>(
-    input: &[u8],
-) -> Result<Option<Response<()>>, Error> {
-    let mut headers = vec![httparse::EMPTY_HEADER; N]; // 100 headers ~3kb
-
-    let mut res = httparse::Response::new(&mut headers);
-
-    match res.parse(input) {
-        Ok(_) => {}
-        Err(e) => {
-            return Err(if e == httparse::Error::TooManyHeaders {
-                // For expect-100 we use this value to detect that the server
-                // sent a regular response instead of a 100-continue.
-                Error::HttpParseTooManyHeaders
-            } else {
-                e.into()
-            });
-        }
-    };
-
-    let version = {
-        match res.version {
-            Some(0) => Version::HTTP_10,
-            Some(1) => Version::HTTP_11,
-            _ => return Ok(None),
-        }
-    };
-
-    let status = {
-        let v = match res.code {
-            Some(v) => v,
-            None => return Ok(None),
-        };
-        status_code(v)?
-    };
-
-    let mut builder = Response::builder().version(version).status(status);
-
-    for h in res.headers {
-        // On a partial parse, httparse leaves the unparsed slots as
-        // EMPTY_HEADER. A parsed header always has a non-empty name, since
-        // the first byte of a header line must be a token character. The
-        // value however can legitimately be empty, so only the name tells
-        // us where the parsed headers end.
-        if h.name.is_empty() {
-            break;
-        }
-        builder = builder.header(h.name, h.value);
-    }
-
-    let response = builder.body(()).expect("a valid response");
-
-    Ok(Some(response))
-}
-
 /// Parse bytes into a complete request.
 ///
 /// Complete means that the last HTTP header is followed by an `\r\n`.
@@ -209,7 +147,7 @@ pub fn try_parse_request<const N: usize>(
 
 #[cfg(test)]
 mod test {
-    use crate::parser::{try_parse_partial_response, try_parse_request, try_parse_response};
+    use crate::parser::{try_parse_request, try_parse_response};
 
     #[test]
     fn ensure_no_half_response() {
@@ -241,22 +179,25 @@ mod test {
     }
 
     #[test]
-    fn error_on_invalid_status_code_partial() {
+    fn incomplete_invalid_status_remains_pending() {
         let bytes = "HTTP/1.1 000 NOK\r\n";
-        try_parse_partial_response::<20>(bytes.as_bytes()).expect_err("invalid status code");
+        assert!(
+            try_parse_response::<20>(bytes.as_bytes())
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
-    fn partial_response_keeps_headers_after_empty_value() {
-        // An empty header value is legal. The partial parser must not
-        // mistake it for the end of the parsed headers and drop the rest.
+    fn complete_response_keeps_headers_after_empty_value() {
+        // A complete response retains an empty value and all subsequent headers.
         let bytes = "HTTP/1.1 302 Found\r\n\
             X-Empty:\r\n\
-            Location: http://example.com/\r\n";
+            Location: http://example.com/\r\n\r\n";
 
-        let res = try_parse_partial_response::<20>(bytes.as_bytes())
+        let (_, res) = try_parse_response::<20>(bytes.as_bytes())
             .expect("parse ok")
-            .expect("status line complete");
+            .expect("header section complete");
 
         assert_eq!(res.status().as_u16(), 302);
         assert_eq!(res.headers().get("x-empty").expect("x-empty present"), "");

@@ -42,26 +42,26 @@ mod tests {
         let mut limits = ResponseLimits::default();
         limits.complete(1024, true).unwrap();
         for _ in 0..3 {
-            limits.pending(MAX_HEADER_BYTES - 1024).unwrap();
+            limits.pending(65_536 - 1024).unwrap();
         }
         assert_eq!(
-            limits.pending(MAX_HEADER_BYTES - 1023),
+            limits.pending(65_536 - 1023),
             Err(Error::ResponseHeaderLimit)
         );
-        limits.complete(MAX_HEADER_BYTES - 1024, false).unwrap();
+        limits.complete(65_536 - 1024, false).unwrap();
         assert_eq!(limits.complete(1, false), Err(Error::ResponseHeaderLimit));
     }
 
     #[test]
     fn repeated_informational_responses_refuse_the_first_excess() {
         let mut limits = ResponseLimits::default();
-        for _ in 0..MAX_INFORMATIONAL {
+        for _ in 0..32 {
             limits.complete(20, true).unwrap();
         }
         assert_eq!(
             limits.complete(20, true),
             Err(Error::InformationalResponseLimit)
         );
-        assert_eq!(limits.informational, MAX_INFORMATIONAL);
+        assert_eq!(limits.informational, 32);
     }
 }

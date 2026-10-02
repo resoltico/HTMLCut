@@ -756,3 +756,51 @@ max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
 allowed_internal_dependencies = ["crate", "tagged_union"]
+
+[[rules]]
+path = "patches/rust/ureq/src/run/response.rs"
+match = "exact"
+role = "http-complete-response-receiver"
+owner = "HTMLCut acquisition"
+rationale = "The maintained transport caller accepts only complete bounded protocol responses and reports EOF/deadline failures."
+split_trigger = "the receiver gains unrelated request, pool or publication policy"
+max_physical_lines = 180
+max_items = 24
+max_public_items = 8
+max_imports = 12
+max_functions = 16
+max_decision_points = 48
+max_match_arms = 20
+allowed_internal_dependencies = ["super"]
+
+[[rules]]
+path = "patches/rust/ureq/src/body/reader.rs"
+match = "exact"
+role = "http-representation-byte-reader"
+owner = "HTMLCut acquisition"
+rationale = "Framing-derived length and unchanged representation bytes protect the CLI's single strict decoding owner."
+split_trigger = "the byte reader acquires charset/content decoders or unrelated publication responsibilities"
+max_physical_lines = 220
+max_items = 32
+max_public_items = 12
+max_imports = 12
+max_functions = 24
+max_decision_points = 48
+max_match_arms = 24
+allowed_internal_dependencies = ["super", "crate", "body", "transport", "unversioned"]
+
+[[rules]]
+path = "patches/rust/ureq/src/run/response_tests.rs"
+match = "exact"
+role = "http-receiver-contract-tests"
+owner = "HTMLCut acquisition verification"
+rationale = "Complete header boundaries and finite injected I/O errors independently protect receiver values and error propagation."
+split_trigger = "the fixture gains unrelated socket, TLS or protocol policy"
+max_physical_lines = 300
+max_items = 40
+max_public_items = 16
+max_imports = 16
+max_functions = 30
+max_decision_points = 60
+max_match_arms = 30
+allowed_internal_dependencies = ["crate", "unversioned", "transport", "resolver", "config"]

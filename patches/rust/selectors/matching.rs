@@ -94,20 +94,20 @@ impl ElementSelectorFlags {
     /// Returns the subset of flags that apply to the element.
     pub fn for_self(self) -> ElementSelectorFlags {
         self & (ElementSelectorFlags::HAS_EMPTY_SELECTOR
-            | ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR
-            | ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR_NON_SUBJECT
-            | ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING
-            | ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR)
+            .union(ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR)
+            .union(ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR_NON_SUBJECT)
+            .union(ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING)
+            .union(ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR))
     }
 
     /// Returns the subset of flags that apply to the parent.
     pub fn for_parent(self) -> ElementSelectorFlags {
         self & (ElementSelectorFlags::HAS_SLOW_SELECTOR
-            | ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS
-            | ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH
-            | ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF
-            | ElementSelectorFlags::HAS_EDGE_CHILD_SELECTOR
-            | ElementSelectorFlags::MAY_HAVE_TREE_COUNTING_FUNCTION)
+            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)
+            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH)
+            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF)
+            .union(ElementSelectorFlags::HAS_EDGE_CHILD_SELECTOR)
+            .union(ElementSelectorFlags::MAY_HAVE_TREE_COUNTING_FUNCTION))
     }
 }
 

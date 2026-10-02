@@ -7,7 +7,9 @@ pub(super) fn open(path: &Path) -> Result<File, ExtractionError> {
     #[cfg(unix)]
     let file: File = rustix::fs::open(
         path,
-        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NONBLOCK,
+        rustix::fs::OFlags::RDONLY
+            .union(rustix::fs::OFlags::CLOEXEC)
+            .union(rustix::fs::OFlags::NONBLOCK),
         rustix::fs::Mode::empty(),
     )
     .map_err(|error| super::io_failure(std::io::Error::from(error)))?

@@ -18,7 +18,7 @@ fn receive_incomplete_response() {
         let scenario = Scenario::builder().get("https://q.test").build();
         let mut call = scenario.to_recv_response();
 
-        let (input_used, maybe_response) = call.try_response(&RESPONSE[..i], true).unwrap();
+        let (input_used, maybe_response) = call.try_response(&RESPONSE[..i]).unwrap();
         assert_eq!(input_used, 0);
         assert!(maybe_response.is_none());
         assert!(!call.can_proceed());
@@ -28,17 +28,13 @@ fn receive_incomplete_response() {
 #[test]
 fn incomplete_status_lines_cannot_advance_response_state() {
     for length in 0..14 {
-        for allow_partial_redirect in [false, true] {
-            let scenario = Scenario::builder().get("https://q.test").build();
-            let mut call = scenario.to_recv_response();
-            let (used, response) = call
-                .try_response(&RESPONSE[..length], allow_partial_redirect)
-                .unwrap();
-            assert_eq!(used, 0);
-            assert!(response.is_none());
-            assert!(!call.can_proceed());
-            assert!(call.proceed().is_none());
-        }
+        let scenario = Scenario::builder().get("https://q.test").build();
+        let mut call = scenario.to_recv_response();
+        let (used, response) = call.try_response(&RESPONSE[..length]).unwrap();
+        assert_eq!(used, 0);
+        assert!(response.is_none());
+        assert!(!call.can_proceed());
+        assert!(call.proceed().is_none());
     }
 }
 
@@ -47,7 +43,7 @@ fn receive_complete_response() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
 
@@ -70,28 +66,28 @@ fn receive_complete_response() {
 }
 
 #[test]
-fn partial_redirect_with_empty_header_value() {
-    // Broken servers may omit the final \r\n of a redirect. With
-    // allow_partial_redirect we accept the redirect from the partial
-    // headers. An empty header value before Location must not hide it.
-    let input: &[u8] = b"\
-        HTTP/1.1 302 Found\r\n\
-        X-Empty:\r\n\
-        Location: https://q.test/other\r\n";
-
+fn redirect_requires_complete_headers_and_preserves_empty_values() {
+    let complete = b"HTTP/1.1 302 Found\r\nX-Empty:\r\nLocation: https://q.test/other\r\n\r\n";
+    for length in 0..complete.len() {
+        let scenario = Scenario::builder().get("https://q.test").build();
+        let mut call = scenario.to_recv_response();
+        let (used, response) = call.try_response(&complete[..length]).unwrap();
+        assert_eq!(used, 0);
+        assert!(response.is_none());
+        assert!(!call.can_proceed());
+    }
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
-
-    let (input_used, maybe_response) = call.try_response(input, true).unwrap();
-    assert_eq!(input_used, input.len());
-
-    let response = maybe_response.expect("partial redirect detected");
+    let (used, response) = call.try_response(complete).unwrap();
+    let response = response.unwrap();
+    assert_eq!(used, complete.len());
     assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(response.headers().get("x-empty").unwrap(), "");
     assert_eq!(
         response.headers().get(header::LOCATION).unwrap(),
         "https://q.test/other"
     );
-    assert!(response.headers().iter().has(header::CONNECTION, "close"));
+    assert!(!response.headers().contains_key(header::CONNECTION));
     assert!(call.can_proceed());
 }
 
@@ -108,23 +104,19 @@ fn prepended_100_continue() {
     let mut call = scenario.to_recv_response();
 
     // incomplete 100-continue should be ignored.
-    let (input_used, maybe_response) = call
-        .try_response(b"HTTP/1.1 100 Continue\r\n", true)
-        .unwrap();
+    let (input_used, maybe_response) = call.try_response(b"HTTP/1.1 100 Continue\r\n").unwrap();
     assert_eq!(input_used, 0);
     assert!(maybe_response.is_none());
     assert!(!call.can_proceed());
 
     // complete 100-continue should be consumed without producing a request
-    let (input_used, maybe_response) = call
-        .try_response(b"HTTP/1.1 100 Continue\r\n\r\n", true)
-        .unwrap();
+    let (input_used, maybe_response) = call.try_response(b"HTTP/1.1 100 Continue\r\n\r\n").unwrap();
     assert_eq!(input_used, 25);
     assert!(maybe_response.is_none());
     assert!(!call.can_proceed());
 
     // full response after prepended 100-continue
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -141,7 +133,7 @@ fn expect_100_without_100_continue() {
     let mut call = scenario.to_recv_response();
 
     // full response and no 100-continue
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -157,9 +149,7 @@ fn unsolicited_100_continue_on_get() {
     let mut call = scenario.to_recv_response();
 
     // Server sends unsolicited 100-continue
-    let (input_used, maybe_response) = call
-        .try_response(b"HTTP/1.1 100 Continue\r\n\r\n", true)
-        .unwrap();
+    let (input_used, maybe_response) = call.try_response(b"HTTP/1.1 100 Continue\r\n\r\n").unwrap();
     assert_eq!(input_used, 25);
     assert!(
         maybe_response.is_none(),
@@ -168,7 +158,7 @@ fn unsolicited_100_continue_on_get() {
     assert!(!call.can_proceed());
 
     // Server then sends the actual response
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -186,7 +176,7 @@ fn unsolicited_102_processing() {
 
     // Server sends 102 Processing
     let processing = b"HTTP/1.1 102 Processing\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(processing, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(processing).unwrap();
     assert_eq!(input_used, processing.len());
     assert!(
         maybe_response.is_none(),
@@ -194,7 +184,7 @@ fn unsolicited_102_processing() {
     );
 
     // Server then sends the actual response
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -212,7 +202,7 @@ fn unsolicited_103_early_hints() {
 
     // Server sends 103 Early Hints with Link header
     let early_hints = b"HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(early_hints, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(early_hints).unwrap();
     assert_eq!(input_used, early_hints.len());
     assert!(
         maybe_response.is_none(),
@@ -220,7 +210,7 @@ fn unsolicited_103_early_hints() {
     );
 
     // Server then sends the actual response
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -241,24 +231,24 @@ fn multiple_1xx_responses_in_sequence() {
 
     // First: 103 Early Hints
     let early_hints = b"HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(early_hints, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(early_hints).unwrap();
     assert_eq!(input_used, early_hints.len());
     assert!(maybe_response.is_none());
 
     // Second: 100 Continue
     let continue_resp = b"HTTP/1.1 100 Continue\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(continue_resp, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(continue_resp).unwrap();
     assert_eq!(input_used, continue_resp.len());
     assert!(maybe_response.is_none());
 
     // Third: 102 Processing
     let processing = b"HTTP/1.1 102 Processing\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(processing, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(processing).unwrap();
     assert_eq!(input_used, processing.len());
     assert!(maybe_response.is_none());
 
     // Finally: actual response
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -280,7 +270,7 @@ fn switching_protocols_101_returned() {
     // Server sends 101 Switching Protocols
     let switching =
         b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(switching, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(switching).unwrap();
     assert_eq!(input_used, switching.len());
     assert!(
         maybe_response.is_some(),
@@ -323,18 +313,18 @@ fn multiple_103_before_final_response() {
 
     // First 103 with CSS preload hint
     let early_hints1 = b"HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(early_hints1, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(early_hints1).unwrap();
     assert_eq!(input_used, early_hints1.len());
     assert!(maybe_response.is_none());
 
     // Second 103 with JS preload hint
     let early_hints2 = b"HTTP/1.1 103 Early Hints\r\nLink: </script.js>; rel=preload\r\n\r\n";
-    let (input_used, maybe_response) = call.try_response(early_hints2, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(early_hints2).unwrap();
     assert_eq!(input_used, early_hints2.len());
     assert!(maybe_response.is_none());
 
     // Final response
-    let (input_used, maybe_response) = call.try_response(RESPONSE, true).unwrap();
+    let (input_used, maybe_response) = call.try_response(RESPONSE).unwrap();
     assert_eq!(input_used, 66);
     assert!(maybe_response.is_some());
 
@@ -357,7 +347,7 @@ fn duplicate_identical_content_length_is_accepted() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let (input_used, maybe_response) = call.try_response(input, false).unwrap();
+    let (input_used, maybe_response) = call.try_response(input).unwrap();
     assert_eq!(input_used, input.len());
     assert!(maybe_response.is_some());
     assert!(call.can_proceed());
@@ -373,7 +363,7 @@ fn duplicate_differing_content_length_is_rejected() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let err = call.try_response(input, false).unwrap_err();
+    let err = call.try_response(input).unwrap_err();
     assert_eq!(err, Error::TooManyContentLengthHeaders);
 }
 
@@ -383,7 +373,7 @@ fn content_length_list_with_differing_values_is_rejected() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let err = call.try_response(input, false).unwrap_err();
+    let err = call.try_response(input).unwrap_err();
     assert_eq!(err, Error::TooManyContentLengthHeaders);
 }
 
@@ -393,7 +383,7 @@ fn content_length_with_sign_is_rejected() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let err = call.try_response(input, false).unwrap_err();
+    let err = call.try_response(input).unwrap_err();
     assert_eq!(err, Error::BadContentLengthHeader);
 }
 
@@ -403,6 +393,6 @@ fn empty_content_length_is_rejected() {
     let scenario = Scenario::builder().get("https://q.test").build();
     let mut call = scenario.to_recv_response();
 
-    let err = call.try_response(input, false).unwrap_err();
+    let err = call.try_response(input).unwrap_err();
     assert_eq!(err, Error::BadContentLengthHeader);
 }

@@ -156,6 +156,8 @@ fn bare_output_names_resolve_in_the_actual_working_directory() {
     let name = format!("htmlcut-output-boundary-{}.json", std::process::id());
     assert_eq!(
         super::normalized_target(std::path::Path::new(&name)).unwrap(),
-        std::env::current_dir().unwrap().join(name),
+        std::fs::canonicalize(std::env::current_dir().unwrap())
+            .unwrap()
+            .join(name),
     );
 }

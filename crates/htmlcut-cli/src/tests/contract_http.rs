@@ -384,3 +384,26 @@ fn corrupt_compression_and_truncated_bodies_never_publish_partial_success() {
         worker.join().unwrap();
     }
 }
+
+#[test]
+fn incomplete_redirect_and_final_headers_at_eof_have_safe_framing_diagnostics() {
+    for wire in [
+        b"HTTP/1.1 302 Found\r\nLocation: /SYNTHETIC_SENTINEL\r\n".to_vec(),
+        b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n".to_vec(),
+    ] {
+        let (url, worker) = serve(vec![wire]);
+        let (code, stdout, stderr) = invoke(
+            &["htmlcut", "extract", "--url", &url, "--css", "p", "--raw"],
+            b"",
+        );
+        assert_eq!(code, 5);
+        assert!(stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&stderr).unwrap();
+        assert_eq!(
+            error["cause"],
+            serde_json::json!({"kind":"transport","problem":"framing"})
+        );
+        assert!(!String::from_utf8_lossy(&stderr).contains("SYNTHETIC_SENTINEL"));
+        worker.join().unwrap();
+    }
+}

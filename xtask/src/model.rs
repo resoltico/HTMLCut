@@ -112,6 +112,8 @@ pub(crate) const COVERAGE_SOURCE_ROOTS: &[&str] = &[
     "patches/rust/selectors/matching.rs",
     "patches/rust/selectors/relative_selector/filter.rs",
     "patches/rust/selectors/context.rs",
+    "patches/rust/ureq/src/run/response.rs",
+    "patches/rust/ureq/src/body/reader.rs",
     "patches/rust/ureq-proto/src/client/response_limits.rs",
     "patches/rust/ureq-proto/src/client/recvresp.rs",
     "patches/rust/ureq-proto/src/client/await100.rs",

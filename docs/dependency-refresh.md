@@ -91,3 +91,19 @@ status describe the v15 contract. The authorized release finalization records a 
 changelog entry; publication is still controlled by the release workflow and actual public object. The release process must validate the final refreshed source, new
 packages and dependency graph. See [implementation status](extraction-contract-status.md),
 [release preflight](release-preflight.md) and [patch provenance](../patches/README.md).
+
+## Candidate complete-response transport contract
+
+The unpublished 16.0.0 candidate maintains `htmlcut-ureq` 3.4.2-htmlcut.1 alongside
+`ureq-proto` 0.6.4+htmlcut.1. The protocol response API accepts only complete header
+sections. The transport receiver calls that API directly; incomplete redirects cannot
+produce a response or synthesized connection header. Finite redirect policy and TLS
+verification retain their transport responsibilities. The changed receiver is included
+in scored coverage, source ownership and exact mutation inventories. Candidate validation
+must certify the delivered source and native packages; these edits alone prove no runtime result.
+
+The carrier has no automatic charset or content-compression features. It retains original
+representation bytes and headers in every supported build configuration. The CLI owns strict
+charset parsing, explicit encoding precedence, bounded decompression and their diagnostics.
+Unit transport fixtures are private `cfg(test)` code, so all-feature workspace builds cannot
+replace actual CLI loopback/packaged acquisition with mock dispatch.

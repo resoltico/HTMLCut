@@ -73,9 +73,7 @@ impl Write for Output {
             .write(bytes)
     }
     fn flush(&mut self) -> io::Result<()> {
-        if let Some(writer) = &mut self.writer {
-            writer.flush()?;
-        }
+        // Writes are unbuffered; the duplicated File backend has no pending userspace bytes.
         Ok(())
     }
 }

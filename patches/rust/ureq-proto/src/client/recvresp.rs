@@ -1,9 +1,9 @@
-use http::{HeaderValue, Response, StatusCode, Version, header};
+use http::{Response, StatusCode, Version, header};
 
 use crate::Error;
 use crate::body::BodyReader;
 use crate::ext::HeaderIterExt;
-use crate::parser::{try_parse_partial_response, try_parse_response};
+use crate::parser::try_parse_response;
 use crate::util::log_data;
 
 use super::MAX_RESPONSE_HEADERS;
@@ -13,22 +13,14 @@ use super::{Call, CloseReason, RecvResponseResult};
 impl Call<RecvResponse> {
     /// Try reading a response from the input.
     ///
-    /// * `allow_partial_redirect` - if `true`, we can accept to find the `Location` header
-    ///   and proceed without reading the entire header. This is useful for broken servers that
-    ///   don't send an entire \r\n at the end of the preamble.
-    ///
     /// The `(usize, Option<Response()>)` is `(input amount consumed, response`).
     ///
     /// Notice that it's possible that we get an `input amount consumed` despite not returning
     /// a `Some(Response)`. This can happen if the server returned a 100-continue, and due to
     /// timing reasons we did not receive it while we were in the `Await100` call state. This
     /// "spurios" 100 will be discarded before we parse the actual response.
-    pub fn try_response(
-        &mut self,
-        input: &[u8],
-        allow_partial_redirect: bool,
-    ) -> Result<(usize, Option<Response<()>>), Error> {
-        let maybe_response = self.do_try_response(input, allow_partial_redirect)?;
+    pub fn try_response(&mut self, input: &[u8]) -> Result<(usize, Option<Response<()>>), Error> {
+        let maybe_response = self.do_try_response(input)?;
 
         let (input_used, response) = match maybe_response {
             Some(v) => v,
@@ -87,46 +79,13 @@ impl Call<RecvResponse> {
     /// headers. Before that this returns `None`. When the response is succesfully read,
     /// the return value `(usize, Response<()>)` contains how many bytes were consumed
     /// of the `input`.
-    fn do_try_response(
-        &mut self,
-        input: &[u8],
-        allow_partial_redirect: bool,
-    ) -> Result<Option<(usize, Response<()>)>, Error> {
+    fn do_try_response(&mut self, input: &[u8]) -> Result<Option<(usize, Response<()>)>, Error> {
         // ~3k for 100 headers
         let (input_used, response) = match try_parse_response::<MAX_RESPONSE_HEADERS>(input)? {
             Some(v) => v,
             None => {
-                // The caller decides whether to allow a partial parse.
                 self.inner.response_limits.pending(input.len())?;
-                if !allow_partial_redirect {
-                    return Ok(None);
-                }
-
-                // TODO(martin): I don't like this code. The mission is to be correct HTTP/1.1
-                // and this is a hack to allow for broken servers.
-                //
-                // As a special case, to handle broken servers that does a redirect without
-                // the final trailing \r\n, we try parsing the response as partial, and
-                // if it is a redirect, we can allow the request to continue.
-                let Some(mut r) = try_parse_partial_response::<MAX_RESPONSE_HEADERS>(input)? else {
-                    return Ok(None);
-                };
-
-                // A redirection must have a location header.
-                let is_complete_redirection =
-                    r.status().is_redirection() && r.headers().contains_key(header::LOCATION);
-
-                if !is_complete_redirection {
-                    return Ok(None);
-                }
-
-                // Insert a synthetic connection: close, since the connection is
-                // not valid after using a partial request.
-                debug!("Partial redirection response, insert fake connection: close");
-                r.headers_mut()
-                    .insert(header::CONNECTION, HeaderValue::from_static("close"));
-
-                (input.len(), r)
+                return Ok(None);
             }
         };
 

@@ -13,6 +13,50 @@ fn command() -> Command {
     Command::new(binary())
 }
 
+#[cfg(windows)]
+#[test]
+fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let evidence = root.path().join("windows-stdio.json");
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/native-windows-stdio.ps1");
+    let mut child = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(script)
+        .arg("-Binary")
+        .arg(binary())
+        .arg("-Evidence")
+        .arg(&evidence)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            let _ = child.wait();
+            panic!("native Windows console fixture exceeded its process bound");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let output = child.wait_with_output().unwrap();
+    let proof = std::fs::read_to_string(&evidence).unwrap_or_default();
+    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_STDIO_EVIDENCE") {
+        if evidence.is_file() {
+            std::fs::copy(&evidence, destination).unwrap();
+        }
+    }
+    assert!(
+        output.status.success(),
+        "{proof}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let proof: serde_json::Value = serde_json::from_str(&proof).unwrap();
+    assert_eq!(proof["passed"], true);
+    assert_eq!(proof["rows"].as_array().unwrap().len(), 7);
+}
+
 #[test]
 fn readonly_stdout_never_reports_nonempty_delivery_success() {
     let root = htmlcut_tempdir::tempdir().unwrap();

@@ -192,3 +192,5 @@ Foundation, Google, the Unicode Consortium, or any other organization whose
 open-source components are included in this binary.
 
 HTMLCut includes a modified ureq-proto 0.6.4 by Martin Algesten, licensed MIT OR Apache-2.0. License texts and patch responsibility are retained in patches/rust/ureq-proto.
+
+HTMLCut includes a modified ureq 3.4.2 by Martin Algesten and Jacob Hoffman-Andrews, licensed MIT OR Apache-2.0. License texts and complete-response receiver responsibility are retained in patches/rust/ureq.

@@ -28,7 +28,7 @@ fn outcome(wire: &[u8], chunk: usize) -> Result<Option<FinalResponse>, String> {
         pending.extend_from_slice(bytes);
         loop {
             let (used, value) = response
-                .try_response(&pending, false)
+                .try_response(&pending)
                 .map_err(|error| error.to_string())?;
             assert!(used <= pending.len());
             if let Some(value) = value {

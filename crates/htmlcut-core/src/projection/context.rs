@@ -109,6 +109,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_integer_attribute_still_consumes_one_metadata_unit() {
+        let budget = SelectorWorkBudget::new(1);
+        assert_eq!(integer(Some(""), &budget).unwrap(), None);
+        assert_eq!(budget.remaining(), 0);
+        assert!(!budget.exhausted());
+        let error = integer(Some(""), &budget).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert_eq!(budget.remaining(), 0);
+    }
+
+    #[test]
     fn document_root_and_non_list_members_have_no_ordered_ordinal() {
         let document = scraper::Html::parse_document("<ol><li>A</li><span>B</span></ol>");
         let budget = SelectorWorkBudget::new(1000);

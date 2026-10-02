@@ -33,6 +33,7 @@ to Rust paths.
 | `patches/rust/markup5ever` | package `htmlcut-markup5ever`, Rust crate `markup5ever` | Paired parser/serializer interfaces. | disabled |
 | `patches/rust/tendril` | package `htmlcut-tendril`, Rust crate `tendril` | Paired text buffering/provenance carrier. | disabled |
 | `patches/rust/sha2` | package `htmlcut-sha2`, Rust crate `sha2` | SHA-256 identity backend with ARM64 correction. | disabled |
+| `patches/rust/ureq` | package `htmlcut-ureq`, Rust crate `ureq` | Complete HTTP response receiver and framed representation bytes; strict decoding stays caller-owned. | disabled |
 
 The supported publication is GitHub native/source archives, with Rust consumption through git/path
 dependencies. No complete branded-fork crates.io distribution is configured; `publish = false`

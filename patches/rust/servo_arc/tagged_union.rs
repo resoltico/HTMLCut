@@ -94,9 +94,10 @@ impl<A, B> ArcUnion<A, B> {
     }
 
     /// Creates an `ArcUnion` from an instance of the second type.
+    /// ArcInner alignment keeps the low bit clear, so adding one sets the tag.
     pub fn from_second(other: Arc<B>) -> Self {
         let union =
-            unsafe { Self::new(other.ptr().cast::<()>().map_addr(|address| address | 0x1)) };
+            unsafe { Self::new(other.ptr().cast::<()>().map_addr(|address| address + 0x1)) };
         mem::forget(other);
         union
     }

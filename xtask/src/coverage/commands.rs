@@ -14,6 +14,7 @@ const FORK_COVERAGE_PACKAGES: &[&str] = &[
     "htmlcut-selectors",
     "htmlcut-scraper",
     "ureq-proto",
+    "htmlcut-ureq",
     "htmlcut-servo-arc",
 ];
 
