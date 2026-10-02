@@ -123,9 +123,11 @@ mod tests {
         assert_eq!(response.headers().get("content-length").unwrap(), "3");
         assert_eq!(response.body().content_length(), Some(3));
         let mut bytes = Vec::new();
+        // Independent expected three-byte payload plus one exposes excess or endless output.
         response
             .body_mut()
             .as_reader()
+            .take(4)
             .read_to_end(&mut bytes)
             .unwrap();
         assert_eq!(bytes, "€".as_bytes());
@@ -155,10 +157,14 @@ mod tests {
                 .mime_type(mime)
                 .charset("windows-1252")
                 .data(vec![0xff, b'A']);
-            let mut reader = body.into_with_config().lossy_utf8(lossy).reader();
+            let reader = body.into_with_config().lossy_utf8(lossy).reader();
             assert_eq!(reader.body_mode(), BodyMode::LengthDelimited(2));
             let mut actual = Vec::new();
-            reader.read_to_end(&mut actual).unwrap();
+            // Do not trust the producer's own limit when testing its Read implementation.
+            reader
+                .take(expected.len() as u64 + 1)
+                .read_to_end(&mut actual)
+                .unwrap();
             assert_eq!(actual, expected);
         }
     }
