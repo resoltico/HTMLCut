@@ -18,17 +18,14 @@ pub(super) fn open(path: &Path) -> Result<File, ExtractionError> {
     let file = {
         // Windows CreateFile does not wait for a named-pipe instance. Reject known special
         // paths and validate the resulting handle as well, including replacement races.
-        if !std::fs::metadata(path)
-            .map_err(super::io_failure)?
-            .is_file()
-        {
-            return Err(kind_failure());
-        }
+        validate_kind(
+            std::fs::metadata(path)
+                .map_err(super::io_failure)?
+                .is_file(),
+        )?;
         File::open(path).map_err(super::io_failure)?
     };
-    if !file.metadata().map_err(super::io_failure)?.is_file() {
-        return Err(kind_failure());
-    }
+    validate_kind(file.metadata().map_err(super::io_failure)?.is_file())?;
     Ok(file)
 }
 
@@ -37,4 +34,26 @@ fn kind_failure() -> ExtractionError {
         operation: IoOperation::Input,
         problem: IoProblem::UnsupportedKind,
     })
+}
+
+fn validate_kind(regular: bool) -> Result<(), ExtractionError> {
+    if regular { Ok(()) } else { Err(kind_failure()) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn only_regular_file_kind_is_authorized_before_byte_reads() {
+        assert!(validate_kind(true).is_ok());
+        let error = validate_kind(false).unwrap_err();
+        assert_eq!(error.code, htmlcut_core::ErrorCode::Acquisition);
+        assert_eq!(
+            error.evidence.cause,
+            Some(FailureCause::Io {
+                operation: IoOperation::Input,
+                problem: IoProblem::UnsupportedKind,
+            })
+        );
+    }
 }

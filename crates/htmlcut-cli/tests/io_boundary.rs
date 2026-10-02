@@ -14,11 +14,11 @@ fn command() -> Command {
 }
 
 #[cfg(target_os = "macos")]
-#[path = "io_replacement.rs"]
+#[path = "io_boundary/io_replacement.rs"]
 mod replacement;
 
 #[cfg(unix)]
-#[path = "io_file_kinds.rs"]
+#[path = "io_boundary/io_file_kinds.rs"]
 mod file_kinds;
 
 #[cfg(windows)]

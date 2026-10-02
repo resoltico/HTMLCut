@@ -60,15 +60,21 @@ impl Write for Output {
         // Windows console APIs preserve Unicode; redirection uses the strict duplicated file.
         #[cfg(windows)]
         {
-            if self.error && io::stderr().is_terminal() {
-                return io::stderr().lock().write(bytes);
-            }
-            if !self.error && io::stdout().is_terminal() {
-                let mut console = io::stdout().lock();
-                let written = console.write(bytes)?;
-                // Stdout is line-buffered; report actual console delivery before success.
-                console.flush()?;
-                return Ok(written);
+            let terminal = if self.error {
+                io::stderr().is_terminal()
+            } else {
+                io::stdout().is_terminal()
+            };
+            match console_backend(self.error, terminal) {
+                ConsoleBackend::Stderr => return io::stderr().lock().write(bytes),
+                ConsoleBackend::Stdout => {
+                    let mut console = io::stdout().lock();
+                    let written = console.write(bytes)?;
+                    // Stdout is line-buffered; report actual console delivery before success.
+                    console.flush()?;
+                    return Ok(written);
+                }
+                ConsoleBackend::Descriptor => {}
             }
         }
         self.writer
@@ -82,9 +88,38 @@ impl Write for Output {
     }
 }
 
+#[cfg(any(windows, test))]
+#[derive(Debug, PartialEq, Eq)]
+enum ConsoleBackend {
+    Descriptor,
+    Stdout,
+    Stderr,
+}
+
+#[cfg(any(windows, test))]
+fn console_backend(error_stream: bool, terminal: bool) -> ConsoleBackend {
+    match (error_stream, terminal) {
+        (_, false) => ConsoleBackend::Descriptor,
+        (false, true) => ConsoleBackend::Stdout,
+        (true, true) => ConsoleBackend::Stderr,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_stream_and_its_terminal_fact_have_complete_backend_oracles() {
+        for (error_stream, terminal, expected) in [
+            (false, false, ConsoleBackend::Descriptor),
+            (true, false, ConsoleBackend::Descriptor),
+            (false, true, ConsoleBackend::Stdout),
+            (true, true, ConsoleBackend::Stderr),
+        ] {
+            assert_eq!(console_backend(error_stream, terminal), expected);
+        }
+    }
 
     #[test]
     fn acquired_pipe_backend_is_reused_for_multiple_writes() {
