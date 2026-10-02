@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
     let plan = ExtractionPlan::css("#amount").unwrap();
-    let minimal = r##"{"version":1,"strategy":{"selector":"#amount","kind":"css"},"schema":"htmlcut.extraction.plan"}"##;
+    let minimal = r##"{"version":2,"strategy":{"selector":"#amount","kind":"css"},"schema":"htmlcut.extraction.plan"}"##;
     let compiled = CompiledPlan::compile(&plan).unwrap();
     assert_eq!(
         CompiledPlan::compile(&ExtractionPlan::from_json(minimal.as_bytes()).unwrap())
@@ -37,8 +37,8 @@ fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
     assert_ne!(original.extraction_sha256, with_base.extraction_sha256);
     assert!(!canonical_json(&with_base).unwrap().contains("sentinel"));
     let mut reordered = plan;
-    reordered.projection = Projection::DocumentText;
-    reordered.transforms = vec![Transform::NormalizeWhitespace, Transform::ResolveUrls];
+    reordered.projection = Projection::DocumentText {};
+    reordered.transforms = vec![Transform::NormalizeWhitespace {}, Transform::ResolveUrls {}];
     let first = CompiledPlan::compile(&reordered).unwrap();
     reordered.transforms.reverse();
     assert_ne!(
@@ -100,13 +100,13 @@ fn t05_schema_and_runtime_agree_on_closed_role_version_and_defaults() {
     let mut compiler = boon::Compiler::new();
     compiler.add_resource(location, schema).unwrap();
     let index = compiler.compile(location, &mut schemas).unwrap();
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}});
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}});
     assert!(schemas.validate(&minimal, index).is_ok());
     assert!(ExtractionPlan::from_json(&serde_json::to_vec(&minimal).unwrap()).is_ok());
     for invalid in [
-        serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}),
-        serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"},"unknown":1}),
-        serde_json::json!({"schema":"htmlcut.plan","version":1,"strategy":{"kind":"css","selector":"p"}}),
+        serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}),
+        serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"},"unknown":1}),
+        serde_json::json!({"schema":"htmlcut.plan","version":2,"strategy":{"kind":"css","selector":"p"}}),
     ] {
         assert!(schemas.validate(&invalid, index).is_err(), "{invalid}");
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&invalid).unwrap()).is_err());

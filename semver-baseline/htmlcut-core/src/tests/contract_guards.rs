@@ -7,13 +7,13 @@ fn t18_t19_guards_are_original_dom_conjunctive_and_all_values() {
     );
     let mut plan = ExtractionPlan::css("#amount").unwrap();
     plan.exclude = vec![".remove".into()];
-    plan.transforms = vec![Transform::NormalizeWhitespace];
+    plan.transforms = vec![Transform::NormalizeWhitespace {}];
     plan.guards.push(Guard {
         scope: GuardScope::Document,
         selector: "#label".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: "Repair cost".into(),
         }),
@@ -23,7 +23,7 @@ fn t18_t19_guards_are_original_dom_conjunctive_and_all_values() {
         selector: ":scope .remove".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: " RAW ".into(),
         }),
@@ -134,7 +134,7 @@ fn t16_t17_complete_counts_positions_and_explicit_empty_selection() {
 #[test]
 fn t13_t15_all_slice_inclusions_progress_and_unmatched_tail() {
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.projection = Projection::Source;
+    plan.projection = Projection::Source {};
     for (start, end, expected) in [
         (false, false, "✓"),
         (true, false, "[✓"),
@@ -196,7 +196,7 @@ fn t18_guard_cardinality_scope_and_search_predicate_are_declared() {
         selector: "span".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Regex {
             pattern: "VALUE".into(),
             flags: String::new(),
@@ -262,7 +262,7 @@ fn t16_t18_declared_selection_and_guard_candidate_caps_fail_whole_operations() {
         selector: "b".into(),
         min: 0,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact { value: "X".into() }),
     });
     let error = source

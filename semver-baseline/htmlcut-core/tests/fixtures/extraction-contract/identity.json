@@ -3,7 +3,7 @@
   "source": "<p id='amount'>EUR 180</p>",
   "plan": {
     "schema": "htmlcut.extraction.plan",
-    "version": 1,
+    "version": 2,
     "strategy": {
       "kind": "css",
       "selector": "#amount"
@@ -36,7 +36,7 @@
     "base_url": null
   },
   "source_sha256": "651fe4c9a421069e84f5f3cf4bf937954b9e71264459e9d1e04efb2094944b39",
-  "plan_sha256": "4504045e5b3a85d03b59b5cf3a6c2af8b893b993a6b6714d8df71020f6654a53",
+  "plan_sha256": "dd2f3f405eefcce7ec571dc0f37b46d3f10e6013faee5efc380767169a8ab02c",
   "prepared_sha256": "00e03c49786483d5fe761943e459b918e92eec36948e4d89b9cfc407b340bb06",
-  "extraction_sha256": "9f3f24bfaa115b3be8ae0dc53af87e0601feecf57c89cd5d342419b01fd19d03"
+  "extraction_sha256": "44262d4d2c3322999f4cd79aed1c0e1d0d3af8003faa158af5243751547865c9"
 }

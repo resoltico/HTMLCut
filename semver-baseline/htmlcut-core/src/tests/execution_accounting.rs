@@ -53,7 +53,7 @@ fn regex_guards_debit_a_search_even_for_an_empty_value() {
         selector: ":scope".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: String::new(),
         }),
@@ -69,4 +69,19 @@ fn regex_guards_debit_a_search_even_for_an_empty_value() {
     let regex_budget = SelectorWorkBudget::new(1000);
     check_guards(&document, &[root], &regex, &regex_budget).unwrap();
     assert_eq!(exact_budget.remaining() - regex_budget.remaining(), 1);
+}
+
+#[test]
+fn exclusion_scope_from_another_document_is_an_invariant_refusal() {
+    let first = Html::parse_document("<article><p>A</p></article>");
+    let second = Html::parse_document("<article><p>B</p></article>");
+    let root = second
+        .select(&Selector::parse("article").unwrap())
+        .next()
+        .unwrap();
+    let budget = SelectorWorkBudget::new(1000);
+    let error = exclusions(&first, root, &[Selector::parse("p").unwrap()], &budget).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InternalInvariant);
+    assert_eq!(error.stage, "exclusion");
+    assert_eq!(budget.remaining(), 1000);
 }

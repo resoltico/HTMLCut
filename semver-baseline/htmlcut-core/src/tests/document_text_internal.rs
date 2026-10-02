@@ -67,3 +67,36 @@ fn fence_generation_accepts_its_exact_byte_bound() {
         }
     }
 }
+
+#[test]
+fn inconsistent_internal_html_rows_and_cells_refuse_missing_context() {
+    for name in ["tr", "td", "th"] {
+        let mut document = scraper::Html::parse_document("<div><span>X</span></div>");
+        let id = document
+            .select(&scraper::Selector::parse("span").unwrap())
+            .next()
+            .unwrap()
+            .id();
+        if let scraper::Node::Element(element) = document.tree.get_mut(id).unwrap().value() {
+            element.name.local = name.into();
+        } else {
+            panic!("element fixture");
+        }
+        let root = document
+            .select(&scraper::Selector::parse("div").unwrap())
+            .next()
+            .unwrap();
+        let error = render(
+            root,
+            &std::collections::HashSet::new(),
+            false,
+            false,
+            None,
+            1000,
+            &selectors::work_budget::SelectorWorkBudget::new(1000),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, crate::ErrorCode::InternalInvariant);
+        assert_eq!(error.code.exit_class(), 6);
+    }
+}
