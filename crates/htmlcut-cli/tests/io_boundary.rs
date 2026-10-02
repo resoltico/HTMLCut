@@ -13,6 +13,10 @@ fn command() -> Command {
     Command::new(binary())
 }
 
+#[cfg(target_os = "macos")]
+#[path = "io_replacement.rs"]
+mod replacement;
+
 #[cfg(windows)]
 #[test]
 fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels() {
