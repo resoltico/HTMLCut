@@ -6,16 +6,25 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- Prepare the 16.0.0 candidate with wire version 2 and extraction semantics 2. Current contracts are strict; old versions and obsolete interfaces are rejected without adapters.
-- Structural fragments derive bounded original pre/list/table context, source list ordinals, semantic block boundaries and balanced cell/caption encoding.
-- Selector passes reuse scoped matching scratch and meter inner traversal/predicate work; relative-subtree traversal is iterative.
+- **Breaking wire and Rust API changes:** package 16.0.0 uses wire version 2 and extraction semantics 2. Fieldless tagged variants are closed objects, and the budgeted matcher requires its document. Update maintained plan/run builders, validators and Rust callers to the current contract; earlier contracts are rejected.
+- **Breaking `document_text` changes:** selected fragments inherit original preformatted and list context. List exclusions preserve source ordinals; table cells and captions use balanced frames with escaped delimiters. Update consumers and exact-output expectations for the current format.
+- HTTP acquisition uses the platform certificate verifier and retains representation bytes until the CLI performs strict charset decoding and bounded decompression. Explicit encoding choices remain authoritative.
+
+### Added
+
+- Bounded diagnostic causes identify acquisition, configuration and I/O failure classes without exposing source data, URLs, credentials or supplied option values.
 
 ### Fixed
 
-- Reject unknown members on fieldless plan and saved-source variants before source consumption or publication.
-- Parse quoted HTTP parameters correctly and consume complete informational responses under finite header/count limits; reject unsolicited partial representations.
-- Detect real standard-stream delivery failures and reject nonregular file-path inputs without FIFO waits; retain file-only and empty-raw behavior.
-- Add safe closed recovery causes and definition-owned option constraints without echoing supplied values.
+- Reject unknown members in fieldless plan and saved-source objects instead of silently dropping caller intent.
+- Interpret quoted HTTP parameters correctly, consume complete informational responses under finite limits, and reject incomplete framing and unsolicited partial representations.
+- Bound selector sibling, ancestor, subtree and filter work while reusing operation-scoped caches; refuse exhausted evaluations instead of caching incomplete nonmatches or positions.
+- Preserve selected preformatted payload, original list numbering, table fragment structure and definition-list/details/address boundaries.
+- Refuse nonregular file-path inputs without waiting for a FIFO writer. Report nonempty standard-stream delivery failures while keeping file-only and empty-raw routes independent of unused streams.
+
+### Maintenance
+
+- Coverage and mutation ownership include the maintained selector, transport and allocation boundaries. Native package checks bind their process, protocol and OS assertions to the extracted executable and exact source.
 
 ## [15.0.0] - 2026-10-01
 

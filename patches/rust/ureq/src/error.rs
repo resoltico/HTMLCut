@@ -201,22 +201,8 @@ impl Error {
     }
 }
 
-pub(crate) fn is_wrapped_ureq_error(e: &io::Error) -> bool {
-    e.get_ref().map(|x| x.is::<Error>()).unwrap_or(false)
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        if is_wrapped_ureq_error(&e) {
-            // unwraps are ok, see above.
-            let boxed = e.into_inner().unwrap();
-            let ureq = boxed.downcast::<Error>().unwrap();
-            *ureq
-        } else {
-            Error::Io(e)
-        }
-    }
-}
+#[path = "error/io.rs"]
+mod io_conversion;
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

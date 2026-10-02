@@ -64,7 +64,11 @@ impl Write for Output {
                 return io::stderr().lock().write(bytes);
             }
             if !self.error && io::stdout().is_terminal() {
-                return io::stdout().lock().write(bytes);
+                let mut console = io::stdout().lock();
+                let written = console.write(bytes)?;
+                // Stdout is line-buffered; report actual console delivery before success.
+                console.flush()?;
+                return Ok(written);
             }
         }
         self.writer

@@ -92,7 +92,11 @@ impl Transport for HttpTransport {
         remaining: Duration,
         connect: Duration,
     ) -> Result<Response, ExtractionError> {
+        let tls = ureq::tls::TlsConfig::builder()
+            .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+            .build();
         let config = ureq::Agent::config_builder()
+            .tls_config(tls)
             .http_status_as_error(false)
             .max_redirects(0)
             .max_redirects_will_error(false)

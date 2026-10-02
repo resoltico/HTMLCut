@@ -804,3 +804,19 @@ max_functions = 30
 max_decision_points = 60
 max_match_arms = 30
 allowed_internal_dependencies = ["crate", "unversioned", "transport", "resolver", "config"]
+
+[[rules]]
+path = "patches/rust/ureq/src/error/io.rs"
+match = "exact"
+role = "http-typed-io-error-boundary"
+owner = "HTMLCut acquisition"
+rationale = "Typed current transport and TLS causes survive I/O wrapping without string inspection or secret disclosure."
+split_trigger = "the conversion acquires diagnostic rendering or unrelated protocol policy"
+max_physical_lines = 180
+max_items = 24
+max_public_items = 8
+max_imports = 12
+max_functions = 16
+max_decision_points = 48
+max_match_arms = 20
+allowed_internal_dependencies = ["super"]

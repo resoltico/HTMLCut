@@ -16,7 +16,7 @@ use self::metrics::{Metrics, measured_internal_dependencies};
 use self::policy::{Policy, Rule};
 
 const POLICY_PATH: &str = "tooling/rust-source-shape-policy.toml";
-const SOURCE_ROOTS: [&str; 28] = [
+const SOURCE_ROOTS: [&str; 29] = [
     "crates/htmlcut-core/src",
     "crates/htmlcut-core/tests",
     "crates/htmlcut-cli/src",
@@ -28,6 +28,7 @@ const SOURCE_ROOTS: [&str; 28] = [
     "patches/rust/ureq/src/run/response.rs",
     "patches/rust/ureq/src/run/response_tests.rs",
     "patches/rust/ureq/src/body/reader.rs",
+    "patches/rust/ureq/src/error/io.rs",
     "patches/rust/ureq-proto/src/client/response_limits.rs",
     "patches/rust/ureq-proto/src/client/recvresp.rs",
     "patches/rust/ureq-proto/src/client/await100.rs",

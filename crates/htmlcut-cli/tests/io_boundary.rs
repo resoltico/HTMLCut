@@ -54,7 +54,7 @@ fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels()
     );
     let proof: serde_json::Value = serde_json::from_str(&proof).unwrap();
     assert_eq!(proof["passed"], true);
-    assert_eq!(proof["rows"].as_array().unwrap().len(), 7);
+    assert_eq!(proof["rows"].as_array().unwrap().len(), 8);
 }
 
 #[test]

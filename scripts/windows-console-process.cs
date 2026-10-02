@@ -42,6 +42,8 @@ public static class WindowsConsoleProcess
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetExitCodeProcess(IntPtr handle, out uint code);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateProcess(IntPtr handle, uint code);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr source, IntPtr targetProcess, out IntPtr duplicate, uint access, bool inherit, uint options);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool ReadFile(IntPtr handle, byte[] buffer, uint size, out uint read, IntPtr overlapped);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool ReadConsoleOutputCharacterW(IntPtr handle, StringBuilder buffer, uint size, Coord origin, out uint read);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool WriteConsoleInputW(IntPtr handle, InputRecord[] input, uint count, out uint written);
@@ -106,6 +108,12 @@ public static class WindowsConsoleProcess
             IntPtr output = outWrite, error = errWrite;
             if (outputMode == "stdout-console") output = screen;
             else if (outputMode == "stderr-console") error = screen;
+            else if (outputMode == "readonly-console")
+            {
+                Check(DuplicateHandle(GetCurrentProcess(), screen, GetCurrentProcess(), out readonlyHandle, 0x80000000, true, 0));
+                Check(GetConsoleMode(readonlyHandle, out mode));
+                output = readonlyHandle;
+            }
             else if (outputMode == "readonly")
             {
                 readonlyHandle = CreateFileW(readonlyFile, 0x80000000, 3, ref security, 3, 0, IntPtr.Zero);
