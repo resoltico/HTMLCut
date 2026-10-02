@@ -103,7 +103,7 @@ pub(crate) fn validate_destinations(
 ) -> Result<(), ExtractionError> {
     let inputs = inputs
         .iter()
-        .map(|path| fs::canonicalize(path).map_err(|_| super::input::acquisition()))
+        .map(|path| fs::canonicalize(path).map_err(super::input::io_failure))
         .collect::<Result<Vec<_>, _>>()?;
     let mut seen = Vec::new();
     for path in targets {

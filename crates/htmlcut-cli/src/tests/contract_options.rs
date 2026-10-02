@@ -507,3 +507,33 @@ fn saved_sources_and_nested_plans_reject_unknown_fields_before_stdin_or_publicat
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }
+
+#[test]
+fn missing_input_canonicalization_retains_safe_io_cause_for_extract_and_save_run() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let missing = root.path().join("SYNTHETIC_SECRET_MISSING.html");
+    let run = root.path().join("saved-run.json");
+    for save in [false, true] {
+        let mut arguments = vec![
+            "htmlcut",
+            "extract",
+            "--file",
+            missing.to_str().unwrap(),
+            "--css",
+            "p",
+        ];
+        if save {
+            arguments.extend(["--save-run", run.to_str().unwrap()]);
+        }
+        let (code, stdout, stderr) = invoke(&arguments, b"");
+        assert_eq!(code, 5);
+        assert!(stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&stderr).unwrap();
+        assert_eq!(
+            error["cause"],
+            serde_json::json!({"kind":"io","operation":"input","problem":"not_found"})
+        );
+        assert!(!String::from_utf8_lossy(&stderr).contains("SYNTHETIC_SECRET"));
+        assert!(!run.exists());
+    }
+}

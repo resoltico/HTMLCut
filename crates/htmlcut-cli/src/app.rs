@@ -140,7 +140,7 @@ fn dispatch(
                 && let SourceSpec::File { path: source_path } = &mut source
             {
                 *source_path = saved_path_utf8(
-                    &canonical_path(source_path).map_err(|_| crate::input::acquisition())?,
+                    &canonical_path(source_path).map_err(crate::input::io_failure)?,
                 )?;
             }
             validate(&inputs, &arguments.output, arguments.save_run.as_deref())?;
