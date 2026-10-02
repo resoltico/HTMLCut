@@ -267,6 +267,11 @@ jobs:
             --smoke-log dist/native-smoke.log \
             --shell "${smoke_shell}"
 
+      - name: Prove native Windows stream counterfactuals
+        if: runner.os == 'Windows'
+        shell: bash
+        run: python3 scripts/native-windows-counterfactuals.py --output dist/windows-counterfactuals
+
       - name: Record native job context even after failure
         if: always()
         shell: bash
