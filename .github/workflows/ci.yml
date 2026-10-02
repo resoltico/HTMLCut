@@ -193,7 +193,22 @@ jobs:
 
       - name: Run cross-platform Rust gate
         shell: bash
+        env:
+          HTMLCUT_WINDOWS_STDIO_EVIDENCE: ${{ runner.temp }}/htmlcut-windows-stdio.json
+          HTMLCUT_WINDOWS_PIPE_EVIDENCE: ${{ runner.temp }}/htmlcut-windows-pipe-input.json
         run: ./scripts/xtask.sh ci-rust-gate
+
+      - name: Preserve cross-platform Rust gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-gate-proof-${{ matrix.id }}
+          path: |
+            ../.htmlcut-artifacts/gate-runs/
+            ${{ runner.temp }}/htmlcut-windows-stdio.json
+            ${{ runner.temp }}/htmlcut-windows-pipe-input.json
+          if-no-files-found: warn
+          retention-days: 14
 
   release-target-smoke:
     name: Release target smoke ${{ matrix.id }}

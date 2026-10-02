@@ -45,13 +45,13 @@ public static class WindowsConsoleProcess
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetConsoleActiveScreenBuffer(IntPtr screen);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool WriteConsoleW(IntPtr handle, string text, uint length, out uint written, IntPtr reserved);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool ReadFile(IntPtr handle, byte[] buffer, uint size, out uint read, IntPtr overlapped);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool ReadConsoleOutputCharacterW(IntPtr handle, StringBuilder buffer, uint size, Coord origin, out uint read);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool ReadConsoleOutputCharacterW(IntPtr handle, [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.U2, SizeParamIndex = 2)] char[] buffer, uint size, Coord origin, out uint read);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool WriteConsoleInputW(IntPtr handle, InputRecord[] input, uint count, out uint written);
 
     public sealed class Result
     {
         public int ExitCode; public string StdoutBase64, StderrBase64, Screen;
-        public bool ConsoleInput, ConsoleOutput; public int CodePage;
+        public bool ConsoleInput, ConsoleOutput; public int CodePage; public uint ScreenCharactersRead;
     }
     static void Check(bool success) { if (!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
     static void Close(ref IntPtr handle) { if (handle != IntPtr.Zero && handle != new IntPtr(-1)) CloseHandle(handle); handle = IntPtr.Zero; }
@@ -147,11 +147,12 @@ public static class WindowsConsoleProcess
             { TerminateProcess(child.Process, 124); WaitForSingleObject(child.Process, 5000); throw new TimeoutException("Native candidate process did not finish"); }
             uint exit; Check(GetExitCodeProcess(child.Process, out exit));
             if (!Task.WaitAll(new Task[] { stdout, stderr }, 5000)) throw new TimeoutException("Native pipe drain did not finish");
-            var text = new StringBuilder(4096); uint characters;
+            var text = new char[4096]; uint characters;
             Check(ReadConsoleOutputCharacterW(screen, text, 4096, new Coord(0, 0), out characters));
+            if (characters > text.Length) throw new IOException("Console returned an invalid capture count");
             return new Result { ExitCode = (int)exit, StdoutBase64 = Convert.ToBase64String(stdout.Result),
-                StderrBase64 = Convert.ToBase64String(stderr.Result), Screen = text.ToString().TrimEnd(' ', '\0'),
-                ConsoleInput = consoleInput, ConsoleOutput = outputMode.EndsWith("console"), CodePage = (int)GetConsoleOutputCP() };
+                StderrBase64 = Convert.ToBase64String(stderr.Result), Screen = new string(text, 0, (int)characters).TrimEnd(' ', '\0'),
+                ConsoleInput = consoleInput, ConsoleOutput = outputMode.EndsWith("console"), CodePage = (int)GetConsoleOutputCP(), ScreenCharactersRead = characters };
         }
         finally
         {

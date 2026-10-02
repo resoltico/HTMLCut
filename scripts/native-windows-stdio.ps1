@@ -28,7 +28,7 @@ function RunConsoleCase([string]$name, [string]$mode, [bool]$consoleInput, [bool
         $stdout = $utf8.GetString([Convert]::FromBase64String($result.StdoutBase64))
         $stderr = $utf8.GetString([Convert]::FromBase64String($result.StderrBase64))
         $row.exit_code = $result.ExitCode; $row.stdout = $stdout; $row.stderr = $stderr
-        $row.screen = $result.Screen; $row.output_code_page = $result.CodePage
+        $row.screen = $result.Screen; $row.output_code_page = $result.CodePage; $row.screen_characters_read = $result.ScreenCharactersRead
         if ($invalidSelector) {
             $diagnostic = $(if ($mode -eq 'stderr-console') { $result.Screen } else { $stderr }) | ConvertFrom-Json
             $unused = $(if ($mode -eq 'stderr-console') { $stderr } else { $result.Screen })
