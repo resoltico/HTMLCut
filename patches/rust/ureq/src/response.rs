@@ -21,10 +21,38 @@ pub trait ResponseExt {
     /// ```
     /// use ureq::ResponseExt;
     ///
-    /// let res = ureq::get("https://httpbin.org/redirect-to?url=%2Fget")
-    ///     .call().unwrap();
+    /// # use std::{io::{Read, Write}, net::TcpListener, thread, time::{Duration, Instant}};
+    /// # let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    /// # listener.set_nonblocking(true).unwrap();
+    /// # let base = format!("http://{}", listener.local_addr().unwrap());
+    /// # let worker = thread::spawn(move || {
+    /// #     for (target, response) in [("/redirect", "HTTP/1.1 302 Found\r\nLocation: /get\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), ("/get", "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")] {
+    /// #         let deadline = Instant::now() + Duration::from_secs(5);
+    /// #         let mut stream = loop {
+    /// #             match listener.accept() {
+    /// #                 Ok((stream, _)) => break stream,
+    /// #                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+    /// #                 Err(error) => panic!("loopback accept: {error}"),
+    /// #             }
+    /// #         };
+    /// #         stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    /// #         stream.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+    /// #         let mut request = Vec::new();
+    /// #         while !request.ends_with(b"\r\n\r\n") {
+    /// #             assert!(request.len() < 16384 && Instant::now() < deadline);
+    /// #             let mut byte = [0]; assert_eq!(stream.read(&mut byte).unwrap(), 1); request.push(byte[0]);
+    /// #         }
+    /// #         assert!(request.starts_with(format!("GET {target} HTTP/1.1\r\n").as_bytes()));
+    /// #         stream.write_all(response.as_bytes()).unwrap();
+    /// #     }
+    /// # });
+    /// let initial = format!("{base}/redirect");
+    /// let res = ureq::get(&initial)
+    ///     .config().proxy(None).timeout_global(Some(Duration::from_secs(5)))
+    ///     .build().call().unwrap();
     ///
-    /// assert_eq!(res.get_uri(), "https://httpbin.org/get");
+    /// assert_eq!(res.get_uri(), format!("{base}/get").as_str());
+    /// # worker.join().unwrap();
     /// ```
     fn get_uri(&self) -> &Uri;
 
@@ -38,18 +66,45 @@ pub trait ResponseExt {
     /// # use ureq::http::Uri;
     /// use ureq::ResponseExt;
     ///
-    /// let uri1: Uri = "https://httpbin.org/redirect-to?url=%2Fget".parse().unwrap();
-    /// let uri2: Uri = "https://httpbin.org/get".parse::<Uri>().unwrap();
+    /// # use std::{io::{Read, Write}, net::TcpListener, thread, time::{Duration, Instant}};
+    /// # let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    /// # listener.set_nonblocking(true).unwrap();
+    /// # let base = format!("http://{}", listener.local_addr().unwrap());
+    /// # let worker = thread::spawn(move || {
+    /// #     for (target, response) in [("/redirect", "HTTP/1.1 302 Found\r\nLocation: /get\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), ("/get", "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")] {
+    /// #         let deadline = Instant::now() + Duration::from_secs(5);
+    /// #         let mut stream = loop {
+    /// #             match listener.accept() {
+    /// #                 Ok((stream, _)) => break stream,
+    /// #                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+    /// #                 Err(error) => panic!("loopback accept: {error}"),
+    /// #             }
+    /// #         };
+    /// #         stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+    /// #         stream.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+    /// #         let mut request = Vec::new();
+    /// #         while !request.ends_with(b"\r\n\r\n") {
+    /// #             assert!(request.len() < 16384 && Instant::now() < deadline);
+    /// #             let mut byte = [0]; assert_eq!(stream.read(&mut byte).unwrap(), 1); request.push(byte[0]);
+    /// #         }
+    /// #         assert!(request.starts_with(format!("GET {target} HTTP/1.1\r\n").as_bytes()));
+    /// #         stream.write_all(response.as_bytes()).unwrap();
+    /// #     }
+    /// # });
+    /// let uri1: Uri = format!("{base}/redirect").parse().unwrap();
+    /// let uri2: Uri = format!("{base}/get").parse().unwrap();
     ///
     /// let res = ureq::get(&uri1)
     ///     .config()
     ///     .save_redirect_history(true)
+    ///     .proxy(None).timeout_global(Some(Duration::from_secs(5)))
     ///     .build()
     ///     .call().unwrap();
     ///
     /// let history = res.get_redirect_history().unwrap();
     ///
     /// assert_eq!(history, &[uri1, uri2]);
+    /// # worker.join().unwrap();
     /// ```
     fn get_redirect_history(&self) -> Option<&[Uri]>;
 }
