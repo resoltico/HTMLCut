@@ -2,6 +2,36 @@
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [16.0.0] - 2026-10-02
+
+### Changed
+
+- **Breaking wire and identity changes:** extraction documents and saved runs use wire version 2, with extraction semantics 2. Earlier contract versions are rejected without adapters. Update plan/run definitions and validators to the current [schemas](docs/schema.md); normalized-plan and extraction identities change, while unchanged accepted UTF-8 snapshot bytes retain their source identity.
+- **Breaking Rust API changes:** fieldless plan variants are empty records, such as `Projection::DomText {}`. Update Rust constructors and patterns. Direct users of the bundled `htmlcut-scraper` matcher must pass its document and handle typed document-mismatch and work-limit errors; see [Core](docs/core.md).
+- **Breaking `document_text` format changes:** tables, captions and cells use balanced frames with escaped literal delimiters, and preformatted closing fences have a separate framing newline that preserves payload trailing newlines. List exclusions preserve original source ordinals rather than renumbering survivors. Refresh consumers and exact-output expectations using the [structural format](docs/core.md); this convention is not general Markdown conversion.
+- HTTPS uses platform certificate verification and its trust configuration rather than bundled certificate roots. Check deployments with custom trust settings. Representation bytes remain intact until the CLI performs strict charset decoding and bounded decompression; explicit caller encoding remains authoritative.
+- Unsupported explicit encoding labels are configuration errors with exit class 2, rather than decoding failures with exit class 5. Update scripts that classify these failures; malformed source bytes still produce decoding failures.
+
+### Added
+
+- Closed, bounded diagnostic causes identify known option constraints, I/O roles, HTTP status and protocol/charset/compression/transport failures without exposing supplied values, paths, URLs, headers or transport error chains. Unknown lower-level failures remain generic; see [CLI diagnostics](docs/cli.md).
+
+### Fixed
+
+- Reject unknown members in fieldless projection, selection, transform, guard-read and saved-source objects through direct deserialization, plan validation and saved-run replay instead of silently dropping caller intent.
+- Preserve inherited preformatted whitespace under normalization in both text projections, and original list/table context in selected structural fragments without importing surrounding payload. Restore explicit block boundaries in definition-list, details/summary and address content; foreign SVG/MathML table names do not invent HTML table frames.
+- Reuse selector scratch across positional candidates within one selector/scope pass and charge inner sibling, ancestor, subtree, filter and projection-context work. Exhaustion rejects the evaluation instead of becoming a nonmatch or cached partial result. Workloads that previously escaped accounting may now return `resource_limit`; logical work bounds are not hard OS CPU/RAM isolation.
+- Parse quoted HTTP parameters and quoted pairs correctly, applying duplicate charset metadata checks only when origin metadata controls decoding. Consume complete `100`/`103` informational responses before final metadata, capped at 32 informational responses and 64 KiB cumulative response headers per hop. Reject incomplete final/redirect headers and unsolicited `206` or `Content-Range` representations without publishing successful partial extraction results.
+- Refuse nonregular source, plan and saved-run file paths without waiting for a FIFO writer, validating the opened handle even after path replacement. Regular-file symlinks remain accepted.
+- Report nonempty standard-stream delivery failures, including read-only or invalid handles and disappearing pipe readers, while preserving Windows console Unicode and file-only/empty-raw operation with unused streams. Bytes already written to a pipe cannot be retracted.
+
+### Internal
+
+- Preserve allocation provenance when tagging and untagging `ArcUnion` pointers in the owned `htmlcut-servo-arc` fork, with strict-provenance Miri ownership checks.
+- Extend scored coverage, mutation ownership and fuzzing to changed selector, context, protocol and allocation boundaries. Native packages run source-bound OS I/O, protocol and disposable TLS assertions, retain failure evidence, and exercise negative controls. Rust API compatibility checks use the published 15.0.0 baseline.
+
 ## [15.0.0] - 2026-10-01
 
 ### Changed

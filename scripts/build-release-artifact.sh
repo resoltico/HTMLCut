@@ -139,6 +139,7 @@ write_packaged_readme() {
     local target_triple="$3"
     local binary_name="$4"
     local binary_command="$5"
+    local source_commit="$6"
 
     cat > "${package_dir}/README.md" <<EOF
 # HTMLCut ${version}
@@ -170,9 +171,9 @@ ${binary_command} extract --file ./page.html --css 'article a.more' --projection
 
 ## More
 
-- CLI guide: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/cli.md
-- Getting started: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/getting-started.md
-- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/v${version}/docs/core.md
+- CLI guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/cli.md
+- Getting started: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/getting-started.md
+- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/core.md
 EOF
 }
 
@@ -218,6 +219,11 @@ main() {
     local version
     version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
     readonly version
+    local source_commit
+    source_commit="$(git -C "${repo_root}" rev-parse --verify HEAD)"
+    readonly source_commit
+    [[ "${source_commit}" =~ ^[0-9a-f]{40}$ ]] || htmlcut_die "package source must be an exact commit"
+    [[ -z "$(git -C "${repo_root}" status --porcelain)" ]] || htmlcut_die "package source must be clean"
     local artifact_name
     artifact_name="$(release_package_name_for_target "${version}" "${target_triple}")"
     readonly artifact_name
@@ -288,7 +294,10 @@ main() {
         "${version}" \
         "${target_triple}" \
         "${compiled_binary_name}" \
-        "${packaged_binary_command}"
+        "${packaged_binary_command}" \
+        "${source_commit}"
+    [[ "$(git -C "${repo_root}" rev-parse --verify HEAD)" == "${source_commit}" ]] || htmlcut_die "package source changed during build"
+    [[ -z "$(git -C "${repo_root}" status --porcelain)" ]] || htmlcut_die "package source became dirty during build"
     create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
 
     printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"

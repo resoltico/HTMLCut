@@ -374,6 +374,12 @@ fn coverage_commands_split_application_and_fork_execution_before_one_merged_repo
             "htmlcut-selectors".to_owned(),
             "-p".to_owned(),
             "htmlcut-scraper".to_owned(),
+            "-p".to_owned(),
+            "ureq-proto".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-ureq".to_owned(),
+            "-p".to_owned(),
+            "htmlcut-servo-arc".to_owned(),
             "--all-targets".to_owned(),
             "--locked".to_owned(),
         ]

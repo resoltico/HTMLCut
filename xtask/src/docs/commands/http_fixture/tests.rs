@@ -189,3 +189,33 @@ fn dropping_the_fixture_stops_its_owned_listener() {
     drop(fixture);
     assert!(stopped.load(Ordering::Relaxed));
 }
+
+#[test]
+fn live_fixture_keeps_serving_after_an_incomplete_connection() {
+    let fixture = Fixture::new("é").unwrap();
+    let address = fixture
+        .url
+        .strip_prefix("http://")
+        .unwrap()
+        .strip_suffix("/fixture")
+        .unwrap();
+    let incomplete = TcpStream::connect(address).unwrap();
+    incomplete.shutdown(std::net::Shutdown::Both).unwrap();
+    drop(incomplete);
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    stream
+        .set_write_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    stream
+        .write_all(b"GET /fixture HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert_eq!(
+        response,
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 2\r\n\r\né"
+    );
+}

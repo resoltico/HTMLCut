@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use super::*;
+use crate::media_type;
 
 #[cfg(test)]
 #[path = "http/tests.rs"]
@@ -69,7 +70,9 @@ impl Clock for SystemClock {
 struct Response {
     status: u16,
     location: Option<String>,
-    content_type: Option<String>,
+    content_type: Option<Vec<u8>>,
+    duplicate_content_type: bool,
+    partial: bool,
     encoding: Option<String>,
     body: Box<dyn Read>,
 }
@@ -89,7 +92,11 @@ impl Transport for HttpTransport {
         remaining: Duration,
         connect: Duration,
     ) -> Result<Response, ExtractionError> {
+        let tls = ureq::tls::TlsConfig::builder()
+            .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+            .build();
         let config = ureq::Agent::config_builder()
+            .tls_config(tls)
             .http_status_as_error(false)
             .max_redirects(0)
             .max_redirects_will_error(false)
@@ -113,17 +120,56 @@ impl Transport for HttpTransport {
         Ok(Response {
             status: response.status().as_u16(),
             location: header("location")?,
-            content_type: header("content-type")?,
+            content_type: response
+                .headers()
+                .get("content-type")
+                .map(|value| value.as_bytes().to_vec()),
+            duplicate_content_type: response.headers().get_all("content-type").iter().count() > 1,
+            partial: response.headers().contains_key("content-range"),
             encoding: header("content-encoding")?,
             body: Box::new(response.into_body().into_with_config().reader()),
         })
     }
 }
 fn transport_error(error: ureq::Error) -> ExtractionError {
-    if matches!(error, ureq::Error::Timeout(_)) {
-        limit("acquisition")
-    } else {
-        acquisition()
+    use htmlcut_core::{FailureCause, TransportProblem};
+    match error {
+        ureq::Error::Protocol(
+            ureq_proto::Error::ResponseHeaderLimit
+            | ureq_proto::Error::InformationalResponseLimit
+            | ureq_proto::Error::HttpParseTooManyHeaders,
+        )
+        | ureq::Error::LargeResponseHeader(..) => limit("acquisition"),
+        ureq::Error::Timeout(_) => limit("acquisition").with_cause(FailureCause::Transport {
+            problem: TransportProblem::Timeout,
+        }),
+        ureq::Error::HostNotFound => acquisition().with_cause(FailureCause::Transport {
+            problem: TransportProblem::Dns,
+        }),
+        ureq::Error::ConnectionFailed => acquisition().with_cause(FailureCause::Transport {
+            problem: TransportProblem::Connection,
+        }),
+        ureq::Error::Tls(_) | ureq::Error::Rustls(_) => {
+            acquisition().with_cause(FailureCause::Transport {
+                problem: TransportProblem::Tls,
+            })
+        }
+        ureq::Error::Protocol(_) => acquisition().with_cause(FailureCause::Transport {
+            problem: TransportProblem::Framing,
+        }),
+        ureq::Error::Io(error) => {
+            let problem = match error.kind() {
+                std::io::ErrorKind::UnexpectedEof => TransportProblem::IncompleteBody,
+                std::io::ErrorKind::ConnectionRefused
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted => TransportProblem::Connection,
+                _ => TransportProblem::Other,
+            };
+            acquisition().with_cause(FailureCause::Transport { problem })
+        }
+        _ => acquisition().with_cause(FailureCause::Transport {
+            problem: TransportProblem::Other,
+        }),
     }
 }
 
@@ -192,12 +238,26 @@ fn fetch_with(
             redirects += 1;
             continue;
         }
+        if response.status == 206 || ((200..300).contains(&response.status) && response.partial) {
+            return Err(
+                acquisition().with_cause(htmlcut_core::FailureCause::PartialResponse {
+                    status: response.status,
+                }),
+            );
+        }
         if !(200..300).contains(&response.status) {
-            return Err(acquisition());
+            return Err(
+                acquisition().with_cause(htmlcut_core::FailureCause::HttpStatus {
+                    status: response.status,
+                }),
+            );
         }
         let charset = if explicit_encoding {
             None
         } else {
+            if response.duplicate_content_type {
+                return Err(acquisition().with_cause(htmlcut_core::FailureCause::MediaType {}));
+            }
             charset(response.content_type.as_deref())?
         };
         let compression = response
@@ -219,13 +279,24 @@ fn fetch_with(
                 &mut flate2::read::MultiGzDecoder::new(&mut transfer),
                 policy.decompressed_bytes,
             ),
-            _ => return Err(acquisition()),
+            _ => return Err(acquisition().with_cause(htmlcut_core::FailureCause::Compression {})),
         };
         if transfer.read > policy.transfer_bytes || clock.now() >= deadline {
             return Err(limit("acquisition"));
         }
+        let body = body.map_err(|error| {
+            if error.code == ErrorCode::ResourceLimit {
+                error
+            } else if compression == "gzip" {
+                acquisition().with_cause(htmlcut_core::FailureCause::Compression {})
+            } else {
+                acquisition().with_cause(htmlcut_core::FailureCause::Transport {
+                    problem: htmlcut_core::TransportProblem::IncompleteBody,
+                })
+            }
+        })?;
         return Ok(Acquired {
-            bytes: body?,
+            bytes: body,
             charset,
             final_url: url.into(),
             deadline,
@@ -233,22 +304,8 @@ fn fetch_with(
     }
 }
 
-fn charset(content_type: Option<&str>) -> Result<Option<String>, ExtractionError> {
-    let mut charset = None;
-    for part in content_type.unwrap_or("").split(';').skip(1) {
-        let Some((name, value)) = part.split_once('=') else {
-            continue;
-        };
-        if !name.trim().eq_ignore_ascii_case("charset") {
-            continue;
-        }
-        let value = value.trim().trim_matches('"').to_ascii_lowercase();
-        if charset.as_ref().is_some_and(|previous| previous != &value) {
-            return Err(decoding());
-        }
-        charset = Some(value);
-    }
-    Ok(charset)
+fn charset(content_type: Option<&[u8]>) -> Result<Option<String>, ExtractionError> {
+    media_type::charset(content_type)
 }
 
 struct Transfer<'a, R, C> {

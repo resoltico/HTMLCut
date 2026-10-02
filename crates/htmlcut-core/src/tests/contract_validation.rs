@@ -16,7 +16,7 @@ fn guard() -> Guard {
         selector: "p".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: "text".into(),
         }),
@@ -34,10 +34,10 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
     p.schema = "other".into();
     reject(p);
     let mut p = base.clone();
-    p.version = 2;
+    p.version = 3;
     reject(p);
     let mut p = base.clone();
-    p.projection = Projection::Source;
+    p.projection = Projection::Source {};
     reject(p);
     for (min, max) in [(2, Some(1)), (1, Some(20_000))] {
         let mut p = base.clone();
@@ -74,7 +74,7 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
     )
     .unwrap();
     let mut p = slice.clone();
-    p.projection = Projection::DomText;
+    p.projection = Projection::DomText {};
     reject(p);
     let mut p = slice.clone();
     p.exclude.push("p".into());
@@ -83,7 +83,7 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
     p.guards.push(guard());
     reject(p);
     let mut p = slice;
-    p.transforms.push(Transform::NormalizeWhitespace);
+    p.transforms.push(Transform::NormalizeWhitespace {});
     reject(p);
     for count in [31, 32, 33] {
         let mut p = base.clone();
@@ -94,7 +94,7 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
         assert_eq!(p.validate().is_ok(), count <= 32);
     }
     let mut p = base;
-    p.transforms = vec![Transform::NormalizeWhitespace; 3];
+    p.transforms = vec![Transform::NormalizeWhitespace {}; 3];
     reject(p);
 }
 
@@ -142,22 +142,22 @@ fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
     let base = ExtractionPlan::css("p").unwrap();
     let mut p = base.clone();
     p.transforms = vec![
-        Transform::NormalizeWhitespace,
-        Transform::NormalizeWhitespace,
+        Transform::NormalizeWhitespace {},
+        Transform::NormalizeWhitespace {},
     ];
     reject(p);
     let mut p = base.clone();
-    p.projection = Projection::InnerHtml;
-    p.transforms = vec![Transform::NormalizeWhitespace];
+    p.projection = Projection::InnerHtml {};
+    p.transforms = vec![Transform::NormalizeWhitespace {}];
     reject(p);
     let mut p = base.clone();
-    p.transforms = vec![Transform::ResolveUrls];
+    p.transforms = vec![Transform::ResolveUrls {}];
     reject(p);
     let mut p = base.clone();
     p.projection = Projection::Attribute {
         name: "srcset".into(),
     };
-    p.transforms = vec![Transform::ResolveUrls];
+    p.transforms = vec![Transform::ResolveUrls {}];
     reject(p);
     for name in [
         "href",
@@ -170,12 +170,12 @@ fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
     ] {
         let mut p = base.clone();
         p.projection = Projection::Attribute { name: name.into() };
-        p.transforms = vec![Transform::ResolveUrls];
+        p.transforms = vec![Transform::ResolveUrls {}];
         assert!(p.validate().is_ok());
     }
     let mut p = base;
-    p.projection = Projection::DocumentText;
-    p.transforms = vec![Transform::ResolveUrls];
+    p.projection = Projection::DocumentText {};
+    p.transforms = vec![Transform::ResolveUrls {}];
     assert!(p.validate().is_ok());
 }
 
@@ -226,7 +226,7 @@ fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
         selector: "p".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: String::new(),
         }),
@@ -247,7 +247,7 @@ fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
         value.push('x');
     }
     assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"},
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"},
         "guards":[{"scope":"document","selector":"p","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"x".repeat(crate::limits::MAX_PLAN_BYTES-250)}}]});
     let encoded = serde_json::to_vec(&minimal).unwrap();
     assert!(encoded.len() <= crate::limits::MAX_PLAN_BYTES);
@@ -305,15 +305,15 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 #[test]
 fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
     for wire in [
-        r#"{"schema":"wrong","version":1,"strategy":{"kind":"css","selector":"p"}}"#,
-        r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"wrong","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"}}"#,
     ] {
         assert_eq!(
             ExtractionPlan::from_json(wire.as_bytes()).unwrap_err().code,
             ErrorCode::InvalidSchema
         );
     }
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
     assert_eq!(plan.selection, Selection::All { min: 1, max: None });
     assert_eq!(
         prepared("<p>value</p>")
@@ -353,7 +353,7 @@ fn t29_unicode_regex_programs_share_one_aggregate_compilation_allowance() {
         selector: "p".into(),
         min: 1,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Regex {
             pattern: r"\w{100}".into(),
             flags: String::new(),
@@ -398,7 +398,7 @@ fn t29_exact_selector_bytes_are_allowed_and_oversized_strings_fail_before_semant
         selector: "p".into(),
         min: 2,
         max: Some(1),
-        read: GuardRead::DomText,
+        read: GuardRead::DomText {},
         predicate: Some(Predicate::Exact {
             value: "x".repeat(256 * 1024 + 1),
         }),

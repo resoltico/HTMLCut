@@ -166,7 +166,7 @@ fn t22_field_selected_audit_is_complete_bounded_and_off_stdout() {
 fn t03_t05_saved_run_identity_encoding_and_source_are_closed() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let path = root.path().join("run.json");
-    let valid = serde_json::json!({"schema":"htmlcut.run","version":1,"source":{"kind":"stdin"},"plan":ExtractionPlan::css("p").unwrap(),"encoding":"utf-8","base_url":"https://example.test/"});
+    let valid = serde_json::json!({"schema":"htmlcut.run","version":2,"source":{"kind":"stdin"},"plan":ExtractionPlan::css("p").unwrap(),"encoding":"utf-8","base_url":"https://example.test/"});
     file(
         root.path(),
         "run.json",
@@ -179,7 +179,7 @@ fn t03_t05_saved_run_identity_encoding_and_source_are_closed() {
     assert_eq!((code, out, error), (0, b"180".to_vec(), Vec::new()));
     for (key, bad) in [
         ("schema", serde_json::json!("other")),
-        ("version", serde_json::json!(2)),
+        ("version", serde_json::json!(3)),
         ("encoding", serde_json::json!("invalid")),
         ("base_url", serde_json::json!("bad")),
     ] {
@@ -357,7 +357,7 @@ fn t03_t23_saved_and_preview_inputs_report_read_decode_and_plan_failures() {
         .0,
         2
     );
-    file(root.path(), "plan.json", br#"{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"["}}"#);
+    file(root.path(), "plan.json", br#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"["}}"#);
     assert_eq!(
         invoke(
             &[
@@ -372,7 +372,7 @@ fn t03_t23_saved_and_preview_inputs_report_read_decode_and_plan_failures() {
         .0,
         2
     );
-    file(root.path(), "run.json", br#"{"schema":"htmlcut.run","version":1,"source":{"kind":"stdin"},"plan":{"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}}"#);
+    file(root.path(), "run.json", br#"{"schema":"htmlcut.run","version":2,"source":{"kind":"stdin"},"plan":{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}}"#);
     assert_eq!(
         invoke(&["htmlcut", "run", run.to_str().unwrap()], &[0xff]).0,
         5
@@ -453,4 +453,87 @@ fn t23_large_bounded_proposals_are_published_completely() {
         html.as_bytes(),
     );
     assert_eq!((code, output, error), (0, b"value".to_vec(), Vec::new()));
+}
+
+#[test]
+fn saved_sources_and_nested_plans_reject_unknown_fields_before_stdin_or_publication() {
+    use crate::input::SourceSpec;
+    for source in [
+        SourceSpec::Stdin {},
+        SourceSpec::File {
+            path: "source.html".into(),
+        },
+        SourceSpec::Http {
+            url: Some("https://example.test/".into()),
+            url_env: None,
+        },
+    ] {
+        let valid = serde_json::to_value(source).unwrap();
+        assert!(serde_json::from_value::<SourceSpec>(valid.clone()).is_ok());
+        let mut invalid = valid;
+        invalid["unexpected"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<SourceSpec>(invalid).is_err());
+    }
+    struct Unconsumed;
+    impl std::io::Read for Unconsumed {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            panic!("invalid configuration consumed the source")
+        }
+    }
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let path = root.path().join("run.json");
+    let valid = serde_json::json!({"schema":"htmlcut.run","version":htmlcut_core::SCHEMA_VERSION,"source":{"kind":"stdin"},"plan":ExtractionPlan::css("p").unwrap()});
+    let mut source_invalid = valid.clone();
+    source_invalid["source"]["path"] = serde_json::json!("ignored.html");
+    let mut plan_invalid = valid;
+    plan_invalid["plan"]["projection"] =
+        serde_json::json!({"kind":"dom_text","exclude":[".private"]});
+    for value in [source_invalid, plan_invalid] {
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = crate::app::run(
+            ["htmlcut", "run", path.to_str().unwrap()],
+            &mut Unconsumed,
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(code, 2);
+        assert!(stdout.is_empty());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&stderr).unwrap()["version"],
+            htmlcut_core::SCHEMA_VERSION
+        );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn missing_input_canonicalization_retains_safe_io_cause_for_extract_and_save_run() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let missing = root.path().join("SYNTHETIC_SECRET_MISSING.html");
+    let run = root.path().join("saved-run.json");
+    for save in [false, true] {
+        let mut arguments = vec![
+            "htmlcut",
+            "extract",
+            "--file",
+            missing.to_str().unwrap(),
+            "--css",
+            "p",
+        ];
+        if save {
+            arguments.extend(["--save-run", run.to_str().unwrap()]);
+        }
+        let (code, stdout, stderr) = invoke(&arguments, b"");
+        assert_eq!(code, 5);
+        assert!(stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&stderr).unwrap();
+        assert_eq!(
+            error["cause"],
+            serde_json::json!({"kind":"io","operation":"input","problem":"not_found"})
+        );
+        assert!(!String::from_utf8_lossy(&stderr).contains("SYNTHETIC_SECRET"));
+        assert!(!run.exists());
+    }
 }

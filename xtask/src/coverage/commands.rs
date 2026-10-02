@@ -10,7 +10,13 @@ use crate::plan::coverage_target_dir as workspace_coverage_target_dir;
 const APPLICATION_COVERAGE_PACKAGES: &[&str] =
     &["htmlcut-core", "htmlcut-cli", "htmlcut-tempdir", "xtask"];
 
-const FORK_COVERAGE_PACKAGES: &[&str] = &["htmlcut-selectors", "htmlcut-scraper"];
+const FORK_COVERAGE_PACKAGES: &[&str] = &[
+    "htmlcut-selectors",
+    "htmlcut-scraper",
+    "ureq-proto",
+    "htmlcut-ureq",
+    "htmlcut-servo-arc",
+];
 
 /// Builds the `cargo llvm-cov` command used by the one-ring coverage gate.
 pub fn coverage_command(_repo_root: &Path) -> CommandSpec {

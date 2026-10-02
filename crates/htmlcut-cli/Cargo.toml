@@ -20,12 +20,17 @@ clap.workspace = true
 htmlcut-core.workspace = true
 encoding_rs.workspace = true
 ureq.workspace = true
+ureq-proto.workspace = true
 flate2.workspace = true
 tempfile.workspace = true
+os_pipe.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 url.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
 
 [dev-dependencies]
 htmlcut-tempdir.workspace = true

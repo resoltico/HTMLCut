@@ -23,7 +23,7 @@ fn source_projection_cannot_accidentally_serialize_a_dom_element() {
     assert_eq!(
         project(
             element,
-            &Projection::Source,
+            &Projection::Source {},
             &HashSet::new(),
             &[],
             None,

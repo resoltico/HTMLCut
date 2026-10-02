@@ -2,11 +2,24 @@
 
 use super::*;
 
-struct List {
-    ordered: bool,
-    next: Option<i64>,
-    reversed: bool,
+use super::context::ListContext;
+
+fn foreign_table_role(element: &scraper::node::Element) -> bool {
+    let namespace: &str = element.name.ns.as_ref();
+    matches!(
+        element.name(),
+        "table" | "caption" | "tr" | "td" | "th" | "tbody" | "thead" | "tfoot"
+    ) && namespace != "http://www.w3.org/1999/xhtml"
 }
+
+fn missing_table_context() -> ExtractionError {
+    ExtractionError::new(
+        ErrorCode::InternalInvariant,
+        "projection",
+        "An HTML table role is missing its structural context.",
+    )
+}
+
 struct Table {
     cells: usize,
 }
@@ -25,9 +38,34 @@ pub(super) fn render(
     let mut output = ValueBuffer::new(maximum, budget);
     let mut skipped = 0_u32;
     let mut pending = false;
-    let mut lists: Vec<List> = Vec::new();
+    let mut list_depth = usize::from(
+        root.value().name() == "li"
+            && root
+                .parent()
+                .and_then(ElementRef::wrap)
+                .is_some_and(|e| matches!(e.value().name(), "ol" | "ul")),
+    );
+    let mut list_context = ListContext::default();
     let mut tables: Vec<Table> = Vec::new();
     let mut pre_fences: Vec<String> = Vec::new();
+    let inherited_pre = context::inherited_pre(root, budget)?
+        && !excluded.contains(&root.id())
+        && !matches!(root.value().name(), "script" | "style" | "template");
+    if inherited_pre {
+        let fence = pre_fence(*root, excluded, maximum, budget)?;
+        output.push(&fence)?;
+        output.push("\n")?;
+        pre_fences.push(fence);
+    }
+    if !foreign_table_role(root.value())
+        && matches!(
+            root.value().name(),
+            "tr" | "tbody" | "thead" | "tfoot" | "td" | "th"
+        )
+    {
+        tables.push(Table { cells: 0 });
+    }
+
     for edge in root.traverse() {
         crate::execution::charge(budget, 1)?;
         match edge {
@@ -58,6 +96,9 @@ pub(super) fn render(
                 let Some(element) = element else {
                     continue;
                 };
+                if foreign_table_role(element) {
+                    continue;
+                }
                 let name = element.name();
                 match name {
                     "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
@@ -67,7 +108,8 @@ pub(super) fn render(
                         output.push(" ")?;
                     }
                     "p" | "div" | "article" | "section" | "header" | "footer" | "main"
-                    | "aside" | "blockquote" | "figure" | "figcaption" | "caption" => {
+                    | "aside" | "blockquote" | "figure" | "figcaption" | "dl" | "dt" | "dd"
+                    | "details" | "summary" | "address" => {
                         output.boundary()?;
                         pending = false;
                     }
@@ -78,41 +120,16 @@ pub(super) fn render(
                     "ul" | "ol" => {
                         output.boundary()?;
                         pending = false;
-                        let reversed = element.attr("reversed").is_some();
-                        let default_start = if reversed {
-                            let mut count = 0_i64;
-                            for child in node.children() {
-                                crate::execution::charge(budget, 1)?;
-                                if !excluded.contains(&child.id())
-                                    && child.value().as_element().is_some_and(|e| e.name() == "li")
-                                {
-                                    count += 1;
-                                }
-                            }
-                            count
-                        } else {
-                            1
-                        };
-                        lists.push(List {
-                            ordered: name == "ol",
-                            reversed,
-                            next: Some(ordinal(element.attr("start"))?.unwrap_or(default_start)),
-                        });
+                        list_depth += 1;
                     }
                     "li" => {
                         output.boundary()?;
                         pending = false;
-                        output.push(&"  ".repeat(lists.len().saturating_sub(1)))?;
-                        if let Some(list) = lists.last_mut().filter(|list| list.ordered) {
-                            let number = ordinal(element.attr("value"))?
-                                .or(list.next)
-                                .ok_or_else(|| ExtractionError::limit("rendering"))?;
+                        output.push(&"  ".repeat(list_depth.saturating_sub(1)))?;
+                        if let Some(number) = list_context
+                            .ordinal(ElementRef::wrap(node).expect("element"), budget)?
+                        {
                             output.push(&format!("{number}. "))?;
-                            list.next = if list.reversed {
-                                number.checked_sub(1)
-                            } else {
-                                number.checked_add(1)
-                            };
                         } else {
                             output.push("- ")?;
                         }
@@ -146,6 +163,11 @@ pub(super) fn render(
                         output.push("\n")?;
                         pre_fences.push(fence);
                     }
+                    "caption" => {
+                        output.boundary()?;
+                        output.push("[caption]")?;
+                        pending = false;
+                    }
                     "table" => {
                         output.boundary()?;
                         output.push("[table]")?;
@@ -155,17 +177,15 @@ pub(super) fn render(
                     "tr" => {
                         output.boundary()?;
                         pending = false;
-                        if let Some(table) = tables.last_mut() {
-                            table.cells = 0;
-                        }
+                        tables.last_mut().ok_or_else(missing_table_context)?.cells = 0;
                     }
                     "td" | "th" => {
-                        if let Some(table) = tables.last_mut() {
-                            if table.cells > 0 {
-                                output.push(" | ")?;
-                            }
-                            table.cells += 1;
+                        let table = tables.last_mut().ok_or_else(missing_table_context)?;
+                        if table.cells > 0 {
+                            output.push(" | ")?;
                         }
+                        table.cells += 1;
+                        output.push("[cell]")?;
                         if name == "th" {
                             output.push("[header] ")?;
                         }
@@ -191,6 +211,9 @@ pub(super) fn render(
                 let Some(element) = node.value().as_element() else {
                     continue;
                 };
+                if foreign_table_role(element) {
+                    continue;
+                }
                 match element.name() {
                     "a" if element.attr("href").is_some() => {
                         output.push("](")?;
@@ -202,16 +225,30 @@ pub(super) fn render(
                         } else {
                             destination
                         };
-                        output.text(destination, false, false, true)?;
+                        output.text(
+                            destination,
+                            !pre_fences.is_empty(),
+                            false,
+                            pre_fences.is_empty(),
+                        )?;
                         output.push(")")?;
                     }
                     "pre" => {
-                        output.boundary()?;
+                        // The separator belongs to framing, even when payload already ends in LF.
+                        output.push("\n")?;
                         output.push(&pre_fences.pop().unwrap())?;
                         pending = true;
                     }
                     "ol" | "ul" => {
-                        lists.pop();
+                        list_depth -= 1;
+                        pending = true;
+                    }
+                    "td" | "th" => {
+                        output.push("[/cell]")?;
+                        pending = false;
+                    }
+                    "caption" => {
+                        output.push("[/caption]")?;
                         pending = true;
                     }
                     "table" => {
@@ -222,11 +259,16 @@ pub(super) fn render(
                     }
                     "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "div" | "article"
                     | "section" | "header" | "footer" | "main" | "aside" | "blockquote"
-                    | "figure" | "figcaption" | "caption" | "li" | "tr" => pending = true,
+                    | "figure" | "figcaption" | "dl" | "dt" | "dd" | "details" | "summary"
+                    | "address" | "li" | "tr" => pending = true,
                     _ => (),
                 }
             }
         }
+    }
+    if inherited_pre {
+        output.push("\n")?;
+        output.push(&pre_fences.pop().expect("inherited fence"))?;
     }
     Ok(output.finish())
 }
@@ -303,22 +345,6 @@ fn pre_fence(
         return Err(ExtractionError::limit("projection"));
     }
     Ok("`".repeat(length))
-}
-
-fn ordinal(value: Option<&str>) -> Result<Option<i64>, ExtractionError> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let value = value.trim_start_matches(|c: char| c.is_ascii_whitespace());
-    let sign = usize::from(value.starts_with('+') || value.starts_with('-'));
-    let digits = value[sign..].bytes().take_while(u8::is_ascii_digit).count();
-    if digits == 0 {
-        return Ok(None);
-    }
-    value[..sign + digits]
-        .parse()
-        .map(Some)
-        .map_err(|_| ExtractionError::limit("rendering"))
 }
 
 #[cfg(test)]

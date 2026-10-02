@@ -13,6 +13,10 @@ fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
             "prepared_discovery",
             "relational_selector_budget",
             "cli_parse_error_surface",
+            "http_response_framing",
+            "media_parameters",
+            "structural_cells",
+            "closed_wire_objects",
         ]
     );
 }

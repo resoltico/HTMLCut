@@ -6,7 +6,7 @@ use crate::model::{
     DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 
-const FUZZ_SMOKE_TARGETS: [&str; 7] = [
+const FUZZ_SMOKE_TARGETS: [&str; 11] = [
     "parse_document_bytes",
     "selector_parsing",
     "slice_boundaries",
@@ -14,6 +14,10 @@ const FUZZ_SMOKE_TARGETS: [&str; 7] = [
     "prepared_discovery",
     "relational_selector_budget",
     "cli_parse_error_surface",
+    "http_response_framing",
+    "media_parameters",
+    "structural_cells",
+    "closed_wire_objects",
 ];
 pub(crate) const FUZZ_PACKAGE_NAME: &str = "htmlcut-fuzz";
 /// Canonical maintained fuzz target used in human-facing `cargo xtask --help` examples.

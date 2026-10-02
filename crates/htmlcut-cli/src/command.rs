@@ -60,7 +60,7 @@ impl SourceChoice {
                     .into(),
             })
         } else if self.stdin {
-            Ok(SourceSpec::Stdin)
+            Ok(SourceSpec::Stdin {})
         } else {
             Ok(SourceSpec::Http {
                 url: self.url.clone(),
@@ -202,7 +202,7 @@ impl Extract {
             MatchArg::Single
                 if self.index.is_none() && self.min.is_none() && self.max.is_none() =>
             {
-                Selection::Single
+                Selection::Single {}
             }
             MatchArg::Nth if self.min.is_none() && self.max.is_none() => Selection::Nth {
                 index: self
@@ -224,11 +224,11 @@ impl Extract {
         } else {
             ProjectionArg::DomText
         }) {
-            ProjectionArg::DomText => Projection::DomText,
-            ProjectionArg::DocumentText => Projection::DocumentText,
-            ProjectionArg::InnerHtml => Projection::InnerHtml,
-            ProjectionArg::OuterHtml => Projection::OuterHtml,
-            ProjectionArg::Source => Projection::Source,
+            ProjectionArg::DomText => Projection::DomText {},
+            ProjectionArg::DocumentText => Projection::DocumentText {},
+            ProjectionArg::InnerHtml => Projection::InnerHtml {},
+            ProjectionArg::OuterHtml => Projection::OuterHtml {},
+            ProjectionArg::Source => Projection::Source {},
             ProjectionArg::Attribute => Projection::Attribute {
                 name: self
                     .attribute

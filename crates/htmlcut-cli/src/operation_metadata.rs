@@ -26,15 +26,16 @@ const OPERATIONS: &[(&str, &str)] = &[
 
 pub(crate) fn describe(name: Option<&str>) -> Result<Value, htmlcut_core::ExtractionError> {
     match name {
-        None => Ok(json!({ "schema": "htmlcut.operations", "version": 1,
-            "operations": OPERATIONS.iter().map(|(name, summary)| json!({"name":name,"summary":summary})).collect::<Vec<_>>() })),
+        None => Ok(
+            json!({ "schema": "htmlcut.operations", "version": htmlcut_core::SCHEMA_VERSION,
+            "operations": OPERATIONS.iter().map(|(name, summary)| json!({"name":name,"summary":summary})).collect::<Vec<_>>() }),
+        ),
         Some(name) => {
             let (_, summary) = OPERATIONS
                 .iter()
                 .find(|(operation, _)| *operation == name)
                 .ok_or_else(|| options("The requested operation name is unsupported."))?;
-            let mut value =
-                json!({"schema":"htmlcut.operation","version":1,"name":name,"summary":summary});
+            let mut value = json!({"schema":"htmlcut.operation","version":htmlcut_core::SCHEMA_VERSION,"name":name,"summary":summary});
             if name == "extract" {
                 value["details"] = json!(EXTRACT_DETAILS);
                 value["plan_schema"] = json!("htmlcut.extraction.plan");

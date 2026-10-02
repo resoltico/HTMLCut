@@ -4,9 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 /// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 1;
+pub const SEMANTICS_VERSION: u32 = 2;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -106,6 +106,9 @@ pub struct ExtractionError {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ErrorEvidence {
+    /// Safe bounded recovery information when the owning boundary knows it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cause: Option<crate::FailureCause>,
     /// An observed lower bound, never presented as an exact count.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_at_least: Option<u32>,
@@ -127,6 +130,12 @@ pub struct ErrorEvidence {
 }
 
 impl ExtractionError {
+    /// Attaches safe owning-boundary recovery information.
+    pub fn with_cause(mut self, cause: crate::FailureCause) -> Self {
+        self.cause = Some(cause);
+        self
+    }
+
     /// Attaches identities and exact counts from an already validated result to an adapter failure.
     pub fn with_result(mut self, result: &ExtractionResult) -> Self {
         self.source_sha256 = Some(result.source_sha256.clone());
@@ -154,6 +163,7 @@ impl ExtractionError {
             stage,
             "The operation exceeded its configured resource limit.",
         )
+        .with_cause(crate::FailureCause::Resource {})
     }
 }
 

@@ -8,6 +8,7 @@ use selectors::work_budget::SelectorWorkBudget;
 
 use crate::{ErrorCode, ExtractionError, Projection, Transform};
 
+mod context;
 mod document_text;
 
 pub(crate) struct ValueBuffer<'a> {
@@ -59,7 +60,7 @@ impl<'a> ValueBuffer<'a> {
                 continue;
             }
             self.source_space = false;
-            if escape && "\\[]()".contains(c) {
+            if escape && "\\[]()|`".contains(c) {
                 self.push("\\")?;
             }
             self.push(c.encode_utf8(&mut [0; 4]))?;
@@ -87,8 +88,8 @@ pub(crate) fn project(
     maximum: usize,
     budget: &SelectorWorkBudget,
 ) -> Result<String, ExtractionError> {
-    let normalize = transforms.contains(&Transform::NormalizeWhitespace);
-    let resolve = transforms.contains(&Transform::ResolveUrls);
+    let normalize = transforms.contains(&Transform::NormalizeWhitespace {});
+    let resolve = transforms.contains(&Transform::ResolveUrls {});
     match projection {
         Projection::Attribute { name } => {
             #[cfg(test)]
@@ -112,11 +113,11 @@ pub(crate) fn project(
             // Untransformed values were bounded above; resolve_url bounds the final URL.
             Ok(value)
         }
-        Projection::DomText => dom_text(root, excluded, normalize, maximum, budget),
-        Projection::DocumentText => {
+        Projection::DomText {} => dom_text(root, excluded, normalize, maximum, budget),
+        Projection::DocumentText {} => {
             document_text::render(root, excluded, normalize, resolve, base, maximum, budget)
         }
-        Projection::InnerHtml | Projection::OuterHtml => {
+        Projection::InnerHtml {} | Projection::OuterHtml {} => {
             #[cfg(test)]
             record_projection(3);
             let mut writer = HtmlBuffer {
@@ -125,7 +126,7 @@ pub(crate) fn project(
             };
             root.write_filtered_html(
                 &mut writer,
-                matches!(projection, Projection::OuterHtml),
+                matches!(projection, Projection::OuterHtml {}),
                 excluded,
                 budget,
             )
@@ -133,7 +134,7 @@ pub(crate) fn project(
             // The HTML serializer emits UTF-8; the owned buffer cannot be externally corrupted.
             Ok(String::from_utf8(writer.bytes).expect("HTML serializer produces UTF-8"))
         }
-        Projection::Source => Err(ExtractionError::new(
+        Projection::Source {} => Err(ExtractionError::new(
             ErrorCode::InternalInvariant,
             "projection",
             "Source projection must use the slice execution path.",
@@ -152,7 +153,7 @@ fn dom_text(
     record_projection(1);
     let mut value = ValueBuffer::new(maximum, budget);
     let mut skipped = 0_u32;
-    let mut pre = 0_u32;
+    let mut pre = u32::from(normalize && context::inherited_pre(root, budget)?);
     for edge in root.traverse() {
         crate::execution::charge(budget, 1)?;
         match edge {

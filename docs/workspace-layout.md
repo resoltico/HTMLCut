@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: WORKSPACE
 updated: "2026-10-01"
 route:
@@ -33,6 +33,7 @@ to Rust paths.
 | `patches/rust/markup5ever` | package `htmlcut-markup5ever`, Rust crate `markup5ever` | Paired parser/serializer interfaces. | disabled |
 | `patches/rust/tendril` | package `htmlcut-tendril`, Rust crate `tendril` | Paired text buffering/provenance carrier. | disabled |
 | `patches/rust/sha2` | package `htmlcut-sha2`, Rust crate `sha2` | SHA-256 identity backend with ARM64 correction. | disabled |
+| `patches/rust/ureq` | package `htmlcut-ureq`, Rust crate `ureq` | Complete HTTP response receiver and framed representation bytes; strict decoding stays caller-owned. | disabled |
 
 The supported publication is GitHub native/source archives, with Rust consumption through git/path
 dependencies. No complete branded-fork crates.io distribution is configured; `publish = false`
@@ -89,3 +90,5 @@ These paths matter, but they are not normal workspace members:
 - Use [cli.md](cli.md) for operator-facing command behavior.
 - Use [core.md](core.md) for the canonical embeddable engine surface.
 - Use [tempdir.md](tempdir.md) for the internal `htmlcut_tempdir` helper crate.
+
+The unpublished patched HTTP protocol member is `patches/rust/ureq-proto`; its canonical package name permits one transitive Cargo patch. It owns complete informational response consumption and finite header accounting.

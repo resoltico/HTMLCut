@@ -52,7 +52,7 @@ def measured(command, warmups=3, repeats=10):
     samples = []
     for index in range(warmups + repeats):
         start = time.perf_counter_ns()
-        result = subprocess.run(command, capture_output=True, check=True)
+        result = subprocess.run(command, capture_output=True, check=True, timeout=30)
         elapsed = time.perf_counter_ns() - start
         if index >= warmups:
             samples.append(elapsed)
@@ -86,7 +86,7 @@ def main():
     descriptions = {}
     for operation in [[], ['extract']]:
         command = [binary, 'describe', *operation]
-        output = subprocess.check_output(command).decode()
+        output = subprocess.check_output(command, timeout=30).decode()
         descriptions[' '.join(command[1:])] = dict(bytes=len(output.encode()), tokens=len(ENCODING.encode(output)))
     tasks = []
     temporary = Path(args.output).resolve().parent / 'task-plans'
@@ -98,7 +98,7 @@ def main():
         ('guarded','context.html','#amount',{'kind':'dom_text'}),
         ('mapping','books.html','article.book',{'kind':'outer_html'}),
     ]:
-        plan = dict(schema='htmlcut.extraction.plan',version=1,strategy=dict(kind='css',selector=selector),
+        plan = dict(schema='htmlcut.extraction.plan',version=2,strategy=dict(kind='css',selector=selector),
                     selection=dict(kind='all',min=1) if task in ('titles','urls','mapping') else dict(kind='single'),
                     projection=projection,exclude=[],guards=[],transforms=[])
         if task == 'guarded':
@@ -148,7 +148,7 @@ def main():
         in_process = (time.perf_counter_ns() - start) / 100
         payload = compact(actual)
         tasks.append(dict(task=task, fixture=fixture, correctness='complete exact equality', values=actual,
-                          commands=[command,alternative] + ([caller_command] if caller_command else []), observed_retries=0, repair_steps=['Evaluation setup corrected to use the newly packaged target binary; comparator now reads literal text nodes including payload elements and excludes tokenizer setup from parser timing.'],
+                          commands=[command,alternative] + ([caller_command] if caller_command else []), observed_retries=0, repair_steps=[],
                           htmlcut_plus_caller_mapping_fresh_process=caller_timing,
                           htmlcut_fresh_process=timing, parser_fresh_process=other_timing,
                           parser_in_process_ns=in_process,
@@ -163,7 +163,7 @@ def main():
     report = dict(scope='offline synthetic equivalent-correct tasks; not agent billing or a blind multi-agent trial',
                   tokenizer={'name':'tiktoken','version':importlib.metadata.version('tiktoken'),'encoding':'o200k_base'},
                   versions={name:importlib.metadata.version(name) for name in ['beautifulsoup4','lxml','tiktoken']},
-                  python=platform.python_version(), binary_version=subprocess.check_output([binary,'--version']).decode().strip(),
+                  python=platform.python_version(), binary_version=subprocess.check_output([binary,'--version'], timeout=30).decode().strip(),
                   binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
                   corpus=manifest, discovery=descriptions, tasks=tasks,
                   code_tokens_proxy=len(ENCODING.encode(Path(__file__).read_text())),

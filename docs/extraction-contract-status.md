@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: ENGINEERING
-updated: "2026-10-01"
+updated: "2026-10-02"
 route:
   keywords: [HTMLCut, implementation status, conformance, live QA, dependency refresh, published release]
   questions: ["Which source was published as HTMLCut 15.0.0?", "Which revision was verified?", "Do previous proofs cover the dependency refresh?"]
@@ -15,11 +15,17 @@ D1–D10 are implemented together. The implementation authority is
 immutable-snapshot Rust core and the `htmlcut` binary. The old CLI library, reader heuristics,
 interop runtime and command aliases are removed.
 
-Implementation and configuration work are complete. The release process validates the refreshed
+The historical v15 implementation/configuration delivery completed its defined checks. Its release process validated the refreshed
 source and new packages through the required gates, source-bound mutation accounting and native
 proofs. Authoritative publication state is the [public release](https://github.com/resoltico/HTMLCut/releases/tag/v15.0.0);
 exact-source verification is retained in [GitHub Actions](https://github.com/resoltico/HTMLCut/actions).
 The historical evidence below identifies its tested revision; it does not attest later changes.
+
+## Current 16.0.0 contract
+
+HTMLCut 16.0.0 uses wire version 2 and extraction semantics 2. Its reliability verification covers closed inputs, original-DOM fragment context, selector work/cache lifetime, complete HTTP representations, strict decoding, safe diagnostics and real OS I/O. Exact-source coverage, strict Miri, fuzzing, full mutation and four matching-platform packaged proofs are retained in the [review PR](https://github.com/resoltico/HTMLCut/pull/94) and its source-bound evidence. The final merged source must pass main CI and complete mutation verification before tagging; authoritative publication state is the [GitHub release list](https://github.com/resoltico/HTMLCut/releases).
+
+Historical v15 verification below identifies its own exact source and test scope; it is not proof that the independently recorded v15 audit findings were absent or that this changed candidate has passed final verification.
 
 ## Published 15.0.0 verification
 

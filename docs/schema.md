@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "15.0.0"
+version: "16.0.0"
 domain: SCHEMA
 updated: "2026-10-01"
 route:
@@ -33,4 +33,4 @@ Additional emitted document roles (not individually retrievable schemas):
 - `htmlcut.operation`
 - `htmlcut.gate_run`
 
-The extraction wire family version and semantics version are both initially 1 and have independent meanings. A saved run contains adapter-owned source configuration and the same extraction plan. Success values contain no alternate projections, source URL or plan copy. Errors are one typed family with only available identity/count evidence; hashes are not authentication.
+The extraction wire family version and semantics version are both currently 2 and have independent meanings. A saved run contains adapter-owned source configuration and the same extraction plan. Success values contain no alternate projections, source URL or plan copy. Errors are one typed family with available identity/count evidence and bounded safe recovery causes; hashes are not authentication.

@@ -24,7 +24,7 @@ fn decoding_expansion_chunking_and_expired_deadline_never_publish_partial_unicod
         ErrorCode::ResourceLimit
     );
     assert!(
-        SourceSpec::Stdin
+        SourceSpec::Stdin {}
             .acquire(
                 &mut Cursor::new(b"body"),
                 Some("unknown"),
@@ -34,7 +34,7 @@ fn decoding_expansion_chunking_and_expired_deadline_never_publish_partial_unicod
             .is_err()
     );
     assert!(
-        SourceSpec::Stdin
+        SourceSpec::Stdin {}
             .acquire(
                 &mut Cursor::new(b"body"),
                 None,

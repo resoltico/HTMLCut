@@ -83,6 +83,10 @@ fn release_build_script_generates_a_package_specific_readme() {
     assert!(script.contains("write_packaged_readme"));
     assert!(script.contains("htmlcut_cargo_compiled_binary_path"));
     assert!(script.contains("package-specific install and verification guide"));
+    assert!(script.contains("blob/${source_commit}/docs/cli.md"));
+    assert!(!script.contains("blob/v${version}/docs/"));
+    assert!(script.contains("package source must be clean"));
+    assert!(script.contains("package source changed during build"));
     assert!(!script.contains("sed '/^<!--$/,/^-->$/d' \"${repo_root}/README.md\""));
     assert!(
         !script.contains(

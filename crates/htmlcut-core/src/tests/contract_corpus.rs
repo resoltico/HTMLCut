@@ -14,8 +14,8 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
         [literal]
     );
     let mut plan = plan;
-    plan.projection = Projection::DocumentText;
-    let structural = "## Free-threading\nThe [global interpreter lock](gil.html) affects Windows and macOS.\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\nHidden source note remains included.\nBroken mirror\n[table]\nCharges\n[header] Amount | [rowspan=2] EUR 180\n[/table]";
+    plan.projection = Projection::DocumentText {};
+    let structural = "## Free-threading\nThe [global interpreter lock](gil.html) affects Windows and macOS.\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\nHidden source note remains included.\nBroken mirror\n[table]\n[caption]Charges[/caption]\n[cell][header] Amount[/cell] | [cell][rowspan=2] EUR 180[/cell]\n[/table]";
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -69,13 +69,15 @@ fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
             .values,
         [literal]
     );
-    plan.projection = Projection::DocumentText;
+    plan.projection = Projection::DocumentText {};
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
             .values,
-        ["First\nSecondoutside\n[table]\nA | B\n[/table]\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"]
+        [
+            "First\nSecondoutside\n[table]\n[cell]A[/cell] | [cell]B[/cell]\n[/table]\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"
+        ]
     );
     assert_eq!(source.parse_count(), 1);
 }
@@ -101,13 +103,13 @@ fn t33_caption_classes_ids_and_unrelated_siblings_cannot_suppress_selected_conte
                 .values,
             ["BEGINChargesEUR 180END"]
         );
-        plan.projection = Projection::DocumentText;
+        plan.projection = Projection::DocumentText {};
         assert_eq!(
             source
                 .execute(&CompiledPlan::compile(&plan).unwrap())
                 .unwrap()
                 .values,
-            ["BEGIN\n[table]\nCharges\nEUR 180\n[/table]\nEND"]
+            ["BEGIN\n[table]\n[caption]Charges[/caption]\n[cell]EUR 180[/cell]\n[/table]\nEND"]
         );
     }
 }

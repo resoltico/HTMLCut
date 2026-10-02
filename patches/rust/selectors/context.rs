@@ -224,6 +224,16 @@ where
         self.work_budget = work_budget;
     }
 
+    /// Shares the current operation budget with internal traversal boundaries.
+    pub(crate) fn work_budget(&self) -> Option<&'a SelectorWorkBudget> {
+        self.work_budget
+    }
+
+    /// Whether an incomplete traversal exhausted the operation budget.
+    pub(crate) fn work_exhausted(&self) -> bool {
+        self.work_budget.is_some_and(SelectorWorkBudget::exhausted)
+    }
+
     /// Consumes one selector matching work unit when this context is budgeted.
     pub fn consume_work(&self) -> bool {
         self.work_budget.is_none_or(SelectorWorkBudget::consume)
@@ -536,3 +546,7 @@ where
         self.current_relative_selector_anchor
     }
 }
+
+#[cfg(test)]
+#[path = "tests/context.rs"]
+mod tests;

@@ -534,6 +534,22 @@ max_match_arms = 70
 allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
 
 [[rules]]
+path = "crates/htmlcut-cli/src/command_diagnostics.rs"
+match = "exact"
+role = "cli-adapter"
+owner = "HTMLCut extraction contract"
+rationale = "Recovery causes use the maintained argument definitions, never supplied values."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 52
+max_public_items = 24
+max_imports = 20
+max_functions = 42
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "command", "input"]
+
+[[rules]]
 path = "crates/htmlcut-cli/src/command.rs"
 match = "exact"
 role = "cli-adapter"
@@ -660,3 +676,147 @@ max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
 allowed_internal_dependencies = ["crate", "element_ref", "node"]
+
+[[rules]]
+path = "patches/rust/ureq-proto/src/client/"
+match = "prefix"
+role = "http-response-boundary"
+owner = "HTMLCut acquisition"
+rationale = "Complete informational responses and bounded consumed/pending headers are owned protocol behavior."
+split_trigger = "the response boundary gains unrelated routing or socket responsibilities or exceeds a declared budget"
+max_physical_lines = 600
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "body", "ext", "parser", "util", "client", "state", "response_limits"]
+
+[[rules]]
+path = "patches/rust/scraper/src/selector/tests/"
+match = "prefix"
+role = "selector-boundary-tests"
+owner = "HTMLCut extraction verification"
+rationale = "Independent document/scope/cache and work-refusal controls for the maintained matching boundary."
+split_trigger = "the test module gains unrelated parser or rendering responsibilities or exceeds its budget"
+max_physical_lines = 500
+max_items = 52
+max_public_items = 24
+max_imports = 20
+max_functions = 42
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "selector", "budget"]
+
+[[rules]]
+path = "patches/rust/selectors/relative_selector/filter.rs"
+match = "exact"
+role = "selector-resource-boundary"
+owner = "HTMLCut extraction"
+rationale = "Relative filter construction obeys operation work limits and never installs partial traversal results."
+split_trigger = "filter construction gains an unrelated matching subsystem or exceeds its budget"
+max_physical_lines = 300
+max_items = 35
+max_public_items = 24
+max_imports = 14
+max_functions = 28
+max_decision_points = 70
+max_match_arms = 35
+allowed_internal_dependencies = ["crate", "bloom", "context", "parser", "tree", "work_budget"]
+
+[[rules]]
+path = "patches/rust/selectors/tests/"
+match = "prefix"
+role = "selector-contract-tests"
+owner = "HTMLCut selector verification"
+rationale = "Bounded immutable element facts and independent matcher outcomes protect generic owned contracts without claiming browser conformance."
+split_trigger = "a test module acquires unrelated runtime responsibilities or exceeds its cohesion budget"
+max_physical_lines = 500
+max_items = 85
+max_public_items = 45
+max_imports = 24
+max_functions = 65
+max_decision_points = 180
+max_match_arms = 85
+allowed_internal_dependencies = ["crate", "attr", "bloom", "matching", "context", "parser", "tree", "work_budget", "tests", "element"]
+
+[[rules]]
+path = "patches/rust/servo_arc/tagged_union.rs"
+match = "exact"
+role = "selector-allocation-boundary"
+owner = "HTMLCut selector ownership"
+rationale = "Tagged Arc constructors, borrowing and release preserve allocation provenance and exact ownership."
+split_trigger = "the module gains unrelated allocation responsibilities or exceeds its budget"
+max_physical_lines = 300
+max_items = 65
+max_public_items = 30
+max_imports = 22
+max_functions = 50
+max_decision_points = 150
+max_match_arms = 70
+allowed_internal_dependencies = ["crate", "tagged_union"]
+
+[[rules]]
+path = "patches/rust/ureq/src/run/response.rs"
+match = "exact"
+role = "http-complete-response-receiver"
+owner = "HTMLCut acquisition"
+rationale = "The maintained transport caller accepts only complete bounded protocol responses and reports EOF/deadline failures."
+split_trigger = "the receiver gains unrelated request, pool or publication policy"
+max_physical_lines = 180
+max_items = 24
+max_public_items = 8
+max_imports = 12
+max_functions = 16
+max_decision_points = 48
+max_match_arms = 20
+allowed_internal_dependencies = ["super"]
+
+[[rules]]
+path = "patches/rust/ureq/src/body/reader.rs"
+match = "exact"
+role = "http-representation-byte-reader"
+owner = "HTMLCut acquisition"
+rationale = "Framing-derived length and unchanged representation bytes protect the CLI's single strict decoding owner."
+split_trigger = "the byte reader acquires charset/content decoders or unrelated publication responsibilities"
+max_physical_lines = 220
+max_items = 32
+max_public_items = 12
+max_imports = 12
+max_functions = 24
+max_decision_points = 48
+max_match_arms = 24
+allowed_internal_dependencies = ["super", "crate", "body", "transport", "unversioned"]
+
+[[rules]]
+path = "patches/rust/ureq/src/run/response_tests.rs"
+match = "exact"
+role = "http-receiver-contract-tests"
+owner = "HTMLCut acquisition verification"
+rationale = "Complete header boundaries and finite injected I/O errors independently protect receiver values and error propagation."
+split_trigger = "the fixture gains unrelated socket, TLS or protocol policy"
+max_physical_lines = 300
+max_items = 40
+max_public_items = 16
+max_imports = 16
+max_functions = 30
+max_decision_points = 60
+max_match_arms = 30
+allowed_internal_dependencies = ["crate", "unversioned", "transport", "resolver", "config"]
+
+[[rules]]
+path = "patches/rust/ureq/src/error/io.rs"
+match = "exact"
+role = "http-typed-io-error-boundary"
+owner = "HTMLCut acquisition"
+rationale = "Typed current transport and TLS causes survive I/O wrapping without string inspection or secret disclosure."
+split_trigger = "the conversion acquires diagnostic rendering or unrelated protocol policy"
+max_physical_lines = 180
+max_items = 24
+max_public_items = 8
+max_imports = 12
+max_functions = 16
+max_decision_points = 48
+max_match_arms = 20
+allowed_internal_dependencies = ["super"]

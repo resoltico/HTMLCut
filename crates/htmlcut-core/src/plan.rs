@@ -51,12 +51,11 @@ pub enum Boundary {
 }
 
 /// Explicit cardinality or positional selection.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Selection {
     /// Exactly one candidate, the default.
-    #[default]
-    Single,
+    Single {},
     /// Select every candidate within declared bounds.
     All {
         /// Minimum candidate count, default one; zero explicitly permits empty results.
@@ -73,30 +72,41 @@ pub enum Selection {
     },
 }
 
+impl Default for Selection {
+    fn default() -> Self {
+        Self::Single {}
+    }
+}
+
 fn minimum_one() -> u32 {
     1
 }
 
 /// Exactly one requested representation.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Projection {
     /// Parsed descendant text, concatenated without inserted whitespace.
-    #[default]
-    DomText,
+    DomText {},
     /// Explicit faithful structural text convention.
-    DocumentText,
+    DocumentText {},
     /// Parsed-DOM serialization of descendants.
-    InnerHtml,
+    InnerHtml {},
     /// Parsed-DOM serialization including the selected root.
-    OuterHtml,
+    OuterHtml {},
     /// Parsed attribute value; missing is an error and present empty is valid.
     Attribute {
         /// Explicit nonempty attribute name.
         name: String,
     },
     /// Exact accepted source bytes; valid only for slicing.
-    Source,
+    Source {},
+}
+
+impl Default for Projection {
+    fn default() -> Self {
+        Self::DomText {}
+    }
 }
 
 /// Original-DOM scope of a declared guard.
@@ -114,7 +124,7 @@ pub enum GuardScope {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GuardRead {
     /// Concatenated original DOM text.
-    DomText,
+    DomText {},
     /// Required parsed attribute value.
     Attribute {
         /// Required attribute name.
@@ -167,9 +177,9 @@ pub struct Guard {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Transform {
     /// Collapse source ASCII whitespace outside preformatted content.
-    NormalizeWhitespace,
+    NormalizeWhitespace {},
     /// Resolve supported URL positions using explicit snapshot base metadata.
-    ResolveUrls,
+    ResolveUrls {},
 }
 
 /// One validated, fully defaulted extraction plan.
@@ -255,7 +265,7 @@ impl ExtractionPlan {
                 include_start: false,
                 include_end: false,
             },
-            Projection::Source,
+            Projection::Source {},
         )
     }
     /// Constructs a validated default single/dom_text plan over a CSS selector.
@@ -264,7 +274,7 @@ impl ExtractionPlan {
             Strategy::Css {
                 selector: selector.into(),
             },
-            Projection::DomText,
+            Projection::DomText {},
         )
     }
 
@@ -273,7 +283,7 @@ impl ExtractionPlan {
             schema: "htmlcut.extraction.plan".into(),
             version: SCHEMA_VERSION,
             strategy,
-            selection: Selection::Single,
+            selection: Selection::Single {},
             projection,
             exclude: Vec::new(),
             guards: Vec::new(),
@@ -299,7 +309,11 @@ impl ExtractionPlan {
                 ErrorCode::InvalidSchema,
                 "plan",
                 "Unsupported extraction plan schema or version.",
-            ));
+            )
+            .with_cause(crate::FailureCause::Configuration {
+                role: crate::ConfigurationRole::Plan,
+                problem: crate::ConfigurationProblem::UnsupportedVersion,
+            }));
         }
         serde_json::from_value(value).map_err(|error| {
             if error
