@@ -2,7 +2,7 @@
 
 HTMLCut is a bounded native extraction engine over immutable HTML snapshots, with a thin CLI for files, stdin and HTTP(S) GET acquisition. It preserves explicitly requested values, fails when declared assumptions are unmet, and keeps browser execution, domain mapping and comparison policy in caller code.
 
-This checkout prepares the unpublished HTMLCut 16.0.0 candidate with wire version 2 and extraction semantics 2. Only the current contract is supported; old requests are rejected. See the [implementation status](docs/extraction-contract-status.md) for the conformance and release-verification record.
+HTMLCut 16.0.0 uses wire version 2 and extraction semantics 2. Only the current contract is supported; old requests are rejected. See the [implementation status](docs/extraction-contract-status.md) for the conformance and release-verification record.
 
 Install from this checkout with its pinned Rust toolchain:
 

@@ -4,27 +4,33 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [16.0.0] - 2026-10-02
+
 ### Changed
 
-- **Breaking wire and Rust API changes:** package 16.0.0 uses wire version 2 and extraction semantics 2. Fieldless tagged variants are closed objects, and the budgeted matcher requires its document. Update maintained plan/run builders, validators and Rust callers to the current contract; earlier contracts are rejected.
-- **Breaking `document_text` changes:** selected fragments inherit original preformatted and list context. List exclusions preserve source ordinals; table cells and captions use balanced frames with escaped delimiters. Update consumers and exact-output expectations for the current format.
-- HTTP acquisition uses the platform certificate verifier and retains representation bytes until the CLI performs strict charset decoding and bounded decompression. Explicit encoding choices remain authoritative.
+- **Breaking wire and identity changes:** extraction documents and saved runs use wire version 2, with extraction semantics 2. Earlier contract versions are rejected without adapters. Update plan/run definitions and validators to the current [schemas](docs/schema.md); normalized-plan and extraction identities change, while unchanged accepted UTF-8 snapshot bytes retain their source identity.
+- **Breaking Rust API changes:** fieldless plan variants are empty records, such as `Projection::DomText {}`. Update Rust constructors and patterns. Direct users of the bundled `htmlcut-scraper` matcher must pass its document and handle typed document-mismatch and work-limit errors; see [Core](docs/core.md).
+- **Breaking `document_text` format changes:** tables, captions and cells use balanced frames with escaped literal delimiters, and preformatted closing fences have a separate framing newline that preserves payload trailing newlines. List exclusions preserve original source ordinals rather than renumbering survivors. Refresh consumers and exact-output expectations using the [structural format](docs/core.md); this convention is not general Markdown conversion.
+- HTTPS uses platform certificate verification and its trust configuration rather than bundled certificate roots. Check deployments with custom trust settings. Representation bytes remain intact until the CLI performs strict charset decoding and bounded decompression; explicit caller encoding remains authoritative.
+- Unsupported explicit encoding labels are configuration errors with exit class 2, rather than decoding failures with exit class 5. Update scripts that classify these failures; malformed source bytes still produce decoding failures.
 
 ### Added
 
-- Bounded diagnostic causes identify acquisition, configuration and I/O failure classes without exposing source data, URLs, credentials or supplied option values.
+- Closed, bounded diagnostic causes identify known option constraints, I/O roles, HTTP status and protocol/charset/compression/transport failures without exposing supplied values, paths, URLs, headers or transport error chains. Unknown lower-level failures remain generic; see [CLI diagnostics](docs/cli.md).
 
 ### Fixed
 
-- Reject unknown members in fieldless plan and saved-source objects instead of silently dropping caller intent.
-- Interpret quoted HTTP parameters correctly, consume complete informational responses under finite limits, and reject incomplete framing and unsolicited partial representations.
-- Bound selector sibling, ancestor, subtree and filter work while reusing operation-scoped caches; refuse exhausted evaluations instead of caching incomplete nonmatches or positions.
-- Preserve selected preformatted payload, original list numbering, table fragment structure and definition-list/details/address boundaries.
-- Refuse nonregular file-path inputs without waiting for a FIFO writer. Report nonempty standard-stream delivery failures while keeping file-only and empty-raw routes independent of unused streams.
+- Reject unknown members in fieldless projection, selection, transform, guard-read and saved-source objects through direct deserialization, plan validation and saved-run replay instead of silently dropping caller intent.
+- Preserve inherited preformatted whitespace under normalization in both text projections, and original list/table context in selected structural fragments without importing surrounding payload. Restore explicit block boundaries in definition-list, details/summary and address content; foreign SVG/MathML table names do not invent HTML table frames.
+- Reuse selector scratch across positional candidates within one selector/scope pass and charge inner sibling, ancestor, subtree, filter and projection-context work. Exhaustion rejects the evaluation instead of becoming a nonmatch or cached partial result. Workloads that previously escaped accounting may now return `resource_limit`; logical work bounds are not hard OS CPU/RAM isolation.
+- Parse quoted HTTP parameters and quoted pairs correctly, applying duplicate charset metadata checks only when origin metadata controls decoding. Consume complete `100`/`103` informational responses before final metadata, capped at 32 informational responses and 64 KiB cumulative response headers per hop. Reject incomplete final/redirect headers and unsolicited `206` or `Content-Range` representations without publishing successful partial extraction results.
+- Refuse nonregular source, plan and saved-run file paths without waiting for a FIFO writer, validating the opened handle even after path replacement. Regular-file symlinks remain accepted.
+- Report nonempty standard-stream delivery failures, including read-only or invalid handles and disappearing pipe readers, while preserving Windows console Unicode and file-only/empty-raw operation with unused streams. Bytes already written to a pipe cannot be retracted.
 
-### Maintenance
+### Internal
 
-- Coverage and mutation ownership include the maintained selector, transport and allocation boundaries. Native package checks bind their process, protocol and OS assertions to the extracted executable and exact source.
+- Preserve allocation provenance when tagging and untagging `ArcUnion` pointers in the owned `htmlcut-servo-arc` fork, with strict-provenance Miri ownership checks.
+- Extend scored coverage, mutation ownership and fuzzing to changed selector, context, protocol and allocation boundaries. Native packages run source-bound OS I/O, protocol and disposable TLS assertions, retain failure evidence, and exercise negative controls. Rust API compatibility checks use the published 15.0.0 baseline.
 
 ## [15.0.0] - 2026-10-01
 

@@ -273,7 +273,7 @@ fn metadata_helpers_report_mismatched_afad_and_invalid_updated_values() {
 }
 
 #[test]
-fn expected_metadata_style_exempts_the_root_readme_but_keeps_nested_readmes_managed() {
+fn root_storefront_and_agent_instructions_do_not_require_release_metadata() {
     let repo_root = tempdir().expect("tempdir");
     let docs_path = repo_root.path().join("docs").join("guide.md");
     let readme_path = repo_root.path().join("README.md");
@@ -286,6 +286,20 @@ fn expected_metadata_style_exempts_the_root_readme_but_keeps_nested_readmes_mana
     assert_eq!(
         crate::docs::expected_metadata_style_for_tests(repo_root.path(), &readme_path),
         None
+    );
+    assert_eq!(
+        crate::docs::expected_metadata_style_for_tests(
+            repo_root.path(),
+            &repo_root.path().join("AGENTS.md")
+        ),
+        None
+    );
+    assert_eq!(
+        crate::docs::expected_metadata_style_for_tests(
+            repo_root.path(),
+            &repo_root.path().join("NOTES.md")
+        ),
+        Some(crate::docs::MetadataStyle::HtmlComment)
     );
     assert_eq!(
         crate::docs::expected_metadata_style_for_tests(repo_root.path(), &nested_readme_path),

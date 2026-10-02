@@ -32,7 +32,8 @@ pub(crate) fn metadata_version(text: &str, style: MetadataStyle) -> Option<Strin
 
 pub(super) fn expected_metadata_style(repo_root: &Path, path: &Path) -> Option<MetadataStyle> {
     let relative = path.strip_prefix(repo_root).unwrap_or(path);
-    if relative == Path::new("README.md") {
+    // Storefront prose and repository agent instructions have no release metadata.
+    if relative == Path::new("README.md") || relative == Path::new("AGENTS.md") {
         return None;
     }
     if relative
