@@ -50,10 +50,10 @@ fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels()
     }
     let output = child.wait_with_output().unwrap();
     let proof = std::fs::read_to_string(&evidence).unwrap_or_default();
-    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_STDIO_EVIDENCE") {
-        if evidence.is_file() {
-            std::fs::copy(&evidence, destination).unwrap();
-        }
+    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_STDIO_EVIDENCE")
+        && evidence.is_file()
+    {
+        std::fs::copy(&evidence, destination).unwrap();
     }
     assert!(
         output.status.success(),
@@ -94,10 +94,10 @@ fn native_named_pipe_paths_are_refused_for_every_file_role() {
     }
     let output = child.wait_with_output().unwrap();
     let proof = std::fs::read_to_string(&evidence).unwrap_or_default();
-    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_PIPE_EVIDENCE") {
-        if evidence.is_file() {
-            std::fs::copy(&evidence, destination).unwrap();
-        }
+    if let Some(destination) = std::env::var_os("HTMLCUT_WINDOWS_PIPE_EVIDENCE")
+        && evidence.is_file()
+    {
+        std::fs::copy(&evidence, destination).unwrap();
     }
     assert!(
         output.status.success(),
