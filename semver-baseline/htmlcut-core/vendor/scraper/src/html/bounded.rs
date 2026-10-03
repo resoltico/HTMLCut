@@ -49,14 +49,6 @@ impl Html {
         source: &str,
         limits: ParseLimits,
     ) -> Result<Self, ParseLimitExceeded> {
-        Self::parse_document_indexed(source, limits).map(|(html, _)| html)
-    }
-
-    /// Prepares a document-order element index within the same construction/work policy.
-    pub fn parse_document_indexed(
-        source: &str,
-        limits: ParseLimits,
-    ) -> Result<(Self, Vec<NodeId>), ParseLimitExceeded> {
         if limits.nodes < 2 {
             return Err(ParseLimitExceeded::Nodes);
         }
@@ -190,7 +182,7 @@ impl BoundedSink {
 }
 
 impl TreeSink for BoundedSink {
-    type Output = Result<(Html, Vec<NodeId>), ParseLimitExceeded>;
+    type Output = Result<Html, ParseLimitExceeded>;
     type Handle = NodeId;
     type ElemName<'a> = Ref<'a, QualName>;
     fn stop_requested(&self) -> bool {
@@ -200,20 +192,9 @@ impl TreeSink for BoundedSink {
         if let Some(error) = self.failure.get() {
             return Err(error);
         }
-        let mut elements = Vec::new();
-        {
-            let html = self.inner.0.borrow();
-            for node in html.tree.root().descendants() {
-                if !self.work() {
-                    return Err(ParseLimitExceeded::Work);
-                }
-                if node.value().is_element() {
-                    elements.push(node.id());
-                }
-            }
-        }
-        Ok((self.inner.finish(), elements))
+        Ok(self.inner.finish())
     }
+
     fn parse_error(&self, _message: Cow<'static, str>) {
         // Parser warnings are not requested output. Charge their work without retaining an
         // attacker-controlled diagnostics array; resource errors remain the typed failure.

@@ -6,8 +6,10 @@ fn value(html: &str, selector: &str, projection: Projection) -> String {
     prepared(html)
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap()
-        .values
-        .remove(0)
+        .data
+        .as_values()
+        .unwrap()[0]
+        .clone()
 }
 
 #[test]
@@ -17,47 +19,55 @@ fn t08_t09_six_full_value_fidelity_oracles() {
             "<p>Before <a href=\"relative.html\">IMPORTANT</a> after.</p>",
             "p",
             "Before IMPORTANT after.",
-            "Before [IMPORTANT](relative.html) after.",
+            "Before [IMPORTANT](<relative.html>) after.",
         ),
         (
             "<p>Before <a class=\"reference internal\" href=\"relative.html\">IMPORTANT</a> after.</p>",
             "p",
             "Before IMPORTANT after.",
-            "Before [IMPORTANT](relative.html) after.",
+            "Before [IMPORTANT](<relative.html>) after.",
         ),
         (
             "<article><p>BEGINNING</p><section id=\"section-one\"><h2>Policy terms</h2><p>IMPORTANT POLICY CONTENT</p></section><p>ENDING</p></article>",
             "article",
             "BEGINNINGPolicy termsIMPORTANT POLICY CONTENTENDING",
-            "BEGINNING\n## Policy terms\nIMPORTANT POLICY CONTENT\nENDING",
+            "BEGINNING\n\n## Policy terms\n\nIMPORTANT POLICY CONTENT\n\nENDING",
         ),
         (
             "<article><p>BEGINNING</p><section id=\"policy\"><h2>Policy terms</h2><p>IMPORTANT POLICY CONTENT</p></section><p>ENDING</p></article>",
             "article",
             "BEGINNINGPolicy termsIMPORTANT POLICY CONTENTENDING",
-            "BEGINNING\n## Policy terms\nIMPORTANT POLICY CONTENT\nENDING",
+            "BEGINNING\n\n## Policy terms\n\nIMPORTANT POLICY CONTENT\n\nENDING",
         ),
         (
             "<p>Damage: <img src=\"mirror.jpg\" alt=\"Broken mirror\"> end.</p>",
             "p",
             "Damage:  end.",
-            "Damage: Broken mirror end.",
+            "Damage: ![Broken mirror](<mirror.jpg>) end.",
         ),
         (
             "<article><table><caption>Charges</caption><tr><td>EUR 180</td></tr></table><img src=\"mirror.jpg\" alt=\"Broken mirror\"></article>",
             "article",
             "ChargesEUR 180",
-            "[table]\n[caption]Charges[/caption]\n[cell]EUR 180[/cell]\n[/table]\nBroken mirror",
+            "Charges\n\n-\n  - EUR 180\n\n![Broken mirror](<mirror.jpg>)",
         ),
     ];
     for (html, selector, literal, document) in fixtures {
         assert_eq!(
-            value(html, selector, Projection::DomText {}),
+            value(
+                html,
+                selector,
+                Projection::Value(ValueProjection::DomText {})
+            ),
             literal,
             "{html}"
         );
         assert_eq!(
-            value(html, selector, Projection::DocumentText {}),
+            value(
+                html,
+                selector,
+                Projection::Value(ValueProjection::Markdown {})
+            ),
             document,
             "{html}"
         );
@@ -70,7 +80,7 @@ fn t10_t12_payload_templates_hidden_entities_and_exclusions() {
         value(
             "<div hidden aria-hidden='true' style='display:none'>A&amp;B&nbsp;C<template>T<span>M</span></template><script>S</script><style>X</style></div>",
             "div",
-            Projection::DomText {}
+            Projection::Value(ValueProjection::DomText {})
         ),
         "A&B\u{a0}CTMSX"
     );
@@ -78,14 +88,28 @@ fn t10_t12_payload_templates_hidden_entities_and_exclusions() {
         value(
             "<div hidden aria-hidden='true'>A<template>T</template><script>S</script><style>X</style></div>",
             "div",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
         "A"
     );
     for element in ["script", "style", "template"] {
         let html = format!("<{element}>payload</{element}>");
-        assert_eq!(value(&html, element, Projection::DomText {}), "payload");
-        assert_eq!(value(&html, element, Projection::DocumentText {}), "");
+        assert_eq!(
+            value(
+                &html,
+                element,
+                Projection::Value(ValueProjection::DomText {})
+            ),
+            "payload"
+        );
+        assert_eq!(
+            value(
+                &html,
+                element,
+                Projection::Value(ValueProjection::Markdown {})
+            ),
+            ""
+        );
     }
     let source = prepared(
         "<aside class='omit'>outside</aside><p id='root'><span class='omit'>A</span>B</p>",
@@ -96,7 +120,9 @@ fn t10_t12_payload_templates_hidden_entities_and_exclusions() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["B"]
     );
     plan.exclude = vec![":scope".into()];
@@ -104,14 +130,18 @@ fn t10_t12_payload_templates_hidden_entities_and_exclusions() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [""]
     );
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&ExtractionPlan::css("#root").unwrap()).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["AB"]
     );
 }
@@ -119,32 +149,36 @@ fn t10_t12_payload_templates_hidden_entities_and_exclusions() {
 #[test]
 fn t12_preformatted_lists_spans_and_nested_tables() {
     assert_eq!(
-        value("<pre>a\n```\n b</pre>", "pre", Projection::DocumentText {}),
+        value(
+            "<pre>a\n```\n b</pre>",
+            "pre",
+            Projection::Value(ValueProjection::Markdown {})
+        ),
         "````\na\n```\n b\n````"
     );
     assert_eq!(
         value(
             "<ol start='3'><li>A</li><li value='7'>B<ul><li>C</li></ul></li></ol>",
             "ol",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "3. A\n7. B\n  - C"
+        "- 3\\. A\n- 7\\. B\n  - C"
     );
     assert_eq!(
         value(
             "<ol reversed><li>A</li><li>B</li></ol>",
             "ol",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "2. A\n1. B"
+        "- 2\\. A\n- 1\\. B"
     );
     assert_eq!(
         value(
             "<table><tr><th colspan='2'>Name</th><td rowspan='3'>V<table><tr><td>N</td></tr></table></td></tr></table>",
             "body > table",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "[table]\n[cell][header] [colspan=2] Name[/cell] | [cell][rowspan=3] V\n[table]\n[cell]N[/cell]\n[/table][/cell]\n[/table]"
+        "-\n  - **Name**\n  - V\n    \n    -\n      - N"
     );
 }
 
@@ -167,28 +201,36 @@ fn t10_t28_transforms_preserve_preformatted_origin_and_url_labels() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["A B C  D  L M "]
     );
-    plan.projection = Projection::DocumentText {};
-    plan.transforms = vec![Transform::NormalizeWhitespace {}, Transform::ResolveUrls {}];
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
+    plan.transforms = vec![Transform::ResolveUrls {}];
     let result = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
     assert_eq!(
-        result.values,
-        ["A B\n```\n C  D \n```\n[ L M ](https://example.test/path/next?q=1)"]
+        result.data.as_values().unwrap(),
+        ["A B\n\n```\n C  D \n```\n\n[L M](<https://example.test/path/next?q=1>)"]
     );
     plan.transforms.reverse();
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
-        result.values
+            .data
+            .as_values()
+            .unwrap(),
+        result.data.as_values().unwrap()
     );
     assert_eq!(
-        value("<p>A\u{a0}B\u{200b}C</p>", "p", Projection::DomText {}),
+        value(
+            "<p>A\u{a0}B\u{200b}C</p>",
+            "p",
+            Projection::Value(ValueProjection::DomText {})
+        ),
         "A\u{a0}B\u{200b}C"
     );
 }
@@ -197,22 +239,26 @@ fn t10_t28_transforms_preserve_preformatted_origin_and_url_labels() {
 fn t15_dom_serialization_is_filtered_without_source_or_dom_mutation() {
     let source = prepared("<DIV id='x'>A<span class='omit'>B</span>C</DIV>");
     let mut plan = ExtractionPlan::css("#x").unwrap();
-    plan.projection = Projection::OuterHtml {};
+    plan.projection = Projection::Value(ValueProjection::OuterHtml {});
     plan.exclude = vec![".omit".into()];
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["<div id=\"x\">AC</div>"]
     );
     plan.exclude.clear();
-    plan.projection = Projection::InnerHtml {};
+    plan.projection = Projection::Value(ValueProjection::InnerHtml {});
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["A<span class=\"omit\">B</span>C"]
     );
     assert_eq!(
@@ -236,15 +282,17 @@ fn t28_url_resolution_preserves_labels_queries_and_declared_base_only() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "href".into(),
-    };
+    });
     plan.transforms = vec![Transform::ResolveUrls {}];
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["https://example.test/path/relative?q=1"]
     );
     plan.limits.max_value_bytes = 16;
@@ -275,7 +323,9 @@ fn t28_url_resolution_preserves_labels_queries_and_declared_base_only() {
         prepared("<a href='https://example.test/a?q=1'>Label</a>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["https://example.test/a?q=1"]
     );
     assert_eq!(
@@ -291,7 +341,9 @@ fn t28_url_resolution_preserves_labels_queries_and_declared_base_only() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["relative?q=1"]
     );
 }
@@ -300,19 +352,23 @@ fn t28_url_resolution_preserves_labels_queries_and_declared_base_only() {
 fn t12_structural_payload_escaping_blocks_and_preformatted_edges() {
     let html = "<article><h1>Title</h1><div>A<br>B</div><ul><li>one</li><li>two</li></ul><p><a href='x?a=(b)'>[label]</a><img alt='[alt]'></p><script>omit</script><pre>`````\n  code</pre></article>";
     assert_eq!(
-        value(html, "article", Projection::DocumentText {}),
-        "# Title\nA\nB\n- one\n- two\n[\\[label\\]](x?a=\\(b\\))\\[alt\\]\n``````\n`````\n  code\n``````"
+        value(
+            html,
+            "article",
+            Projection::Value(ValueProjection::Markdown {})
+        ),
+        "# Title\n\nA\nB\n\n- one\n- two\n\n[\\[label\\]](<x?a=(b)>)\\[alt\\]\n\n``````\n`````\n  code\n``````"
     );
     assert_eq!(
         value(
             "<p><a>unlinked</a><img></p>",
             "p",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
         "unlinked"
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude = vec!["div, script".into()];
     let source =
         prepared("<article><div>removed<span>also removed</span></div><p>kept</p></article>");
@@ -320,11 +376,13 @@ fn t12_structural_payload_escaping_blocks_and_preformatted_edges() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["kept"]
     );
     let mut plan = ExtractionPlan::css("pre").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.limits.max_value_bytes = 3;
     assert_eq!(
         prepared("<pre>````</pre>")
@@ -334,7 +392,7 @@ fn t12_structural_payload_escaping_blocks_and_preformatted_edges() {
         ErrorCode::ResourceLimit
     );
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.projection = Projection::OuterHtml {};
+    plan.projection = Projection::Value(ValueProjection::OuterHtml {});
     plan.limits.max_value_bytes = 3;
     assert_eq!(
         prepared("<p>content</p>")
@@ -344,7 +402,7 @@ fn t12_structural_payload_escaping_blocks_and_preformatted_edges() {
         ErrorCode::ResourceLimit
     );
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.projection = Projection::DomText {};
+    plan.projection = Projection::Value(ValueProjection::DomText {});
     plan.limits.max_value_bytes = 1;
     assert_eq!(
         prepared("<p>long</p>")
@@ -361,28 +419,28 @@ fn t12_list_ordinals_honor_html_integer_prefixes_and_defer_unused_overflow() {
         value(
             "<ol start=' +3 trailing'><li>A</li><li value=' 7x'>B</li></ol>",
             "ol",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "3. A\n7. B"
+        "- 3\\. A\n- 7\\. B"
     );
     assert_eq!(
         value(
             "<ol start='invalid'><li value='invalid'>A</li></ol>",
             "ol",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "1. A"
+        "- 1\\. A"
     );
     assert_eq!(
         value(
             "<ol start='9223372036854775807'><li>A</li></ol>",
             "ol",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "9223372036854775807. A"
+        "- 9223372036854775807\\. A"
     );
     let mut plan = ExtractionPlan::css("ol").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     assert_eq!(
         prepared("<ol start='9223372036854775807'><li>A</li><li>B</li></ol>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -402,34 +460,36 @@ fn t12_list_ordinals_honor_html_integer_prefixes_and_defer_unused_overflow() {
         prepared("<ol reversed><li class='omit'>A</li><li>B</li><li>C</li></ol>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
-        ["2. B\n1. C"]
+            .data
+            .as_values()
+            .unwrap(),
+        ["- 2\\. B\n- 1\\. C"]
     );
 }
 
 #[test]
-fn t12_preformatted_fences_cover_alternative_text_and_nested_formatting() {
+fn preformatted_payload_and_alternative_metadata_have_separate_reading_roles() {
     assert_eq!(
         value(
             "<pre><img alt='````'></pre>",
             "pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "`````\n````\n`````"
+        "```\n\n```\n\n- \\`\\`\\`\\`"
     );
     assert_eq!(
         value(
             "<pre>A<pre>B</pre>C</pre>",
             "body > pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "````\nA\n```\nB\n```\nC\n````"
+        "```\nABC\n```"
     );
     assert_eq!(
         value(
             "<pre>A<span class='omit'>``````</span>B</pre>",
             "pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
         "```````\nA``````B\n```````"
     );
@@ -439,13 +499,20 @@ fn t12_preformatted_fences_cover_alternative_text_and_nested_formatting() {
 fn t12_selected_structural_fragments_do_not_require_ancestors_in_the_projection() {
     let html = "<table><tr><th>H</th><td>V</td></tr></table><ul><li>item</li></ul><div><p>A</p><img><img alt=''><img alt='B'><p>C</p><a href=''>D</a></div>";
     for (selector, expected) in [
-        ("tr", "[cell][header] H[/cell] | [cell]V[/cell]"),
-        ("th", "[cell][header] H[/cell]"),
-        ("td", "[cell]V[/cell]"),
+        ("tr", "-\n  - **H**\n  - V"),
+        ("th", "-\n  - **H**"),
+        ("td", "-\n  - V"),
         ("li", "- item"),
-        ("div", "A\nB\nC\n[D]()"),
+        ("div", "A\n\nB\n\nC\n\n[D](<>)"),
     ] {
-        assert_eq!(value(html, selector, Projection::DocumentText {}), expected);
+        assert_eq!(
+            value(
+                html,
+                selector,
+                Projection::Value(ValueProjection::Markdown {})
+            ),
+            expected
+        );
     }
 }
 
@@ -463,9 +530,9 @@ fn t28_invalid_destination_with_a_valid_base_reports_resolution_failure() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "href".into(),
-    };
+    });
     plan.transforms = vec![Transform::ResolveUrls {}];
     assert_eq!(
         source
@@ -478,7 +545,7 @@ fn t28_invalid_destination_with_a_valid_base_reports_resolution_failure() {
         value(
             "<pre><img><a>label</a></pre>",
             "pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
         "```\nlabel\n```"
     );
@@ -489,15 +556,17 @@ fn t28_resolved_unicode_urls_may_expand_beyond_input_length_without_early_trunca
     let raw = format!("https://example.test/?q={}", "é".repeat(2000));
     let source = prepared(&format!("<a href='{raw}'>label</a>"));
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "href".into(),
-    };
+    });
     plan.transforms = vec![Transform::ResolveUrls {}];
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [format!("https://example.test/?q={}", "%C3%A9".repeat(2000))]
     );
 }
@@ -506,41 +575,43 @@ fn t28_resolved_unicode_urls_may_expand_beyond_input_length_without_early_trunca
 fn t12_preformatted_fences_ignore_every_omitted_subtree_and_track_sibling_nesting() {
     let html = "<pre>A<span class='omit'><b>``````</b></span><script>`````</script><style>``````</style><template><b>````````</b></template>B</pre>";
     let mut plan = ExtractionPlan::css("pre").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude = vec![".omit".into()];
     assert_eq!(
         prepared(html)
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["```\nAB\n```"]
     );
     assert_eq!(
         value(
             "<pre>A<pre>B</pre>C<pre>D</pre>E</pre>",
             "body > pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "````\nA\n```\nB\n```\nC\n```\nD\n```\nE\n````"
+        "```\nABCDE\n```"
     );
     assert_eq!(
         value(
             "<article><ul><li>A</li></ul><ol start='4'><li>B</li></ol><li>C</li></article>",
             "article",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "- A\n4. B\n- C"
+        "- A\n\n- 4\\. B\n\n- C"
     );
 }
 
 #[test]
-fn t12_preformatted_fence_is_longer_than_a_link_destination_backtick_run() {
+fn preformatted_destination_metadata_cannot_close_the_code_fence() {
     assert_eq!(
         value(
             "<pre><a href='````````'>label</a></pre>",
             "pre",
-            Projection::DocumentText {}
+            Projection::Value(ValueProjection::Markdown {})
         ),
-        "`````````\n[label](````````)\n`````````"
+        "```\nlabel\n```\n\n- [label](<````````>)"
     );
 }

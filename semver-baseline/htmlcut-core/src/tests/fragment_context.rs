@@ -3,14 +3,21 @@ use super::*;
 fn render(html: &str, selector: &str, projection: Projection, normalize: bool) -> String {
     let mut plan = ExtractionPlan::css(selector).unwrap();
     plan.projection = projection;
-    if normalize {
+    if normalize
+        && matches!(
+            plan.projection,
+            Projection::Value(ValueProjection::DomText {})
+        )
+    {
         plan.transforms.push(Transform::NormalizeWhitespace {});
     }
     prepared(html)
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap()
-        .values
-        .remove(0)
+        .data
+        .as_values()
+        .unwrap()[0]
+        .clone()
 }
 
 #[test]
@@ -20,17 +27,32 @@ fn selected_pre_descendants_preserve_payload_and_only_selected_framing() {
     for selector in ["#target", "#target span"] {
         for normalize in [false, true] {
             assert_eq!(
-                render(html, selector, Projection::DomText {}, normalize),
+                render(
+                    html,
+                    selector,
+                    Projection::Value(ValueProjection::DomText {}),
+                    normalize
+                ),
                 "first line\n    second line"
             );
             assert_eq!(
-                render(html, selector, Projection::DocumentText {}, normalize),
+                render(
+                    html,
+                    selector,
+                    Projection::Value(ValueProjection::Markdown {}),
+                    normalize
+                ),
                 "```\nfirst line\n    second line\n```"
             );
         }
     }
     assert_eq!(
-        render("<p>A   B</p>", "p", Projection::DomText {}, true),
+        render(
+            "<p>A   B</p>",
+            "p",
+            Projection::Value(ValueProjection::DomText {}),
+            true
+        ),
         "A B"
     );
 }
@@ -40,76 +62,95 @@ fn original_list_ordinals_survive_fragment_selection_and_exclusions() {
     for (html, expected) in [
         (
             "<ol start='7'><li>A</li><li id='target'>B</li></ol>",
-            "8. B",
+            "- 8\\. B",
         ),
-        ("<ol><li id='target' value='21'>B</li></ol>", "21. B"),
+        ("<ol><li id='target' value='21'>B</li></ol>", "- 21\\. B"),
         (
             "<ol start='10' reversed><li>A</li><li id='target'>B</li></ol>",
-            "9. B",
+            "- 9\\. B",
         ),
         (
             "<ol><li value='20'>SECRET</li><li id='target'>B</li></ol>",
-            "21. B",
+            "- 21\\. B",
         ),
     ] {
         assert_eq!(
-            render(html, "#target", Projection::DocumentText {}, false),
+            render(
+                html,
+                "#target",
+                Projection::Value(ValueProjection::Markdown {}),
+                false
+            ),
             expected
         );
     }
     let mut plan = ExtractionPlan::css("ol").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude.push(".omit".into());
     assert_eq!(
         prepared("<ol start='7'><li class='omit'>SECRET</li><li>B</li></ol>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
-        ["8. B"]
+            .data
+            .as_values()
+            .unwrap(),
+        ["- 8\\. B"]
     );
     assert_eq!(
         prepared("<ol reversed><li>A</li><li class='omit'>SECRET</li><li>C</li></ol>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
-        ["3. A\n1. C"]
+            .data
+            .as_values()
+            .unwrap(),
+        ["- 3\\. A\n- 1\\. C"]
     );
 }
 
 #[test]
-fn table_fragments_are_closed_cells_and_source_delimiters_are_payload() {
+fn table_fragments_preserve_cells_and_literal_delimiters_as_nested_lists() {
     let html = "<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>Taxi</td><td>180</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>";
     assert_eq!(
-        render(html, "thead", Projection::DocumentText {}, false),
-        "[cell][header] A[/cell] | [cell][header] B[/cell]"
+        render(
+            html,
+            "thead",
+            Projection::Value(ValueProjection::Markdown {}),
+            false
+        ),
+        "-\n  - **A**\n  - **B**"
     );
     assert_eq!(
-        render(html, "tbody", Projection::DocumentText {}, false),
-        "[cell]Taxi[/cell] | [cell]180[/cell]\n[cell]C[/cell] | [cell]D[/cell]"
+        render(
+            html,
+            "tbody",
+            Projection::Value(ValueProjection::Markdown {}),
+            false
+        ),
+        "-\n  - Taxi\n  - 180\n-\n  - C\n  - D"
     );
     assert_eq!(
         render(
             "<table><tr><td>A | B</td></tr></table>",
             "tr",
-            Projection::DocumentText {},
+            Projection::Value(ValueProjection::Markdown {}),
             false
         ),
-        "[cell]A \\| B[/cell]"
+        "-\n  - A | B"
     );
     assert_eq!(
         render(
             "<table><tr><td>A</td><td>B</td></tr></table>",
             "tr",
-            Projection::DocumentText {},
+            Projection::Value(ValueProjection::Markdown {}),
             false
         ),
-        "[cell]A[/cell] | [cell]B[/cell]"
+        "-\n  - A\n  - B"
     );
     assert_eq!(
         render(
             "<table><tr><td><span>A | B</span></td></tr></table>",
             "span",
-            Projection::DomText {},
+            Projection::Value(ValueProjection::DomText {}),
             false
         ),
         "A | B"
@@ -122,21 +163,26 @@ fn semantic_blocks_have_boundaries_without_visibility_inference() {
         (
             "<dl><dt>Name</dt><dd>Alice</dd><dt>Amount</dt><dd>180</dd></dl>",
             "dl",
-            "Name\nAlice\nAmount\n180",
+            "Name\n\nAlice\n\nAmount\n\n180",
         ),
         (
             "<details><summary>Title</summary><div>A</div><div>B</div></details>",
             "details",
-            "Title\nA\nB",
+            "Title\n\nA\n\nB",
         ),
         (
             "<main><address>A</address><address>B</address></main>",
             "main",
-            "A\nB",
+            "A\n\nB",
         ),
     ] {
         assert_eq!(
-            render(html, selector, Projection::DocumentText {}, false),
+            render(
+                html,
+                selector,
+                Projection::Value(ValueProjection::Markdown {}),
+                false
+            ),
             expected
         );
     }
@@ -155,7 +201,7 @@ fn pre_framing_keeps_payload_trailing_newlines_distinguishable() {
                 render(
                     &format!("<pre><code>{payload}</code></pre>"),
                     selector,
-                    Projection::DocumentText {},
+                    Projection::Value(ValueProjection::Markdown {}),
                     false
                 ),
                 expected
@@ -164,44 +210,26 @@ fn pre_framing_keeps_payload_trailing_newlines_distinguishable() {
     }
 }
 
-// This inverse reads the documented frame grammar, without calling render/escape/fence helpers.
-// It intentionally accepts only rows of plain or fenced-pre cells for this property family.
-fn decode_row_cells(mut input: &str) -> Vec<String> {
+// Independent CommonMark events recover plain/fenced cells; no renderer helper is called.
+fn decode_row_cells(input: &str) -> Vec<String> {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut depth = 0;
     let mut cells = Vec::new();
-    while !input.is_empty() {
-        input = input.strip_prefix("[cell]").expect("cell opening");
-        let mut payload = String::new();
-        if let Some(framed) = input.strip_prefix('\n')
-            && let Some((fence, rest)) = framed.split_once('\n')
-            && fence.len() >= 3
-            && fence.bytes().all(|byte| byte == b'`')
-        {
-            let closing = format!("\n{fence}[/cell]");
-            let (literal, remaining) = rest.split_once(&closing).expect("balanced pre/cell");
-            payload.push_str(literal);
-            input = remaining;
-        } else {
-            loop {
-                if let Some(remaining) = input.strip_prefix("[/cell]") {
-                    input = remaining;
-                    break;
-                }
-                let character = input.chars().next().expect("balanced plain cell");
-                input = &input[character.len_utf8()..];
-                if character == '\\' {
-                    let escaped = input.chars().next().expect("complete escape");
-                    assert!("\\[]()|`".contains(escaped), "reserved escape only");
-                    payload.push(escaped);
-                    input = &input[escaped.len_utf8()..];
-                } else {
-                    assert_ne!(character, '[', "unescaped structural delimiter");
-                    payload.push(character);
-                }
+    let mut current = None::<String>;
+    for event in Parser::new(input) {
+        match event {
+            Event::Start(Tag::List(_)) => depth += 1,
+            Event::End(TagEnd::List(_)) => depth -= 1,
+            Event::Start(Tag::Item) if depth == 2 => current = Some(String::new()),
+            Event::End(TagEnd::Item) if depth == 2 => cells.push(current.take().unwrap()),
+            Event::Text(text) if current.is_some() => current.as_mut().unwrap().push_str(&text),
+            Event::End(TagEnd::CodeBlock) => {
+                current
+                    .as_mut()
+                    .unwrap_or_else(|| panic!("Code escaped cell: {input:?}"))
+                    .pop();
             }
-        }
-        cells.push(payload);
-        if !input.is_empty() {
-            input = input.strip_prefix(" | ").expect("separator outside cells");
+            _ => (),
         }
     }
     cells
@@ -224,13 +252,43 @@ fn independent_cell_inverse_preserves_collision_payloads_and_pre_newlines() {
     for first in payloads {
         for second in payloads {
             let html = format!("<table><tr><td>{first}</td><td>{second}</td></tr></table>");
-            let output = render(&html, "tr", Projection::DocumentText {}, false);
-            assert_eq!(decode_row_cells(&output), [first, second], "{html}");
+            let output = render(
+                &html,
+                "tr",
+                Projection::Value(ValueProjection::Markdown {}),
+                false,
+            );
+            assert_eq!(
+                decode_row_cells(&output),
+                [
+                    first.split_ascii_whitespace().collect::<Vec<_>>().join(" "),
+                    second
+                        .split_ascii_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ],
+                "{html}"
+            );
             let html = format!(
                 "<table><tr><td><pre><code>{first}</code></pre></td><td>{second}</td></tr></table>"
             );
-            let output = render(&html, "tr", Projection::DocumentText {}, false);
-            assert_eq!(decode_row_cells(&output), [first, second], "{html}");
+            let output = render(
+                &html,
+                "tr",
+                Projection::Value(ValueProjection::Markdown {}),
+                false,
+            );
+            assert_eq!(
+                decode_row_cells(&output),
+                [
+                    first.to_owned(),
+                    second
+                        .split_ascii_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ],
+                "{html}"
+            );
         }
     }
     // Distinct cell arrangements cannot collapse to the same escaped payload representation.
@@ -238,28 +296,38 @@ fn independent_cell_inverse_preserves_collision_payloads_and_pre_newlines() {
         render(
             "<table><tr><td>A | B</td></tr></table>",
             "tr",
-            Projection::DocumentText {},
+            Projection::Value(ValueProjection::Markdown {}),
             false
         ),
         render(
             "<table><tr><td>A</td><td>B</td></tr></table>",
             "tr",
-            Projection::DocumentText {},
+            Projection::Value(ValueProjection::Markdown {}),
             false
         ),
     );
 }
 
 #[test]
-fn caption_header_and_span_metadata_have_complete_balanced_frames() {
+fn caption_and_header_content_use_reading_format_without_inventing_span_layout() {
     let html = "<table><caption>Title | [caption]</caption><tr><th rowspan='2' colspan='3'>H</th><td rowspan='[x]'>V</td></tr></table>";
     assert_eq!(
-        render(html, "caption", Projection::DocumentText {}, false),
-        "[caption]Title \\| \\[caption\\][/caption]"
+        render(
+            html,
+            "caption",
+            Projection::Value(ValueProjection::Markdown {}),
+            false
+        ),
+        "Title | \\[caption\\]"
     );
     assert_eq!(
-        render(html, "tr", Projection::DocumentText {}, false),
-        "[cell][header] [rowspan=2] [colspan=3] H[/cell] | [cell][rowspan=\\[x\\]] V[/cell]"
+        render(
+            html,
+            "tr",
+            Projection::Value(ValueProjection::Markdown {}),
+            false
+        ),
+        "-\n  - **H**\n  - V"
     );
 }
 
@@ -270,10 +338,23 @@ fn foreign_namespace_names_do_not_invent_html_table_frames() {
             "<{namespace}><caption>Title</caption><tr><th>A</th><td>B</td></tr></{namespace}>"
         );
         assert_eq!(
-            render(&html, namespace, Projection::DocumentText {}, false),
+            render(
+                &html,
+                namespace,
+                Projection::Value(ValueProjection::Markdown {}),
+                false
+            ),
             "TitleAB"
         );
-        assert_eq!(render(&html, "td", Projection::DocumentText {}, false), "B");
+        assert_eq!(
+            render(
+                &html,
+                "td",
+                Projection::Value(ValueProjection::Markdown {}),
+                false
+            ),
+            "B"
+        );
     }
 }
 
@@ -282,8 +363,13 @@ fn html_table_inside_a_foreign_integration_point_keeps_its_roles() {
     let html =
         "<svg><foreignObject><table><tr><td>A</td><td>B</td></tr></table></foreignObject></svg>";
     assert_eq!(
-        render(html, "svg", Projection::DocumentText {}, false),
-        "[table]\n[cell]A[/cell] | [cell]B[/cell]\n[/table]"
+        render(
+            html,
+            "svg",
+            Projection::Value(ValueProjection::Markdown {}),
+            false
+        ),
+        "-\n  - A\n  - B"
     );
 }
 
@@ -291,13 +377,19 @@ fn html_table_inside_a_foreign_integration_point_keeps_its_roles() {
 fn excluded_pre_fragment_root_emits_no_synthetic_fence_or_payload() {
     let document = prepared("<pre>OUTSIDE<code id='target'>kept\n</code>AFTER</pre>");
     let mut plan = ExtractionPlan::css("#target").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude.push("#target".into());
     let result = document
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(result.values, [""]);
-    assert_eq!((result.candidate_count, result.selected_count), (1, 1));
+    assert_eq!(result.data.as_values().unwrap(), [""]);
+    assert_eq!(
+        (
+            result.receipt.candidate_count,
+            result.receipt.selected_count
+        ),
+        (1, 1)
+    );
 }
 
 #[test]
@@ -306,7 +398,7 @@ fn fragment_list_depth_follows_selected_root_and_its_parent_role() {
         (
             "<ol><li id='target'>A<ul><li>B</li></ul></li></ol>",
             "#target",
-            "1. A\n  - B",
+            "- 1\\. A\n  - B",
         ),
         (
             "<ol><div id='target'><ul><li>B</li></ul></div></ol>",
@@ -316,11 +408,16 @@ fn fragment_list_depth_follows_selected_root_and_its_parent_role() {
         (
             "<main><li id='target'>A<ul><li>B</li></ul></li></main>",
             "#target",
-            "- A\n- B",
+            "- A\n  - B",
         ),
     ] {
         assert_eq!(
-            render(html, selector, Projection::DocumentText {}, false),
+            render(
+                html,
+                selector,
+                Projection::Value(ValueProjection::Markdown {}),
+                false
+            ),
             expected
         );
     }

@@ -45,3 +45,7 @@ servo = [
     "track_alloc_size",
 ]
 track_alloc_size = []
+
+# This owned upstream fork retains its upstream lint contract; workspace unsafe-code
+# prohibition applies to first-party consumers, not the fork implementation.
+[lints]

@@ -1,7 +1,7 @@
 //! Records the reusable prepared-engine model for the current extraction contract.
 //!
 //! The companion `scripts/benchmark-prepared-engine.sh` program measures this example against the
-//! immutable `v13.2.0` CLI workflow. This executable deliberately reports model facts only; its
+//! immutable `v16.0.0` CLI workflow. This executable deliberately reports model facts only; its
 //! wall-clock duration is not a correctness assertion.
 
 #![forbid(unsafe_code)]
@@ -27,27 +27,29 @@ fn main() {
         .map(compiled_plan)
         .collect::<Result<Vec<_>, _>>()
         .expect("compile benchmark plans");
-    let selected_match_count = plans
-        .iter()
-        .map(|plan| document.execute(plan).expect("execute benchmark plan"))
-        .map(|result| result.values.len())
-        .sum::<usize>();
+    let mut values = Vec::new();
+    for (index, plan) in plans.iter().enumerate() {
+        let result = document.execute(plan).expect("execute benchmark plan");
+        assert_eq!(
+            result.data.as_values().unwrap(),
+            [format!(
+                "Headline {index}Prepared engine benchmark content."
+            )]
+        );
+        values.extend(result.data.as_values().unwrap().iter().cloned());
+    }
+    let selected_match_count = values.len();
 
     assert_eq!(
         selected_match_count, PLAN_COUNT,
         "every benchmark plan must select exactly its own article"
     );
     println!(
-        concat!(
-            "{{\"workflow\":\"prepared_engine\",",
-            "\"prepared_document_count\":1,",
-            "\"full_document_parse_count\":1,",
-            "\"compiled_plan_count\":{PLAN_COUNT},",
-            "\"execution_count\":{PLAN_COUNT},",
-            "\"selected_match_count\":{selected_match_count}}}"
-        ),
-        PLAN_COUNT = PLAN_COUNT,
-        selected_match_count = selected_match_count
+        "{}",
+        serde_json::json!({"workflow":"prepared_engine","prepared_document_count":1,
+        "full_document_parse_count":1,"compiled_plan_count":PLAN_COUNT,
+        "execution_count":PLAN_COUNT,"selected_match_count":selected_match_count,"values":values,
+        "count_scope":"construction/parse-once model; cache behavior separately verified by core tests"})
     );
 }
 

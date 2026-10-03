@@ -96,8 +96,9 @@ Requirements before declaring the release session complete:
 
 - No stale Dependabot PR may remain open without an explicit keep-open decision.
 - No merged or closed Dependabot branch may remain on GitHub.
-- Any remaining non-`main` branch on GitHub must correspond to an intentional still-open PR that
-  was reviewed during this step and deliberately kept alive.
+- Every remaining non-`main` remote branch needs an explicit keep decision grounded in ownership
+  and intent: an active PR or pre-existing unmerged work outside the release scope. Preserve that
+  unrelated work; do not delete it merely to empty the branch inventory.
 
 ## 11. Refresh The Semver Baseline
 

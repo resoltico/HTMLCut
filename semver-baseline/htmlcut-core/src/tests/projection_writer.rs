@@ -14,29 +14,6 @@ fn html_buffer_flush_preserves_bytes_and_the_remaining_capacity() {
 }
 
 #[test]
-fn source_projection_cannot_accidentally_serialize_a_dom_element() {
-    let html = scraper::Html::parse_document("<p>text</p>");
-    let element = html
-        .select(&scraper::Selector::parse("p").unwrap())
-        .next()
-        .unwrap();
-    assert_eq!(
-        project(
-            element,
-            &Projection::Source {},
-            &HashSet::new(),
-            &[],
-            None,
-            1024,
-            &SelectorWorkBudget::new(1000)
-        )
-        .unwrap_err()
-        .code,
-        ErrorCode::InternalInvariant
-    );
-}
-
-#[test]
 fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_cost_work() {
     let budget = SelectorWorkBudget::new(4);
     let mut buffer = ValueBuffer::new(1024, &budget);
@@ -55,7 +32,7 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     let budget = SelectorWorkBudget::new(2);
     let value = project(
         root,
-        &Projection::Attribute {
+        &ValueProjection::Attribute {
             name: "data-empty".into(),
         },
         &HashSet::new(),
@@ -67,4 +44,20 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     .unwrap();
     assert_eq!(value, "");
     assert_eq!(budget.remaining(), 1);
+}
+
+#[test]
+fn an_empty_markdown_destination_still_costs_one_processing_unit() {
+    for (units, accepted) in [(1, false), (2, true)] {
+        let budget = SelectorWorkBudget::new(units);
+        let mut writer = super::markdown_writer::MarkdownWriter::new(4, &budget);
+        let result = writer.destination("");
+        assert_eq!(result.is_ok(), accepted);
+        if accepted {
+            assert_eq!(writer.finish().unwrap(), "<>");
+            assert_eq!(budget.remaining(), 0);
+        } else {
+            assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
 }

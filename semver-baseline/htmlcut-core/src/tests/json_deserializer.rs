@@ -48,3 +48,29 @@ fn generic_deserializers_cannot_bypass_materialized_byte_and_depth_limits() {
         );
     }
 }
+
+#[test]
+fn document_specific_json_bounds_do_not_change_plan_limits_or_duplicate_rejection() {
+    let text = format!("\"{}\"", "x".repeat(MAX_PLAN_BYTES));
+    assert_eq!(
+        parse_closed_json(text.as_bytes(), MAX_PLAN_BYTES)
+            .unwrap_err()
+            .code,
+        crate::ErrorCode::ResourceLimit
+    );
+    assert_eq!(
+        parse_closed_json(text.as_bytes(), text.len()).unwrap(),
+        Value::String("x".repeat(MAX_PLAN_BYTES))
+    );
+    for (bytes, maximum, code) in [
+        (b"null".as_slice(), 0, crate::ErrorCode::ResourceLimit),
+        (b"null null".as_slice(), 64, crate::ErrorCode::InvalidJson),
+        (
+            br#"{"a":{"key":1,"key":2}}"#.as_slice(),
+            1024 * 1024,
+            crate::ErrorCode::InvalidJson,
+        ),
+    ] {
+        assert_eq!(parse_closed_json(bytes, maximum).unwrap_err().code, code);
+    }
+}

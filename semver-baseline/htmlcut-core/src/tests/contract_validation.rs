@@ -34,7 +34,7 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
     p.schema = "other".into();
     reject(p);
     let mut p = base.clone();
-    p.version = 3;
+    p.version = 2;
     reject(p);
     let mut p = base.clone();
     p.projection = Projection::Source {};
@@ -56,13 +56,13 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
         "x".repeat(257),
     ] {
         let mut p = base.clone();
-        p.projection = Projection::Attribute { name };
+        p.projection = Projection::Value(ValueProjection::Attribute { name });
         reject(p);
     }
     let mut p = base.clone();
-    p.projection = Projection::Attribute {
+    p.projection = Projection::Value(ValueProjection::Attribute {
         name: "href".into(),
-    };
+    });
     p.exclude.push("span".into());
     reject(p);
     let mut p = base.clone();
@@ -74,7 +74,7 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
     )
     .unwrap();
     let mut p = slice.clone();
-    p.projection = Projection::DomText {};
+    p.projection = Projection::Value(ValueProjection::DomText {});
     reject(p);
     let mut p = slice.clone();
     p.exclude.push("p".into());
@@ -147,16 +147,16 @@ fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
     ];
     reject(p);
     let mut p = base.clone();
-    p.projection = Projection::InnerHtml {};
+    p.projection = Projection::Value(ValueProjection::InnerHtml {});
     p.transforms = vec![Transform::NormalizeWhitespace {}];
     reject(p);
     let mut p = base.clone();
     p.transforms = vec![Transform::ResolveUrls {}];
     reject(p);
     let mut p = base.clone();
-    p.projection = Projection::Attribute {
+    p.projection = Projection::Value(ValueProjection::Attribute {
         name: "srcset".into(),
-    };
+    });
     p.transforms = vec![Transform::ResolveUrls {}];
     reject(p);
     for name in [
@@ -169,12 +169,12 @@ fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
         "data",
     ] {
         let mut p = base.clone();
-        p.projection = Projection::Attribute { name: name.into() };
+        p.projection = Projection::Value(ValueProjection::Attribute { name: name.into() });
         p.transforms = vec![Transform::ResolveUrls {}];
         assert!(p.validate().is_ok());
     }
     let mut p = base;
-    p.projection = Projection::DocumentText {};
+    p.projection = Projection::Value(ValueProjection::Markdown {});
     p.transforms = vec![Transform::ResolveUrls {}];
     assert!(p.validate().is_ok());
 }
@@ -247,7 +247,7 @@ fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
         value.push('x');
     }
     assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"},
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"},
         "guards":[{"scope":"document","selector":"p","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"x".repeat(crate::limits::MAX_PLAN_BYTES-250)}}]});
     let encoded = serde_json::to_vec(&minimal).unwrap();
     assert!(encoded.len() <= crate::limits::MAX_PLAN_BYTES);
@@ -281,7 +281,9 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
         prepared("<p>value</p>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["value"]
     );
     let plan = ExtractionPlan::css("p / div").unwrap();
@@ -306,14 +308,14 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
     for wire in [
         r#"{"schema":"wrong","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
-        r#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
     ] {
         assert_eq!(
             ExtractionPlan::from_json(wire.as_bytes()).unwrap_err().code,
             ErrorCode::InvalidSchema
         );
     }
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
     assert_eq!(plan.selection, Selection::All { min: 1, max: None });
     assert_eq!(
         prepared("<p>value</p>")
@@ -326,10 +328,10 @@ fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempt
 
 #[test]
 fn t29_unicode_regex_programs_share_one_aggregate_compilation_allowance() {
-    // Under the locked regex engine, this valid Unicode program fits the full
-    // allowance, but not a half share. Syntax and source size are unchanged.
+    // Under the locked regex engine, this valid Unicode program fits one program share
+    // with its DFA allowance, but not half that program share. Syntax and source size are unchanged.
     let boundary = Boundary::Regex {
-        pattern: r"\w{100}".into(),
+        pattern: r"\w{50}".into(),
         flags: String::new(),
     };
     let mut slice = ExtractionPlan::slice(
@@ -355,7 +357,7 @@ fn t29_unicode_regex_programs_share_one_aggregate_compilation_allowance() {
         max: Some(1),
         read: GuardRead::DomText {},
         predicate: Some(Predicate::Regex {
-            pattern: r"\w{100}".into(),
+            pattern: r"\w{50}".into(),
             flags: String::new(),
         }),
     };
