@@ -51,12 +51,26 @@ def main():
                 {'name':'title','selector':'h2'},{'name':'price','selector':'.price'},
                 {'name':'absent','selector':'.missing','selection':{'kind':'optional'}},
                 {'name':'empty','selector':'.missing','selection':{'kind':'all','min':0}}]}}
-        path=root/'records.plan.json';path.write_text(json.dumps(plan))
-        source=root/'source.html';source.write_text('<article><h2>First é</h2><p class="price">10</p></article><article><h2>Second</h2><p class="price">20</p></article>')
+        path=root/'records.plan.json';path.write_text(json.dumps(plan),encoding="utf-8")
+        source=root/'source.html';source.write_text('<article><h2>First é</h2><p class="price">10</p></article><article><h2>Second</h2><p class="price">20</p></article>',encoding="utf-8")
         expected=[dict(title='First é',price='10',absent=None,empty=[]),dict(title='Second',price='20',absent=None,empty=[])]
         bundle=root/'snapshot.htmlcut.tar';run('direct-records-and-bundle',['extract','--file',str(source),'--plan',str(path),'--bundle',str(bundle)],expected=expected)
         moved=root/'moved.htmlcut.tar';bundle.rename(moved);source.unlink();path.unlink()
         run('moved-input-independent-replay',['run',str(moved)],expected=expected)
+        receipt=root/'receipt.json'
+        replay=run('separate-record-receipt',['run',str(moved),'--receipt',str(receipt)],expected=expected)
+        canonical=json.dumps(expected,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+        evidence=json.loads(receipt.read_bytes())
+        rows[-1]['passed'] &= replay.stdout==canonical+b'\n' and evidence['schema']=='htmlcut.extraction.receipt'
+        rows[-1]['passed'] &= evidence['version']==3 and evidence['semantics']==3 and evidence['data_kind']=='records'
+        rows[-1]['passed'] &= evidence['candidate_count']==2 and evidence['selected_count']==2
+        rows[-1]['passed'] &= evidence['data_sha256']==hashlib.sha256(canonical).hexdigest()
+        rows[-1]['passed'] &= evidence['fields']==[
+            dict(field_index=1,candidate_count=2,projected_count=2,absent_count=0),
+            dict(field_index=2,candidate_count=2,projected_count=2,absent_count=0),
+            dict(field_index=3,candidate_count=0,projected_count=0,absent_count=2),
+            dict(field_index=4,candidate_count=0,projected_count=0,absent_count=0)]
+        rows[-1]['passed'] &= b'First' not in receipt.read_bytes() and str(root).encode() not in receipt.read_bytes()
         run('record-raw-refused',['run',str(moved),'--raw'],failure=2)
         published=root/'data.json';run('file-data',['run',str(moved),'--output',str(published)],raw=b'')
         rows[-1]['passed'] &= json.loads(published.read_bytes())==expected
@@ -65,12 +79,12 @@ def main():
         inspection=run('scoped-inspection',['inspect','--stdin','--css','p','--samples','2'],b'<p>A</p><p>B</p><p>C</p>')
         value=json.loads(inspection.stdout);rows[-1]['passed'] &= value['count']==3 and len(value['samples'])==2 and not value['samples_complete']
         for version in [1,2,4]:
-            old=dict(plan,version=version);path.write_text(json.dumps(old));run(f'unsupported-wire-{version}',['extract','--stdin','--plan',str(path)],b'<article></article>',failure=2)
+            old=dict(plan,version=version);path.write_text(json.dumps(old),encoding="utf-8");run(f'unsupported-wire-{version}',['extract','--stdin','--plan',str(path)],b'<article></article>',failure=2)
         simple={'schema':'htmlcut.extraction.plan','version':3,'strategy':{'kind':'css','selector':'#amount'},
                 'guards':[{'scope':'document','selector':'#label','min':1,'max':1,'read':{'kind':'dom_text'},'predicate':{'kind':'exact','value':'Cost'}}]}
-        path.write_text(json.dumps(simple));run('original-context-guard',['extract','--stdin','--plan',str(path)],b'<b id="label">Cost</b><p id="amount">180</p>',expected=['180'])
+        path.write_text(json.dumps(simple),encoding="utf-8");run('original-context-guard',['extract','--stdin','--plan',str(path)],b'<b id="label">Cost</b><p id="amount">180</p>',expected=['180'])
         run('changed-context-refused',['extract','--stdin','--plan',str(path)],b'<b id="label">Other</b><p id="amount">180</p>',failure=3)
-        simple['limits']={'max_work':1};path.write_text(json.dumps(simple));run('shared-budget-refused',['extract','--stdin','--plan',str(path)],b'<p id="amount">180</p>',failure=4)
+        simple['limits']={'max_work':1};path.write_text(json.dumps(simple),encoding="utf-8");run('shared-budget-refused',['extract','--stdin','--plan',str(path)],b'<p id="amount">180</p>',failure=4)
     unchanged=hashlib.sha256(binary.read_bytes()).hexdigest()==before
     evidence=dict(schema='htmlcut.native-reliability-matrix',version=3,binary_sha256=before,binary_unchanged=unchanged,rows=rows,passed=unchanged and all(row['passed'] for row in rows))
     args.output.write_text(json.dumps(evidence,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')

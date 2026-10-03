@@ -58,7 +58,7 @@ fn release_workflow_uses_immutable_tag_identity_for_all_publication_side_effects
         workflow
             .matches("ref: ${{ needs.release-target-matrix.outputs.source_sha }}")
             .count(),
-        3
+        4
     );
     assert!(workflow.contains("./scripts/build-source-archives.sh"));
     assert!(workflow.contains("RELEASE_TAG: ${{ steps.release.outputs.tag }}"));

@@ -4,7 +4,7 @@ version: "17.0.0"
 domain: SETUP
 updated: "2026-10-03"
 route:
-  keywords: [getting started, quick start, install, release package, cargo install, first extraction, saved run]
+  keywords: [getting started, quick start, install, release package, cargo install, first extraction, snapshot bundle]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction run?"]
   related: [../README.md, cli.md, platform-support.md, core.md, schema.md]
 ---

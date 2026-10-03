@@ -212,8 +212,9 @@ candidate itself must also be the exact gated tree that ships.
     - `Check`
     - `cargo-mutants pull-request summary`
 
-The intended release architecture is a single-owner, CI-gated repository. Required review on
-`main` adds a non-existent human dependency and is therefore release-hostile technical debt.
+These settings describe the currently verified repository policy. Read the actual protection
+before releasing and satisfy its required checks and reviews. Do not weaken protections or
+use administrative bypasses to publish.
 
 Before cutting the release branch, enumerate open PRs so dependency-automation work is never
 surprise-discovered after publication:
@@ -313,9 +314,10 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh api "repos/$REPO/pulls/<N>/files" --paginate --jq '.[].filename'
 ```
 
-Do not continue until the required job in workflow `CI` is green:
+Do not continue until all actual required checks are green:
 
-- `Check`
+- `Check` in workflow `CI`
+- `cargo-mutants pull-request summary`
 
 `Check` is the aggregate branch-protection gate. It must reflect both the Rust maintainer gate and
 the release-target smoke matrix.
@@ -337,11 +339,9 @@ Verify:
 - local `main` contains the merge you expect
 - the remote release branch is deleted
 
-If a green PR is blocked only because conversations are unresolved, resolve or close those threads
-and then merge normally. If it is blocked by review requirements or admin-enforced branch
-protection, repository settings have drifted away from this protocol and must be corrected before
-the release proceeds. Do not work around that drift by adding manual review steps to the normal
-release path.
+Resolve legitimate findings and required conversations before normal merge. If a reviewer or
+permission is genuinely required, retain the verified candidate and request that specific input.
+Do not change repository protections or bypass them.
 
 Do not pass `--delete-branch` to `gh pr merge` from a disposable `release/X.Y.Z` worktree. GitHub
 can merge the PR and delete the remote branch successfully while the CLI still exits non-zero

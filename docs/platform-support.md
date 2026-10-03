@@ -90,8 +90,9 @@ GitHub release builds run on:
 - `windows-2022` for `x86_64-pc-windows-msvc`
 
 GitHub CI also runs release-target smoke on that same target matrix, including packaged-README
-checks plus one extraction-and-saved-run replay flow from the unpacked binary, before the aggregate
-required check reports success.
+checks, complete record/receipt/Markdown/inspection/bundle controls and real OS I/O from the
+unpacked binary, before the aggregate required check reports success. After publication, the
+release workflow repeats native verification over anonymous public downloads on all four targets.
 
 The release workflow also generates GitHub build-provenance attestations for the source archives,
 standalone packages, and checksum manifest. Those provenance records are separate from the named

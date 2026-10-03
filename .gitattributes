@@ -1,5 +1,5 @@
 * text=auto eol=lf
 *.sh text eol=lf
 
-# Corpora are exact byte inputs, including HTTP framing and malformed encodings.
+# Corpora are exact byte inputs, including malformed encodings and closed bundle bytes.
 fuzz/corpus/** -text -diff

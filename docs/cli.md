@@ -4,7 +4,7 @@ version: "17.0.0"
 domain: CLI
 updated: "2026-10-03"
 route:
-  keywords: [cli, extract, run, inspect, describe, schema, saved runs, raw output]
+  keywords: [cli, extract, run, inspect, describe, schema, snapshot bundles, raw output]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do extraction and source slicing outputs work?"]
 ---
 

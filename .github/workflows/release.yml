@@ -62,9 +62,11 @@ jobs:
           SOURCE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
           [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
-          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "release_tag=$TAG"
+            echo "version=${TAG#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Require completed verification of this exact main source
         shell: bash
@@ -237,7 +239,7 @@ jobs:
           name: ${{ matrix.artifact_bundle_name }}
           path: |
             dist/${{ steps.artifact.outputs.package }}
-            dist/native-evidence-${{ matrix.id }}.json
+            dist/native-evidence-${{ matrix.id }}*.json
             dist/native-smoke-${{ matrix.id }}.log
           if-no-files-found: error
           retention-days: 7
@@ -312,3 +314,96 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: ./scripts/verify-github-release.sh
+
+  published-native:
+    name: Execute published package ${{ matrix.id }}
+    needs: [release-target-matrix, release]
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
+    env:
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
+      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.release-target-matrix.outputs.source_sha }}
+
+      - name: Install Linux musl toolchain packages
+        if: ${{ matrix.needs_musl_tools }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+
+      - name: Install Rust toolchain for native I/O tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
+          rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
+          ./scripts/xtask.sh hygiene verify
+
+      - name: Download public bytes anonymously and verify provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/release-targets.sh
+          VERSION="${RELEASE_TAG#v}"
+          PACKAGE="$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")"
+          CHECKSUM="htmlcut-${VERSION}-checksums.txt"
+          mkdir -p dist
+          for NAME in "$PACKAGE" "$CHECKSUM"; do
+            curl --fail --location --max-time 120 --max-filesize 134217728 \
+              --output "dist/$NAME" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$NAME"
+          done
+          python3 - "$PACKAGE" "$CHECKSUM" <<'PY'
+          import runpy,sys
+          from pathlib import Path
+          helpers=runpy.run_path('scripts/release-assets.py')
+          package=Path('dist')/sys.argv[1]
+          checksums=helpers['parse_checksums']((Path('dist')/sys.argv[2]).read_bytes())
+          assert helpers['digest'](package)[1]==checksums[package.name], 'Public package checksum differs'
+          PY
+          gh attestation verify "dist/$PACKAGE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-digest "$RELEASE_SOURCE_SHA" --format json > dist/published-attestation.json
+
+      - name: Execute downloaded native package and retain its binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/release-targets.sh
+          VERSION="${RELEASE_TAG#v}"
+          PACKAGE="$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")"
+          smoke_shell="$BASH"
+          if command -v cygpath >/dev/null 2>&1; then
+            smoke_shell="$(cygpath -w "$smoke_shell")"
+          fi
+          python3 scripts/native-package-evidence.py \
+            --package "dist/$PACKAGE" --version "$VERSION" \
+            --target "${{ matrix.target_triple }}" --source-sha "$RELEASE_SOURCE_SHA" \
+            --output dist/published-native-evidence.json --smoke-log dist/published-native-smoke.log \
+            --shell "$smoke_shell"
+
+      - name: Preserve downloaded package and complete native proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: published-native-${{ matrix.id }}
+          path: |
+            dist/htmlcut-*
+            dist/published-*.json
+            dist/published-native-smoke.log
+          if-no-files-found: error
+          retention-days: 7
