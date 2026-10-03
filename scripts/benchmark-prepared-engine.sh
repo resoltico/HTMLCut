@@ -79,7 +79,7 @@ def decode(name,data):
     assert value['selected_match_count']==50
     return value['values']
 measurements,outputs=paired({'prepared':[prepared],'one_shot':['bash',baseline]},expected,decode,
-                            rss_directory=Path(report).parent/(Path(report).stem+'-rss'))
+                            rss_directory=Path(report).parent/(Path(report).name+'-rss'))
 result=dict(benchmark='htmlcut.prepared_engine@3',baseline_ref=baseline_ref,platform=platform.platform(),
             source_commit=subprocess.check_output(['git','-C',repo,'rev-parse','HEAD']).decode().strip(),
             prepared_binary_sha256=hashlib.sha256(Path(prepared).read_bytes()).hexdigest(),
