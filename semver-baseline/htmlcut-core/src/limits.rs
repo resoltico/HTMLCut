@@ -28,7 +28,7 @@ pub struct PreparationLimits {
 impl Default for PreparationLimits {
     fn default() -> Self {
         Self {
-            max_source_bytes: 50 * 1024 * 1024,
+            max_source_bytes: MAX_SOURCE_BYTES as u32,
             max_elements: 250_000,
             max_nodes: 1_000_000,
             max_depth: 2_048,
@@ -40,7 +40,7 @@ impl Default for PreparationLimits {
 impl PreparationLimits {
     /// Rejects zero budgets and values exceeding maintained hard maxima.
     pub fn validate(&self) -> Result<(), ExtractionError> {
-        if self.max_source_bytes == 0 || self.max_source_bytes > 50 * 1024 * 1024 {
+        if self.max_source_bytes == 0 || self.max_source_bytes > MAX_SOURCE_BYTES as u32 {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidLimit,
                 "validation",
@@ -93,7 +93,7 @@ impl<'de> Deserialize<'de> for PreparationLimits {
         impl Default for Input {
             fn default() -> Self {
                 Self {
-                    max_source_bytes: 50 * 1024 * 1024,
+                    max_source_bytes: MAX_SOURCE_BYTES as u32,
                     max_elements: 250_000,
                     max_nodes: 1_000_000,
                     max_depth: 2_048,
@@ -127,6 +127,9 @@ pub struct ExecutionLimits {
     /// Maximum selected values.
     #[schemars(range(min = 1, max = 100000))]
     pub max_selected: u32,
+    /// Maximum field containers plus all-valued strings, or flat selected strings.
+    #[schemars(range(min = 1, max = 1000000))]
+    pub max_cells: u32,
     /// Maximum UTF-8 bytes in one projected value.
     #[schemars(range(min = 1, max = 8388608))]
     pub max_value_bytes: u32,
@@ -141,6 +144,7 @@ impl Default for ExecutionLimits {
             max_work: 1_000_000,
             max_candidates: 100_000,
             max_selected: 10_000,
+            max_cells: 100_000,
             max_value_bytes: 8 * 1024 * 1024,
             max_total_value_bytes: 64 * 1024 * 1024,
         }
@@ -171,6 +175,13 @@ impl ExecutionLimits {
                 "max_selected is outside its supported range.",
             ));
         }
+        if self.max_cells == 0 || self.max_cells > 1_000_000 {
+            return Err(ExtractionError::new(
+                ErrorCode::InvalidLimit,
+                "validation",
+                "max_cells is outside its supported range.",
+            ));
+        }
         if self.max_value_bytes == 0 || self.max_value_bytes > 8 * 1024 * 1024 {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidLimit,
@@ -197,6 +208,7 @@ impl<'de> Deserialize<'de> for ExecutionLimits {
             max_work: u32,
             max_candidates: u32,
             max_selected: u32,
+            max_cells: u32,
             max_value_bytes: u32,
             max_total_value_bytes: u32,
         }
@@ -206,6 +218,7 @@ impl<'de> Deserialize<'de> for ExecutionLimits {
                     max_work: 1_000_000,
                     max_candidates: 100_000,
                     max_selected: 10_000,
+                    max_cells: 100_000,
                     max_value_bytes: 8 * 1024 * 1024,
                     max_total_value_bytes: 64 * 1024 * 1024,
                 }
@@ -216,6 +229,7 @@ impl<'de> Deserialize<'de> for ExecutionLimits {
             max_work: input.max_work,
             max_candidates: input.max_candidates,
             max_selected: input.max_selected,
+            max_cells: input.max_cells,
             max_value_bytes: input.max_value_bytes,
             max_total_value_bytes: input.max_total_value_bytes,
         };
@@ -240,3 +254,13 @@ pub const MAX_JSON_DEPTH: usize = 64;
 pub const MAX_URL_INPUT_BYTES: usize = 8 * 1024;
 /// Maximum URL-processing scratch/result bytes before publication-value limits are applied.
 pub const MAX_URL_PROCESSING_BYTES: usize = 32 * 1024;
+
+/// Maximum complete compact data JSON bytes, excluding its framing LF.
+pub const MAX_DATA_BYTES: usize = 64 * 1024 * 1024;
+/// Maximum serialized execution receipt bytes.
+pub const MAX_RECEIPT_BYTES: usize = 4 * 1024 * 1024;
+/// Maximum named fields in a record projection.
+pub const MAX_FIELDS: usize = 64;
+
+/// Maximum accepted source bytes under the supported preparation policy.
+pub const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;

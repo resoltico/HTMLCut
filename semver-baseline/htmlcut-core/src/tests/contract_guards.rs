@@ -32,7 +32,9 @@ fn t18_t19_guards_are_original_dom_conjunctive_and_all_values() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["EUR 180"]
     );
     plan.guards[0].predicate = Some(Predicate::Exact {
@@ -94,8 +96,14 @@ fn t16_t17_complete_counts_positions_and_explicit_empty_selection() {
     let result = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(result.values, ["B"]);
-    assert_eq!((result.candidate_count, result.selected_count), (3, 1));
+    assert_eq!(result.data.as_values().unwrap(), ["B"]);
+    assert_eq!(
+        (
+            result.receipt.candidate_count,
+            result.receipt.selected_count
+        ),
+        (3, 1)
+    );
     plan.limits.max_candidates = 2;
     assert_eq!(
         source
@@ -113,7 +121,9 @@ fn t16_t17_complete_counts_positions_and_explicit_empty_selection() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values
+            .data
+            .as_values()
+            .unwrap()
             .is_empty()
     );
     plan.selection = Selection::All { min: 1, max: None };
@@ -151,7 +161,9 @@ fn t13_t15_all_slice_inclusions_progress_and_unmatched_tail() {
             prepared("[✓]")
                 .execute(&CompiledPlan::compile(&plan).unwrap())
                 .unwrap()
-                .values,
+                .data
+                .as_values()
+                .unwrap(),
             [expected]
         );
     }
@@ -280,6 +292,6 @@ fn t17_the_last_one_based_position_is_valid_and_preserves_the_complete_count() {
     let result = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(result.values, ["C"]);
-    assert_eq!(result.candidate_count, 3);
+    assert_eq!(result.data.as_values().unwrap(), ["C"]);
+    assert_eq!(result.receipt.candidate_count, 3);
 }

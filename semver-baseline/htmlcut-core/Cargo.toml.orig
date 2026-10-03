@@ -7,7 +7,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 description = "Library for extracting and inspecting HTML with CSS selectors, literal or regex slicing, and structured diagnostics."
 
 [features]

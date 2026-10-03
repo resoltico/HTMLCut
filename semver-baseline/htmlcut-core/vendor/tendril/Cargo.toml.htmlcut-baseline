@@ -53,3 +53,7 @@ version = "0.8.2"
 
 [dev-dependencies.rand]
 version = "0.10.3"
+
+# This owned upstream fork retains its upstream lint contract; workspace unsafe-code
+# prohibition applies to first-party consumers, not the fork implementation.
+[lints]

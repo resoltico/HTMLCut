@@ -3,6 +3,11 @@
 use super::*;
 use std::collections::HashMap;
 
+pub(super) fn html(element: &scraper::node::Element) -> bool {
+    let namespace: &str = element.name.ns.as_ref();
+    namespace == "http://www.w3.org/1999/xhtml"
+}
+
 pub(super) fn inherited_pre(
     root: ElementRef<'_>,
     budget: &SelectorWorkBudget,
@@ -12,7 +17,7 @@ pub(super) fn inherited_pre(
         if parent
             .value()
             .as_element()
-            .is_some_and(|e| e.name() == "pre")
+            .is_some_and(|e| e.name() == "pre" && html(e))
         {
             return Ok(true);
         }

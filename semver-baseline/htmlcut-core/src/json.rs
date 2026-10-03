@@ -9,24 +9,34 @@ use serde_json::{Map, Number, Value};
 
 use crate::limits::{MAX_JSON_DEPTH, MAX_PLAN_BYTES};
 
-/// Reads one size-bounded JSON document, rejecting nested duplicate keys before map creation.
+/// Reads one JSON document within the supplied encoded/materialized byte bound,
+/// rejecting nested duplicate keys before map creation.
 /// Adapter-owned documents add their own closed fields and semantic validation afterward.
-pub fn parse_closed_json(bytes: &[u8]) -> Result<Value, crate::ExtractionError> {
-    if bytes.len() > MAX_PLAN_BYTES {
+pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::ExtractionError> {
+    if bytes.len() > maximum {
         return Err(crate::ExtractionError::limit("json"));
     }
-    serde_json::from_slice::<ClosedValue>(bytes)
-        .map(|value| value.0)
-        .map_err(|error| {
-            if error.to_string().starts_with("Closed JSON exceeds") {
-                return crate::ExtractionError::limit("json");
-            }
-            crate::ExtractionError::new(
-                crate::ErrorCode::InvalidJson,
-                "json",
-                "JSON is invalid, too deeply nested, or contains duplicate object keys.",
-            )
-        })
+    let budget = Cell::new(maximum);
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    let value = Seed {
+        depth: 0,
+        budget: &budget,
+    }
+    .deserialize(&mut deserializer)
+    .and_then(|value| {
+        deserializer.end()?;
+        Ok(value)
+    });
+    value.map_err(|error| {
+        if error.to_string().starts_with("Closed JSON exceeds") {
+            return crate::ExtractionError::limit("json");
+        }
+        crate::ExtractionError::new(
+            crate::ErrorCode::InvalidJson,
+            "json",
+            "JSON is invalid, too deeply nested, or contains duplicate object keys.",
+        )
+    })
 }
 
 pub(crate) struct ClosedValue(pub Value);
