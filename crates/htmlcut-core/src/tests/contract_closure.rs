@@ -5,16 +5,30 @@ use std::collections::BTreeSet;
 
 fn closed_variants<T: Serialize + DeserializeOwned + schemars::JsonSchema>(values: Vec<T>) {
     let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap();
-    let alternatives = schema["oneOf"].as_array().unwrap();
-    let declared: BTreeSet<_> = alternatives
-        .iter()
-        .map(|v| {
-            v["properties"]["kind"]["const"]
-                .as_str()
-                .unwrap()
-                .to_owned()
-        })
-        .collect();
+    fn kinds(value: &serde_json::Value, root: &serde_json::Value, result: &mut BTreeSet<String>) {
+        if let Some(name) = value
+            .pointer("/properties/kind/const")
+            .and_then(serde_json::Value::as_str)
+        {
+            result.insert(name.into());
+        }
+        if let Some(reference) = value.get("$ref").and_then(serde_json::Value::as_str) {
+            kinds(
+                root.pointer(reference.strip_prefix('#').unwrap()).unwrap(),
+                root,
+                result,
+            );
+        }
+        for key in ["oneOf", "anyOf"] {
+            if let Some(items) = value.get(key).and_then(serde_json::Value::as_array) {
+                for item in items {
+                    kinds(item, root, result);
+                }
+            }
+        }
+    }
+    let mut declared = BTreeSet::new();
+    kinds(&schema, &schema, &mut declared);
     let covered: BTreeSet<_> = values
         .iter()
         .map(|v| {
@@ -48,14 +62,24 @@ fn closed_variants<T: Serialize + DeserializeOwned + schemars::JsonSchema>(value
 #[test]
 fn every_tagged_plan_variant_rejects_unknown_members() {
     closed_variants(vec![
-        Projection::DomText {},
-        Projection::DocumentText {},
-        Projection::InnerHtml {},
-        Projection::OuterHtml {},
-        Projection::Source {},
-        Projection::Attribute {
-            name: "href".into(),
+        Projection::Records {
+            fields: vec![RecordField {
+                name: "text".into(),
+                selector: "p".into(),
+                selection: FieldSelection::default(),
+                projection: ValueProjection::default(),
+                exclude: vec![],
+                transforms: vec![],
+            }],
         },
+        Projection::Value(ValueProjection::DomText {}),
+        Projection::Value(ValueProjection::Markdown {}),
+        Projection::Value(ValueProjection::InnerHtml {}),
+        Projection::Value(ValueProjection::OuterHtml {}),
+        Projection::Source {},
+        Projection::Value(ValueProjection::Attribute {
+            name: "href".into(),
+        }),
     ]);
     closed_variants(vec![
         Selection::Single {},
@@ -114,7 +138,9 @@ fn nested_configuration_is_rejected_before_compilation_or_output() {
         prepared("<p>A<span class='private'>SECRET</span>B</p>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["AB"]
     );
 }

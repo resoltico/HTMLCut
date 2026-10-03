@@ -1,43 +1,38 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: CLI
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
-  keywords: [cli, extract, run, inspect, describe, schema, saved runs, raw output]
+  keywords: [cli, extract, run, inspect, describe, schema, snapshot bundles, raw output]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do extraction and source slicing outputs work?"]
 ---
 
 # CLI
 
-The binary commands are `extract`, `run`, `inspect`, `describe`, and `schema`. No CLI Rust library is supported. Inline flags compile to the same core plan as plan files.
+Commands are `extract`, `run`, `inspect`, `describe`, and `schema`. Inline requests compile through the same current plan contract as files and Rust constructors. No CLI Rust library, retired aliases or old-wire conversion is supported.
 
 ```sh
 htmlcut describe
 htmlcut describe extract
 htmlcut extract --file fixture.html --css '#amount'
 htmlcut extract --file fixture.html --css '#amount' --raw
-htmlcut extract --file fixture.html --css 'a.item' --projection attribute --attribute href --match all
+htmlcut extract --file fixture.html --css 'a.item' --attribute href --match all
 htmlcut extract --stdin --plan amount.plan.json
+htmlcut inspect --file fixture.html --css p --samples 3
 htmlcut schema htmlcut.extraction.plan
 ```
 
-Default single selection rejects zero/multiple candidates. `--match nth --index 1` requests first explicitly; `--match all --min 0` explicitly permits an empty array. `--raw` requires one resulting value, including a present empty value, and adds no LF. Default JSON is identical for terminals and pipes. Errors go to stderr with empty stdout before publication.
+Exactly one file or intentional stdin supplies strict UTF-8; BOM, CRLF and NUL remain in the accepted snapshot. Invalid UTF-8 fails. No network, environment-backed source, charset conversion, HTML charset/base sniffing or browser execution occurs. `--base-url` supplies explicit absolute HTTP(S) metadata without userinfo.
 
-Files/stdin default to strict UTF-8; `--encoding` is explicit. HTTP uses GET only, caller encoding then HTTP charset then UTF-8, bounded redirects/transfer/decompression/decoding and timeouts. Unsupported/malformed encodings and inconsistent BOMs fail. Query parameters reach the request; operational errors never echo URL values. No HTML charset/base sniffing occurs.
+Default single selection rejects zero or multiple candidates. `--match nth --index 1` is explicitly positional; `--match all --min 0` permits an empty array. `--attribute NAME` chooses attribute projection directly and conflicts with another explicit projection. `--raw` requires one flat string, permits empty content, and adds no LF. Records/raw is rejected before consuming the source when the plan determines it. Default data JSON is identical for terminals and pipes.
 
-Automatic URL persistence requires `--url-env NAME`; saved runs store the name rather than runtime URL values. Authored public URL literals remain caller-owned. Run file paths resolve relative to the run's directory. A run is data, with no shell substitution, nested run inclusion or automatic environment serialization.
+Records, guards, exclusions and transforms use plan files. A source-dependent failure rejects the entire execution before successful stdout/artifact publication. Typed errors go to stderr, with bounded safe option/I/O causes and applicable numeric row/field positions rather than user text or mandatory digest envelopes.
 
-Output files use bounded staging and atomic create/replace; overwrite requires explicit consent. Input/result/evidence destinations cannot collide. Audit fields are explicit and bounded, and audit preparation failure fails the operation. Multiple files are not an OS transaction. An I/O error on a pipe may leave bytes already delivered and returns failure.
+`--receipt FILE` publishes the fixed complete execution receipt separately; `--bundle FILE` saves a self-contained snapshot/plan/manifest archive. They are mutually exclusive. `run BUNDLE` accepts delivery options only, recomputes from bundled bytes/configuration and compares its full receipt. No original files, network, environment substitution, nested run, archive unpacking or source/plan overrides occur. Bundle contents are opt-in data and can contain source or explicit metadata supplied by the caller.
 
-Exit classes: 0 success/help; 2 input/options/plan/schema; 3 unmet expectations; 4 resource limits; 5 acquisition/decoding/publication I/O; 6 internal invariants.
+`inspect` requires `--css`; it establishes a complete match count and defaults to three samples (range 1–10). Samples contain bounded tags, at most eight exact supported attribute names and 160 Unicode scalar values of normalized literal text, with separate completeness flags. The encoded response is capped at 16 KiB. A limit while establishing the count is failure, never an approximate successful count. There are no handles, cursors, proposals or preview-plan modes.
 
-## Acquisition and delivery boundaries
+`--output FILE` publishes data instead of stdout; replacement requires `--overwrite`. Input/destination collisions and destination symlinks/special files fail. Source, plan and bundle paths validate the opened regular handle; intentional streams use stdin. Regular input symlinks remain supported. Files use bounded staging and atomic native create/replace. All requested artifacts are staged before any commit; receipt/bundle commits precede data delivery. Several files/stdout are not a transaction. A later failure may leave an execution sidecar or bytes already delivered to a pipe and returns nonzero. File-only or empty-raw output does not require an unused stdout descriptor. No untested power-loss durability is promised.
 
-File-path sources, plan files and saved runs require regular opened files; intentional streams use stdin. Nonregular paths fail promptly rather than waiting for a FIFO writer. Regular symlink targets remain supported.
-
-HTTP consumes complete informational headers before final metadata, with finite per-hop informational/header limits. Ordinary full-source GET does not accept unsolicited partial representations. Media parameters use quoted-string and quoted-pair grammar; text inside an unrelated quoted parameter cannot become a charset declaration. Explicit encoding takes precedence; invalid explicit encoding is a configuration error.
-
-Safe causes distinguish known option constraints, I/O roles, received HTTP status, protocol/metadata/charset/compression and typed transport categories without echoing source, URL, header, path or supplied-value text. Opaque lower-level errors remain honestly generic.
-
-The real stream adapter acquires handles lazily. Nonempty stdout delivery cannot succeed after an invalid/read-only descriptor write. File-only output and empty raw values do not require an unused stdout. Partial bytes already delivered to a pipe cannot be rolled back; later failure remains nonzero.
+Exit classes: 0 success/help; 2 invalid configuration/schema/selector/regex/bundle structure; 3 unmet selection/guard/attribute/representation or replay expectation; 4 resource exhaustion; 5 real acquisition/UTF-8/delivery I/O; 6 internal invariants. Known malformed archive bytes are distinct from a failing underlying read/seek.

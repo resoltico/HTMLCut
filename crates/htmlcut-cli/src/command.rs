@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use htmlcut_core::{Boundary, ExtractionPlan, Projection, Selection, Strategy};
+use htmlcut_core::{Boundary, ExtractionPlan, Projection, Selection, Strategy, ValueProjection};
 
-use crate::input::{MAX_CONFIG_BYTES, SourceSpec, options, read_file};
+use crate::input::{MAX_CONFIG_BYTES, options, read_file};
 
 #[derive(Parser)]
 #[command(
@@ -23,10 +23,10 @@ pub(crate) enum Operation {
     /// Extract exactly the requested values; defaults to single/dom_text and compact JSON.
     #[command(about = crate::operation_metadata::EXTRACT_ABOUT, long_about = crate::operation_metadata::EXTRACT_DETAILS)]
     Extract(Box<Extract>),
-    /// Execute a closed saved run with caller-owned source configuration.
+    /// Recompute and verify a self-contained snapshot bundle.
     #[command(about = crate::operation_metadata::RUN_ABOUT)]
     Run(Run),
-    /// Inspect a saved immutable snapshot with bounded descriptors and cursors.
+    /// Count an explicit selector and return bounded samples.
     #[command(about = crate::operation_metadata::INSPECT_ABOUT)]
     Inspect(Inspect),
     /// Retrieve a compact index or one named operation description.
@@ -44,39 +44,12 @@ pub(crate) struct SourceChoice {
     pub(crate) file: Option<PathBuf>,
     #[arg(long)]
     pub(crate) stdin: bool,
-    #[arg(long)]
-    pub(crate) url: Option<String>,
-    #[arg(long)]
-    pub(crate) url_env: Option<String>,
-}
-
-impl SourceChoice {
-    pub(crate) fn specification(&self) -> Result<SourceSpec, htmlcut_core::ExtractionError> {
-        if let Some(path) = &self.file {
-            Ok(SourceSpec::File {
-                path: path
-                    .to_str()
-                    .ok_or_else(|| options("Source file paths must be valid UTF-8."))?
-                    .into(),
-            })
-        } else if self.stdin {
-            Ok(SourceSpec::Stdin {})
-        } else {
-            Ok(SourceSpec::Http {
-                url: self.url.clone(),
-                url_env: self.url_env.clone(),
-            })
-        }
-    }
 }
 
 #[derive(Args)]
 pub(crate) struct SourceOptions {
     #[command(flatten)]
     pub(crate) source: SourceChoice,
-    /// Explicit strict charset; file/stdin and unlabelled HTTP otherwise require UTF-8.
-    #[arg(long)]
-    pub(crate) encoding: Option<String>,
     /// Explicit effective base; HTML base elements are never inferred.
     #[arg(long)]
     pub(crate) base_url: Option<String>,
@@ -93,33 +66,18 @@ pub(crate) struct Output {
     /// Permit atomic replacement of an existing managed output.
     #[arg(long)]
     pub(crate) overwrite: bool,
-    /// Publish bounded field-selected evidence before the successful result.
-    #[arg(long, requires = "audit_field")]
-    pub(crate) audit: Option<PathBuf>,
-    #[arg(long, value_delimiter = ',', requires = "audit")]
-    pub(crate) audit_field: Vec<AuditField>,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-#[value(rename_all = "snake_case")]
-pub(crate) enum AuditField {
-    Plan,
-    SourceDigest,
-    PlanDigest,
-    ExtractionDigest,
-    Counts,
-    Ranges,
-    Values,
+    /// Atomically publish the complete execution receipt before data delivery.
+    #[arg(long)]
+    pub(crate) receipt: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
 #[value(rename_all = "snake_case")]
 pub(crate) enum ProjectionArg {
     DomText,
-    DocumentText,
+    Markdown,
     InnerHtml,
     OuterHtml,
-    Attribute,
     Source,
 }
 
@@ -165,7 +123,8 @@ pub(crate) struct Extract {
     #[arg(long, requires = "start")]
     pub(crate) include_end: bool,
     #[arg(long)]
-    pub(crate) save_run: Option<PathBuf>,
+    #[arg(conflicts_with = "receipt")]
+    pub(crate) bundle: Option<PathBuf>,
 }
 
 impl Extract {
@@ -219,26 +178,26 @@ impl Extract {
                 ));
             }
         };
-        plan.projection = match self.projection.unwrap_or(if self.start.is_some() {
-            ProjectionArg::Source
+        plan.projection = if let Some(name) = &self.attribute {
+            if self.projection.is_some() || self.start.is_some() {
+                return Err(options(
+                    "Attribute selection conflicts with an explicit projection or source boundaries.",
+                ));
+            }
+            Projection::Value(ValueProjection::Attribute { name: name.clone() })
         } else {
-            ProjectionArg::DomText
-        }) {
-            ProjectionArg::DomText => Projection::DomText {},
-            ProjectionArg::DocumentText => Projection::DocumentText {},
-            ProjectionArg::InnerHtml => Projection::InnerHtml {},
-            ProjectionArg::OuterHtml => Projection::OuterHtml {},
-            ProjectionArg::Source => Projection::Source {},
-            ProjectionArg::Attribute => Projection::Attribute {
-                name: self
-                    .attribute
-                    .clone()
-                    .ok_or_else(|| options("Attribute projection requires --attribute."))?,
-            },
+            match self.projection.unwrap_or(if self.start.is_some() {
+                ProjectionArg::Source
+            } else {
+                ProjectionArg::DomText
+            }) {
+                ProjectionArg::DomText => Projection::Value(ValueProjection::DomText {}),
+                ProjectionArg::Markdown => Projection::Value(ValueProjection::Markdown {}),
+                ProjectionArg::InnerHtml => Projection::Value(ValueProjection::InnerHtml {}),
+                ProjectionArg::OuterHtml => Projection::Value(ValueProjection::OuterHtml {}),
+                ProjectionArg::Source => Projection::Source {},
+            }
         };
-        if self.attribute.is_some() && !matches!(plan.projection, Projection::Attribute { .. }) {
-            return Err(options("--attribute applies only to attribute projection."));
-        }
         plan.validate()?;
         Ok(plan)
     }
@@ -255,13 +214,10 @@ pub(crate) struct Run {
 pub(crate) struct Inspect {
     #[command(flatten)]
     pub(crate) source: SourceOptions,
+    /// Selector to count and sample; never guessed automatically.
     #[arg(long)]
-    pub(crate) cursor: Option<String>,
-    #[arg(long, default_value = "20")]
-    pub(crate) page_size: u32,
-    #[arg(long, conflicts_with_all = ["cursor", "page_size"])]
-    pub(crate) preview_plan: Option<PathBuf>,
-    /// Request a labelled positional selector suggestion; adoption remains caller-owned.
-    #[arg(long, conflicts_with_all = ["cursor", "preview_plan"])]
-    pub(crate) propose: Option<String>,
+    pub(crate) css: String,
+    /// Number of samples; complete matching is still required.
+    #[arg(long, default_value = "3")]
+    pub(crate) samples: u32,
 }

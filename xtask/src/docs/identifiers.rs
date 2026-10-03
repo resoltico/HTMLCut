@@ -12,6 +12,14 @@ pub(super) fn identifier_errors(
 ) -> Vec<String> {
     let unknown_identifiers = pattern
         .find_iter(text)
+        .filter(|matched| {
+            // Digest domains are versioned with /N; .htmlcut.tar is a container suffix.
+            !(matches!(
+                matched.as_str(),
+                "htmlcut.plan" | "htmlcut.extraction" | "htmlcut.prepared"
+            ) && text[matched.end()..].starts_with('/'))
+                && matched.as_str() != "htmlcut.tar"
+        })
         .map(|matched| matched.as_str())
         // These versioned identities name a digest domain and a benchmark report, not JSON
         // Schema families. Keep unknown bare htmlcut.* schema names fail-closed.
@@ -45,7 +53,13 @@ pub(super) fn operation_identifier_errors(
     let unknown_identifiers = pattern
         .find_iter(text)
         .map(|matched| matched.as_str())
-        .filter(|identifier| !identifier.starts_with("htmlcut.") && !identifier.ends_with(".md"))
+        .filter(|identifier| {
+            !identifier.starts_with("htmlcut.")
+                && !identifier.ends_with(".md")
+                && !identifier.ends_with(".html")
+                && !identifier.ends_with(".json")
+                && !identifier.ends_with(".tar")
+        })
         .filter(|identifier| !operation_ids.contains(identifier))
         .filter(|identifier| {
             identifier
@@ -230,7 +244,7 @@ pub(crate) fn known_schema_names() -> BTreeSet<&'static str> {
         .iter()
         .copied()
         .chain([
-            "htmlcut.run",
+            "htmlcut.bundle",
             "htmlcut.operations",
             "htmlcut.operation",
             crate::gate_report::GATE_RUN_REPORT_SCHEMA_NAME,

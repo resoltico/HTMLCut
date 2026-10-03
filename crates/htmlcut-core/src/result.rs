@@ -4,9 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 /// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 2;
+pub const SEMANTICS_VERSION: u32 = 3;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -34,6 +34,8 @@ pub enum ErrorCode {
     Cardinality,
     /// Requested attribute is absent.
     MissingAttribute,
+    /// Selected content cannot be represented under the requested formatting convention.
+    InvalidRepresentation,
     /// Declared original-DOM guard failed.
     GuardFailed,
     /// A source opening has no following closing boundary.
@@ -50,6 +52,10 @@ pub enum ErrorCode {
     Decoding,
     /// Adapter could not publish the complete staged result.
     Publication,
+    /// The closed replay container is malformed.
+    InvalidBundle,
+    /// Recomputed execution differs from bundled evidence.
+    ReplayMismatch,
     /// An internal invariant failed.
     InternalInvariant,
 }
@@ -65,14 +71,17 @@ impl ErrorCode {
             | Self::InvalidRegex
             | Self::InvalidLimit
             | Self::InvalidBaseUrl
-            | Self::InvalidOptions => 2,
+            | Self::InvalidOptions
+            | Self::InvalidBundle => 2,
             Self::NoMatch
             | Self::AmbiguousSelection
             | Self::Cardinality
             | Self::MissingAttribute
+            | Self::InvalidRepresentation
             | Self::GuardFailed
             | Self::MissingBoundary
-            | Self::EmptyBoundaryMatch => 3,
+            | Self::EmptyBoundaryMatch
+            | Self::ReplayMismatch => 3,
             Self::ResourceLimit => 4,
             Self::Acquisition | Self::Decoding | Self::Publication => 5,
             Self::InternalInvariant => 6,
@@ -112,15 +121,12 @@ pub struct ErrorEvidence {
     /// An observed lower bound, never presented as an exact count.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_at_least: Option<u32>,
-    /// Accepted source identity when available.
+    /// Positive selected-row position for a record failure.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_sha256: Option<String>,
-    /// Normalized compiled-plan identity when available.
+    pub row_index: Option<u32>,
+    /// Positive field declaration position for a record failure.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub plan_sha256: Option<String>,
-    /// Deterministic execution-input identity when available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extraction_sha256: Option<String>,
+    pub field_index: Option<u32>,
     /// Exact candidate count, only after complete enumeration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate_count: Option<u32>,
@@ -136,15 +142,6 @@ impl ExtractionError {
         self
     }
 
-    /// Attaches identities and exact counts from an already validated result to an adapter failure.
-    pub fn with_result(mut self, result: &ExtractionResult) -> Self {
-        self.source_sha256 = Some(result.source_sha256.clone());
-        self.plan_sha256 = Some(result.plan_sha256.clone());
-        self.extraction_sha256 = Some(result.extraction_sha256.clone());
-        self.candidate_count = Some(result.candidate_count);
-        self.selected_count = Some(result.selected_count);
-        self
-    }
     /// Constructs a safe error from an owned static explanation.
     pub fn new(code: ErrorCode, stage: &'static str, message: &'static str) -> Self {
         Self {
@@ -178,44 +175,4 @@ impl std::ops::DerefMut for ExtractionError {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.evidence
     }
-}
-
-/// Half-open UTF-8 byte range in the original accepted snapshot.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SourceRange {
-    /// Inclusive starting byte offset.
-    pub start: usize,
-    /// Exclusive ending byte offset.
-    pub end: usize,
-}
-
-/// Complete deterministic requested values, without parallel representations.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ExtractionResult {
-    /// Success role name.
-    #[schemars(extend("const" = "htmlcut.extraction.result"))]
-    pub schema: String,
-    /// Wire-family version.
-    #[schemars(extend("const" = SCHEMA_VERSION))]
-    pub version: u32,
-    /// Extraction-semantics version.
-    #[schemars(extend("const" = SEMANTICS_VERSION))]
-    pub semantics: u32,
-    /// SHA-256 of exact accepted UTF-8 bytes.
-    pub source_sha256: String,
-    /// SHA-256 identity of the normalized plan.
-    pub plan_sha256: String,
-    /// Domain-separated execution identity.
-    pub extraction_sha256: String,
-    /// Complete number of candidates.
-    pub candidate_count: u32,
-    /// Complete number of selected values.
-    pub selected_count: u32,
-    /// Requested values in document/source order.
-    pub values: Vec<String>,
-    /// Source ranges corresponding to slice values, absent for DOM selection.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ranges: Option<Vec<SourceRange>>,
 }

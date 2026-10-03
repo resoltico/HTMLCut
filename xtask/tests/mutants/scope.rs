@@ -22,12 +22,6 @@ fn mutation_scope_verifier_tracks_cargo_default_members_and_rejects_drift() {
         json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/relative_selector/filter.rs"}),
         json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/matching.rs"}),
         json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/context.rs"}),
-        json!({"package": "htmlcut-ureq", "file": "patches/rust/ureq/src/run/response.rs"}),
-        json!({"package": "htmlcut-ureq", "file": "patches/rust/ureq/src/body/reader.rs"}),
-        json!({"package": "htmlcut-ureq", "file": "patches/rust/ureq/src/error/io.rs"}),
-        json!({"package": "ureq-proto", "file": "patches/rust/ureq-proto/src/client/response_limits.rs"}),
-        json!({"package": "ureq-proto", "file": "patches/rust/ureq-proto/src/client/recvresp.rs"}),
-        json!({"package": "ureq-proto", "file": "patches/rust/ureq-proto/src/client/await100.rs"}),
 
         json!({"package": "htmlcut-selectors", "file": "patches/rust/selectors/work_budget.rs"}),
         json!({"package": "htmlcut-scraper", "file": "patches/rust/scraper/src/html/clone.rs"}),

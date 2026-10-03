@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: OPERATIONS
-updated: "2026-09-30"
+updated: "2026-10-03"
 route:
   keywords: [operations, extract, run, inspect, describe, schema]
   questions: ["What operations does the CLI expose?"]
@@ -10,18 +10,8 @@ route:
 
 # Operations
 
-| Operation | Purpose |
-| --- | --- |
-| `extract` | One selection and one requested projection over an acquired snapshot. |
-| `run` | Execute an explicit saved acquisition/plan specification. |
-| `inspect` | Bounded snapshot-bound descriptors, incomplete previews and labelled selector suggestions. |
-| `describe` | Compact index or one named operation's defaults/failure behavior. |
-| `schema` | One named schema, without a full-catalog default. |
+The binary exposes `extract`, `run`, `inspect`, `describe`, and `schema` through one maintained command vocabulary.
 
-```sh
-htmlcut describe
-htmlcut describe extract
-htmlcut inspect --file page.html --page-size 5
-```
+`extract` validates/compiles an explicit plan and returns only requested strings or records from a file/stdin snapshot. `run` recomputes and verifies a self-contained bundle. `inspect` counts an explicit selector completely and returns bounded samples. `describe` retrieves the compact index or one operation's defaults; `schema` retrieves one named current shape.
 
-A proposal is a suggestion, requiring explicit caller adoption. Positional selectors promise position, not durable meaning. Cursors/handles bind bytes, metadata, preparation/discovery policy and semantics. Changed snapshots/options reject old evidence. Live URLs cannot be refetched with cursor/handle input; callers supply the same saved snapshot and base metadata. Preview safety-budget failures remain errors.
+Selection assumptions and data representations are explicit. Acquisition, rendering, business transformation and comparison policy belong to callers. Failures never become alternate successful projections or silently shortened extraction values. Inspection sample abbreviation is separately labeled. See [CLI](cli.md), [Core](core.md) and [Schemas](schema.md).

@@ -23,9 +23,9 @@ either license. The Apache License, Version 2.0 is available at:
 
 Representative crates (not exhaustive — see Cargo.lock for the full list):
 
-  anyhow, bitflags, bytes, clap, flate2, hashbrown, html5ever, http,
-  httparse, idna, markup5ever, once_cell, percent-encoding, predicates,
-  regex, serde, serde_json, sha2, syn, tempfile, thiserror, url, ureq,
+  anyhow, bitflags, bytes, clap, hashbrown, html5ever, tar,
+  idna, markup5ever, once_cell, percent-encoding, predicates,
+  regex, serde, serde_json, sha2, syn, tempfile, thiserror, url,
   and others.
 
 ================================================================================
@@ -34,7 +34,7 @@ MIT (standalone)
 
 Representative crates licensed under MIT only:
 
-  ego-tree, phf, scraper, and others.
+  ego-tree, phf, scraper, pulldown-cmark, and others.
 
 ================================================================================
 MIT / Unlicense (dual-licensed)
@@ -90,37 +90,6 @@ licenses remain unchanged:
 Patch provenance, verification, and removal cues live in `patches/README.md`.
 
 ================================================================================
-ISC — ring and derived cryptographic code
-================================================================================
-
-The ring crate (https://github.com/briansmith/ring) is used under the ISC
-license. ring includes code derived from BoringSSL, which is maintained by
-Google and is itself derived from OpenSSL.
-
-ring copyright and attribution:
-
-  Portions copyright 2015-2016 Brian Smith.
-  Portions copyright 2006-2009, 2011 Google Inc.
-  Portions derived from BoringSSL, maintained by Google.
-
-  Permission to use, copy, modify, and/or distribute this software for any
-  purpose with or without fee is hereby granted, provided that the above
-  copyright notice and this permission notice appear in all copies.
-
-  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHORS DISCLAIM ALL WARRANTIES
-  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
-  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-Additional ISC-licensed crates: rustls-webpki, rustls-native-certs,
-rustls-pki-types, webpki-roots, untrusted.
-
-rustls itself is tri-licensed MIT OR Apache-2.0 OR ISC.
-
-================================================================================
 Unicode-3.0 — ICU data crates
 ================================================================================
 
@@ -134,15 +103,6 @@ the Unicode License v3:
   Copyright (c) 2006 IBM Corporation and Others. All Rights Reserved.
   This software and its associated documentation files are subject to the
   terms of the Unicode License Agreement (https://www.unicode.org/license.txt).
-
-================================================================================
-CDLA-Permissive-2.0 — webpki-root-certs
-================================================================================
-
-The webpki-root-certs crate contains CA certificate data sourced from the
-Common CA Database (CCADB), licensed under the Community Data License
-Agreement — Permissive, Version 2.0:
-  https://cdla.dev/permissive-2-0/
 
 ================================================================================
 BSD-3-Clause — 3-Clause BSD License
@@ -164,14 +124,6 @@ individual crate pages on crates.io for the specific copyright holders and full
 license text.
 
 ================================================================================
-0BSD — Zero-Clause BSD License
-================================================================================
-
-One or more transitive dependencies use the Zero-Clause BSD License, a
-permissive license with no attribution requirements. See Cargo.lock for the
-full list.
-
-================================================================================
 Unlicense — The Unlicense
 ================================================================================
 
@@ -190,7 +142,3 @@ Use of these names in this document is descriptive only.
 HTMLCut is not affiliated with, endorsed by, or sponsored by the Mozilla
 Foundation, Google, the Unicode Consortium, or any other organization whose
 open-source components are included in this binary.
-
-HTMLCut includes a modified ureq-proto 0.6.4 by Martin Algesten, licensed MIT OR Apache-2.0. License texts and patch responsibility are retained in patches/rust/ureq-proto.
-
-HTMLCut includes a modified ureq 3.4.2 by Martin Algesten and Jacob Hoffman-Andrews, licensed MIT OR Apache-2.0. License texts and complete-response receiver responsibility are retained in patches/rust/ureq.

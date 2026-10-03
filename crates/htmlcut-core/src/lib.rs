@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 mod compilation;
+mod data;
 mod discovery;
 #[cfg(any(test, doctest))]
 mod doctests;
@@ -13,6 +14,7 @@ mod json;
 mod limits;
 mod plan;
 mod projection;
+mod receipt;
 mod result;
 mod schemas;
 mod snapshot;
@@ -21,22 +23,22 @@ mod snapshot;
 mod tests;
 
 pub use compilation::CompiledPlan;
-pub use discovery::{
-    AttributePreview, ElementDescriptor, InspectionResult, PreviewResult, SelectorProposal,
-};
+pub use data::{ExtractionData, FieldValue};
+pub use discovery::{InspectionResult, InspectionSample};
 pub use failure_cause::{
-    ConfigurationProblem, ConfigurationRole, FailureCause, IoOperation, IoProblem, TransportProblem,
+    ConfigurationProblem, ConfigurationRole, FailureCause, IoOperation, IoProblem,
 };
 pub use identity::canonical_json;
 pub use json::parse_closed_json;
-pub use limits::{ExecutionLimits, PreparationLimits};
+pub use limits::{
+    ExecutionLimits, MAX_DATA_BYTES, MAX_PLAN_BYTES, MAX_RECEIPT_BYTES, MAX_SOURCE_BYTES,
+    PreparationLimits,
+};
 pub use plan::{
-    Boundary, ExtractionPlan, Guard, GuardRead, GuardScope, Predicate, Projection, Selection,
-    Strategy, Transform,
+    Boundary, ExtractionPlan, FieldSelection, Guard, GuardRead, GuardScope, Predicate, Projection,
+    RecordField, Selection, Strategy, Transform, ValueProjection,
 };
-pub use result::{
-    ErrorCode, ErrorEvidence, ExtractionError, ExtractionResult, SCHEMA_VERSION, SEMANTICS_VERSION,
-    SourceRange,
-};
+pub use receipt::{DataKind, ExecutionReceipt, ExtractionResult, FieldCount, SourceRange};
+pub use result::{ErrorCode, ErrorEvidence, ExtractionError, SCHEMA_VERSION, SEMANTICS_VERSION};
 pub use schemas::{SCHEMA_NAMES, schema};
 pub use snapshot::{PreparedDocument, SnapshotMetadata, SourceSnapshot};

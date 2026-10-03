@@ -5,7 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{ErrorCode, ExecutionLimits, ExtractionError, SCHEMA_VERSION};
 
-mod validation;
+mod fields;
+pub(crate) mod validation;
+pub use fields::{FieldSelection, RecordField, ValueProjection};
 
 /// One source/DOM strategy, without implicit fragment reparsing.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -86,26 +88,40 @@ fn minimum_one() -> u32 {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Projection {
-    /// Parsed descendant text, concatenated without inserted whitespace.
-    DomText {},
-    /// Explicit faithful structural text convention.
-    DocumentText {},
-    /// Parsed-DOM serialization of descendants.
-    InnerHtml {},
-    /// Parsed-DOM serialization including the selected root.
-    OuterHtml {},
-    /// Parsed attribute value; missing is an error and present empty is valid.
-    Attribute {
-        /// Explicit nonempty attribute name.
-        name: String,
+    /// Named scalar fields projected relative to each selected original-DOM row.
+    Records {
+        /// Ordered fields; names must be unique and field count is bounded.
+        fields: Vec<RecordField>,
     },
     /// Exact accepted source bytes; valid only for slicing.
     Source {},
+    /// A scalar DOM representation shared with record fields.
+    #[serde(untagged)]
+    Value(ValueProjection),
 }
 
 impl Default for Projection {
     fn default() -> Self {
-        Self::DomText {}
+        Self::Value(ValueProjection::default())
+    }
+}
+
+pub(crate) enum DomProjection<'a> {
+    Value(&'a ValueProjection),
+    Records,
+}
+
+impl Projection {
+    pub(crate) fn dom(&self) -> Result<DomProjection<'_>, ExtractionError> {
+        match self {
+            Self::Value(value) => Ok(DomProjection::Value(value)),
+            Self::Records { .. } => Ok(DomProjection::Records),
+            Self::Source {} => Err(ExtractionError::new(
+                ErrorCode::InvalidPlan,
+                "validation",
+                "Source projection requires source slicing.",
+            )),
+        }
     }
 }
 
@@ -172,7 +188,7 @@ pub struct Guard {
     pub predicate: Option<Predicate>,
 }
 
-/// Small explicit transforms, performed in declared array order.
+/// Explicit value transforms; a projection permits at most one compatible operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Transform {
@@ -206,7 +222,7 @@ pub struct ExtractionPlan {
     /// Conjunctive original-DOM guards.
     #[serde(default)]
     pub guards: Vec<Guard>,
-    /// Explicit transforms in execution order.
+    /// Zero or one compatible value transform; record roots require an empty array.
     #[serde(default)]
     pub transforms: Vec<Transform>,
     /// Per-operation core limits, independent of adapter policy.
@@ -274,7 +290,7 @@ impl ExtractionPlan {
             Strategy::Css {
                 selector: selector.into(),
             },
-            Projection::DomText {},
+            Projection::default(),
         )
     }
 
@@ -299,7 +315,7 @@ impl ExtractionPlan {
         if bytes.len() > crate::limits::MAX_PLAN_BYTES {
             return Err(ExtractionError::limit("plan"));
         }
-        let value = crate::parse_closed_json(bytes)?;
+        let value = crate::parse_closed_json(bytes, crate::MAX_PLAN_BYTES)?;
         if value.get("schema").and_then(serde_json::Value::as_str)
             != Some("htmlcut.extraction.plan")
             || value.get("version").and_then(serde_json::Value::as_u64)
@@ -338,6 +354,13 @@ impl ExtractionPlan {
         }
         for guard in &mut plan.guards {
             guard.max = Some(guard.max.unwrap_or(plan.limits.max_candidates));
+        }
+        if let Projection::Records { fields } = &mut plan.projection {
+            for field in fields {
+                if let FieldSelection::All { max, .. } = &mut field.selection {
+                    *max = Some(max.unwrap_or(plan.limits.max_selected));
+                }
+            }
         }
         Ok(plan)
     }

@@ -121,12 +121,6 @@ def main():
                     environment["HTMLCUT_WINDOWS_PIPE_EVIDENCE"] = str(windows_pipe_path.resolve())
                 subprocess.run(io_command, check=True, stdout=log, stderr=subprocess.STDOUT,
                                env=environment, timeout=600)
-                if "linux" in args.target:
-                    tls_path = args.output.with_name(args.output.stem + "-tls.json")
-                    subprocess.run([sys.executable, "scripts/native-trusted-tls.py", "--binary", str(binary),
-                                    "--source-sha", args.source_sha, "--output", str(tls_path),
-                                    "--disposable-hosted-runner"], check=True, stdout=log,
-                                   stderr=subprocess.STDOUT, timeout=300)
                 if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256:
                     raise ValueError("Packaged executable changed during native I/O tests")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -159,9 +153,6 @@ def main():
         "github_run_id": os.environ.get("GITHUB_RUN_ID"),
         "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
     }
-    if "linux" in args.target:
-        evidence["trusted_tls"] = tls_path.name
-        evidence["trusted_tls_sha256"] = hashlib.sha256(tls_path.read_bytes()).hexdigest()
     if "windows" in args.target:
         windows_proof = json.loads(windows_path.read_text(encoding="utf-8"))
         if not windows_proof["passed"] or windows_proof["binary_sha256"] != binary_sha256:

@@ -27,7 +27,7 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", text)
         self.assertLess(text.index("name: Validate release tag before checkout"), text.index("uses: actions/checkout@"))
         self.assertIn('git cat-file -t "refs/tags/$TAG"', text)
-        self.assertEqual(text.count("RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}"), 3)
+        self.assertEqual(text.count("RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}"), 4)
         for line in text.splitlines():
             if "${{ inputs.release_tag" in line:
                 self.assertIn("CANDIDATE_TAG:", line)
@@ -43,3 +43,15 @@ class WorkflowWiringTest(unittest.TestCase):
                     self.assertIn("../.htmlcut-artifacts/target", step)
                     self.assertIn("cache-directories: ../.htmlcut-artifacts/build", step)
                     self.assertIn("save-if:", step)
+
+    def test_published_native_execution_waits_for_publication_and_uses_downloaded_bytes(self):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        body = text.split("\n  published-native:\n", 1)[1]
+        self.assertIn("needs: [release-target-matrix, release]", body)
+        self.assertIn("matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}", body)
+        self.assertIn("--source-digest \"$RELEASE_SOURCE_SHA\"", body)
+        self.assertIn("curl --fail --location", body)
+        self.assertIn("scripts/native-package-evidence.py", body)
+        self.assertNotIn("scripts/build-release-artifact.sh", body)
+        self.assertIn("dist/published-*.json", body)
+        self.assertIn("dist/native-evidence-${{ matrix.id }}*.json", text)

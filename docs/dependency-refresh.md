@@ -1,22 +1,22 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: DEPENDENCY
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [dependency refresh, parser forks, Rust pins, registry resolution, release verification]
   questions: ["Which dependencies changed before 15.0.0?", "Why is stable Rust unchanged?", "Has the refreshed candidate passed release gates?"]
 ---
 
-# Dependency refresh for 15.0.0
+# Dependency refresh record
 
-The user requested a complete dependency/documentation refresh, allowing breaking upstream
+The historical 15.0.0 refresh requested a complete dependency/documentation refresh, allowing breaking upstream
 versions, before the release process. At that handoff, build and quality gates were explicitly
 deferred; only dependency resolution, metadata reads and formatting had run. Release verification
 now validates the resulting source rather than reusing preceding green evidence. See
 [implementation status](extraction-contract-status.md) and [release protocol](release-protocol.md).
 
-## Runtime and owned forks
+## Historical 15.0.0 runtime and owned forks
 
 Published versions were read from the [crates.io API](https://crates.io/data-access), selecting
 the highest non-yanked stable semantic version, including releases with build metadata. The
@@ -55,7 +55,7 @@ different major API underneath them. The inherited inert nested upstream lockfil
 from the active forks, leaving root Cargo.lock as the maintained workspace authority. The frozen
 published SemVer baseline remains unchanged.
 
-## Rust and contributor infrastructure
+## Historical 15.0.0 Rust and contributor infrastructure
 
 The authoritative [stable manifest](https://static.rust-lang.org/dist/channel-rust-stable.toml)
 still publishes Rust **1.98.1**, dated 3 September. The development pin and workspace floor already
@@ -84,26 +84,8 @@ Evaluation dependencies are recorded in [evaluation/requirements.txt](../evaluat
 Beautiful Soup 4.15.0, lxml 6.1.3 and tiktoken 0.14.0, all current published releases. Historical
 measurements retain their recorded tool versions and exact binary/source identities.
 
-## Release handoff
+## Current snapshot contract
 
-README, contributor/workspace/quality guides, release replay commands and the implementation
-status describe the v15 contract. The authorized release finalization records a dated 15.0.0
-changelog entry; publication is still controlled by the release workflow and actual public object. The release process must validate the final refreshed source, new
-packages and dependency graph. See [implementation status](extraction-contract-status.md),
-[release preflight](release-preflight.md) and [patch provenance](../patches/README.md).
+The 17.0.0 contract removes HTTP/charset acquisition and the owned ureq/protocol chain from the supported CLI and development graph. The retained parser/selector/provenance stack still supplies construction and matching limits and immutable serialization; the scraper carrier is 0.27.0-htmlcut.9 after removing the obsolete element index. A bounded uncompressed USTAR CLI adapter uses tar 0.4.46; independent CommonMark test/fuzz interpretation uses pulldown-cmark 0.13.4. Runtime/default-feature core remains acquisition-free. Optional upstream tendril encoding features are distinct from the removed CLI decoder.
 
-## Candidate complete-response transport contract
-
-The unpublished 16.0.0 candidate maintains `htmlcut-ureq` 3.4.2-htmlcut.1 alongside
-`ureq-proto` 0.6.4+htmlcut.1. The protocol response API accepts only complete header
-sections. The transport receiver calls that API directly; incomplete redirects cannot
-produce a response or synthesized connection header. Finite redirect policy and TLS
-verification retain their transport responsibilities. The changed receiver is included
-in scored coverage, source ownership and exact mutation inventories. Candidate validation
-must certify the delivered source and native packages; these edits alone prove no runtime result.
-
-The carrier has no automatic charset or content-compression features. It retains original
-representation bytes and headers in every supported build configuration. The CLI owns strict
-charset parsing, explicit encoding precedence, bounded decompression and their diagnostics.
-Unit transport fixtures are private `cfg(test)` code, so all-feature workspace builds cannot
-replace actual CLI loopback/packaged acquisition with mock dispatch.
+These changes require current-source gates, downstream graph/packaging proof, independent values, native binaries and release evidence; older refresh results do not attest them. The release and baseline authorities remain the actual published tag/object and source-bound proof. See [implementation status](extraction-contract-status.md), [release preflight](release-preflight.md) and [patch provenance](../patches/README.md).

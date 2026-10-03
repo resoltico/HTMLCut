@@ -77,16 +77,28 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
     let root = htmlcut_tempdir::tempdir().unwrap();
     let source = root.path().join("stable-source.html");
     std::fs::write(&source, "<p>HELLO</p>").unwrap();
-    let plan = serde_json::json!({"schema":"htmlcut.extraction.plan","version":2,
-        "strategy":{"kind":"css","selector":"p"}});
+    let plan =
+        htmlcut_core::canonical_json(&htmlcut_core::ExtractionPlan::css("p").unwrap()).unwrap();
+    let bundle = root.path().join("stable.htmlcut.tar");
+    let generated = command()
+        .args([
+            "extract",
+            "--file",
+            source.to_str().unwrap(),
+            "--css",
+            "p",
+            "--bundle",
+            bundle.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(generated.status.success());
     for role in ["source", "plan", "run"] {
         let path = root.path().join(format!("{role}.input"));
         let content = match role {
-            "source" => "<p>HELLO</p>".to_owned(),
-            "plan" => plan.to_string(),
-            "run" => serde_json::json!({"schema":"htmlcut.run","version":2,
-            "source":{"kind":"file","path":source.to_str().unwrap()},"plan":plan})
-            .to_string(),
+            "source" => b"<p>HELLO</p>".to_vec(),
+            "plan" => plan.as_bytes().to_vec(),
+            "run" => std::fs::read(&bundle).unwrap(),
             _ => unreachable!(),
         };
         std::fs::write(&path, &content).unwrap();
@@ -154,7 +166,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                         if role == "run" {
                             let value: serde_json::Value =
                                 serde_json::from_slice(&output.stdout).unwrap();
-                            assert_eq!(value["values"], serde_json::json!(["HELLO"]));
+                            assert_eq!(value, serde_json::json!(["HELLO"]));
                         } else {
                             assert_eq!(output.stdout, b"HELLO");
                         }

@@ -12,8 +12,6 @@ members = [
     "patches/rust/markup5ever",
     "patches/rust/tendril",
     "patches/rust/sha2",
-    "patches/rust/ureq-proto",
-    "patches/rust/ureq",
 ]
 default-members = [
     "crates/htmlcut-core",
@@ -24,32 +22,31 @@ exclude = ["semver-baseline/htmlcut-core"]
 resolver = "3"
 
 [workspace.package]
-version = "16.0.0"
+version = "17.0.0"
 edition = "2024"
 rust-version = "1.98.1"
 description = "Bounded extraction from immutable HTML snapshots with explicit projections, strict guards, reusable plans, and compact deterministic results."
 license = "MIT"
 authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
-homepage = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
 arbitrary = { version = "1.4.2", features = ["derive"] }
 boon = "0.6.1"
+pulldown-cmark = { version = "0.13.4", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
 cssparser = "0.38.0"
 ego-tree = "0.11.0"
-encoding_rs = "0.8.42"
-flate2 = "1.1.10"
 tempfile = "3.27.0"
+tar = { version = "0.4.46", default-features = false }
 os_pipe = "1.2.3"
 rustix = { version = "1.1.5", features = ["fs"] }
-htmlcut-core = { path = "crates/htmlcut-core", version = "16.0.0" }
-htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "16.0.0" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "17.0.0" }
+htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "17.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
 # The selector/parser stack must travel with htmlcut-core into downstream git consumers.
-scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.8", default-features = false, features = ["errors"] }
+scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.9", default-features = false, features = ["errors"] }
 schemars = "1.2.2"
 selectors = { package = "htmlcut-selectors", path = "patches/rust/selectors", version = "0.41.0-htmlcut.1" }
 shell-words = "1.1.1"
@@ -59,9 +56,7 @@ sha2 = { package = "htmlcut-sha2", path = "patches/rust/sha2", version = "0.11.0
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["formatting", "parsing"] }
 toml = "1.1.6"
-ureq = { package = "htmlcut-ureq", path = "patches/rust/ureq", version = "3.4.2-htmlcut.1", default-features = false, features = ["rustls", "platform-verifier"] }
 url = "2.5.8"
-ureq-proto = { path = "patches/rust/ureq-proto", version = "0.6.4", default-features = false, features = ["client"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -77,6 +72,3 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
-
-[patch.crates-io]
-ureq-proto = { path = "patches/rust/ureq-proto" }

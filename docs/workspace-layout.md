@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: WORKSPACE
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [workspace layout, crate map, htmlcut-core, htmlcut-cli, htmlcut-tempdir, htmlcut-fuzz, xtask, devcontainer, package name, crate name, artifacts]
   questions: ["which Cargo packages are in the HTMLCut workspace?", "what is htmlcut-tempdir used for?", "why do HTMLCut package names use hyphens but Rust paths use underscores?", "where do the HTMLCut managed Cargo artifact roots live?", "where does the HTMLCut contributor devcontainer live?"]
@@ -21,8 +21,8 @@ to Rust paths.
 
 | Path | Package / Rust path | Role | Cargo registry publication |
 | --- | --- | --- | --- |
-| `crates/htmlcut-core` | package `htmlcut-core`, Rust crate `htmlcut_core` | Immutable snapshots, compiled plans, lazy prepared documents, requested projections, typed results/errors and bounded discovery. | disabled |
-| `crates/htmlcut-cli` | package `htmlcut-cli`, binary `htmlcut` | Acquisition, strict decoding, five commands, saved runs, framing and atomic publication; no Rust library API. | disabled |
+| `crates/htmlcut-core` | package `htmlcut-core`, Rust crate `htmlcut_core` | Immutable snapshots, compiled plans, lazy prepared documents, requested projections, bare data/receipts/errors and targeted inspection. | disabled |
+| `crates/htmlcut-cli` | package `htmlcut-cli`, binary `htmlcut` | Regular file/stdin UTF-8 snapshots, five commands, self-contained bundles, framing and atomic publication; no Rust library API. | disabled |
 | `crates/htmlcut-tempdir` | package `htmlcut-tempdir`, Rust crate `htmlcut_tempdir` | Small internal temporary-directory helper shared by tests and maintainer tooling. | no |
 | `fuzz` | package `htmlcut-fuzz` | Checked-in libFuzzer targets and seed corpora kept on the main workspace lockfile. | no |
 | `xtask` | package `xtask` | Maintainer automation for the gate, docs contract, coverage, fuzz smoke, and semver-baseline refresh. | no |
@@ -33,11 +33,10 @@ to Rust paths.
 | `patches/rust/markup5ever` | package `htmlcut-markup5ever`, Rust crate `markup5ever` | Paired parser/serializer interfaces. | disabled |
 | `patches/rust/tendril` | package `htmlcut-tendril`, Rust crate `tendril` | Paired text buffering/provenance carrier. | disabled |
 | `patches/rust/sha2` | package `htmlcut-sha2`, Rust crate `sha2` | SHA-256 identity backend with ARM64 correction. | disabled |
-| `patches/rust/ureq` | package `htmlcut-ureq`, Rust crate `ureq` | Complete HTTP response receiver and framed representation bytes; strict decoding stays caller-owned. | disabled |
 
 The supported publication is GitHub native/source archives, with Rust consumption through git/path
 dependencies. No complete branded-fork crates.io distribution is configured; `publish = false`
-prevents an accidental partial registry publication. All twelve packages are explicit members;
+prevents an accidental partial registry publication. All maintained packages are explicit members;
 default-members stays limited to core, CLI and the temporary-directory helper.
 
 ## Naming Rule
@@ -90,5 +89,3 @@ These paths matter, but they are not normal workspace members:
 - Use [cli.md](cli.md) for operator-facing command behavior.
 - Use [core.md](core.md) for the canonical embeddable engine surface.
 - Use [tempdir.md](tempdir.md) for the internal `htmlcut_tempdir` helper crate.
-
-The unpublished patched HTTP protocol member is `patches/rust/ureq-proto`; its canonical package name permits one transitive Cargo patch. It owns complete informational response consumption and finite header accounting.

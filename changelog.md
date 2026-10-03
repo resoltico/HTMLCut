@@ -4,19 +4,42 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [17.0.0] - 2026-10-03
+
+### Changed
+
+- **Breaking contracts:** extraction plans, receipts and errors use wire version 3 and semantics 3. The Rust API represents scalar values and records explicitly, and shares `ValueProjection` between scalar extraction and fields. Define current plans and consumers; obsolete versions, variants and flags are rejected without compatibility or migration layers.
+- **Breaking output shape:** successful CLI JSON is the bare requested string or record array plus one delivery LF. Raw output requires exactly one flat string. Execution evidence is a separate opt-in `--receipt` file; errors use a closed fixed-message family without digest-heavy envelopes or supplied-value/transport-chain disclosure.
+- **Breaking reading format:** `markdown` replaces `document_text` with one CommonMark convention. Original ordered labels are literal escaped text inside bullets; all table rows/cells use nested lists. Preformatted payload keeps one framing LF, link/image metadata appears outside code, and selected fragments retain original context. LF/CR/NUL destinations that cannot be represented fail explicitly. Refresh exact-format expectations; this is not DOM/layout reconstruction or sanitization.
+- **Breaking inspection:** `inspect` requires an explicit CSS selector and returns a complete count with bounded samples/completeness flags. Descriptors, handles, cursors, preview and proposals are removed.
+- **Breaking replay:** `--bundle` writes a closed self-contained uncompressed USTAR container with current source, normalized plan and deterministic receipt. `run` recomputes and compares that evidence; old JSON saved runs and acquisition overrides are rejected. Original source/plan paths are unnecessary for replay.
+
+### Added
+
+- Row-contained named record fields with single, optional, all and nth selection, original-DOM predicates/guards, exact cardinality and complete counts. Null absence, empty strings and empty arrays remain distinct. Fields and serialization share work, bytes and cell allowances; failed fields identify numeric row/field positions without returning partial rows.
+
+### Removed
+
+- HTTP/HTTPS fetching, URL/environment acquisition, charset selection, transfer decoding and their owned transport forks. Supply caller-acquired strict UTF-8 files or intentional stdin; explicit base metadata still supports URL resolution. Source bytes retain accepted BOM, CRLF and NUL for identity/source slicing.
+
+### Internal
+
+- Remove the redundant prepared element index and duplicated Markdown filtering/code states. Keep lazy immutable preparation and fresh execution budgets; stream bounded JSON hashing and fence delivery without intermediate payload/delimiter copies.
+- Extend current record/Markdown/bundle tests, independent CommonMark interpretation, live fuzz targets, full mutation discovery, native package controls and source-bound release verification. Public/synthetic evaluation records complete values, setup/optional evidence costs, randomized process/RSS samples and scoped parser reuse; named tokenizer counts are proxies, not billing or adoption claims.
+
 ## [16.0.0] - 2026-10-02
 
 ### Changed
 
-- **Breaking wire and identity changes:** extraction documents and saved runs use wire version 2, with extraction semantics 2. Earlier contract versions are rejected without adapters. Update plan/run definitions and validators to the current [schemas](docs/schema.md); normalized-plan and extraction identities change, while unchanged accepted UTF-8 snapshot bytes retain their source identity.
-- **Breaking Rust API changes:** fieldless plan variants are empty records, such as `Projection::DomText {}`. Update Rust constructors and patterns. Direct users of the bundled `htmlcut-scraper` matcher must pass its document and handle typed document-mismatch and work-limit errors; see [Core](docs/core.md).
-- **Breaking `document_text` format changes:** tables, captions and cells use balanced frames with escaped literal delimiters, and preformatted closing fences have a separate framing newline that preserves payload trailing newlines. List exclusions preserve original source ordinals rather than renumbering survivors. Refresh consumers and exact-output expectations using the [structural format](docs/core.md); this convention is not general Markdown conversion.
+- **Breaking wire and identity changes:** extraction documents and saved runs use wire version 2, with extraction semantics 2. Earlier contract versions are rejected without adapters. Update plan/run definitions and validators to the current [schemas](https://github.com/resoltico/HTMLCut/blob/v16.0.0/docs/schema.md); normalized-plan and extraction identities change, while unchanged accepted UTF-8 snapshot bytes retain their source identity.
+- **Breaking Rust API changes:** fieldless plan variants are empty records, such as `Projection::DomText {}`. Update Rust constructors and patterns. Direct users of the bundled `htmlcut-scraper` matcher must pass its document and handle typed document-mismatch and work-limit errors; see [Core](https://github.com/resoltico/HTMLCut/blob/v16.0.0/docs/core.md).
+- **Breaking `document_text` format changes:** tables, captions and cells use balanced frames with escaped literal delimiters, and preformatted closing fences have a separate framing newline that preserves payload trailing newlines. List exclusions preserve original source ordinals rather than renumbering survivors. Refresh consumers and exact-output expectations using the [structural format](https://github.com/resoltico/HTMLCut/blob/v16.0.0/docs/core.md); this convention is not general Markdown conversion.
 - HTTPS uses platform certificate verification and its trust configuration rather than bundled certificate roots. Check deployments with custom trust settings. Representation bytes remain intact until the CLI performs strict charset decoding and bounded decompression; explicit caller encoding remains authoritative.
 - Unsupported explicit encoding labels are configuration errors with exit class 2, rather than decoding failures with exit class 5. Update scripts that classify these failures; malformed source bytes still produce decoding failures.
 
 ### Added
 
-- Closed, bounded diagnostic causes identify known option constraints, I/O roles, HTTP status and protocol/charset/compression/transport failures without exposing supplied values, paths, URLs, headers or transport error chains. Unknown lower-level failures remain generic; see [CLI diagnostics](docs/cli.md).
+- Closed, bounded diagnostic causes identify known option constraints, I/O roles, HTTP status and protocol/charset/compression/transport failures without exposing supplied values, paths, URLs, headers or transport error chains. Unknown lower-level failures remain generic; see [CLI diagnostics](https://github.com/resoltico/HTMLCut/blob/v16.0.0/docs/cli.md).
 
 ### Fixed
 

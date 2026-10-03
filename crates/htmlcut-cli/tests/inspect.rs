@@ -1,24 +1,42 @@
 mod support;
 use support::invoke;
+#[test]
+fn targeted_inspection_counts_completely_and_labels_preview_abbreviation() {
+    let source = format!("<p>{}</p><p>second</p>", "é".repeat(200));
+    let output = invoke(
+        &["inspect", "--stdin", "--css", "p", "--samples", "1"],
+        source.as_bytes(),
+    );
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["count"], 2);
+    assert_eq!(value["samples_complete"], false);
+    assert_eq!(value["samples"][0]["text_complete"], false);
+    assert_eq!(
+        value["samples"][0]["text"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .count(),
+        160
+    );
+    assert!(value.get("next_cursor").is_none());
+}
 
 #[test]
-fn preview_is_explicitly_separate_and_incomplete() {
+fn file_inspection_accepts_explicit_base_metadata_and_returns_complete_samples() {
     let root = htmlcut_tempdir::tempdir().unwrap();
-    let source = root.path().join("source.html");
-    let plan = root.path().join("plan.json");
-    std::fs::write(&source, format!("<p>{}</p>", "value".repeat(500))).unwrap();
-    std::fs::write(
-        &plan,
-        htmlcut_core::canonical_json(&htmlcut_core::ExtractionPlan::css("p").unwrap()).unwrap(),
-    )
-    .unwrap();
+    let path = root.path().join("source.html");
+    std::fs::write(&path, "<p id='row'>é</p>").unwrap();
     let output = invoke(
         &[
             "inspect",
             "--file",
-            source.to_str().unwrap(),
-            "--preview-plan",
-            plan.to_str().unwrap(),
+            path.to_str().unwrap(),
+            "--base-url",
+            "https://example.test/root",
+            "--css",
+            "p",
         ],
         b"",
     );
@@ -27,8 +45,21 @@ fn preview_is_explicitly_separate_and_incomplete() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "htmlcut.preview");
-    assert_eq!(value["complete"], false);
-    assert_eq!(value["values"][0].as_str().unwrap().chars().count(), 1024);
+    let answer: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(answer["count"], 1);
+    assert_eq!(answer["samples_complete"], true);
+    assert_eq!(answer["samples"][0]["text"], "é");
+    assert_eq!(answer["samples"][0]["text_complete"], true);
+}
+
+#[test]
+fn inspection_acquisition_failure_emits_no_partial_answer() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let absent = root.path().join("absent.html");
+    let result = invoke(
+        &["inspect", "--file", absent.to_str().unwrap(), "--css", "p"],
+        b"",
+    );
+    assert_eq!(result.status.code(), Some(5));
+    assert!(result.stdout.is_empty());
 }

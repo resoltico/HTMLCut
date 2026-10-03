@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: ENGINEERING
-updated: "2026-09-30"
+updated: "2026-10-03"
 route:
   keywords: [HTMLCut, extraction contracts, snapshots, fidelity, implementation, coverage, release readiness]
   questions: ["What must the HTMLCut 15.0.0 implementation deliver?", "How must the implementing agent resolve failing quality gates?", "What proves that all ten extraction decisions are complete?"]
@@ -10,40 +10,20 @@ route:
 
 # Extraction contract
 
-This document describes the supported 16.0.0 candidate contract. Wire-family version is 2 and extraction semantics is 2. Only the current contract is accepted; old envelopes and versions are rejected. The external implementation handoff is not repository documentation.
+The current 17.0.0 candidate contract has wire version 3 and semantics 3. Only the current input vocabulary is accepted. This document describes supported product behavior; external implementation handoffs are not repository documentation.
 
-## Ownership
+The pure core owns accepted immutable UTF-8 snapshots, bounded lazy preparation, closed plan validation/compilation, original-DOM selection/guards, scalar and record projection, targeted inspection, deterministic data and receipts. The CLI owns regular files/intentional stdin, strict UTF-8, the closed self-contained bundle, framing and staged publication. Callers own acquisition, decoding, browsers, visibility/domain inference, sanitization and comparison policy.
 
-The pure core accepts immutable UTF-8 snapshots and explicit metadata, validates/compiles plans, prepares a bounded DOM lazily and executes one selection/projection. It performs no filesystem, network, environment, clock, process or terminal I/O. The CLI owns acquisition, decoding, saved-run references, framing and atomic single-file publication. Browser execution, domain mapping, visibility inference and sanitization belong to callers.
+Single/all/nth roots and single/optional/all/nth fields have explicit cardinality and shape. Missing attributes fail even under optional node selection; empty strings remain values. Record candidates remain inside the row while predicates retain charged original context. Guards precede output exclusions/transforms. Compiled selectors/preparation are reused without retaining spent execution budgets. Every semantic failure rejects whole output.
 
-## Closed plans and original-DOM expectations
+Bare arrays of strings or records are separate from receipts. Receipts bind inputs/policy/semantics/data and complete counts without copied values or external references. Metadata is explicit and normalized; hashes establish integrity rather than origin trust or delivery.
 
-Every tagged object is closed, including variants without data members. Duplicate keys are rejected before map conversion. Required/current versions, type/bounds, semantic applicability, CSS/regex grammar and original-DOM expectations are enforced at their owning boundary. Schema-valid shape alone does not authorize source-dependent success. Invalid configuration does not consume the source or publish artifacts.
+Literal text, conventional Markdown, parsed HTML and exact parse-free source slices have distinct properties. Markdown has normalized prose/blocks, literal source list ordinals, nested-list table rows/cells, protected code and explicit link/image metadata. It does not reconstruct spans/layout, infer boilerplate or use browser visibility. Foreign namespace roles and inherited fragment context remain explicit. See [Core](core.md) for the exact reading and accounting convention.
 
-Default single selection requires exactly one candidate. All and positive one-based nth are explicit. Guards read original DOM values before exclusions/transforms. Exclusions affect only selected output subtrees and never mutate the prepared document or alter candidate/guard interpretation.
+Bounds cover accepted bytes, parser construction, selector/guard/field/context work, values/cells, compiled patterns, encoded JSON, inspection and replay artifacts. They never authorize truncated successful extraction and do not assert OS CPU/RAM isolation.
 
-## Projections
+Bundles are uncompressed USTAR with exactly three ordered regular members: manifest.json, plan.json, source.html. Raw entry types/names, headers/checksums, declared sizes, padding and full terminal region are validated without unpacking. Source/plan/configuration/receipt are validated, re-executed and compared; no original paths, nested run, environment or network is consulted. Integrity is not a signature. See [CLI](cli.md) for limits, safe errors and delivery boundaries.
 
-Literal dom_text concatenates parsed text without invented separators, including hidden and script/style/template payloads. Structural document_text preserves the declared heading/block/list/link/alt/table/pre convention and excludes only script/style/template payloads. Original pre ancestry protects normalized descendants. Ordered-list ordinals derive from original list membership/start/reversed/value resets; exclusions do not renumber surviving items.
+All requested artifacts are staged before first commit. Each file is atomically created/replaced, with explicit overwrite; multiple files/stdout are not a transaction. Later failures retain nonzero status and cannot retract already committed evidence or pipe bytes. Real descriptor, file-kind, race and I/O failures must remain observable.
 
-Structural tables have balanced [table], [caption] and [cell] frames. Cell separators occur outside cell frames. Reserved source delimiters outside generated pre fences are escaped; code inside fences stays literal. Selected fragments carry only required context, never outside payload. Definition-list, details/summary and address units have explicit block boundaries. See [Core](core.md) for encoding and [CLI](cli.md) for delivery.
-
-Inner/outer HTML serialize the parsed DOM, not original source spelling. Source slicing is a distinct parse-free strategy: exact accepted UTF-8 substring, half-open byte ranges, nonoverlapping literal/bounded-regex boundary pairs, explicit inclusion flags, forward progress and whole-operation rejection for missing/empty matches.
-
-## Bounds, reuse and identity
-
-Preparation and execution limits are finite and typed. Each execution receives fresh counters shared across selection, guards, exclusions, context and projection. Scoped selector scratch is reused within a pass and discarded; all relevant inner walks/predicates and initialization are charged. Sticky exhaustion is failure rather than a non-match. Source/context/serialization limits do not silently truncate successful values. Logical bounds and finite watchdog observations are not OS CPU/RAM isolation guarantees.
-
-Source, normalized-plan and extraction identities use deterministic domain-separated hashing. Source identity reflects accepted source bytes; plan/extraction/discovery identities reflect their current contracts and semantics. Hashes identify data, not origin authentication or semantic correctness.
-
-## Acquisition and publication
-
-File-path source/plan/run inputs require regular opened files and reject special-file waits; intentional streams use stdin. HTTP is bounded GET with strict complete interim/final interpretation, metadata parameter grammar, explicit encoding precedence and full-representation acceptance. It rejects unsolicited partial/switching/malformed responses and retains actual TLS verification.
-
-Results contain requested values, complete counts and identities. Default JSON has one framing LF; raw is one value with no added LF. Validation/acquisition failures emit no successful stdout. Real output I/O must report delivery failures. Unused stdout is not a prerequisite for file-only or empty-raw output. Bytes already delivered before a pipe failure cannot be retracted. Atomic file replacement/create does not make several outputs one transaction.
-
-Errors have the current closed family, broad code/exit class, stage, bounded safe message and only known cause/evidence facts. They do not expose raw transport chains, supplied values, source, paths, URLs, headers or environment contents.
-
-## Assurance
-
-Independent complete-value and malformed-input oracles, raw protocol/real-OS tests, source-bound native packages, fuzz/Miri, exact mutation reconciliation and genuine scored line/branch coverage establish evidence at their actual scope. Observational capture and integrity hashes alone are not product conformance. See [Quality gates](quality-gates.md), [Schemas](schema.md) and [Versioning policy](versioning-policy.md).
+Independent complete-value and parsed-Markdown oracles, constructor/CLI parity, real OS/native packaged controls, strict Miri, live fuzzing, actual scored coverage and exact mutation reconciliation establish assurance only at their executed scope. The [implementation status](extraction-contract-status.md) separates candidate work from immutable published evidence; [Quality Gates](quality-gates.md) defines release verification.

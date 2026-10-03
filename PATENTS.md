@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "16.0.0"
+  version: "17.0.0"
   domain: LEGAL
-  updated: "2026-09-24"
+  updated: "2026-10-03"
 RETRIEVAL_HINTS:
   keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, ncsa, dependency licenses]
   questions: [what is HTMLCut's patent posture?, which dependency license families include explicit patent grants?, where should I look for legal attribution?]
@@ -30,10 +30,8 @@ freeze a crate-by-crate list in prose.
 | ISC | No explicit grant | Plain permissive grant, no standalone patent clause. |
 | BSD-3-Clause | No explicit grant | Plain permissive grant, no standalone patent clause. |
 | NCSA | No explicit grant | University of Illinois/NCSA terms grant broad copyright permissions but do not add a standalone patent clause. |
-| 0BSD | No explicit grant | Public-domain-like or permissive terms without a dedicated patent clause. |
 | Unlicense | No explicit grant | Public-domain-like or permissive terms without a dedicated patent clause. |
 | Unicode-3.0 | No explicit grant | Data-license terms, not a patent grant. |
-| CDLA-Permissive-2.0 | No explicit grant | Data/content sharing license, not a patent grant. |
 
 Apache-2.0 includes an explicit patent grant in Section 3 from each contributor
 to the covered code. MPL-2.0 includes a patent grant in Section 2.1

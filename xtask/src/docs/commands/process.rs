@@ -69,15 +69,9 @@ fn build_with(command: &mut Command, path: PathBuf) -> io::Result<PathBuf> {
     Ok(path)
 }
 
-pub(super) fn invoke(
-    tokens: &[String],
-    directory: &Path,
-    input: &[u8],
-    fixture_url: &str,
-) -> io::Result<Capture> {
+pub(super) fn invoke(tokens: &[String], directory: &Path, input: &[u8]) -> io::Result<Capture> {
     let mut command = Command::new(binary()?);
     command.current_dir(directory).args(tokens.iter().skip(1));
-    command.env("HTMLCUT_SOURCE_URL", fixture_url);
     capture(&mut command, Some(input), Duration::from_secs(30))
 }
 

@@ -75,15 +75,11 @@ where
 
 pub(super) struct ExampleSandbox {
     root: TempDir,
-    http: super::http_fixture::Fixture,
 }
 
 impl ExampleSandbox {
     pub(super) fn new() -> DynResult<Self> {
-        let sandbox = Self {
-            root: tempdir()?,
-            http: super::http_fixture::Fixture::new(README_FIXTURE_HTML)?,
-        };
+        let sandbox = Self { root: tempdir()? };
         sandbox.seed()?;
         Ok(sandbox)
     }
@@ -114,12 +110,8 @@ impl ExampleSandbox {
         example: &str,
         tokens: &[String],
     ) -> Option<String> {
-        let captured = super::process::invoke(
-            tokens,
-            self.root.path(),
-            README_FIXTURE_HTML.as_bytes(),
-            &self.http.url,
-        );
+        let captured =
+            super::process::invoke(tokens, self.root.path(), README_FIXTURE_HTML.as_bytes());
         let (result, stdout, stderr) = match captured {
             Ok(output) => (Ok(output.code), output.stdout, output.stderr),
             Err(error) => (Err(error), Vec::new(), Vec::new()),

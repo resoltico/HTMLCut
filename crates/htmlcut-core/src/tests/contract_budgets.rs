@@ -182,7 +182,7 @@ fn t05_t29_closed_json_depth_size_primitives_and_duplicates() {
         b"{\"x\":{\"a\":1,\"a\":2}}",
         b"{\"x\":1}",
     ] {
-        let closed = parse_closed_json(data);
+        let closed = parse_closed_json(data, crate::MAX_PLAN_BYTES);
         if data.contains(&b'x') && data.iter().filter(|c| **c == b'a').count() == 2 {
             assert!(closed.is_err());
         } else {
@@ -191,12 +191,16 @@ fn t05_t29_closed_json_depth_size_primitives_and_duplicates() {
     }
     let deep = format!("{}0{}", "[".repeat(66), "]".repeat(66));
     assert_eq!(
-        parse_closed_json(deep.as_bytes()).unwrap_err().code,
+        parse_closed_json(deep.as_bytes(), crate::MAX_PLAN_BYTES)
+            .unwrap_err()
+            .code,
         ErrorCode::ResourceLimit
     );
     let oversized = vec![b' '; crate::limits::MAX_PLAN_BYTES + 1];
     assert_eq!(
-        parse_closed_json(&oversized).unwrap_err().code,
+        parse_closed_json(&oversized, crate::MAX_PLAN_BYTES)
+            .unwrap_err()
+            .code,
         ErrorCode::ResourceLimit
     );
     assert_eq!(
@@ -292,9 +296,9 @@ fn t29_url_metadata_and_resolution_processing_are_bounded() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "href".into(),
-    };
+    });
     plan.transforms = vec![Transform::ResolveUrls {}];
     assert_eq!(
         document
@@ -311,13 +315,13 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         "<article><!--comment--><h3>Header</h3><p>text<img alt='[alternative]'><a href='next'>link</a></p><ol reversed> stray<li>A</li><li>B</li></ol><pre>code<script>ignored</script><span class='omit'>discard</span><a href='```'>label</a><img alt='````'></pre><table><tr><th rowspan='2'>H</th><td colspan='3'>V</td></tr></table></article>",
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude = vec![".omit".into()];
-    let expected = "### Header\ntext\\[alternative\\][link](next)\n stray\n2. A\n1. B\n`````\ncode[label](```)````\n`````\n[table]\n[cell][header] [rowspan=2] H[/cell] | [cell][colspan=3] V[/cell]\n[/table]";
+    let expected = "### Header\n\ntext\\[alternative\\][link](<next>)\n\nstray\n- 2\\. A\n- 1\\. B\n\n```\ncodelabel\n```\n\n- [label](<```>)\n- \\`\\`\\`\\`\n\n-\n  - **H**\n  - V";
     let complete = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(complete.values, [expected]);
+    assert_eq!(complete.data.as_values().unwrap(), [expected]);
     for limit in 1..=expected.len() + 1 {
         plan.limits.max_value_bytes = limit as u32;
         let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
@@ -328,7 +332,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
                 "limit={limit}"
             );
         } else {
-            assert_eq!(result.unwrap().values, [expected]);
+            assert_eq!(result.unwrap().data.as_values().unwrap(), [expected]);
         }
     }
     plan.limits.max_value_bytes = 1024;
@@ -337,7 +341,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         plan.limits.max_work = work;
         match source.execute(&CompiledPlan::compile(&plan).unwrap()) {
             Ok(result) => {
-                assert_eq!(result.values, [expected]);
+                assert_eq!(result.data.as_values().unwrap(), [expected]);
                 first_success = Some(work);
                 break;
             }
@@ -350,7 +354,9 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [expected]
     );
 }
@@ -359,7 +365,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
 fn t05_closed_json_preserves_all_primitive_values_and_large_signedness() {
     let wire = br#"[null,true,false,-7,4294967296,1.5,"x",{"k":"v"}]"#;
     assert_eq!(
-        crate::parse_closed_json(wire).unwrap(),
+        crate::parse_closed_json(wire, crate::MAX_PLAN_BYTES).unwrap(),
         json!([null,true,false,-7,4294967296_u64,1.5,"x",{"k":"v"}])
     );
 }
@@ -370,32 +376,31 @@ fn t29_attribute_name_and_projection_value_exact_boundaries_are_accepted() {
     let html = format!("<p {name}='é'>value</p>");
     let source = prepared(&html);
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.projection = Projection::Attribute { name };
+    plan.projection = Projection::Value(ValueProjection::Attribute { name });
     for (maximum, accepted) in [(1, false), (2, true), (3, true)] {
         plan.limits.max_value_bytes = maximum;
         let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
         if accepted {
-            assert_eq!(result.unwrap().values, ["é"]);
+            assert_eq!(result.unwrap().data.as_values().unwrap(), ["é"]);
         } else {
             assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
         }
     }
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "a".repeat(257),
-    };
+    });
     assert_eq!(
         CompiledPlan::compile(&plan).err().unwrap().code,
         ErrorCode::InvalidPlan
     );
     let discovery = prepared(&format!("<p {}='value'>text</p>", "a".repeat(128)));
-    let page = discovery.inspect(20, None).unwrap();
+    let page = discovery.inspect("p", 3).unwrap();
     assert_eq!(
-        page.elements
+        page.samples
             .iter()
             .find(|e| e.tag == "p")
             .unwrap()
             .attributes[0]
-            .name
             .len(),
         128
     );
@@ -414,7 +419,10 @@ fn t29_slice_aggregate_budget_is_debited_for_every_selected_value() {
         plan.limits.max_total_value_bytes = maximum;
         let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
         if success {
-            assert_eq!(result.unwrap().values, ["AB", "CD", "EF"]);
+            assert_eq!(
+                result.unwrap().data.as_values().unwrap(),
+                ["AB", "CD", "EF"]
+            );
         } else {
             assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
         }

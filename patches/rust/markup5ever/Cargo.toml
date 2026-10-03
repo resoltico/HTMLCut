@@ -49,3 +49,7 @@ version = "0.5.1-htmlcut.1"
 
 [dependencies.web_atoms]
 version = "0.3.0"
+
+# This owned upstream fork retains its upstream lint contract; workspace unsafe-code
+# prohibition applies to first-party consumers, not the fork implementation.
+[lints]

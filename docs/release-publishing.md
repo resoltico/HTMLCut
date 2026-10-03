@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: RELEASE
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -194,10 +194,11 @@ gh release download vX.Y.Z \
   ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
   "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^htmlcut X.Y.Z$"
   printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --projection attribute --attribute href --save-run ./article-link.run.json)"
-  [ -f ./article-link.run.json ]
-  printf '%s' "${FIRST_OUTPUT}" | python3 -c 'import json,sys; assert json.load(sys.stdin)["values"] == ["../guide.html"]'
-  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" run ./article-link.run.json)"
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --attribute href --bundle ./article-link.htmlcut.tar)"
+  [ -f ./article-link.htmlcut.tar ]
+  printf '%s' "${FIRST_OUTPUT}" | python3 -c 'import json,sys; assert json.load(sys.stdin) == ["../guide.html"]'
+  rm ./page.html
+  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" run ./article-link.htmlcut.tar)"
   [ "${REPLAY_OUTPUT}" = "${FIRST_OUTPUT}" ]
 )
 
@@ -206,7 +207,7 @@ rm -rf "$TMP_DIR"
 
 Do not declare the release complete until the checksum manifest validates, the packaged README
 identifies the target package without leaking source-build instructions, and the downloaded
-host-native binary completes one extraction-plus-saved-run replay from the extracted package.
+host-native binary completes one extraction-plus-bundle replay after deleting the original input from the extracted package.
 
 The release workflow already performs runtime smoke on each target's native runner. The local
 post-release command above is an additional asset-integrity check plus a host-native runtime
@@ -232,3 +233,10 @@ requiring all four native builds locally. Downloads are bounded and hashed as ex
 terminal escape processing is explicitly disabled for the private hash pipe. This verifies provider
 bytes/checksum consistency; GitHub build attestations separately carry source provenance. The
 initial publication additionally compares uploads to the locally prepared package bytes.
+
+After public publication, the release workflow anonymously downloads each target's package and
+checksum on its matching native runner, verifies its checksum and source-bound build attestation,
+and executes the downloaded binary through the complete native package and OS I/O controls.
+All four downstream jobs must succeed before release closeout. Their retained artifacts include
+the downloaded bytes, attestation verification, matrix and Windows proofs referenced by the
+manifest. A prepublication build smoke alone does not establish published download execution.

@@ -24,7 +24,7 @@ fn write_markdown_contract_repo(repo_root: &Path, readme_body: &str) {
     fs::create_dir_all(repo_root.join("docs")).expect("create docs dir");
     fs::write(
         repo_root.join("docs").join("guide.md"),
-        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction.result` and `extract`.\n",
+        "---\nafad: \"4.0\"\nversion: \"4.1.0\"\ndomain: DOCS\nupdated: \"2026-04-20\"\nroute:\n  keywords: [guide]\n  questions: [\"q\"]\n---\nUse `htmlcut.extraction.receipt` and `extract`.\n",
     )
     .expect("write guide");
     write_schema_inventory_doc(repo_root);
@@ -130,7 +130,7 @@ fn markdown_contract_errors_execute_examples_and_verify_emitted_artifacts() {
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```bash\nhtmlcut extract --file ./page.html \\\n  --css 'article a.more' \\\n  --projection attribute \\\n  --attribute href \\\n  --save-run ./article-links.json\nhtmlcut run ./article-links.json\nhtmlcut extract --file ./page.html --css article --output ./article.txt\nhtmlcut extract --file ./page.html --css article --audit ./audit.json --audit-field counts\n```\n",
+        "```bash\nhtmlcut extract --file ./page.html --css 'article a.more' --attribute href --bundle ./article-links.htmlcut.tar\nhtmlcut run ./article-links.htmlcut.tar\nhtmlcut extract --file ./page.html --css article --output ./article.txt\nhtmlcut extract --file ./page.html --css article --receipt ./receipt.json\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");
@@ -303,7 +303,7 @@ fn docs_runtime_helpers_report_missing_artifacts_and_execution_failure_fallbacks
 
     let bundle_error = crate::docs::commands::testing::documented_artifact_error_for_tests(
         "README.md",
-        "htmlcut extract --file page.html --css article --audit /tmp/bundle",
+        "htmlcut extract --file page.html --css article --bundle /tmp/bundle",
         &[
             "htmlcut".to_owned(),
             "extract".to_owned(),
@@ -311,7 +311,7 @@ fn docs_runtime_helpers_report_missing_artifacts_and_execution_failure_fallbacks
             "page.html".to_owned(),
             "--css".to_owned(),
             "article".to_owned(),
-            "--audit".to_owned(),
+            "--bundle".to_owned(),
             missing_bundle.to_string_lossy().into_owned(),
         ],
     )
@@ -394,4 +394,20 @@ fn help_options_are_executed_without_being_mistaken_for_schema_or_operation_name
         );
         assert!(errors.is_empty(), "{errors:?}");
     }
+}
+
+#[test]
+fn digest_domain_suffixes_do_not_exempt_bare_unknown_schema_names() {
+    let repo_root = tempdir().expect("tempdir");
+    write_markdown_contract_repo(
+        repo_root.path(),
+        "Identities use htmlcut.plan/3, htmlcut.prepared/3 and htmlcut.extraction/3. Bare htmlcut.plan is not a schema. Bundles end in .htmlcut.tar.",
+    );
+    let errors = markdown_contract_errors(repo_root.path()).unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error == "README.md references unknown schema name: htmlcut.plan")
+    );
+    assert!(!errors.iter().any(|error| error.contains("htmlcut.tar")));
 }

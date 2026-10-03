@@ -11,13 +11,13 @@ const FUZZ_SMOKE_TARGETS: [&str; 11] = [
     "selector_parsing",
     "slice_boundaries",
     "extraction_request_building",
-    "prepared_discovery",
+    "selector_inspection",
     "relational_selector_budget",
     "cli_parse_error_surface",
-    "http_response_framing",
-    "media_parameters",
-    "structural_cells",
+    "markdown_cells",
     "closed_wire_objects",
+    "record_fields",
+    "bundle_replay",
 ];
 pub(crate) const FUZZ_PACKAGE_NAME: &str = "htmlcut-fuzz";
 /// Canonical maintained fuzz target used in human-facing `cargo xtask --help` examples.

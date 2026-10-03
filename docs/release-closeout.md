@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: RELEASE
-updated: "2026-09-24"
+updated: "2026-10-03"
 route:
   keywords: [release closeout, dependabot hygiene, semver baseline refresh, primary checkout reconciliation, release cleanup]
   questions: ["how do I close out an HTMLCut release cleanly?", "when do I refresh the semver baseline?", "how do I reconcile the primary checkout after an HTMLCut release?"]
@@ -108,11 +108,13 @@ checks compare against the latest published API:
 git checkout main
 git fetch origin --prune --tags
 git merge --ff-only origin/main
-cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
+git checkout -b codex/published-api-baseline
+./scripts/xtask.sh refresh-semver-baseline --git-ref vX.Y.Z
 git add semver-baseline/htmlcut-core
 git commit -m "chore: refresh htmlcut-core semver baseline"
 ./check.sh
-git push
+git push -u origin HEAD
+gh pr create --base main --title "Refresh published API baseline" --body "Refresh the API baseline from the verified published tag."
 ```
 
 That command repackages the published Git ref into `semver-baseline/htmlcut-core`, so the baseline
@@ -131,16 +133,21 @@ The packaging step uses an isolated temp-owned Cargo target/build root rather th
 snapshot writes to `target/package`, so repo-owned Cargo artifact layout settings and ambient
 operator `CARGO_TARGET_DIR` overrides cannot misdirect the baseline refresh.
 
-The full maintainer gate is mandatory after that commit and before the direct `main` push. It
+The full maintainer gate is mandatory after that commit and before pushing the closeout branch. It
 proves the committed closeout state, rather than a dirty baseline snapshot that `cargo xtask check`
 intentionally rejects, and covers any maintainer tooling or release documentation changed during
 the release session. Do not push the refresh before this gate passes.
 
-With the documented branch protection, that final `git push` is an intentional maintainer-owned
-direct `main` closeout update and GitHub may report it as an admin bypass of the
-pull-request-only rule. If the push is rejected because admins are now enforced or a new review
-rule was added, repository settings have drifted away from this protocol and must be corrected
-before the closeout continues.
+Monitor every required PR check, resolve legitimate findings and required conversations, then
+merge through the normal protected path. Use the PR's actual number:
+
+```bash
+gh pr checks <N>
+gh pr merge <N> --merge
+```
+
+Required closeout CI must succeed before completion. Preserve repository protections; a missing
+reviewer or permission requires the specific external input, not an administrative bypass.
 
 ## 12. Reconcile The Primary Checkout
 

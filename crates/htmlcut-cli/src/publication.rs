@@ -8,8 +8,8 @@ use htmlcut_core::{ErrorCode, ExtractionError};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 
-pub(crate) const MAX_OUTPUT_BYTES: usize = 128 * 1024 * 1024;
-pub(crate) const MAX_AUDIT_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_OUTPUT_BYTES: usize = htmlcut_core::MAX_DATA_BYTES + 1;
+pub(crate) const MAX_RECEIPT_BYTES: usize = htmlcut_core::MAX_RECEIPT_BYTES + 1;
 
 pub(crate) fn failure() -> ExtractionError {
     ExtractionError::new(
@@ -42,13 +42,19 @@ pub(crate) fn io_failure(
 }
 
 pub(crate) fn json(value: &impl Serialize, maximum: usize) -> Result<Vec<u8>, ExtractionError> {
-    // Value uses sorted maps, so emitted object order is deterministic at every level.
-    let mut value = serde_json::to_value(value).map_err(|_| failure())?;
-    value.sort_all_objects();
-    json_stream(&value, maximum)
+    json_stream(value, maximum)
 }
 
 pub(crate) fn json_stream(
+    value: &impl Serialize,
+    maximum: usize,
+) -> Result<Vec<u8>, ExtractionError> {
+    let mut bytes = json_payload(value, maximum.saturating_sub(1))?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
+pub(crate) fn json_payload(
     value: &impl Serialize,
     maximum: usize,
 ) -> Result<Vec<u8>, ExtractionError> {
@@ -57,9 +63,6 @@ pub(crate) fn json_stream(
         maximum,
     };
     serde_json::to_writer(&mut output, value).map_err(|_| super::input::limit("serialization"))?;
-    output
-        .write_all(b"\n")
-        .map_err(|_| super::input::limit("serialization"))?;
     Ok(output.bytes)
 }
 
@@ -127,14 +130,14 @@ pub(crate) struct Staged {
     overwrite: bool,
 }
 
-fn write_staged_bytes<W: Write>(
+fn finish_staged_writer<W: Write>(
     writer: &mut W,
-    bytes: &[u8],
+    write: impl FnOnce(&mut W) -> Result<(), ExtractionError>,
     sync: impl FnOnce(&mut W) -> io::Result<()>,
 ) -> Result<(), ExtractionError> {
+    write(writer)?;
     writer
-        .write_all(bytes)
-        .and_then(|_| writer.flush())
+        .flush()
         .and_then(|_| sync(writer))
         .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))
 }
@@ -145,9 +148,16 @@ impl Staged {
         bytes: &[u8],
         overwrite: bool,
     ) -> Result<Self, ExtractionError> {
+        Self::prepare_with(target, overwrite, |file| write_staged_bytes(file, bytes))
+    }
+    pub(crate) fn prepare_with(
+        target: &Path,
+        overwrite: bool,
+        write: impl FnOnce(&mut fs::File) -> Result<(), ExtractionError>,
+    ) -> Result<Self, ExtractionError> {
         let target = normalized_target(target)?;
         let mut file = NamedTempFile::new_in(target.parent().unwrap()).map_err(|_| failure())?;
-        write_staged_bytes(&mut file, bytes, |file| file.as_file().sync_all())?;
+        finish_staged_writer(file.as_file_mut(), write, |file| file.sync_all())?;
         Ok(Self {
             file,
             target,
@@ -170,3 +180,9 @@ impl Staged {
 #[cfg(test)]
 #[path = "tests/publication_writer.rs"]
 mod writer_tests;
+
+fn write_staged_bytes(writer: &mut impl Write, bytes: &[u8]) -> Result<(), ExtractionError> {
+    writer
+        .write_all(bytes)
+        .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))
+}
