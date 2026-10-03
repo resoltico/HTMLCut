@@ -7,12 +7,13 @@ use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = std::env::args().nth(1).ok_or("fixture path required")?;
+    let selector = std::env::args().nth(2).ok_or("title selector required")?;
     let html = std::fs::read_to_string(file)?;
     let source = PreparedDocument::new(
         SourceSnapshot::new(html, SnapshotMetadata::default())?,
         PreparationLimits::default(),
     )?;
-    let mut plan = ExtractionPlan::css("a.item")?;
+    let mut plan = ExtractionPlan::css(selector)?;
     plan.selection = Selection::All {
         min: 20,
         max: Some(20),

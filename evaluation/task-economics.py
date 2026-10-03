@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Correctness-qualified current-contract economics; named tokenizer sizes are proxies."""
-import random
 import argparse,hashlib,importlib.metadata,json,platform,statistics,subprocess,sys,time
 from pathlib import Path
 from bs4 import BeautifulSoup,NavigableString,Comment,Doctype
@@ -21,17 +20,10 @@ def reference(task,text):
         if len(labels)!=1 or labels[0].get_text()!='Repair cost' or len(values)!=1:raise ValueError('declared context/cardinality failed')
         return [values[0].get_text()]
     raise ValueError(task)
-def paired(commands,expected,normalize,warmups=3,repeats=15):
-    samples={key:[] for key in commands};outputs={};rng=random.Random(1703)
-    for trial in range(warmups+repeats):
-        order=list(commands);rng.shuffle(order)
-        for key in order:
-            start=time.perf_counter_ns();p=subprocess.run(commands[key],capture_output=True,check=True,timeout=30)
-            elapsed=time.perf_counter_ns()-start
-            assert normalize(key,json.loads(p.stdout))==expected
-            if trial>=warmups:samples[key].append(elapsed)
-            outputs[key]=p.stdout
-    return {key:dict(samples_ns=value,median_ns=statistics.median(value),warmups=warmups,repeats=repeats) for key,value in samples.items()},outputs
+def paired(commands, expected, normalize, warmups=3, repeats=15):
+    from measurements import paired as measure
+    return measure(commands, expected, lambda key, data: normalize(key, json.loads(data)),
+                   warmups=warmups, repeats=repeats)
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--binary');parser.add_argument('--output')

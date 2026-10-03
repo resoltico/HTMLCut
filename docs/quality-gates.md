@@ -253,15 +253,13 @@ therefore remains valid even though safe hygiene cleanup removes that scratch di
 
 ## Prepared-engine benchmark
 
-The prepared-engine benchmark is an operational record, not a quality gate. It runs fifty equivalent CSS extraction plans over a 1,024-element document in two separate workflows: the immutable `v16.0.0` CLI baseline performs one one-shot extraction per plan, while the current v17 example prepares one document and executes fifty compiled plans against it. The `htmlcut.prepared_engine@3` report records the explicit full-document parse model and each workflow's `peak_rss_bytes`; Darwin's time output is already in bytes and Linux's KiB output is converted. It deliberately imposes no timing or memory threshold.
-
-Run it with a report path outside the disposable benchmark workspace:
+The prepared-engine benchmark compares fifty exact CSS answers over a 1,024-element document. Supply a verified published v16 native binary; the current Rust example prepares one document and executes fifty compiled plans. Each randomized workflow has three warmups, fifteen complete checked launches and separate peak-RSS samples. Reports identify fixture/binary hashes and current source. The construction/parse-count model is distinct from measured timing/RSS; the core cache tests prove parse-once behavior. No universal speed or RSS threshold is imposed.
 
 ```bash
-./scripts/benchmark-prepared-engine.sh ./tmp/prepared-engine-v17-v16.json
+./scripts/benchmark-prepared-engine.sh /path/to/published-v16/htmlcut /path/outside/repository/prepared-workflow.json
 ```
 
-The script builds the two versions with isolated artifact directories, creates and removes a detached local worktree at the immutable baseline tag, and leaves only the requested JSON report. The deterministic preparation-count tests remain the correctness proof for parse-once behavior; benchmark measurements are reproducible operational evidence, not a substitute for those tests.
+Only the current example is built. The benchmark uses disposable build/input scratch and retains the requested JSON and raw RSS logs outside that scratch. Its process-coordination/version differences are explicit; use the title timing example for in-process reuse on the same captured catalogue.
 
 Validate the committed contributor devcontainer:
 

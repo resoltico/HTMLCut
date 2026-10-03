@@ -4,7 +4,7 @@
 
 HTMLCut executes declared extraction contracts over immutable UTF-8 HTML snapshots. Its Rust core and native CLI return requested values or records, reject unmet assumptions, and bound preparation, matching and output work.
 
-The 17.0.0 candidate uses extraction wire version 3 and semantics 3. Only the current contract is supported: old APIs, flags and formats are rejected. Publication and source-bound verification are recorded in the [implementation status](docs/extraction-contract-status.md).
+This workspace uses extraction wire version 3 and semantics 3. Only the current contract is supported: old APIs, flags and formats are rejected. The [implementation status](docs/extraction-contract-status.md) identifies verification and publication authorities.
 
 ```sh
 cargo install --path crates/htmlcut-cli --locked
