@@ -8,7 +8,6 @@ description = "libFuzzer targets for htmlcut-core's maintained public surfaces."
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 
 [package.metadata]
 cargo-fuzz = true
@@ -20,14 +19,12 @@ fuzzing = []
 [dependencies]
 arbitrary.workspace = true
 clap.workspace = true
-encoding_rs.workspace = true
-flate2.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-ureq.workspace = true
-ureq-proto.workspace = true
+tar.workspace = true
+pulldown-cmark.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
 url.workspace = true
@@ -74,8 +71,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "prepared_discovery"
-path = "fuzz_targets/prepared_discovery.rs"
+name = "selector_inspection"
+path = "fuzz_targets/selector_inspection.rs"
 test = false
 doc = false
 bench = false
@@ -88,22 +85,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "http_response_framing"
-path = "fuzz_targets/http_response_framing.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "media_parameters"
-path = "fuzz_targets/media_parameters.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "structural_cells"
-path = "fuzz_targets/structural_cells.rs"
+name = "markdown_cells"
+path = "fuzz_targets/markdown_cells.rs"
 test = false
 doc = false
 bench = false
@@ -111,6 +94,20 @@ bench = false
 [[bin]]
 name = "closed_wire_objects"
 path = "fuzz_targets/closed_wire_objects.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record_fields"
+path = "fuzz_targets/record_fields.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bundle_replay"
+path = "fuzz_targets/bundle_replay.rs"
 test = false
 doc = false
 bench = false

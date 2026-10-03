@@ -73,8 +73,48 @@ impl ExtractionPlan {
                 }
             }
         }
-        if let Projection::Attribute { name } = &self.projection {
+        if let Projection::Value(ValueProjection::Attribute { name }) = &self.projection {
             add(name)?;
+        }
+        if let Projection::Records { fields } = &self.projection {
+            if fields.is_empty()
+                || fields.len() > crate::limits::MAX_FIELDS
+                || !self.exclude.is_empty()
+                || !self.transforms.is_empty()
+            {
+                return Err(invalid());
+            }
+            let mut names = std::collections::HashSet::new();
+            let mut excluded_count = self.exclude.len();
+            for field in fields {
+                if !field_name(&field.name) || !names.insert(&field.name) {
+                    return Err(invalid());
+                }
+                add(&field.name)?;
+                add(&field.selector)?;
+                pattern(&field.selector)?;
+                if let ValueProjection::Attribute { name } = &field.projection {
+                    add(name)?;
+                }
+                for exclusion in &field.exclude {
+                    add(exclusion)?;
+                }
+                if field.exclude.len() > MAX_CHECKS - excluded_count {
+                    return Err(invalid());
+                }
+                excluded_count += field.exclude.len();
+                validate_value(&field.projection, &field.exclude, &field.transforms)?;
+                match &field.selection {
+                    FieldSelection::Single {} | FieldSelection::Optional {} => (),
+                    FieldSelection::All { min, max }
+                        if *min <= max.unwrap_or(self.limits.max_selected)
+                            && max.unwrap_or(self.limits.max_selected)
+                                <= self.limits.max_selected => {}
+                    FieldSelection::Nth { index }
+                        if *index > 0 && *index <= self.limits.max_candidates => {}
+                    _ => return Err(invalid()),
+                }
+            }
         }
         for value in &self.exclude {
             add(value)?;
@@ -97,9 +137,7 @@ impl ExtractionPlan {
         match &self.strategy {
             Strategy::Css { selector } => {
                 pattern(selector)?;
-                if matches!(self.projection, Projection::Source {}) {
-                    return Err(invalid());
-                }
+                self.projection.dom()?;
             }
             Strategy::Slice { start, end, .. } => {
                 for boundary in [start, end] {
@@ -131,11 +169,8 @@ impl ExtractionPlan {
                     && max.unwrap_or(self.limits.max_selected) <= self.limits.max_selected => {}
             _ => return Err(invalid()),
         }
-        if let Projection::Attribute { name } = &self.projection {
-            attribute(name)?;
-            if !self.exclude.is_empty() {
-                return Err(invalid());
-            }
+        if let Projection::Value(value) = &self.projection {
+            validate_value(value, &self.exclude, &self.transforms)?;
         }
         for exclusion in &self.exclude {
             pattern(exclusion)?;
@@ -160,33 +195,57 @@ impl ExtractionPlan {
                 validate_flags(flags)?;
             }
         }
-        for (index, transform) in self.transforms.iter().enumerate() {
-            if self.transforms[..index].contains(transform) {
-                return Err(invalid());
-            }
-            match transform {
-                Transform::NormalizeWhitespace {}
-                    if !matches!(
-                        self.projection,
-                        Projection::DomText {} | Projection::DocumentText {}
-                    ) =>
-                {
-                    return Err(invalid());
-                }
-                Transform::ResolveUrls {} => match &self.projection {
-                    Projection::DocumentText {} => (),
-                    Projection::Attribute { name }
-                        if matches!(
-                            name.as_str(),
-                            "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
-                        ) => {}
-                    _ => return Err(invalid()),
-                },
-                _ => (),
-            }
-        }
         Ok(())
     }
+}
+
+fn field_name(name: &str) -> bool {
+    let mut chars = name.bytes();
+    name.len() <= 64
+        && chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
+fn validate_value(
+    value: &ValueProjection,
+    excluded: &[String],
+    transforms: &[Transform],
+) -> Result<(), ExtractionError> {
+    if let ValueProjection::Attribute { name } = value {
+        attribute(name)?;
+        if !excluded.is_empty() {
+            return Err(invalid());
+        }
+    }
+    for selector in excluded {
+        pattern(selector)?;
+    }
+    if transforms.len() > 2 {
+        return Err(invalid());
+    }
+    for (index, transform) in transforms.iter().enumerate() {
+        if transforms[..index].contains(transform) {
+            return Err(invalid());
+        }
+        match transform {
+            Transform::NormalizeWhitespace {} if !matches!(value, ValueProjection::DomText {}) => {
+                return Err(invalid());
+            }
+            Transform::ResolveUrls {} => match value {
+                ValueProjection::Markdown {} => (),
+                ValueProjection::Attribute { name }
+                    if matches!(
+                        name.as_str(),
+                        "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
+                    ) => {}
+                _ => return Err(invalid()),
+            },
+            _ => (),
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_flags(flags: &str) -> Result<(), ExtractionError> {

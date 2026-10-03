@@ -166,16 +166,23 @@ fn direct_sink_operations_preserve_merging_reparenting_and_foster_boundaries() {
     );
     sink.append_before_sibling(&orphan, NodeOrText::AppendText(StrTendril::from("ignored")));
     sink.remove_from_parent(&first);
-    let (document, index) = sink.finish().unwrap();
+    let document = sink.finish().unwrap();
+    let attached = document
+        .tree
+        .root()
+        .descendants()
+        .filter(|node| node.value().is_element())
+        .map(|node| node.id())
+        .collect::<Vec<_>>();
     let html = crate::ElementRef::wrap(document.tree.get(parent).unwrap())
         .unwrap()
         .html();
     assert_eq!(html, "<div>ABCD<div id=\"second\"><div></div>E</div></div>");
-    assert_eq!(index.len(), 3);
+    assert_eq!(attached.len(), 3);
 }
 
 #[test]
-fn sink_overflow_attachment_and_index_work_fail_before_governed_growth() {
+fn sink_overflow_and_attachment_work_fail_before_governed_growth() {
     let sink = BoundedSink::new(limits());
     sink.nodes.set(u32::MAX);
     assert!(!sink.allocate(1, 0));
@@ -193,7 +200,7 @@ fn sink_overflow_attachment_and_index_work_fail_before_governed_growth() {
     );
     sink.append(&root, NodeOrText::AppendNode(node));
     sink.remaining.set(0);
-    assert_eq!(sink.finish().unwrap_err(), ParseLimitExceeded::Work);
+    assert!(sink.finish().is_ok()); // Finalization no longer constructs a redundant element index.
     let sink = BoundedSink::new(limits());
     let root = sink.get_document();
     let node = sink.create_element(
@@ -400,7 +407,7 @@ fn late_attachment_work_exhaustion_and_doctype_failure_do_not_mutate() {
 }
 
 #[test]
-fn inserting_an_element_before_an_attached_sibling_preserves_order_and_index() {
+fn inserting_an_element_before_an_attached_sibling_preserves_attached_order() {
     let sink = BoundedSink::new(limits());
     let element = |tag| {
         sink.create_element(
@@ -417,8 +424,15 @@ fn inserting_an_element_before_an_attached_sibling_preserves_order_and_index() {
     sink.append(&parent, NodeOrText::AppendNode(first));
     sink.append(&parent, NodeOrText::AppendNode(last));
     sink.append_before_sibling(&last, NodeOrText::AppendNode(middle));
-    let (document, index) = sink.finish().unwrap();
-    assert_eq!(index, [parent, first, middle, last]);
+    let document = sink.finish().unwrap();
+    let attached = document
+        .tree
+        .root()
+        .descendants()
+        .filter(|node| node.value().is_element())
+        .map(|node| node.id())
+        .collect::<Vec<_>>();
+    assert_eq!(attached, [parent, first, middle, last]);
     assert_eq!(
         crate::ElementRef::wrap(document.tree.get(parent).unwrap())
             .unwrap()
@@ -434,7 +448,7 @@ fn bounded_sink_charges_warnings_without_retaining_them_and_keeps_quirks_metadat
     let remaining = sink.remaining.get();
     sink.parse_error(Cow::Borrowed("synthetic parser diagnostic"));
     assert_eq!(sink.remaining.get(), remaining - 1);
-    let (document, _) = sink.finish().unwrap();
+    let document = sink.finish().unwrap();
     assert_eq!(document.quirks_mode, QuirksMode::LimitedQuirks);
     #[cfg(feature = "errors")]
     assert!(document.errors.is_empty());
@@ -495,8 +509,15 @@ fn reparenting_a_wide_subtree_at_exact_depth_preserves_sibling_height() {
     sink.append(&branch, NodeOrText::AppendNode(first));
     sink.append(&branch, NodeOrText::AppendNode(second));
     sink.reparent_children(&origin, &target);
-    let (document, index) = sink.finish().unwrap();
-    assert_eq!(index, [origin, target, branch, first, second]);
+    let document = sink.finish().unwrap();
+    let attached = document
+        .tree
+        .root()
+        .descendants()
+        .filter(|node| node.value().is_element())
+        .map(|node| node.id())
+        .collect::<Vec<_>>();
+    assert_eq!(attached, [origin, target, branch, first, second]);
     assert_eq!(
         crate::ElementRef::wrap(document.tree.get(target).unwrap())
             .unwrap()

@@ -1,7 +1,5 @@
 use crate::app;
 
-#[path = "contract_http.rs"]
-mod http;
 #[path = "contract_io.rs"]
 mod io;
 
@@ -25,7 +23,7 @@ fn minimal_cli_raw_json_error_and_slice_paths() {
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&stderr));
     assert!(stderr.is_empty());
     let result: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
-    assert_eq!(result["values"], serde_json::json!(["180"]));
+    assert_eq!(result, serde_json::json!(["180"]));
     assert_eq!(stdout.last(), Some(&b'\n'));
     let (code, stdout, stderr) = invoke(
         &["htmlcut", "extract", "--stdin", "--css", "#amount", "--raw"],

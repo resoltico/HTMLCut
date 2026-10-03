@@ -67,9 +67,9 @@ fn release_smoke_script_checks_the_canonical_version_and_real_extraction_flow() 
 
     assert!(script.contains("grep \"^htmlcut ${version}$\""));
     assert!(!script.contains("grep \"^HTMLCut ${version}$\""));
-    assert!(script.contains("--save-run"));
+    assert!(script.contains("--bundle"));
     assert!(script.contains("packaged README.md leaked source-build instructions"));
-    assert!(script.contains("saved-run replay drifted"));
+    assert!(script.contains("bundle replay drifted"));
 }
 
 #[test]

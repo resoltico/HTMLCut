@@ -1,39 +1,19 @@
-//! Binary composition, with private deterministic input/output seams.
-
-use std::ffi::OsString;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-
-use clap::Parser;
-use htmlcut_core::{
-    CompiledPlan, ExtractionError, ExtractionResult, PreparationLimits, PreparedDocument,
-};
+//! Binary composition: validate, acquire one snapshot, execute, stage, then deliver.
 
 use crate::command::{Cli, Operation, Output};
-use crate::input::{RunSpec, SourceSpec, options};
-use crate::publication::{MAX_AUDIT_BYTES, MAX_OUTPUT_BYTES, Staged};
-
-// Fixed metadata/proposal envelope allowance, expressed as its byte count.
+use crate::input::options;
+use crate::publication::{MAX_OUTPUT_BYTES, MAX_RECEIPT_BYTES, Staged};
+use clap::Parser;
+use htmlcut_core::{
+    CompiledPlan, ExtractionData, ExtractionError, ExtractionResult, PreparationLimits,
+    PreparedDocument, Projection,
+};
+use std::{
+    ffi::OsString,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+};
 const METADATA_BYTES: usize = 16_384;
-
-#[cfg(test)]
-thread_local! {
-    static CANONICAL_PATH_RESPONSE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
-}
-
-fn canonical_path(path: &str) -> std::io::Result<PathBuf> {
-    #[cfg(test)]
-    if let Some(response) = CANONICAL_PATH_RESPONSE.with_borrow_mut(Option::take) {
-        return Ok(response);
-    }
-    std::fs::canonicalize(path)
-}
-
-fn saved_path_utf8(path: &Path) -> Result<String, ExtractionError> {
-    path.to_str()
-        .map(str::to_owned)
-        .ok_or_else(|| options("Saved file paths must be valid UTF-8."))
-}
 
 pub(crate) fn run<I, T>(
     arguments: I,
@@ -100,133 +80,89 @@ fn dispatch(
             stdout,
         ),
         Operation::Schema { name } => {
-            let schema = if name == "htmlcut.run" {
-                schemars::schema_for!(RunSpec).as_value().clone()
+            let schema = if name == "htmlcut.bundle" {
+                schemars::schema_for!(crate::bundle::Manifest<'static>)
+                    .as_value()
+                    .clone()
             } else {
                 htmlcut_core::schema(&name)?
             };
             emit_json(&schema, crate::input::MAX_CONFIG_BYTES, stdout)
         }
         Operation::Extract(arguments) => {
-            let plan = arguments.extraction_plan()?;
-            let compiled = CompiledPlan::compile(&plan)?;
-            let mut source = arguments.source.source.specification()?;
-            source.validate()?;
-            if arguments.save_run.is_some() && arguments.source.source.url.is_some() {
-                return Err(options(
-                    "Automatic URL persistence requires --url-env instead of a transient --url.",
-                ));
-            }
-            if arguments.save_run.is_some()
-                && arguments.source.base_url.as_ref().is_some_and(|base| {
-                    url::Url::parse(base)
-                        .is_ok_and(|url| url.query().is_some() || url.fragment().is_some())
-                })
+            let compiled = CompiledPlan::compile(&arguments.extraction_plan()?)?;
+            if arguments.output.raw
+                && matches!(compiled.plan().projection, Projection::Records { .. })
             {
-                return Err(options(
-                    "Automatic persistence cannot store a transient query-bearing base URL; author a public run explicitly or use the source's runtime base.",
-                ));
+                return Err(options("Raw output cannot represent records."));
             }
-            let mut inputs = Vec::new();
-            if let Some(path) = &arguments.source.source.file {
-                inputs.push(path.clone());
-            }
-            if let Some(path) = &arguments.plan {
-                inputs.push(path.clone());
-            }
-            // Capture the replay path before reading/executing, avoiding a second resolution
-            // after a successful immutable snapshot has already been extracted.
-            if arguments.save_run.is_some()
-                && let SourceSpec::File { path: source_path } = &mut source
-            {
-                *source_path = saved_path_utf8(
-                    &canonical_path(source_path).map_err(crate::input::io_failure)?,
-                )?;
-            }
-            validate(&inputs, &arguments.output, arguments.save_run.as_deref())?;
-            let snapshot = source.acquire(
+            let inputs = arguments
+                .source
+                .source
+                .file
+                .iter()
+                .cloned()
+                .chain(arguments.plan.iter().cloned())
+                .collect::<Vec<_>>();
+            validate(&inputs, &arguments.output, arguments.bundle.as_deref())?;
+            let snapshot = crate::input::snapshot(
+                arguments.source.source.file.as_deref(),
                 stdin,
-                arguments.source.encoding.as_deref(),
                 arguments.source.base_url.as_deref(),
-                Path::new("."),
-            )?;
-            let result = PreparedDocument::new(snapshot, PreparationLimits::default())?
-                .execute(&compiled)?;
-            let saved = if let Some(path) = &arguments.save_run {
-                let run = RunSpec {
-                    schema: "htmlcut.run".into(),
-                    version: htmlcut_core::SCHEMA_VERSION,
-                    source,
-                    plan: compiled.plan().clone(),
-                    encoding: arguments.source.encoding,
-                    base_url: arguments.source.base_url,
-                };
-                Some(Staged::prepare(
-                    path,
-                    &crate::publication::json(&run, crate::input::MAX_CONFIG_BYTES)?,
-                    arguments.output.overwrite,
-                )?)
-            } else {
-                None
-            };
-            publish(&result, &compiled, &arguments.output, saved, stdout)
-        }
-        Operation::Run(arguments) => {
-            let run = RunSpec::read(&arguments.file)?;
-            let compiled = CompiledPlan::compile(&run.plan)?;
-            let directory = arguments.file.parent().unwrap_or_else(|| Path::new("."));
-            let mut inputs = vec![arguments.file.clone()];
-            if let SourceSpec::File { path } = &run.source {
-                inputs.push(directory.join(path));
-            }
-            validate(&inputs, &arguments.output, None)?;
-            let snapshot = run.source.acquire(
-                stdin,
-                run.encoding.as_deref(),
-                run.base_url.as_deref(),
-                directory,
-            )?;
-            let result = PreparedDocument::new(snapshot, PreparationLimits::default())?
-                .execute(&compiled)?;
-            publish(&result, &compiled, &arguments.output, None, stdout)
-        }
-        Operation::Inspect(arguments) => {
-            if (arguments.cursor.is_some() || arguments.propose.is_some())
-                && (arguments.source.source.url.is_some()
-                    || arguments.source.source.url_env.is_some())
-            {
-                return Err(options(
-                    "Cursor inspection requires one saved snapshot; live URLs cannot be refetched with a cursor.",
-                ));
-            }
-            let preview_plan = arguments
-                .preview_plan
-                .as_ref()
-                .map(|path| {
-                    let plan = htmlcut_core::ExtractionPlan::from_json(&crate::input::read_file(
-                        path,
-                        crate::input::MAX_CONFIG_BYTES,
-                    )?)?;
-                    CompiledPlan::compile(&plan)
-                })
-                .transpose()?;
-            let snapshot = arguments.source.source.specification()?.acquire(
-                stdin,
-                arguments.source.encoding.as_deref(),
-                arguments.source.base_url.as_deref(),
-                Path::new("."),
             )?;
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            if let Some(handle) = arguments.propose {
-                let proposal = document.propose(&handle, arguments.page_size)?;
-                return emit_json(&proposal, METADATA_BYTES, stdout);
+            let result = document.execute(&compiled)?;
+            publish(
+                &document,
+                &compiled,
+                &result,
+                &arguments.output,
+                arguments.bundle.as_deref(),
+                stdout,
+            )
+        }
+        Operation::Run(arguments) => {
+            validate(
+                std::slice::from_ref(&arguments.file),
+                &arguments.output,
+                None,
+            )?;
+            let replay = crate::bundle::read(&arguments.file)?;
+            if arguments.output.raw
+                && matches!(replay.plan.plan().projection, Projection::Records { .. })
+            {
+                return Err(options("Raw output cannot represent records."));
             }
-            if let Some(plan) = preview_plan {
-                let preview = document.preview(&plan, 1024)?;
-                return emit_json(&preview, 256 * 1024, stdout);
+            let result = replay.document.execute(&replay.plan)?;
+            if result.receipt != replay.expected {
+                return Err(crate::bundle::mismatch());
             }
-            let value = document.inspect(arguments.page_size, arguments.cursor.as_deref())?;
-            emit_json(&value, 512 * 1024, stdout)
+            publish(
+                &replay.document,
+                &replay.plan,
+                &result,
+                &arguments.output,
+                None,
+                stdout,
+            )
+        }
+        Operation::Inspect(arguments) => {
+            // Grammar/options are rejected before an intentional stream is consumed.
+            let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(&arguments.css)?)?;
+            if !(1..=10).contains(&arguments.samples) {
+                return Err(options("Samples must be between one and ten."));
+            }
+            let snapshot = crate::input::snapshot(
+                arguments.source.source.file.as_deref(),
+                stdin,
+                arguments.source.base_url.as_deref(),
+            )?;
+            let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
+            emit_json(
+                &document.inspect(&arguments.css, arguments.samples)?,
+                METADATA_BYTES,
+                stdout,
+            )
         }
     }
 }
@@ -234,53 +170,42 @@ fn dispatch(
 fn validate(
     inputs: &[PathBuf],
     output: &Output,
-    save_run: Option<&Path>,
+    bundle: Option<&Path>,
 ) -> Result<(), ExtractionError> {
     let targets = output
         .output
         .iter()
-        .chain(output.audit.iter())
+        .chain(output.receipt.iter())
         .cloned()
-        .chain(save_run.map(Path::to_path_buf))
+        .chain(bundle.map(Path::to_path_buf))
         .collect::<Vec<_>>();
     crate::publication::validate_destinations(inputs, &targets, output.overwrite)
 }
 
 fn publish(
-    result: &ExtractionResult,
+    document: &PreparedDocument,
     compiled: &CompiledPlan,
-    output: &Output,
-    saved: Option<Staged>,
-    stdout: &mut dyn Write,
-) -> Result<(), ExtractionError> {
-    publish_staged(result, compiled, output, saved, stdout)
-        .map_err(|error| error.with_result(result))
-}
-
-fn publish_staged(
     result: &ExtractionResult,
-    compiled: &CompiledPlan,
     output: &Output,
-    saved: Option<Staged>,
+    bundle: Option<&Path>,
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     let bytes = if output.raw {
-        if result.values.len() != 1 {
-            return Err(options("Raw output requires exactly one resulting value."));
+        match &result.data {
+            ExtractionData::Values(values) if values.len() == 1 => values[0].as_bytes().to_vec(),
+            _ => return Err(options("Raw output requires exactly one flat string.")),
         }
-        result.values[0].as_bytes().to_vec()
     } else {
-        crate::publication::json(result, MAX_OUTPUT_BYTES)?
+        crate::publication::json(&result.data, MAX_OUTPUT_BYTES)?
     };
-    let audit = if let Some(path) = &output.audit {
-        let evidence = crate::evidence::Evidence {
-            fields: &output.audit_field,
-            result,
-            plan: compiled.plan(),
-        };
+    let evidence = if let Some(path) = bundle {
+        Some(Staged::prepare_with(path, output.overwrite, |writer| {
+            crate::bundle::write(writer, document, compiled, &result.receipt)
+        })?)
+    } else if let Some(path) = &output.receipt {
         Some(Staged::prepare(
             path,
-            &crate::publication::json_stream(&evidence, MAX_AUDIT_BYTES)?,
+            &crate::publication::json(&result.receipt, MAX_RECEIPT_BYTES)?,
             output.overwrite,
         )?)
     } else {
@@ -291,11 +216,8 @@ fn publish_staged(
         .as_ref()
         .map(|path| Staged::prepare(path, &bytes, output.overwrite))
         .transpose()?;
-    if let Some(saved) = saved {
-        saved.commit()?;
-    }
-    if let Some(audit) = audit {
-        audit.commit()?;
+    if let Some(evidence) = evidence {
+        evidence.commit()?;
     }
     match target {
         Some(target) => target.commit(),
@@ -310,7 +232,6 @@ fn emit(bytes: Vec<u8>, stdout: &mut dyn Write) -> Result<(), ExtractionError> {
         .map_err(|error| crate::publication::io_failure(error, htmlcut_core::IoOperation::Stdout))
 }
 
-// All metadata routes stage bounded JSON before touching stdout.
 fn emit_json(
     value: &impl serde::Serialize,
     maximum: usize,
@@ -320,5 +241,18 @@ fn emit_json(
 }
 
 #[cfg(test)]
-#[path = "tests/app_faults.rs"]
-mod fault_tests;
+mod report_tests {
+    use super::*;
+    #[test]
+    fn oversized_error_fails_without_emitting_partial_diagnostics() {
+        let mut error = ExtractionError::new(
+            htmlcut_core::ErrorCode::InternalInvariant,
+            "report",
+            "bounded",
+        );
+        error.message = "x".repeat(4096);
+        let mut stderr = Vec::new();
+        assert_eq!(report(error, &mut stderr), 5);
+        assert!(stderr.is_empty());
+    }
+}

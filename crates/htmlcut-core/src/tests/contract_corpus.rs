@@ -10,17 +10,21 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [literal]
     );
     let mut plan = plan;
-    plan.projection = Projection::DocumentText {};
-    let structural = "## Free-threading\nThe [global interpreter lock](gil.html) affects Windows and macOS.\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\nHidden source note remains included.\nBroken mirror\n[table]\n[caption]Charges[/caption]\n[cell][header] Amount[/cell] | [cell][rowspan=2] EUR 180[/cell]\n[/table]";
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
+    let structural = "## Free-threading\n\nThe [global interpreter lock](<gil.html>) affects Windows and macOS.\n\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\n\nHidden source note remains included.\n\nBroken mirror\n\nCharges\n\n-\n  - **Amount**\n  - EUR 180";
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [structural]
     );
     let renamed = html
@@ -34,7 +38,9 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
         prepared(&renamed)
             .execute(&CompiledPlan::compile(&other).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [structural]
     );
 }
@@ -51,7 +57,9 @@ fn t34_supplied_rendered_dom_is_data_and_scripts_are_never_executed() {
         prepared(html)
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         ["Externally created one", "Externally created two"]
     );
 }
@@ -66,18 +74,20 @@ fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [literal]
     );
-    plan.projection = Projection::DocumentText {};
+    plan.projection = Projection::Value(ValueProjection::Markdown {});
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
-        [
-            "First\nSecondoutside\n[table]\n[cell]A[/cell] | [cell]B[/cell]\n[/table]\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"
-        ]
+            .data
+            .as_values()
+            .unwrap(),
+        ["First\n\nSecondoutside\n\n-\n  - A\n  - B\n\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"]
     );
     assert_eq!(source.parse_count(), 1);
 }
@@ -100,16 +110,20 @@ fn t33_caption_classes_ids_and_unrelated_siblings_cannot_suppress_selected_conte
             source
                 .execute(&CompiledPlan::compile(&plan).unwrap())
                 .unwrap()
-                .values,
+                .data
+                .as_values()
+                .unwrap(),
             ["BEGINChargesEUR 180END"]
         );
-        plan.projection = Projection::DocumentText {};
+        plan.projection = Projection::Value(ValueProjection::Markdown {});
         assert_eq!(
             source
                 .execute(&CompiledPlan::compile(&plan).unwrap())
                 .unwrap()
-                .values,
-            ["BEGIN\n[table]\n[caption]Charges[/caption]\n[cell]EUR 180[/cell]\n[/table]\nEND"]
+                .data
+                .as_values()
+                .unwrap(),
+            ["BEGIN\n\nCharges\n\n-\n  - EUR 180\n\nEND"]
         );
     }
 }

@@ -6,10 +6,13 @@ use ego_tree::NodeId;
 use scraper::{ElementRef, Html, Selector};
 use selectors::work_budget::SelectorWorkBudget;
 
-use crate::compilation::{CompiledStrategy, Matcher};
+mod records;
+
+use crate::compilation::{CompiledDomProjection, CompiledStrategy, Matcher};
 use crate::{
-    CompiledPlan, ErrorCode, ExtractionError, ExtractionResult, GuardRead, GuardScope, Predicate,
-    PreparedDocument, Projection, SCHEMA_VERSION, SEMANTICS_VERSION, Selection, SourceRange,
+    CompiledPlan, DataKind, ErrorCode, ExecutionReceipt, ExtractionData, ExtractionError,
+    ExtractionResult, GuardRead, GuardScope, Predicate, PreparedDocument, Projection,
+    SCHEMA_VERSION, SEMANTICS_VERSION, Selection, SourceRange, ValueProjection,
 };
 
 pub(crate) fn charge(budget: &SelectorWorkBudget, units: usize) -> Result<(), ExtractionError> {
@@ -28,23 +31,12 @@ impl PreparedDocument {
     /// Executes one compiled plan, reusing at most one lazily prepared DOM.
     pub fn execute(&self, compiled: &CompiledPlan) -> Result<ExtractionResult, ExtractionError> {
         let identity = self.extraction_identity(compiled)?;
-        self.execute_identified(compiled, identity.clone())
-            .map_err(|mut error| {
-                error.source_sha256 = Some(self.snapshot.source_sha256().into());
-                error.plan_sha256 = Some(compiled.digest.clone());
-                error.extraction_sha256 = Some(identity);
-                error
-            })
-    }
-
-    fn execute_identified(
-        &self,
-        compiled: &CompiledPlan,
-        identity: String,
-    ) -> Result<ExtractionResult, ExtractionError> {
         let plan = &compiled.plan;
         let budget = SelectorWorkBudget::new(plan.limits.max_work);
-        let (values, ranges, candidate_count) = match &compiled.strategy {
+        let mut bytes = plan.limits.max_total_value_bytes as usize;
+        let mut cells = plan.limits.max_cells;
+        let mut fields = Vec::new();
+        let (data, ranges, candidate_count) = match &compiled.strategy {
             CompiledStrategy::Slice {
                 start,
                 end,
@@ -63,22 +55,26 @@ impl PreparedDocument {
                 let count = ranges.len() as u32;
                 let positions =
                     selected_positions(&plan.selection, count, plan.limits.max_selected)?;
-                let mut values = Vec::new();
-                let mut selected_ranges = Vec::new();
-                let mut remaining = plan.limits.max_total_value_bytes as usize;
+                spend_cells(&mut cells, positions.len() as u32)?;
+                let mut values = Vec::with_capacity(positions.len());
+                let mut selected_ranges = Vec::with_capacity(positions.len());
                 for position in positions {
                     let range = ranges[position];
                     let value = &self.snapshot.html()[range.start..range.end];
-                    if value.len() > (plan.limits.max_value_bytes as usize).min(remaining) {
+                    if value.len() > (plan.limits.max_value_bytes as usize).min(bytes) {
                         return Err(ExtractionError::limit("projection"));
                     }
-                    remaining -= value.len();
+                    charge(&budget, value.len().div_ceil(64))?;
+                    bytes -= value.len();
                     values.push(value.to_owned());
                     selected_ranges.push(range);
                 }
-                (values, Some(selected_ranges), count)
+                (ExtractionData::Values(values), Some(selected_ranges), count)
             }
-            CompiledStrategy::Css(selector) => {
+            CompiledStrategy::Css {
+                selector,
+                projection,
+            } => {
                 let document = self.document()?;
                 let candidates = matches(
                     document,
@@ -95,38 +91,67 @@ impl PreparedDocument {
                     .map(|index| candidates[index])
                     .collect::<Vec<_>>();
                 check_guards(document, &selected, compiled, &budget)?;
-                let mut values = Vec::new();
-                let mut remaining = plan.limits.max_total_value_bytes as usize;
-                for root in selected {
-                    let exclusions = exclusions(document, root, &compiled.exclusions, &budget)?;
-                    let limit = (plan.limits.max_value_bytes as usize).min(remaining);
-                    let value = crate::projection::project(
-                        root,
-                        &plan.projection,
-                        &exclusions,
-                        &plan.transforms,
-                        self.snapshot.metadata().base_url.as_deref(),
-                        limit,
-                        &budget,
-                    )?;
-                    remaining -= value.len();
-                    values.push(value);
-                }
-                (values, None, count)
+                let data = match projection {
+                    CompiledDomProjection::Records => {
+                        let output = records::RecordExecution {
+                            document,
+                            compiled,
+                            base: self.snapshot.metadata().base_url.as_deref(),
+                            budget: &budget,
+                            bytes: &mut bytes,
+                            cells: &mut cells,
+                        }
+                        .run(&selected)?;
+                        fields = output.counts;
+                        ExtractionData::Records(output.rows)
+                    }
+                    CompiledDomProjection::Value(projection) => {
+                        spend_cells(&mut cells, selected.len() as u32)?;
+                        let mut values = Vec::with_capacity(selected.len());
+                        for root in selected {
+                            let excluded =
+                                exclusions(document, root, &compiled.exclusions, &budget)?;
+                            let value = crate::projection::project(
+                                root,
+                                projection,
+                                &excluded,
+                                &plan.transforms,
+                                self.snapshot.metadata().base_url.as_deref(),
+                                (plan.limits.max_value_bytes as usize).min(bytes),
+                                &budget,
+                            )?;
+                            bytes -= value.len();
+                            values.push(value);
+                        }
+                        ExtractionData::Values(values)
+                    }
+                };
+                (data, None, count)
             }
         };
-        Ok(ExtractionResult {
-            schema: "htmlcut.extraction.result".into(),
+        let (data_kind, selected_count) = match &data {
+            ExtractionData::Values(values) => (DataKind::Values, values.len() as u32),
+            ExtractionData::Records(rows) => (DataKind::Records, rows.len() as u32),
+        };
+        let data_sha256 =
+            crate::identity::data_digest(&data, crate::limits::MAX_DATA_BYTES, &budget)?;
+        let receipt = ExecutionReceipt {
+            schema: "htmlcut.extraction.receipt".into(),
             version: SCHEMA_VERSION,
             semantics: SEMANTICS_VERSION,
+            data_kind,
             source_sha256: self.snapshot.source_sha256().into(),
             plan_sha256: compiled.digest.clone(),
             extraction_sha256: identity,
+            data_sha256,
             candidate_count,
-            selected_count: values.len() as u32,
-            values,
+            selected_count,
+            fields,
             ranges,
-        })
+        };
+        // This also charges actual receipt serialization work under the same execution budget.
+        let _ = crate::identity::data_digest(&receipt, crate::limits::MAX_RECEIPT_BYTES, &budget)?;
+        Ok(ExtractionResult { data, receipt })
     }
 
     fn extraction_identity(&self, compiled: &CompiledPlan) -> Result<String, ExtractionError> {
@@ -134,7 +159,7 @@ impl PreparedDocument {
         let metadata = crate::canonical_json(self.snapshot.metadata())?;
         let semantics = SEMANTICS_VERSION.to_be_bytes();
         let identity = crate::identity::framed(
-            "htmlcut.extraction/1",
+            "htmlcut.extraction/3",
             &[
                 self.snapshot.source_sha256().as_bytes(),
                 compiled.digest.as_bytes(),
@@ -147,7 +172,7 @@ impl PreparedDocument {
     }
 }
 
-fn selected_positions(
+pub(crate) fn selected_positions(
     selection: &Selection,
     count: u32,
     maximum: u32,
@@ -229,6 +254,13 @@ pub(crate) fn matches<'a>(
     Ok(result)
 }
 
+pub(crate) fn spend_cells(remaining: &mut u32, count: u32) -> Result<(), ExtractionError> {
+    *remaining = remaining
+        .checked_sub(count)
+        .ok_or_else(|| ExtractionError::limit("cells"))?;
+    Ok(())
+}
+
 fn selector_failure(
     error: scraper::selector::SelectorMatchError,
     stage: &'static str,
@@ -243,7 +275,7 @@ fn selector_failure(
     }
 }
 
-fn exclusions(
+pub(crate) fn exclusions(
     document: &Html,
     root: ElementRef<'_>,
     selectors: &[Selector],
@@ -287,43 +319,69 @@ fn check_guards(
             GuardScope::Document => vec![None],
             GuardScope::Selected => selected.iter().copied().map(Some).collect(),
         };
-        for scope in scopes {
-            let nodes = matches(
+        for (index, scope) in scopes.into_iter().enumerate() {
+            check_guard_scope(
                 document,
+                guard,
+                grammar,
                 scope,
-                &grammar.selector,
-                compiled.plan.limits.max_candidates,
+                &compiled.plan.limits,
                 budget,
-            )?;
-            if nodes.len() < guard.min as usize || nodes.len() > guard.max.unwrap() as usize {
-                return Err(guard_failure());
-            }
-            for node in nodes {
-                let projection = match &guard.read {
-                    GuardRead::DomText {} => Projection::DomText {},
-                    GuardRead::Attribute { name } => Projection::Attribute { name: name.clone() },
-                };
-                let value = crate::projection::project(
-                    node,
-                    &projection,
-                    &HashSet::new(),
-                    &[],
-                    None,
-                    compiled.plan.limits.max_value_bytes as usize,
-                    budget,
-                )?;
-                let satisfied = match &guard.predicate {
-                    None => true,
-                    Some(Predicate::Exact { value: expected }) => value == *expected,
-                    Some(Predicate::Regex { .. }) => {
-                        charge(budget, value.len().div_ceil(64) + 1)?;
-                        grammar.predicate.as_ref().unwrap().is_match(&value)
-                    }
-                };
-                if !satisfied {
-                    return Err(guard_failure());
+            )
+            .map_err(|mut error| {
+                if scope.is_some() && matches!(compiled.plan.projection, Projection::Records { .. })
+                {
+                    error.row_index = Some(index as u32 + 1);
                 }
+                error
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn check_guard_scope(
+    document: &Html,
+    guard: &crate::Guard,
+    grammar: &crate::compilation::CompiledGuard,
+    scope: Option<ElementRef<'_>>,
+    limits: &crate::ExecutionLimits,
+    budget: &SelectorWorkBudget,
+) -> Result<(), ExtractionError> {
+    let nodes = matches(
+        document,
+        scope,
+        &grammar.selector,
+        limits.max_candidates,
+        budget,
+    )?;
+    if nodes.len() < guard.min as usize || nodes.len() > guard.max.unwrap() as usize {
+        return Err(guard_failure());
+    }
+    for node in nodes {
+        let projection = match &guard.read {
+            GuardRead::DomText {} => ValueProjection::DomText {},
+            GuardRead::Attribute { name } => ValueProjection::Attribute { name: name.clone() },
+        };
+        let value = crate::projection::project(
+            node,
+            &projection,
+            &HashSet::new(),
+            &[],
+            None,
+            limits.max_value_bytes as usize,
+            budget,
+        )?;
+        let satisfied = match &guard.predicate {
+            None => true,
+            Some(Predicate::Exact { value: expected }) => value == *expected,
+            Some(Predicate::Regex { .. }) => {
+                charge(budget, value.len().div_ceil(64) + 1)?;
+                grammar.predicate.as_ref().unwrap().is_match(&value)
             }
+        };
+        if !satisfied {
+            return Err(guard_failure());
         }
     }
     Ok(())

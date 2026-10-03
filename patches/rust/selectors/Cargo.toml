@@ -69,3 +69,7 @@ version = "0.5.0-htmlcut.1"
 
 [dependencies.smallvec]
 version = "1.16.2"
+
+# This owned upstream fork retains its upstream lint contract; workspace unsafe-code
+# prohibition applies to first-party consumers, not the fork implementation.
+[lints]

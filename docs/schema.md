@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: SCHEMA
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [schemas, extraction plans, results, errors, discovery]
   questions: ["What are the current named schemas?"]
@@ -10,7 +10,7 @@ route:
 
 # Schemas
 
-Retrieve one named schema at a time. Types own schema generation; runtime validation owns cross-field compatibility, grammar and byte/work budgets. Inputs reject unknown fields/versions, duplicate keys and invalid enums/bounds; no old envelope conversion exists.
+Retrieve one current named schema at a time. Types own schema generation; runtime validation owns cross-field applicability, grammar and byte/work bounds. Inputs reject duplicate keys, unknown fields/variants and obsolete versions before execution. Only the current extraction contract is supported.
 
 ```sh
 htmlcut schema htmlcut.extraction.plan
@@ -19,18 +19,14 @@ htmlcut schema htmlcut.extraction.plan
 Individually retrievable schemas:
 
 - `htmlcut.extraction.plan`
-- `htmlcut.extraction.result`
+- `htmlcut.extraction.data`
+- `htmlcut.extraction.receipt`
 - `htmlcut.extraction.error`
 - `htmlcut.inspection`
-- `htmlcut.preview`
-- `htmlcut.element_descriptor`
-- `htmlcut.selector.proposal`
-- `htmlcut.run`
+- `htmlcut.bundle`
 
-Additional emitted document roles (not individually retrievable schemas):
+Other emitted roles: `htmlcut.operations`, `htmlcut.operation`, and maintainer `htmlcut.gate_run`.
 
-- `htmlcut.operations`
-- `htmlcut.operation`
-- `htmlcut.gate_run`
+Extraction wire and semantics versions are both 3. The bundle manifest transport family is version 1 and embeds the current receipt/configuration. Bare success data is an array of strings or records, without a role/version envelope. Typed execution and receipt `data_kind` preserve the interpretation of `[]`; the generic data schema deliberately allows that shared shape. Record strings, optional `null`, and all-valued arrays have distinct meanings. Schema shape alone cannot establish field relationships or source-dependent success.
 
-The extraction wire family version and semantics version are both currently 2 and have independent meanings. A saved run contains adapter-owned source configuration and the same extraction plan. Success values contain no alternate projections, source URL or plan copy. Errors are one typed family with available identity/count evidence and bounded safe recovery causes; hashes are not authentication.
+Receipts are execution/integrity facts rather than provenance authentication or delivery proof. Bundles contain real source bytes and configuration, never external source references or executable programs. [Core](core.md) defines cardinality, representation and identities; [CLI](cli.md) defines delivery and replay boundaries.

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: ENGINEERING
-updated: "2026-10-02"
+updated: "2026-10-03"
 route:
   keywords: [HTMLCut, implementation status, conformance, live QA, dependency refresh, published release]
   questions: ["Which source was published as HTMLCut 15.0.0?", "Which revision was verified?", "Do previous proofs cover the dependency refresh?"]
@@ -21,11 +21,13 @@ proofs. Authoritative publication state is the [public release](https://github.c
 exact-source verification is retained in [GitHub Actions](https://github.com/resoltico/HTMLCut/actions).
 The historical evidence below identifies its tested revision; it does not attest later changes.
 
-## Current 16.0.0 contract
+## Current 17.0.0 candidate
 
-HTMLCut 16.0.0 uses wire version 2 and extraction semantics 2. Its reliability verification covers closed inputs, original-DOM fragment context, selector work/cache lifetime, complete HTTP representations, strict decoding, safe diagnostics and real OS I/O. Exact-source coverage, strict Miri, fuzzing, full mutation and four matching-platform packaged proofs are retained in the [review PR](https://github.com/resoltico/HTMLCut/pull/94) and its source-bound evidence. The final merged source must pass main CI and complete mutation verification before tagging; authoritative publication state is the [GitHub release list](https://github.com/resoltico/HTMLCut/releases).
+The candidate implements current wire/semantics3, direct records, bare data/receipts, targeted inspection, conventional Markdown and self-contained replay. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
 
-Historical v15 verification below identifies its own exact source and test scope; it is not proof that the independently recorded v15 audit findings were absent or that this changed candidate has passed final verification.
+The primary implementation branch is `codex/snapshot-contracts-17`. Final exact-source full gates, coverage, Miri, fuzz/mutation, four native packages, live/captured useful-work economics and authoritative publication/closeout must be recorded before declaring17 released. The current frozen API baseline is the published16.0.0 tag; it is unchanged during the intentional major break. [GitHub Releases](https://github.com/resoltico/HTMLCut/releases) and [Actions](https://github.com/resoltico/HTMLCut/actions) remain publication/verification authorities.
+
+Historical evidence below identifies earlier sources and does not attest this changed candidate.
 
 ## Published 15.0.0 verification
 

@@ -50,7 +50,13 @@ pub fn drive(input: SliceInput) {
     if let Ok(compiled) = CompiledPlan::compile(&plan)
         && let Ok(result) = document.execute(&compiled)
     {
-        for (value, range) in result.values.iter().zip(result.ranges.unwrap()) {
+        for (value, range) in result
+            .data
+            .as_values()
+            .unwrap()
+            .iter()
+            .zip(result.receipt.ranges.as_ref().unwrap())
+        {
             assert_eq!(value, &document.snapshot().html()[range.start..range.end]);
         }
     }

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: QUALITY
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, prepared engine benchmark, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
@@ -253,12 +253,12 @@ therefore remains valid even though safe hygiene cleanup removes that scratch di
 
 ## Prepared-engine benchmark
 
-The prepared-engine benchmark is an operational record, not a quality gate. It runs fifty equivalent CSS extraction plans over a 1,024-element document in two separate workflows: the immutable `v13.2.0` CLI baseline performs one one-shot extraction per plan, while the current v14 example prepares one document and executes fifty compiled plans against it. The `htmlcut.prepared_engine@2` report records the explicit full-document parse model and each workflow's `peak_rss_bytes`; Darwin's time output is already in bytes and Linux's KiB output is converted. It deliberately imposes no timing or memory threshold.
+The prepared-engine benchmark is an operational record, not a quality gate. It runs fifty equivalent CSS extraction plans over a 1,024-element document in two separate workflows: the immutable `v16.0.0` CLI baseline performs one one-shot extraction per plan, while the current v17 example prepares one document and executes fifty compiled plans against it. The `htmlcut.prepared_engine@3` report records the explicit full-document parse model and each workflow's `peak_rss_bytes`; Darwin's time output is already in bytes and Linux's KiB output is converted. It deliberately imposes no timing or memory threshold.
 
 Run it with a report path outside the disposable benchmark workspace:
 
 ```bash
-./scripts/benchmark-prepared-engine.sh ./tmp/prepared-engine-v14-v13.json
+./scripts/benchmark-prepared-engine.sh ./tmp/prepared-engine-v17-v16.json
 ```
 
 The script builds the two versions with isolated artifact directories, creates and removes a detached local worktree at the immutable baseline tag, and leaves only the requested JSON report. The deterministic preparation-count tests remain the correctness proof for parse-once behavior; benchmark measurements are reproducible operational evidence, not a substitute for those tests.
@@ -298,10 +298,10 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   default-feature core surface so cfg-specific warnings cannot hide behind the all-features
   workspace build
 - `htmlcut-core` lib tests with default features disabled so immutable-snapshot embeddings remain
-  independent of acquisition; HTTP and charset dependencies belong exclusively to the CLI
-- the ignored one-million-element exploration acceptance scenario exactly once, outside the
-  mutation-test inventory, so the checked shared-work budget proves advancing truncation and
-  terminal tail pagination without multiplying a resource test across every mutant
+  independent of acquisition; network/charset acquisition remains caller-owned
+- the ignored large selector-inspection acceptance scenario exactly once, outside the
+  mutation-test inventory, so the checked shared-work budget proves complete matching and
+  bounded labeled samples without multiplying a resource test across every mutant
 - the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
   miri`, which runs `cargo +nightly-2026-09-30 miri test -p htmlcut-core --lib --no-default-features
   --locked tests::selector_and_slice_contract_remain_miri_sound -- --exact` with

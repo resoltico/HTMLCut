@@ -1,7 +1,7 @@
 //! Records the reusable prepared-engine model for the current extraction contract.
 //!
 //! The companion `scripts/benchmark-prepared-engine.sh` program measures this example against the
-//! immutable `v13.2.0` CLI workflow. This executable deliberately reports model facts only; its
+//! immutable `v16.0.0` CLI workflow. This executable deliberately reports model facts only; its
 //! wall-clock duration is not a correctness assertion.
 
 #![forbid(unsafe_code)]
@@ -29,8 +29,18 @@ fn main() {
         .expect("compile benchmark plans");
     let selected_match_count = plans
         .iter()
-        .map(|plan| document.execute(plan).expect("execute benchmark plan"))
-        .map(|result| result.values.len())
+        .enumerate()
+        .map(|(index, plan)| {
+            let result = document.execute(plan).expect("execute benchmark plan");
+            assert_eq!(
+                result.data.as_values().unwrap(),
+                [format!(
+                    "Headline {index}Prepared engine benchmark content."
+                )]
+            );
+            result
+        })
+        .map(|result| result.data.as_values().unwrap().len())
         .sum::<usize>();
 
     assert_eq!(

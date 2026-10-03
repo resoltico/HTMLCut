@@ -282,7 +282,7 @@ fn repo_manifests_publish_the_verified_rust_version_floor() {
     assert!(fuzz_manifest.contains("version.workspace = true"));
     assert!(fuzz_manifest.contains("rust-version.workspace = true"));
     assert!(fuzz_manifest.contains("license.workspace = true"));
-    assert!(fuzz_manifest.contains("homepage.workspace = true"));
+    assert!(fuzz_manifest.contains("repository.workspace = true"));
     assert!(fuzz_manifest.contains("[lints]"));
     assert!(fuzz_manifest.contains("workspace = true"));
 }

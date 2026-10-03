@@ -14,12 +14,12 @@ fn literal_default_preserves_hidden_links_and_empty_values() {
         assert!(output.status.success());
         assert!(output.stderr.is_empty());
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value["values"], serde_json::json!([expected]));
+        assert_eq!(value, serde_json::json!([expected]));
     }
 }
 
 #[test]
-fn document_text_and_html_are_explicit_and_raw_has_no_framing() {
+fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
     let html = b"<p>Damage: <img alt='Broken mirror'> end.</p>";
     let output = invoke(
         &[
@@ -28,7 +28,7 @@ fn document_text_and_html_are_explicit_and_raw_has_no_framing() {
             "--css",
             "p",
             "--projection",
-            "document_text",
+            "markdown",
             "--raw",
         ],
         html,
@@ -66,16 +66,7 @@ fn strict_selection_and_missing_attributes_fail_without_values() {
         ),
         (
             &b"<p>A</p>"[..],
-            vec![
-                "extract",
-                "--stdin",
-                "--css",
-                "p",
-                "--projection",
-                "attribute",
-                "--attribute",
-                "absent",
-            ],
+            vec!["extract", "--stdin", "--css", "p", "--attribute", "absent"],
             "missing_attribute",
         ),
     ] {

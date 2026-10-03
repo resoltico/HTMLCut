@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use super::parsing::option_value;
 
 fn expected_artifacts(tokens: &[String]) -> Vec<PathBuf> {
-    ["--output", "--save-run", "--audit"]
+    ["--output", "--bundle", "--receipt"]
         .into_iter()
         .filter_map(|flag| option_value(tokens, flag).map(PathBuf::from))
         .collect()

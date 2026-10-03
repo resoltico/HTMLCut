@@ -1,7 +1,7 @@
 //! Caller-owned in-process timing over the same immutable title-extraction task as the Python comparison.
 use htmlcut_core::{
     CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Projection, Selection,
-    SnapshotMetadata, SourceSnapshot,
+    SnapshotMetadata, SourceSnapshot, ValueProjection,
 };
 use std::time::Instant;
 
@@ -17,26 +17,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         min: 20,
         max: Some(20),
     };
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "title".into(),
-    };
+    });
     let compiled = CompiledPlan::compile(&plan)?;
-    let expected = source.execute(&compiled)?.values;
+    let expected = source.execute(&compiled)?;
     for _ in 0..3 {
-        assert_eq!(source.execute(&compiled)?.values, expected);
+        assert_eq!(
+            source.execute(&compiled)?.data.as_values().unwrap(),
+            expected.data.as_values().unwrap()
+        );
     }
     let mut samples = Vec::new();
     for _ in 0..100 {
         let start = Instant::now();
-        let values = source.execute(&compiled)?.values;
+        let values = source.execute(&compiled)?;
         let elapsed = start.elapsed().as_nanos();
-        assert_eq!(values, expected);
+        assert_eq!(values.data, expected.data);
         samples.push(elapsed);
     }
     println!(
         "{}",
         serde_json::json!({"task":"titles","prepared_document_count":1,"compiled_plan_count":1,
-        "warmups":3,"repeats":100,"samples_ns":samples,"values":expected,
+        "warmups":3,"repeats":100,"samples_ns":samples,"values":expected.data,
         "scope":"execution reuse; excludes source reading, compilation and first DOM preparation"})
     );
     Ok(())

@@ -531,7 +531,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+allowed_internal_dependencies = ["crate", "app", "command", "input", "publication", "bundle", "operation_metadata"]
 
 [[rules]]
 path = "crates/htmlcut-cli/src/command_diagnostics.rs"
@@ -598,22 +598,6 @@ max_match_arms = 70
 allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
 
 [[rules]]
-path = "crates/htmlcut-cli/src/evidence.rs"
-match = "exact"
-role = "cli-adapter"
-owner = "HTMLCut extraction contract"
-rationale = "Borrowed field-selected evidence under its separate serialization bound."
-split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
-max_physical_lines = 600
-max_items = 65
-max_public_items = 30
-max_imports = 22
-max_functions = 50
-max_decision_points = 150
-max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
-
-[[rules]]
 path = "crates/htmlcut-cli/src/operation_metadata.rs"
 match = "exact"
 role = "cli-adapter"
@@ -634,7 +618,7 @@ path = "crates/htmlcut-cli/src/input/"
 match = "prefix"
 role = "cli-acquisition"
 owner = "HTMLCut extraction contract"
-rationale = "Bounded GET acquisition and compression; URL metadata remains adapter-owned."
+rationale = "Opened regular-file checks preserve nonblocking special-file rejection."
 split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
 max_physical_lines = 600
 max_items = 65
@@ -643,7 +627,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "input", "http"]
+allowed_internal_dependencies = ["crate", "input"]
 
 [[rules]]
 path = "patches/rust/scraper/src/html/bounded.rs"
@@ -676,22 +660,6 @@ max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
 allowed_internal_dependencies = ["crate", "element_ref", "node"]
-
-[[rules]]
-path = "patches/rust/ureq-proto/src/client/"
-match = "prefix"
-role = "http-response-boundary"
-owner = "HTMLCut acquisition"
-rationale = "Complete informational responses and bounded consumed/pending headers are owned protocol behavior."
-split_trigger = "the response boundary gains unrelated routing or socket responsibilities or exceeds a declared budget"
-max_physical_lines = 600
-max_items = 65
-max_public_items = 30
-max_imports = 22
-max_functions = 50
-max_decision_points = 150
-max_match_arms = 70
-allowed_internal_dependencies = ["crate", "body", "ext", "parser", "util", "client", "state", "response_limits"]
 
 [[rules]]
 path = "patches/rust/scraper/src/selector/tests/"
@@ -757,66 +725,35 @@ max_decision_points = 150
 max_match_arms = 70
 allowed_internal_dependencies = ["crate", "tagged_union"]
 
-[[rules]]
-path = "patches/rust/ureq/src/run/response.rs"
-match = "exact"
-role = "http-complete-response-receiver"
-owner = "HTMLCut acquisition"
-rationale = "The maintained transport caller accepts only complete bounded protocol responses and reports EOF/deadline failures."
-split_trigger = "the receiver gains unrelated request, pool or publication policy"
-max_physical_lines = 180
-max_items = 24
-max_public_items = 8
-max_imports = 12
-max_functions = 16
-max_decision_points = 48
-max_match_arms = 20
-allowed_internal_dependencies = ["super"]
 
 [[rules]]
-path = "patches/rust/ureq/src/body/reader.rs"
-match = "exact"
-role = "http-representation-byte-reader"
-owner = "HTMLCut acquisition"
-rationale = "Framing-derived length and unchanged representation bytes protect the CLI's single strict decoding owner."
-split_trigger = "the byte reader acquires charset/content decoders or unrelated publication responsibilities"
-max_physical_lines = 220
-max_items = 32
-max_public_items = 12
-max_imports = 12
-max_functions = 24
-max_decision_points = 48
-max_match_arms = 24
-allowed_internal_dependencies = ["super", "crate", "body", "transport", "unversioned"]
+path = "crates/htmlcut-core/tests/"
+match = "prefix"
+role = "core-public-integration-test"
+owner = "HTMLCut core"
+rationale = "Public-boundary cases verify complete extraction data and independent Markdown interpretation."
+split_trigger = "a scenario gains unrelated product boundaries or exceeds its cohesion budgets"
+max_physical_lines = 650
+max_items = 85
+max_public_items = 0
+max_imports = 24
+max_functions = 65
+max_decision_points = 190
+max_match_arms = 90
+allowed_internal_dependencies = []
 
 [[rules]]
-path = "patches/rust/ureq/src/run/response_tests.rs"
+path = "crates/htmlcut-cli/src/bundle.rs"
 match = "exact"
-role = "http-receiver-contract-tests"
-owner = "HTMLCut acquisition verification"
-rationale = "Complete header boundaries and finite injected I/O errors independently protect receiver values and error propagation."
-split_trigger = "the fixture gains unrelated socket, TLS or protocol policy"
-max_physical_lines = 300
-max_items = 40
-max_public_items = 16
-max_imports = 16
-max_functions = 30
-max_decision_points = 60
-max_match_arms = 30
-allowed_internal_dependencies = ["crate", "unversioned", "transport", "resolver", "config"]
-
-[[rules]]
-path = "patches/rust/ureq/src/error/io.rs"
-match = "exact"
-role = "http-typed-io-error-boundary"
-owner = "HTMLCut acquisition"
-rationale = "Typed current transport and TLS causes survive I/O wrapping without string inspection or secret disclosure."
-split_trigger = "the conversion acquires diagnostic rendering or unrelated protocol policy"
-max_physical_lines = 180
-max_items = 24
-max_public_items = 8
-max_imports = 12
-max_functions = 16
-max_decision_points = 48
-max_match_arms = 20
-allowed_internal_dependencies = ["super"]
+role = "cli-replay-container"
+owner = "HTMLCut CLI"
+rationale = "One closed USTAR format binds exact source, normalized plan and replay evidence without unpacking."
+split_trigger = "container handling gains unrelated acquisition or output policy or exceeds cohesion budgets"
+max_physical_lines = 500
+max_items = 52
+max_public_items = 24
+max_imports = 20
+max_functions = 42
+max_decision_points = 120
+max_match_arms = 60
+allowed_internal_dependencies = ["crate", "bundle_io", "bundle", "input", "publication", "tests"]

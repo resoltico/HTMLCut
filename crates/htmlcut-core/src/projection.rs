@@ -6,10 +6,12 @@ use ego_tree::{NodeId, iter::Edge};
 use scraper::{ElementRef, Node};
 use selectors::work_budget::SelectorWorkBudget;
 
-use crate::{ErrorCode, ExtractionError, Projection, Transform};
+use crate::{ErrorCode, ExtractionError, Transform, ValueProjection};
 
 mod context;
-mod document_text;
+mod markdown;
+mod markdown_annotations;
+mod markdown_writer;
 
 pub(crate) struct ValueBuffer<'a> {
     value: String,
@@ -44,15 +46,14 @@ impl<'a> ValueBuffer<'a> {
         value: &str,
         pre: bool,
         normalize: bool,
-        escape: bool,
     ) -> Result<(), ExtractionError> {
         crate::execution::charge(self.budget, value.len().div_ceil(64))?;
-        if pre || (!normalize && !escape) {
+        if pre || !normalize {
             self.source_space = false;
             return self.push(value);
         }
         for c in value.chars() {
-            if normalize && c.is_ascii_whitespace() {
+            if c.is_ascii_whitespace() {
                 if !self.source_space {
                     self.push(" ")?;
                     self.source_space = true;
@@ -60,18 +61,8 @@ impl<'a> ValueBuffer<'a> {
                 continue;
             }
             self.source_space = false;
-            if escape && "\\[]()|`".contains(c) {
-                self.push("\\")?;
-            }
             self.push(c.encode_utf8(&mut [0; 4]))?;
         }
-        Ok(())
-    }
-    pub(crate) fn boundary(&mut self) -> Result<(), ExtractionError> {
-        if !self.value.is_empty() && !self.value.ends_with('\n') {
-            self.push("\n")?;
-        }
-        self.source_space = false;
         Ok(())
     }
     pub(crate) fn finish(self) -> String {
@@ -81,7 +72,7 @@ impl<'a> ValueBuffer<'a> {
 
 pub(crate) fn project(
     root: ElementRef<'_>,
-    projection: &Projection,
+    projection: &ValueProjection,
     excluded: &HashSet<NodeId>,
     transforms: &[Transform],
     base: Option<&str>,
@@ -91,7 +82,7 @@ pub(crate) fn project(
     let normalize = transforms.contains(&Transform::NormalizeWhitespace {});
     let resolve = transforms.contains(&Transform::ResolveUrls {});
     match projection {
-        Projection::Attribute { name } => {
+        ValueProjection::Attribute { name } => {
             #[cfg(test)]
             record_projection(0);
             let value = root.attr(name).ok_or_else(|| {
@@ -113,11 +104,11 @@ pub(crate) fn project(
             // Untransformed values were bounded above; resolve_url bounds the final URL.
             Ok(value)
         }
-        Projection::DomText {} => dom_text(root, excluded, normalize, maximum, budget),
-        Projection::DocumentText {} => {
-            document_text::render(root, excluded, normalize, resolve, base, maximum, budget)
+        ValueProjection::DomText {} => dom_text(root, excluded, normalize, maximum, budget),
+        ValueProjection::Markdown {} => {
+            markdown::render(root, excluded, resolve, base, maximum, budget)
         }
-        Projection::InnerHtml {} | Projection::OuterHtml {} => {
+        ValueProjection::InnerHtml {} | ValueProjection::OuterHtml {} => {
             #[cfg(test)]
             record_projection(3);
             let mut writer = HtmlBuffer {
@@ -126,7 +117,7 @@ pub(crate) fn project(
             };
             root.write_filtered_html(
                 &mut writer,
-                matches!(projection, Projection::OuterHtml {}),
+                matches!(projection, ValueProjection::OuterHtml {}),
                 excluded,
                 budget,
             )
@@ -134,11 +125,6 @@ pub(crate) fn project(
             // The HTML serializer emits UTF-8; the owned buffer cannot be externally corrupted.
             Ok(String::from_utf8(writer.bytes).expect("HTML serializer produces UTF-8"))
         }
-        Projection::Source {} => Err(ExtractionError::new(
-            ErrorCode::InternalInvariant,
-            "projection",
-            "Source projection must use the slice execution path.",
-        )),
     }
 }
 
@@ -165,12 +151,12 @@ fn dom_text(
                 if node
                     .value()
                     .as_element()
-                    .is_some_and(|element| element.name() == "pre")
+                    .is_some_and(|element| element.name() == "pre" && context::html(element))
                 {
                     pre += 1;
                 }
                 if let Node::Text(text) = node.value() {
-                    value.text(&text.text, pre > 0, normalize, false)?;
+                    value.text(&text.text, pre > 0, normalize)?;
                 }
             }
             Edge::Close(node) => {
@@ -181,7 +167,7 @@ fn dom_text(
                 if node
                     .value()
                     .as_element()
-                    .is_some_and(|element| element.name() == "pre")
+                    .is_some_and(|element| element.name() == "pre" && context::html(element))
                 {
                     pre -= 1;
                 }
@@ -249,7 +235,7 @@ mod writer_tests;
 
 #[cfg(test)]
 std::thread_local! {
-    static PROJECTION_CALLS: std::cell::Cell<[u32; 5]> = const { std::cell::Cell::new([0; 5]) };
+    static PROJECTION_CALLS: std::cell::Cell<[u32; 4]> = const { std::cell::Cell::new([0; 4]) };
 }
 
 #[cfg(test)]
@@ -262,6 +248,6 @@ pub(crate) fn record_projection(index: usize) {
 }
 
 #[cfg(test)]
-pub(crate) fn take_projection_calls() -> [u32; 5] {
-    PROJECTION_CALLS.with(|calls| calls.replace([0; 5]))
+pub(crate) fn take_projection_calls() -> [u32; 4] {
+    PROJECTION_CALLS.with(|calls| calls.replace([0; 4]))
 }

@@ -4,10 +4,8 @@ use std::io::{self, Read, Write};
 
 #[cfg(unix)]
 #[test]
-fn non_utf8_file_options_and_resolved_replay_paths_are_typed_failures() {
+fn native_path_errors_are_typed_without_persisting_path_text() {
     use std::os::unix::ffi::OsStringExt;
-    #[cfg(not(target_os = "macos"))]
-    use std::os::unix::fs::symlink;
     let mut args: Vec<std::ffi::OsString> = ["htmlcut", "extract", "--file"]
         .into_iter()
         .map(Into::into)
@@ -18,7 +16,7 @@ fn non_utf8_file_options_and_resolved_replay_paths_are_typed_failures() {
     let mut errors = Vec::new();
     assert_eq!(
         app::run(args, &mut io::empty(), &mut output, &mut errors),
-        2
+        5
     );
     assert!(output.is_empty());
     assert_eq!(
@@ -27,43 +25,15 @@ fn non_utf8_file_options_and_resolved_replay_paths_are_typed_failures() {
                 "htmlcut",
                 "extract",
                 "--file",
-                "/htmlcut-missing-replay-source",
+                "/htmlcut-missing-source",
                 "--css",
-                "p",
-                "--save-run",
-                "/htmlcut-missing-run"
+                "p"
             ],
             b""
         )
         .0,
         5
     );
-    // APFS rejects invalid UTF-8 names; exercise the actual filesystem route on Unix filesystems
-    // that support such names, while the conversion decision is tested on every Unix host above.
-    #[cfg(not(target_os = "macos"))]
-    {
-        let root = htmlcut_tempdir::tempdir().unwrap();
-        let invalid = root.path().join(std::ffi::OsString::from_vec(vec![0xff]));
-        std::fs::create_dir(&invalid).unwrap();
-        std::fs::write(invalid.join("page.html"), "<p>value</p>").unwrap();
-        let alias = root.path().join("page.html");
-        symlink(invalid.join("page.html"), &alias).unwrap();
-        let run = root.path().join("run.json");
-        let args = [
-            "htmlcut",
-            "extract",
-            "--file",
-            alias.to_str().unwrap(),
-            "--css",
-            "p",
-            "--save-run",
-            run.to_str().unwrap(),
-        ];
-        assert_eq!(invoke(&args, b"").0, 2);
-        assert!(!run.exists());
-        std::fs::remove_file(&alias).unwrap();
-        assert_eq!(invoke(&args, b"").0, 5);
-    }
 }
 
 #[test]
@@ -137,33 +107,17 @@ impl Write for WriteFailure {
 }
 
 #[test]
-fn t03_strict_decoding_boms_and_expansion_boundaries() {
-    assert_eq!(crate::input::decode(b"a\r\nb", None).unwrap(), "a\r\nb");
-    assert_eq!(crate::input::decode(b"\xef\xbb\xbfa", None).unwrap(), "a");
-    assert_eq!(
-        crate::input::decode(b"\xff\xfeA\0", Some("utf-16le")).unwrap(),
-        "A"
-    );
-    for (bytes, encoding) in [
-        (&b"\xff"[..], None),
-        (&b"\xff\xfeA\0"[..], None),
-        (&b"\xff\xfeA\0"[..], Some("utf-16be")),
-        (&b"\xef\xbb\xbfa"[..], Some("windows-1252")),
-        (&b"a"[..], Some("unknown-encoding")),
-    ] {
-        assert_eq!(
-            crate::input::decode(bytes, encoding).unwrap_err().code,
-            ErrorCode::Decoding
-        );
+fn utf8_snapshots_preserve_bom_crlf_nul_and_reject_other_encodings() {
+    for bytes in [b"a\r\nb".as_slice(), b"\xef\xbb\xbfa\0".as_slice()] {
+        let snapshot = crate::input::snapshot(None, &mut io::Cursor::new(bytes), None).unwrap();
+        assert_eq!(snapshot.html().as_bytes(), bytes);
     }
-    assert_eq!(
-        crate::input::decode(&[0x80], Some("windows-1252")).unwrap(),
-        "€"
-    );
-    for (maximum, valid) in [(2, false), (3, true), (4, true)] {
+    for bytes in [b"\xff".as_slice(), b"\xff\xfeA\0".as_slice()] {
         assert_eq!(
-            crate::input::decode_with_limit(&[0x80], Some("windows-1252"), maximum).is_ok(),
-            valid
+            crate::input::snapshot(None, &mut io::Cursor::new(bytes), None)
+                .unwrap_err()
+                .code,
+            ErrorCode::Decoding
         );
     }
     for (maximum, valid) in [(2, false), (3, true), (4, true)] {
@@ -206,8 +160,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
         assert_eq!(code, 5);
         let error: ExtractionError = serde_json::from_slice(&error).unwrap();
         assert_eq!(error.code, ErrorCode::Publication);
-        assert_eq!(error.selected_count, Some(1));
-        assert!(error.source_sha256.is_some());
+        assert_eq!(error.selected_count, None);
         assert!(!error.message.contains("secret"));
         assert_eq!(writer.bytes.is_empty(), !flush_only);
     }
@@ -326,7 +279,7 @@ fn t31_help_and_version_write_or_flush_failures_do_not_report_success() {
 }
 
 #[test]
-fn t31_acquisition_time_destination_races_cannot_publish_saved_runs_or_audits() {
+fn t31_acquisition_time_destination_races_cannot_publish_bundles_or_receipts() {
     struct RacingInput<'a> {
         target: &'a std::path::Path,
         body: io::Cursor<&'static [u8]>,
@@ -341,10 +294,10 @@ fn t31_acquisition_time_destination_races_cannot_publish_saved_runs_or_audits() 
             self.body.read(output)
         }
     }
-    for flag in ["--save-run", "--audit"] {
+    for flag in ["--bundle", "--receipt"] {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("evidence.json");
-        let mut arguments = vec![
+        let arguments = vec![
             "htmlcut",
             "extract",
             "--stdin",
@@ -353,9 +306,6 @@ fn t31_acquisition_time_destination_races_cannot_publish_saved_runs_or_audits() 
             flag,
             target.to_str().unwrap(),
         ];
-        if flag == "--audit" {
-            arguments.extend(["--audit-field", "counts"]);
-        }
         let mut input = RacingInput {
             target: &target,
             body: io::Cursor::new(b"<p>value</p>"),
@@ -384,6 +334,6 @@ fn t20_t29_default_json_accepts_a_complete_large_value_with_escaping() {
     );
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&stderr));
     let result: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
-    assert_eq!(result["values"], serde_json::json!([value]));
+    assert_eq!(result, serde_json::json!([value]));
     assert!(stdout.len() > 2 * 1024 * 1024);
 }

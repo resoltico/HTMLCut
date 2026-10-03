@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "16.0.0"
+  version: "17.0.0"
   domain: DEPENDENCY
-  updated: "2026-10-01"
+  updated: "2026-10-03"
 RETRIEVAL_HINTS:
   keywords: [local dependency patch, vendored dependency stack, scraper, selectors, html5ever, markup5ever, servo_arc, tendril, miri, strict provenance]
   questions: ["why does HTMLCut vendor the selector and parser stack locally?", "how do I verify the local dependency patches?", "when can the local overrides be removed?"]
@@ -50,7 +50,7 @@ shared-memory, and Gecko refcount-logging feature surfaces stay trimmed so the m
 - Scope: strict-provenance fixes on the HTML parser stack used by `markup5ever`, `html5ever`,
   `scraper`, and `htmlcut-core`
 - Reason: DOM parsing historically exposed a strict-provenance failure through
-  `scraper -> html5ever -> markup5ever -> tendril`; parsing and source slicing are separate in v15.
+  `scraper -> html5ever -> markup5ever -> tendril`; parsing and source slicing are separate.
 - Current state: the local patch preserves heap-header provenance separately from the tagged pointer
   bits, with the previous revision verified under strict provenance; the refreshed sources await
   their release Miri proof
@@ -79,6 +79,7 @@ and confirm that `cargo xtask miri` still passes.
 
 The direct `htmlcut-sha2` dependency retains RustCrypto SHA-2 0.11.0 and its MIT/Apache licensing. Eight ARM64 SHA-256 NEON constant-load pointers originate from complete four-u32 slices, correcting the borrow-range violation previously detected during snapshot hashing. Algorithm, hardware backend and Miri flags are unchanged. The earlier verified revision passed independent identity vectors and Miri; the refreshed compiler/dependency configuration awaits release verification. See [patch provenance](rust/sha2/HTMLCUT-PATCH.md).
 
-`ureq-proto` is a narrow unpublished HTTP response-protocol fork. Canonical package identity is needed for Cargo transitive patch resolution; it is not support for an old application contract. Owned response limits and framing corrections carry direct and real-wire tests.
 
 The owned servo_arc tagged-union module preserves allocation provenance when setting and clearing its pointer tag. Its constructors, borrow/clone/drop and identity/value behavior are covered by direct ownership tests and strict-provenance Miri; application unsafe-code prohibitions are unchanged.
+
+The current extraction CLI has no HTTP/charset acquisition stack. The parser no longer builds a document-order element index for retired cursor discovery; targeted inspection traverses the immutable DOM under fresh bounds. Current-source release verification must cover the changed parser and every retained provenance/resource correction.

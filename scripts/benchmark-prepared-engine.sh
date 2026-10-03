@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Record the operational effect of HTMLCut 14's prepared engine against the immutable v13 workflow.
+# Record the operational effect of the prepared engine against the immutable v16 one-shot workflow.
 
 set -euo pipefail
 
-readonly benchmark_ref="v13.2.0"
+readonly benchmark_ref="v16.0.0"
 readonly plan_count=50
 readonly document_article_count=1024
 
@@ -25,7 +25,7 @@ fi
 mkdir -p "${repo_root}/tmp"
 workspace_dir="$(mktemp -d "${repo_root}/tmp/prepared-engine-benchmark.XXXXXX")"
 readonly workspace_dir
-baseline_dir="${workspace_dir}/v13"
+baseline_dir="${workspace_dir}/one_shot"
 readonly baseline_dir
 
 cleanup() {
@@ -73,16 +73,16 @@ benchmark_html="${workspace_dir}/benchmark.html"
     printf '</body></html>'
 } >"${benchmark_html}"
 
-v14_target_dir="${workspace_dir}/v14-target"
-v14_build_dir="${workspace_dir}/v14-build"
-CARGO_TARGET_DIR="${v14_target_dir}" CARGO_BUILD_BUILD_DIR="${v14_build_dir}" \
+prepared_target_dir="${workspace_dir}/prepared-target"
+prepared_build_dir="${workspace_dir}/prepared-build"
+CARGO_TARGET_DIR="${prepared_target_dir}" CARGO_BUILD_BUILD_DIR="${prepared_build_dir}" \
     cargo build --quiet --locked --release -p htmlcut-core --example prepared_engine_benchmark
-v14_binary="${v14_target_dir}/release/examples/prepared_engine_benchmark$(htmlcut_host_executable_suffix)"
-[[ -x "${v14_binary}" ]] || htmlcut_die "missing v14 prepared-engine benchmark ${v14_binary}"
+prepared_binary="${prepared_target_dir}/release/examples/prepared_engine_benchmark$(htmlcut_host_executable_suffix)"
+[[ -x "${prepared_binary}" ]] || htmlcut_die "missing prepared prepared-engine benchmark ${prepared_binary}"
 
-v14_output="${workspace_dir}/v14.json"
-v14_time="${workspace_dir}/v14.time"
-"${time_command}" "${time_args[@]}" "${v14_binary}" >"${v14_output}" 2>"${v14_time}"
+prepared_output="${workspace_dir}/prepared.json"
+prepared_time="${workspace_dir}/prepared.time"
+"${time_command}" "${time_args[@]}" "${prepared_binary}" >"${prepared_output}" 2>"${prepared_time}"
 jq -e \
     --argjson plan_count "${plan_count}" \
     '.workflow == "prepared_engine"
@@ -91,58 +91,59 @@ jq -e \
         and .compiled_plan_count == $plan_count
         and .execution_count == $plan_count
         and .selected_match_count == $plan_count' \
-    "${v14_output}" >/dev/null
+    "${prepared_output}" >/dev/null
 
 git -C "${repo_root}" worktree add --quiet --detach "${baseline_dir}" "${benchmark_ref}"
-v13_target_dir="${workspace_dir}/v13-target"
-v13_build_dir="${workspace_dir}/v13-build"
+one_shot_target_dir="${workspace_dir}/one_shot-target"
+one_shot_build_dir="${workspace_dir}/one_shot-build"
 (
     cd "${baseline_dir}"
-    CARGO_TARGET_DIR="${v13_target_dir}" CARGO_BUILD_BUILD_DIR="${v13_build_dir}" \
+    CARGO_TARGET_DIR="${one_shot_target_dir}" CARGO_BUILD_BUILD_DIR="${one_shot_build_dir}" \
         cargo build --quiet --locked --release -p htmlcut-cli
 )
-v13_binary="${v13_target_dir}/release/htmlcut$(htmlcut_host_executable_suffix)"
-[[ -x "${v13_binary}" ]] || htmlcut_die "missing v13 CLI benchmark ${v13_binary}"
+one_shot_binary="${one_shot_target_dir}/release/htmlcut$(htmlcut_host_executable_suffix)"
+[[ -x "${one_shot_binary}" ]] || htmlcut_die "missing one_shot CLI benchmark ${one_shot_binary}"
 
-v13_runner="${workspace_dir}/run-v13.sh"
+one_shot_runner="${workspace_dir}/run-one_shot.sh"
 # shellcheck disable=SC2016 # The generated runner, not this script, expands these variables.
 printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
     'for (( index = 0; index < plan_count; index += 1 )); do' \
-    '  "${v13_binary}" select "${benchmark_html}" --css "article[data-benchmark-index=\"${index}\"]" >/dev/null' \
-    'done' >"${v13_runner}"
-chmod +x "${v13_runner}"
+    '  "${one_shot_binary}" extract --file "${benchmark_html}" --css "article[data-benchmark-index=\"${index}\"]" --raw >"${workspace_dir}/baseline-value"' \
+    '  [[ "$(cat "${workspace_dir}/baseline-value")" == "Headline ${index}Prepared engine benchmark content." ]]' \
+    'done' >"${one_shot_runner}"
+chmod +x "${one_shot_runner}"
 
-v13_time="${workspace_dir}/v13.time"
-env plan_count="${plan_count}" v13_binary="${v13_binary}" benchmark_html="${benchmark_html}" \
-    "${time_command}" "${time_args[@]}" "${v13_runner}" >/dev/null 2>"${v13_time}"
+one_shot_time="${workspace_dir}/one_shot.time"
+env workspace_dir="${workspace_dir}" plan_count="${plan_count}" one_shot_binary="${one_shot_binary}" benchmark_html="${benchmark_html}" \
+    "${time_command}" "${time_args[@]}" "${one_shot_runner}" >/dev/null 2>"${one_shot_time}"
 
-v13_peak_rss_bytes="$(htmlcut_peak_rss_bytes "$(uname -s)" "${v13_time}")"
-v14_peak_rss_bytes="$(htmlcut_peak_rss_bytes "$(uname -s)" "${v14_time}")"
+one_shot_peak_rss_bytes="$(htmlcut_peak_rss_bytes "$(uname -s)" "${one_shot_time}")"
+prepared_peak_rss_bytes="$(htmlcut_peak_rss_bytes "$(uname -s)" "${prepared_time}")"
 jq -n \
     --arg benchmark_ref "${benchmark_ref}" \
     --arg platform "$(uname -s)" \
     --argjson plan_count "${plan_count}" \
     --argjson document_article_count "${document_article_count}" \
-    --argjson v13_peak_rss_bytes "${v13_peak_rss_bytes}" \
-    --argjson v14_peak_rss_bytes "${v14_peak_rss_bytes}" \
-    --slurpfile v14 "${v14_output}" \
+    --argjson one_shot_peak_rss_bytes "${one_shot_peak_rss_bytes}" \
+    --argjson prepared_peak_rss_bytes "${prepared_peak_rss_bytes}" \
+    --slurpfile prepared "${prepared_output}" \
     '{
-        benchmark: "htmlcut.prepared_engine@2",
+        benchmark: "htmlcut.prepared_engine@3",
         baseline_ref: $benchmark_ref,
         platform: $platform,
         document_article_count: $document_article_count,
         plan_count: $plan_count,
         baseline: {
-            workflow: "v13_one_shot_cli",
+            workflow: "one_shot_one_shot_cli",
             full_document_parse_count: $plan_count,
-            peak_rss_bytes: $v13_peak_rss_bytes
+            peak_rss_bytes: $one_shot_peak_rss_bytes
         },
-        prepared: ($v14[0] + {peak_rss_bytes: $v14_peak_rss_bytes}),
+        prepared: ($prepared[0] + {peak_rss_bytes: $prepared_peak_rss_bytes}),
         notes: [
-            "The v13 baseline executes one equivalent CSS extraction in a fresh CLI process for each plan.",
-            "The v14 run prepares one immutable document and executes fifty compiled plans in one process.",
+            "The one_shot baseline executes one equivalent CSS extraction in a fresh CLI process for each plan.",
+            "The prepared run prepares one immutable document and executes fifty compiled plans in one process.",
             "Peak RSS is an operational observation, not a correctness threshold."
         ]
     }' >"${report_path}"

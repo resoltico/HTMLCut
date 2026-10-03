@@ -1,12 +1,11 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod bundle;
+mod bundle_io;
 mod command;
 mod command_diagnostics;
-mod evidence;
 mod input;
-#[path = "input/http/media_type.rs"]
-mod media_type;
 mod operation_metadata;
 mod publication;
 mod stdio;

@@ -311,3 +311,17 @@ fn root_storefront_and_agent_instructions_do_not_require_release_metadata() {
 fn documentation_metadata_format_version_is_code_owned() {
     assert_eq!(crate::docs::DOC_METADATA_FORMAT_VERSION_FOR_TESTS, "4.0");
 }
+
+#[test]
+fn operation_filename_suffixes_do_not_hide_unknown_bare_identifiers() {
+    let operation_ids = std::collections::BTreeSet::from(["source.inspect"]);
+    let errors = crate::docs::operation_identifier_errors_for_tests(
+        "docs/operations.md",
+        "source.html source.json source.tar source.md source.execute",
+        &operation_ids,
+    );
+    assert_eq!(
+        errors,
+        vec!["docs/operations.md references unknown operation ID: source.execute"]
+    );
+}

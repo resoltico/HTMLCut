@@ -1,175 +1,100 @@
 #!/usr/bin/env python3
-"""Correctness-qualified offline task economics; tokenizer counts are named proxies."""
-import argparse
-import hashlib
-import importlib.metadata
-import json
+"""Correctness-qualified current-contract economics; named tokenizer sizes are proxies."""
+import random
+import argparse,hashlib,importlib.metadata,json,platform,statistics,subprocess,sys,time
 from pathlib import Path
-import platform
-import statistics
-import subprocess
-import sys
-import time
+from bs4 import BeautifulSoup,NavigableString,Comment,Doctype
+ROOT=Path(__file__).resolve().parents[1];CORPUS=ROOT/'evaluation/corpus'
 
-from bs4 import BeautifulSoup, NavigableString, Comment, Doctype
-
-ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / 'evaluation/corpus'
-ENCODING = None
-
-def compact(value):
-    return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
-
-def records(soup):
-    return [dict(title=node.select_one('a')['title'], price=node.select_one('.price').get_text(),
-                 stock=node.select_one('.stock').get_text(), rating=int(node.select_one('.rating').get_text()),
-                 url=node.select_one('a')['href']) for node in soup.select('article.book')]
-
-def text_nodes(node):
-    return ''.join(str(value) for value in node.descendants if isinstance(value, NavigableString) and not isinstance(value, (Comment, Doctype)))
-
-def reference(task, text):
-    return prepared_reference(task, BeautifulSoup(text, 'lxml'))
-
-def prepared_reference(task, soup):
-    if task == 'titles':
-        return [node['title'] for node in soup.select('a.item')]
-    if task == 'urls':
-        return [node['href'] for node in soup.select('a.item')]
-    if task == 'technical':
-        return [text_nodes(soup.select_one('#policy'))]
-    if task == 'guarded':
-        labels = soup.select('#label')
-        values = soup.select('#amount')
-        if len(labels) != 1 or labels[0].get_text() != 'Repair cost' or len(values) != 1:
-            raise ValueError('declared context/cardinality failed')
+def compact(value):return json.dumps(value,ensure_ascii=False,separators=(',',':'),sort_keys=True)
+def record_values(soup):
+    return [dict(title=n.select_one('a')['title'],price=n.select_one('.price').get_text(),stock=n.select_one('.stock').get_text(),
+                 rating=int(n.select_one('.rating').get_text()),url=n.select_one('a')['href']) for n in soup.select('article.book')]
+def reference(task,text):
+    soup=BeautifulSoup(text,'lxml')
+    if task=='titles':return [n['title'] for n in soup.select('a.item')]
+    if task=='urls':return [n['href'] for n in soup.select('a.item')]
+    if task=='mapping':return record_values(soup)
+    if task=='technical':return [''.join(str(v) for v in soup.select_one('#policy').descendants if isinstance(v,NavigableString) and not isinstance(v,(Comment,Doctype)))]
+    if task=='guarded':
+        labels=soup.select('#label');values=soup.select('#amount')
+        if len(labels)!=1 or labels[0].get_text()!='Repair cost' or len(values)!=1:raise ValueError('declared context/cardinality failed')
         return [values[0].get_text()]
-    if task == 'mapping':
-        return records(soup)
-    raise ValueError('unknown task')
-
-def measured(command, warmups=3, repeats=10):
-    samples = []
-    for index in range(warmups + repeats):
-        start = time.perf_counter_ns()
-        result = subprocess.run(command, capture_output=True, check=True, timeout=30)
-        elapsed = time.perf_counter_ns() - start
-        if index >= warmups:
-            samples.append(elapsed)
-    return {'samples_ns': samples, 'median_ns': statistics.median(samples), 'warmups': warmups, 'repeats': repeats}, result.stdout
+    raise ValueError(task)
+def paired(commands,expected,normalize,warmups=3,repeats=15):
+    samples={key:[] for key in commands};outputs={};rng=random.Random(1703)
+    for trial in range(warmups+repeats):
+        order=list(commands);rng.shuffle(order)
+        for key in order:
+            start=time.perf_counter_ns();p=subprocess.run(commands[key],capture_output=True,check=True,timeout=30)
+            elapsed=time.perf_counter_ns()-start
+            assert normalize(key,json.loads(p.stdout))==expected
+            if trial>=warmups:samples[key].append(elapsed)
+            outputs[key]=p.stdout
+    return {key:dict(samples_ns=value,median_ns=statistics.median(value),warmups=warmups,repeats=repeats) for key,value in samples.items()},outputs
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary')
-    parser.add_argument('--output')
-    parser.add_argument('--reference-task')
-    parser.add_argument('--fixture')
-    parser.add_argument('--htmlcut-mapping')
-    parser.add_argument('--plan-file')
-    args = parser.parse_args()
-    if args.htmlcut_mapping:
-        result = json.loads(subprocess.check_output([args.htmlcut_mapping, 'extract', '--file', args.fixture, '--plan', args.plan_file]))
-        print(compact(records(BeautifulSoup(''.join(result['values']), 'lxml'))))
-        return
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--binary');parser.add_argument('--output')
+    parser.add_argument('--reference-task');parser.add_argument('--fixture');args=parser.parse_args()
     if args.reference_task:
-        print(compact(reference(args.reference_task, Path(args.fixture).read_text())))
-        return
-    global ENCODING
+        print(compact(reference(args.reference_task,Path(args.fixture).read_text())));return
+    if not args.binary or not args.output:parser.error('--binary and --output required')
     import tiktoken
-    ENCODING = tiktoken.get_encoding('o200k_base')
-    if not args.binary or not args.output:
-        parser.error('--binary and --output are required for the report')
-    binary = str(Path(args.binary).resolve())
-    manifest = json.loads((CORPUS / 'manifest.json').read_text())
-    for entry in manifest['files']:
-        assert hashlib.sha256((CORPUS / entry['path']).read_bytes()).hexdigest() == entry['sha256']
-    descriptions = {}
-    for operation in [[], ['extract']]:
-        command = [binary, 'describe', *operation]
-        output = subprocess.check_output(command, timeout=30).decode()
-        descriptions[' '.join(command[1:])] = dict(bytes=len(output.encode()), tokens=len(ENCODING.encode(output)))
-    tasks = []
-    temporary = Path(args.output).resolve().parent / 'task-plans'
-    temporary.mkdir(parents=True, exist_ok=True)
-    for task, fixture, selector, projection in [
-        ('titles','books.html','a.item',{'kind':'attribute','name':'title'}),
-        ('urls','books.html','a.item',{'kind':'attribute','name':'href'}),
-        ('technical','technical.html','#policy',{'kind':'dom_text'}),
-        ('guarded','context.html','#amount',{'kind':'dom_text'}),
-        ('mapping','books.html','article.book',{'kind':'outer_html'}),
-    ]:
-        plan = dict(schema='htmlcut.extraction.plan',version=2,strategy=dict(kind='css',selector=selector),
-                    selection=dict(kind='all',min=1) if task in ('titles','urls','mapping') else dict(kind='single'),
-                    projection=projection,exclude=[],guards=[],transforms=[])
-        if task == 'guarded':
-            plan['guards'] = [dict(scope='document',selector='#label',min=1,max=1,read=dict(kind='dom_text'),predicate=dict(kind='exact',value='Repair cost'))]
-        path = temporary / (task + '.json')
-        path.write_text(compact(plan))
-        source = CORPUS / fixture
-        expected = reference(task, source.read_text())
-        command = [binary, 'extract', '--file', str(source), '--plan', str(path)]
-        timing, raw = measured(command)
-        result = json.loads(raw)
-        audit_path = temporary / f'{task}.audit.json'
-        audit_command = command + ['--audit', str(audit_path), '--audit-field',
-                                   'plan,source_digest,plan_digest,extraction_digest,counts,ranges,values']
-        if audit_path.exists():
-            audit_path.unlink()  # Owned evaluation output; repeated measurements reuse this directory.
-        audit_run = subprocess.run(audit_command, check=True, capture_output=True, timeout=30)
-        assert json.loads(audit_run.stdout) == result, task
-        audit_raw = audit_path.read_bytes()
-        audit_value = json.loads(audit_raw)
-        assert audit_value['values'] == result['values'], task
-        assert audit_value['counts'] == {'candidates': result['candidate_count'], 'selected': result['selected_count']}, task
-        actual = result['values']
-        if task == 'mapping':
-            actual = records(BeautifulSoup(''.join(actual), 'lxml'))
-        assert actual == expected, task
-        caller_timing = None
-        caller_command = None
-        if task == 'mapping':
-            caller_command = [sys.executable, str(Path(__file__).resolve()), '--htmlcut-mapping', binary, '--fixture', str(source), '--plan-file', str(path)]
-            caller_timing, mapped_raw = measured(caller_command)
-            assert json.loads(mapped_raw) == expected
-        alternative = [sys.executable, str(Path(__file__).resolve()), '--reference-task', task, '--fixture', str(source)]
-        other_timing, other_raw = measured(alternative)
-        assert json.loads(other_raw) == expected
-        soup = BeautifulSoup(source.read_text(), 'lxml')
-        start = time.perf_counter_ns()
+    enc=tiktoken.get_encoding('o200k_base');tokens=lambda v:len(enc.encode(v if isinstance(v,str) else compact(v)))
+    binary=str(Path(args.binary).resolve());dest=Path(args.output).resolve();dest.parent.mkdir(parents=True,exist_ok=True)
+    manifest=json.loads((CORPUS/'manifest.json').read_text())
+    for entry in manifest['files']:assert hashlib.sha256((CORPUS/entry['path']).read_bytes()).hexdigest()==entry['sha256']
+    plans=dest.parent/'task-plans';plans.mkdir(exist_ok=True);tasks=[];discovery={}
+    for name,command in [('index',[binary,'describe']),('extract',[binary,'describe','extract']),
+                         ('inspection',[binary,'inspect','--file',str(CORPUS/'books.html'),'--css','article.book'])]:
+        raw=subprocess.check_output(command,timeout=30);discovery[name]=dict(command=command,bytes=len(raw),tokens=tokens(raw.decode()))
+    for task,fixture,selector,projection in [
+        ('titles','books.html','a.item',dict(kind='attribute',name='title')),
+        ('urls','books.html','a.item',dict(kind='attribute',name='href')),
+        ('technical','technical.html','#policy',dict(kind='dom_text')),
+        ('guarded','context.html','#amount',dict(kind='dom_text')),
+        ('mapping','books.html','article.book',dict(kind='records',fields=[
+            dict(name='title',selector='a',projection=dict(kind='attribute',name='title')),
+            dict(name='price',selector='.price'),dict(name='stock',selector='.stock'),
+            dict(name='rating',selector='.rating'),dict(name='url',selector='a',projection=dict(kind='attribute',name='href'))]))]:
+        plan=dict(schema='htmlcut.extraction.plan',version=3,strategy=dict(kind='css',selector=selector),
+                  selection=dict(kind='all',min=1) if task in ['titles','urls','mapping'] else dict(kind='single'),projection=projection)
+        if task=='guarded':plan['guards']=[dict(scope='document',selector='#label',min=1,max=1,read=dict(kind='dom_text'),predicate=dict(kind='exact',value='Repair cost'))]
+        path=plans/(task+'.json');path.write_text(compact(plan));source=CORPUS/fixture;expected=reference(task,source.read_text())
+        command=[binary,'extract','--file',str(source),'--plan',str(path)]
+        alternative=[sys.executable,str(Path(__file__).resolve()),'--reference-task',task,'--fixture',str(source)]
+        def normalize(key,value):return [dict(n,rating=int(n['rating'])) for n in value] if task=='mapping' and key=='htmlcut' else value
+        timings,outputs=paired(dict(htmlcut=command,parser=alternative),expected,normalize)
+        timing=timings['htmlcut'];other_time=timings['parser'];raw=outputs['htmlcut'];other_raw=outputs['parser'];data=json.loads(raw)
+        actual=[dict(n,rating=int(n['rating'])) for n in data] if task=='mapping' else data
+        assert actual==expected,task
+        # The mapper converts one primitive only; no caller HTML reparsing occurs.
+        receipt_path=plans/(task+'.receipt.json');bundle_path=plans/(task+'.htmlcut.tar')
+        for artifact in [receipt_path,bundle_path]:
+            if artifact.exists():artifact.unlink()
+        receipt_command=command+['--receipt',str(receipt_path)];receipt_run=subprocess.run(receipt_command,check=True,capture_output=True,timeout=30)
+        assert receipt_run.stdout==raw
+        receipt_raw=receipt_path.read_bytes();receipt=json.loads(receipt_raw)
+        assert receipt['data_sha256']==hashlib.sha256(compact(data).encode()).hexdigest()
+        bundle_command=command+['--bundle',str(bundle_path)];bundle_run=subprocess.run(bundle_command,check=True,capture_output=True,timeout=30)
+        assert bundle_run.stdout==raw
+        replay=subprocess.check_output([binary,'run',str(bundle_path)],timeout=30);assert replay==raw
+        alternative=[sys.executable,str(Path(__file__).resolve()),'--reference-task',task,'--fixture',str(source)]
+        assert json.loads(other_raw)==expected
+        warm=[]
         for _ in range(100):
-            # Prepared parser reuse: selectors/mapping operate in an existing process.
-            if task == 'mapping':
-                value = records(soup)
-            elif task in ('titles','urls'):
-                value = [node['title' if task == 'titles' else 'href'] for node in soup.select('a.item')]
-            else:
-                value = prepared_reference(task, soup)
-            assert value == expected
-        in_process = (time.perf_counter_ns() - start) / 100
-        payload = compact(actual)
-        tasks.append(dict(task=task, fixture=fixture, correctness='complete exact equality', values=actual,
-                          commands=[command,alternative] + ([caller_command] if caller_command else []), observed_retries=0, repair_steps=[],
-                          htmlcut_plus_caller_mapping_fresh_process=caller_timing,
-                          htmlcut_fresh_process=timing, parser_fresh_process=other_timing,
-                          parser_in_process_ns=in_process,
-                          payload_bytes=len(payload.encode()), payload_tokens=len(ENCODING.encode(payload)),
-                          default_envelope_bytes=len(raw), default_envelope_tokens=len(ENCODING.encode(raw.decode())),
-                          optional_full_audit={'command': audit_command, 'bytes': len(audit_raw),
-                                               'tokens': len(ENCODING.encode(audit_raw.decode())),
-                                               'values_equal_intermediate_projection': True,
-                                               'excluded_from_default_output_and_timing': True},
-                          parser_output_tokens=len(ENCODING.encode(other_raw.decode())),
-                          command_tokens_proxy=sum(len(ENCODING.encode(compact(c))) for c in [command,alternative])))
-    report = dict(scope='offline synthetic equivalent-correct tasks; not agent billing or a blind multi-agent trial',
-                  tokenizer={'name':'tiktoken','version':importlib.metadata.version('tiktoken'),'encoding':'o200k_base'},
-                  versions={name:importlib.metadata.version(name) for name in ['beautifulsoup4','lxml','tiktoken']},
-                  python=platform.python_version(), binary_version=subprocess.check_output([binary,'--version'], timeout=30).decode().strip(),
-                  binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
-                  corpus=manifest, discovery=descriptions, tasks=tasks,
-                  code_tokens_proxy=len(ENCODING.encode(Path(__file__).read_text())),
-                  unmeasured='Actual agent command/code generation, private reasoning and billed usage; script/command counts are proxies only.')
-    Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
-    print(f'Validated {len(tasks)} tasks; report: {args.output}')
-
-if __name__ == '__main__':
-    main()
+            start=time.perf_counter_ns();value=reference(task,source.read_text());warm.append(time.perf_counter_ns()-start);assert value==expected
+        tasks.append(dict(task=task,fixture=fixture,correctness='complete exact equality',values=actual,htmlcut_values=data,
+            commands=[command,alternative],htmlcut_fresh_process=timing,parser_fresh_process=other_time,
+            parser_warm_parse_select=dict(samples_ns=warm,median_ns=statistics.median(warm)),
+            payload_bytes=len(raw),payload_tokens=tokens(raw.decode()),parser_output_tokens=tokens(other_raw.decode()),
+            plan_tokens=tokens(plan),source_tokens=tokens(source.read_text()),caller_mapping='rating string to int only' if task=='mapping' else None,
+            receipt=dict(command=receipt_command,bytes=len(receipt_raw),tokens=tokens(receipt_raw.decode()),not_default_stdout=True),
+            bundle=dict(command=bundle_command,bytes=bundle_path.stat().st_size,replay_equal=True,not_default_stdout=True),observed_retries=0))
+    report=dict(scope='fixed offline synthetic equivalent-correct tasks; not billing or blind agent reasoning',
+        tokenizer=dict(name='tiktoken',version=importlib.metadata.version('tiktoken'),encoding='o200k_base'),
+        versions={n:importlib.metadata.version(n) for n in ['beautifulsoup4','lxml','tiktoken']},python=platform.python_version(),
+        binary_version=subprocess.check_output([binary,'--version']).decode().strip(),binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
+        corpus=manifest,discovery=discovery,tasks=tasks,unmeasured='Actual billed reasoning/context/cache effects; in-process Rust measured separately.')
+    dest.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(f'Validated {len(tasks)} tasks; report: {dest}')
+if __name__=='__main__':main()

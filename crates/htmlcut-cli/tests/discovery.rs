@@ -14,7 +14,7 @@ fn index_one_description_and_named_schemas_share_closed_vocabulary() {
     for name in htmlcut_core::SCHEMA_NAMES
         .iter()
         .copied()
-        .chain(["htmlcut.run"])
+        .chain(["htmlcut.bundle"])
     {
         let output = invoke(&["schema", name], b"");
         assert!(

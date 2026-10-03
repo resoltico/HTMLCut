@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "16.0.0"
+  version: "17.0.0"
   domain: QUALITY
-  updated: "2026-10-01"
+  updated: "2026-10-03"
 RETRIEVAL_HINTS:
   keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, closed plans, prepared snapshots]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
@@ -22,7 +22,7 @@ dependency floor while still letting live fuzzing use nightly through `cargo-fuz
 - `selector_parsing`: compiles CSS extraction plans from bounded HTML, selectors, projections and selection policies.
 - `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and source-only projection.
 - `extraction_request_building`: reads the closed extraction-plan JSON, verifies canonical round-trip equality and executes valid CSS/slice plans on a prepared snapshot.
-- `prepared_discovery`: exercises bounded document preparation, inspection pagination, stale/malformed cursor rejection and same-snapshot suggestions with arbitrary text and resource limits.
+- `selector_inspection`: exercises bounded document preparation, inspection pagination, stale/malformed cursor rejection and same-snapshot suggestions with arbitrary text and resource limits.
 - `relational_selector_budget`: exercises `:has(...)` work exhaustion and fallible propagation through the maintained selector and scraper forks.
 - `cli_parse_error_surface`: feeds unknown arguments to source-included private CLI modules and asserts exit 2, empty stdout and a typed JSON error on stderr.
 
@@ -91,6 +91,4 @@ cargo xtask fuzz-smoke --runs 500
 into a temporary directory before calling `cargo +nightly-2026-09-30 fuzz run --features fuzzing ...`, so
 the checked-in seed inventory stays clean after local smoke runs.
 
-The maintained inventory also exercises incremental informational response framing (`http_response_framing`), the actual raw-byte media parameter parser (`media_parameters`), and independently decoded plain/pre cell payloads (`structural_cells`). Protocol whole-buffer and segmented outcomes must agree; generated valid controls assert full final headers. Media controls distinguish quoted fake charset declarations. Cell inverse controls preserve reserved delimiters and literal pre trailing newlines. These bounded properties supplement real socket/OS/native tests; they do not establish universal conformance.
-
-`closed_wire_objects` exercises owning enum deserializers, raw duplicate-key refusal, and nested plan/saved-run closure with valid current-contract controls. Schema parity and semantic validation remain separately tested; structural JSON acceptance does not authorize execution.
+The current inventory covers selector-scoped inspection, independent CommonMark row/cell payload decoding, direct record relationships, and closed USTAR replay parsing/receipt recomputation. HTTP framing/media parsing is not an extraction product surface. Bounded fuzz properties supplement actual native/OS and independent complete-value tests; they do not establish universal conformance or OS isolation. The release campaign runs at least10,000 executions per maintained target with staged seed corpora.

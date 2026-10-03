@@ -176,7 +176,7 @@ main() {
     "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
     local smoke_dir="${extract_root}/smoke-fixture"
     local fixture_path="${smoke_dir}/page.html"
-    local request_path="${smoke_dir}/article-links.json"
+    local request_path="${smoke_dir}/article-links.htmlcut.tar"
     mkdir -p "${smoke_dir}"
     printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > "${fixture_path}"
 
@@ -184,19 +184,19 @@ main() {
     first_output="$(
         "${binary_path}" extract --file "${fixture_path}" \
             --css 'article a.more' \
-            --projection attribute \
+            \
             --attribute href \
-            --save-run "${request_path}" --raw \
+            --bundle "${request_path}" --raw \
             | tr -d '\r'
     )"
-    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit saved run ${request_path}"
+    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit snapshot bundle ${request_path}"
     [[ "${first_output}" == "../guide.html" ]] || htmlcut_die \
         "packaged binary returned unexpected extraction output: ${first_output}"
 
     local replay_output
     replay_output="$("${binary_path}" run "${request_path}" --raw | tr -d '\r')"
     [[ "${replay_output}" == "${first_output}" ]] || htmlcut_die \
-        "saved-run replay drifted: expected ${first_output}, got ${replay_output}"
+        "bundle replay drifted: expected ${first_output}, got ${replay_output}"
 
     printf 'Smoke-tested %s\n' "${package_name}"
 }

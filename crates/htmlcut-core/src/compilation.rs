@@ -4,7 +4,9 @@ use regex::{Regex, RegexBuilder};
 use scraper::Selector;
 
 use crate::limits::{MAX_PATTERN_DEPTH, MAX_REGEX_BYTES};
-use crate::{Boundary, ErrorCode, ExtractionError, ExtractionPlan, Predicate, Strategy};
+use crate::{
+    Boundary, ErrorCode, ExtractionError, ExtractionPlan, Predicate, Projection, Strategy,
+};
 
 pub(crate) enum Matcher {
     Literal(String),
@@ -25,7 +27,10 @@ impl Matcher {
 }
 
 pub(crate) enum CompiledStrategy {
-    Css(Selector),
+    Css {
+        selector: Selector,
+        projection: CompiledDomProjection,
+    },
     Slice {
         start: Matcher,
         end: Matcher,
@@ -34,9 +39,20 @@ pub(crate) enum CompiledStrategy {
     },
 }
 
+pub(crate) enum CompiledDomProjection {
+    Value(crate::ValueProjection),
+    Records,
+}
+
 pub(crate) struct CompiledGuard {
     pub(crate) selector: Selector,
     pub(crate) predicate: Option<Regex>,
+}
+
+pub(crate) struct CompiledField {
+    pub(crate) selector: Selector,
+    pub(crate) exclusions: Vec<Selector>,
+    pub(crate) field: crate::RecordField,
 }
 
 /// Opaque reusable validated grammar; execution counters are never retained here.
@@ -45,6 +61,7 @@ pub struct CompiledPlan {
     pub(crate) strategy: CompiledStrategy,
     pub(crate) guards: Vec<CompiledGuard>,
     pub(crate) exclusions: Vec<Selector>,
+    pub(crate) fields: Vec<CompiledField>,
     pub(crate) digest: String,
 }
 
@@ -65,11 +82,18 @@ impl CompiledPlan {
                 .iter()
                 .filter(|guard| matches!(guard.predicate, Some(Predicate::Regex { .. })))
                 .count();
-        // Equal deterministic shares cap the aggregate compiled programs and DFA caches at
-        // 8 MiB each, rather than giving every guard a fresh 8 MiB allowance.
-        let regex_budget = MAX_REGEX_BYTES / regex_count.max(1);
+        // Program and DFA allowances together share one fixed plan allowance.
+        let regex_budget = MAX_REGEX_BYTES / (2 * regex_count.max(1));
         let strategy = match &plan.strategy {
-            Strategy::Css { selector } => CompiledStrategy::Css(compile_selector(selector)?),
+            Strategy::Css { selector } => CompiledStrategy::Css {
+                selector: compile_selector(selector)?,
+                projection: match plan.projection.dom()? {
+                    crate::plan::DomProjection::Value(value) => {
+                        CompiledDomProjection::Value(value.clone())
+                    }
+                    crate::plan::DomProjection::Records => CompiledDomProjection::Records,
+                },
+            },
             Strategy::Slice {
                 start,
                 end,
@@ -103,14 +127,32 @@ impl CompiledPlan {
             .map(|value| compile_selector(value))
             .collect::<Result<_, _>>()?;
         let digest = crate::identity::framed(
-            "htmlcut.plan/1",
+            "htmlcut.plan/3",
             &[crate::canonical_json(&plan)?.as_bytes()],
         );
+        let fields = match &plan.projection {
+            Projection::Records { fields } => fields
+                .iter()
+                .map(|field| {
+                    Ok(CompiledField {
+                        selector: compile_selector(&field.selector)?,
+                        field: field.clone(),
+                        exclusions: field
+                            .exclude
+                            .iter()
+                            .map(|s| compile_selector(s))
+                            .collect::<Result<_, _>>()?,
+                    })
+                })
+                .collect::<Result<Vec<_>, ExtractionError>>()?,
+            _ => Vec::new(),
+        };
         Ok(Self {
             plan,
             strategy,
             guards,
             exclusions,
+            fields,
             digest,
         })
     }
@@ -134,7 +176,7 @@ fn compile_boundary(boundary: &Boundary, regex_budget: usize) -> Result<Matcher,
     }
 }
 
-fn compile_selector(value: &str) -> Result<Selector, ExtractionError> {
+pub(crate) fn compile_selector(value: &str) -> Result<Selector, ExtractionError> {
     // Bound grammar recursion before invoking the maintained CSS parser. Quoted and escaped
     // delimiters do not increase nesting; the parser remains authoritative for syntax.
     let mut depth = 0_u32;

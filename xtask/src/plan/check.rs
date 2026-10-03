@@ -182,7 +182,7 @@ fn resource_acceptance_command() -> CommandSpec {
             "test",
             "-p",
             "htmlcut-core",
-            "tests::discovery::million_element_pagination_reaches_the_tail_and_terminates",
+            "tests::discovery::million_element_selector_inspection_fails_closed",
             "--lib",
             "--all-features",
             "--locked",

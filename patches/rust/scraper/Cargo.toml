@@ -14,7 +14,7 @@ publish = false
 edition = "2024"
 rust-version = "1.98.1"
 name = "htmlcut-scraper"
-version = "0.27.0-htmlcut.8"
+version = "0.27.0-htmlcut.9"
 authors = ["June McEnroe <june@causal.agency>"]
 build = false
 autolib = false
@@ -95,3 +95,7 @@ optional = true
 package = "htmlcut-tendril"
 path = "../tendril"
 version = "0.5.1-htmlcut.1"
+
+# This owned upstream fork retains its upstream lint contract; workspace unsafe-code
+# prohibition applies to first-party consumers, not the fork implementation.
+[lints]

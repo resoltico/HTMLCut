@@ -18,7 +18,15 @@ fn selector_and_slice_contract_remain_miri_sound() {
     let document =
         prepared("<article><p>Hello</p><template>T</template></article>BEGIN\r\n✓\r\nEND");
     let selector = CompiledPlan::compile(&ExtractionPlan::css("article").unwrap()).unwrap();
-    assert_eq!(document.execute(&selector).unwrap().values, ["HelloT"]);
+    assert_eq!(
+        document
+            .execute(&selector)
+            .unwrap()
+            .data
+            .as_values()
+            .unwrap(),
+        ["HelloT"]
+    );
     let slice = CompiledPlan::compile(
         &ExtractionPlan::slice(
             Boundary::Literal {
@@ -31,31 +39,59 @@ fn selector_and_slice_contract_remain_miri_sound() {
         .unwrap(),
     )
     .unwrap();
-    assert_eq!(document.execute(&slice).unwrap().values, ["\r\n✓\r\n"]);
+    assert_eq!(
+        document.execute(&slice).unwrap().data.as_values().unwrap(),
+        ["\r\n✓\r\n"]
+    );
     assert_eq!(document.parse_count(), 1);
 
-    // The same strict-provenance proof owns scoped cache reuse and fragment context in v16.
+    // The same strict-provenance proof owns scoped cache reuse and fragment context.
     let document = prepared(
         "<main><ol start='7'><li>A</li><li id='selected'>B</li></ol><table><tr><td>X | Y</td><td>Z</td></tr></table><pre><code id='code'>x\n</code></pre></main>",
     );
     for (css, expected) in [
-        ("#selected", "8. B"),
-        ("tr", "[cell]X \\| Y[/cell] | [cell]Z[/cell]"),
+        ("#selected", "- 8\\. B"),
+        ("tr", "-\n  - X | Y\n  - Z"),
         ("#code", "```\nx\n\n```"),
     ] {
         let mut plan = ExtractionPlan::css(css).unwrap();
-        plan.projection = Projection::DocumentText {};
+        plan.projection = Projection::Value(ValueProjection::Markdown {});
         let compiled = CompiledPlan::compile(&plan).unwrap();
         for _ in 0..2 {
-            assert_eq!(document.execute(&compiled).unwrap().values, [expected]);
+            assert_eq!(
+                document
+                    .execute(&compiled)
+                    .unwrap()
+                    .data
+                    .as_values()
+                    .unwrap(),
+                [expected]
+            );
         }
     }
     let mut plan = ExtractionPlan::css("main:has(> ol) li:nth-child(2)").unwrap();
-    plan.projection = Projection::Attribute { name: "id".into() };
+    plan.projection = Projection::Value(ValueProjection::Attribute { name: "id".into() });
     let compiled = CompiledPlan::compile(&plan).unwrap();
     for _ in 0..2 {
-        assert_eq!(document.execute(&compiled).unwrap().values, ["selected"]);
+        assert_eq!(
+            document
+                .execute(&compiled)
+                .unwrap()
+                .data
+                .as_values()
+                .unwrap(),
+            ["selected"]
+        );
     }
+    let document = prepared("<article><p>value</p></article>");
+    let plan=ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"},{"name":"optional","selector":".absent","selection":{"kind":"optional"}}]}}"#).unwrap();
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    let first = document.execute(&compiled).unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.data).unwrap(),
+        serde_json::json!([{"text":"value","optional":null}])
+    );
+    assert_eq!(first, document.execute(&compiled).unwrap());
 }
 
 #[test]
@@ -65,8 +101,14 @@ fn literal_default_is_lazy_reused_and_includes_hidden_content() {
     let compiled = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     for _ in 0..2 {
         let result = source.execute(&compiled).unwrap();
-        assert_eq!(result.values, ["ABC"]);
-        assert_eq!((result.candidate_count, result.selected_count), (1, 1));
+        assert_eq!(result.data.as_values().unwrap(), ["ABC"]);
+        assert_eq!(
+            (
+                result.receipt.candidate_count,
+                result.receipt.selected_count
+            ),
+            (1, 1)
+        );
     }
     assert_eq!(source.parse_count(), 1);
 }
@@ -89,8 +131,11 @@ fn source_slices_preserve_unicode_crlf_and_never_parse() {
     let compiled = CompiledPlan::compile(&plan).unwrap();
     for _ in 0..2 {
         let result = source.execute(&compiled).unwrap();
-        assert_eq!(result.values, ["\r\n<X a='1'>✓</X>\r\n"]);
-        assert_eq!(result.ranges, Some(vec![SourceRange { start: 7, end: 27 }]));
+        assert_eq!(result.data.as_values().unwrap(), ["\r\n<X a='1'>✓</X>\r\n"]);
+        assert_eq!(
+            result.receipt.ranges,
+            Some(vec![SourceRange { start: 7, end: 27 }])
+        );
     }
     assert_eq!(source.parse_count(), 0);
 }
@@ -130,19 +175,21 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
         ErrorCode::NoMatch
     );
     let mut plan = ExtractionPlan::css("p[data-x]").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "data-x".into(),
-    };
+    });
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .values,
+            .data
+            .as_values()
+            .unwrap(),
         [""]
     );
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "absent".into(),
-    };
+    });
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -154,16 +201,16 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
 
 #[test]
 fn closed_json_rejects_nested_duplicates_unknown_fields_and_old_schema() {
-    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#;
+    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"}}"#;
     assert!(ExtractionPlan::from_json(minimal.as_bytes()).is_ok());
     for value in [
         minimal.replace(
             "\"selector\":\"p\"",
             "\"selector\":\"p\",\"selector\":\"aside\"",
         ),
-        minimal.replace("\"version\":2", "\"version\":2,\"unknown\":true"),
+        minimal.replace("\"version\":3", "\"version\":3,\"unknown\":true"),
         minimal.replace("htmlcut.extraction.plan", "htmlcut.plan"),
-        minimal.replace("\"version\":2", "\"version\":3"),
+        minimal.replace("\"version\":3", "\"version\":2"),
     ] {
         assert!(
             ExtractionPlan::from_json(value.as_bytes()).is_err(),
@@ -200,27 +247,34 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
         "<article data-key='chosen'><pre>large <b>body</b></pre><script>payload</script></article>",
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::Attribute {
+    plan.projection = Projection::Value(ValueProjection::Attribute {
         name: "data-key".into(),
-    };
+    });
     let compiled = CompiledPlan::compile(&plan).unwrap();
     crate::projection::take_projection_calls();
     for _ in 0..3 {
-        assert_eq!(document.execute(&compiled).unwrap().values, ["chosen"]);
+        assert_eq!(
+            document
+                .execute(&compiled)
+                .unwrap()
+                .data
+                .as_values()
+                .unwrap(),
+            ["chosen"]
+        );
     }
     assert_eq!(document.parse_count(), 1);
-    assert_eq!(crate::projection::take_projection_calls(), [3, 0, 0, 0, 0]);
+    assert_eq!(crate::projection::take_projection_calls(), [3, 0, 0, 0]);
     // Positive controls prove that all counters observe the actual paths.
     for projection in [
-        Projection::DomText {},
-        Projection::DocumentText {},
-        Projection::OuterHtml {},
+        Projection::Value(ValueProjection::DomText {}),
+        Projection::Value(ValueProjection::Markdown {}),
+        Projection::Value(ValueProjection::OuterHtml {}),
     ] {
         plan.projection = projection;
         document
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap();
     }
-    document.preview(&compiled, 64).unwrap();
-    assert_eq!(crate::projection::take_projection_calls(), [1, 1, 1, 1, 1]);
+    assert_eq!(crate::projection::take_projection_calls(), [0, 1, 1, 1]);
 }

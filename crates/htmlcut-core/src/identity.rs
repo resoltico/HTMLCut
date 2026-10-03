@@ -9,6 +9,46 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
+struct JsonDigestWriter<'a> {
+    hash: Sha256,
+    bytes: usize,
+    maximum: usize,
+    budget: &'a selectors::work_budget::SelectorWorkBudget,
+}
+impl std::io::Write for JsonDigestWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.maximum.saturating_sub(self.bytes) {
+            return Err(std::io::Error::other("Encoded data bound exceeded."));
+        }
+        let size = self.bytes + bytes.len();
+        crate::execution::charge(self.budget, size.div_ceil(64) - self.bytes.div_ceil(64))
+            .map_err(|_| std::io::Error::other("Encoded data work exhausted."))?;
+        self.hash.update(bytes);
+        self.bytes = size;
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Bounds and hashes borrowed JSON without materializing another copy of the payload.
+pub(crate) fn data_digest(
+    value: &impl Serialize,
+    maximum: usize,
+    budget: &selectors::work_budget::SelectorWorkBudget,
+) -> Result<String, ExtractionError> {
+    let mut writer = JsonDigestWriter {
+        hash: Sha256::new(),
+        bytes: 0,
+        maximum,
+        budget,
+    };
+    serde_json::to_writer(&mut writer, value)
+        .map_err(|_| ExtractionError::limit("serialization"))?;
+    Ok(hex(&writer.hash.finalize()))
+}
+
 pub(crate) fn framed(domain: &str, fields: &[&[u8]]) -> String {
     let mut hash = Sha256::new();
     for value in std::iter::once(domain.as_bytes()).chain(fields.iter().copied()) {

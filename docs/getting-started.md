@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "16.0.0"
+version: "17.0.0"
 domain: SETUP
-updated: "2026-10-01"
+updated: "2026-10-03"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, saved run]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction run?"]
@@ -11,19 +11,21 @@ route:
 
 # Getting started
 
-Choose a saved HTML snapshot and an explicit selector. The default is literal descendant text with exactly one match and compact JSON.
+Use a completed UTF-8 HTML snapshot and an explicit selector. Install the native published package for the exact chosen version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases), or build this checkout with its pinned toolchain:
 
 ```sh
+cargo install --path crates/htmlcut-cli --locked
 htmlcut describe
 htmlcut describe extract
-htmlcut extract --file page.html --css article
-htmlcut extract --file page.html --css 'article a.more' --projection attribute --attribute href --raw
-htmlcut extract --file page.html --css article --projection document_text --raw
-htmlcut inspect --file page.html --page-size 5
+htmlcut extract --file page.html --css article --projection markdown --raw
+htmlcut extract --file page.html --css 'article a' --attribute href --match all
+htmlcut inspect --file page.html --css article
 ```
 
-Use a plan file for guards, exclusions and transforms. Source slices are byte exact and never automatically become DOM fragments. Acquire/render browser snapshots in caller code when JavaScript-created content is needed. HTMLCut does not execute scripts or infer business meaning.
+Default output is a JSON array and default selection requires exactly one match. Use a plan file for records, guards, exclusions and transforms. Present empty values are valid; missing required nodes/attributes fail. `--raw` selects one flat string without a final LF.
 
-See [CLI](cli.md), [Core](core.md), [Schemas](schema.md) and [Platform support](platform-support.md).
+Save actual source and execution with `--bundle snapshot.htmlcut.tar`, then recompute with `htmlcut run snapshot.htmlcut.tar`. Move the bundle freely; it does not depend on original paths. `--receipt FILE` is the smaller alternative when only evidence is needed. It is mutually exclusive with bundle output. Output replacement requires `--overwrite`.
 
-For release packages, select the exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The candidate workspace version is not a claim that its assets are published. Shell download scripts use `VERSION=16.0.0`; PowerShell scripts use `$Version = "16.0.0"` after that release is authorized and published.
+Callers acquire/render/decode source first. HTMLCut accepts file/stdin UTF-8 and does not fetch URLs, execute JavaScript, use sessions or crawl. The current candidate is 17.0.0; a workspace version is not proof that matching release assets are published. See [CLI](cli.md), [Core](core.md), [Schemas](schema.md), and [Platform Support](platform-support.md).
+
+Select an exact published release before using download/install snippets. Shell operators can set `VERSION=17.0.0`; PowerShell operators can set `$Version = "17.0.0"` after that version is actually published. The release list, not these literals, establishes availability.

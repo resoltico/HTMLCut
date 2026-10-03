@@ -22,9 +22,11 @@ fn staging_write_flush_and_sync_faults_are_fatal() {
         }
     }
     for stage in 0..=2 {
-        let error = write_staged_bytes(&mut Fault { stage }, b"payload", |_| {
-            Err(io::Error::other("sync fault"))
-        })
+        let error = finish_staged_writer(
+            &mut Fault { stage },
+            |writer| write_staged_bytes(writer, b"payload"),
+            |_| Err(io::Error::other("sync fault")),
+        )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Publication);
     }
@@ -43,32 +45,19 @@ fn publication_buffer_flush_never_resets_serialization_capacity() {
 }
 
 #[test]
-fn counts_only_audit_is_complete_or_error_at_every_serialization_boundary() {
-    use crate::command::AuditField;
-    use htmlcut_core::{
-        CompiledPlan, ExtractionPlan, PreparedDocument, SnapshotMetadata, SourceSnapshot,
-    };
+fn receipts_are_complete_or_error_at_each_serialization_boundary() {
+    use htmlcut_core::{CompiledPlan, ExtractionPlan, PreparedDocument, SourceSnapshot};
     let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     let source = PreparedDocument::new(
-        SourceSnapshot::new("<p>private body</p>", SnapshotMetadata::default()).unwrap(),
+        SourceSnapshot::new("<p>private body</p>", Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
     let result = source.execute(&plan).unwrap();
-    let evidence = crate::evidence::Evidence {
-        fields: &[AuditField::Counts],
-        result: &result,
-        plan: plan.plan(),
-    };
-    let expected = json_stream(&evidence, 1024).unwrap();
-    let value: serde_json::Value = serde_json::from_slice(&expected).unwrap();
-    assert_eq!(
-        value["counts"],
-        serde_json::json!({"candidates":1,"selected":1})
-    );
+    let expected = json_stream(&result.receipt, 4096).unwrap();
     assert!(!String::from_utf8_lossy(&expected).contains("private body"));
     for maximum in 0..=expected.len() + 1 {
-        let actual = json_stream(&evidence, maximum);
+        let actual = json_stream(&result.receipt, maximum);
         if maximum < expected.len() {
             assert_eq!(actual.unwrap_err().code, ErrorCode::ResourceLimit);
         } else {
@@ -78,33 +67,23 @@ fn counts_only_audit_is_complete_or_error_at_every_serialization_boundary() {
 }
 
 #[test]
-fn audit_default_one_mebibyte_bound_includes_json_framing_exactly() {
-    use crate::command::AuditField;
-    use htmlcut_core::{
-        CompiledPlan, ExtractionPlan, PreparedDocument, SnapshotMetadata, SourceSnapshot,
-    };
-    let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
-    let framing = b"{\"values\":[\"\"]}\n".len();
-    for (total, accepted) in [(1_048_575, true), (1_048_576, true), (1_048_577, false)] {
-        let value = "x".repeat(total - framing);
-        let source = PreparedDocument::new(
-            SourceSnapshot::new(format!("<p>{value}</p>"), SnapshotMetadata::default()).unwrap(),
-            Default::default(),
-        )
-        .unwrap();
-        let result = source.execute(&plan).unwrap();
-        let evidence = crate::evidence::Evidence {
-            fields: &[AuditField::Values],
-            result: &result,
-            plan: plan.plan(),
-        };
-        let output = json_stream(&evidence, MAX_AUDIT_BYTES);
-        if accepted {
-            assert_eq!(output.unwrap().len(), total);
-        } else {
-            assert_eq!(output.unwrap_err().code, ErrorCode::ResourceLimit);
+fn complete_data_payload_and_framing_have_independent_exact_bounds() {
+    let value = serde_json::json!(["é\n\""]);
+    let payload = json_payload(&value, 100).unwrap();
+    let framed = json_stream(&value, 100).unwrap();
+    assert_eq!(framed.len(), payload.len() + 1);
+    assert_eq!(framed.last(), Some(&b'\n'));
+    for size in [payload.len() - 1, payload.len(), payload.len() + 1] {
+        assert_eq!(json_payload(&value, size).is_ok(), size >= payload.len());
+        assert_eq!(json_stream(&value, size).is_ok(), size >= framed.len());
+    }
+    struct Fault;
+    impl serde::Serialize for Fault {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("SECRET"))
         }
     }
+    assert!(json_payload(&Fault, 100).is_err());
 }
 
 #[test]
