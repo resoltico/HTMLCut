@@ -77,7 +77,7 @@ pub struct RecordField {
     /// Excluded subtrees inside selected field nodes only.
     #[serde(default)]
     pub exclude: Vec<String>,
-    /// Explicit transforms in declaration order.
+    /// Zero or one compatible value transform.
     #[serde(default)]
     pub transforms: Vec<Transform>,
 }

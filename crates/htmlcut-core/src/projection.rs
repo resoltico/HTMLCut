@@ -11,6 +11,7 @@ use crate::{ErrorCode, ExtractionError, Transform, ValueProjection};
 mod context;
 mod markdown;
 mod markdown_annotations;
+mod markdown_traversal;
 mod markdown_writer;
 
 pub(crate) struct ValueBuffer<'a> {

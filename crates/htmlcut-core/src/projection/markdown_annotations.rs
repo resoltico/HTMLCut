@@ -1,5 +1,6 @@
 //! Link/image metadata inside preformatted content is emitted outside the unchanged code.
 
+use super::markdown_traversal::payload_edges;
 use super::markdown_writer::MarkdownWriter;
 use super::*;
 
@@ -20,7 +21,9 @@ pub(super) fn annotations(
 ) -> Result<(), ExtractionError> {
     for link in references.links.drain(..) {
         output.boundary(1)?;
-        output.syntax("- [")?;
+        output.syntax("- ")?;
+        output.begin_inline()?;
+        output.syntax("[")?;
         let label = label(link, excluded, maximum, budget)?;
         output.text(label.trim_matches(|c: char| c.is_ascii_whitespace()))?;
         output.syntax("](")?;
@@ -37,6 +40,7 @@ pub(super) fn annotations(
         output.boundary(1)?;
         output.syntax("- ")?;
         if let Some(src) = image.attr("src") {
+            output.begin_inline()?;
             output.syntax("![")?;
             output.text(image.attr("alt").unwrap_or(""))?;
             output.syntax("](")?;
@@ -64,27 +68,11 @@ fn label(
     budget: &SelectorWorkBudget,
 ) -> Result<String, ExtractionError> {
     let mut output = ValueBuffer::new(maximum, budget);
-    let mut skipped = 0;
-    for edge in root.traverse() {
-        crate::execution::charge(budget, 1)?;
-        match edge {
-            Edge::Open(node) => {
-                if skipped > 0
-                    || excluded.contains(&node.id())
-                    || node
-                        .value()
-                        .as_element()
-                        .is_some_and(super::markdown::hidden_payload)
-                {
-                    skipped += 1;
-                    continue;
-                }
-                if let Node::Text(text) = node.value() {
-                    output.text(&text.text, false, true)?;
-                }
-            }
-            Edge::Close(_) if skipped > 0 => skipped -= 1,
-            _ => (),
+    for edge in payload_edges(root, excluded, budget) {
+        if let Edge::Open(node) = edge?
+            && let Node::Text(text) = node.value()
+        {
+            output.text(&text.text, false, true)?;
         }
     }
     Ok(output.finish())

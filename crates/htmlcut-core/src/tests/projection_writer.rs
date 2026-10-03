@@ -45,3 +45,19 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     assert_eq!(value, "");
     assert_eq!(budget.remaining(), 1);
 }
+
+#[test]
+fn an_empty_markdown_destination_still_costs_one_processing_unit() {
+    for (units, accepted) in [(1, false), (2, true)] {
+        let budget = SelectorWorkBudget::new(units);
+        let mut writer = super::markdown_writer::MarkdownWriter::new(4, &budget);
+        let result = writer.destination("");
+        assert_eq!(result.is_ok(), accepted);
+        if accepted {
+            assert_eq!(writer.finish().unwrap(), "<>");
+            assert_eq!(budget.remaining(), 0);
+        } else {
+            assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
+        }
+    }
+}

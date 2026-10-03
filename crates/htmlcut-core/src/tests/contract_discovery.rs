@@ -104,3 +104,65 @@ fn million_element_selector_inspection_fails_closed() {
         ErrorCode::ResourceLimit
     );
 }
+
+#[test]
+fn normalized_spaces_reserve_a_complete_scalar_pair_at_the_preview_boundary() {
+    for (source, expected, complete) in [
+        (
+            format!("  {}   ✓  ", "a".repeat(158)),
+            format!("{} ✓", "a".repeat(158)),
+            true,
+        ),
+        (
+            format!("  {}   ✓  ", "a".repeat(159)),
+            "a".repeat(159),
+            false,
+        ),
+        (
+            format!("{}✓", "é ".repeat(80)),
+            format!("{}é", "é ".repeat(79)),
+            false,
+        ),
+    ] {
+        let sample = prepared(&format!("<p>{source}</p>"))
+            .inspect("p", 1)
+            .unwrap()
+            .samples
+            .remove(0);
+        assert_eq!(sample.text, expected);
+        assert_eq!(sample.text_complete, complete);
+        assert!(sample.text.chars().count() <= 160);
+    }
+}
+
+#[test]
+fn full_supported_names_are_retained_and_the_complete_answer_cap_is_not_truncation() {
+    let names = (0..8)
+        .map(|i| format!("x{i}{}", "a".repeat(254)))
+        .collect::<Vec<_>>();
+    let attributes = names
+        .iter()
+        .map(|name| format!(" {name}='value'"))
+        .collect::<String>();
+    let source = format!("<p{attributes}>{}</p>", "✓".repeat(160));
+    let document = prepared(&source.repeat(10));
+    let one = document.inspect("p", 1).unwrap();
+    assert_eq!(one.count, 10);
+    assert_eq!(one.samples[0].attributes, names);
+    assert!(one.samples[0].attributes_complete);
+    assert_eq!(one.samples[0].text, "✓".repeat(160));
+    assert!(one.samples[0].text_complete);
+    assert_eq!(
+        document.inspect("p", 10).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+    let tag = "x".repeat(128);
+    assert_eq!(
+        prepared(&format!("<{tag}></{tag}>"))
+            .inspect(&tag, 1)
+            .unwrap()
+            .samples[0]
+            .tag,
+        tag
+    );
+}

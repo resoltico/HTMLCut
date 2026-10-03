@@ -131,3 +131,7 @@ fn preview(
     }
     Ok((result, true))
 }
+
+#[cfg(test)]
+#[path = "tests/inspection_accounting.rs"]
+mod accounting_tests;

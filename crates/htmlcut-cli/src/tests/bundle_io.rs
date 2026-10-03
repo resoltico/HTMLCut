@@ -203,3 +203,77 @@ fn footer_reposition_failure_is_acquisition_not_a_malformed_archive() {
     assert_eq!(error.code, ErrorCode::Acquisition);
     assert!(!serde_json::to_string(&error).unwrap().contains("SECRET"));
 }
+
+#[test]
+fn maximum_members_and_full_padding_footer_fit_the_fixed_container_allowance() {
+    assert_eq!(MAX_BUNDLE_BYTES, 58_720_256);
+    assert_eq!(MAX_MANIFEST_BYTES, 5_242_880);
+    let members = [5_242_880_u64, 262_144, 52_428_800];
+    let required: u64 = members
+        .iter()
+        .map(|bytes| 512 + bytes.div_ceil(512) * 512)
+        .sum::<u64>()
+        + MAX_TAIL_BYTES as u64;
+    assert!(required <= MAX_BUNDLE_BYTES as u64);
+    for size in [MAX_BUNDLE_BYTES as u64 - 1, MAX_BUNDLE_BYTES as u64] {
+        // A complete captured extent below/at the allowance is malformed, not over budget.
+        assert_eq!(
+            read_from(Cursor::new(vec![0; 512]), size)
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::InvalidBundle
+        );
+    }
+    assert_eq!(
+        read_from(Cursor::new(vec![0; 512]), MAX_BUNDLE_BYTES as u64 + 1)
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+}
+
+#[test]
+fn a_final_member_with_exact_minimum_footer_is_admitted() {
+    let bytes = valid_bytes();
+    let mut archive = tar::Archive::new(Cursor::new(&bytes));
+    let final_entry = archive.entries().unwrap().last().unwrap().unwrap();
+    let end = final_entry.raw_file_position() + final_entry.header().size().unwrap();
+    let minimal = end.div_ceil(512) * 512 + 1024;
+    let replay = read_from(Cursor::new(&bytes), minimal).unwrap();
+    assert_eq!(
+        replay.document.execute(&replay.plan).unwrap().receipt,
+        replay.expected
+    );
+    let truncated = bytes[..(minimal - 1) as usize].to_vec();
+    assert_eq!(
+        read_from(Cursor::new(truncated), minimal - 1)
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::InvalidBundle
+    );
+}
+
+#[test]
+fn bundle_roundtrip_preserves_the_actual_nondefault_preparation_policy() {
+    let policy = PreparationLimits {
+        max_source_bytes: 1024,
+        max_depth: 64,
+        ..Default::default()
+    };
+    let document = PreparedDocument::new(
+        SourceSnapshot::new("<p>value</p>", Default::default()).unwrap(),
+        policy.clone(),
+    )
+    .unwrap();
+    let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
+    let expected = document.execute(&plan).unwrap();
+    let mut bytes = Vec::new();
+    write(&mut bytes, &document, &plan, &expected.receipt).unwrap();
+    let replay = read_from(Cursor::new(&bytes), bytes.len() as u64).unwrap();
+    assert_eq!(replay.document.preparation_limits(), &policy);
+    assert_eq!(replay.document.execute(&replay.plan).unwrap(), expected);
+    assert_eq!(replay.expected, expected.receipt);
+}

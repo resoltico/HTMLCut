@@ -188,7 +188,7 @@ pub struct Guard {
     pub predicate: Option<Predicate>,
 }
 
-/// Small explicit transforms, performed in declared array order.
+/// Explicit value transforms; a projection permits at most one compatible operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Transform {
@@ -222,7 +222,7 @@ pub struct ExtractionPlan {
     /// Conjunctive original-DOM guards.
     #[serde(default)]
     pub guards: Vec<Guard>,
-    /// Explicit transforms in execution order.
+    /// Zero or one compatible value transform; record roots require an empty array.
     #[serde(default)]
     pub transforms: Vec<Transform>,
     /// Per-operation core limits, independent of adapter policy.

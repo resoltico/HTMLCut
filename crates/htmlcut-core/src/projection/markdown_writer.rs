@@ -108,6 +108,13 @@ impl<'a> MarkdownWriter<'a> {
         }
         Ok(())
     }
+    pub(super) fn fence(&mut self, length: usize) -> Result<(), ExtractionError> {
+        self.prepare()?;
+        for _ in 0..length {
+            self.write("`")?;
+        }
+        Ok(())
+    }
     pub(super) fn literal(&mut self, value: &str) -> Result<(), ExtractionError> {
         self.prepare()?;
         self.write(value)

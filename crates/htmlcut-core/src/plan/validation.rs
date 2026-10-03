@@ -42,11 +42,13 @@ impl ExtractionPlan {
             ));
         }
         self.limits.validate()?;
-        if self.exclude.len() > MAX_CHECKS
-            || self.guards.len() > MAX_CHECKS
-            || self.transforms.len() > 2
-        {
+        if self.exclude.len() > MAX_CHECKS || self.guards.len() > MAX_CHECKS {
             return Err(invalid());
+        }
+        match &self.projection {
+            Projection::Value(value) => validate_transforms(value, &self.transforms)?,
+            _ if !self.transforms.is_empty() => return Err(invalid()),
+            _ => (),
         }
         // Debit remaining materialized-string capacity before serialization can copy
         // caller-owned strings. checked_sub handles both oversize and arithmetic safety.
@@ -80,7 +82,6 @@ impl ExtractionPlan {
             if fields.is_empty()
                 || fields.len() > crate::limits::MAX_FIELDS
                 || !self.exclude.is_empty()
-                || !self.transforms.is_empty()
             {
                 return Err(invalid());
             }
@@ -103,7 +104,8 @@ impl ExtractionPlan {
                     return Err(invalid());
                 }
                 excluded_count += field.exclude.len();
-                validate_value(&field.projection, &field.exclude, &field.transforms)?;
+                validate_value(&field.projection, &field.exclude)?;
+                validate_transforms(&field.projection, &field.transforms)?;
                 match &field.selection {
                     FieldSelection::Single {} | FieldSelection::Optional {} => (),
                     FieldSelection::All { min, max }
@@ -155,7 +157,6 @@ impl ExtractionPlan {
                 if !matches!(self.projection, Projection::Source {})
                     || !self.exclude.is_empty()
                     || !self.guards.is_empty()
-                    || !self.transforms.is_empty()
                 {
                     return Err(invalid());
                 }
@@ -170,7 +171,7 @@ impl ExtractionPlan {
             _ => return Err(invalid()),
         }
         if let Projection::Value(value) = &self.projection {
-            validate_value(value, &self.exclude, &self.transforms)?;
+            validate_value(value, &self.exclude)?;
         }
         for exclusion in &self.exclude {
             pattern(exclusion)?;
@@ -208,11 +209,7 @@ fn field_name(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
-fn validate_value(
-    value: &ValueProjection,
-    excluded: &[String],
-    transforms: &[Transform],
-) -> Result<(), ExtractionError> {
+fn validate_value(value: &ValueProjection, excluded: &[String]) -> Result<(), ExtractionError> {
     if let ValueProjection::Attribute { name } = value {
         attribute(name)?;
         if !excluded.is_empty() {
@@ -222,30 +219,32 @@ fn validate_value(
     for selector in excluded {
         pattern(selector)?;
     }
-    if transforms.len() > 2 {
-        return Err(invalid());
-    }
-    for (index, transform) in transforms.iter().enumerate() {
-        if transforms[..index].contains(transform) {
-            return Err(invalid());
-        }
-        match transform {
-            Transform::NormalizeWhitespace {} if !matches!(value, ValueProjection::DomText {}) => {
-                return Err(invalid());
-            }
-            Transform::ResolveUrls {} => match value {
-                ValueProjection::Markdown {} => (),
-                ValueProjection::Attribute { name }
-                    if matches!(
-                        name.as_str(),
-                        "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
-                    ) => {}
-                _ => return Err(invalid()),
-            },
-            _ => (),
-        }
-    }
     Ok(())
+}
+
+fn validate_transforms(
+    value: &ValueProjection,
+    transforms: &[Transform],
+) -> Result<(), ExtractionError> {
+    match transforms {
+        [] => Ok(()),
+        [Transform::NormalizeWhitespace {}] if matches!(value, ValueProjection::DomText {}) => {
+            Ok(())
+        }
+        [Transform::ResolveUrls {}] => match value {
+            ValueProjection::Markdown {} => Ok(()),
+            ValueProjection::Attribute { name }
+                if matches!(
+                    name.as_str(),
+                    "href" | "src" | "action" | "poster" | "cite" | "formaction" | "data"
+                ) =>
+            {
+                Ok(())
+            }
+            _ => Err(invalid()),
+        },
+        _ => Err(invalid()),
+    }
 }
 
 pub(crate) fn validate_flags(flags: &str) -> Result<(), ExtractionError> {

@@ -140,3 +140,17 @@ fn bare_output_names_resolve_in_the_actual_working_directory() {
             .join(name),
     );
 }
+
+#[test]
+fn complete_payload_caps_each_reserve_exactly_one_framing_lf() {
+    assert_eq!(
+        MAX_OUTPUT_BYTES.checked_sub(htmlcut_core::MAX_DATA_BYTES),
+        Some(1)
+    );
+    assert_eq!(
+        MAX_RECEIPT_BYTES.checked_sub(htmlcut_core::MAX_RECEIPT_BYTES),
+        Some(1)
+    );
+    assert_eq!(htmlcut_core::MAX_DATA_BYTES, 67_108_864);
+    assert_eq!(htmlcut_core::MAX_RECEIPT_BYTES, 4_194_304);
+}

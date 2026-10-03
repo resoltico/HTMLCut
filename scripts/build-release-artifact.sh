@@ -86,7 +86,7 @@ create_release_archive() {
 
     case "${archive_output_extension}" in
         tar.gz)
-            tar -C "${source_parent_path}" -czf "${archive_output_path}" "${package_root_name}"
+            COPYFILE_DISABLE=1 tar -C "${source_parent_path}" -czf "${archive_output_path}" "${package_root_name}"
             ;;
         zip)
             if command -v zip >/dev/null 2>&1; then

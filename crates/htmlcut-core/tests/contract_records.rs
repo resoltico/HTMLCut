@@ -348,3 +348,163 @@ fn record_field_transform_lists_cannot_exceed_the_closed_vocabulary() {
         ErrorCode::InvalidPlan
     );
 }
+
+#[test]
+fn field_payload_bytes_share_one_aggregate_allowance_at_the_exact_boundary() {
+    let source = document("<article><b>AB</b><i>CD</i></article>");
+    for (maximum, accepted) in [(3, false), (4, true), (5, true)] {
+        let mut request = plan(json!([{"name":"a","selector":"b"},{"name":"b","selector":"i"}]));
+        request["limits"] = json!({"max_total_value_bytes":maximum});
+        let result = source.execute(&compile(request));
+        if accepted {
+            assert_eq!(
+                serde_json::to_value(result.unwrap().data).unwrap(),
+                json!([{"a":"AB","b":"CD"}])
+            );
+        } else {
+            let error = result.unwrap_err();
+            assert_eq!(error.code, ErrorCode::ResourceLimit);
+            assert_eq!((error.row_index, error.field_index), (Some(1), Some(2)));
+        }
+    }
+}
+
+#[test]
+fn record_cells_and_scalar_schema_role_have_exact_declared_contracts() {
+    let limits = ExecutionLimits {
+        max_cells: 1_000_000,
+        ..Default::default()
+    };
+    limits.validate().unwrap();
+    assert_eq!(
+        <ExtractionData as schemars::JsonSchema>::schema_name(),
+        "ExtractionData"
+    );
+    let schema = schemars::schema_for!(ExtractionData);
+    assert_eq!(schema.as_value()["title"], "ExtractionData");
+    assert_eq!(MAX_DATA_BYTES, 67_108_864);
+    assert_eq!(MAX_RECEIPT_BYTES, 4_194_304);
+}
+
+#[test]
+fn document_and_scalar_guard_failures_do_not_claim_a_record_row() {
+    for records in [false, true] {
+        let mut request = plan(json!([{"name":"text","selector":"b"}]));
+        if !records {
+            request["projection"] = json!({"kind":"dom_text"});
+        }
+        request["guards"] = json!([{"scope":"document","selector":"#label","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"Expected"}}]);
+        let error = document("<p id='label'>Wrong</p><article><b>Text</b></article>")
+            .execute(&compile(request))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::GuardFailed);
+        assert_eq!(error.row_index, None);
+    }
+    let mut request = plan(json!([{"name":"text","selector":"b"}]));
+    request["projection"] = json!({"kind":"dom_text"});
+    request["guards"] = json!([{"scope":"selected","selector":"b","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"Expected"}}]);
+    assert_eq!(
+        document("<article><b>Wrong</b></article>")
+            .execute(&compile(request))
+            .unwrap_err()
+            .row_index,
+        None
+    );
+}
+
+#[test]
+fn preparation_policy_getter_preserves_the_actual_nondefault_document_configuration() {
+    let limits = PreparationLimits {
+        max_source_bytes: 1024,
+        max_depth: 64,
+        ..Default::default()
+    };
+    let source = PreparedDocument::new(
+        SourceSnapshot::new("<p>Text</p>", Default::default()).unwrap(),
+        limits.clone(),
+    )
+    .unwrap();
+    assert_eq!(source.preparation_limits(), &limits);
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap())
+            .unwrap()
+            .data
+            .as_values()
+            .unwrap(),
+        ["Text"]
+    );
+}
+
+#[test]
+fn exactly_thirty_two_exclusions_and_guards_are_valid_contracts() {
+    let exclusions = (0..16).map(|i| format!(".omit_{i}")).collect::<Vec<_>>();
+    let request = plan(
+        json!([{"name":"a","selector":"b","exclude":exclusions},{"name":"b","selector":"i","exclude":exclusions}]),
+    );
+    let source = document("<p id='label'>Expected</p><article><b>AB</b><i>CD</i></article>");
+    assert_eq!(
+        serde_json::to_value(source.execute(&compile(request)).unwrap().data).unwrap(),
+        json!([{"a":"AB","b":"CD"}])
+    );
+    let mut flat = ExtractionPlan::css("b").unwrap();
+    flat.exclude = (0..32).map(|i| format!(".omit_{i}")).collect();
+    flat.guards = vec![
+        Guard {
+            scope: GuardScope::Document,
+            selector: "#label".into(),
+            min: 1,
+            max: Some(1),
+            read: GuardRead::DomText {},
+            predicate: Some(Predicate::Exact {
+                value: "Expected".into()
+            })
+        };
+        32
+    ];
+    assert_eq!(
+        source
+            .execute(&CompiledPlan::compile(&flat).unwrap())
+            .unwrap()
+            .data
+            .as_values()
+            .unwrap(),
+        ["AB"]
+    );
+}
+
+#[test]
+fn regex_program_and_dfa_allowances_are_divided_across_every_compiled_regex() {
+    for (count, repetitions, accepted) in [(1, 120_000, true), (32, 6_000, false)] {
+        let pattern = format!("a{{{repetitions}}}|x");
+        let mut request = ExtractionPlan::css("p").unwrap();
+        request.guards = vec![
+            Guard {
+                scope: GuardScope::Document,
+                selector: "p".into(),
+                min: 1,
+                max: Some(1),
+                read: GuardRead::DomText {},
+                predicate: Some(Predicate::Regex {
+                    pattern,
+                    flags: String::new()
+                }),
+            };
+            count
+        ];
+        let compiled = CompiledPlan::compile(&request);
+        if accepted {
+            assert_eq!(
+                document("<p>x</p>")
+                    .execute(&compiled.unwrap())
+                    .unwrap()
+                    .data
+                    .as_values()
+                    .unwrap(),
+                ["x"]
+            );
+        } else {
+            assert_eq!(compiled.err().unwrap().code, ErrorCode::ResourceLimit);
+        }
+    }
+}

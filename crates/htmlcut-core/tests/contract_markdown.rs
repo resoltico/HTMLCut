@@ -4,6 +4,10 @@ use htmlcut_core::*;
 use pulldown_cmark::{Event, Parser, Tag};
 
 fn extract(html: &str, css: &str) -> String {
+    extract_excluding(html, css, &[])
+}
+
+fn extract_excluding(html: &str, css: &str, excluded: &[&str]) -> String {
     let document = PreparedDocument::new(
         SourceSnapshot::new(html, SnapshotMetadata::default()).unwrap(),
         PreparationLimits::default(),
@@ -11,6 +15,7 @@ fn extract(html: &str, css: &str) -> String {
     .unwrap();
     let mut plan = ExtractionPlan::css(css).unwrap();
     plan.projection = Projection::Value(ValueProjection::Markdown {});
+    plan.exclude = excluded.iter().map(|selector| (*selector).into()).collect();
     match document
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap()
@@ -343,5 +348,126 @@ fn selected_code_fragment_cannot_hide_an_unrepresentable_link_annotation() {
             .unwrap_err()
             .code,
         ErrorCode::InvalidRepresentation
+    );
+}
+
+#[test]
+fn omitted_nested_blocks_do_not_change_anchor_kind_or_swallow_following_blocks() {
+    for (source, expected) in [
+        (
+            "<a href='next'><div class='omit'><p>DROP</p><section>DROP</section></div>Label</a>",
+            "[Label](<next>)",
+        ),
+        (
+            "<a href='next'><div class='omit'><p>DROP</p></div><template><section>DROP</section></template><div>Body</div></a>",
+            "Body\n\n[link](<next>)",
+        ),
+        (
+            "<a href='next'><template><div>DROP</div></template><div class='omit'><p>DROP</p></div>Label</a>",
+            "[Label](<next>)",
+        ),
+    ] {
+        let value = extract_excluding(source, "a", &[".omit"]);
+        assert_eq!(value, expected);
+        assert!(!value.contains("DROP"));
+        assert_eq!(
+            Parser::new(&value)
+                .filter(|event| matches!(event, Event::Start(Tag::Link { .. })))
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn literal_fence_runs_cross_filtered_descendants_and_nested_code_closes_once() {
+    for source in [
+        "<pre>``<span class='omit'><b>DROP</b></span>``</pre>",
+        "<pre>``<template><div>DROP</div></template>``</pre>",
+        "<pre><code>``</code><span>``</span></pre>",
+    ] {
+        let value = extract_excluding(source, "pre", &[".omit"]);
+        assert_eq!(value, "`````\n````\n`````");
+        assert_eq!(
+            Parser::new(&value)
+                .filter_map(|event| match event {
+                    Event::Text(text) => Some(text.to_string()),
+                    _ => None,
+                })
+                .collect::<String>(),
+            "````\n"
+        );
+    }
+    assert_eq!(
+        extract("<pre><pre>A</pre>B</pre><p>After</p>", "body"),
+        "```\nAB\n```\n\nAfter"
+    );
+}
+
+#[test]
+fn generated_header_annotations_keep_emphasis_outside_link_and_image_labels() {
+    let value = extract(
+        "<table><tr><th><pre><a href='dest'>Code</a><img src='img' alt='Photo'></pre>After</th></tr></table>",
+        "table",
+    );
+    let events = Parser::new(&value).collect::<Vec<_>>();
+    let labels = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Text(text) => Some(text.as_ref()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["Code\n", "Code", "Photo", "After"], "{value:?}");
+    assert!(!labels.iter().any(|label| label.contains("**")));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Start(Tag::Strong)))
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, Event::Start(Tag::Link { .. })))
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, Event::Start(Tag::Image { .. })))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn cell_text_after_code_annotations_has_its_own_paragraph() {
+    let value = extract(
+        "<table><tr><td><pre><a href='dest'>Code</a></pre>After</td><td>Z</td></tr></table>",
+        "table",
+    );
+    assert_eq!(
+        value,
+        "-\n  - ```\n    Code\n    ```\n    \n    - [Code](<dest>)\n    \n    After\n  - Z"
+    );
+    assert!(
+        Parser::new(&value)
+            .any(|event| matches!(event, Event::Text(text) if text.as_ref() == "After"))
+    );
+}
+
+#[test]
+fn empty_image_labels_do_not_join_following_blocks_and_lists_open_block_boundaries() {
+    assert_eq!(
+        extract("<article><img src='x'><p>After</p></article>", "article"),
+        "![](<x>)\n\nAfter"
+    );
+    assert_eq!(
+        extract(
+            "<article>Before<ul><li>One</li></ul>After<ol><li>Two</li></ol>Tail</article>",
+            "article"
+        ),
+        "Before\n\n- One\n\nAfter\n\n- 1\\. Two\n\nTail"
     );
 }

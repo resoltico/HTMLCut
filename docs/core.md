@@ -66,7 +66,7 @@ Preformatted content uses a fence longer than conflicting literal backtick runs.
 
 ## Bounds and identities
 
-Preparation defaults: 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048, and 10,000,000 parser work units. Execution defaults: shared work 1,000,000, 100,000 candidates per pass, 10,000 selected roots, 100,000 cells, 8 MiB per value and 64 MiB aggregate leaf payload. A field slot costs one cell; all-valued strings each cost another; a flat string costs one. Empty/null fields cannot evade it.
+Preparation defaults: 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048, and 10,000,000 parser work units. Each scalar/field accepts at most one compatible transform; unsupported combinations and duplicates are rejected. Execution defaults: shared work 1,000,000, 100,000 candidates per pass, 10,000 selected roots, 100,000 cells, 8 MiB per value and 64 MiB aggregate leaf payload. A field slot costs one cell; all-valued strings each cost another; a flat string costs one. Empty/null fields cannot evade it.
 
 Plans are capped at 256 KiB, patterns at 8 KiB, syntax depth at 64, fields at 64 and aggregate guards/exclusion selectors at 32 each. All configured regex program/DFA allowances share 8 MiB, divided equally across the known regex count. Complete data JSON, including escaping/keys, is capped at 64 MiB excluding its delivery LF; receipts at 4 MiB. Exhaustion is failure, never truncated successful data. These are logical bounds, not exact allocator/RSS or OS isolation guarantees.
 

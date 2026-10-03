@@ -5,12 +5,7 @@ use super::*;
 use super::{context::ListContext, markdown_writer::MarkdownWriter};
 
 use super::context::html;
-pub(super) fn hidden_payload(element: &scraper::node::Element) -> bool {
-    let namespace: &str = element.name.ns.as_ref();
-    (html(element) && matches!(element.name(), "script" | "style" | "template"))
-        || (namespace == "http://www.w3.org/2000/svg"
-            && matches!(element.name(), "script" | "style"))
-}
+use super::markdown_traversal::{omitted_payload, payload_edges};
 fn block(name: &str) -> bool {
     matches!(
         name,
@@ -37,44 +32,28 @@ fn complex_link(
     excluded: &HashSet<NodeId>,
     budget: &SelectorWorkBudget,
 ) -> Result<bool, ExtractionError> {
-    let mut skipped = 0;
-    for edge in root.traverse() {
-        crate::execution::charge(budget, 1)?;
-        match edge {
-            Edge::Open(node) => {
-                if skipped > 0
-                    || excluded.contains(&node.id())
-                    || node.value().as_element().is_some_and(hidden_payload)
-                {
-                    skipped += 1;
-                    continue;
-                }
-                if node.id() == root.id() {
-                    continue;
-                }
-                if let Some(e) = node.value().as_element()
-                    && html(e)
-                    && (block(e.name())
-                        || matches!(
-                            e.name(),
-                            "pre"
-                                | "table"
-                                | "ul"
-                                | "ol"
-                                | "h1"
-                                | "h2"
-                                | "h3"
-                                | "h4"
-                                | "h5"
-                                | "h6"
-                                | "blockquote"
-                        ))
-                {
-                    return Ok(true);
-                }
-            }
-            Edge::Close(_) if skipped > 0 => skipped -= 1,
-            _ => (),
+    // The caller supplies an HTML anchor; its own tag is never a block role.
+    for edge in payload_edges(root, excluded, budget) {
+        if let Edge::Open(node) = edge?
+            && let Some(e) = node.value().as_element()
+            && html(e)
+            && (block(e.name())
+                || matches!(
+                    e.name(),
+                    "pre"
+                        | "table"
+                        | "ul"
+                        | "ol"
+                        | "h1"
+                        | "h2"
+                        | "h3"
+                        | "h4"
+                        | "h5"
+                        | "h6"
+                        | "blockquote"
+                ))
+        {
+            return Ok(true);
         }
     }
     Ok(false)
@@ -87,7 +66,7 @@ struct Frame<'a> {
     link: bool,
     complex: bool,
     header: bool,
-    pre: bool,
+    closes_code: bool,
 }
 
 pub(super) fn render(
@@ -102,38 +81,30 @@ pub(super) fn render(
     super::record_projection(2);
     let mut output = MarkdownWriter::new(maximum, budget);
     let mut frames = Vec::new();
-    let mut skipped = 0;
-    let mut pre = 0;
-    let mut fence = String::new();
+    let mut code_open = false;
+    let mut fence = 3;
     let mut code = CodeReferences::default();
     let mut lists = ListContext::default();
     let inherited = context::inherited_pre(root, budget)?
         && !excluded.contains(&root.id())
-        && !hidden_payload(root.value());
+        && !omitted_payload(root.value());
     if inherited {
-        fence = pre_fence(root, excluded, maximum, budget)?;
-        output.syntax(&fence)?;
+        fence = fence_length(root, excluded, budget)?;
+        output.fence(fence)?;
         output.literal("\n")?;
-        pre = 1;
+        code_open = true;
     }
     if !inherited && html(root.value()) && matches!(root.value().name(), "td" | "th") {
         output.syntax("-")?;
         output.prefix.push_str("  ");
         output.boundary(1)?;
     }
-    for edge in root.traverse() {
-        crate::execution::charge(budget, 1)?;
+    for edge in payload_edges(root, excluded, budget) {
+        let edge = edge?;
         match edge {
             Edge::Open(node) => {
-                if skipped > 0
-                    || excluded.contains(&node.id())
-                    || node.value().as_element().is_some_and(hidden_payload)
-                {
-                    skipped += 1;
-                    continue;
-                }
                 if let Node::Text(text) = node.value() {
-                    if pre > 0 {
+                    if code_open {
                         output.literal(&text.text)?;
                     } else {
                         output.text(&text.text)?;
@@ -150,7 +121,7 @@ pub(super) fn render(
                 if html(e) {
                     frame.name = e.name();
                 }
-                if pre > 0 {
+                if code_open {
                     if frame.name == "a" && e.attr("href").is_some() {
                         code.links.push(ElementRef::wrap(node).expect("element"));
                     }
@@ -158,10 +129,6 @@ pub(super) fn render(
                         code.images.push(ElementRef::wrap(node).expect("element"));
                     }
                     // Formatting within code is literal text, not Markdown syntax.
-                    if frame.name == "pre" {
-                        pre += 1;
-                        frame.pre = true;
-                    }
                     frames.push(frame);
                     continue;
                 }
@@ -211,16 +178,15 @@ pub(super) fn render(
                     "br" => output.boundary(1)?,
                     "pre" => {
                         output.block_start(2)?;
-                        fence = pre_fence(
+                        fence = fence_length(
                             ElementRef::wrap(node).expect("element"),
                             excluded,
-                            maximum,
                             budget,
                         )?;
-                        output.syntax(&fence)?;
+                        output.fence(fence)?;
                         output.literal("\n")?;
-                        pre = 1;
-                        frame.pre = true;
+                        code_open = true;
+                        frame.closes_code = true;
                     }
                     "a" if e.attr("href").is_some() => {
                         frame.link = true;
@@ -257,31 +223,25 @@ pub(super) fn render(
                 frames.push(frame);
             }
             Edge::Close(node) => {
-                if skipped > 0 {
-                    skipped -= 1;
-                    continue;
-                }
                 let Some(e) = node.value().as_element() else {
                     continue;
                 };
                 let frame = frames.pop().expect("each included element has a frame");
-                if frame.pre {
-                    pre -= 1;
-                    if pre == 0 {
-                        output.literal("\n")?;
-                        output.syntax(&fence)?;
-                        output.boundary(2)?;
-                        annotations(
-                            &mut output,
-                            &mut code,
-                            excluded,
-                            resolve,
-                            base,
-                            maximum,
-                            budget,
-                        )?;
-                    }
-                } else if pre == 0 {
+                if frame.closes_code {
+                    code_open = false;
+                    output.literal("\n")?;
+                    output.fence(fence)?;
+                    output.boundary(2)?;
+                    annotations(
+                        &mut output,
+                        &mut code,
+                        excluded,
+                        resolve,
+                        base,
+                        maximum,
+                        budget,
+                    )?;
+                } else if !code_open {
                     if frame.link {
                         if frame.complex {
                             output.boundary(2)?;
@@ -328,7 +288,7 @@ pub(super) fn render(
     }
     if inherited {
         output.literal("\n")?;
-        output.syntax(&fence)?;
+        output.fence(fence)?;
         output.boundary(2)?;
         annotations(
             &mut output,
@@ -343,45 +303,27 @@ pub(super) fn render(
     output.finish()
 }
 
-fn pre_fence(
+fn fence_length(
     root: ElementRef<'_>,
     excluded: &HashSet<NodeId>,
-    maximum: usize,
     budget: &SelectorWorkBudget,
-) -> Result<String, ExtractionError> {
+) -> Result<usize, ExtractionError> {
     let mut longest = 0;
     let mut run = 0;
-    let mut skipped = 0;
-    for edge in root.traverse() {
-        crate::execution::charge(budget, 1)?;
-        match edge {
-            Edge::Open(node) => {
-                if skipped > 0
-                    || excluded.contains(&node.id())
-                    || node.value().as_element().is_some_and(hidden_payload)
-                {
-                    skipped += 1;
-                    continue;
-                }
-                if let Node::Text(text) = node.value() {
-                    crate::execution::charge(budget, text.text.len().div_ceil(64))?;
-                    for c in text.text.chars() {
-                        if c == '`' {
-                            run += 1;
-                            longest = longest.max(run);
-                        } else {
-                            run = 0;
-                        }
-                    }
+    for edge in payload_edges(root, excluded, budget) {
+        if let Edge::Open(node) = edge?
+            && let Node::Text(text) = node.value()
+        {
+            crate::execution::charge(budget, text.text.len().div_ceil(64))?;
+            for c in text.text.chars() {
+                if c == '`' {
+                    run += 1;
+                    longest = longest.max(run);
+                } else {
+                    run = 0;
                 }
             }
-            Edge::Close(_) if skipped > 0 => skipped -= 1,
-            _ => (),
         }
     }
-    let length = 3.max(longest + 1);
-    if length > maximum {
-        return Err(ExtractionError::limit("projection"));
-    }
-    Ok("`".repeat(length))
+    Ok(3.max(longest + 1))
 }

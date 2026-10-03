@@ -460,3 +460,52 @@ fn complete_large_range_receipt_replays_above_the_plan_document_byte_cap() {
     );
     assert_eq!(replay.stdout, original.stdout);
 }
+
+#[test]
+fn complete_admitted_member_caps_and_each_last_padding_byte_are_checked() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let valid = generated(root.path());
+    let base = members(&valid);
+    let target = root.path().join("boundary.htmlcut.tar");
+    for (index, cap) in [(0, 5_242_880), (1, 262_144)] {
+        for size in [cap - 1, cap] {
+            let mut entries = base.clone();
+            entries[index].1.resize(size, b' ');
+            store(&target, &entries);
+            let result = invoke(&["run", target.to_str().unwrap()], b"");
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(result.stdout, b"[\"180\"]\n");
+        }
+    }
+    let bytes = std::fs::read(valid).unwrap();
+    let mut archive = tar::Archive::new(bytes.as_slice());
+    let positions = archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            let end = entry.raw_file_position() + entry.header().size().unwrap();
+            let next = end.div_ceil(512) * 512;
+            assert!(end < next);
+            (end as usize, next as usize - 1)
+        })
+        .collect::<Vec<_>>();
+    for (start, last) in positions {
+        for position in [start, (start + last) / 2, last] {
+            let mut damaged = bytes.clone();
+            damaged[position] = 1;
+            std::fs::write(&target, damaged).unwrap();
+            fails(&target, 2);
+        }
+    }
+    // The filesystem-facing admission uses the same inclusive complete-container ceiling.
+    for size in [58_720_255, 58_720_256] {
+        let file = std::fs::File::create(&target).unwrap();
+        file.set_len(size).unwrap();
+        fails(&target, 2);
+    }
+}

@@ -18,13 +18,8 @@ use serde::{Deserialize, Serialize};
 pub(crate) const MAX_MANIFEST_BYTES: usize = htmlcut_core::MAX_RECEIPT_BYTES + 1024 * 1024;
 const MAX_TAIL_BYTES: usize = 10_240;
 const MIB: usize = 1024 * 1024;
-pub(crate) const MAX_BUNDLE_BYTES: usize = (htmlcut_core::MAX_SOURCE_BYTES
-    + MAX_MANIFEST_BYTES
-    + htmlcut_core::MAX_PLAN_BYTES
-    + MAX_TAIL_BYTES
-    + 6 * 512)
-    .div_ceil(MIB)
-    * MIB;
+// Fixed complete-container policy; member/padding admission reserves its mandatory footer.
+pub(crate) const MAX_BUNDLE_BYTES: usize = 56 * MIB;
 const MEMBERS: [&str; 3] = ["manifest.json", "plan.json", "source.html"];
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -180,7 +175,9 @@ pub(crate) fn read_from<R: Read + Seek>(reader: R, size: u64) -> Result<Replay, 
         .seek(SeekFrom::Start(offset))
         .map_err(crate::input::io_failure)?;
     let tail = crate::input::read_bounded(&mut reader, MAX_TAIL_BYTES)?;
-    if tail.len() < 1024 || !tail.len().is_multiple_of(512) || tail.iter().any(|b| *b != 0) {
+    // Admission reserves two footer blocks; ObservedReader rejects EOF before the captured
+    // extent, so a successfully read tail already contains those mandatory bytes.
+    if !tail.len().is_multiple_of(512) || tail.iter().any(|b| *b != 0) {
         return Err(invalid());
     }
     let source = String::from_utf8(source).map_err(|_| invalid())?;
@@ -225,13 +222,13 @@ fn member<R: Read>(
     if bytes > maximum as u64 {
         return Err(crate::input::limit("bundle"));
     }
-    let start = entry.raw_file_position();
-    if start > size || bytes > size - start {
+    // Each size is bounded above before this arithmetic; the three-entry inventory keeps
+    // positions below 56 MiB. Reserve the complete minimum footer before allocating a member.
+    let end = entry.raw_file_position() + bytes;
+    let next = end.div_ceil(512) * 512;
+    if next + 1024 > size {
         return Err(invalid());
     }
-    // The preceding comparison bounds both arithmetic operands by the 56 MiB container cap.
-    let end = start + bytes;
-    let next = end.div_ceil(512) * 512;
     let mut value = vec![0; bytes as usize];
     entry
         .read_exact(&mut value)

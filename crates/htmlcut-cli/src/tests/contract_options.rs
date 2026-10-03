@@ -17,6 +17,8 @@ fn invalid_options_and_retired_vocabulary_fail_before_consuming_source() {
         vec!["--css", "p", "--min", "0"],
         vec!["--css", "p", "--max", "1"],
         vec!["--css", "p", "--match", "nth", "--min", "0"],
+        vec!["--css", "p", "--match", "nth", "--index", "1", "--min", "0"],
+        vec!["--css", "p", "--match", "nth", "--index", "1", "--max", "1"],
         vec!["--css", "p", "--match", "nth", "--max", "1"],
         vec!["--css", "p", "--match", "all", "--index", "1"],
         vec!["--css", "p", "--projection", "attribute"],
