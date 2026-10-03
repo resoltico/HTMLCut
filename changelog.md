@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [17.0.0] - 2026-10-03
+
 ### Changed
 
 - **Breaking contracts:** extraction plans, receipts and errors use wire version 3 and semantics 3. The Rust API represents scalar values and records explicitly, and shares `ValueProjection` between scalar extraction and fields. Define current plans and consumers; obsolete versions, variants and flags are rejected without compatibility or migration layers.

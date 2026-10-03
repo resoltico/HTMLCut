@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import platform
+import sys
 import shutil
 import tempfile
 import unittest
@@ -30,6 +31,8 @@ class NativeEvidenceTest(unittest.TestCase):
             for bad_package, bad_version, bad_source in [(package.with_name("other.tar.gz"), "15.0.0", source), (package, "14.0.0", source), (package, "15.0.0", "b" * 40)]:
                 with self.assertRaises(ValueError): module.validate_binding(bad_package, "aarch64-apple-darwin", bad_version, bad_source, "bash")
             with patch.object(module.platform, "machine", return_value="x86_64"):
+                with self.assertRaises(ValueError): module.validate_binding(package, "aarch64-apple-darwin", "15.0.0", source, "bash")
+            with patch.object(module.platform, "system", return_value="Linux"):
                 with self.assertRaises(ValueError): module.validate_binding(package, "aarch64-apple-darwin", "15.0.0", source, "bash")
 
     def test_digest_rejects_empty_and_oversized_packages_before_reading(self):
@@ -66,7 +69,10 @@ class NativeEvidenceTest(unittest.TestCase):
             package = root / f"dist/htmlcut-15.0.0-{target}.{'zip' if platform.system() == 'Windows' else 'tar.gz'}"
             package.write_bytes(b"fixture bytes")
             evidence = root / "dist/evidence.json"
-            result = subprocess.run(["python3", str(SCRIPT), "--package", str(package),
+            # This test owns orchestration after binding, not host admission. Keep the real
+            # failing smoke subprocess and filesystem; binding rejection has separate controls.
+            harness = "import importlib.util,sys; spec=importlib.util.spec_from_file_location('evidence',sys.argv[1]); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); m.validate_binding=lambda *args:None; sys.argv=sys.argv[1:]; m.main()"
+            result = subprocess.run([sys.executable, "-c", harness, str(SCRIPT), "--package", str(package),
                                      "--version", "15.0.0", "--target", target,
                                      "--source-sha", subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
                                      "--output", str(evidence), "--smoke-log", str(root / "dist/smoke.log")],
