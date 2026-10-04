@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Require successful main CI and complete mutation verification for the tagged source."""
 import argparse
 import json

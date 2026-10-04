@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Private argument grammar for the single binary product.
 
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use htmlcut_core::{Boundary, ExtractionPlan, Projection, Selection, Strategy, ValueProjection};
+use htmlcut_core::{
+    Boundary, ExtractionPlan, FieldSelection, Projection, RecordField, Selection, Strategy,
+    Transform, ValueProjection,
+};
 
 use crate::input::{MAX_CONFIG_BYTES, options, read_file};
 
@@ -72,16 +76,6 @@ pub(crate) struct Output {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-#[value(rename_all = "snake_case")]
-pub(crate) enum ProjectionArg {
-    DomText,
-    Markdown,
-    InnerHtml,
-    OuterHtml,
-    Source,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
 pub(crate) enum MatchArg {
     Single,
     All,
@@ -94,14 +88,20 @@ pub(crate) struct Extract {
     pub(crate) source: SourceOptions,
     #[command(flatten)]
     pub(crate) output: Output,
-    #[arg(long, conflicts_with_all = ["css", "projection", "attribute", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
+    #[arg(long, conflicts_with_all = ["css", "read", "fields", "following_siblings", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
     pub(crate) plan: Option<PathBuf>,
     #[arg(long, conflicts_with = "start")]
     pub(crate) css: Option<String>,
-    #[arg(long)]
-    pub(crate) projection: Option<ProjectionArg>,
-    #[arg(long)]
-    pub(crate) attribute: Option<String>,
+    /// dom_text, normalized_text, markdown, resolved_markdown, inner_html,
+    /// outer_html, attribute:NAME, resolved_attribute:NAME or source.
+    #[arg(long, conflicts_with = "fields")]
+    pub(crate) read: Option<Reading>,
+    /// Named single-valued fields: NAME CSS READ, repeated in declaration order.
+    #[arg(long = "field", num_args = 3, value_names = ["NAME", "CSS", "READ"], action = clap::ArgAction::Append, conflicts_with_all = ["start", "read"])]
+    pub(crate) fields: Vec<String>,
+    /// Include exactly this many following element-sibling subtrees per record.
+    #[arg(long, requires = "fields")]
+    pub(crate) following_siblings: Option<u32>,
     #[arg(long = "match", default_value = "single")]
     pub(crate) match_mode: MatchArg,
     #[arg(long)]
@@ -178,26 +178,42 @@ impl Extract {
                 ));
             }
         };
-        plan.projection = if let Some(name) = &self.attribute {
-            if self.projection.is_some() || self.start.is_some() {
-                return Err(options(
-                    "Attribute selection conflicts with an explicit projection or source boundaries.",
-                ));
+        if self.fields.is_empty() {
+            if let Some(reading) = &self.read {
+                plan.projection = reading.projection.clone();
+                plan.transforms = reading.transforms.clone();
+            } else if self.start.is_some() {
+                plan.projection = Projection::Source {};
             }
-            Projection::Value(ValueProjection::Attribute { name: name.clone() })
         } else {
-            match self.projection.unwrap_or(if self.start.is_some() {
-                ProjectionArg::Source
-            } else {
-                ProjectionArg::DomText
-            }) {
-                ProjectionArg::DomText => Projection::Value(ValueProjection::DomText {}),
-                ProjectionArg::Markdown => Projection::Value(ValueProjection::Markdown {}),
-                ProjectionArg::InnerHtml => Projection::Value(ValueProjection::InnerHtml {}),
-                ProjectionArg::OuterHtml => Projection::Value(ValueProjection::OuterHtml {}),
-                ProjectionArg::Source => Projection::Source {},
+            if self.fields.len() > 3 * htmlcut_core::MAX_RECORD_FIELDS {
+                return Err(options("The field declaration count exceeds its limit."));
             }
-        };
+            let fields = self
+                .fields
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|field| {
+                    let reading = Reading::parse(&field[2])?;
+                    let Projection::Value(projection) = reading.projection else {
+                        return Err(options("Record fields require a DOM reading."));
+                    };
+                    Ok(RecordField {
+                        name: field[0].clone(),
+                        selector: field[1].clone(),
+                        projection,
+                        selection: FieldSelection::Single {},
+                        exclude: vec![],
+                        transforms: reading.transforms,
+                    })
+                })
+                .collect::<Result<Vec<_>, htmlcut_core::ExtractionError>>()?;
+            plan.projection = Projection::Records {
+                fields,
+                following_siblings: self.following_siblings.unwrap_or(0),
+            };
+        }
         plan.validate()?;
         Ok(plan)
     }
@@ -220,4 +236,59 @@ pub(crate) struct Inspect {
     /// Number of samples; complete matching is still required.
     #[arg(long, default_value = "3")]
     pub(crate) samples: u32,
+}
+
+#[derive(Clone)]
+pub(crate) struct Reading {
+    pub(crate) projection: Projection,
+    pub(crate) transforms: Vec<Transform>,
+}
+
+impl std::str::FromStr for Reading {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value).map_err(|_| "Reading is outside the declared vocabulary.".into())
+    }
+}
+
+impl Reading {
+    pub(crate) fn parse(value: &str) -> Result<Self, htmlcut_core::ExtractionError> {
+        let (projection, transform) = match value {
+            "source" => {
+                return Ok(Self {
+                    projection: Projection::Source {},
+                    transforms: vec![],
+                });
+            }
+            "dom_text" => (ValueProjection::DomText {}, None),
+            "normalized_text" => (
+                ValueProjection::DomText {},
+                Some(Transform::NormalizeWhitespace {}),
+            ),
+            "markdown" => (ValueProjection::Markdown {}, None),
+            "resolved_markdown" => (
+                ValueProjection::Markdown {},
+                Some(Transform::ResolveUrls {}),
+            ),
+            "inner_html" => (ValueProjection::InnerHtml {}, None),
+            "outer_html" => (ValueProjection::OuterHtml {}, None),
+            _ => {
+                if let Some(name) = value.strip_prefix("attribute:") {
+                    (ValueProjection::Attribute { name: name.into() }, None)
+                } else if let Some(name) = value.strip_prefix("resolved_attribute:") {
+                    (
+                        ValueProjection::Attribute { name: name.into() },
+                        Some(Transform::ResolveUrls {}),
+                    )
+                } else {
+                    return Err(options("Reading is outside the declared vocabulary."));
+                }
+            }
+        };
+        Ok(Self {
+            projection: Projection::Value(projection),
+            transforms: transform.into_iter().collect(),
+        })
+    }
 }

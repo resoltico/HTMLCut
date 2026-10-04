@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use crate::model::{
     CommandArtifactLayout, CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv,
     MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME, MiriPreflightFailure,

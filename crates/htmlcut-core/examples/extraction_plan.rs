@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Round-trip a closed plan and print its fully materialized defaults.
 use htmlcut_core::{CompiledPlan, ExtractionPlan, canonical_json};
 

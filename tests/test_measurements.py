@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Operational measurements reject wrong answers and ambiguous/untyped RSS records."""
 import json
 from pathlib import Path

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Behavioral evidence for incremental command-stream retention.
 
 use std::fs;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Actual regular-path replacement at the kernel-open boundary.
 use super::*;
 

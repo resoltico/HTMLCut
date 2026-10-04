@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Bootstrap the pinned Rust contributor tooling inside the committed devcontainer.
 
 set -euo pipefail

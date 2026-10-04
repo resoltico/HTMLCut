@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Extract exactly one changelog section from an immutable Git source revision."""
 import argparse
 import re

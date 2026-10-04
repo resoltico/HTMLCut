@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use htmlcut_tempdir::tempdir;
 use std::collections::BTreeMap;

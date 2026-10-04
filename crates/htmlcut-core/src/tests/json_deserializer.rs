@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use serde::de::value::{BytesDeserializer, Error as ValueError, F64Deserializer};
 

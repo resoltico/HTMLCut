@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Narrow test-only adapters for private hygiene operations.
 
 use std::path::Path;

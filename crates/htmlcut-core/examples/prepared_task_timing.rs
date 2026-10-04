@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Caller-owned in-process timing over the same immutable title-extraction task as the Python comparison.
 use htmlcut_core::{
     CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Projection, Selection,

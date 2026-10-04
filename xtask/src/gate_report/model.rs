@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Typed public report documents for one HTMLCut maintainer-gate run.
 
 use std::path::Path;

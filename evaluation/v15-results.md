@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "17.0.0"
+  version: "18.0.0"
   domain: EVALUATION
-  updated: "2026-10-03"
+  updated: "2026-10-04"
 RETRIEVAL_HINTS:
   keywords: [released binary, live audit, fidelity, bounded work, regression evidence]
   questions: ["What did the independent v15 release audit find?"]

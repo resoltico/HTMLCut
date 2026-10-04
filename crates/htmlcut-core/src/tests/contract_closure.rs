@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
@@ -63,6 +64,7 @@ fn closed_variants<T: Serialize + DeserializeOwned + schemars::JsonSchema>(value
 fn every_tagged_plan_variant_rejects_unknown_members() {
     closed_variants(vec![
         Projection::Records {
+            following_siblings: 0,
             fields: vec![RecordField {
                 name: "text".into(),
                 selector: "p".into(),

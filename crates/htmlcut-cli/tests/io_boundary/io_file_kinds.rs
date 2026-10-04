@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Native file links and atomic file-kind replacement stress.
 use super::*;
 use std::sync::{

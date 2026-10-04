@@ -4,6 +4,21 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [18.0.0] - 2026-10-04
+
+### Changed
+
+- **Licensing:** original HTMLCut source from 18.0.0 uses MPL-2.0, with file-level source-distribution obligations and its scoped contributor patent grant. Earlier published MIT releases and third-party licenses retain their terms. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+- **Breaking contracts:** extraction wire and semantics advance to 4, with plan/extraction identity domains `/4`. Current Rust records require an explicit `following_siblings` member; old wire formats and retired flags are rejected without converters.
+- **Breaking CLI authoring:** `--read READ` replaces `--projection` and `--attribute`. Repeated `--field NAME CSS READ` declares single-valued record fields without a plan file. Normalized text and resolved URL readings are explicit; advanced cardinality, guards and exclusions remain in structured plans.
+- **Breaking reading output:** Markdown preserves HTML emphasis/strong using fixed inline HTML tags and non-pre code using literal backtick spans. Consumers disabling inline HTML do not render emphasis. Pre blocks accept explicit bounded `language-*` labels and reject malformed or conflicting labels. Literal character references are escaped against a second decode.
+- **Breaking explicit normalization:** `normalize_whitespace` collapses Unicode White_Space and drops unprotected edge whitespace. Original pre content remains protected; default literal text retains its contract.
+
+### Added
+
+- Explicit record scopes containing the anchor and 0–63 following element-sibling subtrees. Fields and selected-row guards share the scope and budget; `:scope` remains the anchor. Missing siblings or absorption of another root candidate fail before data publication.
+
 ## [17.0.0] - 2026-10-03
 
 ### Changed

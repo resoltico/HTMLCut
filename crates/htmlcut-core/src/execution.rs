@@ -1,12 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Complete selection, original-DOM guards, and fresh shared operation work.
 
 use std::collections::HashSet;
 
-use ego_tree::NodeId;
-use scraper::{ElementRef, Html, Selector};
+use ego_tree::{NodeId, NodeRef};
+use scraper::{ElementRef, Html, Node, Selector};
 use selectors::work_budget::SelectorWorkBudget;
 
 mod records;
+mod scope;
+use scope::SelectionScope;
 
 use crate::compilation::{CompiledDomProjection, CompiledStrategy, Matcher};
 use crate::{
@@ -90,9 +93,14 @@ impl PreparedDocument {
                     .into_iter()
                     .map(|index| candidates[index])
                     .collect::<Vec<_>>();
-                check_guards(document, &selected, compiled, &budget)?;
+                let following = match projection {
+                    CompiledDomProjection::Records(following) => *following,
+                    CompiledDomProjection::Value(_) => 0,
+                };
+                let scopes = scope::selected_scopes(&selected, &candidates, following, &budget)?;
+                check_guards(document, &scopes, compiled, &budget)?;
                 let data = match projection {
-                    CompiledDomProjection::Records => {
+                    CompiledDomProjection::Records(_) => {
                         let output = records::RecordExecution {
                             document,
                             compiled,
@@ -101,14 +109,15 @@ impl PreparedDocument {
                             bytes: &mut bytes,
                             cells: &mut cells,
                         }
-                        .run(&selected)?;
+                        .run(&scopes)?;
                         fields = output.counts;
                         ExtractionData::Records(output.rows)
                     }
                     CompiledDomProjection::Value(projection) => {
                         spend_cells(&mut cells, selected.len() as u32)?;
                         let mut values = Vec::with_capacity(selected.len());
-                        for root in selected {
+                        for scope in scopes {
+                            let root = scope.anchor;
                             let excluded =
                                 exclusions(document, root, &compiled.exclusions, &budget)?;
                             let value = crate::projection::project(
@@ -159,7 +168,7 @@ impl PreparedDocument {
         let metadata = crate::canonical_json(self.snapshot.metadata())?;
         let semantics = SEMANTICS_VERSION.to_be_bytes();
         let identity = crate::identity::framed(
-            "htmlcut.extraction/3",
+            "htmlcut.extraction/4",
             &[
                 self.snapshot.source_sha256().as_bytes(),
                 compiled.digest.as_bytes(),
@@ -228,27 +237,66 @@ pub(crate) fn matches<'a>(
     let root = scope
         .map(|element| *element)
         .unwrap_or_else(|| document.tree.root());
+    matches_payloads(
+        document,
+        scope,
+        std::iter::once(root),
+        selector,
+        maximum,
+        budget,
+    )
+}
+
+pub(crate) fn matches_scope<'a>(
+    document: &'a Html,
+    scope: Option<&SelectionScope<'a>>,
+    selector: &Selector,
+    maximum: u32,
+    budget: &SelectorWorkBudget,
+) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
+    match scope {
+        Some(scope) => matches_payloads(
+            document,
+            Some(scope.anchor),
+            std::iter::once(*scope.anchor)
+                .chain(scope.following_siblings.iter().map(|root| **root)),
+            selector,
+            maximum,
+            budget,
+        ),
+        None => matches(document, None, selector, maximum, budget),
+    }
+}
+
+fn matches_payloads<'a>(
+    document: &'a Html,
+    anchor: Option<ElementRef<'a>>,
+    roots: impl Iterator<Item = NodeRef<'a, Node>>,
+    selector: &Selector,
+    maximum: u32,
+    budget: &SelectorWorkBudget,
+) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     let mut result = Vec::new();
     let mut matcher = selector
-        .budgeted(document, scope, budget)
+        .budgeted(document, anchor, budget)
         .map_err(|error| selector_failure(error, "selection"))?;
-    for node in root.descendants() {
-        charge(budget, 1)?;
-        let Some(element) = ElementRef::wrap(node) else {
-            continue;
-        };
-        // Descendant traversal only visits attached document nodes; the fixed orphan
-        // parser sentinel cannot enter this candidate set.
-        if matcher
-            .matches(&element)
-            .map_err(|error| selector_failure(error, "selection"))?
-        {
-            if result.len() >= maximum as usize {
-                let mut error = ExtractionError::limit("selection");
-                error.observed_at_least = Some(maximum + 1);
-                return Err(error);
+    for root in roots {
+        for node in root.descendants() {
+            charge(budget, 1)?;
+            let Some(element) = ElementRef::wrap(node) else {
+                continue;
+            };
+            if matcher
+                .matches(&element)
+                .map_err(|error| selector_failure(error, "selection"))?
+            {
+                if result.len() >= maximum as usize {
+                    let mut error = ExtractionError::limit("selection");
+                    error.observed_at_least = Some(maximum + 1);
+                    return Err(error);
+                }
+                result.push(element);
             }
-            result.push(element);
         }
     }
     Ok(result)
@@ -310,14 +358,14 @@ pub(crate) fn exclusions(
 
 fn check_guards(
     document: &Html,
-    selected: &[ElementRef<'_>],
+    selected: &[SelectionScope<'_>],
     compiled: &CompiledPlan,
     budget: &SelectorWorkBudget,
 ) -> Result<(), ExtractionError> {
     for (guard, grammar) in compiled.plan.guards.iter().zip(&compiled.guards) {
         let scopes = match guard.scope {
             GuardScope::Document => vec![None],
-            GuardScope::Selected => selected.iter().copied().map(Some).collect(),
+            GuardScope::Selected => selected.iter().map(Some).collect(),
         };
         for (index, scope) in scopes.into_iter().enumerate() {
             check_guard_scope(
@@ -344,11 +392,11 @@ fn check_guard_scope(
     document: &Html,
     guard: &crate::Guard,
     grammar: &crate::compilation::CompiledGuard,
-    scope: Option<ElementRef<'_>>,
+    scope: Option<&SelectionScope<'_>>,
     limits: &crate::ExecutionLimits,
     budget: &SelectorWorkBudget,
 ) -> Result<(), ExtractionError> {
-    let nodes = matches(
+    let nodes = matches_scope(
         document,
         scope,
         &grammar.selector,

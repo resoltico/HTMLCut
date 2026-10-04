@@ -651,7 +651,7 @@ checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "htmlcut-cli"
-version = "17.0.0"
+version = "18.0.0"
 dependencies = [
  "clap",
  "htmlcut-core",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "17.0.0"
+version = "18.0.0"
 dependencies = [
  "boon",
  "cssparser",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-fuzz"
-version = "17.0.0"
+version = "18.0.0"
 dependencies = [
  "arbitrary",
  "clap",
@@ -773,7 +773,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-tempdir"
-version = "17.0.0"
+version = "18.0.0"
 
 [[package]]
 name = "htmlcut-tendril"
@@ -1937,7 +1937,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "17.0.0"
+version = "18.0.0"
 dependencies = [
  "clap",
  "htmlcut-core",

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Canonical contributor Rust toolchain and cargo-tool inventory shared by bootstrap scripts, docs,
 # and CI.
 
@@ -104,6 +105,7 @@ htmlcut_contributor_cargo_tool_inventory() {
 cargo-nextest 0.9.146 cargo-nextest
 cargo-audit 0.22.2 cargo-audit
 cargo-deny 0.20.2 cargo-deny
+cargo-about 0.9.2 cargo-about
 cargo-semver-checks 0.50.0 cargo-semver-checks
 cargo-outdated 0.19.0 cargo-outdated
 cargo-llvm-cov 0.9.1 cargo-llvm-cov
@@ -117,6 +119,7 @@ htmlcut_contributor_default_cargo_tool_inventory() {
         cargo-nextest \
         cargo-audit \
         cargo-deny \
+        cargo-about \
         cargo-semver-checks \
         cargo-outdated \
         cargo-llvm-cov \

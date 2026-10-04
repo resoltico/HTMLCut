@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
@@ -13,12 +14,12 @@ pub(super) fn identifier_errors(
     let unknown_identifiers = pattern
         .find_iter(text)
         .filter(|matched| {
-            // Digest domains are versioned with /N; .htmlcut.tar is a container suffix.
+            // Digest domains use /N; the container suffix and Windows executable are filenames.
             !(matches!(
                 matched.as_str(),
                 "htmlcut.plan" | "htmlcut.extraction" | "htmlcut.prepared"
             ) && text[matched.end()..].starts_with('/'))
-                && matched.as_str() != "htmlcut.tar"
+                && !matches!(matched.as_str(), "htmlcut.tar" | "htmlcut.exe")
         })
         .map(|matched| matched.as_str())
         // These versioned identities name a digest domain and a benchmark report, not JSON
@@ -254,4 +255,27 @@ pub(crate) fn known_schema_names() -> BTreeSet<&'static str> {
 
 pub(crate) fn known_operation_ids() -> BTreeSet<&'static str> {
     BTreeSet::from(["extract", "run", "inspect", "describe", "schema"])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn product_filenames_are_distinct_from_unknown_schema_identifiers() {
+        let errors = identifier_errors(
+            "docs/setup.md",
+            "htmlcut.exe htmlcut.tar htmlcut.extraction.plan htmlcut.bad.exe htmlcut.unknown",
+            &Regex::new(r"\bhtmlcut(?:\.[a-z_]+)+\b").unwrap(),
+            &known_schema_names(),
+            "schema name",
+        );
+        assert_eq!(
+            errors,
+            [
+                "docs/setup.md references unknown schema name: htmlcut.bad.exe",
+                "docs/setup.md references unknown schema name: htmlcut.unknown",
+            ]
+        );
+    }
 }

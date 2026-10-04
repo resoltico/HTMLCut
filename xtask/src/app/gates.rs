@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Executable quality-gate workflows behind the `xtask` command dispatcher.
 
 use std::fs;

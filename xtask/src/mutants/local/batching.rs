@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Capacity-aware execution and reuse of local mutation-workspace lanes.
 
 use std::path::Path;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Deterministic execution evidence, separate from requested data and delivery.
 
 use schemars::JsonSchema;

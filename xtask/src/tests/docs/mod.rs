@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 fn write_minimal_docs_legal_scaffold(repo_root: &Path, version: &str, updated: &str) {

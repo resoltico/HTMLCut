@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Definition-owned command recovery information without echoing supplied values.
 
 use crate::command::Cli;
@@ -62,18 +63,10 @@ mod tests {
     #[test]
     fn definition_lookup_requires_an_option_boundary() {
         let definitions = Cli::command();
-        for context in [
-            "projection",
-            "--projection",
-            "--projection SECRET",
-            "--projection=SECRET",
-        ] {
-            assert_eq!(
-                known_option(&definitions, context),
-                Some("--projection".into())
-            );
+        for context in ["read", "--read", "--read SECRET", "--read=SECRET"] {
+            assert_eq!(known_option(&definitions, context), Some("--read".into()));
         }
-        assert_eq!(known_option(&definitions, "--projectionSECRET"), None);
+        assert_eq!(known_option(&definitions, "--readSECRET"), None);
         assert_eq!(known_option(&definitions, "UNDECLARED_SECRET"), None);
     }
 
@@ -119,13 +112,13 @@ mod tests {
             "--stdin",
             "--css",
             "p",
-            "--projection",
+            "--read",
             "SYNTHETIC_SECRET",
         ])
         .err()
         .unwrap();
         let value = serde_json::to_string(&failure(&error)).unwrap();
-        assert!(value.contains("--projection"));
+        assert!(value.contains("--read"));
         assert!(!value.contains("SYNTHETIC_SECRET"));
         let error = Cli::try_parse_from(["htmlcut", "--SYNTHETIC_SECRET"])
             .err()

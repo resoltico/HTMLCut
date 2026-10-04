@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Compile multiple plans once and reuse one immutable prepared snapshot.
 use htmlcut_core::{
     Boundary, CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Projection,

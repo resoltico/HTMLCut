@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Acquisition and charset handling belong to callers; retired inputs cannot be used.
 use std::process::{Command, Stdio};
 #[test]

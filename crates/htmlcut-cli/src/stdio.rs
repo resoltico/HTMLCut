@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Lazy real stream handles: unused streams are not prerequisites for work.
 
 #[cfg(windows)]

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """CI summary policy rejects every mandatory non-success and only the declared optional skip."""
 import copy
 import importlib.util

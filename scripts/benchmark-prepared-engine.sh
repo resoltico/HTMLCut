@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Record the operational effect of the prepared engine against the immutable v16 one-shot workflow.
 
 set -euo pipefail

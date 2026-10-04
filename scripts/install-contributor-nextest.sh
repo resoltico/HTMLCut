@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Install the pinned official nextest release archive after verifying its SHA-256 digest.
 
 set -euo pipefail

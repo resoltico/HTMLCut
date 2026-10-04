@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Retention rules for reconciled and live mutation evidence.
 
 use std::fs;

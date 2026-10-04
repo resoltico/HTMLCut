@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Workflow handoff must preserve source, inventory and credential boundaries."""
 from pathlib import Path
 import re

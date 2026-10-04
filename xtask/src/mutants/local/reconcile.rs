@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Exact, deterministic reconciliation of independently executed local mutation shards.
 
 use std::collections::BTreeSet;

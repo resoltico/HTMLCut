@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 
 # Proves the complete mutation inventory covers the maintained source scope, or that a diff
 # inventory is a subset of that already-verified complete inventory.

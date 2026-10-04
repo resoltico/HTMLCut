@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Mutation-preflight scenarios separated from the shared preflight fixture matrix.
 
 use super::*;

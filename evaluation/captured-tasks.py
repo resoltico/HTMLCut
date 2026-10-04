@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Source-bound public snapshot correctness, task economics and process measurements."""
 import argparse
 import collections
@@ -40,7 +41,8 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 binding = json.loads(evaluation_options.binding.read_text())
 assert binding["source_commit"] == evaluation_options.source_sha
 assert binding["binary_sha256"] == hashlib.sha256(BINARY.read_bytes()).hexdigest()
-assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 17.0.0"
+assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 18.0.0"
+assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 17.0.0"
 manifest = json.loads((CAPTURES / "capture-manifest.json").read_text())
 for entry in manifest["rows"]:
     if "sha256" in entry:
@@ -66,7 +68,7 @@ def soup(name):
 
 
 def value_plan(css, projection=None, fields=None, guards=None):
-    plan = dict(schema="htmlcut.extraction.plan", version=3,
+    plan = dict(schema="htmlcut.extraction.plan", version=4,
                 strategy=dict(kind="css", selector=css), selection=dict(kind="all", min=1))
     if fields is not None:
         plan["projection"] = dict(kind="records", fields=fields)
@@ -77,7 +79,7 @@ def value_plan(css, projection=None, fields=None, guards=None):
     return plan
 
 
-def execute(name, file, plan, expected, base=None):
+def execute(name, file, plan, expected, base=None, inline=None):
     path = OUTPUT / (name + ".plan.json")
     path.write_text(json.dumps(plan, ensure_ascii=False, separators=(",", ":")))
     command = [str(BINARY), "extract", "--file", str(CAPTURES / file), "--plan", str(path)]
@@ -85,9 +87,17 @@ def execute(name, file, plan, expected, base=None):
         command += ["--base-url", base]
     alternative = [sys.executable, str(ROOT / "evaluation/capture_reference.py"), "--task", name,
                    "--fixture", str(CAPTURES / file)]
-    measured, outputs = paired(dict(htmlcut=command, python=alternative), expected,
+    commands = dict(htmlcut=command, python=alternative)
+    if inline is not None:
+        inline_command = [str(BINARY), "extract", "--file", str(CAPTURES / file), *inline]
+        if base:
+            inline_command += ["--base-url", base]
+        commands["htmlcut-inline"] = inline_command
+    measured, outputs = paired(commands, expected,
                                lambda tool, data: json.loads(data), rss_directory=OUTPUT / "rss" / name)
     raw = outputs["htmlcut"]
+    if inline is not None:
+        assert outputs["htmlcut-inline"] == raw
     answer = json.loads(raw)
     assert answer == expected, name
     canonical = (json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
@@ -99,6 +109,11 @@ def execute(name, file, plan, expected, base=None):
                      canonical_requested_tokens=len(encoder.encode(canonical.decode())), mandatory_envelope_tokens=0,
                      plan_tokens=len(encoder.encode(path.read_text())), timings=measured,
                      reference_command=alternative, reference_script_tokens=len(encoder.encode((ROOT / "evaluation/capture_reference.py").read_text()))))
+    if inline is not None:
+        import shlex
+        rows[-1]["inline_authoring"] = dict(command=inline_command,
+            tokens=len(encoder.encode(shlex.join(inline_command))),
+            scope="Invocation tokens recorded separately from plan JSON and optional setup/evidence; absolute paths are part of this concrete command")
     content = source(file)
     rows[-1]["python_warm_parse_map"] = warm(lambda: reference(name, content), expected)
     if name != "exact-inline-source":
@@ -117,13 +132,19 @@ def execute(name, file, plan, expected, base=None):
 
 catalogue = reference("catalogue-records", source("books.html"))
 fields = [dict(name="title", selector="h3 a", projection=dict(kind="attribute", name="title")),
-          dict(name="price", selector=".price_color"),
-          dict(name="stock", selector=".availability"),
+          dict(name="price", selector=".price_color", transforms=[dict(kind="normalize_whitespace")]),
+          dict(name="stock", selector=".availability", transforms=[dict(kind="normalize_whitespace")]),
           dict(name="rating", selector=".star-rating", projection=dict(kind="attribute", name="class")),
           dict(name="url", selector="h3 a", projection=dict(kind="attribute", name="href"),
                transforms=[dict(kind="resolve_urls")])]
 actual = execute("catalogue-records", "books.html", value_plan("article.product_pod", fields=fields),
-                 catalogue, "https://books.toscrape.com/")
+                 catalogue, "https://books.toscrape.com/", inline=[
+                     "--css", "article.product_pod", "--match", "all",
+                     "--field", "title", "h3 a", "attribute:title",
+                     "--field", "price", ".price_color", "normalized_text",
+                     "--field", "stock", ".availability", "normalized_text",
+                     "--field", "rating", ".star-rating", "attribute:class",
+                     "--field", "url", "h3 a", "resolved_attribute:href"])
 ratings = dict(One=1, Two=2, Three=3, Four=4, Five=5)
 shortlist = lambda data: [dict(book, stock=book["stock"].strip(), rating=ratings[book["rating"].split()[-1]])
                          for book in data if float(book["price"][1:]) <= 25 and ratings[book["rating"].split()[-1]] >= 3]
@@ -132,7 +153,7 @@ rows[-1]["shortlist"] = shortlist(actual)
 rows[-1]["caller_mapping"] = "Primitive price/rating/stock mapping only; no caller HTML reparsing"
 
 titles = reference("catalogue-titles", source("books.html"))
-execute("catalogue-titles", "books.html", value_plan("h3 a", dict(kind="attribute", name="title")), titles)
+execute("catalogue-titles", "books.html", value_plan("h3 a", dict(kind="attribute", name="title")), titles, inline=["--css", "h3 a", "--match", "all", "--read", "attribute:title"])
 title_command = rows[-1]["command"]
 reference_command = rows[-1]["reference_command"]
 title_commands = {
@@ -153,6 +174,21 @@ execute("news-records", "news.html", value_plan(".titleline", fields=[
     dict(name="title", selector=":scope > a"),
     dict(name="url", selector=":scope > a", projection=dict(kind="attribute", name="href"),
          transforms=[dict(kind="resolve_urls")])]), news, "https://news.ycombinator.com/")
+score_plan = value_plan("tr.athing", fields=[
+    dict(name="title", selector=".titleline > a"),
+    dict(name="url", selector=".titleline > a", projection=dict(kind="attribute", name="href"),
+         transforms=[dict(kind="resolve_urls")]),
+    dict(name="score", selector=":scope + tr .score", selection=dict(kind="optional"),
+         transforms=[dict(kind="normalize_whitespace")])])
+score_plan["projection"]["following_siblings"] = 1
+execute("news-score-records", "news.html", score_plan,
+        reference("news-score-records", source("news.html")), "https://news.ycombinator.com/")
+wiki = reference("wiki-population-records", source("wiki-countries.html"))
+execute("wiki-population-records", "wiki-countries.html", value_plan("table.wikitable tbody tr:has(td)", fields=[
+    dict(name="country", selector="th, td:nth-child(1)", transforms=[dict(kind="normalize_whitespace")]),
+    dict(name="pop2022", selector="td:nth-child(2)", transforms=[dict(kind="normalize_whitespace")]),
+    dict(name="pop2023", selector="td:nth-child(3)", transforms=[dict(kind="normalize_whitespace")]),
+    dict(name="change", selector="td:nth-child(4)", transforms=[dict(kind="normalize_whitespace")])]), wiki)
 details = reference("product-details", source("book-details.html"))
 execute("product-details", "book-details.html", value_plan(".table.table-striped tr", fields=[
     dict(name="label", selector="th"), dict(name="value", selector="td")]), details)
@@ -191,7 +227,7 @@ raw = source("quotes-unrendered.html")
 inline = raw.split("var data = ", 1)[1].split(";\n    for", 1)[0]
 mapped = [dict(text=q["text"], author=q["author"]["name"], tags=q["tags"]) for q in json.loads(inline)]
 assert mapped == browser
-plan = dict(schema="htmlcut.extraction.plan", version=3, strategy=dict(kind="slice", start=dict(kind="literal", value="var data = "), end=dict(kind="literal", value=";\n    for")), projection=dict(kind="source"))
+plan = dict(schema="htmlcut.extraction.plan", version=4, strategy=dict(kind="slice", start=dict(kind="literal", value="var data = "), end=dict(kind="literal", value=";\n    for")), projection=dict(kind="source"))
 execute("exact-inline-source", "quotes-unrendered.html", plan, [inline])
 result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "quotes-unrendered.html"), "--css", ".quote"], capture_output=True)
 assert result.returncode == 3 and not result.stdout
@@ -212,16 +248,16 @@ replay = subprocess.run([str(BINARY), "run", str(moved)], check=True, capture_ou
 assert replay.stdout == result.stdout
 rows.append(dict(task="moved-public-catalogue-replay", all_values_equal=True, original_inputs_deleted=True, original_immutable_capture_retained=True, bundle_bytes=moved.stat().st_size))
 inspections = []
-for version, command in [(16, [str(evaluation_options.baseline_binary.resolve()), "inspect", "--file", str(CAPTURES / "books.html"), "--page-size", "3"]), (17, [str(BINARY), "inspect", "--file", str(CAPTURES / "books.html"), "--css", "article.product_pod", "--samples", "3"])]:
+for version, executable in [(17, evaluation_options.baseline_binary.resolve()), (18, BINARY)]:
+    command = [str(executable), "inspect", "--file", str(CAPTURES / "books.html"), "--css", "article.product_pod", "--samples", "3"]
     result = subprocess.run(command, check=True, capture_output=True)
     (OUTPUT / (str(version) + "-inspection.json")).write_bytes(result.stdout)
     answer = json.loads(result.stdout)
-    if version == 17:
-        assert answer["count"] == 20 and len(answer["samples"]) == 3 and not answer["samples_complete"]
-        assert not any(field in result.stdout.decode() for field in ("cursor", "handle", "propose"))
-    inspections.append(dict(version=version, command=command, bytes=len(result.stdout), tokens=len(encoder.encode(result.stdout.decode()))))
-assert inspections[1]["tokens"] < inspections[0]["tokens"]
-rows.append(dict(task="inspection-size", measurements=inspections, scope="Same immutable catalogue; v16 initial three-descriptor page versus v17 three requested row samples, not identical capabilities or a blind agent/billing study"))
+    assert answer["count"] == 20 and len(answer["samples"]) == 3 and not answer["samples_complete"]
+    assert not any(field in result.stdout.decode() for field in ("cursor", "handle", "propose"))
+    inspections.append(dict(version=version, binary_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+                            command=command, bytes=len(result.stdout), tokens=len(encoder.encode(result.stdout.decode()))))
+rows.append(dict(task="inspection-size", measurements=inspections, scope="Same immutable catalogue and same complete count/three requested row samples in published v17 and current v18; token counts are proxies, with no assumed reduction"))
 release_json = evaluation_options.release_json.resolve()
 release_values = reference("release-assets", release_json.read_bytes().decode("utf-8"))
 api_commands = {

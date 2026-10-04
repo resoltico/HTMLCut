@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Row-relative scalar fields with shared byte, cell and selector-work allowances.
 
 use std::collections::BTreeMap;
 
-use scraper::{ElementRef, Html};
+use scraper::Html;
 use selectors::work_budget::SelectorWorkBudget;
 
 use crate::{
@@ -26,7 +27,7 @@ pub(crate) struct RecordOutput {
 impl RecordExecution<'_> {
     pub(crate) fn run(
         &mut self,
-        roots: &[ElementRef<'_>],
+        roots: &[super::SelectionScope<'_>],
     ) -> Result<RecordOutput, ExtractionError> {
         let fields = &self.compiled.fields;
         let mut counts = fields
@@ -44,7 +45,7 @@ impl RecordExecution<'_> {
             let mut row = BTreeMap::new();
             for (index, grammar) in fields.iter().enumerate() {
                 let value = self
-                    .field(*root, index, &grammar.field, &mut counts[index])
+                    .field(root, index, &grammar.field, &mut counts[index])
                     .map_err(|mut error| {
                         error.row_index = Some(row_index as u32 + 1);
                         error.field_index = Some(index as u32 + 1);
@@ -59,7 +60,7 @@ impl RecordExecution<'_> {
 
     fn field(
         &mut self,
-        root: ElementRef<'_>,
+        root: &super::SelectionScope<'_>,
         index: usize,
         field: &RecordField,
         count: &mut FieldCount,
@@ -68,7 +69,7 @@ impl RecordExecution<'_> {
         super::spend_cells(self.cells, 1)?;
         let grammar = &self.compiled.fields[index];
         let limits = &self.compiled.plan.limits;
-        let candidates = super::matches(
+        let candidates = super::matches_scope(
             self.document,
             Some(root),
             &grammar.selector,

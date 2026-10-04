@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: RELEASE
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -194,7 +194,7 @@ gh release download vX.Y.Z \
   ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
   "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^htmlcut X.Y.Z$"
   printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --attribute href --bundle ./article-link.htmlcut.tar)"
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --read attribute:href --bundle ./article-link.htmlcut.tar)"
   [ -f ./article-link.htmlcut.tar ]
   printf '%s' "${FIRST_OUTPUT}" | python3 -c 'import json,sys; assert json.load(sys.stdin) == ["../guide.html"]'
   rm ./page.html

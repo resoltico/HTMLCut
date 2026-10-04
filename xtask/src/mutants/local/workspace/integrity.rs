@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Source-restoration proof for reusable local mutation lanes.
 
 use std::collections::BTreeMap;

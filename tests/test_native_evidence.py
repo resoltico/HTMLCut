@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Package evidence must bind bounded bytes and an actual successful smoke process."""
 import hashlib
 import importlib.util

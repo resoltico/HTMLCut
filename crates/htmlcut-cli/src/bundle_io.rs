@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Preserve underlying read/seek failures when a format library creates its own errors.
 
 use htmlcut_core::ExtractionError;

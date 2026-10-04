@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use std::io;
 
@@ -130,7 +131,7 @@ fn markdown_contract_errors_execute_examples_and_verify_emitted_artifacts() {
     let repo_root = tempdir().expect("tempdir");
     write_markdown_contract_repo(
         repo_root.path(),
-        "```bash\nhtmlcut extract --file ./page.html --css 'article a.more' --attribute href --bundle ./article-links.htmlcut.tar\nhtmlcut run ./article-links.htmlcut.tar\nhtmlcut extract --file ./page.html --css article --output ./article.txt\nhtmlcut extract --file ./page.html --css article --receipt ./receipt.json\n```\n",
+        "```bash\nhtmlcut extract --file ./page.html --css 'article a.more' --read attribute:href --bundle ./article-links.htmlcut.tar\nhtmlcut run ./article-links.htmlcut.tar\nhtmlcut extract --file ./page.html --css article --output ./article.txt\nhtmlcut extract --file ./page.html --css article --receipt ./receipt.json\n```\n",
     );
 
     let errors = markdown_contract_errors(repo_root.path()).expect("markdown contract errors");

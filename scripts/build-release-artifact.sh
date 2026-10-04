@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 
 set -euo pipefail
 
@@ -166,8 +167,20 @@ Create a tiny fixture and extract one link:
 
 \`\`\`bash
 printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-${binary_command} extract --file ./page.html --css 'article a.more' --attribute href --raw
+${binary_command} extract --file ./page.html --css 'article a.more' --read attribute:href --raw
 \`\`\`
+
+## Source availability and licensing
+
+Original HTMLCut source is MPL-2.0. Upstream dependencies retain their licenses;
+NOTICE contains the complete locked native dependency attribution.
+
+Matching source archives:
+- https://github.com/resoltico/HTMLCut/releases/download/v${version}/htmlcut-source-${version}.tar.gz
+- https://github.com/resoltico/HTMLCut/releases/download/v${version}/htmlcut-source-${version}.zip
+
+Exact source commit: https://github.com/resoltico/HTMLCut/tree/${source_commit}
+Registry dependency source is available at the exact name/version links in NOTICE.
 
 ## More
 
@@ -287,7 +300,8 @@ main() {
         chmod +x "${package_dir}/${compiled_binary_name}"
     fi
     cp "${repo_root}/LICENSE" "${package_dir}/LICENSE"
-    cp "${repo_root}/NOTICE" "${package_dir}/NOTICE"
+    python3 "${repo_root}/scripts/generate-package-notice.py" --target "${target_triple}" \
+        --source "${source_commit}" --output "${package_dir}/NOTICE"
     sed '/^<!--$/,/^-->$/d' "${repo_root}/PATENTS.md" > "${package_dir}/PATENTS.md"
     write_packaged_readme \
         "${package_dir}" \

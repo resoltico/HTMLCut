@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Selector-scoped counts and deliberately abbreviated samples of one immutable snapshot.
 
 use schemars::JsonSchema;

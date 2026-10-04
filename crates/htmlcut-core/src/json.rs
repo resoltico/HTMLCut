@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Closed JSON parsing before any duplicate-erasing map conversion.
 
 use std::cell::Cell;

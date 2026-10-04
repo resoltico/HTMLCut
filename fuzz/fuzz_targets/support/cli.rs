@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Real private CLI modules shared by development-only fuzz entrypoints.
 #[path = "../../../crates/htmlcut-cli/src/app.rs"]
 pub(crate) mod app;

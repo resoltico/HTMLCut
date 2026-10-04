@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use std::fs;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};

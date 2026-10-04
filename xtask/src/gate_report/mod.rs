@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Retained evidence and concise rendering for HTMLCut maintainer-gate runs.
 
 mod model;

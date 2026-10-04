@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Supervised execution of one disposable local mutation worker.
 
 use std::fs::File;

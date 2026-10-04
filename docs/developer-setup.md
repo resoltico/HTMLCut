@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: SETUP
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
   questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
@@ -297,3 +297,5 @@ cargo xtask hygiene clean --mode rebuildable
 ```
 
 Use [hygiene.md](hygiene.md) for the full artifact-lifecycle contract and the maintained policy.
+
+Native packaging requires the pinned cargo-about CLI. Install it through `./scripts/install-contributor-cargo-tools.sh cargo-about`; its version is owned by the contributor tool inventory. Native NOTICE is generated from the locked target graph, complete license texts and supplementary copyright notices.

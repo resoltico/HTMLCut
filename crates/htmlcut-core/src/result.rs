@@ -1,12 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
 //! One compact success and typed failure family.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 /// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 3;
+pub const SEMANTICS_VERSION: u32 = 4;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -32,6 +33,10 @@ pub enum ErrorCode {
     AmbiguousSelection,
     /// Selection cardinality differs from the declared bounds.
     Cardinality,
+    /// A declared row group has too few following element siblings.
+    MissingRowSibling,
+    /// An added row subtree contains another complete root candidate.
+    OverlappingRowScope,
     /// Requested attribute is absent.
     MissingAttribute,
     /// Selected content cannot be represented under the requested formatting convention.
@@ -76,6 +81,8 @@ impl ErrorCode {
             Self::NoMatch
             | Self::AmbiguousSelection
             | Self::Cardinality
+            | Self::MissingRowSibling
+            | Self::OverlappingRowScope
             | Self::MissingAttribute
             | Self::InvalidRepresentation
             | Self::GuardFailed

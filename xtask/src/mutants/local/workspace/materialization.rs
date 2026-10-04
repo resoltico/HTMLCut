@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Exact copied-source materialization for disposable local mutation lanes.
 
 use std::fs;

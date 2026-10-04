@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use crate::fuzz::FUZZ_SMOKE_EXAMPLE_TARGET;
 

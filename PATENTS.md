@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "17.0.0"
+  version: "18.0.0"
   domain: LEGAL
-  updated: "2026-10-03"
+  updated: "2026-10-04"
 RETRIEVAL_HINTS:
   keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, ncsa, dependency licenses]
   questions: [what is HTMLCut's patent posture?, which dependency license families include explicit patent grants?, where should I look for legal attribution?]
@@ -12,8 +12,10 @@ RETRIEVAL_HINTS:
 
 # Patent Notes
 
-HTMLCut's own code is licensed under the MIT License, which does not include
-an explicit patent grant or patent retaliation clause.
+HTMLCut's original code from version 18.0.0 is licensed under MPL-2.0.
+Section 2.1(b) grants contributor patent rights within the scope defined by
+sections 1 and 2.3; section 5.2 provides a patent-litigation termination rule.
+These are the standard license terms, not a separate patent covenant.
 
 ## Dependency Patent Grants
 
@@ -24,7 +26,7 @@ freeze a crate-by-crate list in prose.
 
 | License family | Explicit patent grant | Notes |
 |:---------------|:----------------------|:------|
-| MIT | No explicit grant | HTMLCut itself is MIT-licensed. |
+| MIT | No explicit grant | Applies to permissively licensed dependencies and earlier published HTMLCut material. |
 | Apache-2.0 | Yes | Section 3 grants patent rights from contributors to their contributions. |
 | MPL-2.0 | Yes, scoped | Section 2.1 grants patent rights within the scope of the covered files. |
 | ISC | No explicit grant | Plain permissive grant, no standalone patent clause. |
@@ -42,11 +44,11 @@ scoped to the licensed files.
 This repository does not publish a separate project-level patent license,
 retaliation clause, or patent non-assert covenant beyond:
 
-- HTMLCut's own MIT license
+- HTMLCut's own MPL-2.0 license
 - whatever patent terms are present in the allowed third-party dependency licenses
 
-If a stronger project-level patent covenant is desired, it must be added
-explicitly. It should not be inferred from this note alone.
+Earlier published HTMLCut versions retain their MIT terms. Upstream dependencies
+retain their own license/patent terms; the project license does not relabel them.
 
 ## Legal Disclaimer
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 fn write_schema_inventory_doc(repo_root: &Path) {

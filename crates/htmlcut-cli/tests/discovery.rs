@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 mod support;
 use support::invoke;
 
@@ -11,6 +12,7 @@ fn index_one_description_and_named_schemas_share_closed_vocabulary() {
     assert!(output.status.success());
     let description: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(description["defaults"]["selection"], "single");
+    assert_eq!(description["defaults"]["read"], "dom_text");
     for name in htmlcut_core::SCHEMA_NAMES
         .iter()
         .copied()

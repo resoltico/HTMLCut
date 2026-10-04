@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 fn prepared(html: &str) -> PreparedDocument {
@@ -84,12 +85,24 @@ fn selector_and_slice_contract_remain_miri_sound() {
         );
     }
     let document = prepared("<article><p>value</p></article>");
-    let plan=ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"},{"name":"optional","selector":".absent","selection":{"kind":"optional"}}]}}"#).unwrap();
+    let plan=ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"},{"name":"optional","selector":".absent","selection":{"kind":"optional"}}]}}"#).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let first = document.execute(&compiled).unwrap();
     assert_eq!(
         serde_json::to_value(&first.data).unwrap(),
         serde_json::json!([{"text":"value","optional":null}])
+    );
+    assert_eq!(first, document.execute(&compiled).unwrap());
+
+    let document = prepared(
+        "<article><p>A</p></article><!-- gap --><aside><p>\u{a0}<code>x`y</code><em>!</em>\u{2003}</p></aside>",
+    );
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","following_siblings":1,"fields":[{"name":"reading","selector":":scope + aside p","projection":{"kind":"markdown"}},{"name":"normalized","selector":":scope + aside p","transforms":[{"kind":"normalize_whitespace"}]}]}}"#).unwrap();
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    let first = document.execute(&compiled).unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.data).unwrap(),
+        serde_json::json!([{"reading":"\u{a0}``x`y``<em>\\!</em>\u{2003}","normalized":"x`y!"}])
     );
     assert_eq!(first, document.execute(&compiled).unwrap());
 }
@@ -201,16 +214,16 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
 
 #[test]
 fn closed_json_rejects_nested_duplicates_unknown_fields_and_old_schema() {
-    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"}}"#;
+    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"}}"#;
     assert!(ExtractionPlan::from_json(minimal.as_bytes()).is_ok());
     for value in [
         minimal.replace(
             "\"selector\":\"p\"",
             "\"selector\":\"p\",\"selector\":\"aside\"",
         ),
-        minimal.replace("\"version\":3", "\"version\":3,\"unknown\":true"),
+        minimal.replace("\"version\":4", "\"version\":4,\"unknown\":true"),
         minimal.replace("htmlcut.extraction.plan", "htmlcut.plan"),
-        minimal.replace("\"version\":3", "\"version\":2"),
+        minimal.replace("\"version\":4", "\"version\":2"),
     ] {
         assert!(
             ExtractionPlan::from_json(value.as_bytes()).is_err(),

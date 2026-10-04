@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 
 htmlcut_die() {
     printf 'error: %s\n' "$1" >&2

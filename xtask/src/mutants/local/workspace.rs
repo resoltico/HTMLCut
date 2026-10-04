@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Disposable source-workspace materialization and worker process ownership.
 
 use std::collections::BTreeMap;

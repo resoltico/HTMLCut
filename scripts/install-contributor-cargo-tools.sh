@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Install the default pinned contributor cargo QA inventory, or one selected optional tool.
 
 set -euo pipefail
@@ -148,10 +149,13 @@ install_tool_if_needed() {
         return 0
     fi
     local install_args=(install "${crate_name}" --version "${version}" --force)
-    if [[ "${crate_name}" == "cargo-deny" ]]; then
+    if [[ "${crate_name}" == "cargo-deny" || "${crate_name}" == "cargo-about" ]]; then
         # Deny's published lockfile has no yanked entries and supplies the packages named by
         # its profile overrides. An unlocked install drops them and emits stale-profile warnings.
         install_args+=(--locked)
+    fi
+    if [[ "${crate_name}" == "cargo-about" ]]; then
+        install_args+=(--features cli)
     fi
     # Other tool versions are pinned above, while their transitive crates resolve from the
     # currently available Rust-compatible registry set instead of stale upstream lockfiles.

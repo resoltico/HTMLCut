@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Build-time and contract-level validation for the committed HTMLCut contributor devcontainer.
 
 set -euo pipefail
