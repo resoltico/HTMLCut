@@ -145,7 +145,7 @@ fn mutation_workflow_is_scheduled_sharded_and_retains_results() {
     assert!(workflow.contains("--in-diff"));
     assert!(workflow.contains("htmlcut_contributor_install_action_csv cargo-mutants"));
     assert!(workflow.contains("workspaces: \". -> ../.htmlcut-artifacts/target\""));
-    assert!(workflow.contains("cache-directories: ../.htmlcut-artifacts/build"));
+    assert!(workflow.contains("cache-directories: ${{ steps.cargo_cache.outputs.build }}"));
     assert!(workflow.contains("shared-key: htmlcut-mutation-workspace"));
     assert!(workflow.contains("save-if: false"));
     assert!(workflow.contains("mutation-runs/mutants.out"));

@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::num::NonZeroUsize;
 use std::process::Child;
 use std::thread;
 
@@ -64,18 +65,15 @@ fn retain_stream(
     mirror: bool,
 ) -> io::Result<()> {
     let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let read = stream.read(&mut buffer)?;
-        if read == 0 {
-            return log.flush();
-        }
-        let bytes = &buffer[..read];
+    while let Some(read) = NonZeroUsize::new(stream.read(&mut buffer)?) {
+        let bytes = &buffer[..read.get()];
         log.write_all(bytes)?;
         log.flush()?;
         if mirror {
             write_live_stream(stderr, bytes)?;
         }
     }
+    log.flush()
 }
 
 fn join_retained_stream(handle: thread::JoinHandle<io::Result<()>>) -> io::Result<()> {
@@ -215,6 +213,33 @@ mod tests {
             fs::read(&path).expect("read retained stream"),
             b"retained stream payload"
         );
+    }
+
+    #[test]
+    fn stream_retention_finishes_after_the_first_eof_without_reading_again() {
+        struct EndOnce(Rc<Cell<usize>>);
+        impl Read for EndOnce {
+            fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+                let reads = self.0.get() + 1;
+                self.0.set(reads);
+                if reads != 1 {
+                    return Err(io::Error::other("read after EOF"));
+                }
+                Ok(0)
+            }
+        }
+        let reads = Rc::new(Cell::new(0));
+        let directory = tempdir().expect("temporary log directory");
+        let path = directory.path().join("empty.log");
+        let log = File::create(&path).expect("create stream log");
+        retain_stream(EndOnce(Rc::clone(&reads)), log, false, false).expect("finish at EOF");
+        assert_eq!(reads.get(), 1);
+        assert!(fs::read(path).expect("read retained stream").is_empty());
+        // This fault injector must reject the extra read an inverted EOF condition would make.
+        let error = EndOnce(Rc::clone(&reads))
+            .read(&mut [])
+            .expect_err("reject read after EOF");
+        assert!(error.to_string().contains("read after EOF"));
     }
 
     #[test]

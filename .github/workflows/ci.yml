@@ -177,11 +177,16 @@ jobs:
         shell: bash
         run: ./scripts/install-contributor-cargo-tools.sh cargo-semver-checks
 
+      - name: Resolve Cargo build cache directory
+        id: cargo_cache
+        shell: bash
+        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ../.htmlcut-artifacts/build
+          cache-directories: ${{ steps.cargo_cache.outputs.build }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: cross-platform-${{ matrix.id }}
 
@@ -257,11 +262,16 @@ jobs:
           htmlcut_contributor_retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
           htmlcut_contributor_retry 3 5 rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
 
+      - name: Resolve Cargo build cache directory
+        id: cargo_cache
+        shell: bash
+        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ../.htmlcut-artifacts/build
+          cache-directories: ${{ steps.cargo_cache.outputs.build }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: ${{ matrix.target_triple }}
 
