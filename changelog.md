@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [18.0.0] - 2026-10-04
+
 ### Changed
 
 - **Licensing:** original HTMLCut source from 18.0.0 uses MPL-2.0, with file-level source-distribution obligations and its scoped contributor patent grant. Earlier published MIT releases and third-party licenses retain their terms. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

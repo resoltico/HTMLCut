@@ -31,7 +31,7 @@ python3 -m venv /path/outside/repository/evaluation-python
 ```
 
 `captured-tasks.py` requires a frozen caller-owned capture directory containing catalogue,
-product-details, Hacker News, Python pathlib and rendered/unrendered quote inputs, with
+product-details, Hacker News, Wiki population-table Unicode cells, Python pathlib and rendered/unrendered quote inputs, with
 `capture-manifest.json` hashes and complete `browser-quotes.json` values. Browser rendering and
 network acquisition happen before evaluation; the runner never fetches a page. Supply verified
 native current/baseline binaries, their source/binary binding record, installed htmlq/pup paths,

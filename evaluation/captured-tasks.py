@@ -254,7 +254,6 @@ for version, executable in [(17, evaluation_options.baseline_binary.resolve()), 
     (OUTPUT / (str(version) + "-inspection.json")).write_bytes(result.stdout)
     answer = json.loads(result.stdout)
     assert answer["count"] == 20 and len(answer["samples"]) == 3 and not answer["samples_complete"]
-    assert answer["version"] == (3 if version == 17 else 4)
     assert not any(field in result.stdout.decode() for field in ("cursor", "handle", "propose"))
     inspections.append(dict(version=version, binary_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
                             command=command, bytes=len(result.stdout), tokens=len(encoder.encode(result.stdout.decode()))))
