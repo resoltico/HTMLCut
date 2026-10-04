@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 #[test]
 fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
     let plan = ExtractionPlan::css("#amount").unwrap();
-    let minimal = r##"{"version":3,"strategy":{"selector":"#amount","kind":"css"},"schema":"htmlcut.extraction.plan"}"##;
+    let minimal = r##"{"version":4,"strategy":{"selector":"#amount","kind":"css"},"schema":"htmlcut.extraction.plan"}"##;
     let compiled = CompiledPlan::compile(&plan).unwrap();
     assert_eq!(
         CompiledPlan::compile(&ExtractionPlan::from_json(minimal.as_bytes()).unwrap())
@@ -118,13 +119,13 @@ fn t05_schema_and_runtime_agree_on_closed_role_version_and_defaults() {
     let mut compiler = boon::Compiler::new();
     compiler.add_resource(location, schema).unwrap();
     let index = compiler.compile(location, &mut schemas).unwrap();
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"}});
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"}});
     assert!(schemas.validate(&minimal, index).is_ok());
     assert!(ExtractionPlan::from_json(&serde_json::to_vec(&minimal).unwrap()).is_ok());
     for invalid in [
         serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}),
-        serde_json::json!({"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"},"unknown":1}),
-        serde_json::json!({"schema":"htmlcut.plan","version":3,"strategy":{"kind":"css","selector":"p"}}),
+        serde_json::json!({"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},"unknown":1}),
+        serde_json::json!({"schema":"htmlcut.plan","version":4,"strategy":{"kind":"css","selector":"p"}}),
     ] {
         assert!(schemas.validate(&invalid, index).is_err(), "{invalid}");
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&invalid).unwrap()).is_err());

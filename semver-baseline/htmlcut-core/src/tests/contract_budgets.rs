@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use serde_json::{Value, json};
 
@@ -317,7 +318,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
     let mut plan = ExtractionPlan::css("article").unwrap();
     plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.exclude = vec![".omit".into()];
-    let expected = "### Header\n\ntext\\[alternative\\][link](<next>)\n\nstray\n- 2\\. A\n- 1\\. B\n\n```\ncodelabel\n```\n\n- [label](<```>)\n- \\`\\`\\`\\`\n\n-\n  - **H**\n  - V";
+    let expected = "### Header\n\ntext\\[alternative\\][link](<next>)\n\nstray\n- 2\\. A\n- 1\\. B\n\n```\ncodelabel\n```\n\n- [label](<```>)\n- \\`\\`\\`\\`\n\n-\n  - <strong>H</strong>\n  - V";
     let complete = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();

@@ -82,13 +82,17 @@ autotests = false
 build = false
 description = "Library for extracting and inspecting HTML with CSS selectors, literal or regex slicing, and structured diagnostics."
 edition = "2024"
-license = "MIT"
+license = "MPL-2.0"
 name = "htmlcut-core"
 publish = false
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
 rust-version = "1.98.1"
-version = "17.0.0"
+version = "18.0.0"
+
+[[test]]
+name = "contract_inline_markdown"
+path = "tests/contract_inline_markdown.rs"
 
 [[test]]
 name = "contract_markdown"
@@ -97,5 +101,9 @@ path = "tests/contract_markdown.rs"
 [[test]]
 name = "contract_records"
 path = "tests/contract_records.rs"
+
+[[test]]
+name = "contract_row_groups"
+path = "tests/contract_row_groups.rs"
 
 [workspace]

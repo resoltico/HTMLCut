@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "17.0.0"
+version = "18.0.0"
 dependencies = [
  "cssparser 0.38.0",
  "ego-tree",

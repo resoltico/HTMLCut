@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Bounded structural facts from the immutable original DOM, never outside payload.
 
 use super::*;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 #[test]
@@ -60,14 +61,32 @@ fn regex_guards_debit_a_search_even_for_an_empty_value() {
     });
     let exact = CompiledPlan::compile(&plan).unwrap();
     let exact_budget = SelectorWorkBudget::new(1000);
-    check_guards(&document, &[root], &exact, &exact_budget).unwrap();
+    check_guards(
+        &document,
+        &[SelectionScope {
+            anchor: root,
+            following_siblings: vec![],
+        }],
+        &exact,
+        &exact_budget,
+    )
+    .unwrap();
     plan.guards[0].predicate = Some(Predicate::Regex {
         pattern: "^$".into(),
         flags: String::new(),
     });
     let regex = CompiledPlan::compile(&plan).unwrap();
     let regex_budget = SelectorWorkBudget::new(1000);
-    check_guards(&document, &[root], &regex, &regex_budget).unwrap();
+    check_guards(
+        &document,
+        &[SelectionScope {
+            anchor: root,
+            following_siblings: vec![],
+        }],
+        &regex,
+        &regex_budget,
+    )
+    .unwrap();
     assert_eq!(exact_budget.remaining() - regex_budget.remaining(), 1);
 }
 

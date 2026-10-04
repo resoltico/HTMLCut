@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Finite core policy, independent of acquisition and publication.
 
 use crate::{ErrorCode, ExtractionError};
@@ -260,7 +261,11 @@ pub const MAX_DATA_BYTES: usize = 64 * 1024 * 1024;
 /// Maximum serialized execution receipt bytes.
 pub const MAX_RECEIPT_BYTES: usize = 4 * 1024 * 1024;
 /// Maximum named fields in a record projection.
-pub const MAX_FIELDS: usize = 64;
+/// Maximum number of named record fields in one extraction contract.
+pub const MAX_RECORD_FIELDS: usize = 64;
 
 /// Maximum accepted source bytes under the supported preparation policy.
 pub const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;
+
+/// Maximum following element siblings in one explicitly declared row group.
+pub(crate) const MAX_FOLLOWING_SIBLINGS: u32 = 63;

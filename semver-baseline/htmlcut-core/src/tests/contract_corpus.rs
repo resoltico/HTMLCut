@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 #[test]
@@ -17,7 +18,7 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
     );
     let mut plan = plan;
     plan.projection = Projection::Value(ValueProjection::Markdown {});
-    let structural = "## Free-threading\n\nThe [global interpreter lock](<gil.html>) affects Windows and macOS.\n\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\n\nHidden source note remains included.\n\nBroken mirror\n\nCharges\n\n-\n  - **Amount**\n  - EUR 180";
+    let structural = "## Free-threading\n\nThe [global interpreter lock](<gil.html>) affects Windows and macOS.\n\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\n\nHidden source note remains included.\n\nBroken mirror\n\nCharges\n\n-\n  - <strong>Amount</strong>\n  - EUR 180";
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())

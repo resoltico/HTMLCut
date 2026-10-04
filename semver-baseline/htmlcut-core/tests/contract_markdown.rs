@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Independent complete-format and CommonMark interpretation checks.
 
 use htmlcut_core::*;
@@ -77,7 +78,7 @@ fn every_ragged_cell_is_retained_in_nested_lists() {
     );
     assert_eq!(
         value,
-        "Costs\n\n-\n  - **A**\n  - B\n-\n  - one\n  - two\n  - IMPORTANT"
+        "Costs\n\n-\n  - <strong>A</strong>\n  - B\n-\n  - one\n  - two\n  - IMPORTANT"
     );
     let text = Parser::new(&value)
         .filter_map(|e| match e {
@@ -423,7 +424,7 @@ fn generated_header_annotations_keep_emphasis_outside_link_and_image_labels() {
     assert!(
         events
             .iter()
-            .any(|event| matches!(event, Event::Start(Tag::Strong)))
+            .any(|event| matches!(event, Event::Html(value) | Event::InlineHtml(value) if value.as_ref() == "<strong>"))
     );
     assert_eq!(
         events

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Immutable, bounded extraction over caller-supplied UTF-8 snapshots.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -31,8 +32,8 @@ pub use failure_cause::{
 pub use identity::canonical_json;
 pub use json::parse_closed_json;
 pub use limits::{
-    ExecutionLimits, MAX_DATA_BYTES, MAX_PLAN_BYTES, MAX_RECEIPT_BYTES, MAX_SOURCE_BYTES,
-    PreparationLimits,
+    ExecutionLimits, MAX_DATA_BYTES, MAX_PLAN_BYTES, MAX_RECEIPT_BYTES, MAX_RECORD_FIELDS,
+    MAX_SOURCE_BYTES, PreparationLimits,
 };
 pub use plan::{
     Boundary, ExtractionPlan, FieldSelection, Guard, GuardRead, GuardScope, Predicate, Projection,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Closed recovery information without untrusted transport or source values.
 
 use schemars::JsonSchema;

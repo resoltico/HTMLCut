@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Scalar representations and cardinality for fields of an original-DOM row.
 
 use schemars::JsonSchema;
