@@ -289,6 +289,8 @@ jobs:
 
       - name: Build standalone package
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
 
       - name: Execute native smoke and record package evidence
