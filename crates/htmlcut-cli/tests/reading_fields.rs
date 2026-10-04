@@ -135,6 +135,16 @@ fn retired_ambiguous_and_invalid_reading_requests_have_no_success_data() {
 }
 
 #[test]
+fn invalid_reading_request_rejects_large_input_before_consuming_it() {
+    let result = invoke(
+        &["extract", "--stdin", "--css", "p", "--read", "undeclared"],
+        &vec![b'x'; 1024 * 1024],
+    );
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+}
+
+#[test]
 fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
     let result = invoke(
         &[

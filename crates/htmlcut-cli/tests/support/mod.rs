@@ -11,6 +11,15 @@ pub(crate) fn invoke(args: &[&str], input: &[u8]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(input).unwrap();
-    child.wait_with_output().unwrap()
+    let written = child.stdin.take().unwrap().write_all(input);
+    let output = child.wait_with_output().unwrap();
+    if let Err(error) = written {
+        // Early configuration rejection can close stdin before the parent supplies its payload.
+        assert!(
+            error.kind() == std::io::ErrorKind::BrokenPipe && !output.status.success(),
+            "input handoff failed: {error}; child status: {}",
+            output.status
+        );
+    }
+    output
 }
