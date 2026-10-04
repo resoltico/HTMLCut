@@ -3,10 +3,28 @@
 """Assemble native attribution from the locked target graph and original notices."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import tomllib
+
+
+def bash_program():
+    for key in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+        if root := os.environ.get(key):
+            candidate = Path(root) / "Git/bin/bash.exe"
+            if candidate.is_file():
+                return str(candidate)
+    return "bash"
+
+
+def shell_inventory(root):
+    # Python on Windows starts native programs directly. Prefer Git Bash over the WSL launcher;
+    # forward-slash drive paths are understood by Git Bash, including paths containing spaces.
+    return subprocess.check_output([bash_program(), "-c",
+        'cd "$1"; source ./scripts/contributor-rust-tools.sh; htmlcut_contributor_cargo_tool_inventory',
+        "inventory", root.as_posix()], text=True)
 
 
 def package_key(package):
@@ -47,15 +65,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    inventory = subprocess.check_output(["bash", "-c",
-        'source "$1"; htmlcut_contributor_cargo_tool_inventory', "inventory",
-        str(root / "scripts/contributor-rust-tools.sh")], text=True)
+    inventory = shell_inventory(root)
     tools = [line.split() for line in inventory.splitlines()]
     expected = next(version for name, version, binary in tools if name == "cargo-about")
     actual = subprocess.check_output(["cargo", "about", "--version"], text=True).strip()
     if actual != f"cargo-about {expected}":
         raise ValueError(f"Install pinned cargo-about {expected} before packaging")
-    targets = subprocess.check_output(["bash", str(root / "scripts/release-targets.sh"), "triples"], text=True).splitlines()
+    targets = subprocess.check_output([bash_program(), (root / "scripts/release-targets.sh").as_posix(), "triples"], text=True).splitlines()
     if args.target not in targets:
         raise ValueError("Unsupported native target")
     if len(args.source) != 40 or any(c not in "0123456789abcdef" for c in args.source):

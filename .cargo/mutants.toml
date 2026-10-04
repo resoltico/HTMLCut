@@ -5,9 +5,8 @@
 all_features = true
 additional_cargo_args = ["--locked"]
 test_tool = "cargo"
-# The maintained command runs Cargo with nightly libtest support, so this stops after the first
-# test that proves a mutant. The standard gate separately retains the full Cargo doctest proof.
-additional_cargo_test_args = ["--", "-Z", "unstable-options", "--fail-fast"]
+# Cargo stops after the first failing test binary. Let libtest join its test threads before
+# returning: its unstable fail-fast mode can strand child processes that still write build roots.
 # Each package-local mutant runs its locked all-feature suite. The complete campaign reconciles the
 # exact union across the CLI, core, tempdir, maintainer tooling, and maintained forks; fork crates
 # also carry direct boundary tests for their work-budget and error-propagation contracts.

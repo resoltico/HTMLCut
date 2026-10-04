@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 MODULE = Path(__file__).resolve().parents[1] / "scripts/generate-package-notice.py"
 spec = importlib.util.spec_from_file_location("package_notice", MODULE)
@@ -12,6 +13,22 @@ spec.loader.exec_module(notice)
 
 
 class PackageNoticeTests(unittest.TestCase):
+    def test_inventory_runs_the_authoritative_script(self):
+        rows = [line.split() for line in notice.shell_inventory(MODULE.parents[1]).splitlines()]
+        self.assertEqual(len([row for row in rows if row[0] == "cargo-about"]), 1)
+        self.assertTrue(all(len(row) == 3 for row in rows))
+
+    def test_git_bash_is_preferred_to_the_windows_wsl_launcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "Program Files"
+            binary = root / "Git/bin/bash.exe"
+            binary.parent.mkdir(parents=True)
+            binary.touch()
+            with patch.dict(notice.os.environ, {"ProgramW6432": str(root)}, clear=True):
+                self.assertEqual(notice.bash_program(), str(binary))
+            with patch.dict(notice.os.environ, {}, clear=True):
+                self.assertEqual(notice.bash_program(), "bash")
+
     def report(self, directory):
         package = {"id": "fixture@1.0.0", "name": "fixture", "version": "1.0.0",
                    "source": "registry", "manifest_path": str(directory / "Cargo.toml")}

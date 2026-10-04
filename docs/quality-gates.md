@@ -173,9 +173,10 @@ fallible propagation, and detached subtree cloning. The workflow verifies that t
 exactly Cargo's `workspace.default-members` non-test `src` files, `xtask` non-test `src` files,
 and those named fork files before it plans a run. Each mutant runs the locked all-feature Cargo
 suite owned by its package; the campaign then reconciles the exact union across every maintained
-package and fork boundary. The maintained invocation uses nightly libtest with `--fail-fast`, so
-the first proving failure stops that mutant's test suite; the standard maintainer gate separately
-runs Cargo doctests. The maintained fork packages therefore own direct tests for their
+package and fork boundary. Cargo stops after the first failing test binary, after libtest has
+joined its test threads. Unstable libtest early exit can strand their child processes and race
+build-root cleanup. The standard maintainer gate separately runs Cargo doctests. The maintained
+fork packages therefore own direct tests for their
 resource-boundary contracts alongside the complete mutation proof. Local execution materializes a
 bounded number of complete disposable source workspaces and assigns deterministic package-local
 partitions to those reusable lanes. A partition is assigned at least sixty-four planned mutants

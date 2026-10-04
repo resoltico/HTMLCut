@@ -30,9 +30,7 @@ fn mutation_configuration_scopes_runtime_tooling_and_exact_maintained_fork_sourc
     assert!(config.contains("all_features = true"));
     assert!(config.contains("additional_cargo_args = [\"--locked\"]"));
     assert!(config.contains("test_tool = \"cargo\""));
-    assert!(config.contains(
-        "additional_cargo_test_args = [\"--\", \"-Z\", \"unstable-options\", \"--fail-fast\"]"
-    ));
+    assert!(!config.contains("additional_cargo_test_args"));
     assert!(config.contains("sharding = \"round-robin\""));
     for (_package, member_path) in runtime_members {
         assert!(config.contains(&format!("{member_path}/src/**/*.rs")));
