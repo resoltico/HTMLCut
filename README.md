@@ -30,4 +30,4 @@ The only supported Rust API is `htmlcut-core`: immutable snapshots, reusable com
 
 Distribution uses GitHub native/source archives. Rust consumers use git/path dependencies; owned package registry publication is disabled. See [Getting Started](docs/getting-started.md), [CLI](docs/cli.md), [Core](docs/core.md), [Schemas](docs/schema.md), [Documentation Index](docs/README.md), [Quality Gates](docs/quality-gates.md), [Changelog](changelog.md), [License](LICENSE), [Notice](NOTICE), and [Patents](PATENTS.md).
 
-Original HTMLCut source from v18 is licensed under MPL-2.0. Vendored dependencies and earlier published material retain their terms; see [License](LICENSE), [Notice](NOTICE) and [Patent Notes](PATENTS.md).
+HTMLCut’s original source is licensed under [MPL-2.0](LICENSE). Third-party components retain their own licenses; see [NOTICE](NOTICE) and [Patent Notes](PATENTS.md).

@@ -3,7 +3,7 @@ AFAD:
   afad: "4.0"
   version: "18.0.0"
   domain: MAINTAINER
-  updated: "2026-10-04"
+  updated: "2026-10-05"
 RETRIEVAL_HINTS:
   keywords: [contributing, maintainer workflow, developer setup, devcontainer, quality gate, docs contract lint, update fixtures, docs sync, release expectations]
   questions: [how do I contribute to HTMLCut?, what checks must pass before merging?, how do I update extraction contract fixtures?, how are Markdown docs linted?, what is the preferred contributor environment?]
@@ -152,4 +152,4 @@ Important rules:
 
 ## Licensing contributions
 
-Original project contributions from v18 are submitted under MPL-2.0. Contribute material you have rights to license on those terms. Retain upstream licenses and notices when changing vendored code; retained published API baselines keep the terms of their referenced release. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Original project contributions are submitted under MPL-2.0. Contribute material you have rights to license on those terms. Retain upstream licenses and notices when changing vendored code; retained published API baselines keep the terms of their referenced release. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
