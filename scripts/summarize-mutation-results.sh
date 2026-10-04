@@ -135,7 +135,7 @@ if (( total != expected_mutant_count )); then
 fi
 
 {
-    echo "## cargo-mutants full-run summary"
+    echo "## cargo-mutants summary"
     echo
     echo "| Shard | Mutants | Caught | Missed | Timed out | Unviable |"
     echo "| --- | ---: | ---: | ---: | ---: | ---: |"

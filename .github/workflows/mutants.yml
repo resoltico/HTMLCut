@@ -136,12 +136,17 @@ jobs:
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
+      - name: Resolve Cargo build cache directory
+        id: cargo_cache
+        shell: bash
+        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: htmlcut-mutation-workspace
           workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ../.htmlcut-artifacts/build
+          cache-directories: ${{ steps.cargo_cache.outputs.build }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run mutation shard
@@ -313,12 +318,17 @@ jobs:
         with:
           tool: ${{ steps.mutation_tools.outputs.tool_csv }}
 
+      - name: Resolve Cargo build cache directory
+        id: cargo_cache
+        shell: bash
+        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
+
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: htmlcut-mutation-workspace
           workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ../.htmlcut-artifacts/build
+          cache-directories: ${{ steps.cargo_cache.outputs.build }}
           save-if: false
 
       - name: Run mutations in changed Rust code

@@ -42,8 +42,11 @@ class WorkflowWiringTest(unittest.TestCase):
             for step in re.split(r"\n      - ", text):
                 if "uses: Swatinem/rust-cache@" in step:
                     self.assertIn("../.htmlcut-artifacts/target", step)
-                    self.assertIn("cache-directories: ../.htmlcut-artifacts/build", step)
+                    self.assertIn("cache-directories: ${{ steps.cargo_cache.outputs.build }}", step)
                     self.assertIn("save-if:", step)
+            self.assertEqual(text.count("id: cargo_cache"), text.count("uses: Swatinem/rust-cache@"))
+            self.assertEqual(text.count('run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"'),
+                             text.count("uses: Swatinem/rust-cache@"))
 
     def test_published_native_execution_waits_for_publication_and_uses_downloaded_bytes(self):
         text = (ROOT / ".github/workflows/release.yml").read_text()
