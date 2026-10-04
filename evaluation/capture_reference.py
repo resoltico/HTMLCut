@@ -108,6 +108,37 @@ def from_document(task, root):
     raise ValueError(f"Unknown document task: {task}")
 
 
+def reading_signature(root, source=False):
+    """Ordered prose characters/roles/links and exact code; ASCII prose spacing is not scored."""
+    result = []
+
+    def text(value, roles, link):
+        for character in value or "":
+            if character not in " \t\r\n\f":
+                result.append(["text", character, sorted(roles), link])
+
+    def walk(node, roles=frozenset(), link=None):
+        tag = node.tag if isinstance(node.tag, str) else ""
+        if tag == "pre":
+            result.append(["block-code", "".join(node.itertext()) + ("\n" if source else "")])
+            return
+        if tag in ("em", "i"):
+            roles = roles | {"em"}
+        if tag in ("strong", "b"):
+            roles = roles | {"strong"}
+        if tag == "code":
+            roles = roles | {"code"}
+        if tag == "a":
+            link = node.get("href")
+        text(node.text, roles, link)
+        for child in node:
+            walk(child, roles, link)
+            text(child.tail, roles, link)
+
+    walk(root)
+    return result
+
+
 def reference(task, source):
     if task == "release-assets":
         return [dict(name=item["name"], size=item["size"], url=item["url"]) for item in json.loads(source)["assets"]]

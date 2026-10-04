@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from measurements import paired, warm
-from capture_reference import reference, from_document, technical_node, text as literal_text
+from capture_reference import reference, from_document, reading_signature, technical_node, text as literal_text
 from bs4 import BeautifulSoup
 from lxml import html as lxml_html
 from markdown_it import MarkdownIt
@@ -213,8 +213,13 @@ expected_words = collections.Counter(re.findall(r"\w+", technical.get_text()))
 actual_words = collections.Counter(re.findall(r"\w+", plain))
 assert not (expected_words - actual_words), ("technical retained words missing", expected_words - actual_words)
 reading = trafilatura.extract(str(technical), output_format="markdown", include_links=True, include_tables=True)
+expected_reading = reading_signature(lxml_html.fromstring(str(technical)), source=True)
+actual_reading = reading_signature(lxml_html.fragment_fromstring(MarkdownIt("commonmark").render(markdown), create_parent=True))
+assert actual_reading == expected_reading, "Technical reading changed ordered characters, roles, links or code"
+comparator_reading = reading_signature(lxml_html.fragment_fromstring(MarkdownIt("commonmark").render(reading or ""), create_parent=True))
 rows.append(dict(task="technical-markdown", markdown=markdown, code_payloads=code,
-                 correctness="all complete pre payloads plus one framing LF; every source word occurrence retained",
+                 correctness="complete ordered prose characters/inline roles/links and exact code blocks; ASCII prose spacing not scored",
+                 semantic_atoms=actual_reading, comparator_semantics_match=comparator_reading == expected_reading,
                  source_word_occurrences=sum(expected_words.values()),
                  comparator="trafilatura 2.3.0", comparator_markdown=reading,
                  scope="Declared selected subsection versus heuristic reading of that same subsection; formatting conventions differ"))

@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import tarfile
 import tomllib
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 class CopyrightText(HTMLParser):
@@ -43,7 +43,8 @@ def runtime_notice(root, target):
                 f"Compiler copyright notice SHA-256: {hashlib.sha256(copyright_bytes).hexdigest()}",
                 "".join(parser.parts)]
     llvm_url = f"https://api.github.com/repos/rust-lang/rust/contents/src/llvm-project?ref={source}"
-    with urlopen(llvm_url, timeout=60) as response:
+    headers = {"Authorization": "Bearer " + token} if (token := os.environ.get("GH_TOKEN")) else {}
+    with urlopen(Request(llvm_url, headers=headers), timeout=60) as response:
         llvm = json.load(response)
     if llvm.get("submodule_git_url") != "https://github.com/rust-lang/llvm-project.git" or not re.fullmatch("[0-9a-f]{40}", llvm["sha"]):
         raise ValueError("Pinned Rust LLVM source differs")

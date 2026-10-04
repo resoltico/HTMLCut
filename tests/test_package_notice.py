@@ -32,8 +32,10 @@ class PackageNoticeTests(unittest.TestCase):
                 entry.size = len(original.encode())
                 tar.addfile(entry, io.BytesIO(original.encode()))
 
-            def fetch(url, timeout):
+            def fetch(request, timeout):
+                url = request.full_url if isinstance(request, notice.Request) else request
                 if "api.github.com" in url:
+                    self.assertEqual(request.get_header("Authorization"), "Bearer fixture-read-token")
                     return io.BytesIO(json.dumps(dict(sha="b" * 40,
                         submodule_git_url="https://github.com/rust-lang/llvm-project.git")).encode())
                 if url.endswith("musl.sh"):
@@ -42,9 +44,11 @@ class PackageNoticeTests(unittest.TestCase):
                     return io.BytesIO(archive.getvalue())
                 return io.BytesIO(original.encode())
 
-            with patch.object(notice.subprocess, "check_output", side_effect=[metadata, str(root)]), \
+            with patch.dict(notice.os.environ, {"GH_TOKEN": "fixture-read-token"}), \
+                    patch.object(notice.subprocess, "check_output", side_effect=[metadata, str(root)]), \
                     patch.object(notice, "urlopen", side_effect=fetch):
                 text = notice.runtime_notice(root, "x86_64-unknown-linux-musl")
+            self.assertNotIn("fixture-read-token", text)
             self.assertIn("Copyright <Fixture>\nPermission is hereby granted. &", text)
             self.assertEqual(text.count(original.rstrip()), 3)
             self.assertIn("/tree/" + "a" * 40, text)
