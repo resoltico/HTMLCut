@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Run the full maintainer gate through the committed contributor container from the host.
 
 set -euo pipefail

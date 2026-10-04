@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Bind completed mutation evidence to the exact source and selected planner inventory."""
 import argparse
 import hashlib

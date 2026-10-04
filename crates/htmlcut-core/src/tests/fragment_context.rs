@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 fn render(html: &str, selector: &str, projection: Projection, normalize: bool) -> String {
@@ -117,7 +118,7 @@ fn table_fragments_preserve_cells_and_literal_delimiters_as_nested_lists() {
             Projection::Value(ValueProjection::Markdown {}),
             false
         ),
-        "-\n  - **A**\n  - **B**"
+        "-\n  - <strong>A</strong>\n  - <strong>B</strong>"
     );
     assert_eq!(
         render(
@@ -327,7 +328,7 @@ fn caption_and_header_content_use_reading_format_without_inventing_span_layout()
             Projection::Value(ValueProjection::Markdown {}),
             false
         ),
-        "-\n  - **H**\n  - V"
+        "-\n  - <strong>H</strong>\n  - V"
     );
 }
 

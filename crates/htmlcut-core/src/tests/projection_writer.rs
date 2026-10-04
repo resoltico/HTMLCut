@@ -1,5 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use std::io::Write;
+
+#[test]
+fn pending_normalized_space_survives_empty_protected_fragments_and_protects_edges() {
+    let budget = SelectorWorkBudget::new(100);
+    let mut buffer = ValueBuffer::new(128, &budget);
+    buffer.text("  ", false, true).unwrap();
+    buffer.text("", true, true).unwrap();
+    buffer.text("a ", false, true).unwrap();
+    buffer.text("", true, true).unwrap();
+    buffer.text("  code  ", true, true).unwrap();
+    buffer.text(" b ", false, true).unwrap();
+    assert_eq!(buffer.finish(), "a   code   b");
+
+    let mut buffer = ValueBuffer::new(128, &budget);
+    buffer.text("a ", false, true).unwrap();
+    buffer.text("\t", true, true).unwrap();
+    assert_eq!(buffer.finish(), "a \t");
+
+    let mut buffer = ValueBuffer::new(128, &budget);
+    buffer.text(" a ", false, false).unwrap();
+    buffer.text("", false, false).unwrap();
+    assert_eq!(buffer.finish(), " a ");
+}
 
 #[test]
 fn html_buffer_flush_preserves_bytes_and_the_remaining_capacity() {

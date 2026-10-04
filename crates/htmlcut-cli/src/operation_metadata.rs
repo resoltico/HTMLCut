@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! One narrow discovery/help vocabulary, separate from executable extraction semantics.
 
 use serde_json::{Value, json};
@@ -6,7 +7,7 @@ use crate::input::options;
 
 pub(crate) const EXTRACT_ABOUT: &str =
     "Extract requested values; defaults to single/dom_text and bare data JSON.";
-pub(crate) const EXTRACT_DETAILS: &str = "Accept exactly one source and one inline selection or plan. Default single requires exactly one candidate. dom_text concatenates parsed text literally, including hidden content. --raw requires one value and adds no LF. markdown, HTML and attributes are explicit projections; slices return exact source bytes. Semantic failures publish no values. HTML base elements are ignored; URL resolution requires an explicit plan transform.";
+pub(crate) const EXTRACT_DETAILS: &str = "Accept exactly one source and one inline selection or plan. Default single requires exactly one candidate. --read chooses literal or normalized text, Markdown, HTML, attributes or source bytes. dom_text concatenates parsed text literally, including hidden content. Repeated --field NAME CSS READ declares single-valued record fields; --following-siblings includes an explicit bounded sibling group. Advanced cardinality, exclusions and guards use a plan. --raw requires one value and adds no LF. Semantic failures publish no values. HTML base elements are ignored; relative URL resolution requires an explicit --base-url.";
 pub(crate) const RUN_ABOUT: &str =
     "Recompute and verify a self-contained snapshot, plan and receipt bundle.";
 pub(crate) const INSPECT_ABOUT: &str =
@@ -40,7 +41,7 @@ pub(crate) fn describe(name: Option<&str>) -> Result<Value, htmlcut_core::Extrac
                 value["details"] = json!(EXTRACT_DETAILS);
                 value["plan_schema"] = json!("htmlcut.extraction.plan");
                 value["defaults"] =
-                    json!({"selection":"single","projection":"dom_text","output":"data_json"});
+                    json!({"selection":"single","read":"dom_text","output":"data_json"});
             }
             Ok(value)
         }

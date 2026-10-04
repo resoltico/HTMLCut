@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Named schema generation from the maintained serializable contract.
 
 use serde_json::Value;

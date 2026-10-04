@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Regular files and intentional streams supply exact UTF-8 snapshots; acquisition is caller-owned.
 
 use htmlcut_core::{ErrorCode, ExtractionError, SnapshotMetadata, SourceSnapshot};

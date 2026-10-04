@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Local mutation-campaign orchestration over disposable worker workspaces.
 
 use std::collections::{BTreeMap, BTreeSet};

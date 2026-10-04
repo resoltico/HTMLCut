@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Ensure devcontainer-managed cache and toolchain mounts stay writable for the remote user.
 
 set -euo pipefail

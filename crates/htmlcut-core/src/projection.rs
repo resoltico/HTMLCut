@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Read-only projections with bounded construction and explicit transforms.
 
 use std::collections::HashSet;
@@ -11,6 +12,7 @@ use crate::{ErrorCode, ExtractionError, Transform, ValueProjection};
 mod context;
 mod markdown;
 mod markdown_annotations;
+mod markdown_inline;
 mod markdown_traversal;
 mod markdown_writer;
 
@@ -18,7 +20,7 @@ pub(crate) struct ValueBuffer<'a> {
     value: String,
     maximum: usize,
     budget: &'a SelectorWorkBudget,
-    source_space: bool,
+    pending_space: bool,
 }
 
 impl<'a> ValueBuffer<'a> {
@@ -27,7 +29,7 @@ impl<'a> ValueBuffer<'a> {
             value: String::new(),
             maximum,
             budget,
-            source_space: false,
+            pending_space: false,
         }
     }
     pub(crate) fn push(&mut self, value: &str) -> Result<(), ExtractionError> {
@@ -50,18 +52,24 @@ impl<'a> ValueBuffer<'a> {
     ) -> Result<(), ExtractionError> {
         crate::execution::charge(self.budget, value.len().div_ceil(64))?;
         if pre || !normalize {
-            self.source_space = false;
-            return self.push(value);
+            if !value.is_empty() {
+                if self.pending_space {
+                    self.push(" ")?;
+                }
+                self.pending_space = false;
+                self.push(value)?;
+            }
+            return Ok(());
         }
         for c in value.chars() {
-            if c.is_ascii_whitespace() {
-                if !self.source_space {
-                    self.push(" ")?;
-                    self.source_space = true;
-                }
+            if c.is_whitespace() {
+                self.pending_space = !self.value.is_empty();
                 continue;
             }
-            self.source_space = false;
+            if self.pending_space {
+                self.push(" ")?;
+                self.pending_space = false;
+            }
             self.push(c.encode_utf8(&mut [0; 4]))?;
         }
         Ok(())

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Checked, randomized process measurements; elapsed time and peak RSS stay separate."""
 import platform
 import random

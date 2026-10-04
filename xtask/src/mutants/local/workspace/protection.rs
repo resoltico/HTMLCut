@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Private Cargo-home and source-integrity boundaries for one disposable mutation worker.
 
 use std::env;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Validate the opened input handle, without waiting for a FIFO writer.
 
 use super::*;

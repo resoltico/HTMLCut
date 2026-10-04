@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use htmlcut_core::{PreparationLimits, PreparedDocument, SnapshotMetadata, SourceSnapshot};
 
 pub fn text(value: &str, maximum: usize) -> &str {

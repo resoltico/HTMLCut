@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use crate::model::{CommandSpec, CommandStderr, CommandStdout, CommandToolchainEnv};
 
 /// One actionable prerequisite that a host-tool-dependent maintainer flow checks before launch.

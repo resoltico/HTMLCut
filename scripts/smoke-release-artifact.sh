@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 
 set -euo pipefail
 
@@ -164,6 +165,10 @@ main() {
     [[ -f "${extracted_package_dir}/LICENSE" ]] || htmlcut_die "missing packaged LICENSE"
     [[ -f "${extracted_package_dir}/NOTICE" ]] || htmlcut_die "missing packaged NOTICE"
     [[ -f "${extracted_package_dir}/PATENTS.md" ]] || htmlcut_die "missing packaged PATENTS.md"
+    grep -q 'Mozilla Public License Version 2.0' "${extracted_package_dir}/LICENSE" || htmlcut_die "packaged project license differs"
+    grep -q 'Native dependency attribution:' "${extracted_package_dir}/NOTICE" || htmlcut_die "packaged dependency attribution is missing"
+    grep -q 'Permission' "${extracted_package_dir}/NOTICE" || htmlcut_die "packaged permission texts are missing"
+    grep -q "htmlcut-source-${version}.tar.gz" "${extracted_package_dir}/README.md" || htmlcut_die "packaged source archive link is missing"
     grep "${target_triple}" "${extracted_package_dir}/README.md" >/dev/null
     if grep -q "From source" "${extracted_package_dir}/README.md"; then
         htmlcut_die "packaged README.md leaked source-build instructions"
@@ -185,7 +190,7 @@ main() {
         "${binary_path}" extract --file "${fixture_path}" \
             --css 'article a.more' \
             \
-            --attribute href \
+            --read attribute:href \
             --bundle "${request_path}" --raw \
             | tr -d '\r'
     )"

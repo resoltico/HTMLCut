@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 #![cfg_attr(not(test), cfg_attr(feature = "fuzzing", no_main))]
 #[cfg(all(feature = "fuzzing", not(test)))]
 use libfuzzer_sys::fuzz_target;
@@ -22,12 +23,12 @@ fuzz_target!(|data: &[u8]| {
             .replace('<', "&lt;")
             .replace('>', "&gt;");
         source.push_str(&format!(
-            "<article id='row{index}'><p>{escaped}</p></article>"
+            "<article id='row{index}'></article><!-- gap --><aside><p>{escaped}</p></aside>"
         ));
         expected.push(serde_json::json!({"id":format!("row{index}"),"text":text,"absent":null}));
     }
-    let plan = serde_json::json!({"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"article"},
-        "selection":{"kind":"all","min":0},"projection":{"kind":"records","fields":[
+    let plan = serde_json::json!({"schema":"htmlcut.extraction.plan","version":htmlcut_core::SCHEMA_VERSION,"strategy":{"kind":"css","selector":"article"},
+        "selection":{"kind":"all","min":0},"projection":{"kind":"records","following_siblings":1,"fields":[
             {"name":"id","selector":":scope","projection":{"kind":"attribute","name":"id"}},
             {"name":"text","selector":"p"},{"name":"absent","selector":".absent","selection":{"kind":"optional"}}]}});
     let plan = ExtractionPlan::from_json(&serde_json::to_vec(&plan).unwrap()).unwrap();

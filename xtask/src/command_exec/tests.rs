@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Focused behavioral proofs for command execution decisions.
 
 use std::process::Command;

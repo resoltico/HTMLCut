@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use htmlcut_core::{CompiledPlan, ExtractionPlan, canonical_json};
 
 pub fn drive(data: &[u8]) {

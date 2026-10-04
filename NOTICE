@@ -1,144 +1,48 @@
 HTMLCut
 Copyright (c) 2026 Ervins Strauhmanis
 
-Licensed under the MIT License. See LICENSE file for details.
+Original HTMLCut source from version 18.0.0 is governed by the Mozilla Public
+License 2.0 (MPL-2.0). See LICENSE for the complete terms.
 
-================================================================================
+This Source Code Form is subject to the terms of the Mozilla Public License,
+v. 2.0. If a copy of the MPL was not distributed with this file, You can
+obtain one at https://mozilla.org/MPL/2.0/.
 
-The HTMLCut binary includes compiled Rust crates from crates.io. The complete
-dependency graph (~200 packages) is recorded in Cargo.lock. The sections below
-cover the licenses and attributions required for binary distribution.
+Scope
+-----
+The project license covers original HTMLCut software and project-authored
+associated documentation, configuration and synthetic test/evaluation fixtures.
+Vendored material under patches/ retains its upstream license expressions and
+notices. It is not relicensed by the project license declaration.
 
-For a full machine-readable license report, run:
-  cargo install cargo-about
-  cargo about generate about.hbs
+The API baseline under semver-baseline/ is retained source from the published
+release identified by its BASELINE.toml. It retains that release's license.
+In source distributions, the earlier project MIT text is in
+LICENSES/HTMLCut-published-MIT.txt; that text
+records the published grant and is not an MIT alternative for newly covered
+v18 source. Earlier published tags and release artifacts retain their terms.
 
-================================================================================
-MIT / Apache-2.0 (dual-licensed)
-================================================================================
+The project license does not purport to license caller-provided HTML, captured
+third-party pages or extracted source content. Rights to that content remain
+with the applicable rights holders.
 
-The following crates are dual-licensed MIT OR Apache-2.0. Users may choose
-either license. The Apache License, Version 2.0 is available at:
-  https://www.apache.org/licenses/LICENSE-2.0
+Source availability and third-party terms
+----------------------------------------
+Matching HTMLCut source is available from the source archives on the same
+GitHub release and the exact source commit linked in the native package README:
+https://github.com/resoltico/HTMLCut/releases
 
-Representative crates (not exhaustive — see Cargo.lock for the full list):
+Source archives retain the local dependency sources and their original notices
+under patches/. Cargo.lock records exact registry dependency versions; their
+source packages are available from https://crates.io/ using those names and
+versions. Their licenses remain applicable independently of the project license.
 
-  anyhow, bitflags, bytes, clap, hashbrown, html5ever, tar,
-  idna, markup5ever, once_cell, percent-encoding, predicates,
-  regex, serde, serde_json, sha2, syn, tempfile, thiserror, url,
-  and others.
+Native distributions must include the complete dependency permission/license
+texts and required attributions for their locked build graph, including local
+patched dependencies and supplementary copyright notices. Do not treat a
+representative crate list or this project-scope notice as a complete dependency
+license report.
 
-================================================================================
-MIT (standalone)
-================================================================================
-
-Representative crates licensed under MIT only:
-
-  ego-tree, phf, scraper, pulldown-cmark, and others.
-
-================================================================================
-MIT / Unlicense (dual-licensed)
-================================================================================
-
-The following crates are dual-licensed MIT OR Unlicense. The Unlicense is a
-public-domain-equivalent dedication available at: https://unlicense.org/
-
-Representative crates (not exhaustive — see Cargo.lock for the full list):
-
-  aho-corasick, memchr, walkdir, and others.
-
-================================================================================
-MPL-2.0 — Mozilla Public License 2.0
-================================================================================
-
-The following crates are licensed under the Mozilla Public License 2.0:
-  https://www.mozilla.org/en-US/MPL/2.0/
-
-  cssparser     — Servo project, Mozilla
-  selectors     — Servo project, Mozilla
-
-MPL-2.0 is a file-level copyleft license. HTMLCut carries the `selectors`
-source under `patches/rust/selectors/` so the downstream-safe selector stack
-travels with `htmlcut-core`; the vendored copy keeps the upstream MPL-2.0
-license. HTMLCut also carries selector work accounting and parser-diagnostic adaptations,
-and rewires dependencies onto paired local crates.
-The MPL-2.0 license text and source are available at
-https://github.com/servo/servo and the corresponding crates.io pages.
-
-================================================================================
-Local patched dependencies — selector and parser safety
-================================================================================
-
-HTMLCut carries a vendored downstream-safe selector/parser stack under:
-
-  patches/rust/scraper
-  patches/rust/selectors
-  patches/rust/html5ever
-  patches/rust/markup5ever
-  patches/rust/servo_arc
-  patches/rust/tendril
-
-These local copies exist so git/path consumers of `htmlcut-core` inherit the
-same strict-provenance fixes that HTMLCut verifies under Miri. Their upstream
-licenses remain unchanged:
-
-  scraper                           — ISC
-  selectors                         — MPL-2.0
-  html5ever, markup5ever,
-  servo_arc, tendril                — MIT OR Apache-2.0
-
-Patch provenance, verification, and removal cues live in `patches/README.md`.
-
-================================================================================
-Unicode-3.0 — ICU data crates
-================================================================================
-
-The following crates contain Unicode CLDR and ICU data and are licensed under
-the Unicode License v3:
-  https://www.unicode.org/copyright.html
-
-  icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data,
-  icu_properties, icu_properties_data, icu_provider
-
-  Copyright (c) 2006 IBM Corporation and Others. All Rights Reserved.
-  This software and its associated documentation files are subject to the
-  terms of the Unicode License Agreement (https://www.unicode.org/license.txt).
-
-================================================================================
-BSD-3-Clause — 3-Clause BSD License
-================================================================================
-
-One or more transitive dependencies use the BSD-3-Clause license. BSD-3-Clause
-requires preserving copyright notices and the license text, and prohibits using
-contributor names for endorsement without permission. See Cargo.lock and the
-individual crate pages on crates.io for the specific copyright holders and full
-license text.
-
-================================================================================
-NCSA — University of Illinois/NCSA Open Source License
-================================================================================
-
-One or more transitive dependencies use the NCSA Open Source License, a
-BSD/MIT-style license from the University of Illinois. See Cargo.lock and the
-individual crate pages on crates.io for the specific copyright holders and full
-license text.
-
-================================================================================
-Unlicense — The Unlicense
-================================================================================
-
-One or more transitive dependencies are released as public domain under The
-Unlicense. No attribution is required. MIT/Unlicense dual-licensed crates are
-listed in the MIT / Unlicense section above. See Cargo.lock for the full list.
-
-================================================================================
-Trademark Notice
-================================================================================
-
-"Mozilla", "Firefox", and related marks are trademarks of the Mozilla
-Foundation. The Servo project is a Mozilla Research project.
-Use of these names in this document is descriptive only.
-
-HTMLCut is not affiliated with, endorsed by, or sponsored by the Mozilla
-Foundation, Google, the Unicode Consortium, or any other organization whose
-open-source components are included in this binary.
+Mozilla and Firefox are trademarks of the Mozilla Foundation. Names used here
+are descriptive; HTMLCut is not endorsed by the Mozilla Foundation or other
+third-party component authors.

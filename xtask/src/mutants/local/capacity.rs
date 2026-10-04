@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Capacity-aware concurrency sizing for disposable local mutation workspaces.
 
 use std::num::NonZeroUsize;

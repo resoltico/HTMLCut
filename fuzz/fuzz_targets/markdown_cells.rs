@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 #![cfg_attr(not(test), cfg_attr(feature = "fuzzing", no_main))]
 #[cfg(all(feature = "fuzzing", not(test)))]
 use libfuzzer_sys::fuzz_target;
@@ -13,7 +14,9 @@ fn decode_row_cells(input: &str) -> Vec<String> {
             Event::End(TagEnd::List(_)) => depth -= 1,
             Event::Start(Tag::Item) if depth == 2 => current = Some(String::new()),
             Event::End(TagEnd::Item) if depth == 2 => cells.push(current.take().unwrap()),
-            Event::Text(text) if current.is_some() => current.as_mut().unwrap().push_str(&text),
+            Event::Text(text) | Event::Code(text) if current.is_some() => {
+                current.as_mut().unwrap().push_str(&text)
+            }
             Event::End(TagEnd::CodeBlock) => {
                 current.as_mut().unwrap().pop();
             }
@@ -46,9 +49,17 @@ fuzz_target!(|data: &[u8]| {
             .replace('<', "&lt;")
             .replace('>', "&gt;")
     };
-    for (pre, wrapper) in [(false, ""), (false, "svg"), (false, "math"), (true, "")] {
+    for (pre, inline, wrapper) in [
+        (false, false, ""),
+        (false, false, "svg"),
+        (false, false, "math"),
+        (true, false, ""),
+        (false, true, ""),
+    ] {
         let first_html = if pre {
             format!("<pre><code>{}</code></pre>", escape_html(first))
+        } else if inline {
+            format!("<code>{}</code>", escape_html(first))
         } else if wrapper.is_empty() {
             escape_html(first)
         } else {
@@ -71,6 +82,8 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(result.data.as_values().unwrap().len(), 1);
         let expected_first = if pre {
             first.to_owned()
+        } else if inline {
+            first.replace('\n', " ")
         } else {
             first.split_ascii_whitespace().collect::<Vec<_>>().join(" ")
         };

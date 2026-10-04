@@ -1,14 +1,16 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: OPERATIONS
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, cargo-mutants, mutation results, gate reports, xtask hygiene, cache cleanup]
   questions: ["where do HTMLCut build artifacts live?", "where are cargo-mutants results stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "which artifact roots are managed and disposable?"]
 ---
 
 # Artifact Hygiene
+
+Run maintained gate workflows and hygiene cleanup one at a time per checkout. They share managed build, coverage and semver roots; safe cleanup removes disposable roots that another concurrent workflow may still be using. Mutation shard concurrency is owned internally by its campaign.
 
 HTMLCut treats build artifacts as a first-class maintained system, not as an accidental side
 effect of running Cargo.

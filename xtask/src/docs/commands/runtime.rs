@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use std::path::PathBuf;
 
 use super::parsing::option_value;

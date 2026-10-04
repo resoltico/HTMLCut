@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Shared maintenance primitives behind HTMLCut's `cargo xtask` workflows.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

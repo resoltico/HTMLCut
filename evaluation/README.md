@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "17.0.0"
+  version: "18.0.0"
   domain: EVALUATION
-  updated: "2026-10-03"
+  updated: "2026-10-04"
 RETRIEVAL_HINTS:
   keywords: [fidelity, corpus, task economics, tokenizer]
   questions: ["How is extraction correctness and task cost measured?"]
@@ -11,7 +11,7 @@ RETRIEVAL_HINTS:
 
 # Extraction-contract evaluation
 
-The offline corpus is original synthetic HTML authored for HTMLCut under the repository MIT license. Its manifest records immutable byte hashes, origin and scope. It covers technical linked identifiers, hidden content, lists/tables/preformatted content, alternative text, Unicode, malformed HTML and caller-supplied rendered DOM without executing JavaScript.
+The offline corpus is original synthetic HTML authored for HTMLCut under the repository MPL-2.0 license. Its manifest records immutable byte hashes, origin and scope. It covers technical linked identifiers, hidden content, lists/tables/preformatted content, alternative text, Unicode, malformed HTML and caller-supplied rendered DOM without executing JavaScript.
 
 Task economics are correctness-qualified measurements. Bare data, one-time description/inspection/plan costs and opt-in receipt/bundle costs are measured separately. Named tokenizer counts are proxies, not agent billing or measured model reasoning. Fresh-process timing and prepared in-process reuse are separate. Domain mapping remains caller code. No universal performance or market-adoption claim is implied.
 

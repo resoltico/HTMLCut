@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 name: V15 released-binary evaluation
 on:
   workflow_dispatch:

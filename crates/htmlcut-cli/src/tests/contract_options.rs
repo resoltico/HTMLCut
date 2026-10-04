@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use std::io::{self, Read};
 
@@ -60,8 +61,8 @@ fn scalar_attribute_regex_and_explicit_empty_selection_have_current_shapes() {
                 "--stdin",
                 "--css",
                 "a",
-                "--attribute",
-                "href",
+                "--read",
+                "attribute:href",
             ],
             b"<a href='next'></a>".as_slice(),
             serde_json::json!(["next"]),
@@ -137,7 +138,7 @@ fn receipt_is_fixed_complete_and_off_success_stdout() {
 fn invalid_record_raw_plan_is_rejected_before_source() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let path = root.path().join("plan.json");
-    std::fs::write(&path,br#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","fields":[{"name":"text","selector":":scope"}]}}"#).unwrap();
+    std::fs::write(&path,br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","fields":[{"name":"text","selector":":scope"}]}}"#).unwrap();
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(
@@ -186,7 +187,7 @@ fn descriptions_named_schemas_and_inner_html_use_the_current_dispatch() {
                 "--stdin",
                 "--css",
                 "p",
-                "--projection",
+                "--read",
                 "inner_html",
                 "--raw"
             ],

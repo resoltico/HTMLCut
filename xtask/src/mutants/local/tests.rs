@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 #[cfg(unix)]
 use std::cell::Cell;
 #[cfg(unix)]

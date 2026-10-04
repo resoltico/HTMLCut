@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use htmlcut_core::{ErrorCode, ExtractionError};
 use std::io::{self, Read, Write};

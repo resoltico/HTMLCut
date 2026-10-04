@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use arbitrary::Arbitrary;
 use htmlcut_core::{CompiledPlan, ExtractionPlan, Selection};
 

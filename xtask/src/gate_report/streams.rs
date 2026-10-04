@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Streaming evidence analysis and human rendering for maintainer-gate commands.
 
 use std::fs::{self, File};

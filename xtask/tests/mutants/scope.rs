@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Exact mutation inventory and drift rejection.
 use super::*;
 

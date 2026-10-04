@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Fail closed on missing, cancelled, failed or unexpectedly skipped mandatory CI jobs."""
 import json
 import os

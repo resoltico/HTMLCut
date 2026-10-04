@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Equal counters cannot substitute for complete, source-bound mutant identities."""
 import copy
 import importlib.util

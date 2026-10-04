@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Incremental stream retention for instrumented maintainer commands.
 
 use std::fs::File;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Release admission requires current same-source main verification, never stale successes."""
 import copy
 import importlib.util

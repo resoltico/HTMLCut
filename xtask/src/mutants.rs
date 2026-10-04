@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! cargo-mutants command construction and prerequisite checks.
 
 use std::path::{Path, PathBuf};

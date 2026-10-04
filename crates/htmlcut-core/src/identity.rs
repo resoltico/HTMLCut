@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Domain-separated, length-framed deterministic identities.
 
 use serde::Serialize;

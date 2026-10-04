@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Fail-closed ownership, dependency, and source-shape verification for first-party Rust code.
 
 mod metrics;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Original Markdown payload edges, with one charged subtree-exclusion state machine.
 
 use super::*;

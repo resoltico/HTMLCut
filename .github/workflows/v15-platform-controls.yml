@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 name: V15 native release controls
 on:
   workflow_dispatch:

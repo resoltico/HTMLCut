@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use std::path::Path;
 
 use crate::command_exec::capture_command_output;

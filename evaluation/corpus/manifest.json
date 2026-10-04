@@ -1,5 +1,5 @@
 {
-  "license": "MIT (original HTMLCut-authored synthetic fixtures)",
+  "license": "MPL-2.0 (original HTMLCut-authored synthetic fixtures)",
   "origin": "Authored offline to cover the extraction contract; no third-party article bodies redistributed. Technical identifiers are regression inputs from the accepted brief, not claims about current platform behavior.",
   "files": [
     {

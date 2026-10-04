@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Internal artifact-inventory helpers for the hygiene workflow.
 
 use super::*;

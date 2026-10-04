@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Maintained current public API examples.
 #[doc = include_str!("../../../docs/architecture.md")]
 #[allow(dead_code)]

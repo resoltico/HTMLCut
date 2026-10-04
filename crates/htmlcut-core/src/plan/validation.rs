@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 use crate::limits::{MAX_CHECKS, MAX_PATTERN_BYTES};
 
@@ -78,9 +79,14 @@ impl ExtractionPlan {
         if let Projection::Value(ValueProjection::Attribute { name }) = &self.projection {
             add(name)?;
         }
-        if let Projection::Records { fields } = &self.projection {
-            if fields.is_empty()
-                || fields.len() > crate::limits::MAX_FIELDS
+        if let Projection::Records {
+            fields,
+            following_siblings,
+        } = &self.projection
+        {
+            if *following_siblings > crate::limits::MAX_FOLLOWING_SIBLINGS
+                || fields.is_empty()
+                || fields.len() > crate::limits::MAX_RECORD_FIELDS
                 || !self.exclude.is_empty()
             {
                 return Err(invalid());

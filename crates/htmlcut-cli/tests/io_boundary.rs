@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Real process and descriptor assertions; mocked writes cannot establish delivery.
 use std::fs::File;
 use std::process::{Command, Stdio};

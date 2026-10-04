@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Independent complete answers from one libxml parse or caller-owned inline JSON."""
 import argparse
 import json
@@ -28,6 +29,17 @@ def text(node):
     return "".join(node.itertext())
 
 
+def normalized_cell(node):
+    # Independent Unicode White_Space property set; these captured table cells have no pre context.
+    if node.xpath('.//pre|ancestor::pre'):
+        raise ValueError("This cell oracle requires an unprotected fixture")
+    points = (0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0x85, 0xa0, 0x1680,
+              0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
+              0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000)
+    value = text(node).translate({point: " " for point in points})
+    return " ".join(part for part in value.split(" ") if part)
+
+
 def technical_node(root):
     return one(root, '//dl[dt[@id="pathlib.PurePath.full_match"]]')
 
@@ -48,13 +60,36 @@ def from_document(task, root):
     if task == "catalogue-records":
         return [dict(title=one(node, ".//h3/a").get("title"),
                      price=text(one(node, './/p[contains(@class,"price_color")]')),
-                     stock=text(one(node, './/p[contains(@class,"availability")]')),
+                     stock=normalized_cell(one(node, './/p[contains(@class,"availability")]')),
                      rating=one(node, './/p[contains(@class,"star-rating")]').get("class"),
                      url=web_url("https://books.toscrape.com/", one(node, ".//h3/a").get("href")))
                 for node in root.xpath('//article[contains(@class,"product_pod")]')]
     if task == "news-records":
         return [dict(title=text(node), url=web_url("https://news.ycombinator.com/", node.get("href")))
                 for node in root.xpath('//span[contains(@class,"titleline")]/a')]
+    if task == "news-score-records":
+        answer = []
+        for anchor in root.xpath('//tr[contains(concat(" ",normalize-space(@class)," ")," athing ")]'):
+            title = one(anchor, './/span[contains(@class,"titleline")]/a')
+            siblings = anchor.xpath('following-sibling::*[1]')
+            if len(siblings) != 1:
+                raise ValueError("News row has no declared following sibling")
+            scores = siblings[0].xpath('.//span[contains(concat(" ",normalize-space(@class)," ")," score ")]')
+            if len(scores) > 1:
+                raise ValueError("News score is ambiguous")
+            answer.append(dict(title=text(title), url=web_url("https://news.ycombinator.com/", title.get("href")),
+                               score=" ".join(text(scores[0]).split()) if scores else None))
+        return answer
+    if task == "wiki-population-records":
+        table = one(root, '//table[contains(concat(" ",normalize-space(@class)," ")," wikitable ")]')
+        answer = []
+        for row in table.xpath('.//tr[td]'):
+            cells = row.xpath('./th|./td')
+            if len(cells) != 6:
+                raise ValueError("Population table shape changed")
+            answer.append(dict(country=normalized_cell(cells[0]), pop2022=normalized_cell(cells[1]),
+                               pop2023=normalized_cell(cells[2]), change=normalized_cell(cells[3])))
+        return answer
     if task == "product-details":
         return [dict(label=text(one(node, "./th")), value=text(one(node, "./td")))
                 for node in root.xpath('//table[contains(@class,"table-striped")]//tr')]

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 [toolchain]
 # HTMLCut pins the day-to-day toolchain exactly so local development, CI, and
 # release builds all converge on the same stable compiler surface. We install

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 # Mutation testing exercises HTMLCut-owned runtime behavior, maintainer-gate tooling, and the
 # exact maintained selector and scraper resource-boundary modules. `cargo xtask mutants` supplies
 # the disposable result directory and CI shard.

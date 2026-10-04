@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: INDEX
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [documentation index, extraction contract, maintainer guides]
   questions: ["Where is the maintained documentation index?"]

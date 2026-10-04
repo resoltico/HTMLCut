@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! A closed, uncompressed USTAR replay container; members are read, never unpacked.
 
 use std::{

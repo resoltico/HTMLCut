@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 name: Release
 
 on:
@@ -208,6 +209,10 @@ jobs:
           VERSION="${{ steps.release.outputs.version }}"
           echo "package=$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
           echo "compiled_binary=$(binary_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
+
+      - name: Install native attribution tool
+        shell: bash
+        run: ./scripts/install-contributor-cargo-tools.sh cargo-about
 
       - name: Build standalone executable
         shell: bash

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Correctness-qualified current-contract economics; named tokenizer sizes are proxies."""
 import argparse,hashlib,importlib.metadata,json,platform,statistics,subprocess,sys,time
 from pathlib import Path
@@ -49,7 +50,7 @@ def main():
             dict(name='title',selector='a',projection=dict(kind='attribute',name='title')),
             dict(name='price',selector='.price'),dict(name='stock',selector='.stock'),
             dict(name='rating',selector='.rating'),dict(name='url',selector='a',projection=dict(kind='attribute',name='href'))]))]:
-        plan=dict(schema='htmlcut.extraction.plan',version=3,strategy=dict(kind='css',selector=selector),
+        plan=dict(schema='htmlcut.extraction.plan',version=4,strategy=dict(kind='css',selector=selector),
                   selection=dict(kind='all',min=1) if task in ['titles','urls','mapping'] else dict(kind='single'),projection=projection)
         if task=='guarded':plan['guards']=[dict(scope='document',selector='#label',min=1,max=1,read=dict(kind='dom_text'),predicate=dict(kind='exact',value='Repair cost'))]
         path=plans/(task+'.json');path.write_text(compact(plan));source=CORPUS/fixture;expected=reference(task,source.read_text())

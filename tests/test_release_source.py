@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """An advancing default branch cannot substitute its bytes/version for a requested release ref."""
 import subprocess
 from pathlib import Path

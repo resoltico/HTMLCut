@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Records the reusable prepared-engine model for the current extraction contract.
 //!
 //! The companion `scripts/benchmark-prepared-engine.sh` program measures this example against the

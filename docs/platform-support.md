@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: PLATFORM
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 24.04]
   questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]
@@ -51,7 +51,7 @@ Each standalone package contains:
 - the platform binary
 - `README.md`
 - `LICENSE`
-- `NOTICE`
+- `NOTICE` (project scope and generated complete target dependency attribution)
 - `PATENTS.md`
 
 ## Deployment Floors

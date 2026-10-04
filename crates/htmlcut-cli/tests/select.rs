@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 mod support;
 use support::invoke;
 
@@ -23,13 +24,7 @@ fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
     let html = b"<p>Damage: <img alt='Broken mirror'> end.</p>";
     let output = invoke(
         &[
-            "extract",
-            "--stdin",
-            "--css",
-            "p",
-            "--projection",
-            "markdown",
-            "--raw",
+            "extract", "--stdin", "--css", "p", "--read", "markdown", "--raw",
         ],
         html,
     );
@@ -41,7 +36,7 @@ fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
             "--stdin",
             "--css",
             "p",
-            "--projection",
+            "--read",
             "outer_html",
             "--raw",
         ],
@@ -66,7 +61,14 @@ fn strict_selection_and_missing_attributes_fail_without_values() {
         ),
         (
             &b"<p>A</p>"[..],
-            vec!["extract", "--stdin", "--css", "p", "--attribute", "absent"],
+            vec![
+                "extract",
+                "--stdin",
+                "--css",
+                "p",
+                "--read",
+                "attribute:absent",
+            ],
             "missing_attribute",
         ),
     ] {

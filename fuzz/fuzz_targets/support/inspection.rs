@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use arbitrary::Arbitrary;
 #[derive(Arbitrary, Debug)]
 pub struct InspectionInput {

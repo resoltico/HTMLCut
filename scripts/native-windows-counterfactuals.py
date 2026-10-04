@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Execute bounded native Windows stream counterfactuals; never substitute for full mutation accounting."""
 import argparse,hashlib,json,platform,subprocess,time
 from pathlib import Path

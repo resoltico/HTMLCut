@@ -1,14 +1,16 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: QUALITY
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, prepared engine benchmark, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
   questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
+
+Run maintained gate workflows and hygiene cleanup one at a time per checkout. They share managed build, coverage and semver roots; safe cleanup removes disposable roots that another concurrent workflow may still be using. Mutation shard concurrency is owned internally by its campaign.
 
 HTMLCut uses `xtask` as the maintainer gate surface. `cargo xtask ...` is the native subcommand
 interface, and `./scripts/xtask.sh ...` is the stable repo-owned launcher for maintained workflows

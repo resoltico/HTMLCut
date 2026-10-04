@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Record bounded native package verification evidence without publishing a release."""
 import argparse
 import hashlib

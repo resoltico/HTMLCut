@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 """Existing names, forged checksums and old-tag reruns must not create false release success."""
 import copy
 import hashlib

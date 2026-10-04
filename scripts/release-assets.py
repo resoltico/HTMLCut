@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
 """Verify release bytes and metadata before publication or an idempotent retry."""
 import argparse
 import hashlib

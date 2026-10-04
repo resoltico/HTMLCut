@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # Stable repo-owned launcher for maintained xtask workflows.
 
 set -euo pipefail

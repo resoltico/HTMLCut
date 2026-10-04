@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "17.0.0"
+version: "18.0.0"
 domain: RELEASE
-updated: "2026-10-03"
+updated: "2026-10-04"
 route:
   keywords: [release preflight, gh auth, release branch, release pr, primary checkout, check gate, miri]
   questions: ["how do I prepare an HTMLCut release checkout?", "what must pass before tagging an HTMLCut release?", "which nightly proofs does HTMLCut preflight require before release?", "how do I open the HTMLCut release PR?"]

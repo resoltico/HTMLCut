@@ -1,0 +1,1 @@
+{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","following_siblings":1,"fields":[{"name":"text","selector":":scope + template"}]}}

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Binary composition: validate, acquire one snapshot, execute, stage, then deliver.
 
 use crate::command::{Cli, Operation, Output};

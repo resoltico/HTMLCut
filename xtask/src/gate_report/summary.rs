@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Pure summary derivation for completed maintainer-gate runs.
 
 use std::io::{self, Write};

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 #![cfg_attr(not(test), cfg_attr(feature = "fuzzing", no_main))]
 #[cfg(all(feature = "fuzzing", not(test)))]
 use libfuzzer_sys::fuzz_target;

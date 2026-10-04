@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 pub(crate) fn extract_htmlcut_examples(text: &str) -> Vec<String> {
     let mut examples = Vec::new();
     let mut in_fence = false;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 fn value(html: &str, selector: &str, projection: Projection) -> String {
@@ -178,7 +179,7 @@ fn t12_preformatted_lists_spans_and_nested_tables() {
             "body > table",
             Projection::Value(ValueProjection::Markdown {})
         ),
-        "-\n  - **Name**\n  - V\n    \n    -\n      - N"
+        "-\n  - <strong>Name</strong>\n  - V\n    \n    -\n      - N"
     );
 }
 
@@ -204,7 +205,7 @@ fn t10_t28_transforms_preserve_preformatted_origin_and_url_labels() {
             .data
             .as_values()
             .unwrap(),
-        ["A B C  D  L M "]
+        ["A B C  D  L M"]
     );
     plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.transforms = vec![Transform::ResolveUrls {}];
@@ -499,8 +500,8 @@ fn preformatted_payload_and_alternative_metadata_have_separate_reading_roles() {
 fn t12_selected_structural_fragments_do_not_require_ancestors_in_the_projection() {
     let html = "<table><tr><th>H</th><td>V</td></tr></table><ul><li>item</li></ul><div><p>A</p><img><img alt=''><img alt='B'><p>C</p><a href=''>D</a></div>";
     for (selector, expected) in [
-        ("tr", "-\n  - **H**\n  - V"),
-        ("th", "-\n  - **H**"),
+        ("tr", "-\n  - <strong>H</strong>\n  - V"),
+        ("th", "-\n  - <strong>H</strong>"),
         ("td", "-\n  - V"),
         ("li", "- item"),
         ("div", "A\n\nB\n\nC\n\n[D](<>)"),

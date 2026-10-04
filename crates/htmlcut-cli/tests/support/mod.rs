@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Black-box helpers for the binary product; no CLI Rust API.
 use std::io::Write;
 use std::process::{Command, Output, Stdio};

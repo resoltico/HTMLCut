@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Bounded invocations of the once-built CLI; no supported CLI Rust API.
 
 use std::fs::{self, File};
