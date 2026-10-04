@@ -12,10 +12,10 @@ RETRIEVAL_HINTS:
 
 # Patent Notes
 
-HTMLCut's original code is licensed under MPL-2.0. Section 2.1(b) grants each
-Contributor's patent claims necessarily infringed by its Contributions or
-Contributor Version, subject to the definitions in section 1 and exclusions in
-section 2.3. Section 5.2 provides a patent-litigation termination rule.
+HTMLCut's original code is licensed under MPL-2.0. Section 2.1(b) grants rights
+under each Contributor's Patent Claims for its Contributions or Contributor
+Version. These terms are defined in section 1; section 2.3 limits the grant.
+Section 5.2 provides a patent-litigation termination rule.
 These are the standard license terms, not a separate patent covenant.
 
 ## Dependency Patent Grants
