@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Accepted immutable source and lazy, failure-caching preparation.
 
 use std::cell::OnceCell;

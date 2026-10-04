@@ -317,6 +317,10 @@ jobs:
         shell: bash
         run: python3 scripts/native-windows-counterfactuals.py --output dist/windows-counterfactuals
 
+      - name: Execute published native install example
+        shell: bash
+        run: python3 scripts/verify-published-install.py --output dist/published-install-example.json
+
       - name: Record native job context even after failure
         if: always()
         shell: bash

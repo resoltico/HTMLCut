@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Bounded source-independent grammar compilation.
 
 use regex::{Regex, RegexBuilder};
@@ -41,7 +42,7 @@ pub(crate) enum CompiledStrategy {
 
 pub(crate) enum CompiledDomProjection {
     Value(crate::ValueProjection),
-    Records,
+    Records(u32),
 }
 
 pub(crate) struct CompiledGuard {
@@ -91,7 +92,9 @@ impl CompiledPlan {
                     crate::plan::DomProjection::Value(value) => {
                         CompiledDomProjection::Value(value.clone())
                     }
-                    crate::plan::DomProjection::Records => CompiledDomProjection::Records,
+                    crate::plan::DomProjection::Records(following) => {
+                        CompiledDomProjection::Records(following)
+                    }
                 },
             },
             Strategy::Slice {
@@ -127,11 +130,11 @@ impl CompiledPlan {
             .map(|value| compile_selector(value))
             .collect::<Result<_, _>>()?;
         let digest = crate::identity::framed(
-            "htmlcut.plan/3",
+            "htmlcut.plan/4",
             &[crate::canonical_json(&plan)?.as_bytes()],
         );
         let fields = match &plan.projection {
-            Projection::Records { fields } => fields
+            Projection::Records { fields, .. } => fields
                 .iter()
                 .map(|field| {
                     Ok(CompiledField {

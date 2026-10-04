@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Conventional Markdown from the original immutable DOM, with explicit source context.
 
-use super::markdown_annotations::{CodeReferences, annotations};
+use super::markdown_annotations::{AnnotationContext, CodeReferences, annotations};
 use super::*;
 use super::{context::ListContext, markdown_writer::MarkdownWriter};
 
 use super::context::html;
+use super::markdown_inline::{self, Style, Styles};
 use super::markdown_traversal::{omitted_payload, payload_edges};
 fn block(name: &str) -> bool {
     matches!(
@@ -40,7 +42,7 @@ fn complex_link(
             && (block(e.name())
                 || matches!(
                     e.name(),
-                    "pre"
+                    "br" | "pre"
                         | "table"
                         | "ul"
                         | "ol"
@@ -65,8 +67,13 @@ struct Frame<'a> {
     name: &'a str,
     link: bool,
     complex: bool,
-    header: bool,
+    styles: Styles,
     closes_code: bool,
+}
+
+enum CodeMode<'a> {
+    Block(usize),
+    Inline(ValueBuffer<'a>),
 }
 
 pub(super) fn render(
@@ -81,18 +88,33 @@ pub(super) fn render(
     super::record_projection(2);
     let mut output = MarkdownWriter::new(maximum, budget);
     let mut frames = Vec::new();
-    let mut code_open = false;
-    let mut fence = 3;
-    let mut code = CodeReferences::default();
+    let mut mode = None;
+    let mut references = CodeReferences::default();
+    let annotation_context = AnnotationContext {
+        excluded,
+        resolve,
+        base,
+        maximum,
+        budget,
+    };
     let mut lists = ListContext::default();
-    let inherited = context::inherited_pre(root, budget)?
+    let original = markdown_inline::ancestry(root, budget)?;
+    output.styles = original.styles;
+    let inherited = (original.pre.is_some() || original.code)
         && !excluded.contains(&root.id())
         && !omitted_payload(root.value());
     if inherited {
-        fence = fence_length(root, excluded, budget)?;
-        output.fence(fence)?;
-        output.literal("\n")?;
-        code_open = true;
+        if let Some(pre) = original.pre {
+            let fence = fence_length(root, excluded, budget)?;
+            output.fence(fence)?;
+            if let Some(language) = markdown_inline::language(pre, budget)? {
+                output.literal(&language)?;
+            }
+            output.literal("\n")?;
+            mode = Some(CodeMode::Block(fence));
+        } else {
+            mode = Some(CodeMode::Inline(ValueBuffer::new(maximum, budget)));
+        }
     }
     if !inherited && html(root.value()) && matches!(root.value().name(), "td" | "th") {
         output.syntax("-")?;
@@ -104,10 +126,10 @@ pub(super) fn render(
         match edge {
             Edge::Open(node) => {
                 if let Node::Text(text) = node.value() {
-                    if code_open {
-                        output.literal(&text.text)?;
-                    } else {
-                        output.text(&text.text)?;
+                    match &mut mode {
+                        Some(CodeMode::Block(_)) => output.literal(&text.text)?,
+                        Some(CodeMode::Inline(payload)) => payload.text(&text.text, true, false)?,
+                        None => output.text(&text.text)?,
                     }
                     continue;
                 }
@@ -116,17 +138,22 @@ pub(super) fn render(
                 };
                 let mut frame = Frame {
                     prefix: output.prefix.len(),
+                    styles: output.styles,
                     ..Default::default()
                 };
                 if html(e) {
                     frame.name = e.name();
                 }
-                if code_open {
+                if mode.is_some() {
                     if frame.name == "a" && e.attr("href").is_some() {
-                        code.links.push(ElementRef::wrap(node).expect("element"));
+                        references
+                            .links
+                            .push(ElementRef::wrap(node).expect("element"));
                     }
                     if frame.name == "img" && (e.attr("alt").is_some() || e.attr("src").is_some()) {
-                        code.images.push(ElementRef::wrap(node).expect("element"));
+                        references
+                            .images
+                            .push(ElementRef::wrap(node).expect("element"));
                     }
                     // Formatting within code is literal text, not Markdown syntax.
                     frames.push(frame);
@@ -171,23 +198,34 @@ pub(super) fn render(
                         output.syntax("- ")?;
                         output.prefix.push_str("  ");
                         if frame.name == "th" {
-                            output.headers += 1;
-                            frame.header = true;
+                            output.styles = output.styles.with(Style::Strong);
                         }
                     }
                     "br" => output.boundary(1)?,
                     "pre" => {
                         output.block_start(2)?;
-                        fence = fence_length(
+                        let fence = fence_length(
                             ElementRef::wrap(node).expect("element"),
                             excluded,
                             budget,
                         )?;
                         output.fence(fence)?;
+                        if let Some(language) = markdown_inline::language(
+                            ElementRef::wrap(node).expect("element"),
+                            budget,
+                        )? {
+                            output.literal(&language)?;
+                        }
                         output.literal("\n")?;
-                        code_open = true;
+                        mode = Some(CodeMode::Block(fence));
                         frame.closes_code = true;
                     }
+                    "code" => {
+                        mode = Some(CodeMode::Inline(ValueBuffer::new(maximum, budget)));
+                        frame.closes_code = true;
+                    }
+                    "em" | "i" => output.styles = output.styles.with(Style::Emphasis),
+                    "strong" | "b" => output.styles = output.styles.with(Style::Strong),
                     "a" if e.attr("href").is_some() => {
                         frame.link = true;
                         frame.complex = complex_link(
@@ -213,6 +251,7 @@ pub(super) fn render(
                             };
                             output.destination(&destination)?;
                             output.syntax(")")?;
+                            output.mark_atom();
                         } else {
                             output.text(e.attr("alt").unwrap_or(""))?;
                         }
@@ -228,21 +267,15 @@ pub(super) fn render(
                 };
                 let frame = frames.pop().expect("each included element has a frame");
                 if frame.closes_code {
-                    code_open = false;
-                    output.literal("\n")?;
-                    output.fence(fence)?;
-                    output.boundary(2)?;
-                    annotations(
+                    finish_code(
                         &mut output,
-                        &mut code,
-                        excluded,
-                        resolve,
-                        base,
-                        maximum,
-                        budget,
+                        mode.take().expect("opening frame owns code"),
+                        &mut references,
+                        &annotation_context,
                     )?;
-                } else if !code_open {
+                } else if mode.is_none() {
                     if frame.link {
+                        output.settle_styles()?;
                         if frame.complex {
                             output.boundary(2)?;
                             output.begin_inline()?;
@@ -258,10 +291,6 @@ pub(super) fn render(
                         };
                         output.destination(&destination)?;
                         output.syntax(")")?;
-                    }
-                    if frame.header {
-                        output.close_bold()?;
-                        output.headers -= 1;
                     }
                     if block(frame.name)
                         || matches!(
@@ -283,24 +312,40 @@ pub(super) fn render(
                     }
                 }
                 output.prefix.truncate(frame.prefix);
+                output.styles = frame.styles;
             }
         }
     }
     if inherited {
-        output.literal("\n")?;
-        output.fence(fence)?;
-        output.boundary(2)?;
-        annotations(
+        finish_code(
             &mut output,
-            &mut code,
-            excluded,
-            resolve,
-            base,
-            maximum,
-            budget,
+            mode.take().expect("inherited code remains open"),
+            &mut references,
+            &annotation_context,
         )?;
     }
     output.finish()
+}
+
+fn finish_code(
+    output: &mut MarkdownWriter<'_>,
+    mode: CodeMode<'_>,
+    references: &mut CodeReferences<'_>,
+    context: &AnnotationContext<'_>,
+) -> Result<(), ExtractionError> {
+    let inline = match mode {
+        CodeMode::Block(fence) => {
+            output.literal("\n")?;
+            output.fence(fence)?;
+            output.boundary(2)?;
+            false
+        }
+        CodeMode::Inline(payload) => {
+            output.code_span(&payload.finish())?;
+            true
+        }
+    };
+    annotations(output, references, context, inline)
 }
 
 fn fence_length(

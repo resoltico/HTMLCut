@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! The single closed, source-independent extraction language.
 
 use schemars::JsonSchema;
@@ -90,6 +91,10 @@ fn minimum_one() -> u32 {
 pub enum Projection {
     /// Named scalar fields projected relative to each selected original-DOM row.
     Records {
+        /// Additional element-sibling subtrees in the declared row payload.
+        #[serde(default)]
+        #[schemars(range(max = crate::limits::MAX_FOLLOWING_SIBLINGS))]
+        following_siblings: u32,
         /// Ordered fields; names must be unique and field count is bounded.
         fields: Vec<RecordField>,
     },
@@ -108,14 +113,16 @@ impl Default for Projection {
 
 pub(crate) enum DomProjection<'a> {
     Value(&'a ValueProjection),
-    Records,
+    Records(u32),
 }
 
 impl Projection {
     pub(crate) fn dom(&self) -> Result<DomProjection<'_>, ExtractionError> {
         match self {
             Self::Value(value) => Ok(DomProjection::Value(value)),
-            Self::Records { .. } => Ok(DomProjection::Records),
+            Self::Records {
+                following_siblings, ..
+            } => Ok(DomProjection::Records(*following_siblings)),
             Self::Source {} => Err(ExtractionError::new(
                 ErrorCode::InvalidPlan,
                 "validation",
@@ -355,7 +362,7 @@ impl ExtractionPlan {
         for guard in &mut plan.guards {
             guard.max = Some(guard.max.unwrap_or(plan.limits.max_candidates));
         }
-        if let Projection::Records { fields } = &mut plan.projection {
+        if let Projection::Records { fields, .. } = &mut plan.projection {
             for field in fields {
                 if let FieldSelection::All { max, .. } = &mut field.selection {
                     *max = Some(max.unwrap_or(plan.limits.max_selected));

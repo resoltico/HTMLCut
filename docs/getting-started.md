@@ -58,7 +58,7 @@ Expand-Archive $Asset -DestinationPath "."
 & ".\htmlcut-$Version-x86_64-pc-windows-msvc\htmlcut.exe" --version
 ```
 
-For this candidate checkout, build with its pinned toolchain and use the current grammar:
+To build from source, use the pinned toolchain and current grammar:
 
 ```sh
 cargo install --path crates/htmlcut-cli --locked

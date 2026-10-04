@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Link/image metadata inside preformatted content is emitted outside the unchanged code.
 
 use super::markdown_traversal::payload_edges;
@@ -10,22 +11,42 @@ pub(super) struct CodeReferences<'a> {
     pub(super) images: Vec<ElementRef<'a>>,
 }
 
+pub(super) struct AnnotationContext<'a> {
+    pub(super) excluded: &'a HashSet<NodeId>,
+    pub(super) resolve: bool,
+    pub(super) base: Option<&'a str>,
+    pub(super) maximum: usize,
+    pub(super) budget: &'a SelectorWorkBudget,
+}
+
 pub(super) fn annotations(
     output: &mut MarkdownWriter<'_>,
     references: &mut CodeReferences<'_>,
-    excluded: &HashSet<NodeId>,
-    resolve: bool,
-    base: Option<&str>,
-    maximum: usize,
-    budget: &SelectorWorkBudget,
+    context: &AnnotationContext<'_>,
+    inline: bool,
 ) -> Result<(), ExtractionError> {
+    let AnnotationContext {
+        excluded,
+        resolve,
+        base,
+        maximum,
+        budget,
+    } = *context;
     for link in references.links.drain(..) {
-        output.boundary(1)?;
-        output.syntax("- ")?;
+        if inline {
+            output.inline_separator()?;
+        } else {
+            output.boundary(1)?;
+            output.syntax("- ")?;
+        }
         output.begin_inline()?;
         output.syntax("[")?;
-        let label = label(link, excluded, maximum, budget)?;
-        output.text(label.trim_matches(|c: char| c.is_ascii_whitespace()))?;
+        if inline {
+            output.text("link")?;
+        } else {
+            let label = label(link, excluded, maximum, budget)?;
+            output.text(label.trim_matches(|c: char| c.is_ascii_whitespace()))?;
+        }
         output.syntax("](")?;
         let href = link.attr("href").expect("collected link has a destination");
         let destination = if resolve {
@@ -37,8 +58,12 @@ pub(super) fn annotations(
         output.syntax(")")?;
     }
     for image in references.images.drain(..) {
-        output.boundary(1)?;
-        output.syntax("- ")?;
+        if inline {
+            output.inline_separator()?;
+        } else {
+            output.boundary(1)?;
+            output.syntax("- ")?;
+        }
         if let Some(src) = image.attr("src") {
             output.begin_inline()?;
             output.syntax("![")?;
@@ -55,7 +80,7 @@ pub(super) fn annotations(
             output.text(image.attr("alt").unwrap_or(""))?;
         }
     }
-    if !output.prefix.is_empty() {
+    if !inline && !output.prefix.is_empty() {
         output.boundary(2)?;
     }
     Ok(())

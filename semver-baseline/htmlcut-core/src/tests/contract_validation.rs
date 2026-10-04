@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 use super::*;
 
 #[test]
@@ -247,7 +248,7 @@ fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
         value.push('x');
     }
     assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"p"},
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},
         "guards":[{"scope":"document","selector":"p","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"x".repeat(crate::limits::MAX_PLAN_BYTES-250)}}]});
     let encoded = serde_json::to_vec(&minimal).unwrap();
     assert!(encoded.len() <= crate::limits::MAX_PLAN_BYTES);
@@ -315,7 +316,7 @@ fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempt
             ErrorCode::InvalidSchema
         );
     }
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":3,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
     assert_eq!(plan.selection, Selection::All { min: 1, max: None });
     assert_eq!(
         prepared("<p>value</p>")

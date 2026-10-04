@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 //! Public-boundary record contracts with independent complete JSON answers.
 
 use htmlcut_core::*;
@@ -17,7 +18,7 @@ fn compile(value: serde_json::Value) -> CompiledPlan {
 }
 
 fn plan(fields: serde_json::Value) -> serde_json::Value {
-    json!({"schema":"htmlcut.extraction.plan","version":3,
+    json!({"schema":"htmlcut.extraction.plan","version":4,
         "strategy":{"kind":"css","selector":"article"},"selection":{"kind":"all"},
         "projection":{"kind":"records","fields":fields}})
 }
@@ -175,10 +176,10 @@ fn empty_payload_kinds_have_valid_nonexclusive_schema_and_distinct_receipts() {
     let data_schema = schema("htmlcut.extraction.data").unwrap();
     assert!(data_schema.get("anyOf").is_some());
     let source = document("<p>x</p>");
-    let records = compile(json!({"schema":"htmlcut.extraction.plan","version":3,
+    let records = compile(json!({"schema":"htmlcut.extraction.plan","version":4,
         "strategy":{"kind":"css","selector":"article"},"selection":{"kind":"all","min":0},
         "projection":{"kind":"records","fields":[{"name":"a","selector":"b"}]}}));
-    let values = compile(json!({"schema":"htmlcut.extraction.plan","version":3,
+    let values = compile(json!({"schema":"htmlcut.extraction.plan","version":4,
         "strategy":{"kind":"css","selector":"article"},"selection":{"kind":"all","min":0}}));
     let a = source.execute(&records).unwrap();
     let b = source.execute(&values).unwrap();
@@ -231,7 +232,7 @@ fn fields_share_work_rather_than_getting_new_independent_budgets() {
     let source = document(
         "<article id='a'><span>A</span></article><article id='b'><span>B</span></article>",
     );
-    let scalar = compile(json!({"schema":"htmlcut.extraction.plan","version":3,
+    let scalar = compile(json!({"schema":"htmlcut.extraction.plan","version":4,
         "strategy":{"kind":"css","selector":"article"},"selection":{"kind":"all"},
         "projection":{"kind":"attribute","name":"id"},"limits":{"max_work":100}}));
     assert!(source.execute(&scalar).is_ok());
