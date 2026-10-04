@@ -2,12 +2,74 @@
 # SPDX-License-Identifier: MPL-2.0
 """Assemble native attribution from the locked target graph and original notices."""
 import argparse
+import hashlib
+from html.parser import HTMLParser
+import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
+import tarfile
 import tomllib
+from urllib.request import urlopen
+
+
+class CopyrightText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+
+    def handle_data(self, text):
+        self.parts.append(text)
+
+
+def runtime_notice(root, target):
+    compiler = subprocess.check_output(["rustc", "-Vv"], text=True)
+    metadata = dict(line.split(": ", 1) for line in compiler.splitlines()[1:] if ": " in line)
+    expected = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+    if metadata["release"] != expected or not re.fullmatch("[0-9a-f]{40}", metadata["commit-hash"]):
+        raise ValueError("Native runtime notice requires the pinned release compiler")
+    source = metadata["commit-hash"]
+    sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], text=True).strip())
+    copyright_bytes = (sysroot / "share/doc/rust/COPYRIGHT-library.html").read_bytes()
+    copyright = copyright_bytes.decode("utf-8")
+    if "Copyright notices for The Rust Standard Library" not in copyright or "Permission is hereby granted" not in copyright:
+        raise ValueError("Pinned compiler standard-library attribution is missing")
+    parser = CopyrightText()
+    parser.feed(copyright)
+    sections = [f"Rust {expected} standard-library attribution\nSource: https://github.com/rust-lang/rust/tree/{source}\n"
+                f"Compiler copyright notice SHA-256: {hashlib.sha256(copyright_bytes).hexdigest()}",
+                "".join(parser.parts)]
+    llvm_url = f"https://api.github.com/repos/rust-lang/rust/contents/src/llvm-project?ref={source}"
+    with urlopen(llvm_url, timeout=60) as response:
+        llvm = json.load(response)
+    if llvm.get("submodule_git_url") != "https://github.com/rust-lang/llvm-project.git" or not re.fullmatch("[0-9a-f]{40}", llvm["sha"]):
+        raise ValueError("Pinned Rust LLVM source differs")
+    for component in ["compiler-rt", *(["libunwind"] if "musl" in target else [])]:
+        url = f"https://raw.githubusercontent.com/rust-lang/llvm-project/{llvm['sha']}/{component}/LICENSE.TXT"
+        with urlopen(url, timeout=60) as response:
+            license = response.read().decode("utf-8")
+        if not license.strip():
+            raise ValueError("LLVM runtime permission text is missing")
+        sections.append(f"LLVM {component} runtime attribution\nSource: {url}\n{license}")
+    if "musl" in target:
+        script_url = f"https://raw.githubusercontent.com/rust-lang/rust/{source}/src/ci/docker/scripts/musl.sh"
+        with urlopen(script_url, timeout=60) as response:
+            script = response.read().decode("utf-8")
+        version = re.search(r"^MUSL=musl-([0-9]+\.[0-9]+\.[0-9]+)$", script, re.MULTILINE)
+        if version is None:
+            raise ValueError("Pinned Rust musl source version is missing")
+        url = f"https://www.musl-libc.org/releases/musl-{version[1]}.tar.gz"
+        with urlopen(url, timeout=60) as response:
+            archive = response.read()
+        with tarfile.open(fileobj=io.BytesIO(archive)) as archive:
+            license = archive.extractfile(f"musl-{version[1]}/COPYRIGHT").read().decode("utf-8")
+        if "Permission is hereby granted" not in license:
+            raise ValueError("musl permission text is missing")
+        sections.append(f"musl {version[1]} runtime attribution\nSource: {url}\nRust build and applied patches: {script_url}\n{license}")
+    return "\n\n".join(sections).rstrip() + "\n"
 
 
 def bash_program():
@@ -87,6 +149,7 @@ def main():
             "--threshold", str(policy["licenses"]["confidence-threshold"]), "--manifest-path",
             str(root / "crates/htmlcut-cli/Cargo.toml"), "--config", str(config), "--format", "json"], cwd=root)
     notice = render_notice(json.loads(result), (root / "NOTICE").read_text(), args.source, version, args.target)
+    notice += "\n" + runtime_notice(root, args.target)
     args.output.write_text(notice, encoding="utf-8")
 
 
