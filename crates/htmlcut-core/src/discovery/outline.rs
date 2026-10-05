@@ -14,6 +14,8 @@ use crate::{ErrorCode, ExtractionError, PreparedDocument};
 
 mod selector_hint;
 mod table_shape;
+#[cfg(test)]
+mod tests;
 
 const MAX_WORK: u32 = 10_000_000;
 const MAX_SIGNATURES_PER_PARENT: usize = 1_024;
@@ -175,12 +177,10 @@ impl PreparedDocument {
         let mut top = Vec::new();
         let mut group_count = 0_u32;
         let mut suppressed = 0_u32;
-        let mut parent_order = 0_u64;
         for edge in root.traverse() {
             crate::execution::charge(&budget, 1)?;
             match edge {
                 Edge::Open(node) => {
-                    parent_order += 1;
                     if suppressed > 0 {
                         suppressed += 1;
                     } else if let Some(element) = ElementRef::wrap(node) {
@@ -189,7 +189,6 @@ impl PreparedDocument {
                         } else {
                             collect_groups(
                                 element,
-                                parent_order,
                                 limit as usize,
                                 &budget,
                                 &mut top,
@@ -253,7 +252,6 @@ fn excluded_element(element: ElementRef<'_>) -> bool {
 
 fn collect_groups<'a>(
     parent: ElementRef<'a>,
-    parent_order: u64,
     limit: usize,
     budget: &SelectorWorkBudget,
     top: &mut Vec<Candidate<'a>>,
@@ -272,7 +270,7 @@ fn collect_groups<'a>(
         if tag.len() > 128 {
             return Err(ExtractionError::limit("outline"));
         }
-        let order = parent_order * 1_000_000 + index as u64;
+        let order = index as u64;
         add_group(
             &mut groups,
             GroupKey {
@@ -326,7 +324,7 @@ fn collect_groups<'a>(
             parent,
             key,
             count: accumulator.count,
-            first_order: accumulator.first_order,
+            first_order: *group_count as u64,
         };
         top.push(candidate);
         top.sort_by(|a, b| {
@@ -437,30 +435,4 @@ fn element_descriptor(
         classes,
         identifiers_complete: complete,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use scraper::Html;
-    use selectors::work_budget::SelectorWorkBudget;
-
-    use super::samples;
-    use crate::ErrorCode;
-
-    #[test]
-    fn sample_budget_failure_cannot_publish_a_partial_preview() {
-        let document = Html::parse_document("<p>one</p><p>two</p>");
-        let members = document
-            .tree
-            .nodes()
-            .filter_map(scraper::ElementRef::wrap)
-            .filter(|element| element.value().name() == "p")
-            .collect::<Vec<_>>();
-        assert_eq!(
-            samples(&members, &SelectorWorkBudget::new(1))
-                .unwrap_err()
-                .code,
-            ErrorCode::ResourceLimit
-        );
-    }
 }

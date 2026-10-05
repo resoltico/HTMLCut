@@ -302,6 +302,12 @@ fn mixed_members_and_ties_preserve_counts_and_document_order() {
     assert_eq!(groups.groups[1].parent.id.as_deref(), Some("first"));
     assert_eq!(groups.groups[0].count, 6);
     assert_eq!(groups.groups[1].count, 3);
+    let class_group = groups
+        .groups
+        .iter()
+        .find(|group| group.item_classes == ["a"])
+        .unwrap();
+    assert_eq!(class_group.selector.as_deref(), Some("li.a"));
 }
 
 #[test]
@@ -325,7 +331,7 @@ fn a_later_larger_group_evicts_the_later_of_equal_sized_candidates() {
 #[test]
 fn nested_exclusions_and_foreign_elements_do_not_create_groups() {
     let page = document(
-        "<body><template><div><p>a</p><p>b</p><p>c</p></div></template><svg><g><circle/><circle/><circle/></g></svg><section><p>yes</p><p>yes</p><p>yes</p></section></body>",
+        "<body><template><div><p>a</p><p>b</p><p>c</p></div></template><pre><div><p>a</p><p>b</p><p>c</p></div><section><p>d</p><p>e</p><p>f</p></section></pre><svg><g><circle/><circle/><circle/></g></svg><section><p>yes</p><p>yes</p><p>yes</p></section></body>",
     );
     let groups = page.outline(None, 4).unwrap();
     assert_eq!(groups.group_count, 1);
@@ -357,4 +363,50 @@ fn unsafe_css_identifiers_are_never_put_in_selector_hints() {
         .unwrap();
     assert_eq!(group.count, 3);
     assert_eq!(group.selector.as_deref(), Some("li"));
+}
+
+#[test]
+fn identifier_and_header_byte_caps_accept_their_exact_boundaries() {
+    let class = format!("c{}", "x".repeat(63));
+    let page = document(&format!(
+        "<ul>{}</ul>",
+        format!("<li class='{class}'>x</li>").repeat(3)
+    ));
+    let group = &page.outline(None, 4).unwrap().groups[0];
+    assert!(group.class_constrained);
+    assert_eq!(group.item_classes, [class]);
+
+    let header = "H".repeat(128);
+    let page = document(&format!(
+        "<table><tr><th>{header}</th></tr><tr><td>a</td></tr><tr><td>b</td></tr></table>"
+    ));
+    let table = page.outline(None, 4).unwrap().groups[0]
+        .table
+        .clone()
+        .unwrap();
+    assert!(table.headers_complete);
+    assert_eq!(table.headers, [header]);
+}
+
+#[test]
+fn the_tag_byte_cap_accepts_exactly_128_bytes() {
+    let tag = "x".repeat(128);
+    let page = document(&format!(
+        "<div>{}</div>",
+        format!("<{tag}>x</{tag}>").repeat(3)
+    ));
+    let outline = page.outline(None, 4).unwrap();
+    assert_eq!(outline.group_count, 1);
+    assert_eq!(outline.groups[0].item_tag, tag);
+}
+
+#[test]
+fn equal_sized_groups_in_separate_parents_follow_document_order() {
+    let padding = "<!--x-->".repeat(100);
+    let page = document(&format!(
+        "<main><section id=first>{padding}<p>A</p><p>B</p><p>C</p></section><section id=second><p>D</p><p>E</p><p>F</p></section></main>"
+    ));
+    let outline = page.outline(None, 1).unwrap();
+    assert_eq!(outline.group_count, 2);
+    assert_eq!(outline.groups[0].parent.id.as_deref(), Some("first"));
 }
