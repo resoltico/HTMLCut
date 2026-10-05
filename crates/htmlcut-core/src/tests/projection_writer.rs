@@ -30,6 +30,7 @@ fn html_buffer_flush_preserves_bytes_and_the_remaining_capacity() {
     let mut buffer = HtmlBuffer {
         bytes: Vec::new(),
         maximum: 4,
+        limit_exceeded: false,
     };
     buffer.write_all(b"<br>").unwrap();
     buffer.flush().unwrap();
@@ -56,11 +57,8 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     let budget = SelectorWorkBudget::new(2);
     let value = project(
         root,
-        &ValueProjection::Attribute {
-            name: "data-empty".into(),
-        },
+        &Reading::Attribute("data-empty".into()),
         &HashSet::new(),
-        &[],
         None,
         1024,
         &budget,
@@ -84,4 +82,27 @@ fn an_empty_markdown_destination_still_costs_one_processing_unit() {
             assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
         }
     }
+}
+
+#[test]
+fn filtered_html_work_exhaustion_is_distinct_from_the_value_byte_bound() {
+    let document = scraper::Html::parse_document("<p>A</p>");
+    let root = document
+        .select(&scraper::Selector::parse("p").unwrap())
+        .next()
+        .unwrap();
+    let budget = SelectorWorkBudget::new(1);
+    let error = project(
+        root,
+        &Reading::OuterHtml,
+        &HashSet::new(),
+        None,
+        1024,
+        &budget,
+    )
+    .unwrap_err();
+    assert_eq!(
+        (error.resource_counter.as_deref(), error.configured_bound),
+        (Some("max_work"), Some(1))
+    );
 }

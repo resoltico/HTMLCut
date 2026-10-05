@@ -83,7 +83,6 @@ pub fn markdown_contract_errors(repo_root: &Path) -> DynResult<Vec<String>> {
             &display_path,
             &text,
             &schema_names,
-            &operation_ids,
         ));
         errors.extend(identifiers::inventory_errors(
             repo_root,

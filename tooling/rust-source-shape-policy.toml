@@ -308,7 +308,7 @@ max_imports = 16
 max_functions = 24
 max_decision_points = 70
 max_match_arms = 35
-allowed_internal_dependencies = ["crate", "snapshot", "plan", "selector", "slice", "parse", "discovery", "relational"]
+allowed_internal_dependencies = ["crate", "snapshot", "plan", "selector", "parse", "discovery", "relational"]
 
 [[rules]]
 path = "crates/htmlcut-core/src/compilation.rs"
@@ -332,6 +332,22 @@ match = "exact"
 role = "core-execution"
 owner = "HTMLCut extraction contract"
 rationale = "Complete selection and original-DOM guards over a prepared immutable snapshot."
+split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "compilation", "execution", "projection", "identity", "snapshot", "plan", "result", "limits"]
+
+[[rules]]
+path = "crates/htmlcut-core/src/execution/"
+match = "prefix"
+role = "core-execution"
+owner = "HTMLCut extraction contract"
+rationale = "Original-DOM row forests and record execution share query and projection policy under one budget."
 split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
 max_physical_lines = 500
 max_items = 60
@@ -436,7 +452,7 @@ max_imports = 16
 max_functions = 34
 max_decision_points = 90
 max_match_arms = 90
-allowed_internal_dependencies = ["crate", "discovery", "compilation", "execution", "identity", "limits", "outline", "projection", "result", "snapshot", "plan", "selector_hint", "table_shape"]
+allowed_internal_dependencies = ["crate", "discovery", "compilation", "execution", "identity", "limits", "survey", "projection", "result", "snapshot", "plan", "selector_hint", "table_shape"]
 
 [[rules]]
 path = "crates/htmlcut-core/src/identity.rs"
@@ -548,7 +564,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "publication", "bundle", "operation_metadata"]
+allowed_internal_dependencies = ["crate", "app", "command", "input", "publication", "bundle"]
 
 [[rules]]
 path = "crates/htmlcut-cli/src/command_diagnostics.rs"
@@ -580,7 +596,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+allowed_internal_dependencies = ["crate", "app", "command", "input", "publication"]
 
 [[rules]]
 path = "crates/htmlcut-cli/src/input.rs"
@@ -596,7 +612,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+allowed_internal_dependencies = ["crate", "app", "command", "input", "publication"]
 
 [[rules]]
 path = "crates/htmlcut-cli/src/publication.rs"
@@ -612,23 +628,7 @@ max_imports = 22
 max_functions = 50
 max_decision_points = 150
 max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
-
-[[rules]]
-path = "crates/htmlcut-cli/src/operation_metadata.rs"
-match = "exact"
-role = "cli-adapter"
-owner = "HTMLCut extraction contract"
-rationale = "One CLI help/discovery vocabulary; no extraction semantics."
-split_trigger = "the module gains an unrelated responsibility or exceeds its declared cohesion budget"
-max_physical_lines = 600
-max_items = 65
-max_public_items = 30
-max_imports = 22
-max_functions = 50
-max_decision_points = 150
-max_match_arms = 70
-allowed_internal_dependencies = ["crate", "app", "command", "input", "http", "publication", "evidence", "operation_metadata"]
+allowed_internal_dependencies = ["crate", "app", "command", "input", "publication"]
 
 [[rules]]
 path = "crates/htmlcut-cli/src/input/"

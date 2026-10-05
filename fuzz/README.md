@@ -1,11 +1,11 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "19.2.0"
+  version: "20.0.0"
   domain: QUALITY
   updated: "2026-10-05"
 RETRIEVAL_HINTS:
-  keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, slice boundaries, closed plans, prepared snapshots]
+  keywords: [fuzz, cargo-fuzz, libfuzzer, seed corpus, selector parsing, closed queries, prepared snapshots]
   questions: [which fuzz targets does HTMLCut keep?, how do I run the checked-in fuzz targets?, where are the seed corpora?]
   related: [../docs/quality-gates.md, ../docs/developer-setup.md, ../README.md]
 -->
@@ -20,9 +20,8 @@ dependency floor while still letting live fuzzing use nightly through `cargo-fuz
 
 - `parse_document_bytes`: accepts bounded valid UTF-8 byte streams, prepares immutable snapshots and checks repeated DOM execution determinism.
 - `selector_parsing`: compiles CSS extraction plans from bounded HTML, selectors, projections and selection policies.
-- `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and source-only projection.
-- `extraction_request_building`: reads the closed extraction-plan JSON, verifies canonical round-trip equality and executes valid CSS/slice plans on a prepared snapshot.
-- `selector_inspection`: exercises bounded selector counts, identifier samples and repeated-group outline with arbitrary text, limits and deterministic replay on one snapshot.
+- `extraction_request_building`: reads the closed extraction-plan JSON, verifies canonical round-trip equality and executes valid current queries on a prepared snapshot.
+- `selector_inspection`: exercises bounded selector counts, identifier samples and repeated-group survey with arbitrary text, limits and deterministic replay on one snapshot.
 - `relational_selector_budget`: exercises `:has(...)` work exhaustion and fallible propagation through the maintained selector and scraper forks.
 - `cli_parse_error_surface`: feeds unknown arguments to source-included private CLI modules and asserts exit 2, empty stdout and a typed JSON error on stderr.
 - `markdown_cells`: checks bounded structural text for nested and irregular HTML cells.
@@ -38,7 +37,7 @@ The intent is:
 
 - keep only a few balanced seeds per target
 - cover both full-document and fragment HTML shapes
-- cover both selector and delimiter workflows
+- cover current scalar/record requests and rejecting duplicate/null controls
 - avoid huge or highly repetitive corpora that would skew local smoke runs
 
 These seeds are not treated as a replacement for longer fuzzing campaigns. They are there to make

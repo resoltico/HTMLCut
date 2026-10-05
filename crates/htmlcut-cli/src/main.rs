@@ -7,7 +7,6 @@ mod bundle_io;
 mod command;
 mod command_diagnostics;
 mod input;
-mod operation_metadata;
 mod publication;
 mod stdio;
 #[cfg(test)]

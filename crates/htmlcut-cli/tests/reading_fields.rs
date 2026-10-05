@@ -10,24 +10,18 @@ fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() 
     let plan = directory.path().join("country.plan.json");
     let inline_receipt = directory.path().join("inline.receipt.json");
     let structured_receipt = directory.path().join("structured.receipt.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({
-        "schema":"htmlcut.extraction.plan", "version":htmlcut_core::SCHEMA_VERSION,
-        "strategy":{"kind":"css","selector":"tr"},
-        "projection":{"kind":"records","following_siblings":0,"fields":[
-            {"name":"country","selector":"td","exclude":["sup.reference"],"transforms":[{"kind":"normalize_whitespace"}]}
-        ]}
-    })).unwrap()).unwrap();
+    std::fs::write(&plan, serde_json::to_vec(&json!({"version":6,"select":"tr","match":"one","fields":{"country":{"select":"td","exclude":["sup.reference"],"read":"text"}},"following_siblings":0})).unwrap()).unwrap();
     let source = b"<table><tr><td>China<sup class=reference>[1]</sup></td></tr></table>";
     let inline = invoke(
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "tr",
             "--field",
             "country",
             "td",
-            "normalized_text",
+            "text",
             "--field-exclude",
             "country",
             "sup.reference",
@@ -60,12 +54,12 @@ fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() 
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "tr",
             "--field",
             "country",
             "td",
-            "normalized_text",
+            "text",
             "--field-exclude",
             "UNDECLARED_SECRET",
             "sup",
@@ -73,12 +67,12 @@ fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() 
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "tr",
             "--field",
             "country",
             "td",
-            "attribute:title",
+            "attr:title",
             "--field-exclude",
             "country",
             "sup",
@@ -105,14 +99,13 @@ fn optional_inline_field_preserves_absence_and_rejects_ambiguous_or_missing_attr
     let args = [
         "extract",
         "--stdin",
-        "--css",
+        "--select",
         "article",
-        "--match",
-        "all",
-        "--field",
-        "score?",
+        "--all",
+        "--optional-field",
+        "score",
         ".score",
-        "attribute:data-score",
+        "attr:data-score",
     ];
     let result = invoke(
         &args,
@@ -136,30 +129,25 @@ fn optional_inline_field_preserves_absence_and_rejects_ambiguous_or_missing_attr
 }
 
 #[test]
-fn normalized_text_separates_blocks_and_breaks_without_altering_literal_text() {
+fn structural_text_separates_blocks_and_breaks_without_altering_literal_text() {
     let source = b"<article><dl><dt>Name</dt><dd>Alice</dd><dt>Amount</dt><dd>180</dd></dl><p>a<br>c</p></article>";
     let normalized = invoke(
         &[
-            "extract",
-            "--stdin",
-            "--css",
-            "article",
-            "--read",
-            "normalized_text",
+            "extract", "--stdin", "--select", "article", "--read", "text",
         ],
         source,
     );
     assert_eq!(normalized.stdout, b"[\"Name Alice Amount 180 a c\"]\n");
-    let literal = invoke(&["extract", "--stdin", "--css", "article"], source);
+    let literal = invoke(
+        &[
+            "extract", "--stdin", "--select", "article", "--read", "literal",
+        ],
+        source,
+    );
     assert_eq!(literal.stdout, b"[\"NameAliceAmount180ac\"]\n");
     let foreign = invoke(
         &[
-            "extract",
-            "--stdin",
-            "--css",
-            "article",
-            "--read",
-            "normalized_text",
+            "extract", "--stdin", "--select", "article", "--read", "text",
         ],
         b"<article>a<svg><text>b</text></svg>c</article>",
     );
@@ -173,16 +161,16 @@ fn fixed_arity_fields_keep_css_and_attribute_suffixes_opaque() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "article",
             "--field",
             "title",
             "[id='a@b']",
-            "attribute:title",
+            "attr:title",
             "--field",
             "price",
             ".price",
-            "normalized_text",
+            "text",
         ],
         source,
     );
@@ -203,10 +191,10 @@ fn scalar_resolved_attribute_read_needs_no_plan_file() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "a",
             "--read",
-            "resolved_attribute:href",
+            "url:href",
             "--base-url",
             "https://example.test/docs/",
         ],
@@ -226,16 +214,16 @@ fn sibling_group_inline_request_has_complete_named_values() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "tr.entry",
             "--field",
             "title",
             ":scope td",
-            "dom_text",
+            "literal",
             "--field",
             "score",
             ":scope + tr .score",
-            "normalized_text",
+            "text",
             "--following-siblings",
             "1",
         ],
@@ -258,36 +246,36 @@ fn retired_ambiguous_and_invalid_reading_requests_have_no_success_data() {
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--projection",
             "markdown",
         ],
-        vec!["extract", "--stdin", "--css", "p", "--attribute", "id"],
+        vec!["extract", "--stdin", "--select", "p", "--attribute", "id"],
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--read",
             "UNDECLARED_SECRET",
         ],
         vec![
-            "extract", "--stdin", "--css", "p", "--field", "a", "p", "source",
+            "extract", "--stdin", "--select", "p", "--field", "a", "p", "source",
         ],
         vec![
-            "extract", "--stdin", "--css", "p", "--field", "a", "p", "dom_text", "--field", "a",
-            "p", "dom_text",
+            "extract", "--stdin", "--select", "p", "--field", "a", "p", "literal", "--field", "a",
+            "p", "literal",
         ],
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--following-siblings",
             "1",
         ],
-        vec!["extract", "--stdin", "--css", "p", "--field", "a", "p"],
+        vec!["extract", "--stdin", "--select", "p", "--field", "a", "p"],
     ] {
         let result = invoke(&arguments, b"<p>x</p>");
         assert_eq!(result.status.code(), Some(2));
@@ -299,7 +287,14 @@ fn retired_ambiguous_and_invalid_reading_requests_have_no_success_data() {
 #[test]
 fn invalid_reading_request_rejects_large_input_before_consuming_it() {
     let result = invoke(
-        &["extract", "--stdin", "--css", "p", "--read", "undeclared"],
+        &[
+            "extract",
+            "--stdin",
+            "--select",
+            "p",
+            "--read",
+            "undeclared",
+        ],
         &vec![b'x'; 1024 * 1024],
     );
     assert_eq!(result.status.code(), Some(2));
@@ -312,10 +307,10 @@ fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--read",
-            "resolved_markdown",
+            "resolved-markdown",
             "--base-url",
             "https://example.test/",
         ],
@@ -329,7 +324,7 @@ fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
     let mut arguments = vec![
         "extract".to_string(),
         "--stdin".into(),
-        "--css".into(),
+        "--select".into(),
         "article".into(),
     ];
     for index in 0..65 {
@@ -337,7 +332,7 @@ fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
             "--field".into(),
             format!("field_{index}"),
             ":scope".into(),
-            "dom_text".into(),
+            "literal".into(),
         ]);
     }
     let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
@@ -352,36 +347,28 @@ fn structured_and_inline_authoring_bind_identical_plan_and_receipt() {
     let plan = directory.path().join("fields.json");
     let inline_receipt = directory.path().join("inline.receipt.json");
     let structured_receipt = directory.path().join("structured.receipt.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({
-        "schema":"htmlcut.extraction.plan", "version":htmlcut_core::SCHEMA_VERSION,
-        "strategy":{"kind":"css","selector":"article"},
-        "projection":{"kind":"records","following_siblings":1,"fields":[
-            {"name":"title","selector":"a","projection":{"kind":"attribute","name":"title"}},
-            {"name":"price","selector":":scope + aside .price","transforms":[{"kind":"normalize_whitespace"}]},
-            {"name":"url","selector":"a","projection":{"kind":"attribute","name":"href"},"transforms":[{"kind":"resolve_urls"}]}
-        ]}
-    })).unwrap()).unwrap();
+    std::fs::write(&plan, serde_json::to_vec(&json!({"version":6,"select":"article","match":"one","fields":{"title":{"select":"a","read":"attr:title"},"price":{"select":":scope + aside .price","read":"text"},"url":{"select":"a","read":"url:href"}},"following_siblings":1})).unwrap()).unwrap();
     let source = "<main><article><a title=T href=next>x</a></article><aside><span class=price>\u{a0}10\u{2003}</span></aside></main>".as_bytes();
     let inline = invoke(
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "article",
             "--following-siblings",
             "1",
             "--field",
             "title",
             "a",
-            "attribute:title",
+            "attr:title",
             "--field",
             "price",
             ":scope + aside .price",
-            "normalized_text",
+            "text",
             "--field",
             "url",
             "a",
-            "resolved_attribute:href",
+            "url:href",
             "--base-url",
             "https://example.test/",
             "--receipt",
@@ -428,7 +415,7 @@ fn valid_field_limit_boundary_keeps_all64values() {
     let mut arguments = vec![
         "extract".to_string(),
         "--stdin".into(),
-        "--css".into(),
+        "--select".into(),
         "article".into(),
     ];
     let mut expected = serde_json::Map::new();
@@ -438,7 +425,7 @@ fn valid_field_limit_boundary_keeps_all64values() {
             "--field".into(),
             name.clone(),
             ":scope".into(),
-            "dom_text".into(),
+            "literal".into(),
         ]);
         expected.insert(name, json!("V"));
     }
@@ -456,17 +443,11 @@ fn valid_field_limit_boundary_keeps_all64values() {
 }
 
 #[test]
-fn explicit_source_read_protects_byte_payload() {
+fn retired_source_read_has_no_success_payload() {
     let result = invoke(
-        &[
-            "extract", "--stdin", "--start", "BEGIN", "--end", "END", "--read", "source", "--raw",
-        ],
-        "BEGINé\r\nEND".as_bytes(),
+        &["extract", "--stdin", "--select", "p", "--read", "source"],
+        b"<p>value</p>",
     );
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert_eq!(result.stdout, "é\r\n".as_bytes());
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
 }

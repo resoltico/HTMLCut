@@ -3,16 +3,31 @@ mod support;
 use support::invoke;
 
 #[test]
-fn index_one_description_and_named_schemas_share_closed_vocabulary() {
-    let output = invoke(&["describe"], b"");
+fn native_help_and_named_schemas_share_current_closed_vocabulary() {
+    let output = invoke(&["--help"], b"");
     assert!(output.status.success());
-    let index: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(index["operations"].as_array().unwrap().len(), 6);
-    let output = invoke(&["describe", "extract"], b"");
+    let help = String::from_utf8(output.stdout).unwrap();
+    for name in ["extract", "inspect", "replay", "schema"] {
+        assert!(help.contains(name));
+    }
+    for name in ["describe", "outline"] {
+        assert!(!help.contains(name));
+    }
+    let output = invoke(&["extract", "--help"], b"");
     assert!(output.status.success());
-    let description: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(description["defaults"]["selection"], "single");
-    assert_eq!(description["defaults"]["read"], "dom_text");
+    let help = String::from_utf8(output.stdout).unwrap();
+    for required in [
+        "--stdin",
+        "--file",
+        "--nth",
+        "--optional-field",
+        "--many-field",
+        "outer-html",
+        "literal",
+        "\"min\":0",
+    ] {
+        assert!(help.contains(required), "{required}");
+    }
     for name in htmlcut_core::SCHEMA_NAMES
         .iter()
         .copied()

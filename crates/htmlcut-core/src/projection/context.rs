@@ -65,7 +65,9 @@ impl ListContext {
                 crate::execution::charge(budget, 1)?;
                 let number = integer(child.attr("value"), budget)?
                     .or(next)
-                    .ok_or_else(|| ExtractionError::limit("rendering"))?;
+                    .ok_or_else(|| {
+                        ExtractionError::resource("rendering", "signed_list_ordinal_bits", 64)
+                    })?;
                 ordinals.insert(child.id(), number);
                 next = if reversed {
                     number.checked_sub(1)
@@ -107,7 +109,7 @@ pub(super) fn ordinal(value: Option<&str>) -> Result<Option<i64>, ExtractionErro
     value[..sign + digits]
         .parse()
         .map(Some)
-        .map_err(|_| ExtractionError::limit("rendering"))
+        .map_err(|_| ExtractionError::resource("rendering", "signed_list_ordinal_bits", 64))
 }
 
 #[cfg(test)]

@@ -1,1 +1,1 @@
-{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"}}
+{"version":6,"select":"p","match":"one","read":"literal"}

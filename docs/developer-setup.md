@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: SETUP
 updated: "2026-10-05"
 route:
   keywords: [developer setup, devcontainer, host native, fresh machine, rustup, shellcheck, cargo-nextest, cargo-llvm-cov, cargo-fuzz, cargo-mutants, cargo-miri, macOS clang, artifact hygiene]
-  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
+  questions: ["how do I set up a fresh machine for HTMLCut?", "which tools does HTMLCut need locally?", "how do I run HTMLCut mutation testing?", "how do I run the HTMLCut strict-provenance selector-and-reading Miri proof?", "why does cargo install fail with a missing Homebrew clang path?", "where do HTMLCut build artifacts live on disk?"]
 ---
 
 # Developer Setup
@@ -22,7 +22,7 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for that workflow.
 The rest of this document is the host-native Rust path.
 
 HTMLCut pins one exact stable toolchain through `rust-toolchain.toml` and installs nightly for the
-branch-coverage gate, the maintained strict-provenance selector-and-slice Miri proof, and live `cargo-fuzz`
+branch-coverage gate, the maintained strict-provenance selector-and-reading Miri proof, and live `cargo-fuzz`
 campaigns. The maintainer workflow also depends on Rust-native QA commands plus `shellcheck` for
 shell-script checks.
 
@@ -110,7 +110,7 @@ source "$HOME/.cargo/env"
 
 LLVM-backed maintainer flows are a separate concern: `cargo xtask coverage` and
 `cargo xtask fuzz-smoke` both launch Cargo with `CC=clang CXX=clang++` so coverage and libFuzzer
-stay on the LLVM toolchain. The strict-provenance selector-and-slice Miri proof does not need that compiler override,
+stay on the LLVM toolchain. The strict-provenance selector-and-reading Miri proof does not need that compiler override,
 but it does require the nightly `miri` plus `rust-src` components. Keep `clang` and `clang++`
 available on `PATH` on any host where you plan to run the maintained coverage or fuzz commands.
 

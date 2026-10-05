@@ -12,12 +12,7 @@ fn scalar_exclusion_has_the_same_data_and_receipt_as_a_plan() {
     let plan_receipt = root.path().join("plan.receipt.json");
     std::fs::write(
         &plan,
-        serde_json::to_vec(&json!({
-            "schema":"htmlcut.extraction.plan", "version":htmlcut_core::SCHEMA_VERSION,
-            "strategy":{"kind":"css","selector":"p"},
-            "projection":{"kind":"markdown"},
-            "exclude":["sup.reference"]
-        }))
+        serde_json::to_vec(&json!({"version":6,"select":"p","exclude":["sup.reference"],"match":"one","read":"markdown"}))
         .unwrap(),
     )
     .unwrap();
@@ -26,7 +21,7 @@ fn scalar_exclusion_has_the_same_data_and_receipt_as_a_plan() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--read",
             "markdown",
@@ -63,16 +58,16 @@ fn exact_header_expectations_reject_column_drift_before_data_delivery() {
     let args = [
         "extract",
         "--stdin",
-        "--css",
+        "--select",
         "tr:has(td)",
         "--field",
         "location",
         "td:nth-child(1)",
-        "normalized_text",
+        "text",
         "--field",
         "population",
         "td:nth-child(2)",
-        "normalized_text",
+        "text",
         "--expect-text",
         "th:nth-child(1)",
         "Location",
@@ -110,17 +105,17 @@ fn incompatible_inline_assumptions_fail_before_source_publication() {
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "a",
             "--read",
-            "attribute:href",
+            "attr:href",
             "--exclude",
             "sup",
         ],
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--expect-text",
             "[",
@@ -129,12 +124,12 @@ fn incompatible_inline_assumptions_fail_before_source_publication() {
         vec![
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--field",
             "text",
             "p",
-            "dom_text",
+            "literal",
             "--exclude",
             "sup",
         ],

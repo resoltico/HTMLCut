@@ -4,6 +4,17 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking query/Rust contract:** wire and semantics advance to 6 for the 20.0.0 candidate. Queries use required `version`/`select` and direct `read`/`match`/`fields`/`expect`; role strings, strategy/projection wrappers and transform arrays are rejected. Fields are keyed and processed lexically; receipt aggregates/errors identify field names. Rewrite saved v5 queries and consuming Rust code, and recreate bundles. The closed USTAR transport remains version 1.
+- **Breaking CLI:** use `--select`, `--all`/`--nth`, current reading names and `replay`. `inspect` surveys groups without a selector and samples combined identifiers/attribute names/structural text with `--select`; `outline`, `describe`, `run`, split identifier inspection and retired flags are removed. Required/optional/many field triples share the compiler; use JSON for min=0/bounded/nth fields.
+- **Breaking default text/expectations:** `text` adds HTML structural boundaries and omits inert HTML/SVG payloads while preserving parsed pre characters and hidden/noscript content. Exact inline text expectations and discovery/table headers use this convention. Refresh exact-string guards/results; explicitly request `literal` for parsed concatenation or script JSON. Neither reading promises original source bytes or browser visibility.
+- Rust results expose immutable typed data and one bounded canonical payload through accessors. Source/query identities and receipt generation are lazy; requested evidence uses the actual remaining execution work and cached hash state never grants free logical work. Callers request a receipt explicitly, and CLI delivery reuses payload bytes. Typed data plus encoding remains bounded duplication.
+
+### Removed
+
+- **Breaking byte-cutting loss:** selected source-boundary extraction, its literal/regex flags and Rust constructors, source reading and source-range receipts are removed. Full accepted UTF-8 source remains exact in snapshots/bundles. Use guarded caller byte/string code for exact arbitrary cutting; literal DOM/HTML is not an equivalent replacement.
+
 ## [19.2.0] - 2026-10-05
 
 ### Added

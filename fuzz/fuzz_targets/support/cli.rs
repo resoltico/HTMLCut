@@ -12,7 +12,5 @@ pub(crate) mod command;
 pub(crate) mod command_diagnostics;
 #[path = "../../../crates/htmlcut-cli/src/input.rs"]
 pub(crate) mod input;
-#[path = "../../../crates/htmlcut-cli/src/operation_metadata.rs"]
-pub(crate) mod operation_metadata;
 #[path = "../../../crates/htmlcut-cli/src/publication.rs"]
 pub(crate) mod publication;

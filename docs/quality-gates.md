@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: QUALITY
 updated: "2026-10-05"
 route:
   keywords: [quality gates, cargo xtask, cargo-mutants, mutation testing, prepared engine benchmark, gate reports, retained diagnostics, source structure, coverage, miri, semver baseline, nextest, fuzz, devcontainer, hygiene]
-  questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-slice Miri proof?", "which command checks HTMLCut artifact hygiene?"]
+  questions: ["what does cargo xtask check enforce?", "how do I run HTMLCut mutation testing?", "how do I benchmark HTMLCut's prepared engine?", "why is cargo-mutants separate from the required PR gate?", "where are cargo-mutants results retained?", "how do I run the HTMLCut maintainer gate?", "how do I get JSON output from an HTMLCut quality gate?", "how do I run the HTMLCut strict-provenance selector-and-reading Miri proof?", "which command checks HTMLCut artifact hygiene?"]
 ---
 
 # Quality Gates
@@ -46,7 +46,7 @@ Use [developer-devcontainer.md](developer-devcontainer.md) for the preferred con
 workflow on Ubuntu `24.04`.
 
 `rust-toolchain.toml` owns the exact HTMLCut stable toolchain pin (currently `1.98.1`).
-The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
+The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-reading Miri proof, branch coverage, and live `cargo-fuzz` campaigns. The workspace manifest carries the
 published compatibility floor separately through
 `[workspace.package] rust-version = "1.98.1"`.
 
@@ -80,7 +80,7 @@ Run only coverage:
 ./scripts/xtask.sh coverage
 ```
 
-Run only the strict-provenance selector-and-slice Miri proof:
+Run only the strict-provenance selector-and-reading Miri proof:
 
 ```bash
 ./scripts/xtask.sh miri
@@ -305,7 +305,7 @@ cargo xtask refresh-semver-baseline --git-ref vX.Y.Z
   bounded labeled samples without multiplying a resource test across every mutant
 - the maintained selector-validation plus delimiter-slice safety proof through `cargo xtask
   miri`, which runs `cargo +nightly-2026-09-30 miri test -p htmlcut-core --lib --no-default-features
-  --locked tests::selector_and_slice_contract_remain_miri_sound -- --exact` with
+  --locked tests::selector_and_reading_contract_remain_miri_sound -- --exact` with
   `MIRIFLAGS=-Zmiri-strict-provenance`
 - `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 - warning-denied `clippy` and Rustdoc builds of the maintained selector and scraper fork crates, so the resource-boundary source shipped with HTMLCut cannot accumulate a separate warning baseline

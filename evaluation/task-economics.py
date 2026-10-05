@@ -15,7 +15,12 @@ def reference(task,text):
     if task=='titles':return [n['title'] for n in soup.select('a.item')]
     if task=='urls':return [n['href'] for n in soup.select('a.item')]
     if task=='mapping':return record_values(soup)
-    if task=='technical':return [''.join(str(v) for v in soup.select_one('#policy').descendants if isinstance(v,NavigableString) and not isinstance(v,(Comment,Doctype)))]
+    if task=='technical-literal':return [''.join(str(v) for v in soup.select_one('#policy').descendants if isinstance(v,NavigableString) and not isinstance(v,(Comment,Doctype)))]
+    if task=='technical-text':
+        # Authored expected answer for the fixed fixture, independent of extraction/parser code.
+        return ["Free-threading The global interpreter lock affects Windows and macOS. "
+                "--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL "
+                "Hidden source note remains included. Charges Amount EUR 180"]
     if task=='guarded':
         labels=soup.select('#label');values=soup.select('#amount')
         if len(labels)!=1 or labels[0].get_text()!='Repair cost' or len(values)!=1:raise ValueError('declared context/cardinality failed')
@@ -34,31 +39,39 @@ def main():
     if not args.binary or not args.output:parser.error('--binary and --output required')
     import tiktoken
     enc=tiktoken.get_encoding('o200k_base');tokens=lambda v:len(enc.encode(v if isinstance(v,str) else compact(v)))
-    binary=str(Path(args.binary).resolve());dest=Path(args.output).resolve();dest.parent.mkdir(parents=True,exist_ok=True)
+    binary=str(Path(args.binary).resolve());dest=Path(args.output).resolve()
+    if dest.is_relative_to(ROOT):parser.error('Execution evidence must be outside the repository')
+    dest.parent.mkdir(parents=True,exist_ok=True)
     manifest=json.loads((CORPUS/'manifest.json').read_text())
     for entry in manifest['files']:assert hashlib.sha256((CORPUS/entry['path']).read_bytes()).hexdigest()==entry['sha256']
     plans=dest.parent/'task-plans';plans.mkdir(exist_ok=True);tasks=[];discovery={}
-    for name,command in [('index',[binary,'describe']),('extract',[binary,'describe','extract']),
-                         ('inspection',[binary,'inspect','--file',str(CORPUS/'books.html'),'--css','article.book'])]:
+    for name,command in [('index',[binary,'--help']),('extract',[binary,'extract','--help']),
+                         ('inspection',[binary,'inspect','--file',str(CORPUS/'books.html'),'--select','article.book'])]:
         raw=subprocess.check_output(command,timeout=30);discovery[name]=dict(command=command,bytes=len(raw),tokens=tokens(raw.decode()))
-    for task,fixture,selector,projection in [
-        ('titles','books.html','a.item',dict(kind='attribute',name='title')),
-        ('urls','books.html','a.item',dict(kind='attribute',name='href')),
-        ('technical','technical.html','#policy',dict(kind='dom_text')),
-        ('guarded','context.html','#amount',dict(kind='dom_text')),
-        ('mapping','books.html','article.book',dict(kind='records',fields=[
-            dict(name='title',selector='a',projection=dict(kind='attribute',name='title')),
-            dict(name='price',selector='.price'),dict(name='stock',selector='.stock'),
-            dict(name='rating',selector='.rating'),dict(name='url',selector='a',projection=dict(kind='attribute',name='href'))]))]:
-        plan=dict(schema='htmlcut.extraction.plan',version=5,strategy=dict(kind='css',selector=selector),
-                  selection=dict(kind='all',min=1) if task in ['titles','urls','mapping'] else dict(kind='single'),projection=projection)
-        if task=='guarded':plan['guards']=[dict(scope='document',selector='#label',min=1,max=1,read=dict(kind='dom_text'),predicate=dict(kind='exact',value='Repair cost'))]
+    for task,fixture,selector,reading,fields in [
+        ('titles','books.html','a.item','attr:title',None),
+        ('urls','books.html','a.item','attr:href',None),
+        ('technical-literal','technical.html','#policy','literal',None),
+        ('technical-text','technical.html','#policy','text',None),
+        ('guarded','context.html','#amount','literal',None),
+        ('mapping','books.html','article.book',None,dict(
+            title=dict(select='a',read='attr:title'),
+            price=dict(select='.price',read='literal'),
+            stock=dict(select='.stock',read='literal'),
+            rating=dict(select='.rating',read='literal'),
+            url=dict(select='a',read='attr:href')))]:
+        plan=dict(version=6,select=selector)
+        if task in ['titles','urls','mapping']:plan.update(match='all',min=1)
+        if fields is not None:plan['fields']=fields
+        elif reading is not None:plan['read']=reading
+        if task=='guarded':plan['expect']=[dict(select='#label',read='literal',equals='Repair cost')]
         path=plans/(task+'.json');path.write_text(compact(plan));source=CORPUS/fixture;expected=reference(task,source.read_text())
         command=[binary,'extract','--file',str(source),'--plan',str(path)]
         alternative=[sys.executable,str(Path(__file__).resolve()),'--reference-task',task,'--fixture',str(source)]
         def normalize(key,value):return [dict(n,rating=int(n['rating'])) for n in value] if task=='mapping' and key=='htmlcut' else value
-        timings,outputs=paired(dict(htmlcut=command,parser=alternative),expected,normalize)
-        timing=timings['htmlcut'];other_time=timings['parser'];raw=outputs['htmlcut'];other_raw=outputs['parser'];data=json.loads(raw)
+        commands=dict(htmlcut=command) if task=='technical-text' else dict(htmlcut=command,parser=alternative)
+        timings,outputs=paired(commands,expected,normalize)
+        timing=timings['htmlcut'];other_time=timings.get('parser');raw=outputs['htmlcut'];other_raw=outputs.get('parser');data=json.loads(raw)
         actual=[dict(n,rating=int(n['rating'])) for n in data] if task=='mapping' else data
         assert actual==expected,task
         # The mapper converts one primitive only; no caller HTML reparsing occurs.
@@ -71,16 +84,16 @@ def main():
         assert receipt['data_sha256']==hashlib.sha256(compact(data).encode()).hexdigest()
         bundle_command=command+['--bundle',str(bundle_path)];bundle_run=subprocess.run(bundle_command,check=True,capture_output=True,timeout=30)
         assert bundle_run.stdout==raw
-        replay=subprocess.check_output([binary,'run',str(bundle_path)],timeout=30);assert replay==raw
+        replay=subprocess.check_output([binary,'replay',str(bundle_path)],timeout=30);assert replay==raw
         alternative=[sys.executable,str(Path(__file__).resolve()),'--reference-task',task,'--fixture',str(source)]
-        assert json.loads(other_raw)==expected
-        warm=[]
-        for _ in range(100):
-            start=time.perf_counter_ns();value=reference(task,source.read_text());warm.append(time.perf_counter_ns()-start);assert value==expected
+        if other_raw is not None:assert json.loads(other_raw)==expected
+        warm=[]; source_text=source.read_text()
+        for _ in range(0 if task=='technical-text' else 100):
+            start=time.perf_counter_ns();value=reference(task,source_text);warm.append(time.perf_counter_ns()-start);assert value==expected
         tasks.append(dict(task=task,fixture=fixture,correctness='complete exact equality',values=actual,htmlcut_values=data,
-            commands=[command,alternative],htmlcut_fresh_process=timing,parser_fresh_process=other_time,
-            parser_warm_parse_select=dict(samples_ns=warm,median_ns=statistics.median(warm)),
-            payload_bytes=len(raw),payload_tokens=tokens(raw.decode()),parser_output_tokens=tokens(other_raw.decode()),
+            commands=commands,htmlcut_fresh_process=timing,parser_fresh_process=other_time,
+            parser_warm_parse_select=dict(samples_ns=warm,median_ns=statistics.median(warm)) if warm else None,
+            payload_bytes=len(raw),payload_tokens=tokens(raw.decode()),parser_output_tokens=tokens(other_raw.decode()) if other_raw is not None else None,
             plan_tokens=tokens(plan),source_tokens=tokens(source.read_text()),caller_mapping='rating string to int only' if task=='mapping' else None,
             receipt=dict(command=receipt_command,bytes=len(receipt_raw),tokens=tokens(receipt_raw.decode()),not_default_stdout=True),
             bundle=dict(command=bundle_command,bytes=bundle_path.stat().st_size,replay_equal=True,not_default_stdout=True),observed_retries=0))

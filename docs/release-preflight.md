@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: RELEASE
 updated: "2026-10-05"
 route:
@@ -122,7 +122,7 @@ Install the local maintainer toolchain if it is not already available by followi
 `rustup`, the cargo QA tools, `shellcheck`, and the macOS compiler-override safeguard.
 
 `rust-toolchain.toml` owns the exact HTMLCut repository toolchain pin (currently `1.98.1`).
-The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-slice Miri proof, branch coverage, and live `cargo-fuzz` campaigns.
+The maintained `nightly-2026-09-30` toolchain runs the strict-provenance selector-and-reading Miri proof, branch coverage, and live `cargo-fuzz` campaigns.
 
 Run the single local quality gate first:
 

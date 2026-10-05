@@ -1,49 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Selector-scoped counts and deliberately abbreviated samples of one immutable snapshot.
 
-use ego_tree::iter::Edge;
 use schemars::JsonSchema;
-use scraper::{ElementRef, Node};
+use scraper::ElementRef;
 use selectors::work_budget::SelectorWorkBudget;
 use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, ExtractionError, PreparedDocument};
 
-mod outline;
-pub use outline::{OutlineElement, OutlineGroup, OutlineResult, OutlineSample, TableShape};
-
-/// One sample, separate from a complete extraction value.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct InspectionSample {
-    /// Parsed tag, bounded to 128 UTF-8 bytes.
-    pub tag: String,
-    /// At most eight exact supported names, sorted lexicographically.
-    pub attributes: Vec<String>,
-    /// Whether every attribute name is included.
-    pub attributes_complete: bool,
-    /// At most 160 normalized literal-text Unicode scalar values.
-    pub text: String,
-    /// Whether the normalized text is complete.
-    pub text_complete: bool,
-}
-
-/// Complete selector count with explicitly bounded samples.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct InspectionResult {
-    /// Complete match count, never a lower bound or estimate.
-    pub count: u32,
-    /// Samples in original document order.
-    pub samples: Vec<InspectionSample>,
-    /// Whether every matched element has a sample.
-    pub samples_complete: bool,
-}
+mod survey;
+pub use survey::{SurveyElement, SurveyGroup, SurveyResult, SurveySample, TableShape};
 
 /// Bounded selector identifiers and structural text for one sampled element.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct IdentifierInspectionSample {
+pub struct InspectionSample {
     /// Parsed tag, bounded to 128 UTF-8 bytes.
     pub tag: String,
     /// Exact id attribute when present and within 128 UTF-8 bytes.
@@ -52,7 +23,11 @@ pub struct IdentifierInspectionSample {
     pub classes: Vec<String>,
     /// Whether all id and class tokens are represented.
     pub identifiers_complete: bool,
-    /// At most 160 Unicode scalar values of structural text preview.
+    /// At most eight exact supported attribute names, sorted lexically.
+    pub attributes: Vec<String>,
+    /// Whether every attribute name is represented.
+    pub attributes_complete: bool,
+    /// At most 160 Unicode scalar values of static structural text preview.
     pub text: String,
     /// Whether the structural text preview is complete.
     pub text_complete: bool,
@@ -61,40 +36,20 @@ pub struct IdentifierInspectionSample {
 /// Complete selector count with bounded identifier samples.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct IdentifierInspectionResult {
+pub struct InspectionResult {
+    /// SHA-256 binding this requested observation to the accepted source bytes.
+    pub source_sha256: String,
     /// Complete match count, never a lower bound or estimate.
     pub count: u32,
     /// Samples in original document order.
-    pub samples: Vec<IdentifierInspectionSample>,
+    pub samples: Vec<InspectionSample>,
     /// Whether every matched element has a sample.
     pub samples_complete: bool,
 }
 
 impl PreparedDocument {
-    /// Counts an explicit selector completely and returns up to ten bounded samples.
-    pub fn inspect(&self, css: &str, samples: u32) -> Result<InspectionResult, ExtractionError> {
-        let (nodes, budget) = self.inspection_matches(css, samples)?;
-        let count = nodes.len() as u32;
-        let selected = nodes
-            .iter()
-            .take(samples as usize)
-            .map(|node| sample(*node, &budget))
-            .collect::<Result<Vec<_>, _>>()?;
-        let result = InspectionResult {
-            count,
-            samples_complete: count <= samples,
-            samples: selected,
-        };
-        let _ = crate::identity::data_digest(&result, 16 * 1024, &budget)?;
-        Ok(result)
-    }
-
     /// Counts an explicit selector and samples only bounded id/class values and structural text.
-    pub fn inspect_identifiers(
-        &self,
-        css: &str,
-        samples: u32,
-    ) -> Result<IdentifierInspectionResult, ExtractionError> {
+    pub fn inspect(&self, css: &str, samples: u32) -> Result<InspectionResult, ExtractionError> {
         let (nodes, budget) = self.inspection_matches(css, samples)?;
         let count = nodes.len() as u32;
         let selected = nodes
@@ -102,12 +57,13 @@ impl PreparedDocument {
             .take(samples as usize)
             .map(|node| identifier_sample(*node, &budget))
             .collect::<Result<Vec<_>, _>>()?;
-        let result = IdentifierInspectionResult {
+        let result = InspectionResult {
+            source_sha256: self.snapshot.source_sha256().into(),
             count,
             samples_complete: count <= samples,
             samples: selected,
         };
-        let _ = crate::identity::data_digest(&result, 16 * 1024, &budget)?;
+        let _ = crate::identity::encoded(&result, 16 * 1024, &budget)?;
         Ok(result)
     }
 
@@ -137,10 +93,10 @@ impl PreparedDocument {
 fn identifier_sample(
     root: ElementRef<'_>,
     budget: &SelectorWorkBudget,
-) -> Result<IdentifierInspectionSample, ExtractionError> {
+) -> Result<InspectionSample, ExtractionError> {
     let tag = root.value().name();
     if tag.len() > 128 {
-        return Err(ExtractionError::limit("inspection"));
+        return Err(ExtractionError::resource("inspection", "tag_bytes", 128));
     }
     let mut complete = true;
     let id = if let Some(value) = root.attr("id") {
@@ -171,66 +127,6 @@ fn identifier_sample(
             }
         }
     }
-    let (text, text_complete) = structural_preview(root, budget, 160)?;
-    Ok(IdentifierInspectionSample {
-        tag: tag.into(),
-        id,
-        classes,
-        identifiers_complete: complete,
-        text,
-        text_complete,
-    })
-}
-
-fn structural_preview(
-    root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
-    maximum: usize,
-) -> Result<(String, bool), ExtractionError> {
-    let mut result = String::new();
-    let mut count = 0;
-    let mut space = false;
-    for edge in root.traverse() {
-        crate::execution::charge(budget, 1)?;
-        let node = match edge {
-            Edge::Open(node) | Edge::Close(node) => node,
-        };
-        if crate::projection::text_boundary(node.value()) {
-            space = !result.is_empty();
-        }
-        let Edge::Open(node) = edge else { continue };
-        let Node::Text(text) = node.value() else {
-            continue;
-        };
-        for c in text.text.chars() {
-            crate::execution::charge(budget, 1)?;
-            if c.is_whitespace() {
-                space = !result.is_empty();
-                continue;
-            }
-            let needed = 1 + usize::from(space);
-            if needed > maximum - count {
-                return Ok((result, false));
-            }
-            if space {
-                result.push(' ');
-            }
-            result.push(c);
-            count += needed;
-            space = false;
-        }
-    }
-    Ok((result, true))
-}
-
-fn sample(
-    root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
-) -> Result<InspectionSample, ExtractionError> {
-    let tag = root.value().name();
-    if tag.len() > 128 {
-        return Err(ExtractionError::limit("inspection"));
-    }
     let mut attributes = Vec::new();
     let mut attribute_count = 0;
     for (name, _) in root.value().attrs() {
@@ -243,9 +139,12 @@ fn sample(
         }
     }
     let attributes_complete = attribute_count == attributes.len();
-    let (text, text_complete) = preview(root, budget)?;
+    let (text, text_complete) = structural_preview(root, budget, 160)?;
     Ok(InspectionSample {
         tag: tag.into(),
+        id,
+        classes,
+        identifiers_complete: complete,
         attributes,
         attributes_complete,
         text,
@@ -253,38 +152,19 @@ fn sample(
     })
 }
 
-fn preview(
+fn structural_preview(
     root: ElementRef<'_>,
     budget: &SelectorWorkBudget,
+    maximum: usize,
 ) -> Result<(String, bool), ExtractionError> {
-    let mut result = String::new();
-    let mut count = 0;
-    let mut space = false;
-    for node in root.descendants() {
-        crate::execution::charge(budget, 1)?;
-        let Node::Text(text) = node.value() else {
-            continue;
-        };
-        for c in text.text.chars() {
-            crate::execution::charge(budget, 1)?;
-            if c.is_ascii_whitespace() {
-                space = !result.is_empty();
-                continue;
-            }
-            let needed = 1 + usize::from(space);
-            if needed > 160 - count {
-                return Ok((result, false));
-            }
-            if space {
-                result.push(' ');
-                count += 1;
-            }
-            result.push(c);
-            count += 1;
-            space = false;
-        }
-    }
-    Ok((result, true))
+    crate::projection::text(
+        root,
+        &std::collections::HashSet::new(),
+        true,
+        maximum * 4,
+        Some(maximum),
+        budget,
+    )
 }
 
 #[cfg(test)]

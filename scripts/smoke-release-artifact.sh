@@ -188,9 +188,8 @@ main() {
     local first_output
     first_output="$(
         "${binary_path}" extract --file "${fixture_path}" \
-            --css 'article a.more' \
-            \
-            --read attribute:href \
+            --select 'article a.more' \
+            --read attr:href \
             --bundle "${request_path}" --raw \
             | tr -d '\r'
     )"
@@ -199,7 +198,7 @@ main() {
         "packaged binary returned unexpected extraction output: ${first_output}"
 
     local replay_output
-    replay_output="$("${binary_path}" run "${request_path}" --raw | tr -d '\r')"
+    replay_output="$("${binary_path}" replay "${request_path}" --raw | tr -d '\r')"
     [[ "${replay_output}" == "${first_output}" ]] || htmlcut_die \
         "bundle replay drifted: expected ${first_output}, got ${replay_output}"
 

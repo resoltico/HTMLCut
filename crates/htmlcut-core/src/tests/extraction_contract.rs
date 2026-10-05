@@ -10,43 +10,24 @@ fn prepared(html: &str) -> PreparedDocument {
 }
 
 #[test]
-fn selector_and_slice_contract_remain_miri_sound() {
+fn selector_and_reading_contract_remain_miri_sound() {
     let invalid = ExtractionPlan::css("[").unwrap();
     assert_eq!(
         CompiledPlan::compile(&invalid).err().unwrap().code,
         ErrorCode::InvalidSelector
     );
-    let document =
-        prepared("<article><p>Hello</p><template>T</template></article>BEGIN\r\n✓\r\nEND");
+    let document = prepared("<article><p>Hello</p><template>T</template></article>");
     let selector = CompiledPlan::compile(&ExtractionPlan::css("article").unwrap()).unwrap();
     assert_eq!(
         document
             .execute(&selector)
             .unwrap()
-            .data
+            .data()
             .as_values()
             .unwrap(),
-        ["HelloT"]
-    );
-    let slice = CompiledPlan::compile(
-        &ExtractionPlan::slice(
-            Boundary::Literal {
-                value: "BEGIN".into(),
-            },
-            Boundary::Literal {
-                value: "END".into(),
-            },
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        document.execute(&slice).unwrap().data.as_values().unwrap(),
-        ["\r\n✓\r\n"]
+        ["Hello"]
     );
     assert_eq!(document.parse_count(), 1);
-
-    // The same strict-provenance proof owns scoped cache reuse and fragment context.
     let document = prepared(
         "<main><ol start='7'><li>A</li><li id='selected'>B</li></ol><table><tr><td>X | Y</td><td>Z</td></tr></table><pre><code id='code'>x\n</code></pre></main>",
     );
@@ -56,14 +37,14 @@ fn selector_and_slice_contract_remain_miri_sound() {
         ("#code", "```\nx\n\n```"),
     ] {
         let mut plan = ExtractionPlan::css(css).unwrap();
-        plan.projection = Projection::Value(ValueProjection::Markdown {});
+        plan.read = Some(Reading::Markdown);
         let compiled = CompiledPlan::compile(&plan).unwrap();
         for _ in 0..2 {
             assert_eq!(
                 document
                     .execute(&compiled)
                     .unwrap()
-                    .data
+                    .data()
                     .as_values()
                     .unwrap(),
                 [expected]
@@ -71,86 +52,60 @@ fn selector_and_slice_contract_remain_miri_sound() {
         }
     }
     let mut plan = ExtractionPlan::css("main:has(> ol) li:nth-child(2)").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Attribute { name: "id".into() });
+    plan.read = Some(Reading::Attribute("id".into()));
     let compiled = CompiledPlan::compile(&plan).unwrap();
     for _ in 0..2 {
         assert_eq!(
             document
                 .execute(&compiled)
                 .unwrap()
-                .data
+                .data()
                 .as_values()
                 .unwrap(),
             ["selected"]
         );
     }
     let document = prepared("<article><p>value</p></article>");
-    let plan=ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"},{"name":"optional","selector":".absent","selection":{"kind":"optional"}}]}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"version":6,"select":"article","fields":{"text":{"select":"p"},"optional":{"select":".absent","match":"optional"}}}"#).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let first = document.execute(&compiled).unwrap();
-    assert_eq!(
-        serde_json::to_value(&first.data).unwrap(),
-        serde_json::json!([{"text":"value","optional":null}])
-    );
-    assert_eq!(first, document.execute(&compiled).unwrap());
-
+    let second = document.execute(&compiled).unwrap();
+    assert_eq!(first.payload(), br#"[{"optional":null,"text":"value"}]"#);
+    assert_eq!(first.payload(), second.payload());
+    assert_eq!(first.receipt().unwrap(), second.receipt().unwrap());
     let document = prepared(
         "<article><p>A</p></article><!-- gap --><aside><p>\u{a0}<code>x`y</code><em>!</em>\u{2003}</p></aside>",
     );
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","following_siblings":1,"fields":[{"name":"reading","selector":":scope + aside p","projection":{"kind":"markdown"}},{"name":"normalized","selector":":scope + aside p","transforms":[{"kind":"normalize_whitespace"}]}]}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"version":6,"select":"article","following_siblings":1,"fields":{"reading":{"select":":scope + aside p","read":"markdown"},"normalized":{"select":":scope + aside p"}}}"#).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let first = document.execute(&compiled).unwrap();
     assert_eq!(
-        serde_json::to_value(&first.data).unwrap(),
+        serde_json::to_value(first.data()).unwrap(),
         serde_json::json!([{"reading":"\u{a0}``x`y``<em>\\!</em>\u{2003}","normalized":"x`y!"}])
     );
-    assert_eq!(first, document.execute(&compiled).unwrap());
+    assert_eq!(
+        first.payload(),
+        document.execute(&compiled).unwrap().payload()
+    );
 }
 
 #[test]
-fn literal_default_is_lazy_reused_and_includes_hidden_content() {
+fn structural_default_is_lazy_reused_and_includes_hidden_content() {
     let source = prepared("<p hidden>A<span>B</span>C</p>");
     assert_eq!(source.parse_count(), 0);
     let compiled = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     for _ in 0..2 {
         let result = source.execute(&compiled).unwrap();
-        assert_eq!(result.data.as_values().unwrap(), ["ABC"]);
+        assert_eq!(result.data().as_values().unwrap(), ["ABC"]);
         assert_eq!(
             (
-                result.receipt.candidate_count,
-                result.receipt.selected_count
+                result.receipt().unwrap().candidate_count,
+                result.receipt().unwrap().selected_count
             ),
             (1, 1)
         );
     }
     assert_eq!(source.parse_count(), 1);
-}
-
-#[test]
-fn source_slices_preserve_unicode_crlf_and_never_parse() {
-    let source = prepared("éSTART\r\n<X a='1'>✓</X>\r\nEND");
-    let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.strategy = Strategy::Slice {
-        start: Boundary::Literal {
-            value: "START".into(),
-        },
-        end: Boundary::Literal {
-            value: "END".into(),
-        },
-        include_start: false,
-        include_end: false,
-    };
-    plan.projection = Projection::Source {};
-    let compiled = CompiledPlan::compile(&plan).unwrap();
-    for _ in 0..2 {
-        let result = source.execute(&compiled).unwrap();
-        assert_eq!(result.data.as_values().unwrap(), ["\r\n<X a='1'>✓</X>\r\n"]);
-        assert_eq!(
-            result.receipt.ranges,
-            Some(vec![SourceRange { start: 7, end: 27 }])
-        );
-    }
-    assert_eq!(source.parse_count(), 0);
 }
 
 #[test]
@@ -188,21 +143,17 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
         ErrorCode::NoMatch
     );
     let mut plan = ExtractionPlan::css("p[data-x]").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "data-x".into(),
-    });
+    plan.read = Some(Reading::Attribute("data-x".into()));
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .data
+            .data()
             .as_values()
             .unwrap(),
         [""]
     );
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "absent".into(),
-    });
+    plan.read = Some(Reading::Attribute("absent".into()));
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -213,22 +164,16 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
 }
 
 #[test]
-fn closed_json_rejects_nested_duplicates_unknown_fields_and_old_schema() {
-    let minimal = r#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"}}"#;
-    assert!(ExtractionPlan::from_json(minimal.as_bytes()).is_ok());
+fn closed_json_rejects_nested_duplicates_unknown_members_and_retired_versions() {
+    let minimal = br#"{"version":6,"select":"p"}"#;
+    ExtractionPlan::from_json(minimal).unwrap();
     for value in [
-        minimal.replace(
-            "\"selector\":\"p\"",
-            "\"selector\":\"p\",\"selector\":\"aside\"",
-        ),
-        minimal.replace("\"version\":5", "\"version\":5,\"unknown\":true"),
-        minimal.replace("htmlcut.extraction.plan", "htmlcut.plan"),
-        minimal.replace("\"version\":5", "\"version\":2"),
+        br#"{"version":6,"select":"p","select":"aside"}"#.as_slice(),
+        br#"{"version":6,"select":"p","unknown":true}"#.as_slice(),
+        br#"{"version":6,"select":"p","schema":"htmlcut.extraction.plan"}"#.as_slice(),
+        br#"{"version":2,"select":"p"}"#.as_slice(),
     ] {
-        assert!(
-            ExtractionPlan::from_json(value.as_bytes()).is_err(),
-            "{value}"
-        );
+        assert!(ExtractionPlan::from_json(value).is_err());
     }
 }
 
@@ -260,9 +205,7 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
         "<article data-key='chosen'><pre>large <b>body</b></pre><script>payload</script></article>",
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "data-key".into(),
-    });
+    plan.read = Some(Reading::Attribute("data-key".into()));
     let compiled = CompiledPlan::compile(&plan).unwrap();
     crate::projection::take_projection_calls();
     for _ in 0..3 {
@@ -270,7 +213,7 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
             document
                 .execute(&compiled)
                 .unwrap()
-                .data
+                .data()
                 .as_values()
                 .unwrap(),
             ["chosen"]
@@ -279,12 +222,8 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
     assert_eq!(document.parse_count(), 1);
     assert_eq!(crate::projection::take_projection_calls(), [3, 0, 0, 0]);
     // Positive controls prove that all counters observe the actual paths.
-    for projection in [
-        Projection::Value(ValueProjection::DomText {}),
-        Projection::Value(ValueProjection::Markdown {}),
-        Projection::Value(ValueProjection::OuterHtml {}),
-    ] {
-        plan.projection = projection;
+    for reading in [Reading::Literal, Reading::Markdown, Reading::OuterHtml] {
+        plan.read = Some(reading);
         document
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap();

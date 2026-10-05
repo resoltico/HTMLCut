@@ -2,7 +2,7 @@
 //! Accepted immutable source and lazy, failure-caching preparation.
 
 use std::cell::OnceCell;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use schemars::JsonSchema;
 use scraper::{Html, html::ParseLimits};
@@ -24,7 +24,7 @@ pub struct SnapshotMetadata {
 pub struct SourceSnapshot {
     html: Arc<str>,
     metadata: SnapshotMetadata,
-    source_digest: String,
+    source_digest: Arc<OnceLock<String>>,
 }
 
 impl SourceSnapshot {
@@ -32,13 +32,21 @@ impl SourceSnapshot {
     pub fn new(html: impl AsRef<str>, metadata: SnapshotMetadata) -> Result<Self, ExtractionError> {
         let html = html.as_ref();
         if html.len() > PreparationLimits::default().max_source_bytes as usize {
-            return Err(ExtractionError::limit("source"));
+            return Err(ExtractionError::resource(
+                "source",
+                "max_source_bytes",
+                PreparationLimits::default().max_source_bytes.into(),
+            ));
         }
         let metadata = match metadata.base_url {
             None => SnapshotMetadata::default(),
             Some(value) => {
                 if value.len() > crate::limits::MAX_URL_INPUT_BYTES {
-                    return Err(ExtractionError::limit("metadata"));
+                    return Err(ExtractionError::resource(
+                        "metadata",
+                        "base_url_bytes",
+                        crate::limits::MAX_URL_INPUT_BYTES as u64,
+                    ));
                 }
                 let url = Url::parse(&value).map_err(|_| invalid_base())?;
                 if !matches!(url.scheme(), "http" | "https")
@@ -48,18 +56,21 @@ impl SourceSnapshot {
                     return Err(invalid_base());
                 }
                 if url.as_str().len() > crate::limits::MAX_URL_INPUT_BYTES {
-                    return Err(ExtractionError::limit("metadata"));
+                    return Err(ExtractionError::resource(
+                        "metadata",
+                        "base_url_bytes",
+                        crate::limits::MAX_URL_INPUT_BYTES as u64,
+                    ));
                 }
                 SnapshotMetadata {
                     base_url: Some(url.into()),
                 }
             }
         };
-        let source_digest = crate::identity::sha256(html.as_bytes());
         Ok(Self {
             html: Arc::from(html),
             metadata,
-            source_digest,
+            source_digest: Arc::new(OnceLock::new()),
         })
     }
     /// Exact accepted source, including CRLF and original source spelling.
@@ -72,7 +83,8 @@ impl SourceSnapshot {
     }
     /// SHA-256 of exact accepted UTF-8 bytes.
     pub fn source_sha256(&self) -> &str {
-        &self.source_digest
+        self.source_digest
+            .get_or_init(|| crate::identity::sha256(self.html.as_bytes()))
     }
 }
 
@@ -89,7 +101,7 @@ pub struct PreparedDocument {
     pub(crate) snapshot: SourceSnapshot,
     pub(crate) limits: PreparationLimits,
     dom: OnceCell<Result<Html, ExtractionError>>,
-    digest: String,
+    digest: OnceCell<String>,
     #[cfg(test)]
     parses: std::cell::Cell<u32>,
 }
@@ -102,23 +114,17 @@ impl PreparedDocument {
     ) -> Result<Self, ExtractionError> {
         limits.validate()?;
         if snapshot.html.len() > limits.max_source_bytes as usize {
-            return Err(ExtractionError::limit("source"));
+            return Err(ExtractionError::resource(
+                "source",
+                "max_source_bytes",
+                limits.max_source_bytes.into(),
+            ));
         }
-        let metadata = crate::canonical_json(&snapshot.metadata)?;
-        let policy = crate::canonical_json(&limits)?;
-        let digest = crate::identity::framed(
-            "htmlcut.prepared/3",
-            &[
-                snapshot.source_digest.as_bytes(),
-                metadata.as_bytes(),
-                policy.as_bytes(),
-            ],
-        );
         Ok(Self {
             snapshot,
             limits,
             dom: OnceCell::new(),
-            digest,
+            digest: OnceCell::new(),
             #[cfg(test)]
             parses: std::cell::Cell::new(0),
         })
@@ -133,7 +139,20 @@ impl PreparedDocument {
     }
     /// Snapshot/metadata/preparation-policy identity, distinct from extraction data.
     pub fn prepared_sha256(&self) -> &str {
-        &self.digest
+        self.digest.get_or_init(|| {
+            let metadata = crate::canonical_json(&self.snapshot.metadata)
+                .expect("validated metadata serializes");
+            let policy =
+                crate::canonical_json(&self.limits).expect("validated preparation serializes");
+            crate::identity::framed(
+                "htmlcut.prepared/3",
+                &[
+                    self.snapshot.source_sha256().as_bytes(),
+                    metadata.as_bytes(),
+                    policy.as_bytes(),
+                ],
+            )
+        })
     }
     fn prepared_dom(&self) -> Result<&Html, ExtractionError> {
         self.dom
@@ -149,7 +168,16 @@ impl PreparedDocument {
                         work: self.limits.max_parse_work,
                     },
                 )
-                .map_err(|_| ExtractionError::limit("preparation"))
+                .map_err(|failure| {
+                    use scraper::html::ParseLimitExceeded;
+                    let (counter, bound) = match failure {
+                        ParseLimitExceeded::Elements => ("max_elements", self.limits.max_elements),
+                        ParseLimitExceeded::Nodes => ("max_nodes", self.limits.max_nodes),
+                        ParseLimitExceeded::Depth => ("max_depth", self.limits.max_depth),
+                        ParseLimitExceeded::Work => ("max_parse_work", self.limits.max_parse_work),
+                    };
+                    ExtractionError::resource("preparation", counter, bound.into())
+                })
             })
             .as_ref()
             .map_err(Clone::clone)

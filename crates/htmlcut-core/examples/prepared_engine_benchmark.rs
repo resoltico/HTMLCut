@@ -32,12 +32,12 @@ fn main() {
     for (index, plan) in plans.iter().enumerate() {
         let result = document.execute(plan).expect("execute benchmark plan");
         assert_eq!(
-            result.data.as_values().unwrap(),
+            result.data().as_values().unwrap(),
             [format!(
                 "Headline {index}Prepared engine benchmark content."
             )]
         );
-        values.extend(result.data.as_values().unwrap().iter().cloned());
+        values.extend(result.data().as_values().unwrap().iter().cloned());
     }
     let selected_match_count = values.len();
 

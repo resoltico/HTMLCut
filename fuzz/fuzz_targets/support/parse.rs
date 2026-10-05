@@ -9,5 +9,12 @@ pub fn drive(data: &[u8]) {
         return;
     };
     let compiled = CompiledPlan::compile(&ExtractionPlan::css("body").unwrap()).unwrap();
-    assert_eq!(document.execute(&compiled), document.execute(&compiled));
+    match (document.execute(&compiled), document.execute(&compiled)) {
+        (Ok(first), Ok(second)) => {
+            assert_eq!(first.payload(), second.payload());
+            assert_eq!(first.receipt(), second.receipt());
+        }
+        (Err(first), Err(second)) => assert_eq!(first, second),
+        _ => panic!("repeated parsing changed success state"),
+    }
 }

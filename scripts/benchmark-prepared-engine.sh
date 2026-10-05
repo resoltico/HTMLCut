@@ -58,7 +58,7 @@ printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
     'for (( index = 0; index < plan_count; index += 1 )); do' \
-    '  value="$("${one_shot_binary}" extract --file "${benchmark_html}" --css "article[data-benchmark-index=\"${index}\"]" --raw)"' \
+    '  value="$("${one_shot_binary}" extract --file "${benchmark_html}" --select "article[data-benchmark-index=\"${index}\"]" --raw)"' \
     '  [[ "$value" == "Headline ${index}Prepared engine benchmark content." ]]' \
     '  printf "%s\n" "$value"' \
     'done' >"${one_shot_runner}"

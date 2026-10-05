@@ -3,24 +3,24 @@ use super::*;
 
 #[test]
 fn plan_field_failure_reports_only_declared_path_segments() {
-    let bad = br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"record","secret_instruction":"do something"}}"#;
+    let bad = br#"{"version":6,"select":"p","fields":{"SYNTHETIC_SECRET!":{"select":null}}}"#;
     let error = ExtractionPlan::from_json(bad).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidPlan);
-    assert_eq!(error.plan_path.as_deref(), Some("$.projection"));
+    assert_eq!(error.plan_path.as_deref(), Some("$.fields"));
     assert!(
         !serde_json::to_string(&error)
             .unwrap()
-            .contains("secret_instruction")
+            .contains("SYNTHETIC_SECRET")
     );
-    let indexed = br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"guards":[{"scope":"selected","selector":"p","read":{"kind":"dom_text"}},{"scope":"selected","selector":"p"}]}"#;
+    let indexed = br#"{"version":6,"select":"p","expect":[{"select":"p"},{"scope":"selected"}]}"#;
     let error = ExtractionPlan::from_json(indexed).unwrap_err();
-    assert_eq!(error.plan_path.as_deref(), Some("$.guards[1]"));
+    assert_eq!(error.plan_path.as_deref(), Some("$.expect[1]"));
 }
 
 #[test]
 fn invalid_exclusion_selector_fails_the_whole_compiled_plan() {
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.exclude = vec!["[a=]".into()];
+    plan.exclude = Some(vec!["[a=]".into()]);
     assert_eq!(
         CompiledPlan::compile(&plan).err().unwrap().code,
         ErrorCode::InvalidSelector
@@ -29,14 +29,13 @@ fn invalid_exclusion_selector_fails_the_whole_compiled_plan() {
 
 fn guard() -> Guard {
     Guard {
+        select: "p".into(),
         scope: GuardScope::Document,
-        selector: "p".into(),
         min: 1,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Exact {
-            value: "text".into(),
-        }),
+        max: 1,
+        read: Some(Reading::Literal),
+        equals: Some("text".into()),
+        pattern: None,
     }
 }
 fn reject(plan: ExtractionPlan) {
@@ -45,25 +44,22 @@ fn reject(plan: ExtractionPlan) {
 }
 
 #[test]
-fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
+fn incompatible_cardinality_readings_and_aggregate_selectors_never_compile() {
     let base = ExtractionPlan::css("p").unwrap();
-    let mut p = base.clone();
-    p.schema = "other".into();
-    reject(p);
     let mut p = base.clone();
     p.version = 2;
     reject(p);
-    let mut p = base.clone();
-    p.projection = Projection::Source {};
-    reject(p);
-    for (min, max) in [(2, Some(1)), (1, Some(20_000))] {
+    for (min, max) in [(2, Some(1)), (1, Some(1_000_001))] {
         let mut p = base.clone();
-        p.selection = Selection::All { min, max };
+        p.match_mode = Match::All;
+        p.min = Some(min);
+        p.max = max;
         reject(p);
     }
     for index in [0, 100_001] {
         let mut p = base.clone();
-        p.selection = Selection::Nth { index };
+        p.match_mode = Match::Nth;
+        p.index = Some(index);
         reject(p);
     }
     for name in [
@@ -73,109 +69,76 @@ fn t05_incompatible_modes_and_obsolete_envelopes_never_compile() {
         "x".repeat(257),
     ] {
         let mut p = base.clone();
-        p.projection = Projection::Value(ValueProjection::Attribute { name });
+        p.read = Some(Reading::Attribute(name));
         reject(p);
     }
     let mut p = base.clone();
-    p.projection = Projection::Value(ValueProjection::Attribute {
-        name: "href".into(),
-    });
-    p.exclude.push("span".into());
+    p.read = Some(Reading::Attribute("href".into()));
+    p.exclude = Some(vec!["span".into()]);
     reject(p);
     let mut p = base.clone();
-    p.exclude.push(String::new());
-    reject(p);
-    let slice = ExtractionPlan::slice(
-        Boundary::Literal { value: "[".into() },
-        Boundary::Literal { value: "]".into() },
-    )
-    .unwrap();
-    let mut p = slice.clone();
-    p.projection = Projection::Value(ValueProjection::DomText {});
-    reject(p);
-    let mut p = slice.clone();
-    p.exclude.push("p".into());
-    reject(p);
-    let mut p = slice.clone();
-    p.guards.push(guard());
-    reject(p);
-    let mut p = slice;
-    p.transforms.push(Transform::NormalizeWhitespace {});
+    p.exclude = Some(vec![String::new()]);
     reject(p);
     for count in [31, 32, 33] {
         let mut p = base.clone();
-        p.exclude = vec!["p".into(); count];
+        p.exclude = Some(vec!["p".into(); count]);
         assert_eq!(p.validate().is_ok(), count <= 32);
         let mut p = base.clone();
-        p.guards = vec![guard(); count];
+        p.expect = vec![guard(); count];
         assert_eq!(p.validate().is_ok(), count <= 32);
     }
-    let mut p = base;
-    p.transforms = vec![Transform::NormalizeWhitespace {}; 3];
-    reject(p);
-}
-
-#[test]
-fn t18_guards_validate_cardinality_attributes_and_regex_flags() {
-    let mut p = ExtractionPlan::css("p").unwrap();
-    p.guards.push(guard());
-    p.guards[0].predicate = None;
-    reject(p.clone());
-    p.guards[0].read = GuardRead::Attribute {
-        name: "data-x".into(),
-    };
-    assert!(p.validate().is_ok());
-    p.guards[0].read = GuardRead::Attribute {
-        name: String::new(),
-    };
-    reject(p.clone());
-    p.guards[0] = guard();
-    p.guards[0].min = 2;
-    reject(p.clone());
-    p.guards[0] = guard();
-    p.guards[0].max = Some(100_001);
-    reject(p.clone());
-    p.guards[0] = guard();
-    p.guards[0].selector.clear();
-    reject(p.clone());
-    for flags in ["ii", "z"] {
-        p.guards[0] = guard();
-        p.guards[0].predicate = Some(Predicate::Regex {
-            pattern: "text".into(),
-            flags: flags.into(),
-        });
-        reject(p.clone());
+    for member in [
+        "schema",
+        "strategy",
+        "projection",
+        "selection",
+        "guards",
+        "transforms",
+    ] {
+        let mut wire = serde_json::json!({"version":6,"select":"p"});
+        wire[member] = serde_json::json!({});
+        assert!(ExtractionPlan::from_json(&serde_json::to_vec(&wire).unwrap()).is_err());
     }
-    p.guards[0] = guard();
-    p.guards[0].predicate = Some(Predicate::Regex {
-        pattern: String::new(),
-        flags: String::new(),
-    });
+}
+#[test]
+fn expectation_predicate_reading_count_and_regex_constraints_are_closed() {
+    let mut p = ExtractionPlan::css("p").unwrap();
+    p.expect.push(guard());
+    p.expect[0].equals = None;
+    reject(p.clone());
+    p.expect[0].read = None;
+    p.validate().unwrap();
+    p.expect[0].read = Some(Reading::Attribute("data-x".into()));
+    reject(p.clone());
+    p.expect[0].equals = Some("".into());
+    p.validate().unwrap();
+    p.expect[0].read = Some(Reading::Attribute(String::new()));
+    reject(p.clone());
+    p.expect[0] = guard();
+    p.expect[0].min = 2;
+    reject(p.clone());
+    p.expect[0] = guard();
+    p.expect[0].max = 100_001;
+    reject(p.clone());
+    p.expect[0] = guard();
+    p.expect[0].select.clear();
+    reject(p.clone());
+    for pattern in ["(?z)text", "["] {
+        p.expect[0] = guard();
+        p.expect[0].equals = None;
+        p.expect[0].pattern = Some(pattern.into());
+        assert_eq!(
+            CompiledPlan::compile(&p).err().unwrap().code,
+            ErrorCode::InvalidRegex
+        );
+    }
+    p.expect[0] = guard();
+    p.expect[0].equals = None;
+    p.expect[0].pattern = Some(String::new());
     reject(p);
 }
-
 #[test]
-fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
-    let base = ExtractionPlan::css("p").unwrap();
-    let mut p = base.clone();
-    p.transforms = vec![
-        Transform::NormalizeWhitespace {},
-        Transform::NormalizeWhitespace {},
-    ];
-    reject(p);
-    let mut p = base.clone();
-    p.projection = Projection::Value(ValueProjection::InnerHtml {});
-    p.transforms = vec![Transform::NormalizeWhitespace {}];
-    reject(p);
-    let mut p = base.clone();
-    p.transforms = vec![Transform::ResolveUrls {}];
-    reject(p);
-    let mut p = base.clone();
-    p.projection = Projection::Value(ValueProjection::Attribute {
-        name: "srcset".into(),
-    });
-    p.transforms = vec![Transform::ResolveUrls {}];
-    reject(p);
+fn readings_apply_url_resolution_only_to_supported_positions() {
     for name in [
         "href",
         "src",
@@ -185,15 +148,27 @@ fn t28_transform_applicability_is_explicit_and_duplicate_transforms_fail() {
         "formaction",
         "data",
     ] {
-        let mut p = base.clone();
-        p.projection = Projection::Value(ValueProjection::Attribute { name: name.into() });
-        p.transforms = vec![Transform::ResolveUrls {}];
-        assert!(p.validate().is_ok());
+        let mut p = ExtractionPlan::css("p").unwrap();
+        p.read = Some(Reading::Url(name.into()));
+        p.validate().unwrap();
     }
-    let mut p = base;
-    p.projection = Projection::Value(ValueProjection::Markdown {});
-    p.transforms = vec![Transform::ResolveUrls {}];
-    assert!(p.validate().is_ok());
+    for name in ["srcset", "id", "", "bad name"] {
+        let mut p = ExtractionPlan::css("p").unwrap();
+        p.read = Some(Reading::Url(name.into()));
+        reject(p);
+    }
+    let mut p = ExtractionPlan::css("p").unwrap();
+    p.read = Some(Reading::ResolvedMarkdown);
+    p.validate().unwrap();
+    for retired in [
+        "dom_text",
+        "normalized_text",
+        "resolved_markdown",
+        "attribute:id",
+        "source",
+    ] {
+        assert!(retired.parse::<Reading>().is_err());
+    }
 }
 
 #[test]
@@ -214,62 +189,43 @@ fn t29_compilation_depth_quoting_flags_and_regex_size_are_bounded() {
         ExtractionPlan::css("x".repeat(8193)).unwrap_err().code,
         ErrorCode::ResourceLimit
     );
-    for (pattern, flags, valid) in [
-        ("x", "imsUx", true),
-        ("[", "", false),
-        ("\\w{1000000}", "", false),
-    ] {
-        let plan = ExtractionPlan::slice(
-            Boundary::Regex {
-                pattern: pattern.into(),
-                flags: flags.into(),
-            },
-            Boundary::Literal { value: "]".into() },
-        )
-        .unwrap();
+    for (pattern, valid) in [("(?imsUx)x", true), ("[", false), (r"\w{1000000}", false)] {
+        let mut plan = ExtractionPlan::css("p").unwrap();
+        let mut assertion = guard();
+        assertion.equals = None;
+        assertion.pattern = Some(pattern.into());
+        plan.expect.push(assertion);
         let result = CompiledPlan::compile(&plan);
         assert_eq!(result.is_ok(), valid);
-        if pattern == "\\w{1000000}" {
+        if pattern == r"\w{1000000}" {
             assert_eq!(result.err().unwrap().code, ErrorCode::ResourceLimit);
         }
     }
 }
 
 #[test]
-fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
+fn query_byte_budget_covers_normalized_defaults_and_escaped_predicates() {
     let mut plan = ExtractionPlan::css("p").unwrap();
-    let empty_guard = Guard {
-        scope: GuardScope::Document,
-        selector: "p".into(),
-        min: 1,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Exact {
-            value: String::new(),
-        }),
-    };
-    plan.guards.push(empty_guard);
-    let base = crate::canonical_json(&plan).unwrap().len();
-    if let Some(Predicate::Exact { value }) = &mut plan.guards[0].predicate {
-        *value = "x".repeat(crate::limits::MAX_PLAN_BYTES - base);
-    }
+    let mut assertion = guard();
+    assertion.equals = Some(String::new());
+    plan.expect.push(assertion);
+    let overhead = CompiledPlan::compile(&plan)
+        .unwrap()
+        .normalized_json()
+        .len();
+    plan.expect[0].equals = Some("x".repeat(crate::MAX_PLAN_BYTES - overhead));
+    let compiled = CompiledPlan::compile(&plan).unwrap();
+    assert_eq!(compiled.normalized_json().len(), crate::MAX_PLAN_BYTES);
+    ExtractionPlan::from_json(compiled.normalized_json().as_bytes()).unwrap();
+    plan.expect[0].equals.as_mut().unwrap().push('x');
     assert_eq!(
-        crate::canonical_json(&plan).unwrap().len(),
-        crate::limits::MAX_PLAN_BYTES
+        CompiledPlan::compile(&plan).err().unwrap().code,
+        ErrorCode::ResourceLimit
     );
-    assert!(plan.validate().is_ok());
-    let bytes = crate::canonical_json(&plan).unwrap();
-    assert!(ExtractionPlan::from_json(bytes.as_bytes()).is_ok());
-    if let Some(Predicate::Exact { value }) = &mut plan.guards[0].predicate {
-        value.push('x');
-    }
-    assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},
-        "guards":[{"scope":"document","selector":"p","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"x".repeat(crate::limits::MAX_PLAN_BYTES-250)}}]});
-    let encoded = serde_json::to_vec(&minimal).unwrap();
-    assert!(encoded.len() <= crate::limits::MAX_PLAN_BYTES);
+    plan.expect[0].equals = Some("\u{1}".repeat(50_000));
+    plan.validate().unwrap();
     assert_eq!(
-        ExtractionPlan::from_json(&encoded).unwrap_err().code,
+        CompiledPlan::compile(&plan).err().unwrap().code,
         ErrorCode::ResourceLimit
     );
 }
@@ -298,7 +254,7 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
         prepared("<p>value</p>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .data
+            .data()
             .as_values()
             .unwrap(),
         ["value"]
@@ -322,11 +278,11 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 }
 
 #[test]
-fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
+fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
     for wire in [
-        r#"{"schema":"wrong","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
-        r#"{"schema":"wrong","version":5,"strategy":{"kind":"css","selector":"p"}}"#,
-        r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"select":"p"}"#,
+        r#"{"version":5,"select":"p"}"#,
+        r#"{"version":"6","select":"p"}"#,
     ] {
         let error = ExtractionPlan::from_json(wire.as_bytes()).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidSchema);
@@ -335,12 +291,16 @@ fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempt
             error.cause,
             Some(FailureCause::Configuration {
                 role: ConfigurationRole::Plan,
-                problem: ConfigurationProblem::UnsupportedVersion,
+                problem: ConfigurationProblem::UnsupportedVersion
             })
         );
     }
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
-    assert_eq!(plan.selection, Selection::All { min: 1, max: None });
+    assert!(ExtractionPlan::from_json(br#"{"version":6}"#).is_err());
+    let plan =
+        ExtractionPlan::from_json(br#"{"version":6,"select":"aside","match":"all"}"#).unwrap();
+    assert_eq!(plan.match_mode, Match::All);
+    assert_eq!(plan.min, None);
+    assert_eq!(plan.max, None);
     assert_eq!(
         prepared("<p>value</p>")
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -354,40 +314,19 @@ fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempt
 fn t29_unicode_regex_programs_share_one_aggregate_compilation_allowance() {
     // Under the locked regex engine, this valid Unicode program fits one program share
     // with its DFA allowance, but not half that program share. Syntax and source size are unchanged.
-    let boundary = Boundary::Regex {
-        pattern: r"\w{50}".into(),
-        flags: String::new(),
-    };
-    let mut slice = ExtractionPlan::slice(
-        boundary.clone(),
-        Boundary::Literal {
-            value: "end".into(),
-        },
-    )
-    .unwrap();
-    CompiledPlan::compile(&slice).unwrap();
-    if let Strategy::Slice { end, .. } = &mut slice.strategy {
-        *end = boundary;
-    }
-    assert_eq!(
-        CompiledPlan::compile(&slice).err().unwrap().code,
-        ErrorCode::ResourceLimit
-    );
     let mut css = ExtractionPlan::css("p").unwrap();
     let guard = Guard {
+        select: "p".into(),
         scope: GuardScope::Document,
-        selector: "p".into(),
         min: 1,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Regex {
-            pattern: r"\w{50}".into(),
-            flags: String::new(),
-        }),
+        max: 1,
+        read: Some(Reading::Literal),
+        equals: None,
+        pattern: Some(r"\w{50}".into()),
     };
-    css.guards.push(guard.clone());
+    css.expect.push(guard.clone());
     CompiledPlan::compile(&css).unwrap();
-    css.guards.push(guard);
+    css.expect.push(guard);
     assert_eq!(
         CompiledPlan::compile(&css).err().unwrap().code,
         ErrorCode::ResourceLimit
@@ -419,15 +358,14 @@ fn t29_exact_selector_bytes_are_allowed_and_oversized_strings_fail_before_semant
     let plan = ExtractionPlan::css(&selector).unwrap();
     CompiledPlan::compile(&plan).unwrap();
     let mut oversized = ExtractionPlan::css("p").unwrap();
-    oversized.guards.push(Guard {
+    oversized.expect.push(Guard {
+        select: "p".into(),
         scope: GuardScope::Document,
-        selector: "p".into(),
         min: 2,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Exact {
-            value: "x".repeat(256 * 1024 + 1),
-        }),
+        max: 1,
+        read: Some(Reading::Literal),
+        equals: Some("x".repeat(256 * 1024 + 1)),
+        pattern: None,
     });
     assert_eq!(
         oversized.validate().unwrap_err().code,

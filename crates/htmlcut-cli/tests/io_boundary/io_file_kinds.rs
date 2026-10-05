@@ -13,9 +13,9 @@ fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
     let _socket = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
     for path in [root.path(), std::path::Path::new("/dev/null"), &socket_path] {
         for arguments in [
-            vec!["extract", "--file", path.to_str().unwrap(), "--css", "p"],
+            vec!["extract", "--file", path.to_str().unwrap(), "--select", "p"],
             vec!["extract", "--stdin", "--plan", path.to_str().unwrap()],
-            vec!["run", path.to_str().unwrap()],
+            vec!["replay", path.to_str().unwrap()],
         ] {
             let mut child = command()
                 .args(arguments)
@@ -61,7 +61,7 @@ fn regular_symlink_and_hardlink_inputs_preserve_complete_values() {
                 "extract",
                 "--file",
                 path.to_str().unwrap(),
-                "--css",
+                "--select",
                 "p",
                 "--raw",
             ])
@@ -86,7 +86,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "p",
             "--bundle",
             bundle.to_str().unwrap(),
@@ -94,12 +94,12 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
         .output()
         .unwrap();
     assert!(generated.status.success());
-    for role in ["source", "plan", "run"] {
+    for role in ["source", "plan", "replay"] {
         let path = root.path().join(format!("{role}.input"));
         let content = match role {
             "source" => b"<p>HELLO</p>".to_vec(),
             "plan" => plan.as_bytes().to_vec(),
-            "run" => std::fs::read(&bundle).unwrap(),
+            "replay" => std::fs::read(&bundle).unwrap(),
             _ => unreachable!(),
         };
         std::fs::write(&path, &content).unwrap();
@@ -131,7 +131,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                         "extract",
                         "--file",
                         path.to_str().unwrap(),
-                        "--css",
+                        "--select",
                         "p",
                         "--raw",
                     ],
@@ -143,7 +143,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                         path.to_str().unwrap(),
                         "--raw",
                     ],
-                    "run" => vec!["run", path.to_str().unwrap()],
+                    "replay" => vec!["replay", path.to_str().unwrap()],
                     _ => unreachable!(),
                 };
                 let mut child = command()
@@ -164,7 +164,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                 let output = child.wait_with_output().unwrap();
                 match output.status.code() {
                     Some(0) => {
-                        if role == "run" {
+                        if role == "replay" {
                             let value: serde_json::Value =
                                 serde_json::from_slice(&output.stdout).unwrap();
                             assert_eq!(value, serde_json::json!(["HELLO"]));

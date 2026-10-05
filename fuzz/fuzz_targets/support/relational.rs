@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use arbitrary::Arbitrary;
-use htmlcut_core::{CompiledPlan, ExtractionPlan, Selection};
+use htmlcut_core::{CompiledPlan, ExtractionPlan, Match};
 
 #[derive(Arbitrary, Debug)]
 pub struct RelationalInput {
@@ -17,10 +17,9 @@ pub fn drive(input: RelationalInput) {
         return;
     };
     let mut plan = ExtractionPlan::css("section:has(span)").unwrap();
-    plan.selection = Selection::All {
-        min: 0,
-        max: Some(128),
-    };
+    plan.match_mode = Match::All;
+    plan.min = Some(0);
+    plan.max = Some(128);
     plan.limits.max_work = u32::from(input.work) + 1;
     if let Ok(compiled) = CompiledPlan::compile(&plan) {
         let _ = document.execute(&compiled);

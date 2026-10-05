@@ -3,14 +3,14 @@ mod support;
 use support::invoke;
 
 #[test]
-fn basic_extraction_needs_only_index_and_one_description() {
-    for args in [vec!["describe"], vec!["describe", "extract"]] {
+fn basic_extraction_uses_standard_native_help_without_schema() {
+    for args in [vec!["--help"], vec!["extract", "--help"]] {
         let output = invoke(&args, b"");
         assert!(output.status.success());
-        assert!(output.stdout.len() < 4096);
+        assert!(String::from_utf8_lossy(&output.stdout).contains("Usage:"));
     }
     let output = invoke(
-        &["extract", "--stdin", "--css", "#amount", "--raw"],
+        &["extract", "--stdin", "--select", "#amount", "--raw"],
         b"<p id='amount'>EUR 180</p>",
     );
     assert!(output.status.success());

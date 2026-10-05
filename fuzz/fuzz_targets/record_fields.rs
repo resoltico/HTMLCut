@@ -27,10 +27,7 @@ fuzz_target!(|data: &[u8]| {
         ));
         expected.push(serde_json::json!({"id":format!("row{index}"),"text":text,"absent":null}));
     }
-    let plan = serde_json::json!({"schema":"htmlcut.extraction.plan","version":htmlcut_core::SCHEMA_VERSION,"strategy":{"kind":"css","selector":"article"},
-        "selection":{"kind":"all","min":0},"projection":{"kind":"records","following_siblings":1,"fields":[
-            {"name":"id","selector":":scope","projection":{"kind":"attribute","name":"id"}},
-            {"name":"text","selector":"p"},{"name":"absent","selector":".absent","selection":{"kind":"optional"}}]}});
+    let plan = serde_json::json!({"version":6,"select":"article","match":"all","min":0,"fields":{"id":{"select":":scope","read":"attr:id"},"text":{"select":"p","read":"literal"},"absent":{"select":".absent","match":"optional","read":"literal"}},"following_siblings":1});
     let plan = ExtractionPlan::from_json(&serde_json::to_vec(&plan).unwrap()).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let document = PreparedDocument::new(
@@ -40,10 +37,12 @@ fuzz_target!(|data: &[u8]| {
     .unwrap();
     let result = document.execute(&compiled).unwrap();
     assert_eq!(
-        serde_json::to_value(&result.data).unwrap(),
+        serde_json::to_value(result.data()).unwrap(),
         serde_json::json!(expected)
     );
-    assert_eq!(result, document.execute(&compiled).unwrap());
+    let second = document.execute(&compiled).unwrap();
+    assert_eq!(result.payload(), second.payload());
+    assert_eq!(result.receipt().unwrap(), second.receipt().unwrap());
 });
 #[cfg(any(test, not(feature = "fuzzing")))]
 fn main() {}

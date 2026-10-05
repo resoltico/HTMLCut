@@ -25,7 +25,7 @@ fn miri_commands_use_the_managed_workspace_layout() {
             "--lib",
             "--no-default-features",
             "--locked",
-            "tests::selector_and_slice_contract_remain_miri_sound",
+            "tests::selector_and_reading_contract_remain_miri_sound",
             "--",
             "--exact",
         ]
@@ -81,7 +81,7 @@ fn miri_preflight_message_is_actionable() {
         MiriPreflightFailure::MissingNightlyMiri,
         MiriPreflightFailure::MissingNightlyRustSrc,
     ]);
-    assert!(missing_nightly.contains("selector-and-slice proof"));
+    assert!(missing_nightly.contains("selector-and-reading proof"));
     assert!(missing_nightly.contains(
         "rustup toolchain install nightly-2026-09-30 --profile minimal --component miri --component rust-src"
     ));

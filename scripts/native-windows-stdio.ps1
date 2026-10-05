@@ -19,7 +19,7 @@ $rows = @()
 function RunConsoleCase([string]$name, [string]$mode, [bool]$consoleInput, [bool]$invalidSelector) {
     $arguments = @('extract')
     if ($consoleInput) { $arguments += '--stdin' } else { $arguments += @('--file', $source) }
-    $arguments += @('--css', $(if ($invalidSelector) { '[' } else { 'p' }), '--raw')
+    $arguments += @('--select', $(if ($invalidSelector) { '[' } else { 'p' }), '--raw')
     $inputText = '<p>' + $unicode + '</p>' + [char]13 + [char]26
     $start = [DateTime]::UtcNow
     $row = [ordered]@{ case=$name; mode=$mode; console_input=$consoleInput; passed=$false }

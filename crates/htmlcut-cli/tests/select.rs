@@ -3,7 +3,7 @@ mod support;
 use support::invoke;
 
 #[test]
-fn literal_default_preserves_hidden_links_and_empty_values() {
+fn structural_default_preserves_hidden_links_and_empty_values() {
     for (html, expected) in [
         (
             "<p hidden>Before <a class='reference internal'>IMPORTANT</a> after.</p>",
@@ -11,7 +11,7 @@ fn literal_default_preserves_hidden_links_and_empty_values() {
         ),
         ("<p></p>", ""),
     ] {
-        let output = invoke(&["extract", "--stdin", "--css", "p"], html.as_bytes());
+        let output = invoke(&["extract", "--stdin", "--select", "p"], html.as_bytes());
         assert!(output.status.success());
         assert!(output.stderr.is_empty());
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -24,7 +24,7 @@ fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
     let html = b"<p>Damage: <img alt='Broken mirror'> end.</p>";
     let output = invoke(
         &[
-            "extract", "--stdin", "--css", "p", "--read", "markdown", "--raw",
+            "extract", "--stdin", "--select", "p", "--read", "markdown", "--raw",
         ],
         html,
     );
@@ -34,10 +34,10 @@ fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--read",
-            "outer_html",
+            "outer-html",
             "--raw",
         ],
         b"<P a='x'>V</P>",
@@ -51,12 +51,12 @@ fn strict_selection_and_missing_attributes_fail_without_values() {
     for (html, args, code) in [
         (
             &b"<p>A</p><p>B</p>"[..],
-            vec!["extract", "--stdin", "--css", "p"],
+            vec!["extract", "--stdin", "--select", "p"],
             "ambiguous_selection",
         ),
         (
             &b"<p>A</p>"[..],
-            vec!["extract", "--stdin", "--css", "aside"],
+            vec!["extract", "--stdin", "--select", "aside"],
             "no_match",
         ),
         (
@@ -64,10 +64,10 @@ fn strict_selection_and_missing_attributes_fail_without_values() {
             vec![
                 "extract",
                 "--stdin",
-                "--css",
+                "--select",
                 "p",
                 "--read",
-                "attribute:absent",
+                "attr:absent",
             ],
             "missing_attribute",
         ),
@@ -81,9 +81,7 @@ fn strict_selection_and_missing_attributes_fail_without_values() {
         );
     }
     let output = invoke(
-        &[
-            "extract", "--stdin", "--css", "p", "--match", "nth", "--index", "2", "--raw",
-        ],
+        &["extract", "--stdin", "--select", "p", "--nth", "2", "--raw"],
         b"<p>A</p><p>B</p>",
     );
     assert!(output.status.success());

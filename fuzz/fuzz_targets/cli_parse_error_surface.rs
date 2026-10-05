@@ -7,9 +7,7 @@ use libfuzzer_sys::fuzz_target;
 #[allow(dead_code)]
 mod cli;
 #[cfg(all(feature = "fuzzing", not(test)))]
-use cli::{
-    app, bundle, bundle_io, command, command_diagnostics, input, operation_metadata, publication,
-};
+use cli::{app, bundle, bundle_io, command, command_diagnostics, input, publication};
 #[cfg(all(feature = "fuzzing", not(test)))]
 fuzz_target!(|data: &[u8]| {
     let suffix = String::from_utf8_lossy(&data[..data.len().min(4096)]);
@@ -17,7 +15,7 @@ fuzz_target!(|data: &[u8]| {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let code = app::run(
-        ["htmlcut", "extract", "--stdin", "--css", "p", &unknown],
+        ["htmlcut", "extract", "--stdin", "--select", "p", &unknown],
         &mut std::io::Cursor::new(b"<p>value</p>"),
         &mut stdout,
         &mut stderr,

@@ -8,7 +8,7 @@ fn current_help_version_and_retired_vocabulary() {
         vec!["--help"],
         vec!["extract", "--help"],
         vec!["inspect", "--help"],
-        vec!["run", "--help"],
+        vec!["replay", "--help"],
     ] {
         let output = invoke(&args, b"");
         assert!(output.status.success());
@@ -25,7 +25,7 @@ fn current_help_version_and_retired_vocabulary() {
         vec!["select"],
         vec!["slice"],
         vec!["catalog"],
-        vec!["extract", "--stdin", "--css", "p", "--match", "first"],
+        vec!["extract", "--stdin", "--select", "p", "--match", "first"],
     ] {
         let output = invoke(&args, b"<p>A</p>");
         assert_eq!(output.status.code(), Some(2));

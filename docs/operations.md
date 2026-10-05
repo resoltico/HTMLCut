@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: OPERATIONS
 updated: "2026-10-05"
 route:
@@ -10,8 +10,8 @@ route:
 
 # Operations
 
-The binary exposes `extract`, `run`, `inspect`, `outline`, `describe`, and `schema` through one maintained command vocabulary.
+Use standard native help for current commands: `extract`, `inspect`, `replay` and `schema`.
 
-`extract` validates/compiles an explicit plan and returns only requested strings or records from a file/stdin snapshot. `run` recomputes and verifies a self-contained bundle. `inspect` counts an explicit selector completely and returns bounded samples; `--identifiers` shows only exact `id` and class values with structural text previews. `outline` surveys repeated sibling groups and table row shapes without inferring semantic fields; selector hints are verified against the snapshot. `describe` retrieves the compact index or one operation's defaults; `schema` retrieves one named current shape.
+Extract compiles current queries and reads complete strings/records from caller-owned file/stdin HTML. Inspect surveys repeated groups or, with select, counts and samples explicit nodes. Replay recomputes and verifies a closed source/query/configuration bundle. Schema retrieves one optional exhaustive named shape. No describe catalog or command aliases remain.
 
-Selection assumptions and data representations are explicit. Acquisition, rendering, business transformation and comparison policy belong to callers. Failures never become alternate successful projections or silently shortened extraction values. Inspection sample abbreviation is separately labeled. See [CLI](cli.md), [Core](core.md) and [Schemas](schema.md).
+Cardinality, readings and assumptions are explicit. Acquisition, rendering, business transformations and comparison belong to callers. Failed assumptions never become alternate successful representations; extraction never truncates success. Bounded observation omissions are labeled. See [CLI](cli.md), [Core](core.md) and [Schemas](schema.md).

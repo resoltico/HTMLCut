@@ -48,7 +48,7 @@ fn resolved_replay_path_conversion_rejects_invalid_utf8() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "p",
             "--save-run",
             saved.to_str().unwrap(),
