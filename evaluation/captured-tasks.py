@@ -41,8 +41,8 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 binding = json.loads(evaluation_options.binding.read_text())
 assert binding["source_commit"] == evaluation_options.source_sha
 assert binding["binary_sha256"] == hashlib.sha256(BINARY.read_bytes()).hexdigest()
-assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 18.0.0"
-assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 17.0.0"
+assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 19.0.0"
+assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 18.0.0"
 manifest = json.loads((CAPTURES / "capture-manifest.json").read_text())
 for entry in manifest["rows"]:
     if "sha256" in entry:
@@ -68,7 +68,7 @@ def soup(name):
 
 
 def value_plan(css, projection=None, fields=None, guards=None):
-    plan = dict(schema="htmlcut.extraction.plan", version=4,
+    plan = dict(schema="htmlcut.extraction.plan", version=5,
                 strategy=dict(kind="css", selector=css), selection=dict(kind="all", min=1))
     if fields is not None:
         plan["projection"] = dict(kind="records", fields=fields)
@@ -232,7 +232,7 @@ raw = source("quotes-unrendered.html")
 inline = raw.split("var data = ", 1)[1].split(";\n    for", 1)[0]
 mapped = [dict(text=q["text"], author=q["author"]["name"], tags=q["tags"]) for q in json.loads(inline)]
 assert mapped == browser
-plan = dict(schema="htmlcut.extraction.plan", version=4, strategy=dict(kind="slice", start=dict(kind="literal", value="var data = "), end=dict(kind="literal", value=";\n    for")), projection=dict(kind="source"))
+plan = dict(schema="htmlcut.extraction.plan", version=5, strategy=dict(kind="slice", start=dict(kind="literal", value="var data = "), end=dict(kind="literal", value=";\n    for")), projection=dict(kind="source"))
 execute("exact-inline-source", "quotes-unrendered.html", plan, [inline])
 result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "quotes-unrendered.html"), "--css", ".quote"], capture_output=True)
 assert result.returncode == 3 and not result.stdout

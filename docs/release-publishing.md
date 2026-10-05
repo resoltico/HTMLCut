@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: RELEASE
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]

@@ -205,7 +205,7 @@ fn t10_t28_transforms_preserve_preformatted_origin_and_url_labels() {
             .data
             .as_values()
             .unwrap(),
-        ["A B C  D  L M"]
+        ["A B  C  D  L M"]
     );
     plan.projection = Projection::Value(ValueProjection::Markdown {});
     plan.transforms = vec![Transform::ResolveUrls {}];

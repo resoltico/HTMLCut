@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: DEPENDENCY
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [dependency refresh, parser forks, Rust pins, registry resolution, release verification]
   questions: ["Which dependencies changed before 15.0.0?", "Why is stable Rust unchanged?", "Has the refreshed candidate passed release gates?"]

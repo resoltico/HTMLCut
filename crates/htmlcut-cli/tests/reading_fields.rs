@@ -5,6 +5,72 @@ use serde_json::json;
 use support::invoke;
 
 #[test]
+fn optional_inline_field_preserves_absence_and_rejects_ambiguous_or_missing_attributes() {
+    let args = [
+        "extract",
+        "--stdin",
+        "--css",
+        "article",
+        "--match",
+        "all",
+        "--field",
+        "score?",
+        ".score",
+        "attribute:data-score",
+    ];
+    let result = invoke(
+        &args,
+        b"<article><b class=score data-score=10></b></article><article></article>",
+    );
+    assert!(result.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+        json!([{"score":"10"},{"score":null}])
+    );
+
+    for source in [
+        b"<article><b class=score data-score=10></b><b class=score data-score=20></b></article>"
+            .as_slice(),
+        b"<article><b class=score></b></article>".as_slice(),
+    ] {
+        let result = invoke(&args, source);
+        assert_eq!(result.status.code(), Some(3));
+        assert!(result.stdout.is_empty());
+    }
+}
+
+#[test]
+fn normalized_text_separates_blocks_and_breaks_without_altering_literal_text() {
+    let source = b"<article><dl><dt>Name</dt><dd>Alice</dd><dt>Amount</dt><dd>180</dd></dl><p>a<br>c</p></article>";
+    let normalized = invoke(
+        &[
+            "extract",
+            "--stdin",
+            "--css",
+            "article",
+            "--read",
+            "normalized_text",
+        ],
+        source,
+    );
+    assert_eq!(normalized.stdout, b"[\"Name Alice Amount 180 a c\"]\n");
+    let literal = invoke(&["extract", "--stdin", "--css", "article"], source);
+    assert_eq!(literal.stdout, b"[\"NameAliceAmount180ac\"]\n");
+    let foreign = invoke(
+        &[
+            "extract",
+            "--stdin",
+            "--css",
+            "article",
+            "--read",
+            "normalized_text",
+        ],
+        b"<article>a<svg><text>b</text></svg>c</article>",
+    );
+    assert_eq!(foreign.stdout, b"[\"abc\"]\n");
+}
+
+#[test]
 fn fixed_arity_fields_keep_css_and_attribute_suffixes_opaque() {
     let source = b"<article><a id='a@b' title='Title'>x</a><p class=price> 10 </p></article>";
     let result = invoke(

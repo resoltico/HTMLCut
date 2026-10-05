@@ -1,9 +1,9 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "18.0.0"
+  version: "19.0.0"
   domain: EVALUATION
-  updated: "2026-10-04"
+  updated: "2026-10-05"
 RETRIEVAL_HINTS:
   keywords: [fidelity, corpus, task economics, tokenizer]
   questions: ["How is extraction correctness and task cost measured?"]

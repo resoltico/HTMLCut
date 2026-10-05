@@ -4,6 +4,18 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [19.0.0] - 2026-10-05
+
+### Changed
+
+- **Breaking extraction contract:** wire and semantics advance to 5. Plan and extraction identity domains advance to `/5`; old plans and bundles are rejected. Recreate saved plans and bundles for this release.
+- **Breaking normalized text:** `normalized_text` and `normalize_whitespace` now insert a space at HTML block and `<br>` boundaries. Consumers comparing exact normalized strings should refresh expectations. Literal `dom_text` remains the default and retains its exact concatenation behavior.
+
+### Added
+
+- Inline record fields accept `NAME?` in `--field NAME CSS READ` for zero-or-one matches. An absent node returns `null`; multiple nodes or a missing requested attribute still fail the run.
+- Plan shape failures report a bounded JSON path made only from declared member names and array indexes, without echoing supplied values.
+
 ### Fixed
 
 - Clarified current licensing and contributor patent scope. Native package `NOTICE` provides the generated dependency and runtime attribution; the repository notice describes project scope. Licensing history remains in the release record and applicable legal notices.

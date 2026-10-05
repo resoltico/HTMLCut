@@ -168,7 +168,7 @@ impl PreparedDocument {
         let metadata = crate::canonical_json(self.snapshot.metadata())?;
         let semantics = SEMANTICS_VERSION.to_be_bytes();
         let identity = crate::identity::framed(
-            "htmlcut.extraction/4",
+            "htmlcut.extraction/5",
             &[
                 self.snapshot.source_sha256().as_bytes(),
                 compiled.digest.as_bytes(),

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: CLI
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [cli, extract, run, inspect, describe, schema, snapshot bundles, raw output]
   questions: ["what commands does htmlcut-cli expose?", "what does htmlcut schema include?", "how do extraction and source slicing outputs work?"]
@@ -27,7 +27,7 @@ Exactly one file or intentional stdin supplies strict UTF-8; BOM, CRLF and NUL r
 
 Default single selection rejects zero or multiple candidates. `--match nth --index 1` is explicitly positional; `--match all --min 0` permits an empty array. `--read READ` chooses `dom_text` (default), `normalized_text`, `markdown`, `resolved_markdown`, `inner_html`, `outer_html`, `attribute:NAME`, `resolved_attribute:NAME` or `source` (slicing only). Relative URL resolution requires explicit base metadata; absolute URLs need no base. `--raw` requires one flat string, permits empty content, and adds no LF. Records/raw is rejected before consuming the source when the plan determines it. Default data JSON is identical for terminals and pipes.
 
-Repeated `--field NAME CSS READ` declares single-valued record fields, with CSS passed as one opaque argument. It conflicts with root `--read`. `--following-siblings N` requires fields and includes exactly N following element sibling subtrees (0–63); missing siblings or absorption of another root candidate fail. `:scope` identifies the original anchor. Optional/all/nth field selection, guards and exclusions use plan files. A source-dependent failure rejects the entire execution before successful stdout/artifact publication. Typed errors go to stderr, with bounded safe option/I/O causes and applicable numeric row/field positions rather than user text or mandatory digest envelopes.
+Repeated `--field NAME CSS READ` declares single-valued record fields, with CSS passed as one opaque argument. Suffix `NAME` with `?` to allow zero or one match, returning `null` on absence; a matched node missing a requested attribute still fails. It conflicts with root `--read`. `--following-siblings N` requires fields and includes exactly N following element sibling subtrees (0–63); missing siblings or absorption of another root candidate fail. `:scope` identifies the original anchor. Optional/all/nth field selection, guards and exclusions use plan files. A source-dependent failure rejects the entire execution before successful stdout/artifact publication. Typed errors go to stderr, with bounded safe option/I/O causes, a declared-member path for plan shape failures, and applicable numeric row/field positions rather than user text or mandatory digest envelopes.
 
 `--receipt FILE` publishes the fixed complete execution receipt separately; `--bundle FILE` saves a self-contained snapshot/plan/manifest archive. They are mutually exclusive. `run BUNDLE` accepts delivery options only, recomputes from bundled bytes/configuration and compares its full receipt. No original files, network, environment substitution, nested run, archive unpacking or source/plan overrides occur. Bundle contents are opt-in data and can contain source or explicit metadata supplied by the caller.
 

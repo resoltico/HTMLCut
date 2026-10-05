@@ -12,7 +12,7 @@ def main():
     def run(label,arguments,data=None,expected=None,raw=None,failure=None):
         result=subprocess.run([str(binary),*arguments],input=data,capture_output=True,timeout=20)
         passed=result.returncode==(failure or 0)
-        if failure:passed &= result.stdout==b'' and json.loads(result.stderr)['version']==4
+        if failure:passed &= result.stdout==b'' and json.loads(result.stderr)['version']==5
         else:
             passed &= result.stderr==b''
             if raw is not None:passed &= result.stdout==raw
@@ -20,7 +20,7 @@ def main():
         rows.append(dict(label=label,arguments=arguments,exit_code=result.returncode,passed=passed,
                          stdout=result.stdout.decode('utf-8'),stderr=result.stderr.decode('utf-8')))
         return result
-    run('binary-version',['--version'],raw=b'htmlcut 18.0.0\n')
+    run('binary-version',['--version'],raw=b'htmlcut 19.0.0\n')
     with tempfile.TemporaryDirectory(prefix='htmlcut-native-contract-') as directory:
         root=Path(directory)
         for label,source,css,projection,expected in [
@@ -44,6 +44,8 @@ def main():
         group=['extract','--stdin','--css','tr.entry','--field','title',':scope td','dom_text',
                '--field','score',':scope + tr .score','normalized_text','--following-siblings','1']
         run('explicit-row-group',group,b'<table><tr class=entry><td>T</td></tr><!-- gap --><tr><td class=score> 10 </td></tr></table>',expected=[dict(title='T',score='10')])
+        run('optional-inline-field',['extract','--stdin','--css','article','--match','all','--field','score?','.score','normalized_text'],b'<article><b class=score>10</b></article><article></article>',expected=[dict(score='10'),dict(score=None)])
+        run('normalized-boundaries',['extract','--stdin','--css','dl','--read','normalized_text'],b'<dl><dt>Name</dt><dd>Alice</dd></dl>',expected=['Name Alice'])
         run('missing-row-sibling',group,b'<table><tr class=entry><td>T</td></tr></table>',failure=3)
         run('overlapping-row-scope',group,b'<table><tr class=entry><td>T</td></tr><tr class=entry><td>T2</td></tr></table>',failure=3)
         run('ambiguous-code-language',['extract','--stdin','--css','pre','--read','markdown'],b'<pre class="language-rust language-python">x</pre>',failure=3)
@@ -62,7 +64,7 @@ def main():
             ('retired-cursor',['inspect','--stdin','--css','p','--cursor','old'],b'',2),
             ('unknown-option',['--SYNTHETIC_SECRET'],None,2)]:
             result=run(label,arguments,source,failure=code);rows[-1]['passed'] &= b'SYNTHETIC_SECRET' not in result.stderr
-        plan={'schema':'htmlcut.extraction.plan','version':4,'strategy':{'kind':'css','selector':'article'},
+        plan={'schema':'htmlcut.extraction.plan','version':5,'strategy':{'kind':'css','selector':'article'},
               'selection':{'kind':'all'},'projection':{'kind':'records','fields':[
                 {'name':'title','selector':'h2'},{'name':'price','selector':'.price'},
                 {'name':'absent','selector':'.missing','selection':{'kind':'optional'}},
@@ -78,7 +80,7 @@ def main():
         canonical=json.dumps(expected,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
         evidence=json.loads(receipt.read_bytes())
         rows[-1]['passed'] &= replay.stdout==canonical+b'\n' and evidence['schema']=='htmlcut.extraction.receipt'
-        rows[-1]['passed'] &= evidence['version']==4 and evidence['semantics']==4 and evidence['data_kind']=='records'
+        rows[-1]['passed'] &= evidence['version']==5 and evidence['semantics']==5 and evidence['data_kind']=='records'
         rows[-1]['passed'] &= evidence['candidate_count']==2 and evidence['selected_count']==2
         rows[-1]['passed'] &= evidence['data_sha256']==hashlib.sha256(canonical).hexdigest()
         rows[-1]['passed'] &= evidence['fields']==[
@@ -94,9 +96,9 @@ def main():
         run('bundle-collision',['run',str(moved),'--output',str(moved),'--overwrite'],failure=2)
         inspection=run('scoped-inspection',['inspect','--stdin','--css','p','--samples','2'],b'<p>A</p><p>B</p><p>C</p>')
         value=json.loads(inspection.stdout);rows[-1]['passed'] &= value['count']==3 and len(value['samples'])==2 and not value['samples_complete']
-        for version in [1,2,3,5]:
+        for version in [1,2,3,4]:
             old=dict(plan,version=version);path.write_text(json.dumps(old),encoding="utf-8");run(f'unsupported-wire-{version}',['extract','--stdin','--plan',str(path)],b'<article></article>',failure=2)
-        simple={'schema':'htmlcut.extraction.plan','version':4,'strategy':{'kind':'css','selector':'#amount'},
+        simple={'schema':'htmlcut.extraction.plan','version':5,'strategy':{'kind':'css','selector':'#amount'},
                 'guards':[{'scope':'document','selector':'#label','min':1,'max':1,'read':{'kind':'dom_text'},'predicate':{'kind':'exact','value':'Cost'}}]}
         path.write_text(json.dumps(simple),encoding="utf-8");run('original-context-guard',['extract','--stdin','--plan',str(path)],b'<b id="label">Cost</b><p id="amount">180</p>',expected=['180'])
         run('changed-context-refused',['extract','--stdin','--plan',str(path)],b'<b id="label">Other</b><p id="amount">180</p>',failure=3)
