@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, ExtractionError, PreparedDocument};
 
+mod outline;
+pub use outline::{OutlineElement, OutlineGroup, OutlineResult, OutlineSample, TableShape};
+
 /// One sample, separate from a complete extraction value.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -168,7 +171,7 @@ fn identifier_sample(
             }
         }
     }
-    let (text, text_complete) = structural_preview(root, budget)?;
+    let (text, text_complete) = structural_preview(root, budget, 160)?;
     Ok(IdentifierInspectionSample {
         tag: tag.into(),
         id,
@@ -182,6 +185,7 @@ fn identifier_sample(
 fn structural_preview(
     root: ElementRef<'_>,
     budget: &SelectorWorkBudget,
+    maximum: usize,
 ) -> Result<(String, bool), ExtractionError> {
     let mut result = String::new();
     let mut count = 0;
@@ -205,7 +209,7 @@ fn structural_preview(
                 continue;
             }
             let needed = 1 + usize::from(space);
-            if needed > 160 - count {
+            if needed > maximum - count {
                 return Ok((result, false));
             }
             if space {

@@ -7,10 +7,12 @@ use crate::input::options;
 
 pub(crate) const EXTRACT_ABOUT: &str =
     "Extract requested values; defaults to single/dom_text and bare data JSON.";
-pub(crate) const EXTRACT_DETAILS: &str = "Accept exactly one source and one inline selection or plan. Default single requires exactly one candidate. --read chooses literal or normalized text, Markdown, HTML, attributes or source bytes. dom_text concatenates parsed text literally, including hidden content. Repeated --field NAME CSS READ declares record fields; NAME? permits zero or one match and returns null when absent. --field-exclude NAME CSS removes matching descendants from one declared field. --following-siblings includes an explicit bounded sibling group. Advanced cardinality and guards use a plan. --raw requires one value and adds no LF. Semantic failures publish no values. HTML base elements are ignored; relative URL resolution requires an explicit --base-url.";
+pub(crate) const EXTRACT_DETAILS: &str = "Accept exactly one source and one inline selection or plan. Default single requires exactly one candidate. --read chooses literal or normalized text, Markdown, HTML, attributes or source bytes. dom_text concatenates parsed text literally, including hidden content. Repeated --field NAME CSS READ declares record fields; NAME? permits zero or one match and returns null when absent. --field-exclude NAME CSS removes matching descendants from one declared field. Repeated --exclude CSS removes subtrees from flat readings; --expect-text CSS TEXT requires one exact original-DOM text match before delivery. --following-siblings includes an explicit bounded sibling group. Advanced cardinality and guards use a plan. --raw requires one value and adds no LF. Semantic failures publish no values. HTML base elements are ignored; relative URL resolution requires an explicit --base-url.";
 pub(crate) const RUN_ABOUT: &str =
     "Recompute and verify a self-contained snapshot, plan and receipt bundle.";
 pub(crate) const INSPECT_ABOUT: &str = "Count an explicit CSS selector; --identifiers shows bounded id/class and structural text samples.";
+pub(crate) const OUTLINE_ABOUT: &str =
+    "Survey repeated sibling groups, verified selector hints and table row shapes.";
 pub(crate) const DESCRIBE_ABOUT: &str =
     "Retrieve the compact operation index or one operation description.";
 pub(crate) const SCHEMA_ABOUT: &str =
@@ -20,6 +22,7 @@ const OPERATIONS: &[(&str, &str)] = &[
     ("extract", EXTRACT_ABOUT),
     ("run", RUN_ABOUT),
     ("inspect", INSPECT_ABOUT),
+    ("outline", OUTLINE_ABOUT),
     ("describe", DESCRIBE_ABOUT),
     ("schema", SCHEMA_ABOUT),
 ];

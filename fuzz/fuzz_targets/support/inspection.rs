@@ -27,4 +27,22 @@ pub fn drive(input: InspectionInput) {
             result.count as usize == result.samples.len()
         );
     }
+    let limit = u32::from(input.samples % 18);
+    let first = document.outline(None, limit);
+    let second = document.outline(None, limit);
+    assert_eq!(first, second);
+    if let Ok(result) = first {
+        assert!(result.groups.len() <= 16);
+        assert_eq!(
+            result.groups_complete,
+            result.group_count as usize == result.groups.len()
+        );
+        assert!(result.groups.iter().all(|group| {
+            group.samples.len() <= 2
+                && group
+                    .samples
+                    .iter()
+                    .all(|sample| sample.text.chars().count() <= 64)
+        }));
+    }
 }

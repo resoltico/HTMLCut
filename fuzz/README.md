@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "19.1.0"
+  version: "19.2.0"
   domain: QUALITY
   updated: "2026-10-05"
 RETRIEVAL_HINTS:
@@ -22,9 +22,13 @@ dependency floor while still letting live fuzzing use nightly through `cargo-fuz
 - `selector_parsing`: compiles CSS extraction plans from bounded HTML, selectors, projections and selection policies.
 - `slice_boundaries`: drives literal and regex slice extraction with arbitrary boundaries, inclusion flags, and source-only projection.
 - `extraction_request_building`: reads the closed extraction-plan JSON, verifies canonical round-trip equality and executes valid CSS/slice plans on a prepared snapshot.
-- `selector_inspection`: exercises bounded document preparation, inspection pagination, stale/malformed cursor rejection and same-snapshot suggestions with arbitrary text and resource limits.
+- `selector_inspection`: exercises bounded selector counts, identifier samples and repeated-group outline with arbitrary text, limits and deterministic replay on one snapshot.
 - `relational_selector_budget`: exercises `:has(...)` work exhaustion and fallible propagation through the maintained selector and scraper forks.
 - `cli_parse_error_surface`: feeds unknown arguments to source-included private CLI modules and asserts exit 2, empty stdout and a typed JSON error on stderr.
+- `markdown_cells`: checks bounded structural text for nested and irregular HTML cells.
+- `closed_wire_objects`: rejects malformed or unknown members in closed JSON documents.
+- `record_fields`: checks bounded field relationships and cardinality failures.
+- `bundle_replay`: checks closed USTAR parsing and receipt recomputation.
 
 ## Seed Corpora
 

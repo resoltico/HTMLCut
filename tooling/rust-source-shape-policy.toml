@@ -423,6 +423,22 @@ max_match_arms = 90
 allowed_internal_dependencies = ["crate", "discovery", "identity", "limits", "execution", "projection", "result", "snapshot", "plan"]
 
 [[rules]]
+path = "crates/htmlcut-core/src/discovery/"
+match = "prefix"
+role = "core-discovery"
+owner = "HTMLCut extraction contract"
+rationale = "Snapshot-bound sibling grouping, verified selector hints and table-shape evidence are discovery responsibilities."
+split_trigger = "a module gains extraction semantics or exceeds its declared cohesion budget"
+max_physical_lines = 500
+max_items = 60
+max_public_items = 35
+max_imports = 16
+max_functions = 34
+max_decision_points = 90
+max_match_arms = 90
+allowed_internal_dependencies = ["crate", "discovery", "compilation", "execution", "identity", "limits", "outline", "projection", "result", "snapshot", "plan", "selector_hint", "table_shape"]
+
+[[rules]]
 path = "crates/htmlcut-core/src/identity.rs"
 match = "exact"
 role = "core-identity"

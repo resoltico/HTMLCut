@@ -4,6 +4,13 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [19.2.0] - 2026-10-05
+
+### Added
+
+- `outline` surveys repeated HTML sibling groups without requiring a selector. It reports complete group counts, bounded samples and table header/row-shape evidence; a selector appears only when verified to match exactly those nodes on the current snapshot. `--within CSS` narrows an ambiguous page to one explicit scope. The survey does not infer business fields or silently return an incomplete group inventory.
+- Repeated `--exclude CSS` applies the existing subtree exclusion contract to inline flat readings, including Markdown. Repeated `--expect-text CSS TEXT` applies an exact original-DOM guard before data delivery, allowing inline checks of table headers and other page assumptions. Extraction wire and semantics remain at 5; existing v19 plans and bundles remain valid.
+
 ## [19.1.0] - 2026-10-05
 
 ### Added

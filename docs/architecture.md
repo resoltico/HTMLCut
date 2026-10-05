@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.1.0"
+version: "19.2.0"
 domain: ARCHITECTURE
 updated: "2026-10-05"
 route:
@@ -18,7 +18,7 @@ One plan selects roots once. A scalar projection returns strings; a records proj
 
 `ExtractionResult` separates `ExtractionData` from `ExecutionReceipt`. Bare data serialization contains only the requested array; receipts bind source/plan/extraction/data identities and counts without copied values or paths. Prepared documents cache one parsing result or failure; compiled plans contain no spent execution counters.
 
-Targeted inspection retains complete selector counts. Its opt-in identifier view reveals bounded `id` and class values for selector authoring without changing the extraction plan or receipt contract.
+Targeted inspection retains complete selector counts. Its opt-in identifier view reveals bounded `id` and class values. The separate outline surveys repeated sibling groups and mechanical table row shapes, verifying any selector hint against the exact snapshot members. It does not generate a semantic plan. Inline root exclusions and exact text expectations compile through the same plan as file-based requests; none of these discovery or authoring additions changes the extraction wire or receipt contract.
 
 Markdown reading, literal DOM text, parsed HTML serialization and exact source slices are distinct contracts. Markdown preserves source ordinals as literal bullet labels and table cells as nested lists, avoiding custom frames and renderer-dependent renumbering or discarded pipe-table cells. Source slices are parse-free accepted-byte substrings.
 

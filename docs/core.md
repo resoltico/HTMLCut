@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.1.0"
+version: "19.2.0"
 domain: CORE
 updated: "2026-10-05"
 route:
@@ -71,6 +71,8 @@ Preformatted content uses a fence longer than conflicting literal backtick runs.
 ## Bounds and identities
 
 `PreparedDocument::inspect(css, samples)` keeps the existing attribute-name and literal-text preview contract. `inspect_identifiers(css, samples)` uses the same complete selector count and a fresh work budget, but samples only exact bounded `id` and class values plus a structural text preview. Oversized identifier tokens are omitted with `identifiers_complete: false`; sample and text completeness are separate. The preview includes literal hidden/script content and does not infer browser visibility. Identifier values are data, not escaped or uniqueness-checked CSS selectors. Both responses have a 16 KiB encoded cap.
+
+`PreparedDocument::outline(within, limit)` scans repeated direct HTML siblings with a fresh 10 million-unit work budget and a 1,024-signature cap per parent. It reports a complete group count, at most sixteen largest groups, bounded member previews and table row-shape facts. Tag-only and class-constrained groups may overlap. Optional `within` must select exactly one subtree. A CSS selector hint is returned only after it matches the exact group members on that source snapshot; the source digest binds the observation. Header strings are literal parsed DOM text suitable for an exact text guard, not inferred column semantics. Oversized output or exhausted work fails without a partial result; body/header meaning, visibility and future-page stability remain caller decisions.
 
 Preparation defaults: 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048, and 10,000,000 parser work units. Each scalar/field accepts at most one compatible transform; unsupported combinations and duplicates are rejected. Execution defaults: shared work 1,000,000, 100,000 candidates per pass, 10,000 selected roots, 100,000 cells, 8 MiB per value and 64 MiB aggregate leaf payload. A field slot costs one cell; all-valued strings each cost another; a flat string costs one. Empty/null fields cannot evade it.
 
