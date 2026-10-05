@@ -437,3 +437,18 @@ fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
     }
     safe
 }
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_path_never_repeats_an_untrusted_map_key() {
+        let input = serde_json::json!({"SYNTHETIC_SECRET": "not a number"});
+        let error = serde_path_to_error::deserialize::<_, std::collections::BTreeMap<String, u32>>(
+            input.into_deserializer(),
+        )
+        .unwrap_err();
+        assert_eq!(safe_plan_path(error.path()), "$");
+    }
+}
