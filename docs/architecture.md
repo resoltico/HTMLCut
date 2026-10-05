@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.0.0"
+version: "19.1.0"
 domain: ARCHITECTURE
 updated: "2026-10-05"
 route:
@@ -17,6 +17,8 @@ The CLI owns regular files, intentional stdin, strict UTF-8 acceptance, one clos
 One plan selects roots once. A scalar projection returns strings; a records projection evaluates named scalar fields within each original row and returns typed records. Field payload candidates remain inside the row while ancestor/sibling predicates retain original-DOM context under the shared budget. Guards read original content before field exclusions/transforms. Required single, optional node presence, all and nth have explicit shapes and failure rules. No field HTML reparsing or nested record/expression language occurs.
 
 `ExtractionResult` separates `ExtractionData` from `ExecutionReceipt`. Bare data serialization contains only the requested array; receipts bind source/plan/extraction/data identities and counts without copied values or paths. Prepared documents cache one parsing result or failure; compiled plans contain no spent execution counters.
+
+Targeted inspection retains complete selector counts. Its opt-in identifier view reveals bounded `id` and class values for selector authoring without changing the extraction plan or receipt contract.
 
 Markdown reading, literal DOM text, parsed HTML serialization and exact source slices are distinct contracts. Markdown preserves source ordinals as literal bullet labels and table cells as nested lists, avoiding custom frames and renderer-dependent renumbering or discarded pipe-table cells. Source slices are parse-free accepted-byte substrings.
 

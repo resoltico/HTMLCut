@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.0.0"
+version: "19.1.0"
 domain: SETUP
 updated: "2026-10-05"
 route:
@@ -11,13 +11,13 @@ route:
 
 # Getting started
 
-Use a completed UTF-8 HTML snapshot and an explicit selector. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 19.0.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
+Use a completed UTF-8 HTML snapshot and an explicit selector. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 19.1.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
 
 On macOS or Linux, download the native package and checksum file, verify the exact asset entry, then extract:
 
 ```sh
 set -e
-VERSION=19.0.0
+VERSION=19.1.0
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) TARGET=aarch64-apple-darwin ;;
   Darwin:x86_64) TARGET=x86_64-apple-darwin ;;
@@ -44,7 +44,7 @@ On Windows, use PowerShell after verifying the chosen version is published:
 
 ```powershell
 $ErrorActionPreference = "Stop"
-$Version = "19.0.0"
+$Version = "19.1.0"
 $Asset = "htmlcut-$Version-x86_64-pc-windows-msvc.zip"
 $Base = "https://github.com/resoltico/HTMLCut/releases/download/v$Version"
 Invoke-WebRequest "$Base/$Asset" -OutFile $Asset
@@ -67,10 +67,11 @@ htmlcut describe extract
 htmlcut extract --file page.html --css article --read markdown --raw
 htmlcut extract --file page.html --css 'article a' --read attribute:href --match all
 htmlcut inspect --file page.html --css article
+htmlcut inspect --file page.html --css 'main,article,table' --identifiers
 ```
 
-Default output is a JSON array and default selection requires exactly one match. Use repeated `--field NAME CSS READ` for single-valued records, or `NAME?` for a zero-or-one field; use a plan for advanced cardinality, guards and exclusions. Present empty values are valid; missing required nodes/attributes fail. `--raw` selects one flat string without a final LF.
+Default output is a JSON array and default selection requires exactly one match. Use repeated `--field NAME CSS READ` for single-valued records, or `NAME?` for a zero-or-one field; use `--field-exclude NAME CSS` to omit footnotes within a field. A plan handles all/nth field cardinality and guards. Present empty values are valid; missing required nodes/attributes fail. `--raw` selects one flat string without a final LF.
 
 Save actual source and execution with `--bundle snapshot.htmlcut.tar`, then recompute with `htmlcut run snapshot.htmlcut.tar`. Move the bundle freely; it does not depend on original paths. `--receipt FILE` is the smaller alternative when only evidence is needed. It is mutually exclusive with bundle output. Output replacement requires `--overwrite`.
 
-Callers acquire/render/decode source first. HTMLCut accepts file/stdin UTF-8 and does not fetch URLs, execute JavaScript, use sessions or crawl. This checkout declares 19.0.0; a workspace version is not proof that matching release assets are published. See [CLI](cli.md), [Core](core.md), [Schemas](schema.md), and [Platform Support](platform-support.md).
+Callers acquire/render/decode source first. HTMLCut accepts file/stdin UTF-8 and does not fetch URLs, execute JavaScript, use sessions or crawl. This checkout declares 19.1.0; a workspace version is not proof that matching release assets are published. See [CLI](cli.md), [Core](core.md), [Schemas](schema.md), and [Platform Support](platform-support.md).

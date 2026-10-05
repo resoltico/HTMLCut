@@ -5,6 +5,102 @@ use serde_json::json;
 use support::invoke;
 
 #[test]
+fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() {
+    let directory = tempfile::tempdir().unwrap();
+    let plan = directory.path().join("country.plan.json");
+    let inline_receipt = directory.path().join("inline.receipt.json");
+    let structured_receipt = directory.path().join("structured.receipt.json");
+    std::fs::write(&plan, serde_json::to_vec(&json!({
+        "schema":"htmlcut.extraction.plan", "version":htmlcut_core::SCHEMA_VERSION,
+        "strategy":{"kind":"css","selector":"tr"},
+        "projection":{"kind":"records","following_siblings":0,"fields":[
+            {"name":"country","selector":"td","exclude":["sup.reference"],"transforms":[{"kind":"normalize_whitespace"}]}
+        ]}
+    })).unwrap()).unwrap();
+    let source = b"<table><tr><td>China<sup class=reference>[1]</sup></td></tr></table>";
+    let inline = invoke(
+        &[
+            "extract",
+            "--stdin",
+            "--css",
+            "tr",
+            "--field",
+            "country",
+            "td",
+            "normalized_text",
+            "--field-exclude",
+            "country",
+            "sup.reference",
+            "--receipt",
+            inline_receipt.to_str().unwrap(),
+        ],
+        source,
+    );
+    let structured = invoke(
+        &[
+            "extract",
+            "--stdin",
+            "--plan",
+            plan.to_str().unwrap(),
+            "--receipt",
+            structured_receipt.to_str().unwrap(),
+        ],
+        source,
+    );
+    assert!(inline.status.success());
+    assert!(structured.status.success());
+    assert_eq!(inline.stdout, b"[{\"country\":\"China\"}]\n");
+    assert_eq!(inline.stdout, structured.stdout);
+    assert_eq!(
+        std::fs::read(inline_receipt).unwrap(),
+        std::fs::read(structured_receipt).unwrap()
+    );
+
+    for args in [
+        vec![
+            "extract",
+            "--stdin",
+            "--css",
+            "tr",
+            "--field",
+            "country",
+            "td",
+            "normalized_text",
+            "--field-exclude",
+            "UNDECLARED_SECRET",
+            "sup",
+        ],
+        vec![
+            "extract",
+            "--stdin",
+            "--css",
+            "tr",
+            "--field",
+            "country",
+            "td",
+            "attribute:title",
+            "--field-exclude",
+            "country",
+            "sup",
+        ],
+        vec![
+            "extract",
+            "--stdin",
+            "--plan",
+            plan.to_str().unwrap(),
+            "--field-exclude",
+            "country",
+            "sup",
+        ],
+    ] {
+        let failure = invoke(&args, source);
+        assert_eq!(failure.status.code(), Some(2));
+        assert!(failure.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&failure.stderr).contains("UNDECLARED_SECRET"));
+    }
+}
+
+#[test]
 fn optional_inline_field_preserves_absence_and_rejects_ambiguous_or_missing_attributes() {
     let args = [
         "extract",

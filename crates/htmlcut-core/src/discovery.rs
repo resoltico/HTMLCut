@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Selector-scoped counts and deliberately abbreviated samples of one immutable snapshot.
 
+use ego_tree::iter::Edge;
 use schemars::JsonSchema;
 use scraper::{ElementRef, Node};
 use selectors::work_budget::SelectorWorkBudget;
@@ -36,23 +37,40 @@ pub struct InspectionResult {
     pub samples_complete: bool,
 }
 
+/// Bounded selector identifiers and structural text for one sampled element.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IdentifierInspectionSample {
+    /// Parsed tag, bounded to 128 UTF-8 bytes.
+    pub tag: String,
+    /// Exact id attribute when present and within 128 UTF-8 bytes.
+    pub id: Option<String>,
+    /// At most eight distinct exact class tokens, sorted lexically, of at most 64 UTF-8 bytes each.
+    pub classes: Vec<String>,
+    /// Whether all id and class tokens are represented.
+    pub identifiers_complete: bool,
+    /// At most 160 Unicode scalar values of structural text preview.
+    pub text: String,
+    /// Whether the structural text preview is complete.
+    pub text_complete: bool,
+}
+
+/// Complete selector count with bounded identifier samples.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IdentifierInspectionResult {
+    /// Complete match count, never a lower bound or estimate.
+    pub count: u32,
+    /// Samples in original document order.
+    pub samples: Vec<IdentifierInspectionSample>,
+    /// Whether every matched element has a sample.
+    pub samples_complete: bool,
+}
+
 impl PreparedDocument {
     /// Counts an explicit selector completely and returns up to ten bounded samples.
     pub fn inspect(&self, css: &str, samples: u32) -> Result<InspectionResult, ExtractionError> {
-        if !(1..=10).contains(&samples) {
-            return Err(ExtractionError::new(
-                ErrorCode::InvalidOptions,
-                "inspection",
-                "Sample count must be between one and ten.",
-            ));
-        }
-        crate::plan::validation::pattern(css)?;
-        let selector = crate::compilation::compile_selector(css)?;
-        let limits = crate::ExecutionLimits::default();
-        let budget = SelectorWorkBudget::new(limits.max_work);
-        let document = self.document()?;
-        let nodes =
-            crate::execution::matches(document, None, &selector, limits.max_candidates, &budget)?;
+        let (nodes, budget) = self.inspection_matches(css, samples)?;
         let count = nodes.len() as u32;
         let selected = nodes
             .iter()
@@ -67,6 +85,139 @@ impl PreparedDocument {
         let _ = crate::identity::data_digest(&result, 16 * 1024, &budget)?;
         Ok(result)
     }
+
+    /// Counts an explicit selector and samples only bounded id/class values and structural text.
+    pub fn inspect_identifiers(
+        &self,
+        css: &str,
+        samples: u32,
+    ) -> Result<IdentifierInspectionResult, ExtractionError> {
+        let (nodes, budget) = self.inspection_matches(css, samples)?;
+        let count = nodes.len() as u32;
+        let selected = nodes
+            .iter()
+            .take(samples as usize)
+            .map(|node| identifier_sample(*node, &budget))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = IdentifierInspectionResult {
+            count,
+            samples_complete: count <= samples,
+            samples: selected,
+        };
+        let _ = crate::identity::data_digest(&result, 16 * 1024, &budget)?;
+        Ok(result)
+    }
+
+    fn inspection_matches<'a>(
+        &'a self,
+        css: &str,
+        samples: u32,
+    ) -> Result<(Vec<ElementRef<'a>>, SelectorWorkBudget), ExtractionError> {
+        if !(1..=10).contains(&samples) {
+            return Err(ExtractionError::new(
+                ErrorCode::InvalidOptions,
+                "inspection",
+                "Sample count must be between one and ten.",
+            ));
+        }
+        crate::plan::validation::pattern(css)?;
+        let selector = crate::compilation::compile_selector(css)?;
+        let limits = crate::ExecutionLimits::default();
+        let budget = SelectorWorkBudget::new(limits.max_work);
+        let document = self.document()?;
+        let nodes =
+            crate::execution::matches(document, None, &selector, limits.max_candidates, &budget)?;
+        Ok((nodes, budget))
+    }
+}
+
+fn identifier_sample(
+    root: ElementRef<'_>,
+    budget: &SelectorWorkBudget,
+) -> Result<IdentifierInspectionSample, ExtractionError> {
+    let tag = root.value().name();
+    if tag.len() > 128 {
+        return Err(ExtractionError::limit("inspection"));
+    }
+    let mut complete = true;
+    let id = if let Some(value) = root.attr("id") {
+        crate::execution::charge(budget, value.len().div_ceil(64) + 1)?;
+        if value.len() <= 128 {
+            Some(value.to_owned())
+        } else {
+            complete = false;
+            None
+        }
+    } else {
+        None
+    };
+    let mut classes = Vec::new();
+    if let Some(value) = root.attr("class") {
+        crate::execution::charge(budget, value.len().div_ceil(64) + 1)?;
+        for token in value.split_ascii_whitespace() {
+            crate::execution::charge(budget, 1)?;
+            if token.len() > 64 {
+                complete = false;
+            } else if !classes.iter().any(|class: &String| class == token) {
+                classes.push(token.to_owned());
+                classes.sort();
+                if classes.len() > 8 {
+                    classes.truncate(8);
+                    complete = false;
+                }
+            }
+        }
+    }
+    let (text, text_complete) = structural_preview(root, budget)?;
+    Ok(IdentifierInspectionSample {
+        tag: tag.into(),
+        id,
+        classes,
+        identifiers_complete: complete,
+        text,
+        text_complete,
+    })
+}
+
+fn structural_preview(
+    root: ElementRef<'_>,
+    budget: &SelectorWorkBudget,
+) -> Result<(String, bool), ExtractionError> {
+    let mut result = String::new();
+    let mut count = 0;
+    let mut space = false;
+    for edge in root.traverse() {
+        crate::execution::charge(budget, 1)?;
+        let node = match edge {
+            Edge::Open(node) | Edge::Close(node) => node,
+        };
+        if crate::projection::text_boundary(node.value()) {
+            space = !result.is_empty();
+        }
+        let Edge::Open(node) = edge else { continue };
+        let Node::Text(text) = node.value() else {
+            continue;
+        };
+        for c in text.text.chars() {
+            crate::execution::charge(budget, 1)?;
+            if c.is_whitespace() {
+                space = !result.is_empty();
+                continue;
+            }
+            let needed = 1 + usize::from(space);
+            if needed > 160 - count {
+                return Ok((result, false));
+            }
+            if space {
+                result.push(' ');
+                count += 1;
+            }
+            result.push(c);
+            count += 1;
+            space = false;
+        }
+    }
+    Ok((result, true))
 }
 
 fn sample(

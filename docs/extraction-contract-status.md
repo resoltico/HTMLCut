@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.0.0"
+version: "19.1.0"
 domain: ENGINEERING
 updated: "2026-10-05"
 route:
@@ -21,9 +21,9 @@ proofs. Authoritative publication state is the [public release](https://github.c
 exact-source verification is retained in [GitHub Actions](https://github.com/resoltico/HTMLCut/actions).
 The historical evidence below identifies its tested revision; it does not attest later changes.
 
-## Current 19.0.0 contract
+## Current contract
 
-The workspace implements current wire/semantics 5, direct records, bare data/receipts, targeted inspection, conventional Markdown and self-contained replay. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
+The workspace implements current wire/semantics 5, direct records, bare data/receipts, targeted inspection with opt-in identifier samples, conventional Markdown and self-contained replay. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
 
 Release verification belongs to exact source commits and published packages. The maintained gates own coverage, strict Miri, live fuzz, full mutation and native delivery proofs; the evaluation scripts check immutable snapshots and complete requested answers. [GitHub Releases](https://github.com/resoltico/HTMLCut/releases) and [Actions](https://github.com/resoltico/HTMLCut/actions) are authoritative for publication and source-bound CI. A workspace version or local report alone does not establish publication. The API baseline is refreshed only from an actually published tag.
 

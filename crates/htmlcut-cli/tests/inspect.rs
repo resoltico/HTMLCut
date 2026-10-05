@@ -1,6 +1,35 @@
 // SPDX-License-Identifier: MPL-2.0
 mod support;
 use support::invoke;
+
+#[test]
+fn identifier_inspection_reports_exact_selector_parts_only_when_requested() {
+    let source = b"<main id='content' class='docs main docs' data-secret='private'><table><tr><td>China</td><td>17.3%</td></tr></table></main>";
+    let ordinary = invoke(&["inspect", "--stdin", "--css", "main"], source);
+    assert!(ordinary.status.success());
+    let ordinary: serde_json::Value = serde_json::from_slice(&ordinary.stdout).unwrap();
+    assert_eq!(
+        ordinary["samples"][0]["attributes"],
+        serde_json::json!(["class", "data-secret", "id"])
+    );
+    assert!(ordinary["samples"][0].get("classes").is_none());
+
+    let identified_output = invoke(
+        &["inspect", "--stdin", "--css", "main", "--identifiers"],
+        source,
+    );
+    assert!(identified_output.status.success());
+    let identified: serde_json::Value = serde_json::from_slice(&identified_output.stdout).unwrap();
+    assert_eq!(identified["count"], 1);
+    assert_eq!(identified["samples"][0]["id"], "content");
+    assert_eq!(
+        identified["samples"][0]["classes"],
+        serde_json::json!(["docs", "main"])
+    );
+    assert_eq!(identified["samples"][0]["text"], "China 17.3%");
+    assert_eq!(identified["samples"][0]["identifiers_complete"], true);
+    assert!(!String::from_utf8_lossy(&identified_output.stdout).contains("private"));
+}
 #[test]
 fn targeted_inspection_counts_completely_and_labels_preview_abbreviation() {
     let source = format!("<p>{}</p><p>second</p>", "é".repeat(200));

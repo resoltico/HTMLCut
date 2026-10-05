@@ -20,7 +20,7 @@ def main():
         rows.append(dict(label=label,arguments=arguments,exit_code=result.returncode,passed=passed,
                          stdout=result.stdout.decode('utf-8'),stderr=result.stderr.decode('utf-8')))
         return result
-    run('binary-version',['--version'],raw=b'htmlcut 19.0.0\n')
+    run('binary-version',['--version'],raw=b'htmlcut 19.1.0\n')
     with tempfile.TemporaryDirectory(prefix='htmlcut-native-contract-') as directory:
         root=Path(directory)
         for label,source,css,projection,expected in [
@@ -45,6 +45,7 @@ def main():
                '--field','score',':scope + tr .score','normalized_text','--following-siblings','1']
         run('explicit-row-group',group,b'<table><tr class=entry><td>T</td></tr><!-- gap --><tr><td class=score> 10 </td></tr></table>',expected=[dict(title='T',score='10')])
         run('optional-inline-field',['extract','--stdin','--css','article','--match','all','--field','score?','.score','normalized_text'],b'<article><b class=score>10</b></article><article></article>',expected=[dict(score='10'),dict(score=None)])
+        run('inline-field-exclusion',['extract','--stdin','--css','tr','--field','country','td','normalized_text','--field-exclude','country','sup.reference'],b'<table><tr><td>China<sup class=reference>[1]</sup></td></tr></table>',expected=[dict(country='China')])
         run('normalized-boundaries',['extract','--stdin','--css','dl','--read','normalized_text'],b'<dl><dt>Name</dt><dd>Alice</dd></dl>',expected=['Name Alice'])
         run('missing-row-sibling',group,b'<table><tr class=entry><td>T</td></tr></table>',failure=3)
         run('overlapping-row-scope',group,b'<table><tr class=entry><td>T</td></tr><tr class=entry><td>T2</td></tr></table>',failure=3)
@@ -57,6 +58,7 @@ def main():
             ('missing',['extract','--stdin','--css','p'],b'<b>A</b>',3),
             ('missing-attribute',['extract','--stdin','--css','a','--read','attribute:href'],b'<a>A</a>',3),
             ('invalid-css',['extract','--stdin','--css','['],b'<p>A</p>',2),
+            ('unknown-field-exclusion',['extract','--stdin','--css','tr','--field','country','td','normalized_text','--field-exclude','UNDECLARED_SECRET','sup'],b'<tr><td>China</td></tr>',2),
             ('invalid-utf8',['extract','--stdin','--css','p'],b'<p>\xff</p>',5),
             ('retired-url',['extract','--url','http://invalid.test/SYNTHETIC_SECRET','--css','p'],None,2),
             ('retired-encoding',['extract','--stdin','--css','p','--encoding','utf-16le'],b'',2),
@@ -96,6 +98,7 @@ def main():
         run('bundle-collision',['run',str(moved),'--output',str(moved),'--overwrite'],failure=2)
         inspection=run('scoped-inspection',['inspect','--stdin','--css','p','--samples','2'],b'<p>A</p><p>B</p><p>C</p>')
         value=json.loads(inspection.stdout);rows[-1]['passed'] &= value['count']==3 and len(value['samples'])==2 and not value['samples_complete']
+        run('identifier-inspection',['inspect','--stdin','--css','main','--identifiers'],b'<main id=content class="docs main" data-secret=private><table><tr><td>China</td><td>17.3%</td></tr></table></main>',expected=dict(count=1,samples=[dict(tag='main',id='content',classes=['docs','main'],identifiers_complete=True,text='China 17.3%',text_complete=True)],samples_complete=True))
         for version in [1,2,3,4]:
             old=dict(plan,version=version);path.write_text(json.dumps(old),encoding="utf-8");run(f'unsupported-wire-{version}',['extract','--stdin','--plan',str(path)],b'<article></article>',failure=2)
         simple={'schema':'htmlcut.extraction.plan','version':5,'strategy':{'kind':'css','selector':'#amount'},

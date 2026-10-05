@@ -88,7 +88,7 @@ pub(crate) struct Extract {
     pub(crate) source: SourceOptions,
     #[command(flatten)]
     pub(crate) output: Output,
-    #[arg(long, conflicts_with_all = ["css", "read", "fields", "following_siblings", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
+    #[arg(long, conflicts_with_all = ["css", "read", "fields", "field_excludes", "following_siblings", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
     pub(crate) plan: Option<PathBuf>,
     #[arg(long, conflicts_with = "start")]
     pub(crate) css: Option<String>,
@@ -99,6 +99,9 @@ pub(crate) struct Extract {
     /// Named fields: NAME CSS READ; suffix NAME with ? for zero-or-one matches.
     #[arg(long = "field", num_args = 3, value_names = ["NAME", "CSS", "READ"], action = clap::ArgAction::Append, conflicts_with_all = ["start", "read"])]
     pub(crate) fields: Vec<String>,
+    /// Exclude matching descendants from one declared field: NAME CSS, repeatable.
+    #[arg(long = "field-exclude", num_args = 2, value_names = ["NAME", "CSS"], action = clap::ArgAction::Append, requires = "fields")]
+    pub(crate) field_excludes: Vec<String>,
     /// Include exactly this many following element-sibling subtrees per record.
     #[arg(long, requires = "fields")]
     pub(crate) following_siblings: Option<u32>,
@@ -189,7 +192,7 @@ impl Extract {
             if self.fields.len() > 3 * htmlcut_core::MAX_RECORD_FIELDS {
                 return Err(options("The field declaration count exceeds its limit."));
             }
-            let fields = self
+            let mut fields = self
                 .fields
                 .as_chunks::<3>()
                 .0
@@ -213,6 +216,15 @@ impl Extract {
                     })
                 })
                 .collect::<Result<Vec<_>, htmlcut_core::ExtractionError>>()?;
+            for exclusion in self.field_excludes.as_chunks::<2>().0 {
+                let field = fields
+                    .iter_mut()
+                    .find(|field| field.name == exclusion[0])
+                    .ok_or_else(|| {
+                        options("Field exclusion names must refer to declared fields.")
+                    })?;
+                field.exclude.push(exclusion[1].clone());
+            }
             plan.projection = Projection::Records {
                 fields,
                 following_siblings: self.following_siblings.unwrap_or(0),
@@ -240,6 +252,9 @@ pub(crate) struct Inspect {
     /// Number of samples; complete matching is still required.
     #[arg(long, default_value = "3")]
     pub(crate) samples: u32,
+    /// Show bounded id/class values and structural text for selector authoring.
+    #[arg(long)]
+    pub(crate) identifiers: bool,
 }
 
 #[derive(Clone)]

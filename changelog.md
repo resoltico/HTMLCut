@@ -4,6 +4,13 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [19.1.0] - 2026-10-05
+
+### Added
+
+- `inspect --identifiers` provides bounded exact `id` and class tokens with structural text previews for sampled matches. Complete match counts and explicit completeness flags remain; ordinary `inspect --css` output is unchanged. Extraction wire and semantics stay at 5, so existing v19 plans and bundles remain valid.
+- Repeated `--field-exclude NAME CSS` excludes descendants from a declared inline record field, so common footnote removal no longer requires a plan file. It compiles to the existing plan contract.
+
 ## [19.0.0] - 2026-10-05
 
 ### Changed

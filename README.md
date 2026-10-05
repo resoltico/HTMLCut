@@ -14,11 +14,12 @@ htmlcut describe extract
 htmlcut extract --file page.html --css article --read markdown --raw
 htmlcut extract --file page.html --css 'article a' --read attribute:href --match all
 htmlcut inspect --file page.html --css article
+htmlcut inspect --file page.html --css 'main,article,table' --identifiers
 ```
 
 Default stdout is compact JSON containing only an array of requested strings or records, followed by one LF. Default selection requires exactly one node; all and positive one-based nth selection are explicit. Missing attributes fail; present empty strings are values. `--raw` emits exactly one flat string without an extra LF.
 
-Repeated `--field NAME CSS READ` declares named single-valued fields; `NAME?` permits a missing field and returns `null`. `--following-siblings N` adds exactly N element siblings to each record scope. Plan files provide optional or all-valued fields, original-DOM guards, exclusions and explicit transforms. One records execution preserves field relationships without serializing and reparsing row HTML. Numeric conversion, filtering, business meaning and comparison remain caller code.
+Repeated `--field NAME CSS READ` declares named single-valued fields; `NAME?` permits a missing field and returns `null`. `--field-exclude NAME CSS` removes matching descendants from a declared field. `--following-siblings N` adds exactly N element siblings to each record scope. Plan files provide all/nth field selection, original-DOM guards and explicit transforms. One records execution preserves field relationships without serializing and reparsing row HTML. Numeric conversion, filtering, business meaning and comparison remain caller code.
 
 Literal `dom_text` includes hidden/script/style/template text without invented separators. Explicit `normalized_text` inserts spaces at HTML block and break boundaries while preserving preformatted payload. `markdown` is a declared CommonMark reading convention: normalized prose, block boundaries, links/images, literal source ordinals in bullets, tables as nested row/cell lists, and protected code. It excludes script/style/template payloads and does not infer visibility or boilerplate. Inner/outer HTML serialize the parsed DOM. Source slicing alone preserves exact accepted UTF-8 bytes and never reparses them implicitly.
 
