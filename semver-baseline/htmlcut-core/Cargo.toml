@@ -91,7 +91,7 @@ publish = false
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
 rust-version = "1.98.1"
-version = "19.0.0"
+version = "19.1.0"
 
 [[test]]
 name = "contract_inline_markdown"

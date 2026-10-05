@@ -195,7 +195,7 @@ fn dom_text(
     Ok(value.finish())
 }
 
-fn text_boundary(node: &Node) -> bool {
+pub(crate) fn text_boundary(node: &Node) -> bool {
     node.as_element().is_some_and(|element| {
         context::html(element)
             && matches!(

@@ -182,6 +182,11 @@ fn t05_every_named_schema_is_retrievable_and_has_its_expected_public_shape() {
         ),
         ("htmlcut.extraction.error", "ExtractionError", "code"),
         ("htmlcut.inspection", "InspectionResult", "count"),
+        (
+            "htmlcut.inspection.identifiers",
+            "IdentifierInspectionResult",
+            "samples",
+        ),
     ] {
         let schema = crate::schema(name).unwrap();
         assert_eq!(schema["title"], title);
