@@ -4,6 +4,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Fixed
+
+- Clarified current licensing and contributor patent scope. Native package `NOTICE` provides the generated dependency and runtime attribution; the repository notice describes project scope. Licensing history remains in the release record and applicable legal notices.
+
 ## [18.0.0] - 2026-10-04
 
 ### Changed
