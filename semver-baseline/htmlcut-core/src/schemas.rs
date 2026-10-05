@@ -13,6 +13,7 @@ pub const SCHEMA_NAMES: &[&str] = &[
     "htmlcut.extraction.error",
     "htmlcut.inspection",
     "htmlcut.inspection.identifiers",
+    "htmlcut.outline",
 ];
 
 /// Generates one named schema; runtime validation owns cross-field invariants.
@@ -25,6 +26,7 @@ pub fn schema(name: &str) -> Result<Value, ExtractionError> {
         "htmlcut.inspection.identifiers" => {
             schemars::schema_for!(crate::IdentifierInspectionResult)
         }
+        "htmlcut.outline" => schemars::schema_for!(crate::OutlineResult),
         "htmlcut.extraction.receipt" => schemars::schema_for!(crate::ExecutionReceipt),
         _ => {
             return Err(ExtractionError::new(

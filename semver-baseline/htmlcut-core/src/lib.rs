@@ -27,6 +27,7 @@ pub use compilation::CompiledPlan;
 pub use data::{ExtractionData, FieldValue};
 pub use discovery::{
     IdentifierInspectionResult, IdentifierInspectionSample, InspectionResult, InspectionSample,
+    OutlineElement, OutlineGroup, OutlineResult, OutlineSample, TableShape,
 };
 pub use failure_cause::{
     ConfigurationProblem, ConfigurationRole, FailureCause, IoOperation, IoProblem,
