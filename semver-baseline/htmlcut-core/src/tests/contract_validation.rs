@@ -2,6 +2,22 @@
 use super::*;
 
 #[test]
+fn plan_field_failure_reports_only_declared_path_segments() {
+    let bad = br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"record","secret_instruction":"do something"}}"#;
+    let error = ExtractionPlan::from_json(bad).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidPlan);
+    assert_eq!(error.plan_path.as_deref(), Some("$.projection"));
+    assert!(
+        !serde_json::to_string(&error)
+            .unwrap()
+            .contains("secret_instruction")
+    );
+    let indexed = br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"guards":[{"scope":"selected","selector":"p","read":{"kind":"dom_text"}},{"scope":"selected","selector":"p"}]}"#;
+    let error = ExtractionPlan::from_json(indexed).unwrap_err();
+    assert_eq!(error.plan_path.as_deref(), Some("$.guards[1]"));
+}
+
+#[test]
 fn invalid_exclusion_selector_fails_the_whole_compiled_plan() {
     let mut plan = ExtractionPlan::css("p").unwrap();
     plan.exclude = vec!["[a=]".into()];
@@ -248,7 +264,7 @@ fn t05_byte_budget_applies_to_materialized_defaults_and_escaped_predicates() {
         value.push('x');
     }
     assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},
+    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},
         "guards":[{"scope":"document","selector":"p","read":{"kind":"dom_text"},"predicate":{"kind":"exact","value":"x".repeat(crate::limits::MAX_PLAN_BYTES-250)}}]});
     let encoded = serde_json::to_vec(&minimal).unwrap();
     assert!(encoded.len() <= crate::limits::MAX_PLAN_BYTES);
@@ -309,14 +325,21 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
     for wire in [
         r#"{"schema":"wrong","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"wrong","version":5,"strategy":{"kind":"css","selector":"p"}}"#,
         r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
     ] {
+        let error = ExtractionPlan::from_json(wire.as_bytes()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidSchema);
+        assert_eq!(error.stage, "plan");
         assert_eq!(
-            ExtractionPlan::from_json(wire.as_bytes()).unwrap_err().code,
-            ErrorCode::InvalidSchema
+            error.cause,
+            Some(FailureCause::Configuration {
+                role: ConfigurationRole::Plan,
+                problem: ConfigurationProblem::UnsupportedVersion,
+            })
         );
     }
-    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
     assert_eq!(plan.selection, Selection::All { min: 1, max: None });
     assert_eq!(
         prepared("<p>value</p>")
