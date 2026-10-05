@@ -63,6 +63,18 @@ fn identifier_preview_marks_a_structural_boundary_that_exceeds_its_limit() {
         );
         assert_eq!(sample.text_complete, complete);
     }
+    let source = format!(
+        "<table><tr><td>{}</td><td>xy</td></tr></table>",
+        "a".repeat(158)
+    );
+    let sample = prepared(&source)
+        .inspect_identifiers("table", 1)
+        .unwrap()
+        .samples
+        .remove(0);
+    assert_eq!(sample.text, format!("{} x", "a".repeat(158)));
+    assert_eq!(sample.text.chars().count(), 160);
+    assert!(!sample.text_complete);
 }
 
 #[test]
@@ -108,6 +120,11 @@ fn identifier_inspection_refuses_an_oversized_encoded_answer() {
         "i".repeat(128),
         "\u{1}".repeat(160)
     );
+    let one = prepared(&element).inspect_identifiers(&tag, 1).unwrap();
+    assert_eq!(one.samples[0].tag.len(), 128);
+    assert_eq!(one.samples[0].classes.len(), 8);
+    assert!(one.samples[0].identifiers_complete);
+    assert!(crate::canonical_json(&one).unwrap().len() > 1024);
     let document = prepared(&element.repeat(10));
     assert_eq!(
         document.inspect_identifiers(&tag, 10).unwrap_err().code,

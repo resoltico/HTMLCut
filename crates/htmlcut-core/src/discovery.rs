@@ -210,10 +210,9 @@ fn structural_preview(
             }
             if space {
                 result.push(' ');
-                count += 1;
             }
             result.push(c);
-            count += 1;
+            count += needed;
             space = false;
         }
     }
