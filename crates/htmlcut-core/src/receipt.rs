@@ -133,24 +133,16 @@ impl ExtractionResult {
     fn build_evidence(&self) -> Result<Evidence, crate::ExtractionError> {
         let metadata = crate::canonical_json(self.source.metadata())?;
         let preparation = crate::canonical_json(&self.preparation)?;
-        // Charge each logical hash even on cache hits. Query framing includes the
-        // domain and length words; execution framing includes five length words.
+        // Cached source/query digests never discount their logical hash work.
         crate::execution::charge(&self.budget, self.source.html().len().div_ceil(64))?;
         let source_sha256 = self.source.source_sha256().to_owned();
-        crate::execution::charge(
+        let plan_sha256 = crate::identity::budgeted_framed(
+            "htmlcut.plan/6",
+            &[self.query.as_bytes()],
             &self.budget,
-            (self.query.len() + "htmlcut.plan/6".len() + 16).div_ceil(64),
         )?;
-        let plan_sha256 = crate::identity::framed("htmlcut.plan/6", &[self.query.as_bytes()]);
         let semantics = SEMANTICS_VERSION.to_be_bytes();
-        let identity_bytes = "htmlcut.extraction/6".len()
-            + 128
-            + metadata.len()
-            + preparation.len()
-            + semantics.len()
-            + 48;
-        crate::execution::charge(&self.budget, identity_bytes.div_ceil(64))?;
-        let extraction_sha256 = crate::identity::framed(
+        let extraction_sha256 = crate::identity::budgeted_framed(
             "htmlcut.extraction/6",
             &[
                 source_sha256.as_bytes(),
@@ -159,7 +151,8 @@ impl ExtractionResult {
                 preparation.as_bytes(),
                 &semantics,
             ],
-        );
+            &self.budget,
+        )?;
         crate::execution::charge(&self.budget, self.payload.len().div_ceil(64))?;
         let receipt = ExecutionReceipt {
             schema: "htmlcut.extraction.receipt".into(),

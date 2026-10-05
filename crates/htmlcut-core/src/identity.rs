@@ -77,6 +77,20 @@ pub(crate) fn framed(domain: &str, fields: &[&[u8]]) -> String {
     hex(&hash.finalize())
 }
 
+/// Charges the actual domain and component frames before hashing the same bounded inputs.
+pub(crate) fn budgeted_framed(
+    domain: &str,
+    fields: &[&[u8]],
+    budget: &selectors::work_budget::SelectorWorkBudget,
+) -> Result<String, ExtractionError> {
+    let bytes = std::iter::once(domain.as_bytes())
+        .chain(fields.iter().copied())
+        .map(|value| std::mem::size_of::<u64>() + value.len())
+        .sum::<usize>();
+    crate::execution::charge(budget, bytes.div_ceil(64))?;
+    Ok(framed(domain, fields))
+}
+
 fn hex(bytes: &[u8]) -> String {
     let digits = b"0123456789abcdef";
     let mut output = String::with_capacity(bytes.len() * 2);

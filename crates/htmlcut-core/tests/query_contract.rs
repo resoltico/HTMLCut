@@ -434,3 +434,88 @@ fn optional_field_ambiguity_reports_its_zero_to_one_contract() {
     assert_eq!((error.expected_min, error.expected_max), (Some(0), Some(1)));
     assert_eq!(error.message, "Optional field matched multiple candidates.");
 }
+
+#[test]
+fn normalized_field_modes_preserve_omission_and_roundtrip_idempotently() {
+    let implicit = json!({"version":6,"select":"article","fields":{
+        "many":{"select":"i","match":"all"}, "one":{"select":"b"},
+        "optional":{"select":"u","match":"optional"}, "nth":{"select":"a","match":"nth","index":2}}});
+    let mut explicit = implicit.clone();
+    explicit["fields"]["many"]["min"] = json!(1);
+    let first = compile(implicit);
+    assert_eq!(first.normalized_json(), compile(explicit).normalized_json());
+    let normalized: Value = serde_json::from_str(first.normalized_json()).unwrap();
+    assert_eq!(normalized["fields"]["many"]["min"], 1);
+    for name in ["one", "optional", "nth"] {
+        assert!(normalized["fields"][name].get("min").is_none());
+        assert!(normalized["fields"][name].get("max").is_none());
+    }
+    let roundtrip = ExtractionPlan::from_json(first.normalized_json().as_bytes()).unwrap();
+    assert_eq!(
+        CompiledPlan::compile(&roundtrip).unwrap().normalized_json(),
+        first.normalized_json()
+    );
+}
+
+#[test]
+fn malformed_field_members_report_safe_names_and_paths() {
+    let reject =
+        |query: Value| ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).unwrap_err();
+    for name in ["author", "_price2", "fields", "read"] {
+        let query = json!({"version":6,"select":"p","fields":{name:{"select":"p","read":false}}});
+        let error = reject(query);
+        assert_eq!(error.field_name.as_deref(), Some(name));
+        assert_eq!(
+            error.plan_path.as_deref(),
+            Some(format!("$.fields.{name}.read").as_str())
+        );
+    }
+    for name in ["unsafe name", "private.password", "${secret}"] {
+        let error = reject(json!({"version":6,"select":"p","fields":{name:false}}));
+        assert!(error.field_name.is_none());
+        assert_eq!(error.plan_path.as_deref(), Some("$.fields"));
+        assert!(!serde_json::to_string(&error).unwrap().contains(name));
+    }
+    for query in [
+        json!({"version":6,"select":false}),
+        json!({"version":6,"select":"p","secret":false}),
+    ] {
+        let error = reject(query);
+        assert!(error.field_name.is_none());
+        assert!(!error.plan_path.as_deref().unwrap().contains("secret"));
+    }
+    let error =
+        reject(json!({"version":6,"select":"p","fields":{"author":{"select":"p","secret":false}}}));
+    assert_eq!(error.field_name.as_deref(), Some("author"));
+    assert!(!error.plan_path.as_deref().unwrap().contains("secret"));
+}
+
+#[test]
+fn exact_id_hint_bound_keeps_supported_identifiers_and_omits_oversized_ones() {
+    for (length, supported) in [(128, true), (129, false)] {
+        let id = "g".repeat(length);
+        let source = format!(
+            "<main id='{id}'><p>A</p><p>B</p><p>C</p></main><aside><p>D</p><p>E</p><p>F</p></aside>"
+        );
+        let observed = document(&source).survey(None, 4).unwrap();
+        let group = observed
+            .groups
+            .iter()
+            .find(|group| group.parent.tag == "main")
+            .unwrap();
+        assert_eq!(group.count, 3);
+        assert_eq!(group.selector, supported.then(|| format!("#{id} > p")));
+    }
+}
+
+#[test]
+fn header_byte_preview_never_appends_a_partial_generated_boundary() {
+    let source = format!(
+        "<table><tr><th>{}<div>🦀</div></th></tr><tr><td>1</td></tr><tr><td>2</td></tr></table>",
+        "a".repeat(125)
+    );
+    let observed = document(&source).survey(None, 4).unwrap();
+    let shape = observed.groups[0].table.as_ref().unwrap();
+    assert!(!shape.headers_complete);
+    assert!(shape.headers.is_empty());
+}

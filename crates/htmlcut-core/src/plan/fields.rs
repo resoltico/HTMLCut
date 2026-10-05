@@ -4,10 +4,11 @@
 use super::present;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{borrow::Cow, fmt, str::FromStr};
+use std::{fmt, str::FromStr};
 
 /// One supported parsed-DOM representation.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(schema_with = "reading_schema")]
 pub enum Reading {
     /// Static structural text, retaining hidden content and parsed pre text.
     #[default]
@@ -77,13 +78,8 @@ impl<'de> Deserialize<'de> for Reading {
             .map_err(serde::de::Error::custom)
     }
 }
-impl JsonSchema for Reading {
-    fn schema_name() -> Cow<'static, str> {
-        "Reading".into()
-    }
-    fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        schemars::json_schema!({"type":"string", "pattern":"^(text|literal|markdown|resolved-markdown|inner-html|outer-html|attr:.+|url:(href|src|action|poster|cite|formaction|data))$"})
-    }
+fn reading_schema(_: &mut SchemaGenerator) -> Schema {
+    schemars::json_schema!({"type":"string", "pattern":"^(text|literal|markdown|resolved-markdown|inner-html|outer-html|attr:.+|url:(href|src|action|poster|cite|formaction|data))$"})
 }
 
 /// Cardinality within one selected row forest; optionality never hides a missing attribute.

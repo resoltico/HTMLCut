@@ -264,3 +264,48 @@ fn json_escaping_cannot_publish_data_beyond_the_encoded_byte_bound() {
     assert_eq!(error.resource_counter.as_deref(), Some("encoded_bytes"));
     assert_eq!(error.configured_bound, Some(64 * 1024 * 1024));
 }
+
+#[test]
+fn url_limit_ownership_distinguishes_normalization_and_the_fixed_processing_cap() {
+    let error = document("<a href='https://a'>A</a>")
+        .execute(&compile(
+            json!({"version":6,"select":"a","read":"url:href","limits":{"max_value_bytes":9}}),
+        ))
+        .unwrap_err();
+    assert_eq!(error.resource_counter.as_deref(), Some("max_value_bytes"));
+    assert_eq!(error.configured_bound, Some(9));
+    let url = format!("https://{}a/{}", "㌖.".repeat(1926), "x".repeat(17));
+    let source = format!("<a href='{url}'>A</a>");
+    let error = document(&source)
+        .execute(&compile(
+            json!({"version":6,"select":"a","read":"url:href","limits":{"max_value_bytes":32768}}),
+        ))
+        .unwrap_err();
+    assert_eq!(
+        error.resource_counter.as_deref(),
+        Some("url_processing_bytes")
+    );
+    assert_eq!(error.configured_bound, Some(32768));
+}
+
+#[test]
+fn captured_metadata_framing_cannot_replenish_work_after_query_hashing() {
+    let source = SourceSnapshot::new(
+        "<p>A</p>",
+        SnapshotMetadata {
+            base_url: Some(format!("https://example.test/{}", "a".repeat(8000))),
+        },
+    )
+    .unwrap();
+    let document = PreparedDocument::new(source, PreparationLimits::default()).unwrap();
+    let result = document
+        .execute(&compile(
+            json!({"version":6,"select":"p","limits":{"max_work":100}}),
+        ))
+        .unwrap();
+    assert_eq!(result.payload(), br#"["A"]"#);
+    let error = result.receipt().unwrap_err();
+    assert_eq!(error.resource_counter.as_deref(), Some("max_work"));
+    assert_eq!(error.configured_bound, Some(100));
+    assert_eq!(result.receipt_payload().unwrap_err(), error);
+}

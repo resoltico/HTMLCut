@@ -55,22 +55,22 @@ pub(crate) struct SourceChoice {
 pub(crate) struct SourceOptions {
     #[command(flatten)]
     pub(crate) source: SourceChoice,
-    /// Explicit HTTP(S) base metadata without userinfo; HTML base elements are not inferred.
+    /// HTTP(S) base; no userinfo or inferred HTML base.
     #[arg(long)]
     pub(crate) base_url: Option<String>,
 }
 #[derive(Args)]
 pub(crate) struct Output {
-    /// Emit exactly one scalar string without a framing LF.
+    /// One scalar string, without LF.
     #[arg(long)]
     pub(crate) raw: bool,
-    /// Atomically publish to a file instead of stdout.
+    /// Atomic output file; otherwise stdout.
     #[arg(long)]
     pub(crate) output: Option<PathBuf>,
-    /// Permit atomic replacement of an existing output.
+    /// Replace an existing output.
     #[arg(long)]
     pub(crate) overwrite: bool,
-    /// Publish an optional receipt, using the execution's remaining work.
+    /// Optional receipt from remaining execution work.
     #[arg(long)]
     pub(crate) receipt: Option<PathBuf>,
 }
@@ -81,19 +81,19 @@ pub(crate) struct Extract {
     pub(crate) source: SourceOptions,
     #[command(flatten)]
     pub(crate) output: Output,
-    /// Current query JSON from a regular file; '-' intentionally uses query stdin.
+    /// Query file; '-' uses query stdin.
     #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text", "following_siblings"])]
     pub(crate) plan: Option<PathBuf>,
-    /// Current closed query JSON supplied directly.
+    /// Query JSON.
     #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text", "following_siblings"])]
     pub(crate) plan_json: Option<String>,
-    /// Required inline CSS selector.
+    /// Inline CSS.
     #[arg(long)]
     pub(crate) select: Option<String>,
-    /// Select all candidates; minimum one unless explicitly changed.
+    /// All candidates; default min=1.
     #[arg(long, conflicts_with = "nth")]
     pub(crate) all: bool,
-    /// Select one positive one-based position; complete candidates are counted.
+    /// One-based index; complete count.
     #[arg(long, conflicts_with_all = ["min", "max"])]
     pub(crate) nth: Option<u32>,
     #[arg(long, requires = "all")]
@@ -103,28 +103,28 @@ pub(crate) struct Extract {
     /// text (default), literal, markdown, resolved-markdown, inner-html, outer-html, attr:NAME, url:NAME.
     #[arg(long, conflicts_with_all = ["fields", "optional_fields", "many_fields"])]
     pub(crate) read: Option<Reading>,
-    /// Descendant exclusion, repeatable; scalar mode only.
+    /// Exclude descendants; repeatable, scalar only.
     #[arg(long, action = clap::ArgAction::Append, conflicts_with_all = ["fields", "optional_fields", "many_fields"])]
     pub(crate) exclude: Vec<String>,
-    /// Exact structural text at exactly one document node: SELECT TEXT, repeatable.
+    /// One document node must equal TEXT; repeatable.
     #[arg(long, num_args = 2, value_names = ["SELECT", "TEXT"], action = clap::ArgAction::Append)]
     pub(crate) expect_text: Vec<String>,
-    /// Required field: NAME SELECT READ, repeatable.
+    /// Exactly one field value; repeatable.
     #[arg(long = "field", num_args = 3, value_names = ["NAME", "SELECT", "READ"], action = clap::ArgAction::Append)]
     pub(crate) fields: Vec<String>,
-    /// Zero-or-one field: NAME SELECT READ, repeatable.
+    /// Zero or one; absent is null; repeatable.
     #[arg(long = "optional-field", num_args = 3, value_names = ["NAME", "SELECT", "READ"], action = clap::ArgAction::Append)]
     pub(crate) optional_fields: Vec<String>,
-    /// All/min=1 field: NAME SELECT READ, repeatable; use JSON for min=0.
+    /// All, min=1; JSON allows min=0; repeatable.
     #[arg(long = "many-field", num_args = 3, value_names = ["NAME", "SELECT", "READ"], action = clap::ArgAction::Append)]
     pub(crate) many_fields: Vec<String>,
-    /// Field descendant exclusion: NAME SELECT, repeatable.
+    /// Exclude field descendants; repeatable.
     #[arg(long = "field-exclude", num_args = 2, value_names = ["NAME", "SELECT"], action = clap::ArgAction::Append)]
     pub(crate) field_excludes: Vec<String>,
-    /// Exactly this many following element-sibling subtrees per record (0–63).
+    /// Include N following element siblings (0–63).
     #[arg(long)]
     pub(crate) following_siblings: Option<u32>,
-    /// Publish a closed USTAR replay bundle; mutually exclusive with receipt.
+    /// USTAR replay bundle; excludes receipt.
     #[arg(long, conflicts_with = "receipt")]
     pub(crate) bundle: Option<PathBuf>,
 }

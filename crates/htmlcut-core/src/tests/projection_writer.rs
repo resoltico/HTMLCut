@@ -106,3 +106,50 @@ fn filtered_html_work_exhaustion_is_distinct_from_the_value_byte_bound() {
         (Some("max_work"), Some(1))
     );
 }
+
+#[test]
+fn literal_input_and_output_each_charge_only_their_new_utf8_byte_blocks() {
+    for value in [
+        "a".repeat(63),
+        "a".repeat(64),
+        "a".repeat(65),
+        format!("{}é", "a".repeat(63)),
+    ] {
+        let html = scraper::Html::parse_document(&format!("<p>{value}</p>"));
+        let root = html
+            .select(&scraper::Selector::parse("p").unwrap())
+            .next()
+            .unwrap();
+        let budget = SelectorWorkBudget::new(1000);
+        let (actual, complete) = text(root, &HashSet::new(), false, 1024, None, &budget).unwrap();
+        assert_eq!(actual, value);
+        assert!(complete);
+        // Open/close p and its one text node, plus independent input and output byte blocks.
+        assert_eq!(
+            1000 - budget.remaining(),
+            4 + 2 * value.as_bytes().chunks(64).len() as u32
+        );
+    }
+}
+
+#[test]
+fn structural_boundary_before_nonwhitespace_pre_content_is_retained() {
+    let html = scraper::Html::parse_document(
+        "<article><p>before</p><pre>code</pre><p>after</p></article>",
+    );
+    let root = html
+        .select(&scraper::Selector::parse("article").unwrap())
+        .next()
+        .unwrap();
+    let (actual, complete) = text(
+        root,
+        &HashSet::new(),
+        true,
+        1024,
+        None,
+        &SelectorWorkBudget::new(1000),
+    )
+    .unwrap();
+    assert_eq!(actual, "before code after");
+    assert!(complete);
+}

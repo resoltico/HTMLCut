@@ -230,3 +230,6 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
     }
     assert_eq!(crate::projection::take_projection_calls(), [0, 1, 1, 1]);
 }
+
+#[path = "evidence_accounting.rs"]
+mod evidence_accounting;

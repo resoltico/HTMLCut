@@ -202,14 +202,21 @@ fn query_stdin_is_intentional_and_field_parse_failures_are_lexical() {
 
 #[test]
 fn raw_all_bounds_containing_one_allow_real_cardinality_to_decide() {
-    let output = run(
-        &[
-            "extract", "--stdin", "--select", "p", "--all", "--min", "0", "--max", "1", "--raw",
-        ],
-        "<p>A</p>",
-    );
-    assert!(output.status.success());
-    assert_eq!(output.stdout, b"A");
+    for bounds in [
+        vec![],
+        vec!["--min", "0", "--max", "1"],
+        vec!["--min", "1", "--max", "1"],
+    ] {
+        let mut args = vec!["extract", "--stdin", "--select", "p", "--all", "--raw"];
+        args.extend(bounds);
+        let output = run(&args, "<p>A</p>");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stdout, b"A");
+    }
 }
 
 #[test]

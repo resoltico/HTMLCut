@@ -216,7 +216,7 @@ pub(crate) fn text(
                             output.separator();
                             continue;
                         }
-                        if !output.character(character, structural && pre > 0)? {
+                        if !output.character(character)? {
                             return Ok((output.value, false));
                         }
                     }
@@ -266,10 +266,10 @@ impl TextOutput<'_> {
             .next_back()
             .is_some_and(|c| !c.is_whitespace());
     }
-    fn character(&mut self, character: char, pre: bool) -> Result<bool, ExtractionError> {
+    fn character(&mut self, character: char) -> Result<bool, ExtractionError> {
         // A generated boundary belongs with its following content. A preview
         // never ends with only that invented separator.
-        let separator = self.pending && !(pre && character.is_whitespace());
+        let separator = self.pending && !character.is_whitespace();
         if self
             .preview_characters
             .is_some_and(|maximum| self.characters + 1 + usize::from(separator) > maximum)
