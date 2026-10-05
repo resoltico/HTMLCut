@@ -15,6 +15,10 @@ Notable changes to this project are documented in this file. The format is based
 
 - **Breaking byte-cutting loss:** selected source-boundary extraction, its literal/regex flags and Rust constructors, source reading and source-range receipts are removed. Full accepted UTF-8 source remains exact in snapshots/bundles. Use guarded caller byte/string code for exact arbitrary cutting; literal DOM/HTML is not an equivalent replacement.
 
+### Fixed
+
+- Maintainer artifact hygiene rejects paths resolving to the source checkout or its ancestors before marking, scanning or cleanup, including symlink and `..` aliases. Contributors using source-containing Cargo target/build overrides must choose dedicated artifact directories.
+
 ## [19.2.0] - 2026-10-05
 
 ### Added

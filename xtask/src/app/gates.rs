@@ -175,7 +175,8 @@ pub(super) fn run_mutants(
     ensure_mutants_prerequisites(repo_root)?;
     let diff_contents = read_mutation_diff(repo_root, in_diff)?;
     let output_dir = mutants_output_dir(repo_root);
-    // A fresh campaign supersedes prior mutation evidence. Clear it before the hygiene preflight:
+    // The gate-report boundary has already rejected source-containing artifact paths. A fresh
+    // campaign supersedes prior mutation evidence. Clear it before the size/hygiene preflight:
     // an interrupted legacy run can otherwise strand multi-gigabyte build roots beside the
     // retained result and prevent the very gate that would replace it.
     remove_dir_if_exists(&output_dir)?;
