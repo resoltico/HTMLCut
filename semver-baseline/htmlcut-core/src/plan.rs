@@ -2,7 +2,7 @@
 //! The single closed, source-independent extraction language.
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::IntoDeserializer};
 
 use crate::{ErrorCode, ExecutionLimits, ExtractionError, SCHEMA_VERSION};
 
@@ -257,22 +257,28 @@ struct PlanFields {
     limits: ExecutionLimits,
 }
 
+impl PlanFields {
+    fn into_plan(self) -> ExtractionPlan {
+        ExtractionPlan {
+            schema: self.schema,
+            version: self.version,
+            strategy: self.strategy,
+            selection: self.selection,
+            projection: self.projection,
+            exclude: self.exclude,
+            guards: self.guards,
+            transforms: self.transforms,
+            limits: self.limits,
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for ExtractionPlan {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let closed = crate::json::ClosedValue::deserialize(deserializer)?;
         let fields: PlanFields = serde_json::from_value(closed.0)
             .map_err(|_| serde::de::Error::custom("Invalid extraction plan fields."))?;
-        let plan = Self {
-            schema: fields.schema,
-            version: fields.version,
-            strategy: fields.strategy,
-            selection: fields.selection,
-            projection: fields.projection,
-            exclude: fields.exclude,
-            guards: fields.guards,
-            transforms: fields.transforms,
-            limits: fields.limits,
-        };
+        let plan = fields.into_plan();
         plan.validate().map_err(serde::de::Error::custom)?;
         Ok(plan)
     }
@@ -338,19 +344,25 @@ impl ExtractionPlan {
                 problem: crate::ConfigurationProblem::UnsupportedVersion,
             }));
         }
-        serde_json::from_value(value).map_err(|error| {
-            if error
-                .to_string()
-                .starts_with("The operation exceeded its configured resource limit.")
-            {
-                return ExtractionError::limit("plan");
+        let fields: PlanFields = serde_path_to_error::deserialize(value.into_deserializer())
+            .map_err(|error| {
+                let mut failure = ExtractionError::new(
+                    ErrorCode::InvalidPlan,
+                    "plan",
+                    "The extraction plan contains invalid fields.",
+                );
+                failure.plan_path = Some(safe_plan_path(error.path()));
+                failure
+            })?;
+        let plan = fields.into_plan();
+        plan.validate().map_err(|error| {
+            if error.code == ErrorCode::ResourceLimit {
+                ExtractionError::limit("plan")
+            } else {
+                error
             }
-            ExtractionError::new(
-                ErrorCode::InvalidPlan,
-                "plan",
-                "The extraction plan contains invalid fields or incompatible options.",
-            )
-        })
+        })?;
+        Ok(plan)
     }
 
     pub(crate) fn normalized(&self) -> Result<Self, ExtractionError> {
@@ -370,5 +382,73 @@ impl ExtractionPlan {
             }
         }
         Ok(plan)
+    }
+}
+
+fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
+    use serde_path_to_error::Segment;
+    let mut safe = String::from("$");
+    for segment in path {
+        match segment {
+            Segment::Seq { index } => safe.push_str(&format!("[{index}]")),
+            Segment::Map { key }
+                if matches!(
+                    key.as_str(),
+                    "schema"
+                        | "version"
+                        | "strategy"
+                        | "kind"
+                        | "selector"
+                        | "start"
+                        | "end"
+                        | "include_start"
+                        | "include_end"
+                        | "value"
+                        | "pattern"
+                        | "flags"
+                        | "selection"
+                        | "index"
+                        | "min"
+                        | "max"
+                        | "projection"
+                        | "following_siblings"
+                        | "fields"
+                        | "name"
+                        | "exclude"
+                        | "guards"
+                        | "transforms"
+                        | "limits"
+                        | "scope"
+                        | "read"
+                        | "predicate"
+                        | "max_work"
+                        | "max_candidates"
+                        | "max_selected"
+                        | "max_cells"
+                        | "max_value_bytes"
+                        | "max_total_value_bytes"
+                ) =>
+            {
+                safe.push('.');
+                safe.push_str(key);
+            }
+            _ => break,
+        }
+    }
+    safe
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_path_never_repeats_an_untrusted_map_key() {
+        let input = serde_json::json!({"SYNTHETIC_SECRET": "not a number"});
+        let error = serde_path_to_error::deserialize::<_, std::collections::BTreeMap<String, u32>>(
+            input.into_deserializer(),
+        )
+        .unwrap_err();
+        assert_eq!(safe_plan_path(error.path()), "$");
     }
 }

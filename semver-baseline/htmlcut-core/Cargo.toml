@@ -29,6 +29,9 @@ version = "1.0.229"
 [dependencies.serde_json]
 version = "1.0.151"
 
+[dependencies.serde_path_to_error]
+version = "0.1.20"
+
 [dependencies.sha2]
 default-features = false
 package = "htmlcut-sha2"
@@ -88,7 +91,7 @@ publish = false
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
 rust-version = "1.98.1"
-version = "18.0.0"
+version = "19.0.0"
 
 [[test]]
 name = "contract_inline_markdown"
