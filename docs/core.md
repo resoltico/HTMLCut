@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: CORE
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [core, immutable snapshots, compiled plans, prepared documents, projections, guards, bounded discovery, identities]
   questions: ["what is the maintained htmlcut-core surface?", "what does the core schema registry cover?", "how should a Rust caller embed htmlcut-core?"]
@@ -39,7 +39,7 @@ A records projection has `following_siblings` (default 0, maximum 63). Its scope
 
 Field candidates are within that ordered forest; `:scope` addresses only the original anchor. Original ancestor/sibling predicates may observe outside context under the shared work budget, but outside-group payload cannot be returned. There is no clone/reparse or nearest-card inference. Nested row matches must be made precise explicitly. Guards are conjunctive original-DOM reads before exclusions/transforms. Document guards also run for explicit empty selections; selected-row guards share the whole group; over zero rows they are vacuous by that declared choice. A late row/field failure rejects the complete operation, rather than returning partial records.
 
-Root exclusions/transforms apply to flat projections; records use field-owned exclusions/transforms. Normalize-whitespace collapses Unicode White_Space (Rust `char::is_whitespace`) outside original HTML pre ancestry to one ASCII space and drops unprotected edge whitespace. Protected pre characters remain exact, including edge spaces; zero-width spaces remain literal. Default literal text is unchanged. Markdown owns normalization already. URL resolution is explicit for supported attributes and Markdown destinations, using normalized absolute HTTP(S) base metadata without userinfo. HTML base elements and acquisition origin are not inferred. Raw/base inputs are capped at 8 KiB and URL processing at 32 KiB; output caps still apply.
+Root exclusions/transforms apply to flat projections; records use field-owned exclusions/transforms. Normalize-whitespace collapses Unicode White_Space (Rust `char::is_whitespace`) outside original HTML pre ancestry to one ASCII space, inserts a space at HTML block and break boundaries, and drops unprotected edge whitespace. Protected pre characters remain exact, including edge spaces; zero-width spaces remain literal. Default literal text is unchanged. Markdown owns normalization already. URL resolution is explicit for supported attributes and Markdown destinations, using normalized absolute HTTP(S) base metadata without userinfo. HTML base elements and acquisition origin are not inferred. Raw/base inputs are capped at 8 KiB and URL processing at 32 KiB; output caps still apply.
 
 ## Representations
 
@@ -76,6 +76,6 @@ Plans are capped at 256 KiB, patterns at 8 KiB, syntax depth at 64, fields at 64
 
 Matching scratch is scoped to one immutable document/pass. Inner traversal/predicates, guards, field passes, exclusions, formatting and serialization share execution accounting; cached outcomes do not grant free work. A mismatched document/scope is an invariant error. All/nth counts are complete, even when the selected values are few.
 
-Source digest is SHA-256 of accepted bytes. Data digest is SHA-256 of compact canonical payload without framing LF. Plan and execution identities use domain-separated eight-byte length framing, current domains `htmlcut.plan/4` and `htmlcut.extraction/4`. Execution binds source/plan identities, normalized metadata, actual preparation policy and semantics. Preparation uses `htmlcut.prepared/3`. Canonical object ordering survives downstream serde feature unification. Digests prove identity/integrity, not authenticity or business correctness.
+Source digest is SHA-256 of accepted bytes. Data digest is SHA-256 of compact canonical payload without framing LF. Plan and execution identities use domain-separated eight-byte length framing, current domains `htmlcut.plan/5` and `htmlcut.extraction/5`. Execution binds source/plan identities, normalized metadata, actual preparation policy and semantics. Preparation uses `htmlcut.prepared/3`. Canonical object ordering survives downstream serde feature unification. Digests prove identity/integrity, not authenticity or business correctness.
 
 Receipts have current wire/semantics, data kind, four digests, complete root counts, declaration-ordered numeric field aggregates and optional source ranges. They contain no values, source, paths or raw metadata and prove execution rather than successful later delivery. [CLI](cli.md) and [Schemas](schema.md) define adapter framing, inspection and self-contained replay.

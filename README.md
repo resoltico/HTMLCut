@@ -4,7 +4,7 @@
 
 HTMLCut executes declared extraction contracts over immutable UTF-8 HTML snapshots. Its Rust core and native CLI return requested values or records, reject unmet assumptions, and bound preparation, matching and output work.
 
-This workspace uses extraction wire version 4 and semantics 4. Only the current contract is supported: old APIs, flags and formats are rejected. The [implementation status](docs/extraction-contract-status.md) identifies verification and publication authorities.
+This workspace uses extraction wire version 5 and semantics 5. Only the current contract is supported: old APIs, flags and formats are rejected. The [implementation status](docs/extraction-contract-status.md) identifies verification and publication authorities.
 
 Download and verify an exact native package using [Getting Started](docs/getting-started.md), then run:
 
@@ -18,9 +18,9 @@ htmlcut inspect --file page.html --css article
 
 Default stdout is compact JSON containing only an array of requested strings or records, followed by one LF. Default selection requires exactly one node; all and positive one-based nth selection are explicit. Missing attributes fail; present empty strings are values. `--raw` emits exactly one flat string without an extra LF.
 
-Repeated `--field NAME CSS READ` declares named single-valued fields. `--following-siblings N` adds exactly N element siblings to each record scope. Plan files provide optional or all-valued fields, original-DOM guards, exclusions and explicit transforms. One records execution preserves field relationships without serializing and reparsing row HTML. Numeric conversion, filtering, business meaning and comparison remain caller code.
+Repeated `--field NAME CSS READ` declares named single-valued fields; `NAME?` permits a missing field and returns `null`. `--following-siblings N` adds exactly N element siblings to each record scope. Plan files provide optional or all-valued fields, original-DOM guards, exclusions and explicit transforms. One records execution preserves field relationships without serializing and reparsing row HTML. Numeric conversion, filtering, business meaning and comparison remain caller code.
 
-Literal `dom_text` includes hidden/script/style/template text without invented separators. `markdown` is a declared CommonMark reading convention: normalized prose, block boundaries, links/images, literal source ordinals in bullets, tables as nested row/cell lists, and protected code. It excludes script/style/template payloads and does not infer visibility or boilerplate. Inner/outer HTML serialize the parsed DOM. Source slicing alone preserves exact accepted UTF-8 bytes and never reparses them implicitly.
+Literal `dom_text` includes hidden/script/style/template text without invented separators. Explicit `normalized_text` inserts spaces at HTML block and break boundaries while preserving preformatted payload. `markdown` is a declared CommonMark reading convention: normalized prose, block boundaries, links/images, literal source ordinals in bullets, tables as nested row/cell lists, and protected code. It excludes script/style/template payloads and does not infer visibility or boilerplate. Inner/outer HTML serialize the parsed DOM. Source slicing alone preserves exact accepted UTF-8 bytes and never reparses them implicitly.
 
 Files and intentional stdin must be UTF-8. Callers own network acquisition, charset conversion, browser rendering and authentication; supply a completed snapshot. HTMLCut neither executes JavaScript nor fetches or crawls URLs. Base metadata is explicit.
 

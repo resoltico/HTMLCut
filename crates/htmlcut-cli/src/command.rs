@@ -96,7 +96,7 @@ pub(crate) struct Extract {
     /// outer_html, attribute:NAME, resolved_attribute:NAME or source.
     #[arg(long, conflicts_with = "fields")]
     pub(crate) read: Option<Reading>,
-    /// Named single-valued fields: NAME CSS READ, repeated in declaration order.
+    /// Named fields: NAME CSS READ; suffix NAME with ? for zero-or-one matches.
     #[arg(long = "field", num_args = 3, value_names = ["NAME", "CSS", "READ"], action = clap::ArgAction::Append, conflicts_with_all = ["start", "read"])]
     pub(crate) fields: Vec<String>,
     /// Include exactly this many following element-sibling subtrees per record.
@@ -199,11 +199,15 @@ impl Extract {
                     let Projection::Value(projection) = reading.projection else {
                         return Err(options("Record fields require a DOM reading."));
                     };
+                    let (name, selection) = match field[0].strip_suffix('?') {
+                        Some(name) => (name.to_owned(), FieldSelection::Optional {}),
+                        None => (field[0].clone(), FieldSelection::Single {}),
+                    };
                     Ok(RecordField {
-                        name: field[0].clone(),
+                        name,
                         selector: field[1].clone(),
                         projection,
-                        selection: FieldSelection::Single {},
+                        selection,
                         exclude: vec![],
                         transforms: reading.transforms,
                     })

@@ -130,7 +130,7 @@ impl CompiledPlan {
             .map(|value| compile_selector(value))
             .collect::<Result<_, _>>()?;
         let digest = crate::identity::framed(
-            "htmlcut.plan/4",
+            "htmlcut.plan/5",
             &[crate::canonical_json(&plan)?.as_bytes()],
         );
         let fields = match &plan.projection {

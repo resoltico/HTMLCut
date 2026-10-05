@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: OPERATIONS
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [operations, extract, run, inspect, describe, schema]
   questions: ["What operations does the CLI expose?"]

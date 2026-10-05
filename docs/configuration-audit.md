@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: ENGINEERING
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [configuration audit, dependency employment, workflow source binding, release integrity]
   questions: ["What changed in the configuration/workflow audit?", "What prevents false release or mutation success?", "Were the refreshed gates executed?"]

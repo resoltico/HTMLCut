@@ -380,7 +380,7 @@ fn record_bundle_raw_rejection_and_receipt_republication_preserve_data_shape() {
     let plan = root.path().join("record.json");
     let bundle = root.path().join("record.htmlcut.tar");
     let receipt = root.path().join("receipt.json");
-    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"}]}}"#).unwrap();
+    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"}]}}"#).unwrap();
     let extracted = invoke(
         &[
             "extract",
@@ -424,7 +424,7 @@ fn complete_large_range_receipt_replays_above_the_plan_document_byte_cap() {
     let plan = root.path().join("slices.json");
     let bundle = root.path().join("ranges.htmlcut.tar");
     let count = 12_000;
-    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"slice","start":{"kind":"literal","value":"["},"end":{"kind":"literal","value":"]"}},"selection":{"kind":"all"},"projection":{"kind":"source"},"limits":{"max_selected":20000,"max_work":10000000}}"#).unwrap();
+    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"slice","start":{"kind":"literal","value":"["},"end":{"kind":"literal","value":"]"}},"selection":{"kind":"all"},"projection":{"kind":"source"},"limits":{"max_selected":20000,"max_work":10000000}}"#).unwrap();
     let original = invoke(
         &[
             "extract",

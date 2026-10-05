@@ -74,6 +74,9 @@ impl<'a> ValueBuffer<'a> {
         }
         Ok(())
     }
+    pub(crate) fn separator(&mut self) {
+        self.pending_space = !self.value.is_empty();
+    }
     pub(crate) fn finish(self) -> String {
         self.value
     }
@@ -164,6 +167,9 @@ fn dom_text(
                 {
                     pre += 1;
                 }
+                if normalize && text_boundary(node.value()) {
+                    value.separator();
+                }
                 if let Node::Text(text) = node.value() {
                     value.text(&text.text, pre > 0, normalize)?;
                 }
@@ -180,10 +186,51 @@ fn dom_text(
                 {
                     pre -= 1;
                 }
+                if normalize && text_boundary(node.value()) {
+                    value.separator();
+                }
             }
         }
     }
     Ok(value.finish())
+}
+
+fn text_boundary(node: &Node) -> bool {
+    node.as_element().is_some_and(|element| {
+        context::html(element)
+            && matches!(
+                element.name(),
+                "br" | "p"
+                    | "div"
+                    | "article"
+                    | "section"
+                    | "header"
+                    | "footer"
+                    | "main"
+                    | "aside"
+                    | "figure"
+                    | "figcaption"
+                    | "blockquote"
+                    | "pre"
+                    | "ul"
+                    | "ol"
+                    | "li"
+                    | "dl"
+                    | "dt"
+                    | "dd"
+                    | "table"
+                    | "caption"
+                    | "tr"
+                    | "th"
+                    | "td"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
+            )
+    })
 }
 
 pub(crate) fn resolve_url(

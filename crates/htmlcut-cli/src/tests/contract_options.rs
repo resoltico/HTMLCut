@@ -138,7 +138,7 @@ fn receipt_is_fixed_complete_and_off_success_stdout() {
 fn invalid_record_raw_plan_is_rejected_before_source() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let path = root.path().join("plan.json");
-    std::fs::write(&path,br#"{"schema":"htmlcut.extraction.plan","version":4,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","fields":[{"name":"text","selector":":scope"}]}}"#).unwrap();
+    std::fs::write(&path,br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","fields":[{"name":"text","selector":":scope"}]}}"#).unwrap();
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(

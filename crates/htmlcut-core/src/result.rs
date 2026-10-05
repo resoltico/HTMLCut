@@ -5,9 +5,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 /// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 4;
+pub const SEMANTICS_VERSION: u32 = 5;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -134,6 +134,9 @@ pub struct ErrorEvidence {
     /// Positive field declaration position for a record failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field_index: Option<u32>,
+    /// Location within a plan, containing only declared member names and numeric indexes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_path: Option<String>,
     /// Exact candidate count, only after complete enumeration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate_count: Option<u32>,

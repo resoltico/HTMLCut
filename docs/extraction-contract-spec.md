@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "18.0.0"
+version: "19.0.0"
 domain: ENGINEERING
-updated: "2026-10-04"
+updated: "2026-10-05"
 route:
   keywords: [HTMLCut, extraction contracts, snapshots, fidelity, implementation, coverage, release readiness]
   questions: ["What is the current extraction contract?", "What bounds extraction?", "What proves a release is verified?"]
@@ -10,7 +10,7 @@ route:
 
 # Extraction contract
 
-The current 18.0.0 candidate contract has wire version 4 and semantics 4. Only the current input vocabulary is accepted. This document describes supported product behavior; external implementation handoffs are not repository documentation.
+The 19.0.0 contract has wire version 5 and semantics 5. Only the current input vocabulary is accepted. This document describes supported product behavior; external implementation handoffs are not repository documentation.
 
 The pure core owns accepted immutable UTF-8 snapshots, bounded lazy preparation, closed plan validation/compilation, original-DOM selection/guards, scalar and record projection, targeted inspection, deterministic data and receipts. The CLI owns regular files/intentional stdin, strict UTF-8, the closed self-contained bundle, framing and staged publication. Callers own acquisition, decoding, browsers, visibility/domain inference, sanitization and comparison policy.
 
