@@ -25,7 +25,9 @@ mod tests;
 
 pub use compilation::CompiledPlan;
 pub use data::{ExtractionData, FieldValue};
-pub use discovery::{InspectionResult, InspectionSample};
+pub use discovery::{
+    IdentifierInspectionResult, IdentifierInspectionSample, InspectionResult, InspectionSample,
+};
 pub use failure_cause::{
     ConfigurationProblem, ConfigurationRole, FailureCause, IoOperation, IoProblem,
 };
