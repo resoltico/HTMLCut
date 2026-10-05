@@ -41,8 +41,8 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 binding = json.loads(evaluation_options.binding.read_text())
 assert binding["source_commit"] == evaluation_options.source_sha
 assert binding["binary_sha256"] == hashlib.sha256(BINARY.read_bytes()).hexdigest()
-assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 19.1.0"
-assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 19.0.0"
+assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 19.2.0"
+assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 19.1.0"
 manifest = json.loads((CAPTURES / "capture-manifest.json").read_text())
 for entry in manifest["rows"]:
     if "sha256" in entry:

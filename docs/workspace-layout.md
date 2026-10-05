@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.1.0"
+version: "19.2.0"
 domain: WORKSPACE
 updated: "2026-10-05"
 route:
@@ -22,7 +22,7 @@ to Rust paths.
 | Path | Package / Rust path | Role | Cargo registry publication |
 | --- | --- | --- | --- |
 | `crates/htmlcut-core` | package `htmlcut-core`, Rust crate `htmlcut_core` | Immutable snapshots, compiled plans, lazy prepared documents, requested projections, bare data/receipts/errors and targeted inspection. | disabled |
-| `crates/htmlcut-cli` | package `htmlcut-cli`, binary `htmlcut` | Regular file/stdin UTF-8 snapshots, five commands, self-contained bundles, framing and atomic publication; no Rust library API. | disabled |
+| `crates/htmlcut-cli` | package `htmlcut-cli`, binary `htmlcut` | Regular file/stdin UTF-8 snapshots, six commands, self-contained bundles, framing and atomic publication; no Rust library API. | disabled |
 | `crates/htmlcut-tempdir` | package `htmlcut-tempdir`, Rust crate `htmlcut_tempdir` | Small internal temporary-directory helper shared by tests and maintainer tooling. | no |
 | `fuzz` | package `htmlcut-fuzz` | Checked-in libFuzzer targets and seed corpora kept on the main workspace lockfile. | no |
 | `xtask` | package `xtask` | Maintainer automation for the gate, docs contract, coverage, fuzz smoke, and semver-baseline refresh. | no |

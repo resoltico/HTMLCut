@@ -173,6 +173,26 @@ fn dispatch(
                 )
             }
         }
+        Operation::Outline(arguments) => {
+            // Reject malformed scope and limit options before intentional stdin is consumed.
+            if let Some(css) = &arguments.within {
+                let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(css)?)?;
+            }
+            if !(1..=16).contains(&arguments.limit) {
+                return Err(options("Outline limit must be between one and sixteen."));
+            }
+            let snapshot = crate::input::snapshot(
+                arguments.source.source.file.as_deref(),
+                stdin,
+                arguments.source.base_url.as_deref(),
+            )?;
+            let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
+            emit_json(
+                &document.outline(arguments.within.as_deref(), arguments.limit)?,
+                METADATA_BYTES,
+                stdout,
+            )
+        }
     }
 }
 

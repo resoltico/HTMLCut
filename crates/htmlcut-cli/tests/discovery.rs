@@ -7,7 +7,7 @@ fn index_one_description_and_named_schemas_share_closed_vocabulary() {
     let output = invoke(&["describe"], b"");
     assert!(output.status.success());
     let index: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(index["operations"].as_array().unwrap().len(), 5);
+    assert_eq!(index["operations"].as_array().unwrap().len(), 6);
     let output = invoke(&["describe", "extract"], b"");
     assert!(output.status.success());
     let description: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();

@@ -162,7 +162,7 @@ fn invalid_record_raw_plan_is_rejected_before_source() {
 
 #[test]
 fn descriptions_named_schemas_and_inner_html_use_the_current_dispatch() {
-    for name in ["extract", "run", "inspect", "describe", "schema"] {
+    for name in ["extract", "run", "inspect", "outline", "describe", "schema"] {
         let (code, out, _) = invoke(&["htmlcut", "describe", name], b"");
         assert_eq!(code, 0);
         assert_eq!(

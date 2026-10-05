@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.1.0"
+version: "19.2.0"
 domain: SCHEMA
 updated: "2026-10-05"
 route:
@@ -24,6 +24,7 @@ Individually retrievable schemas:
 - `htmlcut.extraction.error`
 - `htmlcut.inspection`
 - `htmlcut.inspection.identifiers`
+- `htmlcut.outline`
 - `htmlcut.bundle`
 
 Other emitted roles: `htmlcut.operations`, `htmlcut.operation`, and maintainer `htmlcut.gate_run`.

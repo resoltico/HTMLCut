@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use htmlcut_core::{
-    Boundary, ExtractionPlan, FieldSelection, Projection, RecordField, Selection, Strategy,
-    Transform, ValueProjection,
+    Boundary, ExtractionPlan, FieldSelection, Guard, GuardRead, GuardScope, Predicate, Projection,
+    RecordField, Selection, Strategy, Transform, ValueProjection,
 };
 
 use crate::input::{MAX_CONFIG_BYTES, options, read_file};
@@ -33,6 +33,9 @@ pub(crate) enum Operation {
     /// Count an explicit selector and return bounded samples.
     #[command(about = crate::operation_metadata::INSPECT_ABOUT)]
     Inspect(Inspect),
+    /// Survey repeated HTML siblings without inferring field meaning.
+    #[command(about = crate::operation_metadata::OUTLINE_ABOUT)]
+    Outline(Outline),
     /// Retrieve a compact index or one named operation description.
     #[command(about = crate::operation_metadata::DESCRIBE_ABOUT)]
     Describe { operation: Option<String> },
@@ -88,7 +91,7 @@ pub(crate) struct Extract {
     pub(crate) source: SourceOptions,
     #[command(flatten)]
     pub(crate) output: Output,
-    #[arg(long, conflicts_with_all = ["css", "read", "fields", "field_excludes", "following_siblings", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
+    #[arg(long, conflicts_with_all = ["css", "read", "fields", "field_excludes", "exclude", "expect_text", "following_siblings", "match_mode", "index", "min", "max", "start", "end", "regex", "regex_flags", "include_start", "include_end"])]
     pub(crate) plan: Option<PathBuf>,
     #[arg(long, conflicts_with = "start")]
     pub(crate) css: Option<String>,
@@ -96,6 +99,12 @@ pub(crate) struct Extract {
     /// outer_html, attribute:NAME, resolved_attribute:NAME or source.
     #[arg(long, conflicts_with = "fields")]
     pub(crate) read: Option<Reading>,
+    /// Exclude matching descendants from a flat DOM reading, repeatable.
+    #[arg(long, action = clap::ArgAction::Append, conflicts_with_all = ["start", "fields"])]
+    pub(crate) exclude: Vec<String>,
+    /// Require exactly one original-DOM match with exact text: CSS TEXT, repeatable.
+    #[arg(long = "expect-text", num_args = 2, value_names = ["CSS", "TEXT"], action = clap::ArgAction::Append, conflicts_with = "start")]
+    pub(crate) expect_text: Vec<String>,
     /// Named fields: NAME CSS READ; suffix NAME with ? for zero-or-one matches.
     #[arg(long = "field", num_args = 3, value_names = ["NAME", "CSS", "READ"], action = clap::ArgAction::Append, conflicts_with_all = ["start", "read"])]
     pub(crate) fields: Vec<String>,
@@ -181,6 +190,23 @@ impl Extract {
                 ));
             }
         };
+        plan.exclude = self.exclude.clone();
+        plan.guards = self
+            .expect_text
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| Guard {
+                scope: GuardScope::Document,
+                selector: pair[0].clone(),
+                min: 1,
+                max: Some(1),
+                read: GuardRead::DomText {},
+                predicate: Some(Predicate::Exact {
+                    value: pair[1].clone(),
+                }),
+            })
+            .collect();
         if self.fields.is_empty() {
             if let Some(reading) = &self.read {
                 plan.projection = reading.projection.clone();
@@ -255,6 +281,18 @@ pub(crate) struct Inspect {
     /// Show bounded id/class values and structural text for selector authoring.
     #[arg(long)]
     pub(crate) identifiers: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct Outline {
+    #[command(flatten)]
+    pub(crate) source: SourceOptions,
+    /// Restrict the survey to exactly one selected original-DOM element.
+    #[arg(long)]
+    pub(crate) within: Option<String>,
+    /// Largest groups to return; the complete group count is still established.
+    #[arg(long, default_value = "4")]
+    pub(crate) limit: u32,
 }
 
 #[derive(Clone)]

@@ -254,7 +254,7 @@ pub(crate) fn known_schema_names() -> BTreeSet<&'static str> {
 }
 
 pub(crate) fn known_operation_ids() -> BTreeSet<&'static str> {
-    BTreeSet::from(["extract", "run", "inspect", "describe", "schema"])
+    BTreeSet::from(["extract", "run", "inspect", "outline", "describe", "schema"])
 }
 
 #[cfg(test)]
