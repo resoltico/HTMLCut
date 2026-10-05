@@ -325,11 +325,18 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 fn t05_schema_and_version_are_independently_required_and_all_defaults_to_nonempty() {
     for wire in [
         r#"{"schema":"wrong","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"schema":"wrong","version":5,"strategy":{"kind":"css","selector":"p"}}"#,
         r#"{"schema":"htmlcut.extraction.plan","version":2,"strategy":{"kind":"css","selector":"p"}}"#,
     ] {
+        let error = ExtractionPlan::from_json(wire.as_bytes()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidSchema);
+        assert_eq!(error.stage, "plan");
         assert_eq!(
-            ExtractionPlan::from_json(wire.as_bytes()).unwrap_err().code,
-            ErrorCode::InvalidSchema
+            error.cause,
+            Some(FailureCause::Configuration {
+                role: ConfigurationRole::Plan,
+                problem: ConfigurationProblem::UnsupportedVersion,
+            })
         );
     }
     let plan = ExtractionPlan::from_json(br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"aside"},"selection":{"kind":"all"}}"#).unwrap();
