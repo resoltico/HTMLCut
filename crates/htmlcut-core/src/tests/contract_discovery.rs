@@ -2,6 +2,137 @@
 use super::*;
 
 #[test]
+fn identifier_inspection_keeps_the_count_exact_and_separates_table_cells() {
+    let document = prepared(
+        "<main id='content' class='main docs main' data-secret='token'><table><tr><td>1,429,404,000</td><td>17.3%</td></tr></table></main><main id='other'>Other</main>",
+    );
+    let result = document.inspect_identifiers("main", 1).unwrap();
+    assert_eq!(result.count, 2);
+    assert!(!result.samples_complete);
+    let sample = &result.samples[0];
+    assert_eq!(sample.tag, "main");
+    assert_eq!(sample.id.as_deref(), Some("content"));
+    assert_eq!(sample.classes, ["docs", "main"]);
+    assert!(sample.identifiers_complete && sample.text_complete);
+    assert_eq!(sample.text, "1,429,404,000 17.3%");
+    assert!(!crate::canonical_json(&result).unwrap().contains("token"));
+    let plain = document.inspect("main", 1).unwrap();
+    assert_eq!(plain.samples[0].text, "1,429,404,00017.3%");
+}
+
+#[test]
+fn identifier_samples_omit_oversized_tokens_and_label_incompleteness() {
+    let classes = (0..9).map(|i| format!("c{i}")).collect::<Vec<_>>();
+    let source = format!(
+        "<main id='{}' class='{} {}'>a<svg><text>b</text></svg>c</main>",
+        "x".repeat(129),
+        classes.join(" "),
+        "long".repeat(17)
+    );
+    let sample = prepared(&source)
+        .inspect_identifiers("main", 1)
+        .unwrap()
+        .samples
+        .remove(0);
+    assert_eq!(sample.id, None);
+    assert_eq!(sample.classes, classes[..8]);
+    assert!(!sample.identifiers_complete);
+    assert_eq!(sample.text, "abc");
+    assert!(sample.text_complete);
+}
+
+#[test]
+fn identifier_preview_marks_a_structural_boundary_that_exceeds_its_limit() {
+    for (count, complete) in [(158, true), (159, false)] {
+        let source = format!(
+            "<table><tr><td>{}</td><td>x</td></tr></table>",
+            "a".repeat(count)
+        );
+        let sample = prepared(&source)
+            .inspect_identifiers("table", 1)
+            .unwrap()
+            .samples
+            .remove(0);
+        assert_eq!(
+            sample.text,
+            if complete {
+                format!("{} x", "a".repeat(count))
+            } else {
+                "a".repeat(count)
+            }
+        );
+        assert_eq!(sample.text_complete, complete);
+    }
+    let source = format!(
+        "<table><tr><td>{}</td><td>xy</td></tr></table>",
+        "a".repeat(158)
+    );
+    let sample = prepared(&source)
+        .inspect_identifiers("table", 1)
+        .unwrap()
+        .samples
+        .remove(0);
+    assert_eq!(sample.text, format!("{} x", "a".repeat(158)));
+    assert_eq!(sample.text.chars().count(), 160);
+    assert!(!sample.text_complete);
+}
+
+#[test]
+fn identifier_inspection_labels_empty_results_and_rejects_invalid_requests_before_parsing() {
+    let document = prepared("<p>a\u{a0}b</p>");
+    assert_eq!(
+        document.inspect_identifiers("p", 1).unwrap().samples[0].text,
+        "a b"
+    );
+    let missing = document.inspect_identifiers("aside", 1).unwrap();
+    assert_eq!(missing.count, 0);
+    assert!(missing.samples_complete && missing.samples.is_empty());
+
+    let lazy = prepared("<p>x</p>");
+    assert_eq!(
+        lazy.inspect_identifiers("[", 1).unwrap_err().code,
+        ErrorCode::InvalidSelector
+    );
+    assert_eq!(
+        lazy.inspect_identifiers("p", 0).unwrap_err().code,
+        ErrorCode::InvalidOptions
+    );
+    assert_eq!(lazy.parse_count(), 0);
+    let tag = "x".repeat(129);
+    assert_eq!(
+        prepared(&format!("<{tag}></{tag}>"))
+            .inspect_identifiers(&tag, 1)
+            .unwrap_err()
+            .code,
+        ErrorCode::ResourceLimit
+    );
+}
+
+#[test]
+fn identifier_inspection_refuses_an_oversized_encoded_answer() {
+    let tag = "x".repeat(128);
+    let classes = (0..8)
+        .map(|i| format!("c{i}{}", "x".repeat(62)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let element = format!(
+        "<{tag} id='{}' class='{classes}'>{}</{tag}>",
+        "i".repeat(128),
+        "\u{1}".repeat(160)
+    );
+    let one = prepared(&element).inspect_identifiers(&tag, 1).unwrap();
+    assert_eq!(one.samples[0].tag.len(), 128);
+    assert_eq!(one.samples[0].classes.len(), 8);
+    assert!(one.samples[0].identifiers_complete);
+    assert!(crate::canonical_json(&one).unwrap().len() > 1024);
+    let document = prepared(&element.repeat(10));
+    assert_eq!(
+        document.inspect_identifiers(&tag, 10).unwrap_err().code,
+        ErrorCode::ResourceLimit
+    );
+}
+
+#[test]
 fn selector_count_is_complete_while_samples_are_explicitly_abbreviated() {
     let document = prepared("<p>A</p><p>B</p><p>C</p><p>D</p>");
     let result = document.inspect("p", 3).unwrap();

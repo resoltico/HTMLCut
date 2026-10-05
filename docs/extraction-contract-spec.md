@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.0.0"
+version: "19.1.0"
 domain: ENGINEERING
 updated: "2026-10-05"
 route:
@@ -10,9 +10,9 @@ route:
 
 # Extraction contract
 
-The 19.0.0 contract has wire version 5 and semantics 5. Only the current input vocabulary is accepted. This document describes supported product behavior; external implementation handoffs are not repository documentation.
+The current extraction contract has wire version 5 and semantics 5. Only the current input vocabulary is accepted. This document describes supported product behavior; external implementation handoffs are not repository documentation.
 
-The pure core owns accepted immutable UTF-8 snapshots, bounded lazy preparation, closed plan validation/compilation, original-DOM selection/guards, scalar and record projection, targeted inspection, deterministic data and receipts. The CLI owns regular files/intentional stdin, strict UTF-8, the closed self-contained bundle, framing and staged publication. Callers own acquisition, decoding, browsers, visibility/domain inference, sanitization and comparison policy.
+The pure core owns accepted immutable UTF-8 snapshots, bounded lazy preparation, closed plan validation/compilation, original-DOM selection/guards, scalar and record projection, targeted inspection with opt-in identifier samples, deterministic data and receipts. The CLI owns regular files/intentional stdin, strict UTF-8, the closed self-contained bundle, framing and staged publication. Callers own acquisition, decoding, browsers, visibility/domain inference, sanitization and comparison policy.
 
 Single/all/nth roots and single/optional/all/nth fields have explicit cardinality and shape. Missing attributes fail even under optional node selection; empty strings remain values. Record candidates remain inside the row while predicates retain charged original context. Guards precede output exclusions/transforms. Compiled selectors/preparation are reused without retaining spent execution budgets. Every semantic failure rejects whole output.
 

@@ -159,11 +159,19 @@ fn dispatch(
                 arguments.source.base_url.as_deref(),
             )?;
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            emit_json(
-                &document.inspect(&arguments.css, arguments.samples)?,
-                METADATA_BYTES,
-                stdout,
-            )
+            if arguments.identifiers {
+                emit_json(
+                    &document.inspect_identifiers(&arguments.css, arguments.samples)?,
+                    METADATA_BYTES,
+                    stdout,
+                )
+            } else {
+                emit_json(
+                    &document.inspect(&arguments.css, arguments.samples)?,
+                    METADATA_BYTES,
+                    stdout,
+                )
+            }
         }
     }
 }

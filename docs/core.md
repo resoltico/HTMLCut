@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.0.0"
+version: "19.1.0"
 domain: CORE
 updated: "2026-10-05"
 route:
@@ -69,6 +69,8 @@ HTML emphasis/strong roles, including header cells, use fixed generated `<em>`/`
 Preformatted content uses a fence longer than conflicting literal backtick runs. An explicit `language-*` class on pre or its sole direct HTML code child supplies a language: 1–64 ASCII characters, starting alphanumeric, then alphanumeric or `_+.-`. Malformed recognized tokens or distinct conflicting labels fail with `invalid_representation`; duplicate identical labels are accepted. No language is inferred. Parsed text is emitted literally, including trailing LFs, followed by exactly one framing LF before the closing fence. CommonMark code events therefore contain payload plus that one structural LF. Link/image metadata inside code is annotated after the fence, keeping program text intact. Block-containing anchors keep block content and receive a following conventional destination link. Destinations containing LF/CR/NUL fail with `invalid_representation`; raw attributes/HTML/source retain those values. Literal syntax is escaped where it could forge Markdown structure.
 
 ## Bounds and identities
+
+`PreparedDocument::inspect(css, samples)` keeps the existing attribute-name and literal-text preview contract. `inspect_identifiers(css, samples)` uses the same complete selector count and a fresh work budget, but samples only exact bounded `id` and class values plus a structural text preview. Oversized identifier tokens are omitted with `identifiers_complete: false`; sample and text completeness are separate. The preview includes literal hidden/script content and does not infer browser visibility. Identifier values are data, not escaped or uniqueness-checked CSS selectors. Both responses have a 16 KiB encoded cap.
 
 Preparation defaults: 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048, and 10,000,000 parser work units. Each scalar/field accepts at most one compatible transform; unsupported combinations and duplicates are rejected. Execution defaults: shared work 1,000,000, 100,000 candidates per pass, 10,000 selected roots, 100,000 cells, 8 MiB per value and 64 MiB aggregate leaf payload. A field slot costs one cell; all-valued strings each cost another; a flat string costs one. Empty/null fields cannot evade it.
 
