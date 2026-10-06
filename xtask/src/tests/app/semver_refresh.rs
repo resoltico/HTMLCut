@@ -2,6 +2,55 @@
 use super::*;
 
 #[test]
+fn refresh_rejects_a_malformed_packaged_manifest_before_provenance() {
+    let repo = tempdir().unwrap();
+    fs::write(
+        repo.path().join("Cargo.toml"),
+        "[workspace.package]\nversion='3.0.0'\n",
+    )
+    .unwrap();
+    let destination = repo.path().to_path_buf();
+    let error = crate::command_exec::with_run_spec_override(
+        move |_, spec| {
+            let args = spec.args.iter().map(String::as_str).collect::<Vec<_>>();
+            if spec.program == Path::new("tar") && args.first() == Some(&"-xf") {
+                let snapshot = PathBuf::from(args[3]);
+                fs::create_dir_all(snapshot.join("crates/htmlcut-core")).unwrap();
+                fs::write(
+                    snapshot.join("Cargo.toml"),
+                    "[workspace.package]\nversion='4.2.0'\n",
+                )
+                .unwrap();
+                fs::write(
+                    snapshot.join("crates/htmlcut-core/Cargo.toml"),
+                    "[package]\nname='htmlcut-core'\nversion='4.2.0'\n",
+                )
+                .unwrap();
+            } else if spec.program == Path::new("cargo") {
+                let archive = PathBuf::from(command_env_value(spec, "CARGO_TARGET_DIR"))
+                    .join("package/htmlcut-core-4.2.0.crate");
+                fs::create_dir_all(archive.parent().unwrap()).unwrap();
+                fs::write(archive, "package fixture").unwrap();
+            } else if spec.program == Path::new("tar") && args.first() == Some(&"-xzf") {
+                let extracted = destination.join("semver-baseline/htmlcut-core-4.2.0");
+                fs::create_dir_all(&extracted).unwrap();
+                fs::write(extracted.join("Cargo.toml"), "[broken").unwrap();
+            }
+            Some(Ok(()))
+        },
+        || refresh_semver_baseline_for_tests(repo.path(), "v4.2.0"),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("baseline Cargo.toml"));
+    assert!(
+        !repo
+            .path()
+            .join("semver-baseline/htmlcut-core/BASELINE.toml")
+            .exists()
+    );
+}
+
+#[test]
 fn refresh_semver_baseline_for_tests_bootstraps_missing_baseline_dirs() {
     let repo_root = tempdir().expect("repo tempdir");
     fs::write(
