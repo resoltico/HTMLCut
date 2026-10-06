@@ -194,11 +194,11 @@ gh release download vX.Y.Z \
   ! grep -q "From source" "./htmlcut-X.Y.Z-${HOST_TARGET}/README.md"
   "./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" --version | tr -d '\r' | grep "^htmlcut X.Y.Z$"
   printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --css 'article a.more' --read attribute:href --bundle ./article-link.htmlcut.tar)"
+  FIRST_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" extract --file ./page.html --select 'article a.more' --read attr:href --bundle ./article-link.htmlcut.tar)"
   [ -f ./article-link.htmlcut.tar ]
   printf '%s' "${FIRST_OUTPUT}" | python3 -c 'import json,sys; assert json.load(sys.stdin) == ["../guide.html"]'
   rm ./page.html
-  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" run ./article-link.htmlcut.tar)"
+  REPLAY_OUTPUT="$("./htmlcut-X.Y.Z-${HOST_TARGET}/htmlcut" replay ./article-link.htmlcut.tar)"
   [ "${REPLAY_OUTPUT}" = "${FIRST_OUTPUT}" ]
 )
 

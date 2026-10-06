@@ -162,14 +162,14 @@ impl PreparedDocument {
                     return Err(ExtractionError::new(
                         ErrorCode::NoMatch,
                         "survey",
-                        "The outline scope selected no element.",
+                        "The survey scope selected no element.",
                     ));
                 }
                 _ => {
                     return Err(ExtractionError::new(
                         ErrorCode::AmbiguousSelection,
                         "survey",
-                        "The outline scope must select exactly one element.",
+                        "The survey scope must select exactly one element.",
                     ));
                 }
             }
