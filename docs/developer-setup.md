@@ -207,6 +207,8 @@ supported gate path outside Cargo's mutable artifact roots:
 
 The curated cross-platform CI Rust lane runs `./scripts/xtask.sh ci-rust-gate`, which still comes
 from the same `xtask` plan instead of duplicating a second command inventory in GitHub Actions.
+It executes the maintainer source-boundary rejection and bootstrap tests on each native runner;
+compiling those tests or checking only the default artifact layout does not establish that proof.
 Direct `cargo xtask ...` remains useful for interactive local work on `xtask` itself.
 For a short live libFuzzer pass that keeps the checked-in seed corpora clean, use
 `./scripts/xtask.sh fuzz-smoke`. That command also preflights the nightly toolchain plus `cargo-fuzz`,

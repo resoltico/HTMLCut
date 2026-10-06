@@ -197,23 +197,7 @@ fn resource_acceptance_command() -> CommandSpec {
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
-/// Builds the curated Rust gate executed by cross-platform CI jobs.
-pub fn ci_rust_gate_plan(repo_root: &Path) -> DynResult<Vec<CommandSpec>> {
-    ensure_clean_semver_baseline(repo_root)?;
-    ensure_deny_targets_match_release_targets(repo_root)?;
-    let semver_release_type = semver_release_type(repo_root)?;
-
-    let mut plan = vec![format_check_command(), workspace_clippy_command()];
-    plan.extend(maintained_fork_quality_specs());
-    plan.extend(all_features_test_specs());
-    plan.push(workspace_outdated_command());
-    plan.push(workspace_audit_command());
-    plan.push(deny_check_command(repo_root)?);
-    plan.push(semver_check_command(repo_root, &semver_release_type));
-    Ok(plan)
-}
-
-fn maintained_fork_quality_specs() -> Vec<CommandSpec> {
+pub(super) fn maintained_fork_quality_specs() -> Vec<CommandSpec> {
     let manifests = [
         "patches/rust/selectors/Cargo.toml",
         "patches/rust/scraper/Cargo.toml",
@@ -299,7 +283,7 @@ pub fn is_semver_check_spec(spec: &CommandSpec) -> bool {
         && matches!(spec.args.first().map(String::as_str), Some("semver-checks"))
 }
 
-fn ensure_clean_semver_baseline(repo_root: &Path) -> DynResult<()> {
+pub(super) fn ensure_clean_semver_baseline(repo_root: &Path) -> DynResult<()> {
     if !repo_root.join(".git").exists() {
         return Ok(());
     }
@@ -435,7 +419,7 @@ fn devcontainer_untracked_file_args() -> Vec<String> {
     args
 }
 
-fn format_check_command() -> CommandSpec {
+pub(super) fn format_check_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
         ["fmt", "--check"],
@@ -445,7 +429,7 @@ fn format_check_command() -> CommandSpec {
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
-fn workspace_clippy_command() -> CommandSpec {
+pub(super) fn workspace_clippy_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
         [
@@ -482,11 +466,11 @@ fn core_all_features_lib_test_command() -> CommandSpec {
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
-fn workspace_outdated_command() -> CommandSpec {
+pub(super) fn workspace_outdated_command() -> CommandSpec {
     outdated_check_command()
 }
 
-fn workspace_audit_command() -> CommandSpec {
+pub(super) fn workspace_audit_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
         ["audit", "-D", "warnings"],
@@ -496,7 +480,7 @@ fn workspace_audit_command() -> CommandSpec {
     .with_artifact_layout(CommandArtifactLayout::ManagedWorkspace)
 }
 
-fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandSpec {
+pub(super) fn semver_check_command(repo_root: &Path, semver_release_type: &str) -> CommandSpec {
     CommandSpec::new(
         "cargo",
         [
@@ -525,7 +509,7 @@ fn is_maintained_shell_script(repo_root: &Path, path: &Path) -> bool {
             && relative.extension() == Some(OsStr::new("sh")))
 }
 
-fn all_features_test_specs() -> Vec<CommandSpec> {
+pub(super) fn all_features_test_specs() -> Vec<CommandSpec> {
     vec![
         core_all_features_lib_test_command(),
         CommandSpec::new(

@@ -2,11 +2,12 @@
 use std::path::{Path, PathBuf};
 
 mod check;
+mod ci_rust;
 mod paths;
 mod semver;
 
 use crate::model::{CommandSpec, DynResult};
-pub use check::ci_rust_gate_plan;
+pub use ci_rust::ci_rust_gate_plan;
 pub(crate) use semver::INERT_BASELINE_MANIFEST_NAME;
 
 /// Builds the ordered command plan for `cargo xtask check`.
