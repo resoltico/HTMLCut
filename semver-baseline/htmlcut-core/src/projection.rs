@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Read-only projections with bounded construction and explicit transforms.
+//! Readings with bounded construction and one shared structural-text policy.
 
 use std::collections::HashSet;
 
@@ -7,7 +7,7 @@ use ego_tree::{NodeId, iter::Edge};
 use scraper::{ElementRef, Node};
 use selectors::work_budget::SelectorWorkBudget;
 
-use crate::{ErrorCode, ExtractionError, Transform, ValueProjection};
+use crate::{ErrorCode, ExtractionError, Reading};
 
 mod context;
 mod markdown;
@@ -34,7 +34,11 @@ impl<'a> ValueBuffer<'a> {
     }
     pub(crate) fn push(&mut self, value: &str) -> Result<(), ExtractionError> {
         if value.len() > self.maximum.saturating_sub(self.value.len()) {
-            return Err(ExtractionError::limit("projection"));
+            return Err(ExtractionError::resource(
+                "projection",
+                "value_bytes",
+                self.maximum as u64,
+            ));
         }
         let size = self.value.len() + value.len(); // The preceding remaining-capacity check proves no overflow.
         crate::execution::charge(
@@ -74,9 +78,6 @@ impl<'a> ValueBuffer<'a> {
         }
         Ok(())
     }
-    pub(crate) fn separator(&mut self) {
-        self.pending_space = !self.value.is_empty();
-    }
     pub(crate) fn finish(self) -> String {
         self.value
     }
@@ -84,17 +85,15 @@ impl<'a> ValueBuffer<'a> {
 
 pub(crate) fn project(
     root: ElementRef<'_>,
-    projection: &ValueProjection,
+    projection: &Reading,
     excluded: &HashSet<NodeId>,
-    transforms: &[Transform],
     base: Option<&str>,
     maximum: usize,
     budget: &SelectorWorkBudget,
 ) -> Result<String, ExtractionError> {
-    let normalize = transforms.contains(&Transform::NormalizeWhitespace {});
-    let resolve = transforms.contains(&Transform::ResolveUrls {});
+    let resolve = matches!(projection, Reading::Url(_) | Reading::ResolvedMarkdown);
     match projection {
-        ValueProjection::Attribute { name } => {
+        Reading::Attribute(name) | Reading::Url(name) => {
             #[cfg(test)]
             record_projection(0);
             let value = root.attr(name).ok_or_else(|| {
@@ -106,7 +105,11 @@ pub(crate) fn project(
             })?;
             crate::execution::charge(budget, value.len().div_ceil(64) + 1)?;
             if value.len() > maximum {
-                return Err(ExtractionError::limit("projection"));
+                return Err(ExtractionError::resource(
+                    "projection",
+                    "value_bytes",
+                    maximum as u64,
+                ));
             }
             let value = if resolve {
                 resolve_url(value, base, maximum)?
@@ -116,62 +119,107 @@ pub(crate) fn project(
             // Untransformed values were bounded above; resolve_url bounds the final URL.
             Ok(value)
         }
-        ValueProjection::DomText {} => dom_text(root, excluded, normalize, maximum, budget),
-        ValueProjection::Markdown {} => {
+        Reading::Text | Reading::Literal => text(
+            root,
+            excluded,
+            matches!(projection, Reading::Text),
+            maximum,
+            None,
+            budget,
+        )
+        .map(|(text, _)| text),
+        Reading::Markdown | Reading::ResolvedMarkdown => {
             markdown::render(root, excluded, resolve, base, maximum, budget)
         }
-        ValueProjection::InnerHtml {} | ValueProjection::OuterHtml {} => {
+        Reading::InnerHtml | Reading::OuterHtml => {
             #[cfg(test)]
             record_projection(3);
             let mut writer = HtmlBuffer {
                 bytes: Vec::new(),
                 maximum,
+                limit_exceeded: false,
             };
             root.write_filtered_html(
                 &mut writer,
-                matches!(projection, ValueProjection::OuterHtml {}),
+                matches!(projection, Reading::OuterHtml),
                 excluded,
                 budget,
             )
-            .map_err(|_| ExtractionError::limit("serialization"))?;
+            .map_err(|_| {
+                if writer.limit_exceeded {
+                    ExtractionError::resource("serialization", "value_bytes", maximum as u64)
+                } else {
+                    // This concrete memory writer only fails at its size bound;
+                    // the maintained serializer's other error origin is exhausted work.
+                    ExtractionError::resource(
+                        "serialization",
+                        "max_work",
+                        budget.configured().into(),
+                    )
+                }
+            })?;
             // The HTML serializer emits UTF-8; the owned buffer cannot be externally corrupted.
             Ok(String::from_utf8(writer.bytes).expect("HTML serializer produces UTF-8"))
         }
     }
 }
 
-fn dom_text(
+// Full extraction and abbreviated observations share the same event policy.
+// A preview stops only when another emitted scalar proves incompleteness.
+pub(crate) fn text(
     root: ElementRef<'_>,
     excluded: &HashSet<NodeId>,
-    normalize: bool,
+    structural: bool,
     maximum: usize,
+    preview_characters: Option<usize>,
     budget: &SelectorWorkBudget,
-) -> Result<String, ExtractionError> {
+) -> Result<(String, bool), ExtractionError> {
     #[cfg(test)]
     record_projection(1);
-    let mut value = ValueBuffer::new(maximum, budget);
+    let mut output = TextOutput {
+        value: String::new(),
+        maximum,
+        preview_characters,
+        characters: 0,
+        pending: false,
+        budget,
+    };
     let mut skipped = 0_u32;
-    let mut pre = u32::from(normalize && context::inherited_pre(root, budget)?);
+    let mut pre = u32::from(structural && context::inherited_pre(root, budget)?);
     for edge in root.traverse() {
         crate::execution::charge(budget, 1)?;
         match edge {
             Edge::Open(node) => {
-                if skipped > 0 || excluded.contains(&node.id()) {
+                if skipped > 0
+                    || excluded.contains(&node.id())
+                    || (structural && inert(node.value()))
+                {
                     skipped += 1;
                     continue;
                 }
-                if node
-                    .value()
-                    .as_element()
-                    .is_some_and(|element| element.name() == "pre" && context::html(element))
-                {
+                if structural && pre == 0 && text_boundary(node.value()) {
+                    output.separator();
+                }
+                if structural && html_pre(node.value()) {
                     pre += 1;
                 }
-                if normalize && text_boundary(node.value()) {
-                    value.separator();
-                }
                 if let Node::Text(text) = node.value() {
-                    value.text(&text.text, pre > 0, normalize)?;
+                    let mut examined = 0_usize;
+                    for character in text.text.chars() {
+                        let size = examined + character.len_utf8();
+                        crate::execution::charge(
+                            budget,
+                            size.div_ceil(64) - examined.div_ceil(64),
+                        )?;
+                        examined = size;
+                        if structural && pre == 0 && character.is_whitespace() {
+                            output.separator();
+                            continue;
+                        }
+                        if !output.character(character)? {
+                            return Ok((output.value, false));
+                        }
+                    }
                 }
             }
             Edge::Close(node) => {
@@ -179,20 +227,83 @@ fn dom_text(
                     skipped -= 1;
                     continue;
                 }
-                if node
-                    .value()
-                    .as_element()
-                    .is_some_and(|element| element.name() == "pre" && context::html(element))
-                {
+                if structural && html_pre(node.value()) {
                     pre -= 1;
                 }
-                if normalize && text_boundary(node.value()) {
-                    value.separator();
+                if structural && pre == 0 && text_boundary(node.value()) {
+                    output.separator();
                 }
             }
         }
     }
-    Ok(value.finish())
+    Ok((output.value, true))
+}
+fn html_pre(node: &Node) -> bool {
+    node.as_element()
+        .is_some_and(|element| context::html(element) && element.name() == "pre")
+}
+fn inert(node: &Node) -> bool {
+    node.as_element().is_some_and(|element| {
+        let namespace: &str = element.name.ns.as_ref();
+        (context::html(element) && matches!(element.name(), "script" | "style" | "template"))
+            || (namespace == "http://www.w3.org/2000/svg"
+                && matches!(element.name(), "script" | "style"))
+    })
+}
+struct TextOutput<'a> {
+    value: String,
+    maximum: usize,
+    preview_characters: Option<usize>,
+    characters: usize,
+    pending: bool,
+    budget: &'a SelectorWorkBudget,
+}
+impl TextOutput<'_> {
+    fn separator(&mut self) {
+        self.pending = self
+            .value
+            .chars()
+            .next_back()
+            .is_some_and(|c| !c.is_whitespace());
+    }
+    fn character(&mut self, character: char) -> Result<bool, ExtractionError> {
+        // A generated boundary belongs with its following content. A preview
+        // never ends with only that invented separator.
+        let separator = self.pending && !character.is_whitespace();
+        if self
+            .preview_characters
+            .is_some_and(|maximum| self.characters + 1 + usize::from(separator) > maximum)
+            || (self.preview_characters.is_some()
+                && character.len_utf8() + usize::from(separator)
+                    > self.maximum.saturating_sub(self.value.len()))
+        {
+            return Ok(false);
+        }
+        // Parsed pre whitespace already supplies the boundary; never replace its edges.
+        if separator {
+            self.push(' ')?;
+        }
+        self.pending = false;
+        self.push(character)?;
+        Ok(true)
+    }
+    fn push(&mut self, character: char) -> Result<(), ExtractionError> {
+        if character.len_utf8() > self.maximum.saturating_sub(self.value.len()) {
+            return Err(ExtractionError::resource(
+                "projection",
+                "value_bytes",
+                self.maximum as u64,
+            ));
+        }
+        let size = self.value.len() + character.len_utf8();
+        crate::execution::charge(
+            self.budget,
+            size.div_ceil(64) - self.value.len().div_ceil(64),
+        )?;
+        self.value.push(character);
+        self.characters += 1;
+        Ok(())
+    }
 }
 
 pub(crate) fn text_boundary(node: &Node) -> bool {
@@ -201,6 +312,9 @@ pub(crate) fn text_boundary(node: &Node) -> bool {
             && matches!(
                 element.name(),
                 "br" | "p"
+                    | "details"
+                    | "summary"
+                    | "address"
                     | "div"
                     | "article"
                     | "section"
@@ -239,7 +353,11 @@ pub(crate) fn resolve_url(
     maximum: usize,
 ) -> Result<String, ExtractionError> {
     if value.len() > crate::limits::MAX_URL_INPUT_BYTES {
-        return Err(ExtractionError::limit("url"));
+        return Err(ExtractionError::resource(
+            "url",
+            "url_input_bytes",
+            crate::limits::MAX_URL_INPUT_BYTES as u64,
+        ));
     }
     let parsed = if let Ok(url) = url::Url::parse(value) {
         url
@@ -262,7 +380,15 @@ pub(crate) fn resolve_url(
             })?
     };
     if parsed.as_str().len() > maximum.min(crate::limits::MAX_URL_PROCESSING_BYTES) {
-        return Err(ExtractionError::limit("url"));
+        return Err(if maximum < crate::limits::MAX_URL_PROCESSING_BYTES {
+            ExtractionError::resource("url", "value_bytes", maximum as u64)
+        } else {
+            ExtractionError::resource(
+                "url",
+                "url_processing_bytes",
+                crate::limits::MAX_URL_PROCESSING_BYTES as u64,
+            )
+        });
     }
     Ok(parsed.into())
 }
@@ -270,11 +396,13 @@ pub(crate) fn resolve_url(
 struct HtmlBuffer {
     bytes: Vec<u8>,
     maximum: usize,
+    limit_exceeded: bool,
 }
 
 impl std::io::Write for HtmlBuffer {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if bytes.len() > self.maximum.saturating_sub(self.bytes.len()) {
+            self.limit_exceeded = true;
             return Err(std::io::Error::other("Serialized value limit exceeded."));
         }
         self.bytes.extend_from_slice(bytes);

@@ -374,29 +374,10 @@ fn refresh_semver_baseline(repo_root: &Path, git_ref: &str) -> DynResult<()> {
     fs::rename(extracted_dir, &baseline_dir)?;
     let baseline_manifest = baseline_dir.join("Cargo.toml");
     let cargo_toml = fs::read_to_string(&baseline_manifest)?;
-    if let Some(restored_manifest) =
-        restore_vendored_dependency_paths_in_baseline_manifest(&cargo_toml)?
-    {
-        let restored_manifest = if published_vendored_stack.join("sha2").exists() {
-            // The restoration helper has parsed and serialized this TOML value already.
-            let mut manifest: toml::Value = toml::from_str(&restored_manifest)
-                .expect("restored baseline is serializer-generated TOML");
-            let dependency = manifest
-                .get_mut("dependencies")
-                .and_then(toml::Value::as_table_mut)
-                .and_then(|dependencies| dependencies.get_mut("sha2"))
-                .and_then(toml::Value::as_table_mut)
-                .ok_or("published SHA-2 fork has no normalized core dependency")?;
-            dependency.insert("package".into(), toml::Value::String("htmlcut-sha2".into()));
-            dependency.insert("path".into(), toml::Value::String("vendor/sha2".into()));
-            dependency.insert(
-                "version".into(),
-                toml::Value::String("0.11.0-htmlcut.1".into()),
-            );
-            toml::to_string_pretty(&manifest)?
-        } else {
-            restored_manifest
-        };
+    if let Some(restored_manifest) = restore_vendored_dependency_paths_in_baseline_manifest(
+        &cargo_toml,
+        &snapshot_workspace_cargo_toml,
+    )? {
         fs::write(&baseline_manifest, with_workspace_stub(&restored_manifest))?;
         copy_published_vendored_selector_stack(
             &published_vendored_stack,

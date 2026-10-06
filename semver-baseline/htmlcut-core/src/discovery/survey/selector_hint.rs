@@ -15,16 +15,19 @@ pub(super) fn verified(
 ) -> Result<Option<String>, ExtractionError> {
     let mut candidates = Vec::new();
     let tag = &group.key.tag;
-    if !css_ident(tag) {
-        return Ok(None);
-    }
-    let item = match &group.key.classes {
-        Some(classes) if classes.iter().all(|class| css_ident(class)) => {
-            let specific = format!("{tag}.{}", classes.join("."));
-            candidates.push(specific.clone());
-            specific
-        }
-        _ => tag.clone(),
+    // Survey admission already bounds nonempty parsed HTML tags and class tokens;
+    // the tokenizer replaces NUL before they become Candidate values.
+    let escaped_tag = escaped_identifier(tag);
+    let item = if let Some(classes) = &group.key.classes {
+        let classes = classes
+            .iter()
+            .map(|class| escaped_identifier(class))
+            .collect::<Vec<_>>();
+        let specific = format!("{escaped_tag}.{}", classes.join("."));
+        candidates.push(specific.clone());
+        specific
+    } else {
+        escaped_tag.clone()
     };
     let mut id_anchor = None;
     let mut class_anchor = None;
@@ -37,20 +40,16 @@ pub(super) fn verified(
         let combinator = if depth == 0 { " > " } else { " " };
         if id_anchor.is_none()
             && let Some(id) = ancestor.attr("id")
-            && css_ident(id)
+            && let Some(id) = css_escape(id)
         {
             id_anchor = Some(format!("#{id}{combinator}{item}"));
         }
         if class_anchor.is_none()
-            && css_ident(ancestor.value().name())
+            && let Some(tag) = css_escape(ancestor.value().name())
             && let Some(classes) = class_signature(ancestor, budget)?
-            && let Some(class) = classes.iter().find(|class| css_ident(class))
+            && let Some(class) = classes.iter().find_map(|class| css_escape(class))
         {
-            class_anchor = Some(format!(
-                "{}.{}{combinator}{item}",
-                ancestor.value().name(),
-                class
-            ));
+            class_anchor = Some(format!("{}.{}{combinator}{item}", tag, class));
         }
         if id_anchor.is_some() && class_anchor.is_some() {
             break;
@@ -85,12 +84,18 @@ fn same_nodes(found: &[ElementRef<'_>], members: &[ElementRef<'_>]) -> bool {
         .all(|(found, member)| found.id() == member.id())
 }
 
-fn css_ident(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+fn css_escape(value: &str) -> Option<String> {
+    // CSS replaces NUL, so it cannot yield an exact hint for a NUL identifier.
+    if value.is_empty() || value.len() > 128 || value.contains('\0') {
+        return None;
+    }
+    Some(escaped_identifier(value))
+}
+
+fn escaped_identifier(value: &str) -> String {
+    let mut escaped = String::new();
+    cssparser::serialize_identifier(value, &mut escaped).expect("String formatting cannot fail");
+    escaped
 }
 
 #[cfg(test)]
@@ -98,16 +103,17 @@ mod tests {
     use scraper::Html;
     use selectors::work_budget::SelectorWorkBudget;
 
-    use super::{css_ident, same_nodes, verified};
-    use crate::discovery::outline::{Candidate, GroupKey};
+    use super::{css_escape, same_nodes, verified};
+    use crate::discovery::survey::{Candidate, GroupKey};
 
     #[test]
     fn selector_tokens_are_conservative_and_exact_identity_rejects_equal_counts() {
         for valid in ["li", "_item", "post-1"] {
-            assert!(css_ident(valid));
+            assert_eq!(css_escape(valid).as_deref(), Some(valid));
         }
-        for invalid in ["", "1item", "has:colon", "nonasciié"] {
-            assert!(!css_ident(invalid));
+        let oversized = "x".repeat(129);
+        for invalid in ["", "\0", &oversized] {
+            assert_eq!(css_escape(invalid), None);
         }
         let document = Html::parse_document("<p id=a>A</p><p id=b>B</p>");
         let nodes = document

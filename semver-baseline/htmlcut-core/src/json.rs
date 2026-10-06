@@ -15,7 +15,11 @@ use crate::limits::{MAX_JSON_DEPTH, MAX_PLAN_BYTES};
 /// Adapter-owned documents add their own closed fields and semantic validation afterward.
 pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::ExtractionError> {
     if bytes.len() > maximum {
-        return Err(crate::ExtractionError::limit("json"));
+        return Err(crate::ExtractionError::resource(
+            "json",
+            "json_bytes",
+            maximum as u64,
+        ));
     }
     let budget = Cell::new(maximum);
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
@@ -29,9 +33,12 @@ pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::E
         Ok(value)
     });
     value.map_err(|error| {
-        if error.to_string().starts_with("Closed JSON exceeds") {
-            return crate::ExtractionError::limit("json");
+        let message = error.to_string();
+        if message.starts_with("Closed JSON exceeds its nesting budget.") {
+            return crate::ExtractionError::resource("json", "json_depth", MAX_JSON_DEPTH as u64);
         }
+        // Encoded JSON bounds decoded strings/keys plus one unit per value;
+        // this byte-admitted route cannot exhaust Seed's materialization budget.
         crate::ExtractionError::new(
             crate::ErrorCode::InvalidJson,
             "json",

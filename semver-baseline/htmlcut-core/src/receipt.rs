@@ -16,22 +16,10 @@ pub enum DataKind {
     Records,
 }
 
-/// Half-open UTF-8 byte range in the exact accepted source.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SourceRange {
-    /// Inclusive starting offset.
-    pub start: usize,
-    /// Exclusive ending offset.
-    pub end: usize,
-}
-
 /// Aggregate counts for one declared record field, not duplicated labels or values.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FieldCount {
-    /// Positive one-based declaration position.
-    pub field_index: u32,
     /// Complete matched candidates across selected rows.
     pub candidate_count: u64,
     /// Strings actually projected, excluding null/array containers.
@@ -67,18 +55,129 @@ pub struct ExecutionReceipt {
     pub candidate_count: u32,
     /// Complete selected root count.
     pub selected_count: u32,
-    /// Per-field aggregates in declaration order; empty for flat extraction.
-    pub fields: Vec<FieldCount>,
-    /// Exact selected source ranges; absent for DOM extraction.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ranges: Option<Vec<SourceRange>>,
+    /// Aggregate counts keyed by validated field name in lexical order.
+    pub fields: std::collections::BTreeMap<String, FieldCount>,
 }
 
-/// Requested data plus independently consumable execution evidence.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Immutable requested data, canonical payload, and lazy execution-bound evidence.
 pub struct ExtractionResult {
-    /// Bare requested values or records.
-    pub data: crate::ExtractionData,
-    /// Deterministic execution facts, not a successful publication claim.
-    pub receipt: ExecutionReceipt,
+    pub(crate) data: crate::ExtractionData,
+    pub(crate) payload: Vec<u8>,
+    pub(crate) source: crate::SourceSnapshot,
+    pub(crate) query: std::sync::Arc<str>,
+    pub(crate) preparation: crate::PreparationLimits,
+    pub(crate) candidate_count: u32,
+    pub(crate) selected_count: u32,
+    pub(crate) fields: std::collections::BTreeMap<String, FieldCount>,
+    pub(crate) budget: selectors::work_budget::SelectorWorkBudget,
+    pub(crate) evidence: std::cell::OnceCell<Result<Evidence, crate::ExtractionError>>,
+}
+pub(crate) struct Evidence {
+    receipt: ExecutionReceipt,
+    bytes: Vec<u8>,
+}
+impl ExtractionResult {
+    /// Borrows immutable typed data.
+    pub fn data(&self) -> &crate::ExtractionData {
+        &self.data
+    }
+    /// Consumes the result, dropping encoding and evidence residency.
+    pub fn into_data(self) -> crate::ExtractionData {
+        self.data
+    }
+    /// Canonical JSON payload, without the transport framing LF.
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+    /// Complete original-root candidate count.
+    pub fn candidate_count(&self) -> u32 {
+        self.candidate_count
+    }
+    /// Complete selected-root count.
+    pub fn selected_count(&self) -> u32 {
+        self.selected_count
+    }
+    /// Retains empty values versus records distinction.
+    pub fn data_kind(&self) -> DataKind {
+        match self.data {
+            crate::ExtractionData::Values(_) => DataKind::Values,
+            crate::ExtractionData::Records(_) => DataKind::Records,
+        }
+    }
+    /// Actual accepted source and metadata captured at execution.
+    pub fn snapshot(&self) -> &crate::SourceSnapshot {
+        &self.source
+    }
+    /// Actual preparation policy captured at execution.
+    pub fn preparation_limits(&self) -> &crate::PreparationLimits {
+        &self.preparation
+    }
+    /// Normalized query bytes captured at compilation and execution.
+    pub fn normalized_json(&self) -> &str {
+        &self.query
+    }
+    /// Generates evidence from this execution using its residual budget; caches success and failure.
+    pub fn receipt(&self) -> Result<&ExecutionReceipt, crate::ExtractionError> {
+        Ok(&self.evidence()?.receipt)
+    }
+    /// Bounded receipt JSON without LF, retained from the same evidence transition.
+    pub fn receipt_payload(&self) -> Result<&[u8], crate::ExtractionError> {
+        Ok(&self.evidence()?.bytes)
+    }
+    fn evidence(&self) -> Result<&Evidence, crate::ExtractionError> {
+        self.evidence
+            .get_or_init(|| self.build_evidence())
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+    fn build_evidence(&self) -> Result<Evidence, crate::ExtractionError> {
+        let metadata = crate::canonical_json(self.source.metadata())?;
+        let preparation = crate::canonical_json(&self.preparation)?;
+        // Cached source/query digests never discount their logical hash work.
+        crate::execution::charge(&self.budget, self.source.html().len().div_ceil(64))?;
+        let source_sha256 = self.source.source_sha256().to_owned();
+        let plan_sha256 = crate::identity::budgeted_framed(
+            "htmlcut.plan/6",
+            &[self.query.as_bytes()],
+            &self.budget,
+        )?;
+        let semantics = SEMANTICS_VERSION.to_be_bytes();
+        let extraction_sha256 = crate::identity::budgeted_framed(
+            "htmlcut.extraction/6",
+            &[
+                source_sha256.as_bytes(),
+                plan_sha256.as_bytes(),
+                metadata.as_bytes(),
+                preparation.as_bytes(),
+                &semantics,
+            ],
+            &self.budget,
+        )?;
+        crate::execution::charge(&self.budget, self.payload.len().div_ceil(64))?;
+        let receipt = ExecutionReceipt {
+            schema: "htmlcut.extraction.receipt".into(),
+            version: SCHEMA_VERSION,
+            semantics: SEMANTICS_VERSION,
+            data_kind: self.data_kind(),
+            source_sha256,
+            plan_sha256,
+            extraction_sha256,
+            data_sha256: crate::identity::sha256(&self.payload),
+            candidate_count: self.candidate_count,
+            selected_count: self.selected_count,
+            fields: self.fields.clone(),
+        };
+        let bytes = crate::identity::encoded(&receipt, crate::MAX_RECEIPT_BYTES, &self.budget)?;
+        Ok(Evidence { receipt, bytes })
+    }
+}
+
+impl std::fmt::Debug for ExtractionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExtractionResult")
+            .field("data", &self.data)
+            .field("candidate_count", &self.candidate_count)
+            .field("selected_count", &self.selected_count)
+            .finish_non_exhaustive()
+    }
 }

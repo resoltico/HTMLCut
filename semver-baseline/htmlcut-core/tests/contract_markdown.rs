@@ -15,12 +15,12 @@ fn extract_excluding(html: &str, css: &str, excluded: &[&str]) -> String {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css(css).unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
-    plan.exclude = excluded.iter().map(|selector| (*selector).into()).collect();
+    plan.read = Some(Reading::Markdown);
+    plan.exclude = Some(excluded.iter().map(|selector| (*selector).into()).collect());
     match document
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap()
-        .data
+        .into_data()
     {
         ExtractionData::Values(mut values) => values.remove(0),
         _ => panic!("expected flat data"),
@@ -198,13 +198,13 @@ fn original_code_metadata_resolves_urls_without_altering_code_payload() {
         "<article><p><img src='photo.png' alt='Photo'></p><pre><a href='next'><span> Name </span><span class='omit'>DROP</span><script>DROP</script></a><img src='photo.png' alt='Photo'><img src='empty.png'></pre></article>",
         SnapshotMetadata{base_url:Some("https://example.test/path/".into())}).unwrap(),Default::default()).unwrap();
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
-    plan.transforms = vec![Transform::ResolveUrls {}];
-    plan.exclude = vec![".omit".into()];
+    plan.read = Some(Reading::Markdown);
+    plan.read = Some(Reading::ResolvedMarkdown);
+    plan.exclude = Some(vec![".omit".into()]);
     let result = document
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    let value = &result.data.as_values().unwrap()[0];
+    let value = &result.data().as_values().unwrap()[0];
     let destinations = Parser::new(value)
         .filter_map(|e| match e {
             Event::Start(Tag::Link { dest_url, .. })
@@ -235,7 +235,7 @@ fn unrepresentable_destinations_fail_and_literal_destination_escapes_roundtrip()
         )
         .unwrap();
         let mut plan = ExtractionPlan::css("a").unwrap();
-        plan.projection = Projection::Value(ValueProjection::Markdown {});
+        plan.read = Some(Reading::Markdown);
         let outcome = document.execute(&CompiledPlan::compile(&plan).unwrap());
         if destination != "x&#0;y" {
             assert_eq!(outcome.unwrap_err().code, ErrorCode::InvalidRepresentation);
@@ -262,12 +262,12 @@ fn inline_anchor_analysis_preserves_foreign_text_and_skips_excluded_blocks() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
-    plan.exclude = vec![".omit".into()];
+    plan.read = Some(Reading::Markdown);
+    plan.exclude = Some(vec![".omit".into()]);
     let result = document
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(result.data.as_values().unwrap(), ["[Y Z](<next>)"]);
+    assert_eq!(result.data().as_values().unwrap(), ["[Y Z](<next>)"]);
     assert_eq!(
         extract("<a href='next'><div>Body</div></a>", "a"),
         "Body\n\n[link](<next>)"
@@ -319,7 +319,7 @@ fn a_fence_that_cannot_fit_the_value_budget_fails_before_partial_output() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("pre").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
+    plan.read = Some(Reading::Markdown);
     plan.limits.max_value_bytes = 2;
     assert_eq!(
         document
@@ -342,7 +342,7 @@ fn selected_code_fragment_cannot_hide_an_unrepresentable_link_annotation() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("#part").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
+    plan.read = Some(Reading::Markdown);
     assert_eq!(
         document
             .execute(&CompiledPlan::compile(&plan).unwrap())

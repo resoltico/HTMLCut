@@ -139,8 +139,12 @@ pub fn snapshot_uses_vendored_selector_stack(cargo_toml: &str) -> DynResult<bool
 /// Restores copied published vendored dependency paths in one semver baseline manifest.
 pub fn restore_vendored_dependency_paths_in_baseline_manifest(
     cargo_toml: &str,
+    published_workspace_cargo_toml: &str,
 ) -> DynResult<Option<String>> {
-    semver::restore_vendored_dependency_paths_in_baseline_manifest(cargo_toml)
+    semver::restore_vendored_dependency_paths_in_baseline_manifest(
+        cargo_toml,
+        published_workspace_cargo_toml,
+    )
 }
 
 /// Removes dev-dependency tables from a manifest used only for semver-baseline packaging.

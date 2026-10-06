@@ -485,6 +485,8 @@ pub(super) fn semver_check_command(repo_root: &Path, semver_release_type: &str) 
         "cargo",
         [
             "semver-checks",
+            "-p",
+            "htmlcut-core",
             "--manifest-path",
             core_manifest_path(repo_root).to_string_lossy().as_ref(),
             "--baseline-root",

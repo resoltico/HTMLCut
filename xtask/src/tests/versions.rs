@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
 
+mod restoration;
+
+const PUBLISHED_WORKSPACE: &str = r#"
+[workspace.dependencies]
+scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.9", features = ["workspace-only"] }
+selectors = { package = "htmlcut-selectors", path = "patches/rust/selectors", version = "0.41.0-htmlcut.1" }
+sha2 = { package = "htmlcut-sha2", path = "patches/rust/sha2", version = "0.11.0-htmlcut.3" }
+"#;
+
 #[test]
 fn baseline_packaging_rejects_malformed_toml_in_each_manifest_role() {
     for result in [
         crate::plan::sanitize_snapshot_workspace_manifest_for_packaging("[broken"),
         crate::plan::snapshot_uses_vendored_selector_stack("[broken").map(|_| String::new()),
-        crate::plan::restore_vendored_dependency_paths_in_baseline_manifest("[broken")
-            .map(|_| String::new()),
+        crate::plan::restore_vendored_dependency_paths_in_baseline_manifest(
+            "[broken",
+            PUBLISHED_WORKSPACE,
+        )
+        .map(|_| String::new()),
     ] {
         assert!(result.unwrap_err().to_string().contains("Cargo.toml"));
     }
@@ -515,16 +527,17 @@ version = \"0.38.0\"
 version = \"1.0.228\"
 ";
 
-    let restored = restore_vendored_dependency_paths_in_baseline_manifest(manifest)
-        .expect("restore vendored dependencies")
-        .expect("the manifest depends on the published selector stack");
+    let restored =
+        restore_vendored_dependency_paths_in_baseline_manifest(manifest, PUBLISHED_WORKSPACE)
+            .expect("restore vendored dependencies")
+            .expect("the manifest depends on the published selector stack");
 
     assert!(restored.contains("package = \"htmlcut-scraper\""));
     assert!(restored.contains("path = \"vendor/scraper\""));
-    assert!(restored.contains("version = \"0.27.0-htmlcut.1\""));
+    assert!(restored.contains("version = \"0.27.0-htmlcut.9\""));
     assert!(restored.contains("package = \"htmlcut-selectors\""));
     assert!(restored.contains("path = \"vendor/selectors\""));
-    assert!(restored.contains("version = \"0.38.0-htmlcut.1\""));
+    assert!(restored.contains("version = \"0.41.0-htmlcut.1\""));
     assert!(restored.contains("features = [\"errors\"]"));
     assert!(restored.contains("serde"));
 }
@@ -534,7 +547,7 @@ fn restore_vendored_dependency_paths_in_baseline_manifest_skips_unrelated_packag
     let manifest = "[package]\nname = \"htmlcut-core\"\nversion = \"11.0.1\"\n";
 
     assert_eq!(
-        restore_vendored_dependency_paths_in_baseline_manifest(manifest)
+        restore_vendored_dependency_paths_in_baseline_manifest(manifest, PUBLISHED_WORKSPACE)
             .expect("parse baseline manifest"),
         None
     );
@@ -560,13 +573,16 @@ scraper = \"0.27.0\"
 ";
 
     assert_eq!(
-        restore_vendored_dependency_paths_in_baseline_manifest(missing_alias)
+        restore_vendored_dependency_paths_in_baseline_manifest(missing_alias, PUBLISHED_WORKSPACE)
             .expect("parse dependencies without aliases"),
         None
     );
     assert_eq!(
-        restore_vendored_dependency_paths_in_baseline_manifest(non_table_alias)
-            .expect("parse scalar dependency alias"),
+        restore_vendored_dependency_paths_in_baseline_manifest(
+            non_table_alias,
+            PUBLISHED_WORKSPACE
+        )
+        .expect("parse scalar dependency alias"),
         None
     );
 }

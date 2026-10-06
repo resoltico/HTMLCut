@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use scraper::{ElementRef, Node};
+use scraper::ElementRef;
 use selectors::work_budget::SelectorWorkBudget;
 
 use super::{Candidate, TableShape};
@@ -19,6 +19,7 @@ pub(super) fn summarize(
     }
     let mut shape = TableShape {
         headers: Vec::new(),
+        header_read: "text".into(),
         headers_complete: true,
         headers_unique: false,
         header_rows: 0,
@@ -91,18 +92,7 @@ fn header_text(
     cell: ElementRef<'_>,
     budget: &SelectorWorkBudget,
 ) -> Result<Option<String>, ExtractionError> {
-    let mut text = String::new();
-    for node in cell.descendants() {
-        crate::execution::charge(budget, 1)?;
-        if let Node::Text(value) = node.value() {
-            for character in value.text.chars() {
-                crate::execution::charge(budget, 1)?;
-                if character.len_utf8() > 128 - text.len() {
-                    return Ok(None);
-                }
-                text.push(character);
-            }
-        }
-    }
-    Ok(Some(text))
+    let (text, complete) =
+        crate::projection::text(cell, &HashSet::new(), true, 128, Some(128), budget)?;
+    Ok(complete.then_some(text))
 }
