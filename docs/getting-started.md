@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "20.0.0"
 domain: SETUP
-updated: "2026-10-05"
+updated: "2026-10-06"
 route:
   keywords: [getting started, quick start, install, release package, cargo install, first extraction, snapshot bundle]
   questions: ["how do I install HTMLCut?", "how do I try HTMLCut on a sample page?", "how do I save a reusable extraction run?"]
@@ -11,7 +11,7 @@ route:
 
 # Getting started
 
-Use a completed UTF-8 HTML snapshot and an explicit selector. The current 20.0.0 source is an unreleased breaking candidate; build from source for the version-6 grammar. Older native packages require their own version-matched instructions. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 20.0.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
+Use a completed UTF-8 HTML snapshot and an explicit selector. HTMLCut 20.0.0 uses the version-6 grammar. Older native packages require their own version-matched instructions. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 20.0.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
 
 On macOS or Linux, download the native package and checksum file, verify the exact asset entry, then extract:
 

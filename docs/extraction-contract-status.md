@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "20.0.0"
 domain: ENGINEERING
-updated: "2026-10-05"
+updated: "2026-10-06"
 route:
   keywords: [HTMLCut, implementation status, conformance, live QA, dependency refresh, published release]
   questions: ["Which source was published as HTMLCut 15.0.0?", "Which revision was verified?", "Do previous proofs cover the dependency refresh?"]
@@ -23,11 +23,11 @@ The historical evidence below identifies its tested revision; it does not attest
 
 ## Current contract
 
-The current source defines wire/semantics 6, compact queries, structural text, lexical named fields, immutable canonical results, optional residual-budget evidence, coherent inspection, conventional Markdown and self-contained USTAR replay. Selected source slicing and retired contract/command aliases are removed. The 20.0.0 workspace version is an unreleased candidate. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
+The current source defines wire/semantics 6, compact queries, structural text, lexical named fields, immutable canonical results, optional residual-budget evidence, coherent inspection, conventional Markdown and self-contained USTAR replay. Selected source slicing and retired contract/command aliases are removed. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
 
 Release verification belongs to exact source commits and published packages. The maintained gates own coverage, strict Miri, live fuzz, full mutation and native delivery proofs; the evaluation scripts check immutable snapshots and complete requested answers. [GitHub Releases](https://github.com/resoltico/HTMLCut/releases) and [Actions](https://github.com/resoltico/HTMLCut/actions) are authoritative for publication and source-bound CI. A workspace version or local report alone does not establish publication. The API baseline is refreshed only from an actually published tag.
 
-Historical evidence below identifies earlier sources and does not attest this changed candidate.
+Historical evidence below identifies earlier sources and does not attest this current contract.
 
 ## Published 15.0.0 verification
 

@@ -4,7 +4,7 @@
 
 HTMLCut executes declared extraction contracts over immutable UTF-8 HTML snapshots. Its Rust core and native CLI return requested values or records, reject unmet assumptions, and bound preparation, matching and output work.
 
-This source uses query/receipt wire version 6 and semantics 6. It is a breaking 20.0.0 candidate; publication is a separate release operation. Retired requests, APIs, commands and flags have no compatibility adapters.
+This source uses query/receipt wire version 6 and semantics 6. Version 20.0.0 makes breaking changes; verify package availability on GitHub Releases. Retired requests, APIs, commands and flags have no compatibility adapters.
 
 Build with the pinned Rust toolchain from a clean checkout:
 

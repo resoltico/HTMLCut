@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "20.0.0"
 domain: RELEASE
-updated: "2026-10-05"
+updated: "2026-10-06"
 route:
   keywords: [release publishing, git tag, release workflow, release assets, checksum verification, host-native smoke]
   questions: ["how do I publish an HTMLCut release tag?", "how do I verify the GitHub release object?", "how do I verify the downloaded HTMLCut package locally?"]
@@ -48,10 +48,10 @@ gh workflow run release.yml -f release_tag=vX.Y.Z
 ```
 
 Never create a second tag or move an existing release tag just to retry publication.
-The rerun is expected to execute the maintained workflow and release scripts from `main`, while
-the build jobs still check out the existing tag payload identified by `release_tag`. Publication
-scripts resolve the release version and asset inventory from that tag's `Cargo.toml`, rather than
-from the potentially newer `main` checkout that supplies repaired workflow logic.
+Dispatch the retry from `main` so its workflow definition comes from current `main`. Every job
+still checks out the immutable tag payload identified by `release_tag`; release helper scripts,
+version, notes and asset inventory come from that tagged source. A newer workflow definition
+does not substitute newer `main` scripts into the tagged checkout.
 
 The release workflow follows a draft-first publication model: it creates or reuses a draft release,
 uploads the full maintained asset inventory, writes the checksum manifest, and only then publishes
