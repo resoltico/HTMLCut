@@ -143,6 +143,23 @@ fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
         ]
     );
     assert!(is_semver_check_spec(plan.last().expect("semver command")));
+    assert_eq!(
+        plan[12],
+        test_command_spec(
+            "cargo",
+            [
+                "test",
+                "-p",
+                "xtask",
+                "--lib",
+                "--all-features",
+                "--locked",
+                "hygiene::source_boundary::tests"
+            ],
+            false,
+            false,
+        )
+    );
     assert!(plan.iter().all(|spec| !command_forces_clang(spec)));
     assert!(
         plan.last()

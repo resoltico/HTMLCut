@@ -3,11 +3,11 @@
 
 use crate::command::{Cli, Operation, Output};
 use crate::input::options;
-use crate::publication::{MAX_OUTPUT_BYTES, MAX_RECEIPT_BYTES, Staged};
+use crate::publication::Staged;
 use clap::Parser;
 use htmlcut_core::{
     CompiledPlan, ExtractionData, ExtractionError, ExtractionResult, PreparationLimits,
-    PreparedDocument, Projection,
+    PreparedDocument,
 };
 use std::{
     ffi::OsString,
@@ -75,11 +75,6 @@ fn dispatch(
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     match operation {
-        Operation::Describe { operation } => emit_json(
-            &crate::operation_metadata::describe(operation.as_deref())?,
-            METADATA_BYTES,
-            stdout,
-        ),
         Operation::Schema { name } => {
             let schema = if name == "htmlcut.bundle" {
                 schemars::schema_for!(crate::bundle::Manifest<'static>)
@@ -91,11 +86,17 @@ fn dispatch(
             emit_json(&schema, crate::input::MAX_CONFIG_BYTES, stdout)
         }
         Operation::Extract(arguments) => {
-            let compiled = CompiledPlan::compile(&arguments.extraction_plan()?)?;
-            if arguments.output.raw
-                && matches!(compiled.plan().projection, Projection::Records { .. })
-            {
+            let compiled = CompiledPlan::compile(&arguments.extraction_plan(stdin)?)?;
+            if arguments.output.raw && compiled.plan().fields.is_some() {
                 return Err(options("Raw output cannot represent records."));
+            }
+            if arguments.output.raw
+                && compiled.plan().match_mode == htmlcut_core::Match::All
+                && (compiled.plan().min.unwrap_or(1) > 1 || compiled.plan().max == Some(0))
+            {
+                return Err(options(
+                    "Raw output requires exactly one scalar; declared all bounds cannot provide it.",
+                ));
             }
             let inputs = arguments
                 .source
@@ -103,7 +104,13 @@ fn dispatch(
                 .file
                 .iter()
                 .cloned()
-                .chain(arguments.plan.iter().cloned())
+                .chain(
+                    arguments
+                        .plan
+                        .iter()
+                        .filter(|path| path.as_os_str() != "-")
+                        .cloned(),
+                )
                 .collect::<Vec<_>>();
             validate(&inputs, &arguments.output, arguments.bundle.as_deref())?;
             let snapshot = crate::input::snapshot(
@@ -114,44 +121,37 @@ fn dispatch(
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
             let result = document.execute(&compiled)?;
             publish(
-                &document,
-                &compiled,
                 &result,
                 &arguments.output,
                 arguments.bundle.as_deref(),
                 stdout,
             )
         }
-        Operation::Run(arguments) => {
+        Operation::Replay(arguments) => {
             validate(
                 std::slice::from_ref(&arguments.file),
                 &arguments.output,
                 None,
             )?;
             let replay = crate::bundle::read(&arguments.file)?;
-            if arguments.output.raw
-                && matches!(replay.plan.plan().projection, Projection::Records { .. })
-            {
+            if arguments.output.raw && replay.plan.plan().fields.is_some() {
                 return Err(options("Raw output cannot represent records."));
             }
             let result = replay.document.execute(&replay.plan)?;
-            if result.receipt != replay.expected {
+            if *result.receipt()? != replay.expected {
                 return Err(crate::bundle::mismatch());
             }
-            publish(
-                &replay.document,
-                &replay.plan,
-                &result,
-                &arguments.output,
-                None,
-                stdout,
-            )
+            publish(&result, &arguments.output, None, stdout)
         }
         Operation::Inspect(arguments) => {
-            // Grammar/options are rejected before an intentional stream is consumed.
-            let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(&arguments.css)?)?;
-            if !(1..=10).contains(&arguments.samples) {
+            if let Some(select) = arguments.select.as_deref().or(arguments.within.as_deref()) {
+                let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(select)?)?;
+            }
+            if arguments.select.is_some() && !(1..=10).contains(&arguments.samples.unwrap_or(3)) {
                 return Err(options("Samples must be between one and ten."));
+            }
+            if arguments.select.is_none() && !(1..=16).contains(&arguments.limit.unwrap_or(4)) {
+                return Err(options("Group limit must be between one and sixteen."));
             }
             let snapshot = crate::input::snapshot(
                 arguments.source.source.file.as_deref(),
@@ -159,39 +159,19 @@ fn dispatch(
                 arguments.source.base_url.as_deref(),
             )?;
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            if arguments.identifiers {
+            if let Some(select) = &arguments.select {
                 emit_json(
-                    &document.inspect_identifiers(&arguments.css, arguments.samples)?,
+                    &document.inspect(select, arguments.samples.unwrap_or(3))?,
                     METADATA_BYTES,
                     stdout,
                 )
             } else {
                 emit_json(
-                    &document.inspect(&arguments.css, arguments.samples)?,
+                    &document.survey(arguments.within.as_deref(), arguments.limit.unwrap_or(4))?,
                     METADATA_BYTES,
                     stdout,
                 )
             }
-        }
-        Operation::Outline(arguments) => {
-            // Reject malformed scope and limit options before intentional stdin is consumed.
-            if let Some(css) = &arguments.within {
-                let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(css)?)?;
-            }
-            if !(1..=16).contains(&arguments.limit) {
-                return Err(options("Outline limit must be between one and sixteen."));
-            }
-            let snapshot = crate::input::snapshot(
-                arguments.source.source.file.as_deref(),
-                stdin,
-                arguments.source.base_url.as_deref(),
-            )?;
-            let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            emit_json(
-                &document.outline(arguments.within.as_deref(), arguments.limit)?,
-                METADATA_BYTES,
-                stdout,
-            )
         }
     }
 }
@@ -212,29 +192,33 @@ fn validate(
 }
 
 fn publish(
-    document: &PreparedDocument,
-    compiled: &CompiledPlan,
     result: &ExtractionResult,
     output: &Output,
     bundle: Option<&Path>,
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     let bytes = if output.raw {
-        match &result.data {
+        match result.data() {
             ExtractionData::Values(values) if values.len() == 1 => values[0].as_bytes().to_vec(),
             _ => return Err(options("Raw output requires exactly one flat string.")),
         }
     } else {
-        crate::publication::json(&result.data, MAX_OUTPUT_BYTES)?
+        let mut bytes = result.payload().to_vec();
+        bytes.push(b'\n');
+        bytes
     };
     let evidence = if let Some(path) = bundle {
         Some(Staged::prepare_with(path, output.overwrite, |writer| {
-            crate::bundle::write(writer, document, compiled, &result.receipt)
+            crate::bundle::write(writer, result)
         })?)
     } else if let Some(path) = &output.receipt {
         Some(Staged::prepare(
             path,
-            &crate::publication::json(&result.receipt, MAX_RECEIPT_BYTES)?,
+            &{
+                let mut bytes = result.receipt_payload()?.to_vec();
+                bytes.push(b'\n');
+                bytes
+            },
             output.overwrite,
         )?)
     } else {

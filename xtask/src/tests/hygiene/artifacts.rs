@@ -232,7 +232,7 @@ fn prepare_artifact_layout_inherit_leaves_artifact_env_unmanaged() {
 
 #[cfg(unix)]
 #[test]
-fn prepare_artifact_layout_reports_workspace_root_creation_failures() {
+fn prepare_artifact_layout_rejects_a_non_directory_workspace_root() {
     let repo_root = tempdir().expect("repo tempdir");
     with_test_artifact_overrides(repo_root.path(), || {
         let cargo_config_dir = repo_root.path().join(".cargo");
@@ -337,7 +337,7 @@ fn prepare_artifact_layout_reports_manifest_write_failures() {
 
 #[cfg(unix)]
 #[test]
-fn prepare_artifact_layout_reports_coverage_root_creation_failures() {
+fn prepare_artifact_layout_rejects_a_non_directory_coverage_root() {
     let repo_root = tempdir().expect("repo tempdir");
     with_test_artifact_overrides(repo_root.path(), || {
         let cargo_config_dir = repo_root.path().join(".cargo");
@@ -367,5 +367,31 @@ fn prepare_artifact_layout_reports_coverage_root_creation_failures() {
                 .to_string()
                 .contains(&managed_coverage_target_file.display().to_string())
         );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn prepare_artifact_layout_reports_coverage_marker_write_failures() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo_root = tempdir().expect("repo tempdir");
+    with_test_artifact_overrides(repo_root.path(), || {
+        let coverage = crate::plan::coverage_target_dir(repo_root.path());
+        fs::create_dir_all(&coverage).expect("coverage root");
+        let permissions = fs::metadata(&coverage).expect("metadata").permissions();
+        fs::set_permissions(&coverage, fs::Permissions::from_mode(0o555))
+            .expect("readable but not writable coverage root");
+        let error =
+            prepare_artifact_layout(repo_root.path(), CommandArtifactLayout::ManagedCoverage)
+                .expect_err("coverage marker write fails");
+        fs::set_permissions(&coverage, permissions).expect("restore permissions");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to write managed hygiene cache marker")
+        );
+        assert!(error.to_string().contains(&coverage.display().to_string()));
+        assert!(!coverage.join("CACHEDIR.TAG").exists());
     });
 }

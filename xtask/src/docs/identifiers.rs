@@ -246,15 +246,13 @@ pub(crate) fn known_schema_names() -> BTreeSet<&'static str> {
         .copied()
         .chain([
             "htmlcut.bundle",
-            "htmlcut.operations",
-            "htmlcut.operation",
             crate::gate_report::GATE_RUN_REPORT_SCHEMA_NAME,
         ])
         .collect()
 }
 
 pub(crate) fn known_operation_ids() -> BTreeSet<&'static str> {
-    BTreeSet::from(["extract", "run", "inspect", "outline", "describe", "schema"])
+    BTreeSet::from(["extract", "replay", "inspect", "schema"])
 }
 
 #[cfg(test)]

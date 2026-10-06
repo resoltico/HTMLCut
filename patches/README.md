@@ -1,7 +1,7 @@
 <!--
 AFAD:
   afad: "4.0"
-  version: "19.2.0"
+  version: "20.0.0"
   domain: DEPENDENCY
   updated: "2026-10-05"
 RETRIEVAL_HINTS:
@@ -50,7 +50,7 @@ shared-memory, and Gecko refcount-logging feature surfaces stay trimmed so the m
 - Scope: strict-provenance fixes on the HTML parser stack used by `markup5ever`, `html5ever`,
   `scraper`, and `htmlcut-core`
 - Reason: DOM parsing historically exposed a strict-provenance failure through
-  `scraper -> html5ever -> markup5ever -> tendril`; parsing and source slicing are separate.
+  `scraper -> html5ever -> markup5ever -> tendril`; parsing is bounded during construction; exact full accepted source remains separately immutable.
 - Current state: the local patch preserves heap-header provenance separately from the tagged pointer
   bits, with the previous revision verified under strict provenance; the refreshed sources await
   their release Miri proof

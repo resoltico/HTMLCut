@@ -5,7 +5,7 @@ use crate::model::{
 };
 
 pub(crate) const MIRI_CONTRACT_TEST_NAME: &str =
-    "tests::selector_and_slice_contract_remain_miri_sound";
+    "tests::selector_and_reading_contract_remain_miri_sound";
 
 /// Builds the direct cargo-Miri probe used by the maintained preflight.
 pub fn miri_probe_command() -> CommandSpec {
@@ -19,7 +19,7 @@ pub fn miri_probe_command() -> CommandSpec {
     .with_stderr(CommandStderr::Quiet)
 }
 
-/// Builds the maintained strict-provenance selector-and-slice Miri proof command.
+/// Builds the maintained strict-provenance selector-and-reading Miri proof command.
 pub fn miri_contract_command() -> CommandSpec {
     CommandSpec::new(
         "cargo",
@@ -43,7 +43,7 @@ pub fn miri_contract_command() -> CommandSpec {
     .with_env("MIRIFLAGS", "-Zmiri-strict-provenance")
 }
 
-/// Returns missing prerequisites for the maintained strict-provenance selector-and-slice Miri proof.
+/// Returns missing prerequisites for the maintained strict-provenance selector-and-reading Miri proof.
 pub fn miri_preflight_failures(
     toolchains_output: &str,
     installed_components_output: &str,
@@ -83,7 +83,7 @@ pub fn miri_preflight_message(failures: &[MiriPreflightFailure]) -> String {
     let broken_binary = failures.contains(&MiriPreflightFailure::BrokenNightlyMiriBinary);
 
     let mut message = format!(
-        "Rust Miri preflight failed. HTMLCut keeps stable as the default toolchain, but the maintained strict-provenance selector-and-slice proof runs through `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} miri test`.\n"
+        "Rust Miri preflight failed. HTMLCut keeps stable as the default toolchain, but the maintained strict-provenance selector-and-reading proof runs through `cargo {MAINTAINED_NIGHTLY_TOOLCHAIN} miri test`.\n"
     );
 
     if missing_nightly {

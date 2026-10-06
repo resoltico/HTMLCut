@@ -55,8 +55,7 @@ pub(crate) fn prepare_sandbox_errors_for_tests(
 pub(crate) fn injected_sandbox_error_for_tests(message: &str) -> Vec<String> {
     command_example_errors_with_prepared_sandbox(
         "README.md",
-        "```bash\nhtmlcut select page.html --css article\n```\n",
-        &BTreeSet::new(),
+        "```bash\nhtmlcut select page.html --select article\n```\n",
         &BTreeSet::new(),
         Err(vec![message.to_owned()]),
     )

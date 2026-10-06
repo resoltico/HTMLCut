@@ -7,10 +7,9 @@ use crate::model::{
     DynResult, MAINTAINED_NIGHTLY_TOOLCHAIN, MAINTAINED_NIGHTLY_TOOLCHAIN_NAME,
 };
 
-const FUZZ_SMOKE_TARGETS: [&str; 11] = [
+const FUZZ_SMOKE_TARGETS: &[&str] = &[
     "parse_document_bytes",
     "selector_parsing",
-    "slice_boundaries",
     "extraction_request_building",
     "selector_inspection",
     "relational_selector_budget",
@@ -38,7 +37,7 @@ pub enum FuzzSmokePreflightFailure {
 
 /// Returns the maintained fuzz targets in their canonical smoke-run order.
 pub fn fuzz_smoke_targets() -> &'static [&'static str] {
-    &FUZZ_SMOKE_TARGETS
+    FUZZ_SMOKE_TARGETS
 }
 
 /// Validates that one fuzz target name belongs to the maintained inventory.

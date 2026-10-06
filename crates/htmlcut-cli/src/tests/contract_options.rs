@@ -13,33 +13,33 @@ impl Read for Unread {
 fn invalid_options_and_retired_vocabulary_fail_before_consuming_source() {
     for extras in [
         vec![],
-        vec!["--css", "p", "--match", "nth"],
-        vec!["--css", "p", "--index", "1"],
-        vec!["--css", "p", "--min", "0"],
-        vec!["--css", "p", "--max", "1"],
-        vec!["--css", "p", "--match", "nth", "--min", "0"],
-        vec!["--css", "p", "--match", "nth", "--index", "1", "--min", "0"],
-        vec!["--css", "p", "--match", "nth", "--index", "1", "--max", "1"],
-        vec!["--css", "p", "--match", "nth", "--max", "1"],
-        vec!["--css", "p", "--match", "all", "--index", "1"],
-        vec!["--css", "p", "--projection", "attribute"],
-        vec!["--css", "p", "--projection", "document_text"],
+        vec!["--select", "p", "--match", "nth"],
+        vec!["--select", "p", "--index", "1"],
+        vec!["--select", "p", "--min", "0"],
+        vec!["--select", "p", "--max", "1"],
+        vec!["--select", "p", "--match", "nth", "--min", "0"],
+        vec!["--select", "p", "--nth", "1", "--min", "0"],
+        vec!["--select", "p", "--nth", "1", "--max", "1"],
+        vec!["--select", "p", "--match", "nth", "--max", "1"],
+        vec!["--select", "p", "--all", "--index", "1"],
+        vec!["--select", "p", "--projection", "attribute"],
+        vec!["--select", "p", "--projection", "document_text"],
         vec![
-            "--css",
+            "--select",
             "p",
             "--projection",
-            "dom_text",
+            "literal",
             "--attribute",
             "href",
         ],
-        vec!["--start", "x", "--end", "y", "--projection", "dom_text"],
+        vec!["--start", "x", "--end", "y", "--projection", "literal"],
         vec!["--start", "x", "--end", "y", "--attribute", "href"],
-        vec!["--css", "p", "--encoding", "utf-8"],
-        vec!["--css", "p", "--audit", "unused"],
-        vec!["--css", "p", "--save-run", "unused"],
-        vec!["--css", "p", "--bundle", "unused", "--receipt", "unused"],
-        vec!["--css", "p", "--url", "https://example.test/"],
-        vec!["--css", "p", "--url-env", "UNUSED"],
+        vec!["--select", "p", "--encoding", "utf-8"],
+        vec!["--select", "p", "--audit", "unused"],
+        vec!["--select", "p", "--save-run", "unused"],
+        vec!["--select", "p", "--bundle", "unused", "--receipt", "unused"],
+        vec!["--select", "p", "--url", "https://example.test/"],
+        vec!["--select", "p", "--url-env", "UNUSED"],
     ] {
         let mut args = vec!["htmlcut", "extract", "--stdin"];
         args.extend(extras);
@@ -52,25 +52,25 @@ fn invalid_options_and_retired_vocabulary_fail_before_consuming_source() {
 }
 
 #[test]
-fn scalar_attribute_regex_and_explicit_empty_selection_have_current_shapes() {
+fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_current_shapes() {
     for (args, source, expected) in [
         (
             vec![
                 "htmlcut",
                 "extract",
                 "--stdin",
-                "--css",
+                "--select",
                 "a",
                 "--read",
-                "attribute:href",
+                "attr:href",
             ],
             b"<a href='next'></a>".as_slice(),
             serde_json::json!(["next"]),
         ),
         (
             vec![
-                "htmlcut", "extract", "--stdin", "--css", "p", "--match", "all", "--min", "0",
-                "--max", "0",
+                "htmlcut", "extract", "--stdin", "--select", "p", "--all", "--min", "0", "--max",
+                "0",
             ],
             b"<div>x</div>".as_slice(),
             serde_json::json!([]),
@@ -80,15 +80,10 @@ fn scalar_attribute_regex_and_explicit_empty_selection_have_current_shapes() {
                 "htmlcut",
                 "extract",
                 "--stdin",
-                "--start",
-                "X",
-                "--end",
-                "Y",
-                "--regex",
-                "--regex-flags",
-                "i",
+                "--plan-json",
+                r#"{"version":6,"select":"p","expect":[{"select":"p","pattern":"(?i)^VALUE$"}]}"#,
             ],
-            b"xvaluey".as_slice(),
+            b"<p>value</p>".as_slice(),
             serde_json::json!(["value"]),
         ),
     ] {
@@ -111,7 +106,7 @@ fn receipt_is_fixed_complete_and_off_success_stdout() {
             "htmlcut",
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--receipt",
             receipt.to_str().unwrap(),
@@ -138,7 +133,7 @@ fn receipt_is_fixed_complete_and_off_success_stdout() {
 fn invalid_record_raw_plan_is_rejected_before_source() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let path = root.path().join("plan.json");
-    std::fs::write(&path,br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"projection":{"kind":"records","fields":[{"name":"text","selector":":scope"}]}}"#).unwrap();
+    std::fs::write(&path,br#"{"version":6,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(
@@ -161,14 +156,11 @@ fn invalid_record_raw_plan_is_rejected_before_source() {
 }
 
 #[test]
-fn descriptions_named_schemas_and_inner_html_use_the_current_dispatch() {
-    for name in ["extract", "run", "inspect", "outline", "describe", "schema"] {
-        let (code, out, _) = invoke(&["htmlcut", "describe", name], b"");
+fn native_help_named_schemas_and_inner_html_use_current_dispatch() {
+    for name in ["extract", "replay", "inspect", "schema"] {
+        let (code, out, _) = invoke(&["htmlcut", name, "--help"], b"");
         assert_eq!(code, 0);
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&out).unwrap()["name"],
-            name
-        );
+        assert!(String::from_utf8_lossy(&out).contains("Usage:"));
     }
     for name in htmlcut_core::SCHEMA_NAMES
         .iter()
@@ -185,10 +177,10 @@ fn descriptions_named_schemas_and_inner_html_use_the_current_dispatch() {
                 "htmlcut",
                 "extract",
                 "--stdin",
-                "--css",
+                "--select",
                 "p",
                 "--read",
-                "inner_html",
+                "inner-html",
                 "--raw"
             ],
             b"<p>A<b>B</b></p>"
@@ -204,7 +196,7 @@ fn descriptions_named_schemas_and_inner_html_use_the_current_dispatch() {
         assert_eq!(invoke(&["htmlcut", "schema", name], b"").0, 2);
     }
     assert_eq!(invoke(&["htmlcut", "describe", "unsupported"], b"").0, 2);
-    assert_eq!(invoke(&["htmlcut", "run", "missing.bundle"], b"").0, 5);
+    assert_eq!(invoke(&["htmlcut", "replay", "missing.bundle"], b"").0, 5);
 }
 
 #[test]
@@ -218,7 +210,7 @@ fn invalid_base_metadata_is_rejected_before_any_source_consumption() {
                     "htmlcut",
                     command,
                     "--stdin",
-                    "--css",
+                    "--select",
                     "p",
                     "--base-url",
                     "relative"

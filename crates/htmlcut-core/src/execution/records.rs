@@ -6,9 +6,8 @@ use std::collections::BTreeMap;
 use scraper::Html;
 use selectors::work_budget::SelectorWorkBudget;
 
-use crate::{
-    CompiledPlan, ExtractionError, FieldCount, FieldSelection, FieldValue, RecordField, Selection,
-};
+use crate::plan::Selection;
+use crate::{CompiledPlan, ExtractionError, FieldCount, FieldMatch, FieldValue, RecordField};
 
 pub(crate) struct RecordExecution<'a> {
     pub(crate) document: &'a Html,
@@ -21,7 +20,7 @@ pub(crate) struct RecordExecution<'a> {
 
 pub(crate) struct RecordOutput {
     pub(crate) rows: Vec<BTreeMap<String, FieldValue>>,
-    pub(crate) counts: Vec<FieldCount>,
+    pub(crate) counts: BTreeMap<String, FieldCount>,
 }
 
 impl RecordExecution<'_> {
@@ -32,26 +31,36 @@ impl RecordExecution<'_> {
         let fields = &self.compiled.fields;
         let mut counts = fields
             .iter()
-            .enumerate()
-            .map(|(index, _)| FieldCount {
-                field_index: index as u32 + 1,
-                candidate_count: 0,
-                projected_count: 0,
-                absent_count: 0,
+            .map(|field| {
+                (
+                    field.name.clone(),
+                    FieldCount {
+                        candidate_count: 0,
+                        projected_count: 0,
+                        absent_count: 0,
+                    },
+                )
             })
-            .collect::<Vec<_>>();
+            .collect::<BTreeMap<_, _>>();
         let mut rows = Vec::with_capacity(roots.len());
         for (row_index, root) in roots.iter().enumerate() {
             let mut row = BTreeMap::new();
             for (index, grammar) in fields.iter().enumerate() {
                 let value = self
-                    .field(root, index, &grammar.field, &mut counts[index])
+                    .field(
+                        root,
+                        index,
+                        &grammar.field,
+                        counts
+                            .get_mut(&grammar.name)
+                            .expect("compiled field aggregate"),
+                    )
                     .map_err(|mut error| {
                         error.row_index = Some(row_index as u32 + 1);
-                        error.field_index = Some(index as u32 + 1);
+                        error.field_name = Some(grammar.name.clone());
                         error
                     })?;
-                row.insert(grammar.field.name.clone(), value);
+                row.insert(grammar.name.clone(), value);
             }
             rows.push(row);
         }
@@ -66,7 +75,7 @@ impl RecordExecution<'_> {
         count: &mut FieldCount,
     ) -> Result<FieldValue, ExtractionError> {
         super::charge(self.budget, 1)?;
-        super::spend_cells(self.cells, 1)?;
+        super::spend_cells(self.cells, 1, self.compiled.plan.limits.max_cells)?;
         let grammar = &self.compiled.fields[index];
         let limits = &self.compiled.plan.limits;
         let candidates = super::matches_scope(
@@ -78,19 +87,28 @@ impl RecordExecution<'_> {
         )?;
         let total = candidates.len() as u32;
         count.candidate_count += u64::from(total); // Aggregate matched candidates are bounded by charged work.
-        if matches!(field.selection, FieldSelection::Optional {}) && total == 0 {
+        if field.match_mode == FieldMatch::Optional && total == 0 {
             count.absent_count += 1;
             return Ok(FieldValue::Absent);
         }
-        let selection = match field.selection {
-            FieldSelection::Single {} | FieldSelection::Optional {} => Selection::Single {},
-            FieldSelection::All { min, max } => Selection::All { min, max },
-            FieldSelection::Nth { index } => Selection::Nth { index },
+        let selection = if field.match_mode == FieldMatch::Optional {
+            Selection::Single
+        } else {
+            field.selection()
         };
-        let positions = super::selected_positions(&selection, total, limits.max_selected)?;
-        let many = matches!(field.selection, FieldSelection::All { .. });
+        let positions = super::selected_positions(&selection, total, limits.max_selected).map_err(
+            |mut error| {
+                // Absent optional fields returned above; their only selection error is ambiguity.
+                if field.match_mode == FieldMatch::Optional {
+                    error.expected_min = Some(0);
+                    error.message = "Optional field matched multiple candidates.".into();
+                }
+                error
+            },
+        )?;
+        let many = field.match_mode == FieldMatch::All;
         if many {
-            super::spend_cells(self.cells, positions.len() as u32)?;
+            super::spend_cells(self.cells, positions.len() as u32, limits.max_cells)?;
         }
         let mut values = Vec::with_capacity(positions.len());
         for position in positions {
@@ -99,13 +117,13 @@ impl RecordExecution<'_> {
                 super::exclusions(self.document, node, &grammar.exclusions, self.budget)?;
             let value = crate::projection::project(
                 node,
-                &field.projection,
+                &field.read,
                 &excluded,
-                &field.transforms,
                 self.base,
                 (limits.max_value_bytes as usize).min(*self.bytes),
                 self.budget,
-            )?;
+            )
+            .map_err(|error| super::projection_failure(error, limits, *self.bytes))?;
             *self.bytes -= value.len();
             values.push(value);
             count.projected_count += 1;

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: OPERATIONS
-updated: "2026-10-05"
+updated: "2026-10-06"
 route:
   keywords: [artifact hygiene, disk usage, cargo target dir, cargo build dir, cargo-mutants, mutation results, gate reports, xtask hygiene, cache cleanup]
   questions: ["where do HTMLCut build artifacts live?", "where are cargo-mutants results stored?", "how do I reclaim HTMLCut disk usage?", "what does cargo xtask hygiene do?", "which artifact roots are managed and disposable?"]
@@ -85,6 +85,12 @@ mounted cache volume instead of the container filesystem. Those env vars are exp
 overrides. `cargo xtask` honors them when a caller deliberately supplies them, while the committed
 `.cargo/config.toml` remains the default repo-owned layout for ordinary host-native commands and
 for hygiene reporting.
+
+Custom overrides must use a dedicated artifact-only parent. Hygiene rejects any artifact root,
+nested coverage/scratch root or inferred container that resolves to the source checkout or one of
+its ancestors, before marking, scanning or deleting paths. This includes `.` overrides, `..`
+components and existing symlink aliases. Configure `CARGO_TARGET_DIR` and `CARGO_BUILD_BUILD_DIR`
+with separate artifact directories; neither cleanup mode can make the source checkout disposable.
 
 ## Commands
 

@@ -43,7 +43,7 @@ fn main_entry_with_runs_the_full_check_flow_and_cleans_semver_scratch() {
                 .borrow()
                 .iter()
                 .any(|spec| *spec == miri_contract_command()),
-            "check flow should include the strict-provenance selector-and-slice Miri proof"
+            "check flow should include the strict-provenance selector-and-reading Miri proof"
         );
         assert_eq!(
             calls

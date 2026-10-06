@@ -51,25 +51,20 @@ pub(crate) fn invalid() -> ExtractionError {
 
 pub(crate) fn write(
     output: &mut impl Write,
-    document: &PreparedDocument,
-    plan: &CompiledPlan,
-    receipt: &ExecutionReceipt,
+    result: &htmlcut_core::ExtractionResult,
 ) -> Result<(), ExtractionError> {
     let manifest = Manifest {
         schema: "htmlcut.bundle".into(),
         version: 1,
-        metadata: Cow::Borrowed(document.snapshot().metadata()),
-        preparation: Cow::Borrowed(document.preparation_limits()),
-        receipt: Cow::Borrowed(receipt),
+        metadata: Cow::Borrowed(result.snapshot().metadata()),
+        preparation: Cow::Borrowed(result.preparation_limits()),
+        receipt: Cow::Borrowed(result.receipt()?),
     };
     let manifest = crate::publication::json_payload(&manifest, MAX_MANIFEST_BYTES)?;
-    let plan = crate::publication::json_payload(plan.plan(), htmlcut_core::MAX_PLAN_BYTES)?;
-    let source = document.snapshot().html().as_bytes();
+    let plan = result.normalized_json().as_bytes();
+    let source = result.snapshot().html().as_bytes();
     let mut archive = tar::Builder::new(output);
-    for (name, bytes) in MEMBERS
-        .iter()
-        .zip([manifest.as_slice(), plan.as_slice(), source])
-    {
+    for (name, bytes) in MEMBERS.iter().zip([manifest.as_slice(), plan, source]) {
         let mut header = tar::Header::new_ustar();
         header.set_mode(0o600);
         header.set_uid(0);
@@ -93,14 +88,22 @@ pub(crate) fn read(path: &Path) -> Result<Replay, ExtractionError> {
     let file = crate::input::open_file(path)?;
     let size = file.metadata().map_err(crate::input::io_failure)?.len();
     if size > MAX_BUNDLE_BYTES as u64 {
-        return Err(crate::input::limit("bundle"));
+        return Err(ExtractionError::resource(
+            "bundle",
+            "bundle_bytes",
+            MAX_BUNDLE_BYTES as u64,
+        ));
     }
     read_from(file, size)
 }
 
 pub(crate) fn read_from<R: Read + Seek>(reader: R, size: u64) -> Result<Replay, ExtractionError> {
     if size > MAX_BUNDLE_BYTES as u64 {
-        return Err(crate::input::limit("bundle"));
+        return Err(ExtractionError::resource(
+            "bundle",
+            "bundle_bytes",
+            MAX_BUNDLE_BYTES as u64,
+        ));
     }
     let failures = RefCell::new(None);
     let observed = ObservedReader {
@@ -221,7 +224,11 @@ fn member<R: Read>(
     }
     let bytes = header.size().map_err(|_| invalid())?;
     if bytes > maximum as u64 {
-        return Err(crate::input::limit("bundle"));
+        return Err(ExtractionError::resource(
+            "bundle",
+            "member_bytes",
+            maximum as u64,
+        ));
     }
     // Each size is bounded above before this arithmetic; the three-entry inventory keeps
     // positions below 56 MiB. Reserve the complete minimum footer before allocating a member.

@@ -33,7 +33,7 @@ fn valid_bytes() -> Vec<u8> {
     let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     let result = document.execute(&plan).unwrap();
     let mut bytes = Vec::new();
-    write(&mut bytes, &document, &plan, &result.receipt).unwrap();
+    write(&mut bytes, &result).unwrap();
     bytes
 }
 #[test]
@@ -107,11 +107,11 @@ fn bundle_writing_reports_header_body_and_footer_failures_as_publication() {
     )
     .unwrap();
     let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
-    let receipt = document.execute(&plan).unwrap().receipt;
+    let result = document.execute(&plan).unwrap();
     let length = valid_bytes().len();
     for maximum in [0, 512, length - 1024] {
         let mut writer = CappedWriter { bytes: 0, maximum };
-        let error = write(&mut writer, &document, &plan, &receipt).unwrap_err();
+        let error = write(&mut writer, &result).unwrap_err();
         assert_eq!(error.code, ErrorCode::Publication);
         assert_eq!(error.code.exit_class(), 5);
         assert!(!serde_json::to_string(&error).unwrap().contains("SECRET"));
@@ -244,7 +244,12 @@ fn a_final_member_with_exact_minimum_footer_is_admitted() {
     let minimal = end.div_ceil(512) * 512 + 1024;
     let replay = read_from(Cursor::new(&bytes), minimal).unwrap();
     assert_eq!(
-        replay.document.execute(&replay.plan).unwrap().receipt,
+        *replay
+            .document
+            .execute(&replay.plan)
+            .unwrap()
+            .receipt()
+            .unwrap(),
         replay.expected
     );
     let truncated = bytes[..(minimal - 1) as usize].to_vec();
@@ -272,9 +277,11 @@ fn bundle_roundtrip_preserves_the_actual_nondefault_preparation_policy() {
     let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     let expected = document.execute(&plan).unwrap();
     let mut bytes = Vec::new();
-    write(&mut bytes, &document, &plan, &expected.receipt).unwrap();
+    write(&mut bytes, &expected).unwrap();
     let replay = read_from(Cursor::new(&bytes), bytes.len() as u64).unwrap();
     assert_eq!(replay.document.preparation_limits(), &policy);
-    assert_eq!(replay.document.execute(&replay.plan).unwrap(), expected);
-    assert_eq!(replay.expected, expected.receipt);
+    let actual = replay.document.execute(&replay.plan).unwrap();
+    assert_eq!(actual.payload(), expected.payload());
+    assert_eq!(actual.receipt().unwrap(), expected.receipt().unwrap());
+    assert_eq!(&replay.expected, expected.receipt().unwrap());
 }

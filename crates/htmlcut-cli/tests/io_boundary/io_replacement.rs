@@ -21,14 +21,20 @@ fn regular_input_replaced_by_fifo_is_refused_for_source_plan_and_run() {
         "{}",
         String::from_utf8_lossy(&compiled.stderr)
     );
-    for role in ["source", "plan", "run"] {
+    for role in ["source", "plan", "replay"] {
         let target = root.path().join(format!("{role}.input"));
         let marker = root.path().join(format!("{role}.marker"));
         std::fs::write(&target, "<p>REGULAR BEFORE OPEN</p>").unwrap();
         let arguments = match role {
-            "source" => vec!["extract", "--file", target.to_str().unwrap(), "--css", "p"],
+            "source" => vec![
+                "extract",
+                "--file",
+                target.to_str().unwrap(),
+                "--select",
+                "p",
+            ],
             "plan" => vec!["extract", "--stdin", "--plan", target.to_str().unwrap()],
-            "run" => vec!["run", target.to_str().unwrap()],
+            "replay" => vec!["replay", target.to_str().unwrap()],
             _ => unreachable!(),
         };
         let mut child = command()

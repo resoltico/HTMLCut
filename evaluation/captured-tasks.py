@@ -9,6 +9,7 @@ import re
 import shutil
 import importlib.metadata
 import platform
+import tomllib
 import sys
 import tiktoken
 from pathlib import Path
@@ -31,6 +32,12 @@ parser.add_argument("--comparators", type=Path, required=True)
 parser.add_argument("--binding", type=Path, required=True)
 parser.add_argument("--release-json", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
+parser.add_argument("--baseline-plans", type=Path, required=True)
+parser.add_argument("--baseline-binding", type=Path, required=True)
+parser.add_argument("--browser-source", type=Path, required=True)
+parser.add_argument("--browser-evidence", type=Path, required=True)
+parser.add_argument("--quote-values", type=Path, required=True)
+parser.add_argument("--quote-baseline-plan", type=Path, required=True)
 evaluation_options = parser.parse_args()
 BINARY = evaluation_options.binary.resolve()
 CAPTURES = evaluation_options.captures.resolve()
@@ -40,9 +47,16 @@ if OUTPUT.is_relative_to(ROOT):
 OUTPUT.mkdir(parents=True, exist_ok=True)
 binding = json.loads(evaluation_options.binding.read_text())
 assert binding["source_commit"] == evaluation_options.source_sha
+assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT).decode().strip() == evaluation_options.source_sha
+assert subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT).decode().strip() == binding["source_tree"]
+assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT), "Candidate evaluation requires clean bound source"
 assert binding["binary_sha256"] == hashlib.sha256(BINARY.read_bytes()).hexdigest()
-assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut 19.2.0"
-assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 19.1.0"
+assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut " + tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+assert subprocess.check_output([str(evaluation_options.baseline_binary.resolve()), "--version"]).decode().strip() == "htmlcut 19.2.0"
+baseline_binding = json.loads(evaluation_options.baseline_binding.read_text())
+assert baseline_binding["source_commit"] == subprocess.check_output(["git", "rev-parse", "v19.2.0^{commit}"], cwd=ROOT).decode().strip()
+assert baseline_binding["htmlcut"]["sha256"] == hashlib.sha256(evaluation_options.baseline_binary.read_bytes()).hexdigest()
+
 manifest = json.loads((CAPTURES / "capture-manifest.json").read_text())
 for entry in manifest["rows"]:
     if "sha256" in entry:
@@ -67,15 +81,14 @@ def soup(name):
     return BeautifulSoup(source(name), "lxml")
 
 
-def value_plan(css, projection=None, fields=None, guards=None):
-    plan = dict(schema="htmlcut.extraction.plan", version=5,
-                strategy=dict(kind="css", selector=css), selection=dict(kind="all", min=1))
+def value_plan(select, read=None, fields=None, expect=None):
+    plan = dict(version=6, select=select, match="all", min=1)
     if fields is not None:
-        plan["projection"] = dict(kind="records", fields=fields)
-    elif projection is not None:
-        plan["projection"] = projection
-    if guards:
-        plan["guards"] = guards
+        plan["fields"] = fields
+    elif read is not None:
+        plan["read"] = read
+    if expect:
+        plan["expect"] = expect
     return plan
 
 
@@ -87,7 +100,15 @@ def execute(name, file, plan, expected, base=None, inline=None):
         command += ["--base-url", base]
     alternative = [sys.executable, str(ROOT / "evaluation/capture_reference.py"), "--task", name,
                    "--fixture", str(CAPTURES / file)]
-    commands = dict(htmlcut=command, python=alternative)
+    historical_plan = (evaluation_options.quote_baseline_plan if name == "rendered-quote-records"
+                       else evaluation_options.baseline_plans / (name + ".plan.json"))
+    historical_command = [str(evaluation_options.baseline_binary.resolve()), "extract", "--file", str(CAPTURES / file), "--plan", str(historical_plan)]
+    if base:
+        historical_command += ["--base-url", base]
+    if not historical_plan.is_file():
+        raise ValueError(f"Missing explicit historical task plan: {historical_plan}")
+    bs4_command = [sys.executable, str(ROOT / "evaluation/capture_reference_bs4.py"), name, str(CAPTURES / file)]
+    commands = dict(htmlcut=command, baseline=historical_command, python=alternative, bs4=bs4_command)
     if inline is not None:
         inline_command = [str(BINARY), "extract", "--file", str(CAPTURES / file), *inline]
         if base:
@@ -103,12 +124,19 @@ def execute(name, file, plan, expected, base=None, inline=None):
     canonical = (json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
     assert raw == canonical, (name, "mandatory output overhead or wrong canonical encoding")
     (OUTPUT / (name + ".stdout.json")).write_bytes(raw)
-    rows.append(dict(task=name, source=file, plan=plan, command=command,
+    rows.append(dict(task=name, source=str(file), plan=plan, command=command, commands=commands,
+                     baseline_plan_sha256=hashlib.sha256(historical_plan.read_bytes()).hexdigest(),
                      correctness="complete independent equality", values=answer,
                      output_bytes=len(raw), output_tokens=len(encoder.encode(raw.decode())),
                      canonical_requested_tokens=len(encoder.encode(canonical.decode())), mandatory_envelope_tokens=0,
                      plan_tokens=len(encoder.encode(path.read_text())), timings=measured,
                      reference_command=alternative, reference_script_tokens=len(encoder.encode((ROOT / "evaluation/capture_reference.py").read_text()))))
+    candidate_request = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    historical_request = json.dumps(json.loads(historical_plan.read_text()), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    request_tokens = dict(candidate=len(encoder.encode(candidate_request)), baseline=len(encoder.encode(historical_request)))
+    rows[-1]["request_tokens"] = request_tokens
+    if name in ("catalogue-records", "news-score-records", "rendered-quote-records"):
+        assert request_tokens["candidate"] < request_tokens["baseline"], (name, request_tokens)
     if inline is not None:
         import shlex
         rows[-1]["inline_authoring"] = dict(command=inline_command,
@@ -116,9 +144,8 @@ def execute(name, file, plan, expected, base=None, inline=None):
             scope="Invocation tokens recorded separately from plan JSON and optional setup/evidence; absolute paths are part of this concrete command")
     content = source(file)
     rows[-1]["python_warm_parse_map"] = warm(lambda: reference(name, content), expected)
-    if name != "exact-inline-source":
-        document = lxml_html.fromstring(content)
-        rows[-1]["python_reused_document_map"] = warm(lambda: from_document(name, document), expected)
+    document = lxml_html.fromstring(content)
+    rows[-1]["python_reused_document_map"] = warm(lambda: from_document(name, document), expected)
     receipt = OUTPUT / (name + ".receipt.json")
     evidence_command = command + ["--receipt", str(receipt), "--overwrite"]
     assert subprocess.check_output(evidence_command) == raw
@@ -131,20 +158,18 @@ def execute(name, file, plan, expected, base=None, inline=None):
 
 
 catalogue = reference("catalogue-records", source("books.html"))
-fields = [dict(name="title", selector="h3 a", projection=dict(kind="attribute", name="title")),
-          dict(name="price", selector=".price_color", transforms=[dict(kind="normalize_whitespace")]),
-          dict(name="stock", selector=".availability", transforms=[dict(kind="normalize_whitespace")]),
-          dict(name="rating", selector=".star-rating", projection=dict(kind="attribute", name="class")),
-          dict(name="url", selector="h3 a", projection=dict(kind="attribute", name="href"),
-               transforms=[dict(kind="resolve_urls")])]
+fields = dict(title=dict(select="h3 a", read="attr:title"),
+              price=dict(select=".price_color"), stock=dict(select=".availability"),
+              rating=dict(select=".star-rating", read="attr:class"),
+              url=dict(select="h3 a", read="url:href"))
 actual = execute("catalogue-records", "books.html", value_plan("article.product_pod", fields=fields),
                  catalogue, "https://books.toscrape.com/", inline=[
-                     "--css", "article.product_pod", "--match", "all",
-                     "--field", "title", "h3 a", "attribute:title",
-                     "--field", "price", ".price_color", "normalized_text",
-                     "--field", "stock", ".availability", "normalized_text",
-                     "--field", "rating", ".star-rating", "attribute:class",
-                     "--field", "url", "h3 a", "resolved_attribute:href"])
+                     "--select", "article.product_pod", "--all",
+                     "--field", "title", "h3 a", "attr:title",
+                     "--field", "price", ".price_color", "text",
+                     "--field", "stock", ".availability", "text",
+                     "--field", "rating", ".star-rating", "attr:class",
+                     "--field", "url", "h3 a", "url:href"])
 ratings = dict(One=1, Two=2, Three=3, Four=4, Five=5)
 shortlist = lambda data: [dict(book, stock=book["stock"].strip(), rating=ratings[book["rating"].split()[-1]])
                          for book in data if float(book["price"][1:]) <= 25 and ratings[book["rating"].split()[-1]] >= 3]
@@ -153,7 +178,7 @@ rows[-1]["shortlist"] = shortlist(actual)
 rows[-1]["caller_mapping"] = "Primitive price/rating/stock mapping only; no caller HTML reparsing"
 
 titles = reference("catalogue-titles", source("books.html"))
-execute("catalogue-titles", "books.html", value_plan("h3 a", dict(kind="attribute", name="title")), titles, inline=["--css", "h3 a", "--match", "all", "--read", "attribute:title"])
+execute("catalogue-titles", "books.html", value_plan("h3 a", "attr:title"), titles, inline=["--select", "h3 a", "--all", "--read", "attr:title"])
 title_command = rows[-1]["command"]
 reference_command = rows[-1]["reference_command"]
 title_commands = {
@@ -170,37 +195,31 @@ rows.append(dict(task="paired-catalogue-title-tools", commands=title_commands, t
                  correctness="all four tools compared in each randomized trial on the same frozen file"))
 
 news = reference("news-records", source("news.html"))
-execute("news-records", "news.html", value_plan(".titleline", fields=[
-    dict(name="title", selector=":scope > a"),
-    dict(name="url", selector=":scope > a", projection=dict(kind="attribute", name="href"),
-         transforms=[dict(kind="resolve_urls")])]), news, "https://news.ycombinator.com/")
-score_plan = value_plan("tr.athing", fields=[
-    dict(name="title", selector=".titleline > a"),
-    dict(name="url", selector=".titleline > a", projection=dict(kind="attribute", name="href"),
-         transforms=[dict(kind="resolve_urls")]),
-    dict(name="score", selector=":scope + tr .score", selection=dict(kind="optional"),
-         transforms=[dict(kind="normalize_whitespace")])])
-score_plan["projection"]["following_siblings"] = 1
+execute("news-records", "news.html", value_plan(".titleline", fields=dict(
+    title=dict(select=":scope > a", read="literal"),
+    url=dict(select=":scope > a", read="url:href"))), news, "https://news.ycombinator.com/")
+score_plan = value_plan("tr.athing", fields=dict(
+    title=dict(select=".titleline > a", read="literal"),
+    url=dict(select=".titleline > a", read="url:href"),
+    score=dict(select=":scope + tr .score", match="optional")))
+score_plan["following_siblings"] = 1
 execute("news-score-records", "news.html", score_plan,
         reference("news-score-records", source("news.html")), "https://news.ycombinator.com/")
-wiki = reference("wiki-population-records", source("wiki-countries.html"))
-execute("wiki-population-records", "wiki-countries.html", value_plan("table.wikitable tbody tr:has(td)", fields=[
-    dict(name="country", selector="th, td:nth-child(1)", transforms=[dict(kind="normalize_whitespace")]),
-    dict(name="pop2022", selector="td:nth-child(2)", transforms=[dict(kind="normalize_whitespace")]),
-    dict(name="pop2023", selector="td:nth-child(3)", transforms=[dict(kind="normalize_whitespace")]),
-    dict(name="change", selector="td:nth-child(4)", transforms=[dict(kind="normalize_whitespace")])]), wiki)
+wiki_capture = next(row for row in manifest["rows"] if row["file"] == "wiki-countries.html")
+rows.append(dict(task="public-wikipedia-acquisition", acquisition=wiki_capture,
+                 correctness="not evaluated: frozen acquisition failed", htmlcut_success=False))
 details = reference("product-details", source("book-details.html"))
-execute("product-details", "book-details.html", value_plan(".table.table-striped tr", fields=[
-    dict(name="label", selector="th"), dict(name="value", selector="td")]), details)
+execute("product-details", "book-details.html", value_plan(".table.table-striped tr", fields=dict(
+    label=dict(select="th", read="literal"), value=dict(select="td", read="literal"))), details)
 price = reference("guarded-product-price", source("book-details.html"))[0]
-execute("guarded-product-price", "book-details.html", value_plan(".product_main .price_color", guards=[
-    dict(scope="document", selector=".product_main h1", min=1, max=1, read=dict(kind="dom_text"),
-         predicate=dict(kind="exact", value="A Light in the Attic"))]), [price])
+price_plan = dict(version=6, select=".product_main .price_color", read="literal", expect=[
+    dict(select=".product_main h1", read="literal", equals="A Light in the Attic")])
+execute("guarded-product-price", "book-details.html", price_plan, [price])
 
 css = 'dl:has(> dt[id="pathlib.PurePath.full_match"])'
 technical = soup("python-pathlib.html").select_one(css)
-execute("technical-literal", "python-pathlib.html", value_plan(css), [technical.get_text()])
-plan = value_plan(css, dict(kind="markdown"))
+execute("technical-literal", "python-pathlib.html", value_plan(css, "literal"), [technical.get_text()])
+plan = value_plan(css, "markdown")
 path = OUTPUT / "technical-markdown.plan.json"
 path.write_text(json.dumps(plan))
 result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "python-pathlib.html"), "--plan", str(path)], check=True, capture_output=True)
@@ -224,17 +243,21 @@ rows.append(dict(task="technical-markdown", markdown=markdown, code_payloads=cod
                  comparator="trafilatura 2.3.0", comparator_markdown=reading,
                  scope="Declared selected subsection versus heuristic reading of that same subsection; formatting conventions differ"))
 
-browser = json.loads((CAPTURES / "browser-quotes.json").read_text())["values"]
-execute("rendered-quote-records", "quotes-rendered-elements.html", value_plan(".quote", fields=[
-    dict(name="text", selector=".text"), dict(name="author", selector=".author"),
-    dict(name="tags", selector=".tag", selection=dict(kind="all", min=0))]), browser)
+browser = json.loads(evaluation_options.quote_values.read_text())
+quote_plan = value_plan(".quote", fields=dict(
+    text=dict(select=".text"), author=dict(select=".author"),
+    tags=dict(select=".tag", match="all", min=0)))
+quote_plan.update(min=10, max=10)
+execute("rendered-quote-records", evaluation_options.browser_source.resolve(), quote_plan, browser)
 raw = source("quotes-unrendered.html")
 inline = raw.split("var data = ", 1)[1].split(";\n    for", 1)[0]
 mapped = [dict(text=q["text"], author=q["author"]["name"], tags=q["tags"]) for q in json.loads(inline)]
 assert mapped == browser
-plan = dict(schema="htmlcut.extraction.plan", version=5, strategy=dict(kind="slice", start=dict(kind="literal", value="var data = "), end=dict(kind="literal", value=";\n    for")), projection=dict(kind="source"))
-execute("exact-inline-source", "quotes-unrendered.html", plan, [inline])
-result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "quotes-unrendered.html"), "--css", ".quote"], capture_output=True)
+rows.append(dict(task="exact-inline-source", candidate_supported=False,
+                 alternative="Caller-owned explicit string boundary and JSON decoding",
+                 exact_initializer_sha256=hashlib.sha256(inline.encode()).hexdigest(),
+                 values=mapped, correctness="Complete direct-JSON values equal independent rendered records"))
+result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "quotes-unrendered.html"), "--select", ".quote"], capture_output=True)
 assert result.returncode == 3 and not result.stdout
 rows.append(dict(task="unrendered-javascript", expected_boundary="no script execution", exit_code=result.returncode))
 
@@ -249,12 +272,12 @@ original_source.unlink()
 original_plan.unlink()
 moved = OUTPUT / "moved-catalogue.htmlcut.tar"
 bundle.replace(moved)
-replay = subprocess.run([str(BINARY), "run", str(moved)], check=True, capture_output=True)
+replay = subprocess.run([str(BINARY), "replay", str(moved)], check=True, capture_output=True)
 assert replay.stdout == result.stdout
 rows.append(dict(task="moved-public-catalogue-replay", all_values_equal=True, original_inputs_deleted=True, original_immutable_capture_retained=True, bundle_bytes=moved.stat().st_size))
 inspections = []
-for version, executable in [(17, evaluation_options.baseline_binary.resolve()), (18, BINARY)]:
-    command = [str(executable), "inspect", "--file", str(CAPTURES / "books.html"), "--css", "article.product_pod", "--samples", "3"]
+for version, executable, select_flag in [("19.2.0", evaluation_options.baseline_binary.resolve(), "--css"), ("20.0.0", BINARY, "--select")]:
+    command = [str(executable), "inspect", "--file", str(CAPTURES / "books.html"), select_flag, "article.product_pod", "--samples", "3"]
     result = subprocess.run(command, check=True, capture_output=True)
     (OUTPUT / (str(version) + "-inspection.json")).write_bytes(result.stdout)
     answer = json.loads(result.stdout)
@@ -262,7 +285,7 @@ for version, executable in [(17, evaluation_options.baseline_binary.resolve()), 
     assert not any(field in result.stdout.decode() for field in ("cursor", "handle", "propose"))
     inspections.append(dict(version=version, binary_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
                             command=command, bytes=len(result.stdout), tokens=len(encoder.encode(result.stdout.decode()))))
-rows.append(dict(task="inspection-size", measurements=inspections, scope="Same immutable catalogue and same complete count/three requested row samples in published v17 and current v18; token counts are proxies, with no assumed reduction"))
+rows.append(dict(task="inspection-size", measurements=inspections, scope="Same immutable catalogue and same complete count/three requested row samples in published v19.2 and current v20 candidate; token counts are proxies, with no assumed reduction"))
 release_json = evaluation_options.release_json.resolve()
 release_values = reference("release-assets", release_json.read_bytes().decode("utf-8"))
 api_commands = {
@@ -275,16 +298,18 @@ rows.append(dict(task="release-assets", values=release_values, commands=api_comm
                  htmlcut_used=False, reason="The caller API already provides structured JSON; no HTML extraction is needed"))
 # Inspect setup artifacts only when actually requested; their proxy cost remains separate from data.
 setup = {}
-for name, command in [("index", [str(BINARY), "describe"]), ("extract", [str(BINARY), "describe", "extract"]),
+for name, command in [("index", [str(BINARY), "--help"]), ("extract", [str(BINARY), "extract", "--help"]),
                       ("plan-schema", [str(BINARY), "schema", "htmlcut.extraction.plan"])]:
     data = subprocess.check_output(command)
     (OUTPUT / (name + ".json")).write_bytes(data)
     setup[name] = dict(command=command, bytes=len(data), tokens=len(encoder.encode(data.decode())))
 report = dict(binary_sha256=hashlib.sha256(BINARY.read_bytes()).hexdigest(),
-              source=evaluation_options.source_sha, rows=rows, binding=binding, captures=manifest, setup=setup,
+              source=evaluation_options.source_sha, rows=rows, binding=binding,
+              baseline_binding=baseline_binding,
+              browser_inputs={name: dict(path=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for name,path in (("fragment",evaluation_options.browser_source),("method",evaluation_options.browser_evidence),("values",evaluation_options.quote_values))}, captures=manifest, setup=setup,
               evaluator_sources={name: hashlib.sha256((ROOT / "evaluation" / name).read_bytes()).hexdigest()
-                  for name in ("captured-tasks.py", "capture_reference.py", "measurements.py")},
-              browser_evidence=json.loads((CAPTURES / "browser-quotes.json").read_text()),
+                  for name in ("captured-tasks.py", "capture_reference.py", "capture_reference_bs4.py", "measurements.py")},
+              browser_evidence=json.loads(evaluation_options.browser_evidence.read_text()),
               comparator_binaries={name: dict(path=str(evaluation_options.comparators / name),
                   sha256=hashlib.sha256((evaluation_options.comparators / name).read_bytes()).hexdigest(),
                   version=subprocess.check_output([str(evaluation_options.comparators / name), "--version"]).decode().strip()) for name in ("htmlq", "pup")},

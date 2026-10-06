@@ -16,12 +16,15 @@ fn file_stdin_and_inline_library_have_equal_deterministic_results() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "#amount",
         ],
         b"",
     );
-    let stdin = invoke(&["extract", "--stdin", "--css", "#amount"], html.as_bytes());
+    let stdin = invoke(
+        &["extract", "--stdin", "--select", "#amount"],
+        html.as_bytes(),
+    );
     assert!(file.status.success());
     assert!(stdin.status.success());
     assert_eq!(file.stdout, stdin.stdout);
@@ -35,7 +38,7 @@ fn file_stdin_and_inline_library_have_equal_deterministic_results() {
             .unwrap();
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&file.stdout).unwrap(),
-        serde_json::to_value(prepared.execute(&compiled).unwrap().data).unwrap()
+        serde_json::to_value(prepared.execute(&compiled).unwrap().data()).unwrap()
     );
     let missing =
         htmlcut_core::CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css("aside").unwrap())
@@ -46,7 +49,7 @@ fn file_stdin_and_inline_library_have_equal_deterministic_results() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "aside",
         ],
         b"",

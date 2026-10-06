@@ -38,6 +38,7 @@ fn publication_buffer_flush_never_resets_serialization_capacity() {
     let mut buffer = Buffer {
         bytes: Vec::new(),
         maximum: 4,
+        limit_exceeded: false,
     };
     buffer.write_all("éé".as_bytes()).unwrap();
     buffer.flush().unwrap();
@@ -55,10 +56,10 @@ fn receipts_are_complete_or_error_at_each_serialization_boundary() {
     )
     .unwrap();
     let result = source.execute(&plan).unwrap();
-    let expected = json_stream(&result.receipt, 4096).unwrap();
+    let expected = json_stream(result.receipt().unwrap(), 4096).unwrap();
     assert!(!String::from_utf8_lossy(&expected).contains("private body"));
     for maximum in 0..=expected.len() + 1 {
-        let actual = json_stream(&result.receipt, maximum);
+        let actual = json_stream(result.receipt().unwrap(), maximum);
         if maximum < expected.len() {
             assert_eq!(actual.unwrap_err().code, ErrorCode::ResourceLimit);
         } else {
@@ -84,7 +85,10 @@ fn complete_data_payload_and_framing_have_independent_exact_bounds() {
             Err(serde::ser::Error::custom("SECRET"))
         }
     }
-    assert!(json_payload(&Fault, 100).is_err());
+    assert_eq!(
+        json_payload(&Fault, 100).unwrap_err().code,
+        ErrorCode::InternalInvariant
+    );
 }
 
 #[test]
@@ -140,18 +144,4 @@ fn bare_output_names_resolve_in_the_actual_working_directory() {
             .unwrap()
             .join(name),
     );
-}
-
-#[test]
-fn complete_payload_caps_each_reserve_exactly_one_framing_lf() {
-    assert_eq!(
-        MAX_OUTPUT_BYTES.checked_sub(htmlcut_core::MAX_DATA_BYTES),
-        Some(1)
-    );
-    assert_eq!(
-        MAX_RECEIPT_BYTES.checked_sub(htmlcut_core::MAX_RECEIPT_BYTES),
-        Some(1)
-    );
-    assert_eq!(htmlcut_core::MAX_DATA_BYTES, 67_108_864);
-    assert_eq!(htmlcut_core::MAX_RECEIPT_BYTES, 4_194_304);
 }

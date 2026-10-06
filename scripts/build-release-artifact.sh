@@ -167,7 +167,7 @@ Create a tiny fixture and extract one link:
 
 \`\`\`bash
 printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-${binary_command} extract --file ./page.html --css 'article a.more' --read attribute:href --raw
+${binary_command} extract --file ./page.html --select 'article a.more' --read attr:href --raw
 \`\`\`
 
 ## Source availability and licensing

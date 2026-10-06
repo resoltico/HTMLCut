@@ -30,6 +30,7 @@ fn html_buffer_flush_preserves_bytes_and_the_remaining_capacity() {
     let mut buffer = HtmlBuffer {
         bytes: Vec::new(),
         maximum: 4,
+        limit_exceeded: false,
     };
     buffer.write_all(b"<br>").unwrap();
     buffer.flush().unwrap();
@@ -56,11 +57,8 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     let budget = SelectorWorkBudget::new(2);
     let value = project(
         root,
-        &ValueProjection::Attribute {
-            name: "data-empty".into(),
-        },
+        &Reading::Attribute("data-empty".into()),
         &HashSet::new(),
-        &[],
         None,
         1024,
         &budget,
@@ -84,4 +82,74 @@ fn an_empty_markdown_destination_still_costs_one_processing_unit() {
             assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
         }
     }
+}
+
+#[test]
+fn filtered_html_work_exhaustion_is_distinct_from_the_value_byte_bound() {
+    let document = scraper::Html::parse_document("<p>A</p>");
+    let root = document
+        .select(&scraper::Selector::parse("p").unwrap())
+        .next()
+        .unwrap();
+    let budget = SelectorWorkBudget::new(1);
+    let error = project(
+        root,
+        &Reading::OuterHtml,
+        &HashSet::new(),
+        None,
+        1024,
+        &budget,
+    )
+    .unwrap_err();
+    assert_eq!(
+        (error.resource_counter.as_deref(), error.configured_bound),
+        (Some("max_work"), Some(1))
+    );
+}
+
+#[test]
+fn literal_input_and_output_each_charge_only_their_new_utf8_byte_blocks() {
+    for value in [
+        "a".repeat(63),
+        "a".repeat(64),
+        "a".repeat(65),
+        format!("{}é", "a".repeat(63)),
+    ] {
+        let html = scraper::Html::parse_document(&format!("<p>{value}</p>"));
+        let root = html
+            .select(&scraper::Selector::parse("p").unwrap())
+            .next()
+            .unwrap();
+        let budget = SelectorWorkBudget::new(1000);
+        let (actual, complete) = text(root, &HashSet::new(), false, 1024, None, &budget).unwrap();
+        assert_eq!(actual, value);
+        assert!(complete);
+        // Open/close p and its one text node, plus independent input and output byte blocks.
+        assert_eq!(
+            1000 - budget.remaining(),
+            4 + 2 * value.as_bytes().chunks(64).len() as u32
+        );
+    }
+}
+
+#[test]
+fn structural_boundary_before_nonwhitespace_pre_content_is_retained() {
+    let html = scraper::Html::parse_document(
+        "<article><p>before</p><pre>code</pre><p>after</p></article>",
+    );
+    let root = html
+        .select(&scraper::Selector::parse("article").unwrap())
+        .next()
+        .unwrap();
+    let (actual, complete) = text(
+        root,
+        &HashSet::new(),
+        true,
+        1024,
+        None,
+        &SelectorWorkBudget::new(1000),
+    )
+    .unwrap();
+    assert_eq!(actual, "before code after");
+    assert!(complete);
 }

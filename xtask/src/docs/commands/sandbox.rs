@@ -26,14 +26,27 @@ const README_FIXTURE_HTML: &str = r#"<!doctype html>
       <div class="card">Card alpha</div>
       <div class="card">Card beta</div>
       <p><a class="more" href="../guide.html">Read more</a></p>
-      <pre>START::Regex slice payload::END</pre>
+      <pre>--disable-gil
+PYTHON_GIL</pre>
     </article>
   </main>
 </body>
 </html>
 "#;
 
-const SANDBOX_FIXTURE_FILES: &[&str] = &["page.html", "page name.html", "fixture.html"];
+const SANDBOX_FIXTURES: &[(&str, &str)] = &[
+    ("page.html", README_FIXTURE_HTML),
+    ("page name.html", README_FIXTURE_HTML),
+    ("fixture.html", README_FIXTURE_HTML),
+    (
+        "quotes.html",
+        "<section><article class='quote'><span class='text'>First quote</span><span class='author'>Ada</span><span class='tag'>tag</span></article><article class='quote'><span class='text'>Second quote</span></article></section>",
+    ),
+    (
+        "table.html",
+        "<table><thead><tr><th>Name</th><th>Price</th></tr></thead><tbody><tr><td>Tea</td><td>5</td></tr><tr><td>Coffee</td><td>7</td></tr><tr><td>Milk</td><td>3</td></tr></tbody></table>",
+    ),
+];
 
 pub(super) fn prepare_sandbox(
     display_path: &str,
@@ -90,8 +103,8 @@ impl ExampleSandbox {
     }
 
     fn seed(&self) -> DynResult<()> {
-        for file_name in SANDBOX_FIXTURE_FILES {
-            fs::write(self.root.path().join(file_name), README_FIXTURE_HTML)?;
+        for (file_name, contents) in SANDBOX_FIXTURES {
+            fs::write(self.root.path().join(file_name), contents)?;
         }
 
         let plan = htmlcut_core::ExtractionPlan::css("#amount")

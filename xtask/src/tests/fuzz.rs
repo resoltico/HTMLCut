@@ -9,7 +9,6 @@ fn fuzz_smoke_targets_stay_in_the_canonical_inventory_order() {
         &[
             "parse_document_bytes",
             "selector_parsing",
-            "slice_boundaries",
             "extraction_request_building",
             "selector_inspection",
             "relational_selector_budget",

@@ -118,18 +118,24 @@ fn readonly_stdout_never_reports_nonempty_delivery_success() {
     let sink = root.path().join("sink.txt");
     std::fs::write(&sink, "KEEP").unwrap();
     let routes = vec![
-        vec!["extract", "--file", source.to_str().unwrap(), "--css", "p"],
         vec![
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
+            "p",
+        ],
+        vec![
+            "extract",
+            "--file",
+            source.to_str().unwrap(),
+            "--select",
             "p",
             "--raw",
         ],
         vec!["--help"],
         vec!["--version"],
-        vec!["describe", "extract"],
+        vec!["extract", "--help"],
         vec!["schema", "htmlcut.extraction.plan"],
     ];
     for args in routes {
@@ -155,7 +161,7 @@ fn readonly_stdout_never_reports_nonempty_delivery_success() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "p",
             "--raw",
             "--output",
@@ -172,7 +178,7 @@ fn readonly_stdout_never_reports_nonempty_delivery_success() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "p",
             "--raw",
         ])
@@ -196,9 +202,9 @@ fn special_file_paths_fail_without_waiting_for_a_writer() {
             .success()
     );
     for args in [
-        vec!["extract", "--file", fifo.to_str().unwrap(), "--css", "p"],
+        vec!["extract", "--file", fifo.to_str().unwrap(), "--select", "p"],
         vec!["extract", "--stdin", "--plan", fifo.to_str().unwrap()],
-        vec!["run", fifo.to_str().unwrap()],
+        vec!["replay", fifo.to_str().unwrap()],
     ] {
         let mut child = command()
             .args(&args)
@@ -232,7 +238,7 @@ fn unreadable_stdin_and_undeliverable_diagnostics_are_real_failures() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let sink = root.path().join("sink");
     let output = command()
-        .args(["extract", "--stdin", "--css", "p"])
+        .args(["extract", "--stdin", "--select", "p"])
         .stdin(File::create(&sink).unwrap())
         .output()
         .unwrap();
@@ -264,7 +270,7 @@ fn inherited_closed_descriptors_are_repaired_by_the_pinned_runtime() {
         ("exec 1>&-; exec \"$@\"", vec!["--version"], 0),
         (
             "exec 0<&-; exec \"$@\"",
-            vec!["extract", "--stdin", "--css", "p"],
+            vec!["extract", "--stdin", "--select", "p"],
             3,
         ),
         ("exec 2>&-; exec \"$@\"", vec!["--UNDECLARED_SECRET"], 2),
@@ -274,7 +280,7 @@ fn inherited_closed_descriptors_are_repaired_by_the_pinned_runtime() {
                 "extract",
                 "--file",
                 source.to_str().unwrap(),
-                "--css",
+                "--select",
                 "p",
                 "--raw",
             ],
@@ -325,14 +331,20 @@ fn descriptor_closed_at_delivery_is_not_sanitized_into_success() {
     for args in [
         vec!["--version"],
         vec!["--help"],
-        vec!["describe", "extract"],
+        vec!["extract", "--help"],
         vec!["schema", "htmlcut.extraction.plan"],
-        vec!["extract", "--file", source.to_str().unwrap(), "--css", "p"],
         vec![
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
+            "p",
+        ],
+        vec![
+            "extract",
+            "--file",
+            source.to_str().unwrap(),
+            "--select",
             "p",
             "--raw",
         ],
@@ -362,7 +374,7 @@ fn a_reader_disappearing_after_a_real_prefix_prevents_delivery_success() {
             "extract",
             "--file",
             source.to_str().unwrap(),
-            "--css",
+            "--select",
             "p",
             "--raw",
         ])

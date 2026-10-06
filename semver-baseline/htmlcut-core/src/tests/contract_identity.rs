@@ -182,6 +182,7 @@ fn t05_every_named_schema_is_retrievable_and_has_its_expected_public_shape() {
         ),
         ("htmlcut.extraction.error", "ExtractionError", "code"),
         ("htmlcut.inspection", "InspectionResult", "count"),
+        ("htmlcut.outline", "OutlineResult", "groups"),
         (
             "htmlcut.inspection.identifiers",
             "IdentifierInspectionResult",

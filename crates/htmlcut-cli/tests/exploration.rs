@@ -2,17 +2,26 @@
 mod support;
 use support::invoke;
 #[test]
-fn targeted_inspection_requires_a_selector_and_has_no_retired_modes() {
+fn inspection_mode_flags_are_applicable_and_retired_modes_are_rejected() {
     for args in [
-        vec!["inspect", "--stdin"],
-        vec!["inspect", "--stdin", "--css", "p", "--samples", "0"],
-        vec!["inspect", "--stdin", "--css", "p", "--samples", "11"],
-        vec!["inspect", "--stdin", "--css", "p", "--cursor", "obsolete"],
-        vec!["inspect", "--stdin", "--css", "p", "--propose", "obsolete"],
+        vec!["inspect", "--stdin", "--samples", "1"],
+        vec!["inspect", "--stdin", "--select", "p", "--samples", "0"],
+        vec!["inspect", "--stdin", "--select", "p", "--samples", "11"],
+        vec![
+            "inspect", "--stdin", "--select", "p", "--cursor", "obsolete",
+        ],
         vec![
             "inspect",
             "--stdin",
-            "--css",
+            "--select",
+            "p",
+            "--propose",
+            "obsolete",
+        ],
+        vec![
+            "inspect",
+            "--stdin",
+            "--select",
             "p",
             "--preview-plan",
             "obsolete",

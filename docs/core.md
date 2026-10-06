@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: CORE
 updated: "2026-10-05"
 route:
@@ -10,53 +10,40 @@ route:
 
 # Core API
 
-Supply exact UTF-8 bytes and explicit metadata. `SourceSnapshot` preserves source spelling/BOM/CRLF; the parsed DOM follows HTML rules. Compile plans once and reuse them. `PreparedDocument` parses lazily at most once, including cached preparation failures. Every execution receives fresh shared counters. Parser/DOM types are private.
+`SourceSnapshot` accepts immutable UTF-8 source plus explicit metadata and preserves full accepted bytes, including BOM/CRLF/NUL. `PreparedDocument` binds a validated preparation policy and lazily prepares one original DOM, caching success or failure. `CompiledPlan` validates current queries once and retains their bounded normalized JSON; each execution receives fresh shared work/cell/byte allowances. Parser types are private.
 
 ```rust
-use htmlcut_core::{CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument,
-    Projection, ValueProjection, SnapshotMetadata, SourceSnapshot};
+use htmlcut_core::{CompiledPlan, ExtractionPlan, Reading, PreparationLimits,
+    PreparedDocument, SnapshotMetadata, SourceSnapshot};
 let document = PreparedDocument::new(
     SourceSnapshot::new("<p id='amount'>EUR 180</p><a href='next'>Link</a>", SnapshotMetadata::default())?,
     PreparationLimits::default())?;
 let amount = CompiledPlan::compile(&ExtractionPlan::css("#amount")?)?;
 let mut link = ExtractionPlan::css("a")?;
-link.projection = Projection::Value(ValueProjection::Attribute { name: "href".into() });
+link.read = Some(Reading::Attribute("href".into()));
 let link = CompiledPlan::compile(&link)?;
-assert_eq!(document.execute(&amount)?.data.as_values().unwrap(), ["EUR 180"]);
-assert_eq!(document.execute(&link)?.data.as_values().unwrap(), ["next"]);
+assert_eq!(document.execute(&amount)?.data().as_values().unwrap(), ["EUR 180"]);
+assert_eq!(document.execute(&link)?.data().as_values().unwrap(), ["next"]);
 # Ok::<(), htmlcut_core::ExtractionError>(())
 ```
 
-`ExtractionResult` separates bare `ExtractionData` from `ExecutionReceipt`. Values are strings; records contain named `FieldValue` strings, explicit absence/null, or string arrays. Data serialization is only the requested array. Empty values/records both serialize as `[]`; the typed enum and receipt data kind preserve their interpretation. Record maps serialize in key order, while rows and all-valued fields retain original order.
+`ExtractionResult::data()` and `payload()` borrow immutable values/canonical JSON without framing LF. `into_data()` consumes the result and drops cached encoding/evidence. Empty Values and Records both encode as `[]`; `data_kind()` and receipts retain their distinction. Fields serialize in lexical name order; rows and many-valued strings retain original order. Results capture actual source/query/metadata/preparation and complete counts. Receipt methods accept no replacement document or query.
 
-## Records and assumptions
+## Records and expectations
 
-A CSS records projection has 1–64 ordered `RecordField` declarations with unique ASCII names (`[A-Za-z_][A-Za-z0-9_]{0,63}`). Each has a selector, scalar projection, cardinality, exclusions and transforms. No nested records, source fields, numeric/date mapping, sorting, joins or expressions occur.
+Root `Match` permits one/all/nth. `FieldMatch` also permits optional. `RecordField::css` constructs a required text field; fields are a map keyed by validated ASCII names of at most 64 bytes. There are 1–64 fields, no nested records or source-slicing fields. Required means exactly one node, optional means null on zero/string on one/failure on more, all means an array with default minimum one, and nth means one positive one-based position. A matched node lacking a requested attribute fails even under optional. Empty attributes/text are values. All/min=0 deliberately permits empty arrays.
 
-Root selection is required single by default, explicit all with min/max, or positive one-based nth. Fields additionally allow optional: zero nodes produces `null`, one produces a string, more than one fails. Missing attributes on matched nodes always fail; present empty strings remain valid. All-valued fields return arrays, with zero allowed only by explicit minimum zero. Nth is positional, not semantic identity.
+A record forest contains its selected anchor and exactly `following_siblings` additional element-sibling subtrees (default 0, maximum 63). Text/comments do not count. Missing siblings fail; absorbing any root candidate, even an unselected nth candidate, fails. Nested candidates already within the anchor retain their supported behavior. `:scope` denotes the original anchor. Payload is restricted to the forest while selector predicates can inspect original context under the shared budget. Rows are never cloned/reparsed.
 
-A records projection has `following_siblings` (default 0, maximum 63). Its scope contains the selected anchor plus exactly that many following element-sibling subtrees. Text/comments do not count as siblings. Missing siblings fail with `missing_row_sibling`; an added subtree containing any root candidate, including an unselected nth candidate, fails with `overlapping_row_scope`. Both identify the row. Nested candidates already inside the anchor remain supported.
+Expectations use document or selected scope, count bounds (default 1/1), and at most one whole-value `equals` or bounded Rust regex-search `pattern`. Inline flags/anchors control regex matching. Count-only expectations reject a supplied reading and do not project values; use CSS `[attr]` for presence. Predicate readings permit text/literal/attr and default to text. They inspect original content before exclusions. Document expectations run over explicit empty root selections; selected scope is vacuous over no roots. Every matched predicate node is checked after complete count validation. Any late failure rejects the whole operation.
 
-Field candidates are within that ordered forest; `:scope` addresses only the original anchor. Original ancestor/sibling predicates may observe outside context under the shared work budget, but outside-group payload cannot be returned. There is no clone/reparse or nearest-card inference. Nested row matches must be made precise explicitly. Guards are conjunctive original-DOM reads before exclusions/transforms. Document guards also run for explicit empty selections; selected-row guards share the whole group; over zero rows they are vacuous by that declared choice. A late row/field failure rejects the complete operation, rather than returning partial records.
+## Readings
 
-Root exclusions/transforms apply to flat projections; records use field-owned exclusions/transforms. Normalize-whitespace collapses Unicode White_Space (Rust `char::is_whitespace`) outside original HTML pre ancestry to one ASCII space, inserts a space at HTML block and break boundaries, and drops unprotected edge whitespace. Protected pre characters remain exact, including edge spaces; zero-width spaces remain literal. Default literal text is unchanged. Markdown owns normalization already. URL resolution is explicit for supported attributes and Markdown destinations, using normalized absolute HTTP(S) base metadata without userinfo. HTML base elements and acquisition origin are not inferred. Raw/base inputs are capped at 8 KiB and URL processing at 32 KiB; output caps still apply.
+`Reading::Text` is static structural text. It collapses Unicode White_Space outside original HTML pre ancestry, retains non-ASCII and zero-width characters, and inserts boundaries at HTML blocks/breaks including details, summary and address. Parsed pre characters/edges/line endings are retained. HTML script/style/template and SVG script/style payloads at/below selection are omitted, including an inert selected root. A directly selected non-inert template descendant is readable. Hidden/CSS-hidden/noscript content remains; foreign names do not acquire HTML roles, while integration-point HTML does.
 
-## Representations
+`Reading::Literal` concatenates parsed descendant text, including inert/hidden content, with no invented separators. `InnerHtml`/`OuterHtml` use filtered immutable DOM serialization. These representations can normalize source spelling and are not exact selected-byte replacements. Boundary cutting, boundary regex/literal constructors and source-range receipts are removed; caller byte/string code owns genuine byte-cutting jobs. Full accepted source remains available from the snapshot and in replay.
 
-`dom_text` concatenates parsed descendant text literally, including hidden/script/style/template content. `inner_html`/`outer_html` serialize filtered immutable parsed DOM, not original source bytes. Source slicing is a distinct parse-free strategy of literal or bounded-regex nonoverlapping boundary pairs, with exact accepted-byte half-open ranges and explicit boundary inclusion.
-
-```rust
-use htmlcut_core::{Boundary, CompiledPlan, ExtractionPlan, PreparationLimits,
-    PreparedDocument, SnapshotMetadata, SourceSnapshot};
-let document = PreparedDocument::new(
-    SourceSnapshot::new("STARTéEND", SnapshotMetadata::default())?, PreparationLimits::default())?;
-let plan = ExtractionPlan::slice(Boundary::Literal { value: "START".into() },
-    Boundary::Literal { value: "END".into() })?;
-let result = document.execute(&CompiledPlan::compile(&plan)?)?;
-assert_eq!(result.data.as_values().unwrap(), ["é"]);
-assert_eq!(result.receipt.ranges.as_ref().unwrap()[0].start, 5);
-# Ok::<(), htmlcut_core::ExtractionError>(())
-```
+Attribute readings validate supported names and fail on absence. URL readings resolve supported attribute positions using explicit normalized absolute HTTP(S) base metadata without userinfo. Relative URLs require that metadata; HTML base elements and acquisition origin are not inferred. Raw/base inputs are capped at 8 KiB and URL processing at 32 KiB; value caps still apply. There are no transform arrays or arbitrary pipelines.
 
 Markdown is a conventional CommonMark reading representation, not source/DOM/visual roundtrip or sanitization. It normalizes ASCII prose whitespace and preserves non-ASCII characters, protected pre characters, meaningful blocks, selected link/image metadata, source-derived ordinals and code. It does not guess hidden visibility or boilerplate. HTML script/style/template and supported SVG script/style payloads are excluded; foreign names do not invent HTML roles.
 
@@ -66,20 +53,20 @@ All tables use nested lists: captions are preceding paragraphs, rows are outer i
 
 HTML emphasis/strong roles, including header cells, use fixed generated `<em>`/`<strong>` inline tags. Nested identical roles are idempotent; tags carry no source attributes. Consumers disabling inline HTML will not render emphasis. Non-pre code uses a backtick span longer than every payload run, with CommonMark-safe framing; parsed line endings become spaces and other characters remain literal. Selected fragments inherit original roles. Literal ampersands in prose, image alternatives and destinations are escaped to prevent a second character-reference decode.
 
-Preformatted content uses a fence longer than conflicting literal backtick runs. An explicit `language-*` class on pre or its sole direct HTML code child supplies a language: 1–64 ASCII characters, starting alphanumeric, then alphanumeric or `_+.-`. Malformed recognized tokens or distinct conflicting labels fail with `invalid_representation`; duplicate identical labels are accepted. No language is inferred. Parsed text is emitted literally, including trailing LFs, followed by exactly one framing LF before the closing fence. CommonMark code events therefore contain payload plus that one structural LF. Link/image metadata inside code is annotated after the fence, keeping program text intact. Block-containing anchors keep block content and receive a following conventional destination link. Destinations containing LF/CR/NUL fail with `invalid_representation`; raw attributes/HTML/source retain those values. Literal syntax is escaped where it could forge Markdown structure.
+Preformatted content uses a fence longer than conflicting literal backtick runs. An explicit `language-*` class on pre or its sole direct HTML code child supplies a language: 1–64 ASCII characters, starting alphanumeric, then alphanumeric or `_+.-`. Malformed recognized tokens or distinct conflicting labels fail with `invalid_representation`; duplicate identical labels are accepted. No language is inferred. Parsed text is emitted literally, including trailing LFs, followed by exactly one framing LF before the closing fence. CommonMark code events therefore contain payload plus that one structural LF. Link/image metadata inside code is annotated after the fence, keeping program text intact. Block-containing anchors keep block content and receive a following conventional destination link. Destinations containing LF/CR/NUL fail with `invalid_representation`; raw attributes/HTML retain their parsed values. Literal syntax is escaped where it could forge Markdown structure.
 
-## Bounds and identities
+## Discovery, bounds and evidence
 
-`PreparedDocument::inspect(css, samples)` keeps the existing attribute-name and literal-text preview contract. `inspect_identifiers(css, samples)` uses the same complete selector count and a fresh work budget, but samples only exact bounded `id` and class values plus a structural text preview. Oversized identifier tokens are omitted with `identifiers_complete: false`; sample and text completeness are separate. The preview includes literal hidden/script content and does not infer browser visibility. Identifier values are data, not escaped or uniqueness-checked CSS selectors. Both responses have a 16 KiB encoded cap.
+`inspect(select, samples)` counts completely and returns 1–10 bounded samples containing exact id/classes, attribute names and the shared structural reading. Independent completeness labels identify identifier/name/text/sample omissions. Oversized identifiers are omitted rather than shortened into misleading selector tokens. Observations bind exact accepted-source SHA-256 and have a 16 KiB encoded cap.
 
-`PreparedDocument::outline(within, limit)` scans repeated direct HTML siblings with a fresh 10 million-unit work budget and a 1,024-signature cap per parent. It reports a complete group count, at most sixteen largest groups, bounded member previews and table row-shape facts. Tag-only and class-constrained groups may overlap. Optional `within` must select exactly one subtree. A CSS selector hint is returned only after it matches the exact group members on that source snapshot; the source digest binds the observation. Header strings are literal parsed DOM text suitable for an exact text guard, not inferred column semantics. Oversized output or exhausted work fails without a partial result; body/header meaning, visibility and future-page stability remain caller decisions.
+`survey(within, limit)` discovers repeated direct HTML siblings under a fresh 10 million-unit budget, with 1,024 signatures per parent and at most sixteen returned groups. Optional scope must select exactly one node. Groups can overlap. Every hint uses bounded CSS escaping and must match exact original members in order; null is a valid absence of proof. Table facts include complete structural-text headers (reading `text`), uniqueness, direct cell ranges and spans, without column meaning or grid reconstruction. Incomplete headers are not usable exact guards. For field discovery, extract one representative row's outer HTML.
 
-Preparation defaults: 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048, and 10,000,000 parser work units. Each scalar/field accepts at most one compatible transform; unsupported combinations and duplicates are rejected. Execution defaults: shared work 1,000,000, 100,000 candidates per pass, 10,000 selected roots, 100,000 cells, 8 MiB per value and 64 MiB aggregate leaf payload. A field slot costs one cell; all-valued strings each cost another; a flat string costs one. Empty/null fields cannot evade it.
+Preparation defaults are 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048 and parser work 10,000,000. Execution defaults are work 1,000,000, candidates 100,000, selected 10,000, cells 100,000, one value 8 MiB and total leaf bytes 64 MiB. Each field slot costs one cell, including null/empty arrays; each all-valued string costs another. Complete candidates are counted for all/nth. Explicit maxima remain assumptions and are never silently clamped to resource limits.
 
-Plans are capped at 256 KiB, patterns at 8 KiB, syntax depth at 64, fields at 64 and aggregate guards/exclusion selectors at 32 each. All configured regex program/DFA allowances share 8 MiB, divided equally across the known regex count. Complete data JSON, including escaping/keys, is capped at 64 MiB excluding its delivery LF; receipts at 4 MiB. Exhaustion is failure, never truncated successful data. These are logical bounds, not exact allocator/RSS or OS isolation guarantees.
+Queries admit at most 256 KiB including normalized default expansion/escaping; patterns at most 8 KiB, syntax depth 64, fields 64 and expectations/aggregate exclusion selectors 32 each. Regex programs/DFA allowances share 8 MiB. Complete encoded data, including escaping/keys, is at most 64 MiB without delivery LF; receipts at most 4 MiB. Exhaustion never returns truncated successful data. Retained parser/selector/filtered-serializer forks enforce actual logical boundaries; source size alone cannot replace them. Logical limits do not establish exact RSS or OS isolation.
 
-Matching scratch is scoped to one immutable document/pass. Inner traversal/predicates, guards, field passes, exclusions, formatting and serialization share execution accounting; cached outcomes do not grant free work. A mismatched document/scope is an invariant error. All/nth counts are complete, even when the selected values are few.
+Ordinary source acceptance/preparation/compilation/execution hashes no identities and serializes no receipt. The core produces one bounded canonical data payload before success and retains it beside private typed values. This is bounded duplication. Query bytes are normalized once and retained; explicit identities/evidence request hashes lazily. `receipt()` and `receipt_payload()` consume the actual remaining execution work and cache success and failure. Source/query cache hits still receive identical logical charges, so a warm-created bundle must replay cold under the same policy. New executions have fresh allowances; results cannot be cloned to duplicate unspent evidence work.
 
-Source digest is SHA-256 of accepted bytes. Data digest is SHA-256 of compact canonical payload without framing LF. Plan and execution identities use domain-separated eight-byte length framing, current domains `htmlcut.plan/5` and `htmlcut.extraction/5`. Execution binds source/plan identities, normalized metadata, actual preparation policy and semantics. Preparation uses `htmlcut.prepared/3`. Canonical object ordering survives downstream serde feature unification. Digests prove identity/integrity, not authenticity or business correctness.
+Source/data digests are SHA-256 of accepted bytes/canonical payload, excluding delivery LF. Query and execution identities use eight-byte length framing with `htmlcut.plan/6` and `htmlcut.extraction/6`; preparation retains `htmlcut.prepared/3`. Execution binds actual source/query/metadata/preparation/semantics. Canonical ordering is independent of serde_json feature unification. Receipts contain data kind, four identities, complete root counts and field-name aggregate maps (candidates/projected strings/absences), with no source ranges or copied values/paths/raw metadata. Raw output remains a transport choice; its receipt identifies canonical JSON data. Integrity/execution facts do not authenticate source or establish delivery.
 
-Receipts have current wire/semantics, data kind, four digests, complete root counts, declaration-ordered numeric field aggregates and optional source ranges. They contain no values, source, paths or raw metadata and prove execution rather than successful later delivery. [CLI](cli.md) and [Schemas](schema.md) define adapter framing, inspection and self-contained replay.
+[CLI](cli.md) and [Schemas](schema.md) define delivery, named shapes and closed USTAR replay.

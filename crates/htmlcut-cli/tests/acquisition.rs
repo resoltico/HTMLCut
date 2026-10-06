@@ -4,15 +4,22 @@ use std::process::{Command, Stdio};
 #[test]
 fn environment_source_and_charset_flags_are_rejected_without_leaking_values() {
     for args in [
-        vec!["extract", "--url-env", "SYNTHETIC_URL", "--css", "p"],
+        vec!["extract", "--url-env", "SYNTHETIC_URL", "--select", "p"],
         vec![
             "extract",
             "--url",
             "https://invalid.test/?secret=SYNTHETIC_SECRET",
-            "--css",
+            "--select",
             "p",
         ],
-        vec!["extract", "--stdin", "--css", "p", "--encoding", "utf-16le"],
+        vec![
+            "extract",
+            "--stdin",
+            "--select",
+            "p",
+            "--encoding",
+            "utf-16le",
+        ],
     ] {
         let result = Command::new(env!("CARGO_BIN_EXE_htmlcut"))
             .args(args)

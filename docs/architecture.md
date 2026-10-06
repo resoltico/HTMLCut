@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: ARCHITECTURE
 updated: "2026-10-05"
 route:
@@ -10,18 +10,18 @@ route:
 
 # Architecture
 
-HTMLCut has one supported pure Rust API, `htmlcut-core`, and the native binary `htmlcut`. The core accepts exact immutable UTF-8 snapshots plus explicit metadata/preparation policy, validates and compiles closed plans, prepares the original bounded DOM lazily, and executes with fresh shared budgets. Parser/DOM types remain private.
+HTMLCut has one supported pure Rust API, `htmlcut-core`, and one native binary, `htmlcut`. The core accepts immutable caller-owned UTF-8 snapshots with explicit metadata/preparation, compiles a closed current query, prepares the original bounded DOM lazily, and executes with fresh shared counters. Parser types stay private. No filesystem/network/browser/environment/clock/process acquisition occurs in the core.
 
-The CLI owns regular files, intentional stdin, strict UTF-8 acceptance, one closed replay container, JSON/raw framing and staged atomic single-file publication. It performs no HTTP acquisition or browser/charset workflow. The core performs no filesystem/network/environment/clock/process/terminal acquisition; bounded caller-owned serialization is explicit.
+One direct typed compiler serves JSON, inline CLI and Rust construction. Query version 6 contains select/read/match, named fields, expectations and execution limits. Root and field cardinality differ explicitly; no retired contract translation or compatibility wrapper exists. Canonical normalized bytes are validated and retained once, independent of serde feature choices.
 
-One plan selects roots once. A scalar projection returns strings; a records projection evaluates named scalar fields within each original row and returns typed records. Field payload candidates remain inside the row while ancestor/sibling predicates retain original-DOM context under the shared budget. Guards read original content before field exclusions/transforms. Required single, optional node presence, all and nth have explicit shapes and failure rules. No field HTML reparsing or nested record/expression language occurs.
+Field payload stays in the original selected row forest; selector predicates retain original context. Expectations inspect original content before exclusions. One shared text traversal supplies full values, predicates, bounded previews and complete table headers. Literal, Markdown and parsed HTML are separate requested readings. Exact selected-byte slicing is removed; full accepted source remains intact.
 
-`ExtractionResult` separates `ExtractionData` from `ExecutionReceipt`. Bare data serialization contains only the requested array; receipts bind source/plan/extraction/data identities and counts without copied values or paths. Prepared documents cache one parsing result or failure; compiled plans contain no spent execution counters.
+Execution constructs private typed values and one bounded canonical JSON payload. The result owns immutable execution provenance/counts and the actual residual work allowance. Source/query/configuration hashes and receipt encoding are lazy; receipt success/failure is cached. Hash-cache hits do not replenish logical work. Holding values plus encoded bytes is bounded duplication, not a measured memory reduction.
 
-Targeted inspection retains complete selector counts. Its opt-in identifier view reveals bounded `id` and class values. The separate outline surveys repeated sibling groups and mechanical table row shapes, verifying any selector hint against the exact snapshot members. It does not generate a semantic plan. Inline root exclusions and exact text expectations compile through the same plan as file-based requests; none of these discovery or authoring additions changes the extraction wire or receipt contract.
+The CLI owns intentional file/stdin input, UTF-8 decoding, standard native help, coherent inspection, JSON/raw framing and native staged publication. It reuses core payload bytes. Requested evidence comes from the result alone. Artifacts stage before the first file commit; single-file atomicity does not make several files/stdout a transaction.
 
-Markdown reading, literal DOM text, parsed HTML serialization and exact source slices are distinct contracts. Markdown preserves source ordinals as literal bullet labels and table cells as nested lists, avoiding custom frames and renderer-dependent renumbering or discarded pipe-table cells. Source slices are parse-free accepted-byte substrings.
+Replay retains a closed uncompressed three-member USTAR container containing manifest, normalized query and exact source. It validates bounded declared sizes, exact member/header/padding/footer rules and actual I/O failures without unpacking. Recomputed evidence must agree with the bundle. Transport family remains 1; embedded query/receipt/semantics are current version 6.
 
-Replay bundles contain source bytes, normalized plan, explicit metadata/preparation and recorded receipt. The CLI reads a bounded three-member USTAR subset without unpacking, re-executes, and rejects integrity/expectation disagreements. Hashes do not authenticate origin; logical resource counters do not provide OS isolation. Data/destinations are untrusted and are not sanitized.
+Maintained parser/selector/serialization and provenance forks protect retained pure-library properties. Logical counters do not provide OS isolation; hashes do not authenticate origin or business meaning. Acquisition, rendering, normalization of business values, joins and ranking belong to callers.
 
-See [Core](core.md), [CLI](cli.md), [Schemas](schema.md), and [Extraction Contract](extraction-contract-spec.md).
+See [Core](core.md), [CLI](cli.md), [Schemas](schema.md) and [Extraction Contract](extraction-contract-spec.md).

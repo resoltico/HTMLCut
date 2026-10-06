@@ -12,7 +12,7 @@ fn native_path_errors_are_typed_without_persisting_path_text() {
         .map(Into::into)
         .collect();
     args.push(std::ffi::OsString::from_vec(vec![0xff]));
-    args.extend(["--css", "p"].into_iter().map(Into::into));
+    args.extend(["--select", "p"].into_iter().map(Into::into));
     let mut output = Vec::new();
     let mut errors = Vec::new();
     assert_eq!(
@@ -27,7 +27,7 @@ fn native_path_errors_are_typed_without_persisting_path_text() {
                 "extract",
                 "--file",
                 "/htmlcut-missing-source",
-                "--css",
+                "--select",
                 "p"
             ],
             b""
@@ -68,7 +68,7 @@ fn destination_changed_during_acquisition_never_publishes_a_result() {
             "htmlcut",
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--output",
             target.to_str().unwrap(),
@@ -134,7 +134,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
     let mut output = Vec::new();
     let mut error = Vec::new();
     let code = app::run(
-        ["htmlcut", "extract", "--stdin", "--css", "p"],
+        ["htmlcut", "extract", "--stdin", "--select", "p"],
         &mut ReadFailure,
         &mut output,
         &mut error,
@@ -153,7 +153,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
         };
         let mut error = Vec::new();
         let code = app::run(
-            ["htmlcut", "extract", "--stdin", "--css", "p"],
+            ["htmlcut", "extract", "--stdin", "--select", "p"],
             &mut io::Cursor::new(b"<p>180</p>"),
             &mut writer,
             &mut error,
@@ -166,7 +166,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
         assert_eq!(writer.bytes.is_empty(), !flush_only);
     }
     let code = app::run(
-        ["htmlcut", "extract", "--stdin", "--css", "missing"],
+        ["htmlcut", "extract", "--stdin", "--select", "missing"],
         &mut io::Cursor::new(b"<p>180</p>"),
         &mut Vec::new(),
         &mut WriteFailure::default(),
@@ -178,7 +178,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
 fn t20_t22_raw_cardinality_and_json_escaping_are_staged() {
     let (code, output, error) = invoke(
         &[
-            "htmlcut", "extract", "--stdin", "--css", "p", "--match", "all", "--raw",
+            "htmlcut", "extract", "--stdin", "--select", "p", "--all", "--raw",
         ],
         b"<p>A</p><p>B</p>",
     );
@@ -186,7 +186,7 @@ fn t20_t22_raw_cardinality_and_json_escaping_are_staged() {
     assert!(output.is_empty());
     assert!(!error.is_empty());
     let (code, output, error) = invoke(
-        &["htmlcut", "extract", "--stdin", "--css", "p", "--raw"],
+        &["htmlcut", "extract", "--stdin", "--select", "p", "--raw"],
         b"<p></p>",
     );
     assert_eq!(code, 0);
@@ -302,7 +302,7 @@ fn t31_acquisition_time_destination_races_cannot_publish_bundles_or_receipts() {
             "htmlcut",
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             flag,
             target.to_str().unwrap(),
@@ -330,7 +330,7 @@ fn t20_t29_default_json_accepts_a_complete_large_value_with_escaping() {
     let value = "\"".repeat(1024 * 1024);
     let html = format!("<p>{value}</p>");
     let (code, stdout, stderr) = invoke(
-        &["htmlcut", "extract", "--stdin", "--css", "p"],
+        &["htmlcut", "extract", "--stdin", "--select", "p"],
         html.as_bytes(),
     );
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&stderr));

@@ -51,6 +51,7 @@ pub(super) fn prepare_managed_artifact_roots<const N: usize>(
 }
 
 pub(super) fn prepare_managed_artifact_container(repo_root: &Path) -> DynResult<()> {
+    super::source_boundary::ensure_source_boundary(repo_root)?;
     let Some(container) = crate::plan::managed_artifact_container_dir(repo_root) else {
         return Ok(());
     };

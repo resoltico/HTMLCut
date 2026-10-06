@@ -9,9 +9,6 @@ use htmlcut_core::{ErrorCode, ExtractionError};
 use serde::Serialize;
 use tempfile::NamedTempFile;
 
-pub(crate) const MAX_OUTPUT_BYTES: usize = htmlcut_core::MAX_DATA_BYTES + 1;
-pub(crate) const MAX_RECEIPT_BYTES: usize = htmlcut_core::MAX_RECEIPT_BYTES + 1;
-
 pub(crate) fn failure() -> ExtractionError {
     ExtractionError::new(
         ErrorCode::Publication,
@@ -62,18 +59,31 @@ pub(crate) fn json_payload(
     let mut output = Buffer {
         bytes: Vec::new(),
         maximum,
+        limit_exceeded: false,
     };
-    serde_json::to_writer(&mut output, value).map_err(|_| super::input::limit("serialization"))?;
+    serde_json::to_writer(&mut output, value).map_err(|_| {
+        if output.limit_exceeded {
+            ExtractionError::resource("serialization", "encoded_bytes", maximum as u64)
+        } else {
+            ExtractionError::new(
+                ErrorCode::InternalInvariant,
+                "serialization",
+                "Validated JSON encoding failed.",
+            )
+        }
+    })?;
     Ok(output.bytes)
 }
 
 struct Buffer {
     bytes: Vec<u8>,
     maximum: usize,
+    limit_exceeded: bool,
 }
 impl Write for Buffer {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.len() > self.maximum.saturating_sub(self.bytes.len()) {
+            self.limit_exceeded = true;
             return Err(io::Error::other("Serialized output limit exceeded."));
         }
         self.bytes.extend_from_slice(bytes);

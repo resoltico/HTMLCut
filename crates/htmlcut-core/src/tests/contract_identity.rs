@@ -4,7 +4,7 @@ use super::*;
 #[test]
 fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
     let plan = ExtractionPlan::css("#amount").unwrap();
-    let minimal = r##"{"version":5,"strategy":{"selector":"#amount","kind":"css"},"schema":"htmlcut.extraction.plan"}"##;
+    let minimal = r##"{"version":6,"select":"#amount"}"##;
     let compiled = CompiledPlan::compile(&plan).unwrap();
     assert_eq!(
         CompiledPlan::compile(&ExtractionPlan::from_json(minimal.as_bytes()).unwrap())
@@ -19,16 +19,16 @@ fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
         .execute(&compiled)
         .unwrap();
     assert_eq!(
-        original.data.as_values().unwrap(),
-        navigation.data.as_values().unwrap()
+        original.data().as_values().unwrap(),
+        navigation.data().as_values().unwrap()
     );
     assert_ne!(
-        original.receipt.source_sha256,
-        navigation.receipt.source_sha256
+        original.receipt().unwrap().source_sha256,
+        navigation.receipt().unwrap().source_sha256
     );
     assert_ne!(
-        original.receipt.extraction_sha256,
-        navigation.receipt.extraction_sha256
+        original.receipt().unwrap().extraction_sha256,
+        navigation.receipt().unwrap().extraction_sha256
     );
     let with_base = PreparedDocument::new(
         SourceSnapshot::new(
@@ -44,22 +44,22 @@ fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
     .execute(&compiled)
     .unwrap();
     assert_eq!(
-        original.data.as_values().unwrap(),
-        with_base.data.as_values().unwrap()
+        original.data().as_values().unwrap(),
+        with_base.data().as_values().unwrap()
     );
     assert_ne!(
-        original.receipt.extraction_sha256,
-        with_base.receipt.extraction_sha256
+        original.receipt().unwrap().extraction_sha256,
+        with_base.receipt().unwrap().extraction_sha256
     );
     assert!(
-        !canonical_json(&with_base.receipt)
+        !canonical_json(&with_base.receipt().unwrap())
             .unwrap()
             .contains("sentinel")
     );
     let mut reordered = plan;
-    reordered.exclude = vec![".first".into(), ".second".into()];
+    reordered.exclude = Some(vec![".first".into(), ".second".into()]);
     let first = CompiledPlan::compile(&reordered).unwrap();
-    reordered.exclude.reverse();
+    reordered.exclude.as_mut().unwrap().reverse();
     assert_ne!(
         first.plan_sha256(),
         CompiledPlan::compile(&reordered).unwrap().plan_sha256()
@@ -70,7 +70,7 @@ fn t26_t28_normalized_defaults_metadata_array_order_and_navigation() {
 fn t05_generated_plan_schema_accepts_defaulted_example() {
     let schema = schema("htmlcut.extraction.plan").unwrap();
     let required = schema["required"].as_array().unwrap();
-    assert!(required.contains(&serde_json::json!("strategy")));
+    assert!(required.contains(&serde_json::json!("select")));
     assert!(!required.contains(&serde_json::json!("limits")));
     assert!(!required.contains(&serde_json::json!("projection")));
     assert!(!required.contains(&serde_json::json!("selection")));
@@ -106,7 +106,12 @@ fn t26_independent_length_framed_golden_vectors() {
         vector["plan_sha256"].as_str().unwrap()
     );
     assert_eq!(
-        source.execute(&compiled).unwrap().receipt.extraction_sha256,
+        source
+            .execute(&compiled)
+            .unwrap()
+            .receipt()
+            .unwrap()
+            .extraction_sha256,
         vector["extraction_sha256"].as_str().unwrap()
     );
 }
@@ -119,13 +124,13 @@ fn t05_schema_and_runtime_agree_on_closed_role_version_and_defaults() {
     let mut compiler = boon::Compiler::new();
     compiler.add_resource(location, schema).unwrap();
     let index = compiler.compile(location, &mut schemas).unwrap();
-    let minimal = serde_json::json!({"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"}});
+    let minimal = serde_json::json!({"version":6,"select":"p","match":"one","read":"literal"});
     assert!(schemas.validate(&minimal, index).is_ok());
     assert!(ExtractionPlan::from_json(&serde_json::to_vec(&minimal).unwrap()).is_ok());
     for invalid in [
-        serde_json::json!({"schema":"htmlcut.extraction.plan","version":1,"strategy":{"kind":"css","selector":"p"}}),
-        serde_json::json!({"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"p"},"unknown":1}),
-        serde_json::json!({"schema":"htmlcut.plan","version":5,"strategy":{"kind":"css","selector":"p"}}),
+        serde_json::json!({"version":5,"select":"p"}),
+        serde_json::json!({"version":6,"select":"p","unknown":1}),
+        serde_json::json!({"version":6}),
     ] {
         assert!(schemas.validate(&invalid, index).is_err(), "{invalid}");
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&invalid).unwrap()).is_err());
@@ -145,12 +150,19 @@ fn t22_serializer_faults_are_typed_and_canonical_escaping_is_bounded() {
         ErrorCode::InternalInvariant
     );
     assert_eq!(
-        crate::identity::canonical_json_bounded(&Fault, 128)
-            .unwrap_err()
-            .code,
+        crate::identity::encoded(
+            &Fault,
+            128,
+            &selectors::work_budget::SelectorWorkBudget::new(100)
+        )
+        .unwrap_err()
+        .code,
         ErrorCode::InternalInvariant
     );
-    let data = serde_json::json!({"z":["é",0],"a":{"quoted":"\"\n"}});
+    let data = std::collections::BTreeMap::from([
+        ("z", serde_json::json!(["é", 0])),
+        ("a", serde_json::json!({"quoted":"\"\n"})),
+    ]);
     let expected = "{\"a\":{\"quoted\":\"\\\"\\n\"},\"z\":[\"é\",0]}";
     assert_eq!(canonical_json(&data).unwrap(), expected);
     for (maximum, valid) in [
@@ -159,7 +171,12 @@ fn t22_serializer_faults_are_typed_and_canonical_escaping_is_bounded() {
         (expected.len() + 1, true),
     ] {
         assert_eq!(
-            crate::identity::canonical_json_bounded(&data, maximum).is_ok(),
+            crate::identity::encoded(
+                &data,
+                maximum,
+                &selectors::work_budget::SelectorWorkBudget::new(100)
+            )
+            .is_ok(),
             valid
         );
     }
@@ -174,7 +191,7 @@ fn t22_serializer_faults_are_typed_and_canonical_escaping_is_bounded() {
 #[test]
 fn t05_every_named_schema_is_retrievable_and_has_its_expected_public_shape() {
     for (name, title, required_property) in [
-        ("htmlcut.extraction.plan", "ExtractionPlan", "strategy"),
+        ("htmlcut.extraction.plan", "ExtractionPlan", "select"),
         (
             "htmlcut.extraction.receipt",
             "ExecutionReceipt",
@@ -182,12 +199,7 @@ fn t05_every_named_schema_is_retrievable_and_has_its_expected_public_shape() {
         ),
         ("htmlcut.extraction.error", "ExtractionError", "code"),
         ("htmlcut.inspection", "InspectionResult", "count"),
-        ("htmlcut.outline", "OutlineResult", "groups"),
-        (
-            "htmlcut.inspection.identifiers",
-            "IdentifierInspectionResult",
-            "samples",
-        ),
+        ("htmlcut.survey", "SurveyResult", "groups"),
     ] {
         let schema = crate::schema(name).unwrap();
         assert_eq!(schema["title"], title);

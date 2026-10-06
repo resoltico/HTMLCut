@@ -110,7 +110,7 @@ mod tests {
             "htmlcut",
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--read",
             "SYNTHETIC_SECRET",

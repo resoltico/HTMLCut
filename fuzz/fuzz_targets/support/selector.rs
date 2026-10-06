@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use arbitrary::Arbitrary;
-use htmlcut_core::{CompiledPlan, ExtractionPlan, Selection};
+use htmlcut_core::{CompiledPlan, ExtractionPlan, Match};
 
 #[derive(Arbitrary, Debug)]
 pub struct SelectorInput {
@@ -17,10 +17,9 @@ pub fn drive(input: SelectorInput) {
         return;
     };
     if input.all {
-        plan.selection = Selection::All {
-            min: 0,
-            max: Some(128),
-        };
+        plan.match_mode = Match::All;
+        plan.min = Some(0);
+        plan.max = Some(128);
     }
     plan.limits.max_candidates = 512;
     plan.limits.max_selected = 128;
@@ -30,6 +29,13 @@ pub fn drive(input: SelectorInput) {
     if let Ok(compiled) = CompiledPlan::compile(&plan) {
         let first = document.execute(&compiled);
         let second = document.execute(&compiled);
-        assert_eq!(first, second);
+        match (first, second) {
+            (Ok(first), Ok(second)) => {
+                assert_eq!(first.payload(), second.payload());
+                assert_eq!(first.receipt(), second.receipt());
+            }
+            (Err(first), Err(second)) => assert_eq!(first, second),
+            _ => panic!("repeated execution changed success state"),
+        }
     }
 }

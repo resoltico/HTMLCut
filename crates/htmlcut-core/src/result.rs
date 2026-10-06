@@ -5,9 +5,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 /// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 5;
+pub const SEMANTICS_VERSION: u32 = 6;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -27,7 +27,7 @@ pub enum ErrorCode {
     InvalidLimit,
     /// Invalid explicit base metadata.
     InvalidBaseUrl,
-    /// No selected node or source pair.
+    /// No node matched an exactly-one selection.
     NoMatch,
     /// More than one candidate for single selection.
     AmbiguousSelection,
@@ -43,10 +43,6 @@ pub enum ErrorCode {
     InvalidRepresentation,
     /// Declared original-DOM guard failed.
     GuardFailed,
-    /// A source opening has no following closing boundary.
-    MissingBoundary,
-    /// A regular-expression boundary matched zero bytes.
-    EmptyBoundaryMatch,
     /// Finite source, preparation, work or output budget exhausted.
     ResourceLimit,
     /// Adapter input options are incompatible.
@@ -86,8 +82,6 @@ impl ErrorCode {
             | Self::MissingAttribute
             | Self::InvalidRepresentation
             | Self::GuardFailed
-            | Self::MissingBoundary
-            | Self::EmptyBoundaryMatch
             | Self::ReplayMismatch => 3,
             Self::ResourceLimit => 4,
             Self::Acquisition | Self::Decoding | Self::Publication => 5,
@@ -131,10 +125,25 @@ pub struct ErrorEvidence {
     /// Positive selected-row position for a record failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_index: Option<u32>,
-    /// Positive field declaration position for a record failure.
+    /// Validated field name for a record failure.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub field_index: Option<u32>,
-    /// Location within a plan, containing only declared member names and numeric indexes.
+    pub field_name: Option<String>,
+    /// Actual exhausted counter, provided by its owning boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_counter: Option<String>,
+    /// Original configured bound for that counter, never a fabricated used count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configured_bound: Option<u64>,
+    /// Declared minimum cardinality when a completed count fails.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_min: Option<u32>,
+    /// Declared maximum cardinality when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_max: Option<u32>,
+    /// Requested positive positional index.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_index: Option<u32>,
+    /// Query location containing declared members, validated field names and numeric indexes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_path: Option<String>,
     /// Exact candidate count, only after complete enumeration.
@@ -164,13 +173,14 @@ impl ExtractionError {
         }
     }
 
-    pub(crate) fn limit(stage: &'static str) -> Self {
-        Self::new(
-            ErrorCode::ResourceLimit,
-            stage,
-            "The operation exceeded its configured resource limit.",
-        )
-        .with_cause(crate::FailureCause::Resource {})
+    /// Constructs a resource failure using a boundary-owned counter and its configured bound.
+    pub fn resource(stage: &'static str, counter: &'static str, bound: u64) -> Self {
+        let mut error = Self::new(ErrorCode::ResourceLimit, stage, "")
+            .with_cause(crate::FailureCause::Resource {});
+        error.message = format!("{counter} exhausted its configured bound ({bound}).");
+        error.resource_counter = Some(counter.into());
+        error.configured_bound = Some(bound);
+        error
     }
 }
 

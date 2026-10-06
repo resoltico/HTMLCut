@@ -470,19 +470,17 @@ fn hygiene_report_reports_managed_root_read_failures() {
         let original_permissions = fs::metadata(&managed_target)
             .expect("managed target metadata")
             .permissions();
-        let mut unreadable_permissions = original_permissions.clone();
-        unreadable_permissions.set_mode(0o000);
-        fs::set_permissions(&managed_target, unreadable_permissions).expect("lock managed target");
+        let mut search_only_permissions = original_permissions.clone();
+        search_only_permissions.set_mode(0o111);
+        fs::set_permissions(&managed_target, search_only_permissions).expect("lock managed target");
 
         let error = hygiene_report(repo_root.path()).expect_err("managed report should fail");
 
         fs::set_permissions(&managed_target, original_permissions).expect("unlock managed target");
 
-        assert!(
-            error
-                .to_string()
-                .contains(&managed_target.display().to_string())
-        );
+        let message = error.to_string();
+        assert!(message.contains("failed to inspect hygiene artifact root"));
+        assert!(message.contains(&managed_target.display().to_string()));
     });
 }
 
@@ -508,11 +506,11 @@ fn hygiene_report_reports_unmanaged_root_read_failures() {
         let original_permissions = fs::metadata(repo_root.path().join("target").as_path())
             .expect("legacy target metadata")
             .permissions();
-        let mut unreadable_permissions = original_permissions.clone();
-        unreadable_permissions.set_mode(0o000);
+        let mut search_only_permissions = original_permissions.clone();
+        search_only_permissions.set_mode(0o111);
         fs::set_permissions(
             repo_root.path().join("target").as_path(),
-            unreadable_permissions,
+            search_only_permissions,
         )
         .expect("lock legacy target");
 
@@ -524,11 +522,9 @@ fn hygiene_report_reports_unmanaged_root_read_failures() {
         )
         .expect("unlock legacy target");
 
-        assert!(
-            error
-                .to_string()
-                .contains(&repo_root.path().join("target").display().to_string())
-        );
+        let message = error.to_string();
+        assert!(message.contains("failed to inspect hygiene artifact root"));
+        assert!(message.contains(&repo_root.path().join("target").display().to_string()));
     });
 }
 

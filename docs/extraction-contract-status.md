@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: ENGINEERING
 updated: "2026-10-05"
 route:
@@ -10,7 +10,7 @@ route:
 
 # Extraction contract implementation status
 
-D1–D10 are implemented together. The implementation authority is
+The historical v15 design D1–D10 was implemented together. The implementation authority is
 [extraction-contract-spec.md](extraction-contract-spec.md); the supported product is one
 immutable-snapshot Rust core and the `htmlcut` binary. The old CLI library, reader heuristics,
 interop runtime and command aliases are removed.
@@ -23,7 +23,7 @@ The historical evidence below identifies its tested revision; it does not attest
 
 ## Current contract
 
-The workspace implements current wire/semantics 5, direct records, bare data/receipts, targeted inspection and repeated-group outline, conventional Markdown and self-contained replay. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
+The current source defines wire/semantics 6, compact queries, structural text, lexical named fields, immutable canonical results, optional residual-budget evidence, coherent inspection, conventional Markdown and self-contained USTAR replay. Selected source slicing and retired contract/command aliases are removed. The 20.0.0 workspace version is an unreleased candidate. Network and charset acquisition are caller-owned. Runtime compatibility and migrations are unsupported. Publication is not established by a workspace version or local test report.
 
 Release verification belongs to exact source commits and published packages. The maintained gates own coverage, strict Miri, live fuzz, full mutation and native delivery proofs; the evaluation scripts check immutable snapshots and complete requested answers. [GitHub Releases](https://github.com/resoltico/HTMLCut/releases) and [Actions](https://github.com/resoltico/HTMLCut/actions) are authoritative for publication and source-bound CI. A workspace version or local report alone does not establish publication. The API baseline is refreshed only from an actually published tag.
 

@@ -9,7 +9,7 @@ fn generated(root: &std::path::Path) -> std::path::PathBuf {
         &[
             "extract",
             "--stdin",
-            "--css",
+            "--select",
             "p",
             "--bundle",
             path.to_str().unwrap(),
@@ -59,7 +59,7 @@ fn store(path: &std::path::Path, entries: &[(String, Vec<u8>, tar::EntryType)]) 
     archive.finish().unwrap();
 }
 fn fails(path: &std::path::Path, code: i32) {
-    let result = invoke(&["run", path.to_str().unwrap()], b"");
+    let result = invoke(&["replay", path.to_str().unwrap()], b"");
     assert_eq!(
         result.status.code(),
         Some(code),
@@ -105,12 +105,12 @@ fn moved_bundle_replays_after_original_source_and_plan_are_deleted() {
     std::fs::remove_file(plan).unwrap();
     let moved = root.path().join("moved.htmlcut.tar");
     std::fs::rename(bundle, &moved).unwrap();
-    let replay = invoke(&["run", moved.to_str().unwrap()], b"");
+    let replay = invoke(&["replay", moved.to_str().unwrap()], b"");
     assert!(replay.status.success());
     assert_eq!(replay.stdout, result.stdout);
     let collision = invoke(
         &[
-            "run",
+            "replay",
             moved.to_str().unwrap(),
             "--output",
             moved.to_str().unwrap(),
@@ -132,7 +132,7 @@ fn repeat_bundle_creation_is_deterministic_and_data_publication_is_separate() {
             &[
                 "extract",
                 "--stdin",
-                "--css",
+                "--select",
                 "p",
                 "--bundle",
                 second.to_str().unwrap()
@@ -149,7 +149,7 @@ fn repeat_bundle_creation_is_deterministic_and_data_publication_is_separate() {
     let target = root.path().join("data.json");
     let published = invoke(
         &[
-            "run",
+            "replay",
             second.to_str().unwrap(),
             "--output",
             target.to_str().unwrap(),
@@ -162,7 +162,7 @@ fn repeat_bundle_creation_is_deterministic_and_data_publication_is_separate() {
     assert_eq!(
         invoke(
             &[
-                "run",
+                "replay",
                 second.to_str().unwrap(),
                 "--output",
                 target.to_str().unwrap()
@@ -207,7 +207,7 @@ fn corrupted_execution_configuration_or_evidence_is_not_trusted() {
             entries[2].1 = b"<p>other</p>".to_vec();
         } else if mutate == "plan" {
             let mut plan: serde_json::Value = serde_json::from_slice(&entries[1].1).unwrap();
-            plan["strategy"]["selector"] = serde_json::json!("aside");
+            plan["select"] = serde_json::json!("aside");
             entries[1].1 = serde_json::to_vec(&plan).unwrap();
         } else {
             let mut manifest: serde_json::Value = serde_json::from_slice(&entries[0].1).unwrap();
@@ -380,7 +380,7 @@ fn record_bundle_raw_rejection_and_receipt_republication_preserve_data_shape() {
     let plan = root.path().join("record.json");
     let bundle = root.path().join("record.htmlcut.tar");
     let receipt = root.path().join("receipt.json");
-    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"css","selector":"article"},"projection":{"kind":"records","fields":[{"name":"text","selector":"p"}]}}"#).unwrap();
+    std::fs::write(&plan, br#"{"version":6,"select":"article","match":"one","fields":{"text":{"select":"p","read":"literal"}}}"#).unwrap();
     let extracted = invoke(
         &[
             "extract",
@@ -398,12 +398,12 @@ fn record_bundle_raw_rejection_and_receipt_republication_preserve_data_shape() {
         String::from_utf8_lossy(&extracted.stderr)
     );
     assert_eq!(extracted.stdout, b"[{\"text\":\"180\"}]\n");
-    let raw = invoke(&["run", bundle.to_str().unwrap(), "--raw"], b"");
+    let raw = invoke(&["replay", bundle.to_str().unwrap(), "--raw"], b"");
     assert_eq!(raw.status.code(), Some(2));
     assert!(raw.stdout.is_empty());
     let replayed = invoke(
         &[
-            "run",
+            "replay",
             bundle.to_str().unwrap(),
             "--receipt",
             receipt.to_str().unwrap(),
@@ -415,51 +415,27 @@ fn record_bundle_raw_rejection_and_receipt_republication_preserve_data_shape() {
     let receipt: serde_json::Value =
         serde_json::from_slice(&std::fs::read(receipt).unwrap()).unwrap();
     assert_eq!(receipt["data_kind"], "records");
-    assert_eq!(receipt["fields"][0]["projected_count"], 1);
+    assert_eq!(receipt["fields"]["text"]["projected_count"], 1);
 }
 
 #[test]
-fn complete_large_range_receipt_replays_above_the_plan_document_byte_cap() {
+fn manifest_admission_is_independent_from_the_smaller_query_document_cap() {
     let root = htmlcut_tempdir::tempdir().unwrap();
-    let plan = root.path().join("slices.json");
-    let bundle = root.path().join("ranges.htmlcut.tar");
-    let count = 12_000;
-    std::fs::write(&plan, br#"{"schema":"htmlcut.extraction.plan","version":5,"strategy":{"kind":"slice","start":{"kind":"literal","value":"["},"end":{"kind":"literal","value":"]"}},"selection":{"kind":"all"},"projection":{"kind":"source"},"limits":{"max_selected":20000,"max_work":10000000}}"#).unwrap();
-    let original = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--plan",
-            plan.to_str().unwrap(),
-            "--bundle",
-            bundle.to_str().unwrap(),
-        ],
-        "[x]".repeat(count).as_bytes(),
-    );
-    assert!(
-        original.status.success(),
-        "{}",
-        String::from_utf8_lossy(&original.stderr)
-    );
-    assert_eq!(
-        serde_json::from_slice::<Vec<String>>(&original.stdout).unwrap(),
-        vec!["x"; count]
-    );
-    let entries = members(&bundle);
+    let valid = generated(root.path());
+    let mut entries = members(&valid);
+    entries[0]
+        .1
+        .extend(std::iter::repeat_n(b' ', htmlcut_core::MAX_PLAN_BYTES));
     assert!(entries[0].1.len() > htmlcut_core::MAX_PLAN_BYTES);
-    let manifest: serde_json::Value = serde_json::from_slice(&entries[0].1).unwrap();
-    assert_eq!(
-        manifest["receipt"]["ranges"].as_array().unwrap().len(),
-        count
-    );
-    std::fs::remove_file(plan).unwrap();
-    let replay = invoke(&["run", bundle.to_str().unwrap()], b"");
+    let target = root.path().join("manifest.htmlcut.tar");
+    store(&target, &entries);
+    let output = invoke(&["replay", target.to_str().unwrap()], b"");
     assert!(
-        replay.status.success(),
+        output.status.success(),
         "{}",
-        String::from_utf8_lossy(&replay.stderr)
+        String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(replay.stdout, original.stdout);
+    assert_eq!(output.stdout, b"[\"180\"]\n");
 }
 
 #[test]
@@ -473,7 +449,7 @@ fn complete_admitted_member_caps_and_each_last_padding_byte_are_checked() {
             let mut entries = base.clone();
             entries[index].1.resize(size, b' ');
             store(&target, &entries);
-            let result = invoke(&["run", target.to_str().unwrap()], b"");
+            let result = invoke(&["replay", target.to_str().unwrap()], b"");
             assert!(
                 result.status.success(),
                 "{}",
@@ -509,4 +485,26 @@ fn complete_admitted_member_caps_and_each_last_padding_byte_are_checked() {
         file.set_len(size).unwrap();
         fails(&target, 2);
     }
+}
+
+#[test]
+fn scalar_bundle_raw_replay_uses_unframed_value() {
+    let root = htmlcut_tempdir::tempdir().unwrap();
+    let bundle = root.path().join("scalar.htmlcut.tar");
+    let extracted = invoke(
+        &[
+            "extract",
+            "--stdin",
+            "--select",
+            "p",
+            "--bundle",
+            bundle.to_str().unwrap(),
+        ],
+        b"<p>A</p>",
+    );
+    assert!(extracted.status.success());
+    assert_eq!(extracted.stdout, b"[\"A\"]\n");
+    let replayed = invoke(&["replay", bundle.to_str().unwrap(), "--raw"], b"");
+    assert!(replayed.status.success());
+    assert_eq!(replayed.stdout, b"A");
 }

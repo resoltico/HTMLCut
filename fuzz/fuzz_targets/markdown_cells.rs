@@ -29,8 +29,8 @@ fn decode_row_cells(input: &str) -> Vec<String> {
 #[cfg(all(feature = "fuzzing", not(test)))]
 fuzz_target!(|data: &[u8]| {
     use htmlcut_core::{
-        CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Projection,
-        SnapshotMetadata, SourceSnapshot, ValueProjection,
+        CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Reading,
+        SnapshotMetadata, SourceSnapshot,
     };
     let alphabet: Vec<char> = "ABC []()\\|`\n\t✓€東京<&>".chars().collect();
     let payloads: Vec<String> = data[..data.len().min(512)]
@@ -75,11 +75,11 @@ fuzz_target!(|data: &[u8]| {
         let snapshot = SourceSnapshot::new(html, SnapshotMetadata::default()).unwrap();
         let document = PreparedDocument::new(snapshot, PreparationLimits::default()).unwrap();
         let mut plan = ExtractionPlan::css("tr").unwrap();
-        plan.projection = Projection::Value(ValueProjection::Markdown {});
+        plan.read = Some(Reading::Markdown);
         let result = document
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap();
-        assert_eq!(result.data.as_values().unwrap().len(), 1);
+        assert_eq!(result.data().as_values().unwrap().len(), 1);
         let expected_first = if pre {
             first.to_owned()
         } else if inline {
@@ -92,7 +92,7 @@ fuzz_target!(|data: &[u8]| {
             .collect::<Vec<_>>()
             .join(" ");
         assert_eq!(
-            decode_row_cells(&result.data.as_values().unwrap()[0]),
+            decode_row_cells(&result.data().as_values().unwrap()[0]),
             [expected_first, expected_second]
         );
     }

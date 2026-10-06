@@ -76,8 +76,8 @@ enum Task {
         output: GateOutputOptions,
     },
     #[command(
-        about = "Run the maintained strict-provenance selector-and-slice Miri proof.",
-        long_about = "Run the maintained strict-provenance selector-and-slice Miri proof against htmlcut-core's selector validation plus delimiter slice execution path."
+        about = "Run the maintained strict-provenance selector-and-reading Miri proof.",
+        long_about = "Run the maintained strict-provenance selector-and-reading Miri proof against htmlcut-core's selector validation, original-DOM records and protected reading paths."
     )]
     Miri {
         #[command(flatten)]

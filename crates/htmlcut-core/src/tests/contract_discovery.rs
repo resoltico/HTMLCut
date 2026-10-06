@@ -6,7 +6,7 @@ fn identifier_inspection_keeps_the_count_exact_and_separates_table_cells() {
     let document = prepared(
         "<main id='content' class='main docs main' data-secret='token'><table><tr><td>1,429,404,000</td><td>17.3%</td></tr></table></main><main id='other'>Other</main>",
     );
-    let result = document.inspect_identifiers("main", 1).unwrap();
+    let result = document.inspect("main", 1).unwrap();
     assert_eq!(result.count, 2);
     assert!(!result.samples_complete);
     let sample = &result.samples[0];
@@ -16,8 +16,10 @@ fn identifier_inspection_keeps_the_count_exact_and_separates_table_cells() {
     assert!(sample.identifiers_complete && sample.text_complete);
     assert_eq!(sample.text, "1,429,404,000 17.3%");
     assert!(!crate::canonical_json(&result).unwrap().contains("token"));
-    let plain = document.inspect("main", 1).unwrap();
-    assert_eq!(plain.samples[0].text, "1,429,404,00017.3%");
+    assert_eq!(
+        document.inspect("main", 1).unwrap().samples[0].text,
+        "1,429,404,000 17.3%"
+    );
 }
 
 #[test]
@@ -30,7 +32,7 @@ fn identifier_samples_omit_oversized_tokens_and_label_incompleteness() {
         "long".repeat(17)
     );
     let sample = prepared(&source)
-        .inspect_identifiers("main", 1)
+        .inspect("main", 1)
         .unwrap()
         .samples
         .remove(0);
@@ -49,7 +51,7 @@ fn identifier_preview_marks_a_structural_boundary_that_exceeds_its_limit() {
             "a".repeat(count)
         );
         let sample = prepared(&source)
-            .inspect_identifiers("table", 1)
+            .inspect("table", 1)
             .unwrap()
             .samples
             .remove(0);
@@ -68,7 +70,7 @@ fn identifier_preview_marks_a_structural_boundary_that_exceeds_its_limit() {
         "a".repeat(158)
     );
     let sample = prepared(&source)
-        .inspect_identifiers("table", 1)
+        .inspect("table", 1)
         .unwrap()
         .samples
         .remove(0);
@@ -80,28 +82,25 @@ fn identifier_preview_marks_a_structural_boundary_that_exceeds_its_limit() {
 #[test]
 fn identifier_inspection_labels_empty_results_and_rejects_invalid_requests_before_parsing() {
     let document = prepared("<p>a\u{a0}b</p>");
-    assert_eq!(
-        document.inspect_identifiers("p", 1).unwrap().samples[0].text,
-        "a b"
-    );
-    let missing = document.inspect_identifiers("aside", 1).unwrap();
+    assert_eq!(document.inspect("p", 1).unwrap().samples[0].text, "a b");
+    let missing = document.inspect("aside", 1).unwrap();
     assert_eq!(missing.count, 0);
     assert!(missing.samples_complete && missing.samples.is_empty());
 
     let lazy = prepared("<p>x</p>");
     assert_eq!(
-        lazy.inspect_identifiers("[", 1).unwrap_err().code,
+        lazy.inspect("[", 1).unwrap_err().code,
         ErrorCode::InvalidSelector
     );
     assert_eq!(
-        lazy.inspect_identifiers("p", 0).unwrap_err().code,
+        lazy.inspect("p", 0).unwrap_err().code,
         ErrorCode::InvalidOptions
     );
     assert_eq!(lazy.parse_count(), 0);
     let tag = "x".repeat(129);
     assert_eq!(
         prepared(&format!("<{tag}></{tag}>"))
-            .inspect_identifiers(&tag, 1)
+            .inspect(&tag, 1)
             .unwrap_err()
             .code,
         ErrorCode::ResourceLimit
@@ -120,14 +119,14 @@ fn identifier_inspection_refuses_an_oversized_encoded_answer() {
         "i".repeat(128),
         "\u{1}".repeat(160)
     );
-    let one = prepared(&element).inspect_identifiers(&tag, 1).unwrap();
+    let one = prepared(&element).inspect(&tag, 1).unwrap();
     assert_eq!(one.samples[0].tag.len(), 128);
     assert_eq!(one.samples[0].classes.len(), 8);
     assert!(one.samples[0].identifiers_complete);
     assert!(crate::canonical_json(&one).unwrap().len() > 1024);
     let document = prepared(&element.repeat(10));
     assert_eq!(
-        document.inspect_identifiers(&tag, 10).unwrap_err().code,
+        document.inspect(&tag, 10).unwrap_err().code,
         ErrorCode::ResourceLimit
     );
 }
@@ -165,7 +164,7 @@ fn preview_limits_count_unicode_scalars_and_never_truncate_extraction() {
         let result = document
             .execute(&CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap())
             .unwrap();
-        assert_eq!(result.data.as_values().unwrap(), [text]);
+        assert_eq!(result.data().as_values().unwrap(), [text]);
     }
 }
 

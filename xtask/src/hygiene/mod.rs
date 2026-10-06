@@ -230,6 +230,7 @@ pub fn prepare_mutation_report_root(repo_root: &Path) -> DynResult<PathBuf> {
 
 /// Builds a full repository artifact report, including managed caches and legacy local roots.
 pub fn hygiene_report(repo_root: &Path) -> DynResult<HygieneReport> {
+    source_boundary::ensure_source_boundary(repo_root)?;
     let tmp_root = repo_root.join("tmp");
     let legacy_target_root = repo_root.join("target");
     let tmp_cargo_roots = repo_tmp_cargo_roots(repo_root)?;
@@ -393,21 +394,11 @@ pub fn ensure_hygiene(repo_root: &Path) -> DynResult<()> {
 
 /// Removes disposable artifact roots according to the requested cleanup mode.
 pub fn clean_hygiene(repo_root: &Path, mode: HygieneCleanMode) -> DynResult<HygieneCleanResult> {
-    let mut removal_roots = vec![
-        coverage_target_dir(repo_root),
-        coverage_build_dir(repo_root),
-        semver_scratch_dir(repo_root),
-        repo_root.join("tmp"),
-        repo_root.join("target"),
-        repo_root.join("target").join("llvm-cov-target"),
-        repo_root.join("target").join("semver-checks"),
-    ];
+    source_boundary::ensure_source_boundary(repo_root)?;
+    let mut removal_roots = scratch_artifact_roots(repo_root);
 
     if mode == HygieneCleanMode::Rebuildable {
-        removal_roots.push(cargo_target_dir(repo_root));
-        removal_roots.push(cargo_build_dir(repo_root));
-        removal_roots.push(gate_report_dir(repo_root));
-        removal_roots.push(mutation_report_dir(repo_root));
+        removal_roots.extend(managed_artifact_roots(repo_root));
     }
 
     // The sibling container is project-owned and contains only managed Cargo roots and retained
@@ -448,6 +439,20 @@ pub fn clean_hygiene(repo_root: &Path, mode: HygieneCleanMode) -> DynResult<Hygi
     Ok(result)
 }
 
+fn scratch_artifact_roots(repo_root: &Path) -> Vec<PathBuf> {
+    vec![
+        coverage_target_dir(repo_root),
+        coverage_build_dir(repo_root),
+        coverage_cargo_target_dir(repo_root),
+        coverage_cargo_build_dir(repo_root),
+        semver_scratch_dir(repo_root),
+        repo_root.join("tmp"),
+        repo_root.join("target"),
+        repo_root.join("target").join("llvm-cov-target"),
+        repo_root.join("target").join("semver-checks"),
+    ]
+}
+
 fn unmanaged_cleanup_roots(repo_root: &Path) -> DynResult<Vec<PathBuf>> {
     unmanaged_artifact_container_paths(repo_root, &managed_artifact_roots(repo_root))
 }
@@ -462,6 +467,7 @@ fn checked_reclaimed_bytes(current: u64, bytes: u64, path: &Path) -> DynResult<u
     })
 }
 
+mod source_boundary;
 mod support;
 
 #[cfg(all(test, unix))]

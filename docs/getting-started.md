@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "19.2.0"
+version: "20.0.0"
 domain: SETUP
 updated: "2026-10-05"
 route:
@@ -11,13 +11,13 @@ route:
 
 # Getting started
 
-Use a completed UTF-8 HTML snapshot and an explicit selector. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 19.2.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
+Use a completed UTF-8 HTML snapshot and an explicit selector. The current 20.0.0 source is an unreleased breaking candidate; build from source for the version-6 grammar. Older native packages require their own version-matched instructions. Choose an exact published version from [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). The commands below select 20.0.0. Run them only after that exact version is listed as a published release; a workspace version does not establish asset availability.
 
 On macOS or Linux, download the native package and checksum file, verify the exact asset entry, then extract:
 
 ```sh
 set -e
-VERSION=19.2.0
+VERSION=20.0.0
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) TARGET=aarch64-apple-darwin ;;
   Darwin:x86_64) TARGET=x86_64-apple-darwin ;;
@@ -44,7 +44,7 @@ On Windows, use PowerShell after verifying the chosen version is published:
 
 ```powershell
 $ErrorActionPreference = "Stop"
-$Version = "19.2.0"
+$Version = "20.0.0"
 $Asset = "htmlcut-$Version-x86_64-pc-windows-msvc.zip"
 $Base = "https://github.com/resoltico/HTMLCut/releases/download/v$Version"
 Invoke-WebRequest "$Base/$Asset" -OutFile $Asset
@@ -62,17 +62,17 @@ To build from source, use the pinned toolchain and current grammar:
 
 ```sh
 cargo install --path crates/htmlcut-cli --locked
-htmlcut describe
-htmlcut describe extract
-htmlcut extract --file page.html --css article --read markdown --raw
-htmlcut extract --file page.html --css 'article a' --read attribute:href --match all
-htmlcut inspect --file page.html --css article
-htmlcut outline --file page.html
-htmlcut inspect --file page.html --css 'main,article,table' --identifiers
+htmlcut extract --help
+htmlcut extract --file page.html --select article --read markdown --raw
+htmlcut extract --file page.html --select 'article a' --all --read attr:href
+htmlcut inspect --file page.html
+htmlcut extract --file page.html --select article --nth 1 --read outer-html --raw
+htmlcut inspect --file page.html --select article
+
 ```
 
-Default output is a JSON array and default selection requires exactly one match. Use repeated `--field NAME CSS READ` for single-valued records, or `NAME?` for a zero-or-one field; use `--field-exclude NAME CSS` to omit footnotes within a field. Use `--exclude CSS` on a flat reading to remove a declared subtree and `--expect-text CSS TEXT` to assert one original-DOM context value. A plan handles all/nth field cardinality and advanced guards. Present empty values are valid; missing required nodes/attributes fail. `--raw` selects one flat string without a final LF.
+Default output is a canonical JSON array plus LF and default selection requires exactly one match. Use --all or positive one-based --nth explicitly. Repeated --field triples require one node; --optional-field permits absence/null, and --many-field returns a nonempty array. JSON handles min=0/bounded/nth fields. Missing requested attributes always fail; empty strings remain values. --field-exclude and --exclude omit declared descendants; --expect-text checks complete static structural text before exclusions. --raw emits one scalar without LF. Inspect repeated groups, then read one row's outer HTML for unknown field discovery; full schema retrieval is optional.
 
-Save actual source and execution with `--bundle snapshot.htmlcut.tar`, then recompute with `htmlcut run snapshot.htmlcut.tar`. Move the bundle freely; it does not depend on original paths. `--receipt FILE` is the smaller alternative when only evidence is needed. It is mutually exclusive with bundle output. Output replacement requires `--overwrite`.
+Save actual source and execution with `--bundle snapshot.htmlcut.tar`, then recompute with `htmlcut replay snapshot.htmlcut.tar`. Move the bundle freely; it does not depend on original paths. `--receipt FILE` is the smaller alternative when only evidence is needed. It is mutually exclusive with bundle output. Output replacement requires `--overwrite`.
 
-Callers acquire/render/decode source first. HTMLCut accepts file/stdin UTF-8 and does not fetch URLs, execute JavaScript, use sessions or crawl. This checkout declares 19.2.0; a workspace version is not proof that matching release assets are published. See [CLI](cli.md), [Core](core.md), [Schemas](schema.md), and [Platform Support](platform-support.md).
+Callers acquire/render/decode source first. HTMLCut accepts file/stdin UTF-8 and does not fetch URLs, execute JavaScript, use sessions or crawl. This checkout declares 20.0.0; a workspace version is not proof that matching release assets are published. See [CLI](cli.md), [Core](core.md), [Schemas](schema.md), and [Platform Support](platform-support.md).

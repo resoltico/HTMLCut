@@ -101,17 +101,12 @@ pub(crate) fn read_bounded(
             return Ok(value);
         }
         if size > maximum.saturating_sub(value.len()) {
-            return Err(limit("acquisition"));
+            return Err(ExtractionError::resource(
+                "acquisition",
+                "input_bytes",
+                maximum as u64,
+            ));
         }
         value.extend_from_slice(&chunk[..size]);
     }
-}
-
-pub(crate) fn limit(stage: &'static str) -> ExtractionError {
-    ExtractionError::new(
-        ErrorCode::ResourceLimit,
-        stage,
-        "The operation exceeded its configured resource limit.",
-    )
-    .with_cause(htmlcut_core::FailureCause::Resource {})
 }

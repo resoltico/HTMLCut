@@ -18,35 +18,60 @@ fn canonical_buffer_flush_does_not_reset_or_expand_the_byte_budget() {
 }
 
 #[test]
-fn borrowed_json_digest_enforces_encoded_bytes_and_shared_work() {
+fn retained_json_encoding_enforces_encoded_bytes_and_shared_work() {
     use selectors::work_budget::SelectorWorkBudget;
     let value = serde_json::json!(["é\n"]);
     let encoded = serde_json::to_vec(&value).unwrap();
     for maximum in [encoded.len() - 1, encoded.len(), encoded.len() + 1] {
         let budget = SelectorWorkBudget::new(10);
         assert_eq!(
-            data_digest(&value, maximum, &budget).is_ok(),
+            super::encoded(&value, maximum, &budget).is_ok(),
             maximum >= encoded.len()
         );
     }
     let budget = SelectorWorkBudget::new(1);
     assert!(budget.consume());
     assert_eq!(
-        data_digest(&value, 100, &budget).unwrap_err().code,
+        super::encoded(&value, 100, &budget).unwrap_err().code,
         ErrorCode::ResourceLimit
     );
     let budget = SelectorWorkBudget::new(1);
-    let mut writer = JsonDigestWriter {
-        hash: Sha256::new(),
-        bytes: 0,
+    let mut writer = JsonBuffer {
+        bytes: Vec::new(),
+        failure: None,
         maximum: 4,
         budget: &budget,
     };
     writer.write_all(b"abcd").unwrap();
     writer.flush().unwrap();
-    assert_eq!(writer.bytes, 4);
+    assert_eq!(writer.bytes, b"abcd");
     assert_eq!(budget.remaining(), 0);
     assert!(writer.write_all(b"e").is_err());
     writer.write_all(b"").unwrap();
-    assert_eq!(hex(&writer.hash.finalize()), sha256(b"abcd"));
+    assert_eq!(writer.bytes, b"abcd");
+    assert_eq!(
+        writer.failure.as_ref().unwrap().resource_counter.as_deref(),
+        Some("encoded_bytes")
+    );
+}
+
+#[test]
+fn failed_encoding_keeps_first_work_owner_across_repeated_work_and_byte_failures() {
+    let budget = selectors::work_budget::SelectorWorkBudget::new(1);
+    assert!(budget.consume());
+    let mut writer = JsonBuffer {
+        bytes: Vec::new(),
+        maximum: 1,
+        budget: &budget,
+        failure: None,
+    };
+    for bytes in [b"a".as_slice(), b"b".as_slice(), b"xx".as_slice()] {
+        assert!(writer.write_all(bytes).is_err());
+        let error = writer.failure.as_ref().unwrap();
+        assert_eq!(error.resource_counter.as_deref(), Some("max_work"));
+        assert_eq!(error.configured_bound, Some(1));
+        assert!(writer.bytes.is_empty());
+    }
+    writer.flush().unwrap();
+    assert_eq!(budget.remaining(), 0);
 }

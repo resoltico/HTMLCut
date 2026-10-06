@@ -7,21 +7,18 @@ use serde_json::json;
 
 fn read(source: &str, selector: &str, normalized: bool) -> Result<String, ExtractionError> {
     let mut plan = ExtractionPlan::css(selector)?;
-    plan.projection = Projection::Value(if normalized {
-        ValueProjection::DomText {}
+    plan.read = Some(if normalized {
+        Reading::Text
     } else {
-        ValueProjection::Markdown {}
+        Reading::Markdown
     });
-    if normalized {
-        plan.transforms = vec![Transform::NormalizeWhitespace {}];
-    }
     let document = PreparedDocument::new(
         SourceSnapshot::new(source, SnapshotMetadata::default())?,
         PreparationLimits::default(),
     )?;
     Ok(document
         .execute(&CompiledPlan::compile(&plan)?)?
-        .data
+        .data()
         .as_values()
         .unwrap()[0]
         .clone())
@@ -278,7 +275,7 @@ fn explicit_unicode_normalization_trims_only_unprotected_generated_space() {
     ] {
         assert_eq!(read(source, "p, div", true).unwrap(), expected);
     }
-    let plan = json!({"schema":"htmlcut.extraction.plan","version":SCHEMA_VERSION,"strategy":{"kind":"css","selector":"p"}});
+    let plan = json!({"version":6,"select":"p","match":"one","read":"literal"});
     let doc = PreparedDocument::new(
         SourceSnapshot::new("<p>\u{a0}World\u{2003}</p>", SnapshotMetadata::default()).unwrap(),
         PreparationLimits::default(),
@@ -289,7 +286,7 @@ fn explicit_unicode_normalization_trims_only_unprotected_generated_space() {
     )
     .unwrap();
     assert_eq!(
-        doc.execute(&query).unwrap().data.as_values().unwrap(),
+        doc.execute(&query).unwrap().data().as_values().unwrap(),
         &["\u{a0}World\u{2003}"]
     );
 }
