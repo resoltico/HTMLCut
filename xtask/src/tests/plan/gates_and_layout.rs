@@ -2,6 +2,24 @@
 use super::*;
 
 #[test]
+fn semver_gates_explicitly_select_the_non_registry_core_package() {
+    let repo = tempdir().expect("repo");
+    write_repo_scaffold(repo.path());
+    for plan in [
+        check_plan(repo.path()).unwrap(),
+        crate::ci_rust_gate_plan(repo.path()).unwrap(),
+    ] {
+        let command = plan.iter().find(|spec| is_semver_check_spec(spec)).unwrap();
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|args| args == ["-p", "htmlcut-core"])
+        );
+    }
+}
+
+#[test]
 fn ci_rust_gate_plan_builds_the_curated_cross_platform_gate() {
     let repo_root = tempdir().expect("tempdir");
     write_repo_scaffold(repo_root.path());

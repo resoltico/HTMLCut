@@ -480,7 +480,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
                 }
                 fs::write(
                     snapshot_root.join("Cargo.toml"),
-                    "[workspace]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }\nselectors = { package = \"htmlcut-selectors\", path = \"patches/rust/selectors\", version = \"0.38.0-htmlcut.1\" }\n",
+                    "[workspace]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"4.2.0\"\n\n[workspace.dependencies]\nscraper = { package = \"htmlcut-scraper\", path = \"patches/rust/scraper\", version = \"0.27.0-htmlcut.1\", default-features = false, features = [\"errors\"] }\nselectors = { package = \"htmlcut-selectors\", path = \"patches/rust/selectors\", version = \"0.38.0-htmlcut.1\" }\nsha2 = { package = \"htmlcut-sha2\", path = \"patches/rust/sha2\", version = \"0.11.0-htmlcut.7\" }\n",
                 )
                 .expect("write snapshot workspace Cargo.toml");
                 fs::write(
@@ -577,7 +577,7 @@ fn main_entry_with_refreshes_the_semver_baseline_snapshot() {
     );
     assert_eq!(
         manifest["dependencies"]["sha2"]["version"].as_str(),
-        Some("0.11.0-htmlcut.1")
+        Some("0.11.0-htmlcut.7")
     );
     assert!(refreshed_provenance.contains("schema = \"htmlcut.semver_baseline_provenance@1\""));
     assert!(refreshed_provenance.contains("package = \"htmlcut-core\""));

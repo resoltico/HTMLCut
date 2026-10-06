@@ -4,6 +4,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Fixed
+
+- Maintainer API-baseline refresh restores fork identities and version requirements from the published workspace manifest, including dependency updates, instead of substituting historical versions. The semver gate explicitly selects `htmlcut-core` so its `publish = false` setting cannot silently exclude API checks.
+
 ## [20.0.0] - 2026-10-06
 
 ### Changed

@@ -166,7 +166,11 @@ pub fn snapshot_uses_vendored_selector_stack(cargo_toml: &str) -> DynResult<bool
 /// therefore point at its copied tagged forks rather than an upstream registry lookalike.
 pub fn restore_vendored_dependency_paths_in_baseline_manifest(
     cargo_toml: &str,
+    published_workspace_cargo_toml: &str,
 ) -> DynResult<Option<String>> {
+    let published = toml::from_str::<Value>(published_workspace_cargo_toml).map_err(|error| {
+        crate::model::XtaskError::invalid_toml("published workspace Cargo.toml", error)
+    })?;
     let mut manifest = toml::from_str::<Value>(cargo_toml)
         .map_err(|error| crate::model::XtaskError::invalid_toml("baseline Cargo.toml", error))?;
     let Some(dependencies) = manifest
@@ -176,25 +180,19 @@ pub fn restore_vendored_dependency_paths_in_baseline_manifest(
         return Ok(None);
     };
 
-    let restored = [
-        (
-            "scraper",
-            "htmlcut-scraper",
-            "vendor/scraper",
-            "0.27.0-htmlcut.1",
-        ),
-        (
-            "selectors",
-            "htmlcut-selectors",
-            "vendor/selectors",
-            "0.38.0-htmlcut.1",
-        ),
-    ]
-    .into_iter()
-    .filter(|(alias, package, path, version)| {
-        restore_vendored_baseline_dependency(dependencies, alias, package, path, version)
-    })
-    .count();
+    let Some(published_dependencies) = published
+        .get("workspace")
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(Value::as_table)
+    else {
+        return Ok(None);
+    };
+    let restored = published_dependencies
+        .iter()
+        .filter(|(alias, dependency)| {
+            restore_vendored_baseline_dependency(dependencies, alias, dependency)
+        })
+        .count();
 
     if restored == 0 {
         return Ok(None);
@@ -283,19 +281,35 @@ fn unvendor_dependency_version(version: &str) -> String {
 fn restore_vendored_baseline_dependency(
     dependencies: &mut toml::Table,
     alias: &str,
-    package: &str,
-    path: &str,
-    version: &str,
+    published_dependency: &Value,
 ) -> bool {
-    let Some(dependency) = dependencies.get_mut(alias) else {
+    let Some(published) = published_dependency.as_table() else {
         return false;
     };
-    let Some(table) = dependency.as_table_mut() else {
+    let Some(package) = published.get("package").and_then(Value::as_str) else {
         return false;
     };
-
+    let Some(path) = published.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    if !is_vendored_selector_stack_package(package, path) {
+        return false;
+    }
+    let Some(table) = dependencies.get_mut(alias).and_then(Value::as_table_mut) else {
+        return false;
+    };
     table.insert("package".to_owned(), Value::String(package.to_owned()));
-    table.insert("path".to_owned(), Value::String(path.to_owned()));
-    table.insert("version".to_owned(), Value::String(version.to_owned()));
+    table.insert(
+        "path".to_owned(),
+        Value::String(path.replacen("patches/rust/", "vendor/", 1)),
+    );
+    match published.get("version") {
+        Some(version) => {
+            table.insert("version".to_owned(), version.clone());
+        }
+        None => {
+            table.remove("version");
+        }
+    }
     true
 }

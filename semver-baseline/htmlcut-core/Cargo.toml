@@ -15,12 +15,12 @@ default-features = false
 features = ["errors"]
 package = "htmlcut-scraper"
 path = "vendor/scraper"
-version = "0.27.0-htmlcut.1"
+version = "0.27.0-htmlcut.9"
 
 [dependencies.selectors]
 package = "htmlcut-selectors"
 path = "vendor/selectors"
-version = "0.38.0-htmlcut.1"
+version = "0.41.0-htmlcut.1"
 
 [dependencies.serde]
 features = ["derive"]
