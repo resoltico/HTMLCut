@@ -1,238 +1,137 @@
 // SPDX-License-Identifier: MPL-2.0
-//! The single closed, source-independent extraction language.
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize, de::IntoDeserializer};
+//! The closed, source-independent snapshot query contract.
 
 use crate::{ErrorCode, ExecutionLimits, ExtractionError, SCHEMA_VERSION};
+use schemars::JsonSchema;
+use serde::{Deserialize, Deserializer, Serialize, de::IntoDeserializer};
+use std::collections::BTreeMap;
 
 mod fields;
 pub(crate) mod validation;
-pub use fields::{FieldSelection, RecordField, ValueProjection};
+pub use fields::{FieldMatch, Reading, RecordField};
 
-/// One source/DOM strategy, without implicit fragment reparsing.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Strategy {
-    /// Select original DOM elements with CSS.
-    Css {
-        /// CSS selector grammar.
-        selector: String,
-    },
-    /// Enumerate non-overlapping source boundary pairs.
-    Slice {
-        /// Opening boundary.
-        start: Boundary,
-        /// Closing boundary.
-        end: Boundary,
-        /// Include opening boundary bytes.
-        #[serde(default)]
-        include_start: bool,
-        /// Include closing boundary bytes.
-        #[serde(default)]
-        include_end: bool,
-    },
+/// Cardinality of a selected set of original DOM nodes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Match {
+    /// Exactly one node.
+    #[default]
+    One,
+    /// Every node within declared bounds.
+    All,
+    /// One positive, one-based position; candidates are still counted completely.
+    Nth,
 }
 
-/// Literal or bounded regular-expression source boundary.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Boundary {
-    /// Match exact UTF-8 bytes.
-    Literal {
-        /// Nonempty literal boundary.
-        value: String,
-    },
-    /// Search with Rust regular-expression grammar.
-    Regex {
-        /// Nonempty pattern.
-        pattern: String,
-        /// Explicit flags from i, m, s, U and x.
-        #[serde(default)]
-        flags: String,
-    },
-}
-
-/// Explicit cardinality or positional selection.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Selection {
-    /// Exactly one candidate, the default.
-    Single {},
-    /// Select every candidate within declared bounds.
-    All {
-        /// Minimum candidate count, default one; zero explicitly permits empty results.
-        #[serde(default = "minimum_one")]
-        min: u32,
-        /// Maximum candidate count, defaulting to the execution selected-value limit.
-        #[serde(default)]
-        max: Option<u32>,
-    },
-    /// One explicitly positional candidate; does not assert identity.
-    Nth {
-        /// Positive, one-based position.
-        index: u32,
-    },
-}
-
-impl Default for Selection {
-    fn default() -> Self {
-        Self::Single {}
-    }
-}
-
-fn minimum_one() -> u32 {
-    1
-}
-
-/// Exactly one requested representation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Projection {
-    /// Named scalar fields projected relative to each selected original-DOM row.
-    Records {
-        /// Additional element-sibling subtrees in the declared row payload.
-        #[serde(default)]
-        #[schemars(range(max = crate::limits::MAX_FOLLOWING_SIBLINGS))]
-        following_siblings: u32,
-        /// Ordered fields; names must be unique and field count is bounded.
-        fields: Vec<RecordField>,
-    },
-    /// Exact accepted source bytes; valid only for slicing.
-    Source {},
-    /// A scalar DOM representation shared with record fields.
-    #[serde(untagged)]
-    Value(ValueProjection),
-}
-
-impl Default for Projection {
-    fn default() -> Self {
-        Self::Value(ValueProjection::default())
-    }
-}
-
-pub(crate) enum DomProjection<'a> {
-    Value(&'a ValueProjection),
-    Records(u32),
-}
-
-impl Projection {
-    pub(crate) fn dom(&self) -> Result<DomProjection<'_>, ExtractionError> {
-        match self {
-            Self::Value(value) => Ok(DomProjection::Value(value)),
-            Self::Records {
-                following_siblings, ..
-            } => Ok(DomProjection::Records(*following_siblings)),
-            Self::Source {} => Err(ExtractionError::new(
-                ErrorCode::InvalidPlan,
-                "validation",
-                "Source projection requires source slicing.",
-            )),
-        }
-    }
-}
-
-/// Original-DOM scope of a declared guard.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+/// Original DOM scope of an expectation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum GuardScope {
-    /// Check the complete document.
+    /// The entire original document, even when root selection is empty.
+    #[default]
     Document,
-    /// Check each selected subtree independently.
+    /// Each selected original subtree or record forest.
     Selected,
 }
 
-/// Literal untransformed guard read.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum GuardRead {
-    /// Concatenated original DOM text.
-    DomText {},
-    /// Required parsed attribute value.
-    Attribute {
-        /// Required attribute name.
-        name: String,
-    },
+fn one() -> u32 {
+    1
 }
 
-/// Predicate applied to every matched guard value.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Predicate {
-    /// Exact whole-value comparison.
-    Exact {
-        /// Required exact literal value.
-        value: String,
-    },
-    /// Search matching; anchors express a whole-value match.
-    Regex {
-        /// Bounded regular-expression grammar.
-        pattern: String,
-        /// Explicit flags from i, m, s, U and x.
-        #[serde(default)]
-        flags: String,
-    },
+// Omission requests defaults. A supplied null is never an omitted member.
+pub(super) fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
-/// One conjunctive, original-DOM expectation.
+/// One conjunctive original-DOM expectation, evaluated before exclusions.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Guard {
-    /// Document or independently selected-root scope.
+    /// Required CSS selector.
+    pub select: String,
+    /// Document by default, or each selected subtree/forest.
+    #[serde(default)]
     pub scope: GuardScope,
-    /// Original-DOM selector; :scope addresses a selected root.
-    pub selector: String,
-    /// Minimum guard matches, default one.
-    #[serde(default = "minimum_one")]
+    /// Minimum matches, default one.
+    #[serde(default = "one")]
     pub min: u32,
-    /// Maximum guard matches, defaulting to the finite candidate limit.
-    #[serde(default)]
-    pub max: Option<u32>,
-    /// Literal value to read, before exclusions and transformations.
-    pub read: GuardRead,
-    /// Required for dom_text; omission on attribute means presence only.
-    #[serde(default)]
-    pub predicate: Option<Predicate>,
+    /// Maximum matches, default one.
+    #[serde(default = "one")]
+    pub max: u32,
+    /// Predicate reading; absent for count-only expectations.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "Reading")]
+    pub read: Option<Reading>,
+    /// Whole-value equality, mutually exclusive with pattern.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "String")]
+    pub equals: Option<String>,
+    /// Bounded Rust regex search; inline flags and anchors express matching policy.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "String")]
+    pub pattern: Option<String>,
 }
 
-/// Explicit value transforms; a projection permits at most one compatible operation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Transform {
-    /// Collapse source ASCII whitespace outside preformatted content.
-    NormalizeWhitespace {},
-    /// Resolve supported URL positions using explicit snapshot base metadata.
-    ResolveUrls {},
-}
-
-/// One validated, fully defaulted extraction plan.
+/// A compact, closed query over an immutable HTML snapshot.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractionPlan {
-    /// Closed plan role name.
-    #[schemars(extend("const" = "htmlcut.extraction.plan"))]
-    pub schema: String,
-    /// Wire-family version.
+    /// Required current wire version.
     #[schemars(extend("const" = SCHEMA_VERSION))]
     pub version: u32,
-    /// Source or DOM selection strategy.
-    pub strategy: Strategy,
-    /// Cardinality/position policy, default single.
+    /// Required nonempty CSS selector.
+    pub select: String,
+    /// Root cardinality, default one; optional is a field-only mode.
+    #[serde(default, rename = "match")]
+    pub match_mode: Match,
+    /// All minimum, default one; rejected for other modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "u32")]
+    pub min: Option<u32>,
+    /// Optional declared all maximum, retained as an assumption.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "u32")]
+    pub max: Option<u32>,
+    /// Required positive position for nth; rejected otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "u32")]
+    pub index: Option<u32>,
+    /// Scalar reading, default text; rejected for records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Reading")]
+    pub read: Option<Reading>,
+    /// Descendant exclusions for scalar reading; rejected for records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Vec<String>")]
+    pub exclude: Option<Vec<String>>,
+    /// One to sixty-four fields, processed in ASCII lexical name order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "BTreeMap<String, RecordField>")]
+    pub fields: Option<BTreeMap<String, RecordField>>,
+    /// Conjunctive count or value expectations.
     #[serde(default)]
-    pub selection: Selection,
-    /// Requested representation, default dom_text.
-    #[serde(default)]
-    pub projection: Projection,
-    /// Explicit selectors removing nodes only inside selected subtrees.
-    #[serde(default)]
-    pub exclude: Vec<String>,
-    /// Conjunctive original-DOM guards.
-    #[serde(default)]
-    pub guards: Vec<Guard>,
-    /// Zero or one compatible value transform; record roots require an empty array.
-    #[serde(default)]
-    pub transforms: Vec<Transform>,
-    /// Per-operation core limits, independent of adapter policy.
+    pub expect: Vec<Guard>,
+    /// Additional element siblings in a record forest; default zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "u32")]
+    pub following_siblings: Option<u32>,
+    /// Fresh per-execution limits; partial JSON fills the maintained defaults.
     #[serde(default)]
     pub limits: ExecutionLimits,
 }
@@ -240,187 +139,188 @@ pub struct ExtractionPlan {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PlanFields {
-    schema: String,
     version: u32,
-    strategy: Strategy,
+    select: String,
+    #[serde(default, rename = "match")]
+    match_mode: Match,
+    #[serde(default, deserialize_with = "present")]
+    min: Option<u32>,
+    #[serde(default, deserialize_with = "present")]
+    max: Option<u32>,
+    #[serde(default, deserialize_with = "present")]
+    index: Option<u32>,
+    #[serde(default, deserialize_with = "present")]
+    read: Option<Reading>,
+    #[serde(default, deserialize_with = "present")]
+    exclude: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present")]
+    fields: Option<BTreeMap<String, RecordField>>,
     #[serde(default)]
-    selection: Selection,
-    #[serde(default)]
-    projection: Projection,
-    #[serde(default)]
-    exclude: Vec<String>,
-    #[serde(default)]
-    guards: Vec<Guard>,
-    #[serde(default)]
-    transforms: Vec<Transform>,
+    expect: Vec<Guard>,
+    #[serde(default, deserialize_with = "present")]
+    following_siblings: Option<u32>,
     #[serde(default)]
     limits: ExecutionLimits,
 }
-
 impl PlanFields {
     fn into_plan(self) -> ExtractionPlan {
         ExtractionPlan {
-            schema: self.schema,
             version: self.version,
-            strategy: self.strategy,
-            selection: self.selection,
-            projection: self.projection,
+            select: self.select,
+            match_mode: self.match_mode,
+            min: self.min,
+            max: self.max,
+            index: self.index,
+            read: self.read,
             exclude: self.exclude,
-            guards: self.guards,
-            transforms: self.transforms,
+            fields: self.fields,
+            expect: self.expect,
+            following_siblings: self.following_siblings,
             limits: self.limits,
         }
     }
 }
-
 impl<'de> Deserialize<'de> for ExtractionPlan {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let closed = crate::json::ClosedValue::deserialize(deserializer)?;
-        let fields: PlanFields = serde_json::from_value(closed.0)
-            .map_err(|_| serde::de::Error::custom("Invalid extraction plan fields."))?;
-        let plan = fields.into_plan();
-        plan.validate().map_err(serde::de::Error::custom)?;
-        Ok(plan)
+        Self::from_value(closed.0).map_err(serde::de::Error::custom)
     }
 }
-
 impl ExtractionPlan {
-    /// Constructs a validated source-only single slice without compiling unrelated CSS grammar.
-    pub fn slice(start: Boundary, end: Boundary) -> Result<Self, ExtractionError> {
-        Self::for_strategy(
-            Strategy::Slice {
-                start,
-                end,
-                include_start: false,
-                include_end: false,
-            },
-            Projection::Source {},
-        )
-    }
-    /// Constructs a validated default single/dom_text plan over a CSS selector.
-    pub fn css(selector: impl Into<String>) -> Result<Self, ExtractionError> {
-        Self::for_strategy(
-            Strategy::Css {
-                selector: selector.into(),
-            },
-            Projection::default(),
-        )
-    }
-
-    fn for_strategy(strategy: Strategy, projection: Projection) -> Result<Self, ExtractionError> {
+    /// Constructs a default exactly-one structural-text query.
+    pub fn css(select: impl Into<String>) -> Result<Self, ExtractionError> {
         let plan = Self {
-            schema: "htmlcut.extraction.plan".into(),
             version: SCHEMA_VERSION,
-            strategy,
-            selection: Selection::Single {},
-            projection,
-            exclude: Vec::new(),
-            guards: Vec::new(),
-            transforms: Vec::new(),
+            select: select.into(),
+            match_mode: Match::One,
+            min: None,
+            max: None,
+            index: None,
+            read: None,
+            exclude: None,
+            fields: None,
+            expect: Vec::new(),
+            following_siblings: None,
             limits: ExecutionLimits::default(),
         };
         plan.validate()?;
         Ok(plan)
     }
-
-    /// Reads a size-bounded closed plan, rejecting recursive duplicate keys before map creation.
+    /// Parses bounded JSON, rejecting all duplicate keys before map conversion.
     pub fn from_json(bytes: &[u8]) -> Result<Self, ExtractionError> {
-        if bytes.len() > crate::limits::MAX_PLAN_BYTES {
-            return Err(ExtractionError::limit("plan"));
-        }
-        let value = crate::parse_closed_json(bytes, crate::MAX_PLAN_BYTES)?;
-        if value.get("schema").and_then(serde_json::Value::as_str)
-            != Some("htmlcut.extraction.plan")
-            || value.get("version").and_then(serde_json::Value::as_u64)
-                != Some(SCHEMA_VERSION as u64)
-        {
+        Self::from_value(crate::parse_closed_json(bytes, crate::MAX_PLAN_BYTES)?)
+    }
+    fn from_value(mut value: serde_json::Value) -> Result<Self, ExtractionError> {
+        if value.get("version").and_then(serde_json::Value::as_u64) != Some(SCHEMA_VERSION.into()) {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidSchema,
                 "plan",
-                "Unsupported extraction plan schema or version.",
+                "Unsupported query version.",
             )
             .with_cause(crate::FailureCause::Configuration {
                 role: crate::ConfigurationRole::Plan,
                 problem: crate::ConfigurationProblem::UnsupportedVersion,
             }));
         }
+        // Sort incoming objects before field deserialization too, including under
+        // downstream preserve_order unification; malformed fields fail lexically.
+        value.sort_all_objects();
         let fields: PlanFields = serde_path_to_error::deserialize(value.into_deserializer())
             .map_err(|error| {
                 let mut failure = ExtractionError::new(
                     ErrorCode::InvalidPlan,
                     "plan",
-                    "The extraction plan contains invalid fields.",
+                    "The query contains invalid members.",
                 );
                 failure.plan_path = Some(safe_plan_path(error.path()));
+                failure.field_name = safe_field_name(error.path());
                 failure
             })?;
         let plan = fields.into_plan();
-        plan.validate().map_err(|error| {
-            if error.code == ErrorCode::ResourceLimit {
-                ExtractionError::limit("plan")
-            } else {
-                error
-            }
-        })?;
+        plan.validate()?;
         Ok(plan)
     }
-
     pub(crate) fn normalized(&self) -> Result<Self, ExtractionError> {
         self.validate()?;
         let mut plan = self.clone();
-        if let Selection::All { max, .. } = &mut plan.selection {
-            *max = Some(max.unwrap_or(plan.limits.max_selected));
+        if plan.match_mode == Match::All {
+            plan.min = Some(plan.min.unwrap_or(1));
         }
-        for guard in &mut plan.guards {
-            guard.max = Some(guard.max.unwrap_or(plan.limits.max_candidates));
-        }
-        if let Projection::Records { fields, .. } = &mut plan.projection {
-            for field in fields {
-                if let FieldSelection::All { max, .. } = &mut field.selection {
-                    *max = Some(max.unwrap_or(plan.limits.max_selected));
+        if let Some(fields) = &mut plan.fields {
+            plan.following_siblings = Some(plan.following_siblings.unwrap_or(0));
+            for field in fields.values_mut() {
+                if field.match_mode == FieldMatch::All {
+                    field.min = Some(field.min.unwrap_or(1));
                 }
+            }
+        } else {
+            plan.read = Some(plan.read.unwrap_or_default());
+            plan.exclude = Some(plan.exclude.unwrap_or_default());
+        }
+        for guard in &mut plan.expect {
+            if guard.equals.is_some() || guard.pattern.is_some() {
+                guard.read = Some(guard.read.clone().unwrap_or_default());
             }
         }
         Ok(plan)
     }
+    pub(crate) fn selection(&self) -> Selection {
+        selection(self.match_mode, self.min, self.max, self.index)
+    }
 }
 
+pub(crate) enum Selection {
+    Single,
+    All { min: u32, max: Option<u32> },
+    Nth { index: u32 },
+}
+pub(super) fn selection(
+    mode: Match,
+    min: Option<u32>,
+    max: Option<u32>,
+    index: Option<u32>,
+) -> Selection {
+    match mode {
+        Match::One => Selection::Single,
+        Match::All => Selection::All {
+            min: min.unwrap_or(1),
+            max,
+        },
+        Match::Nth => Selection::Nth {
+            index: index.expect("validated nth index"),
+        },
+    }
+}
 fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
     use serde_path_to_error::Segment;
     let mut safe = String::from("$");
+    let mut field_key = false;
     for segment in path {
         match segment {
             Segment::Seq { index } => safe.push_str(&format!("[{index}]")),
+            Segment::Map { key } if field_key && validation::field_name(key) => {
+                safe.push('.');
+                safe.push_str(key);
+                field_key = false;
+            }
             Segment::Map { key }
                 if matches!(
                     key.as_str(),
-                    "schema"
-                        | "version"
-                        | "strategy"
-                        | "kind"
-                        | "selector"
-                        | "start"
-                        | "end"
-                        | "include_start"
-                        | "include_end"
-                        | "value"
-                        | "pattern"
-                        | "flags"
-                        | "selection"
-                        | "index"
+                    "version"
+                        | "select"
+                        | "match"
                         | "min"
                         | "max"
-                        | "projection"
-                        | "following_siblings"
-                        | "fields"
-                        | "name"
+                        | "index"
+                        | "read"
                         | "exclude"
-                        | "guards"
-                        | "transforms"
+                        | "fields"
+                        | "expect"
+                        | "following_siblings"
                         | "limits"
                         | "scope"
-                        | "read"
-                        | "predicate"
+                        | "equals"
+                        | "pattern"
                         | "max_work"
                         | "max_candidates"
                         | "max_selected"
@@ -431,6 +331,7 @@ fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
             {
                 safe.push('.');
                 safe.push_str(key);
+                field_key = key == "fields";
             }
             _ => break,
         }
@@ -438,17 +339,13 @@ fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
     safe
 }
 
-#[cfg(test)]
-mod path_tests {
-    use super::*;
-
-    #[test]
-    fn diagnostic_path_never_repeats_an_untrusted_map_key() {
-        let input = serde_json::json!({"SYNTHETIC_SECRET": "not a number"});
-        let error = serde_path_to_error::deserialize::<_, std::collections::BTreeMap<String, u32>>(
-            input.into_deserializer(),
-        )
-        .unwrap_err();
-        assert_eq!(safe_plan_path(error.path()), "$");
+fn safe_field_name(path: &serde_path_to_error::Path) -> Option<String> {
+    let mut segments = path.iter();
+    if matches!(segments.next(),Some(serde_path_to_error::Segment::Map {key}) if key == "fields")
+        && let Some(serde_path_to_error::Segment::Map { key }) = segments.next()
+        && validation::field_name(key)
+    {
+        return Some(key.clone());
     }
+    None
 }

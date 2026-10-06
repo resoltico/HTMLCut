@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Caller-owned in-process timing over the same immutable title-extraction task as the Python comparison.
 use htmlcut_core::{
-    CompiledPlan, ExtractionPlan, PreparationLimits, PreparedDocument, Projection, Selection,
-    SnapshotMetadata, SourceSnapshot, ValueProjection,
+    CompiledPlan, ExtractionPlan, Match, PreparationLimits, PreparedDocument, Reading,
+    SnapshotMetadata, SourceSnapshot,
 };
 use std::time::Instant;
 
@@ -15,19 +15,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PreparationLimits::default(),
     )?;
     let mut plan = ExtractionPlan::css(selector)?;
-    plan.selection = Selection::All {
-        min: 20,
-        max: Some(20),
-    };
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "title".into(),
-    });
+    plan.match_mode = Match::All;
+    plan.min = Some(20);
+    plan.max = Some(20);
+    plan.read = Some(Reading::Attribute("title".into()));
     let compiled = CompiledPlan::compile(&plan)?;
     let expected = source.execute(&compiled)?;
     for _ in 0..3 {
         assert_eq!(
-            source.execute(&compiled)?.data.as_values().unwrap(),
-            expected.data.as_values().unwrap()
+            source.execute(&compiled)?.data().as_values().unwrap(),
+            expected.data().as_values().unwrap()
         );
     }
     let mut samples = Vec::new();
@@ -35,13 +32,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let start = Instant::now();
         let values = source.execute(&compiled)?;
         let elapsed = start.elapsed().as_nanos();
-        assert_eq!(values.data, expected.data);
+        assert_eq!(values.data(), expected.data());
         samples.push(elapsed);
     }
     println!(
         "{}",
         serde_json::json!({"task":"titles","prepared_document_count":1,"compiled_plan_count":1,
-        "warmups":3,"repeats":100,"samples_ns":samples,"values":expected.data,
+        "warmups":3,"repeats":100,"samples_ns":samples,"values":expected.data(),
         "scope":"execution reuse; excludes source reading, compilation and first DOM preparation"})
     );
     Ok(())

@@ -8,6 +8,7 @@ use std::cell::Cell;
 /// relative-selector evaluation. Once exhausted, matching short-circuits and the caller must
 /// report a typed budget failure rather than treating the selector as non-matching.
 pub struct SelectorWorkBudget {
+    configured: u32,
     remaining: Cell<u32>,
     exhausted: Cell<bool>,
 }
@@ -17,6 +18,7 @@ impl SelectorWorkBudget {
     pub fn new(units: u32) -> Self {
         assert!(units > 0, "selector work budget must be positive");
         Self {
+            configured: units,
             remaining: Cell::new(units),
             exhausted: Cell::new(false),
         }
@@ -31,6 +33,11 @@ impl SelectorWorkBudget {
         }
         self.remaining.set(remaining - 1);
         true
+    }
+
+    /// Original configured allowance; consuming work never changes it.
+    pub fn configured(&self) -> u32 {
+        self.configured
     }
 
     /// Returns whether matching exhausted this budget.
@@ -51,6 +58,7 @@ mod tests {
     #[test]
     fn exhaustion_is_sticky_after_the_last_available_unit() {
         let budget = SelectorWorkBudget::new(2);
+        assert_eq!(budget.configured(), 2);
         assert_eq!(budget.remaining(), 2);
         assert!(budget.consume());
         assert_eq!(budget.remaining(), 1);
@@ -58,6 +66,7 @@ mod tests {
         assert!(budget.consume());
         assert_eq!(budget.remaining(), 0);
         assert!(!budget.consume());
+        assert_eq!(budget.configured(), 2);
         assert!(budget.exhausted());
         assert!(!budget.consume());
         assert_eq!(budget.remaining(), 0);

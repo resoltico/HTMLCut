@@ -1,181 +1,127 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bounded source-independent grammar compilation.
-
-use regex::{Regex, RegexBuilder};
-use scraper::Selector;
+//! Bounded, source-independent query compilation and lazy query identity.
 
 use crate::limits::{MAX_PATTERN_DEPTH, MAX_REGEX_BYTES};
-use crate::{
-    Boundary, ErrorCode, ExtractionError, ExtractionPlan, Predicate, Projection, Strategy,
-};
-
-pub(crate) enum Matcher {
-    Literal(String),
-    Regex(Regex),
-}
-
-impl Matcher {
-    pub(crate) fn find(&self, source: &str, offset: usize) -> Option<(usize, usize)> {
-        match self {
-            Self::Literal(value) => source[offset..]
-                .find(value)
-                .map(|start| (offset + start, offset + start + value.len())),
-            Self::Regex(value) => value
-                .find_at(source, offset)
-                .map(|found| (found.start(), found.end())),
-        }
-    }
-}
-
-pub(crate) enum CompiledStrategy {
-    Css {
-        selector: Selector,
-        projection: CompiledDomProjection,
-    },
-    Slice {
-        start: Matcher,
-        end: Matcher,
-        include_start: bool,
-        include_end: bool,
-    },
-}
-
-pub(crate) enum CompiledDomProjection {
-    Value(crate::ValueProjection),
-    Records(u32),
-}
+use crate::{ErrorCode, ExtractionError, ExtractionPlan};
+use regex::{Regex, RegexBuilder};
+use scraper::Selector;
+use std::{cell::OnceCell, sync::Arc};
 
 pub(crate) struct CompiledGuard {
     pub(crate) selector: Selector,
     pub(crate) predicate: Option<Regex>,
 }
-
 pub(crate) struct CompiledField {
+    pub(crate) name: String,
     pub(crate) selector: Selector,
     pub(crate) exclusions: Vec<Selector>,
     pub(crate) field: crate::RecordField,
 }
-
-/// Opaque reusable validated grammar; execution counters are never retained here.
+/// Reusable validated query grammar, with fresh counters for every execution.
 pub struct CompiledPlan {
     pub(crate) plan: ExtractionPlan,
-    pub(crate) strategy: CompiledStrategy,
+    pub(crate) selector: Selector,
     pub(crate) guards: Vec<CompiledGuard>,
     pub(crate) exclusions: Vec<Selector>,
     pub(crate) fields: Vec<CompiledField>,
-    pub(crate) digest: String,
+    pub(crate) normalized_bytes: Arc<str>,
+    digest: OnceCell<String>,
 }
-
 impl CompiledPlan {
-    /// Compiles selector and regex grammar once, under finite plan/grammar limits.
+    /// Validates and normalizes all construction routes, retaining one bounded query encoding.
     pub fn compile(plan: &ExtractionPlan) -> Result<Self, ExtractionError> {
         let plan = plan.normalized()?;
-        let boundary_regexes = match &plan.strategy {
-            Strategy::Slice { start, end, .. } => [start, end]
-                .iter()
-                .filter(|boundary| matches!(boundary, Boundary::Regex { .. }))
-                .count(),
-            _ => 0,
-        };
-        let regex_count = boundary_regexes
-            + plan
-                .guards
-                .iter()
-                .filter(|guard| matches!(guard.predicate, Some(Predicate::Regex { .. })))
-                .count();
-        // Program and DFA allowances together share one fixed plan allowance.
-        let regex_budget = MAX_REGEX_BYTES / (2 * regex_count.max(1));
-        let strategy = match &plan.strategy {
-            Strategy::Css { selector } => CompiledStrategy::Css {
-                selector: compile_selector(selector)?,
-                projection: match plan.projection.dom()? {
-                    crate::plan::DomProjection::Value(value) => {
-                        CompiledDomProjection::Value(value.clone())
-                    }
-                    crate::plan::DomProjection::Records(following) => {
-                        CompiledDomProjection::Records(following)
-                    }
-                },
-            },
-            Strategy::Slice {
-                start,
-                end,
-                include_start,
-                include_end,
-            } => CompiledStrategy::Slice {
-                start: compile_boundary(start, regex_budget)?,
-                end: compile_boundary(end, regex_budget)?,
-                include_start: *include_start,
-                include_end: *include_end,
-            },
-        };
-        let guards = plan
-            .guards
+        let normalized_bytes = crate::identity::query_bytes(&plan)?;
+        let regex_count = plan
+            .expect
             .iter()
-            .map(|guard| {
+            .filter(|guard| guard.pattern.is_some())
+            .count();
+        let regex_budget = MAX_REGEX_BYTES / (2 * regex_count.max(1));
+        let selector = compile_selector(&plan.select)?;
+        let guards = plan
+            .expect
+            .iter()
+            .enumerate()
+            .map(|(index, guard)| {
+                let selector = compile_selector(&guard.select).map_err(|mut error| {
+                    error.plan_path = Some(format!("expect[{index}].select"));
+                    error
+                })?;
+                let predicate = guard
+                    .pattern
+                    .as_deref()
+                    .map(|pattern| compile_regex(pattern, regex_budget))
+                    .transpose()
+                    .map_err(|mut error| {
+                        error.plan_path = Some(format!("expect[{index}].pattern"));
+                        error
+                    })?;
                 Ok(CompiledGuard {
-                    selector: compile_selector(&guard.selector)?,
-                    predicate: match &guard.predicate {
-                        Some(Predicate::Regex { pattern, flags }) => {
-                            Some(compile_regex(pattern, flags, regex_budget)?)
-                        }
-                        _ => None,
-                    },
+                    selector,
+                    predicate,
                 })
             })
             .collect::<Result<_, ExtractionError>>()?;
         let exclusions = plan
             .exclude
             .iter()
+            .flatten()
             .map(|value| compile_selector(value))
             .collect::<Result<_, _>>()?;
-        let digest = crate::identity::framed(
-            "htmlcut.plan/5",
-            &[crate::canonical_json(&plan)?.as_bytes()],
-        );
-        let fields = match &plan.projection {
-            Projection::Records { fields, .. } => fields
-                .iter()
-                .map(|field| {
-                    Ok(CompiledField {
-                        selector: compile_selector(&field.selector)?,
-                        field: field.clone(),
-                        exclusions: field
-                            .exclude
-                            .iter()
-                            .map(|s| compile_selector(s))
-                            .collect::<Result<_, _>>()?,
+        let fields = plan
+            .fields
+            .iter()
+            .flat_map(|fields| fields.iter())
+            .map(|(name, field)| {
+                let selector = compile_selector(&field.select).map_err(|mut error| {
+                    error.field_name = Some(name.clone());
+                    error.plan_path = Some(format!("fields.{name}.select"));
+                    error
+                })?;
+                let exclusions = field
+                    .exclude
+                    .iter()
+                    .enumerate()
+                    .map(|(index, value)| {
+                        compile_selector(value).map_err(|mut error| {
+                            error.field_name = Some(name.clone());
+                            error.plan_path = Some(format!("fields.{name}.exclude[{index}]"));
+                            error
+                        })
                     })
+                    .collect::<Result<_, _>>()?;
+                Ok(CompiledField {
+                    name: name.clone(),
+                    selector,
+                    field: field.clone(),
+                    exclusions,
                 })
-                .collect::<Result<Vec<_>, ExtractionError>>()?,
-            _ => Vec::new(),
-        };
+            })
+            .collect::<Result<_, ExtractionError>>()?;
         Ok(Self {
             plan,
-            strategy,
+            selector,
             guards,
             exclusions,
             fields,
-            digest,
+            normalized_bytes: Arc::from(normalized_bytes),
+            digest: OnceCell::new(),
         })
     }
-
-    /// Fully materialized defaults used for execution and plan hashing.
+    /// Effective defaults and preserved explicit assumptions used by this compiled query.
     pub fn plan(&self) -> &ExtractionPlan {
         &self.plan
     }
-    /// Domain-separated SHA-256 identity of the normalized plan.
-    pub fn plan_sha256(&self) -> &str {
-        &self.digest
+    /// Canonical normalized JSON, independent of downstream serde_json feature choices.
+    pub fn normalized_json(&self) -> &str {
+        &self.normalized_bytes
     }
-}
-
-fn compile_boundary(boundary: &Boundary, regex_budget: usize) -> Result<Matcher, ExtractionError> {
-    match boundary {
-        Boundary::Literal { value } => Ok(Matcher::Literal(value.clone())),
-        Boundary::Regex { pattern, flags } => {
-            Ok(Matcher::Regex(compile_regex(pattern, flags, regex_budget)?))
-        }
+    /// Lazily computes the domain-separated identity of the stored normalized query.
+    pub fn plan_sha256(&self) -> &str {
+        self.digest.get_or_init(|| {
+            crate::identity::framed("htmlcut.plan/6", &[self.normalized_bytes.as_bytes()])
+        })
     }
 }
 
@@ -221,7 +167,11 @@ pub(crate) fn compile_selector(value: &str) -> Result<Selector, ExtractionError>
         if c == '(' || c == '[' {
             depth += 1;
             if depth > MAX_PATTERN_DEPTH {
-                return Err(ExtractionError::limit("compilation"));
+                return Err(ExtractionError::resource(
+                    "compilation",
+                    "syntax_depth",
+                    MAX_PATTERN_DEPTH.into(),
+                ));
             }
         } else if c == ')' || c == ']' {
             depth = depth.saturating_sub(1);
@@ -236,30 +186,24 @@ pub(crate) fn compile_selector(value: &str) -> Result<Selector, ExtractionError>
     })
 }
 
-fn compile_regex(
-    pattern: &str,
-    flags: &str,
-    regex_budget: usize,
-) -> Result<Regex, ExtractionError> {
-    let mut builder = RegexBuilder::new(pattern);
-    builder
+fn compile_regex(pattern: &str, regex_budget: usize) -> Result<Regex, ExtractionError> {
+    RegexBuilder::new(pattern)
         .size_limit(regex_budget)
         .dfa_size_limit(regex_budget)
-        .nest_limit(MAX_PATTERN_DEPTH);
-    builder
-        .case_insensitive(flags.contains('i'))
-        .multi_line(flags.contains('m'))
-        .dot_matches_new_line(flags.contains('s'))
-        .swap_greed(flags.contains('U'))
-        .ignore_whitespace(flags.contains('x'));
-    builder.build().map_err(|error| {
-        if matches!(error, regex::Error::CompiledTooBig(_)) {
-            return ExtractionError::limit("compilation");
-        }
-        ExtractionError::new(
-            ErrorCode::InvalidRegex,
-            "compilation",
-            "The regular expression is invalid or exceeds compilation limits.",
-        )
-    })
+        .nest_limit(MAX_PATTERN_DEPTH)
+        .build()
+        .map_err(|error| {
+            if matches!(error, regex::Error::CompiledTooBig(_)) {
+                return ExtractionError::resource(
+                    "compilation",
+                    "regex_program_bytes",
+                    regex_budget as u64,
+                );
+            }
+            ExtractionError::new(
+                ErrorCode::InvalidRegex,
+                "compilation",
+                "The regular expression is invalid or exceeds compilation limits.",
+            )
+        })
 }

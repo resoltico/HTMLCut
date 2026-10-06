@@ -55,7 +55,8 @@ fn t29_source_value_aggregate_candidate_and_selection_budget_triplets() {
     let source = prepared("<p>é</p><p>é</p>");
     for (maximum, accepted) in [(1, false), (2, true), (3, true)] {
         let mut plan = ExtractionPlan::css("p").unwrap();
-        plan.selection = Selection::Nth { index: 1 };
+        plan.match_mode = Match::Nth;
+        plan.index = Some(1);
         plan.limits.max_value_bytes = maximum;
         assert_eq!(
             source
@@ -63,7 +64,10 @@ fn t29_source_value_aggregate_candidate_and_selection_budget_triplets() {
                 .is_ok(),
             accepted
         );
-        plan.selection = Selection::All { min: 1, max: None };
+        plan.index = None;
+        plan.match_mode = Match::All;
+        plan.min = Some(1);
+        plan.max = None;
         plan.limits.max_value_bytes = 8;
         plan.limits.max_candidates = maximum;
         assert_eq!(
@@ -83,7 +87,10 @@ fn t29_source_value_aggregate_candidate_and_selection_budget_triplets() {
     }
     for (maximum, accepted) in [(3, false), (4, true), (5, true)] {
         let mut plan = ExtractionPlan::css("p").unwrap();
-        plan.selection = Selection::All { min: 1, max: None };
+        plan.index = None;
+        plan.match_mode = Match::All;
+        plan.min = Some(1);
+        plan.max = None;
         plan.limits.max_total_value_bytes = maximum;
         assert_eq!(
             source
@@ -92,26 +99,6 @@ fn t29_source_value_aggregate_candidate_and_selection_budget_triplets() {
             accepted
         );
     }
-    let mut plan = ExtractionPlan::slice(
-        Boundary::Literal { value: "[".into() },
-        Boundary::Literal { value: "]".into() },
-    )
-    .unwrap();
-    plan.limits.max_value_bytes = 1;
-    assert_eq!(
-        prepared("[é]")
-            .execute(&CompiledPlan::compile(&plan).unwrap())
-            .unwrap_err()
-            .code,
-        ErrorCode::ResourceLimit
-    );
-    plan.selection = Selection::All { min: 1, max: None };
-    plan.limits.max_value_bytes = 8;
-    plan.limits.max_candidates = 1;
-    let error = prepared("[a][b]")
-        .execute(&CompiledPlan::compile(&plan).unwrap())
-        .unwrap_err();
-    assert_eq!(error.code, ErrorCode::ResourceLimit);
 }
 
 #[test]
@@ -139,15 +126,14 @@ fn t29_shared_work_does_not_reset_for_guards_or_exclusions() {
     }
     let mut guarded = plain.clone();
     guarded.limits.max_work = minimum;
-    guarded.guards.push(Guard {
+    guarded.expect.push(Guard {
+        select: "span".into(),
         scope: GuardScope::Selected,
-        selector: "span".into(),
         min: 1,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Exact {
-            value: "guard".into(),
-        }),
+        max: 1,
+        read: Some(Reading::Literal),
+        equals: Some("guard".into()),
+        pattern: None,
     });
     assert_eq!(
         source
@@ -156,8 +142,8 @@ fn t29_shared_work_does_not_reset_for_guards_or_exclusions() {
             .code,
         ErrorCode::ResourceLimit
     );
-    guarded.guards.clear();
-    guarded.exclude.push("span".into());
+    guarded.expect.clear();
+    guarded.exclude.get_or_insert_default().push("span".into());
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&guarded).unwrap())
@@ -209,15 +195,14 @@ fn t05_t29_closed_json_depth_size_primitives_and_duplicates() {
         ErrorCode::ResourceLimit
     );
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.guards.push(Guard {
+    plan.expect.push(Guard {
+        select: "p".into(),
         scope: GuardScope::Document,
-        selector: "p".into(),
         min: 1,
-        max: Some(1),
-        read: GuardRead::DomText {},
-        predicate: Some(Predicate::Exact {
-            value: "x".repeat(crate::limits::MAX_PLAN_BYTES),
-        }),
+        max: 1,
+        read: Some(Reading::Literal),
+        equals: Some("x".repeat(crate::limits::MAX_PLAN_BYTES)),
+        pattern: None,
     });
     assert_eq!(plan.validate().unwrap_err().code, ErrorCode::ResourceLimit);
     let mut json = serde_json::to_value(ExtractionPlan::css("p").unwrap()).unwrap();
@@ -297,10 +282,7 @@ fn t29_url_metadata_and_resolution_processing_are_bounded() {
     )
     .unwrap();
     let mut plan = ExtractionPlan::css("a").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "href".into(),
-    });
-    plan.transforms = vec![Transform::ResolveUrls {}];
+    plan.read = Some(Reading::Url("href".into()));
     assert_eq!(
         document
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -316,13 +298,13 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         "<article><!--comment--><h3>Header</h3><p>text<img alt='[alternative]'><a href='next'>link</a></p><ol reversed> stray<li>A</li><li>B</li></ol><pre>code<script>ignored</script><span class='omit'>discard</span><a href='```'>label</a><img alt='````'></pre><table><tr><th rowspan='2'>H</th><td colspan='3'>V</td></tr></table></article>",
     );
     let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Markdown {});
-    plan.exclude = vec![".omit".into()];
+    plan.read = Some(Reading::Markdown);
+    plan.exclude = Some(vec![".omit".into()]);
     let expected = "### Header\n\ntext\\[alternative\\][link](<next>)\n\nstray\n- 2\\. A\n- 1\\. B\n\n```\ncodelabel\n```\n\n- [label](<```>)\n- \\`\\`\\`\\`\n\n-\n  - <strong>H</strong>\n  - V";
     let complete = source
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
-    assert_eq!(complete.data.as_values().unwrap(), [expected]);
+    assert_eq!(complete.data().as_values().unwrap(), [expected]);
     for limit in 1..=expected.len() + 1 {
         plan.limits.max_value_bytes = limit as u32;
         let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
@@ -333,7 +315,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
                 "limit={limit}"
             );
         } else {
-            assert_eq!(result.unwrap().data.as_values().unwrap(), [expected]);
+            assert_eq!(result.unwrap().data().as_values().unwrap(), [expected]);
         }
     }
     plan.limits.max_value_bytes = 1024;
@@ -342,7 +324,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         plan.limits.max_work = work;
         match source.execute(&CompiledPlan::compile(&plan).unwrap()) {
             Ok(result) => {
-                assert_eq!(result.data.as_values().unwrap(), [expected]);
+                assert_eq!(result.data().as_values().unwrap(), [expected]);
                 first_success = Some(work);
                 break;
             }
@@ -355,7 +337,7 @@ fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
             .unwrap()
-            .data
+            .data()
             .as_values()
             .unwrap(),
         [expected]
@@ -377,19 +359,17 @@ fn t29_attribute_name_and_projection_value_exact_boundaries_are_accepted() {
     let html = format!("<p {name}='é'>value</p>");
     let source = prepared(&html);
     let mut plan = ExtractionPlan::css("p").unwrap();
-    plan.projection = Projection::Value(ValueProjection::Attribute { name });
+    plan.read = Some(Reading::Attribute(name));
     for (maximum, accepted) in [(1, false), (2, true), (3, true)] {
         plan.limits.max_value_bytes = maximum;
         let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
         if accepted {
-            assert_eq!(result.unwrap().data.as_values().unwrap(), ["é"]);
+            assert_eq!(result.unwrap().data().as_values().unwrap(), ["é"]);
         } else {
             assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
         }
     }
-    plan.projection = Projection::Value(ValueProjection::Attribute {
-        name: "a".repeat(257),
-    });
+    plan.read = Some(Reading::Attribute("a".repeat(257)));
     assert_eq!(
         CompiledPlan::compile(&plan).err().unwrap().code,
         ErrorCode::InvalidPlan
@@ -405,29 +385,6 @@ fn t29_attribute_name_and_projection_value_exact_boundaries_are_accepted() {
             .len(),
         128
     );
-}
-
-#[test]
-fn t29_slice_aggregate_budget_is_debited_for_every_selected_value() {
-    let source = prepared("[AB][CD][EF]");
-    let mut plan = ExtractionPlan::slice(
-        Boundary::Literal { value: "[".into() },
-        Boundary::Literal { value: "]".into() },
-    )
-    .unwrap();
-    plan.selection = Selection::All { min: 1, max: None };
-    for (maximum, success) in [(5, false), (6, true), (7, true)] {
-        plan.limits.max_total_value_bytes = maximum;
-        let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
-        if success {
-            assert_eq!(
-                result.unwrap().data.as_values().unwrap(),
-                ["AB", "CD", "EF"]
-            );
-        } else {
-            assert_eq!(result.unwrap_err().code, ErrorCode::ResourceLimit);
-        }
-    }
 }
 
 #[test]

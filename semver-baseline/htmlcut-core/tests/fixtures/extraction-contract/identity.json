@@ -2,28 +2,19 @@
   "origin": "Independent Python hashlib/json implementation of the specified framing; no HTMLCut output used to generate expectations.",
   "source": "<p id='amount'>EUR 180</p>",
   "plan": {
-    "schema": "htmlcut.extraction.plan",
-    "version": 5,
-    "strategy": {
-      "kind": "css",
-      "selector": "#amount"
-    },
-    "selection": {
-      "kind": "single"
-    },
-    "projection": {
-      "kind": "dom_text"
-    },
+    "version": 6,
+    "select": "#amount",
+    "match": "one",
+    "read": "text",
     "exclude": [],
-    "guards": [],
-    "transforms": [],
+    "expect": [],
     "limits": {
       "max_work": 1000000,
       "max_candidates": 100000,
       "max_selected": 10000,
+      "max_cells": 100000,
       "max_value_bytes": 8388608,
-      "max_total_value_bytes": 67108864,
-      "max_cells": 100000
+      "max_total_value_bytes": 67108864
     }
   },
   "preparation_limits": {
@@ -37,8 +28,8 @@
     "base_url": null
   },
   "source_sha256": "651fe4c9a421069e84f5f3cf4bf937954b9e71264459e9d1e04efb2094944b39",
-  "plan_sha256": "f1527c8741123ceb5a60ccc8c8c78af3383f03a43b092c2a1b8e205603ecf4d2",
+  "plan_sha256": "58e42838511dd06cc2b127e46c63a05a38ab1e59cbe6f36dfb14cf33b4220827",
   "prepared_sha256": "87a0465611db2a3524c3bc2d54b912e2bb613e2e0d5a6de4a839cb5868f5f025",
-  "extraction_sha256": "bee78ab937acf4e5b6dea8dc25a823fd9dbc407c1458f72200ab2ddca71db993",
+  "extraction_sha256": "1b0963ac91f805d4ab9d0990eee35c9f3bc6e2746afa12bccd3f9ffd7f1d74fd",
   "data_sha256": "5e4d8b83d426287efa7849c864ea1ab24c38537b7c6d1c12358fec225c0eb82f"
 }

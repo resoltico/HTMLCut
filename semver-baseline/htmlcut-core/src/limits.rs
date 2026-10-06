@@ -115,6 +115,9 @@ impl<'de> Deserialize<'de> for PreparationLimits {
     }
 }
 
+/// Hard candidate/count maximum shared by query admission and execution policy.
+pub(crate) const MAX_CANDIDATES: u32 = 1_000_000;
+
 /// Fresh, shared budgets for one compiled-plan execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
@@ -162,7 +165,7 @@ impl ExecutionLimits {
                 "max_work is outside its supported range.",
             ));
         }
-        if self.max_candidates == 0 || self.max_candidates > 1_000_000 {
+        if self.max_candidates == 0 || self.max_candidates > MAX_CANDIDATES {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidLimit,
                 "validation",

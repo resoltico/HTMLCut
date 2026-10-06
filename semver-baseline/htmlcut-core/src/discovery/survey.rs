@@ -25,7 +25,7 @@ const SAMPLE_CHARACTERS: usize = 64;
 /// Exact bounded parsed identifiers of one parent element.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct OutlineElement {
+pub struct SurveyElement {
     /// Parsed HTML tag.
     pub tag: String,
     /// Exact parsed id when present and within 128 UTF-8 bytes.
@@ -39,7 +39,7 @@ pub struct OutlineElement {
 /// Bounded structural text from one repeated member.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct OutlineSample {
+pub struct SurveySample {
     /// At most 64 Unicode scalar values of structural text.
     pub text: String,
     /// Whether the sampled member's text was complete.
@@ -50,7 +50,9 @@ pub struct OutlineSample {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TableShape {
-    /// Exact parsed text of a sole all-header row, when representable.
+    /// Reading convention shared by extraction and header guards.
+    pub header_read: String,
+    /// Complete structural text of a sole all-header row, when representable.
     pub headers: Vec<String>,
     /// Whether the sole header row, if any, is fully represented.
     pub headers_complete: bool,
@@ -73,13 +75,13 @@ pub struct TableShape {
 /// One exact repeated-sibling group and bounded authoring evidence.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct OutlineGroup {
+pub struct SurveyGroup {
     /// A selector proved to match precisely these nodes on this snapshot, if found.
     pub selector: Option<String>,
     /// Exact number of direct sibling members in this group.
     pub count: u32,
     /// Direct parent of every group member.
-    pub parent: OutlineElement,
+    pub parent: SurveyElement,
     /// Parsed HTML tag shared by group members.
     pub item_tag: String,
     /// Whether membership also requires the listed complete class set.
@@ -87,7 +89,7 @@ pub struct OutlineGroup {
     /// Shared class tokens when class_constrained is true; empty otherwise.
     pub item_classes: Vec<String>,
     /// Up to two original-order member previews.
-    pub samples: Vec<OutlineSample>,
+    pub samples: Vec<SurveySample>,
     /// Row shape evidence when the group belongs to an HTML table.
     pub table: Option<TableShape>,
 }
@@ -95,13 +97,13 @@ pub struct OutlineGroup {
 /// Snapshot-bound survey of repeated HTML sibling groups.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct OutlineResult {
+pub struct SurveyResult {
     /// SHA-256 of the accepted source bytes used for this survey.
     pub source_sha256: String,
     /// Complete count of groups meeting the declared survey criteria.
     pub group_count: u32,
     /// Largest groups first, breaking ties by original document order.
-    pub groups: Vec<OutlineGroup>,
+    pub groups: Vec<SurveyGroup>,
     /// Whether every discovered group is included.
     pub groups_complete: bool,
 }
@@ -126,15 +128,15 @@ struct Candidate<'a> {
 
 impl PreparedDocument {
     /// Surveys repeated HTML siblings without asserting their business meaning.
-    pub fn outline(
+    pub fn survey(
         &self,
         within: Option<&str>,
         limit: u32,
-    ) -> Result<OutlineResult, ExtractionError> {
+    ) -> Result<SurveyResult, ExtractionError> {
         if !(1..=16).contains(&limit) {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidOptions,
-                "outline",
+                "survey",
                 "Group limit must be between one and sixteen.",
             ));
         }
@@ -159,15 +161,15 @@ impl PreparedDocument {
                 [] => {
                     return Err(ExtractionError::new(
                         ErrorCode::NoMatch,
-                        "outline",
-                        "The outline scope selected no element.",
+                        "survey",
+                        "The survey scope selected no element.",
                     ));
                 }
                 _ => {
                     return Err(ExtractionError::new(
                         ErrorCode::AmbiguousSelection,
-                        "outline",
-                        "The outline scope must select exactly one element.",
+                        "survey",
+                        "The survey scope must select exactly one element.",
                     ));
                 }
             }
@@ -204,7 +206,7 @@ impl PreparedDocument {
         let mut groups = Vec::with_capacity(top.len());
         for candidate in &top {
             let members = members(candidate, &budget)?;
-            groups.push(OutlineGroup {
+            groups.push(SurveyGroup {
                 selector: selector_hint::verified(document, candidate, &members, &budget)?,
                 count: candidate.count,
                 parent: element_descriptor(candidate.parent, &budget)?,
@@ -215,13 +217,13 @@ impl PreparedDocument {
                 table: table_shape::summarize(candidate, &members, &budget)?,
             });
         }
-        let result = OutlineResult {
+        let result = SurveyResult {
             source_sha256: self.snapshot.source_sha256().into(),
             group_count,
             groups_complete: group_count as usize <= limit as usize,
             groups,
         };
-        let _ = crate::identity::data_digest(&result, MAX_RESULT_BYTES, &budget)?;
+        let _ = crate::identity::encoded(&result, MAX_RESULT_BYTES, &budget)?;
         Ok(result)
     }
 }
@@ -229,11 +231,11 @@ impl PreparedDocument {
 fn samples(
     members: &[ElementRef<'_>],
     budget: &SelectorWorkBudget,
-) -> Result<Vec<OutlineSample>, ExtractionError> {
+) -> Result<Vec<SurveySample>, ExtractionError> {
     let mut result = Vec::new();
     for member in members.iter().take(2) {
         let (text, text_complete) = structural_preview(*member, budget, SAMPLE_CHARACTERS)?;
-        result.push(OutlineSample {
+        result.push(SurveySample {
             text,
             text_complete,
         });
@@ -268,7 +270,7 @@ fn collect_groups<'a>(
         }
         let tag = element.value().name();
         if tag.len() > 128 {
-            return Err(ExtractionError::limit("outline"));
+            return Err(ExtractionError::resource("survey", "tag_bytes", 128));
         }
         let order = index as u64;
         add_group(
@@ -349,7 +351,11 @@ fn add_group(
         Entry::Occupied(mut occupied) => occupied.get_mut().count += 1,
         Entry::Vacant(vacant) => {
             if at_limit {
-                return Err(ExtractionError::limit("outline"));
+                return Err(ExtractionError::resource(
+                    "survey",
+                    "signatures_per_parent",
+                    MAX_SIGNATURES_PER_PARENT as u64,
+                ));
             }
             vacant.insert(Accumulator {
                 count: 1,
@@ -408,7 +414,7 @@ fn members<'a>(
 fn element_descriptor(
     element: ElementRef<'_>,
     budget: &SelectorWorkBudget,
-) -> Result<OutlineElement, ExtractionError> {
+) -> Result<SurveyElement, ExtractionError> {
     let tag = element.value().name();
     let mut complete = true;
     let id = if let Some(value) = element.attr("id") {
@@ -429,7 +435,7 @@ fn element_descriptor(
             Vec::new()
         }
     };
-    Ok(OutlineElement {
+    Ok(SurveyElement {
         tag: tag.into(),
         id,
         classes,

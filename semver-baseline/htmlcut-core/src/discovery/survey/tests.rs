@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Exact work-accounting controls for the bounded outline helpers.
+//! Exact work-accounting controls for the bounded survey helpers.
 
 use scraper::Html;
 use selectors::work_budget::SelectorWorkBudget;

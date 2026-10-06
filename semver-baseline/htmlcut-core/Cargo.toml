@@ -83,7 +83,7 @@ autoexamples = false
 autolib = false
 autotests = false
 build = false
-description = "Library for extracting and inspecting HTML with CSS selectors, literal or regex slicing, and structured diagnostics."
+description = "Bounded snapshot queries with original-DOM records, structural readings and optional replay evidence."
 edition = "2024"
 license = "MPL-2.0"
 name = "htmlcut-core"
@@ -91,7 +91,7 @@ publish = false
 readme = false
 repository = "https://github.com/resoltico/HTMLCut"
 rust-version = "1.98.1"
-version = "19.2.0"
+version = "20.0.0"
 
 [[test]]
 name = "contract_inline_markdown"
@@ -102,15 +102,23 @@ name = "contract_markdown"
 path = "tests/contract_markdown.rs"
 
 [[test]]
-name = "contract_outline"
-path = "tests/contract_outline.rs"
-
-[[test]]
 name = "contract_records"
 path = "tests/contract_records.rs"
 
 [[test]]
 name = "contract_row_groups"
 path = "tests/contract_row_groups.rs"
+
+[[test]]
+name = "contract_survey"
+path = "tests/contract_survey.rs"
+
+[[test]]
+name = "query_contract"
+path = "tests/query_contract.rs"
+
+[[test]]
+name = "query_resources"
+path = "tests/query_resources.rs"
 
 [workspace]

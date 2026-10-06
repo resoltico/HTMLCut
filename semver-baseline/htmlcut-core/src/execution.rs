@@ -11,16 +11,19 @@ mod records;
 mod scope;
 use scope::SelectionScope;
 
-use crate::compilation::{CompiledDomProjection, CompiledStrategy, Matcher};
+use crate::plan::Selection;
 use crate::{
-    CompiledPlan, DataKind, ErrorCode, ExecutionReceipt, ExtractionData, ExtractionError,
-    ExtractionResult, GuardRead, GuardScope, Predicate, PreparedDocument, Projection,
-    SCHEMA_VERSION, SEMANTICS_VERSION, Selection, SourceRange, ValueProjection,
+    CompiledPlan, ErrorCode, ExtractionData, ExtractionError, ExtractionResult, GuardScope,
+    PreparedDocument,
 };
 
 pub(crate) fn charge(budget: &SelectorWorkBudget, units: usize) -> Result<(), ExtractionError> {
     if units > budget.remaining() as usize {
-        return Err(ExtractionError::limit("execution"));
+        return Err(ExtractionError::resource(
+            "execution",
+            "max_work",
+            budget.configured().into(),
+        ));
     }
     // The preceding capacity check and single-threaded budget ownership prove that
     // each consume succeeds; a second fallible branch here would be unreachable.
@@ -31,154 +34,100 @@ pub(crate) fn charge(budget: &SelectorWorkBudget, units: usize) -> Result<(), Ex
 }
 
 impl PreparedDocument {
-    /// Executes one compiled plan, reusing at most one lazily prepared DOM.
+    /// Executes one compiled query using a fresh budget and the lazily prepared original DOM.
     pub fn execute(&self, compiled: &CompiledPlan) -> Result<ExtractionResult, ExtractionError> {
-        let identity = self.extraction_identity(compiled)?;
         let plan = &compiled.plan;
         let budget = SelectorWorkBudget::new(plan.limits.max_work);
         let mut bytes = plan.limits.max_total_value_bytes as usize;
         let mut cells = plan.limits.max_cells;
-        let mut fields = Vec::new();
-        let (data, ranges, candidate_count) = match &compiled.strategy {
-            CompiledStrategy::Slice {
-                start,
-                end,
-                include_start,
-                include_end,
-            } => {
-                let ranges = slice_ranges(
-                    self.snapshot.html(),
-                    start,
-                    end,
-                    *include_start,
-                    *include_end,
-                    plan.limits.max_candidates,
-                    &budget,
-                )?;
-                let count = ranges.len() as u32;
-                let positions =
-                    selected_positions(&plan.selection, count, plan.limits.max_selected)?;
-                spend_cells(&mut cells, positions.len() as u32)?;
-                let mut values = Vec::with_capacity(positions.len());
-                let mut selected_ranges = Vec::with_capacity(positions.len());
-                for position in positions {
-                    let range = ranges[position];
-                    let value = &self.snapshot.html()[range.start..range.end];
-                    if value.len() > (plan.limits.max_value_bytes as usize).min(bytes) {
-                        return Err(ExtractionError::limit("projection"));
-                    }
-                    charge(&budget, value.len().div_ceil(64))?;
-                    bytes -= value.len();
-                    values.push(value.to_owned());
-                    selected_ranges.push(range);
-                }
-                (ExtractionData::Values(values), Some(selected_ranges), count)
+        let document = self.document()?;
+        let candidates = matches(
+            document,
+            None,
+            &compiled.selector,
+            plan.limits.max_candidates,
+            &budget,
+        )?;
+        let count = candidates.len() as u32;
+        let positions = selected_positions(&plan.selection(), count, plan.limits.max_selected)?;
+        let selected = positions
+            .into_iter()
+            .map(|index| candidates[index])
+            .collect::<Vec<_>>();
+        let scopes = scope::selected_scopes(
+            &selected,
+            &candidates,
+            plan.following_siblings.unwrap_or(0),
+            &budget,
+        )?;
+        check_guards(document, &scopes, compiled, &budget)?;
+        let (data, fields) = if plan.fields.is_some() {
+            let output = records::RecordExecution {
+                document,
+                compiled,
+                base: self.snapshot.metadata().base_url.as_deref(),
+                budget: &budget,
+                bytes: &mut bytes,
+                cells: &mut cells,
             }
-            CompiledStrategy::Css {
-                selector,
-                projection,
-            } => {
-                let document = self.document()?;
-                let candidates = matches(
-                    document,
-                    None,
-                    selector,
-                    plan.limits.max_candidates,
+            .run(&scopes)?;
+            (ExtractionData::Records(output.rows), output.counts)
+        } else {
+            spend_cells(&mut cells, selected.len() as u32, plan.limits.max_cells)?;
+            let mut values = Vec::with_capacity(selected.len());
+            for scope in scopes {
+                let excluded = exclusions(document, scope.anchor, &compiled.exclusions, &budget)?;
+                let value = crate::projection::project(
+                    scope.anchor,
+                    plan.read.as_ref().expect("normalized scalar reading"),
+                    &excluded,
+                    self.snapshot.metadata().base_url.as_deref(),
+                    (plan.limits.max_value_bytes as usize).min(bytes),
                     &budget,
-                )?;
-                let count = candidates.len() as u32;
-                let positions =
-                    selected_positions(&plan.selection, count, plan.limits.max_selected)?;
-                let selected = positions
-                    .into_iter()
-                    .map(|index| candidates[index])
-                    .collect::<Vec<_>>();
-                let following = match projection {
-                    CompiledDomProjection::Records(following) => *following,
-                    CompiledDomProjection::Value(_) => 0,
-                };
-                let scopes = scope::selected_scopes(&selected, &candidates, following, &budget)?;
-                check_guards(document, &scopes, compiled, &budget)?;
-                let data = match projection {
-                    CompiledDomProjection::Records(_) => {
-                        let output = records::RecordExecution {
-                            document,
-                            compiled,
-                            base: self.snapshot.metadata().base_url.as_deref(),
-                            budget: &budget,
-                            bytes: &mut bytes,
-                            cells: &mut cells,
-                        }
-                        .run(&scopes)?;
-                        fields = output.counts;
-                        ExtractionData::Records(output.rows)
-                    }
-                    CompiledDomProjection::Value(projection) => {
-                        spend_cells(&mut cells, selected.len() as u32)?;
-                        let mut values = Vec::with_capacity(selected.len());
-                        for scope in scopes {
-                            let root = scope.anchor;
-                            let excluded =
-                                exclusions(document, root, &compiled.exclusions, &budget)?;
-                            let value = crate::projection::project(
-                                root,
-                                projection,
-                                &excluded,
-                                &plan.transforms,
-                                self.snapshot.metadata().base_url.as_deref(),
-                                (plan.limits.max_value_bytes as usize).min(bytes),
-                                &budget,
-                            )?;
-                            bytes -= value.len();
-                            values.push(value);
-                        }
-                        ExtractionData::Values(values)
-                    }
-                };
-                (data, None, count)
+                )
+                .map_err(|error| projection_failure(error, &plan.limits, bytes))?;
+                bytes -= value.len();
+                values.push(value);
             }
+            (
+                ExtractionData::Values(values),
+                std::collections::BTreeMap::new(),
+            )
         };
-        let (data_kind, selected_count) = match &data {
-            ExtractionData::Values(values) => (DataKind::Values, values.len() as u32),
-            ExtractionData::Records(rows) => (DataKind::Records, rows.len() as u32),
-        };
-        let data_sha256 =
-            crate::identity::data_digest(&data, crate::limits::MAX_DATA_BYTES, &budget)?;
-        let receipt = ExecutionReceipt {
-            schema: "htmlcut.extraction.receipt".into(),
-            version: SCHEMA_VERSION,
-            semantics: SEMANTICS_VERSION,
-            data_kind,
-            source_sha256: self.snapshot.source_sha256().into(),
-            plan_sha256: compiled.digest.clone(),
-            extraction_sha256: identity,
-            data_sha256,
-            candidate_count,
+        let selected_count = selected.len() as u32;
+        let payload = crate::identity::encoded(&data, crate::MAX_DATA_BYTES, &budget)?;
+        Ok(ExtractionResult {
+            data,
+            payload,
+            source: self.snapshot.clone(),
+            query: compiled.normalized_bytes.clone(),
+            preparation: self.limits.clone(),
+            candidate_count: count,
             selected_count,
             fields,
-            ranges,
-        };
-        // This also charges actual receipt serialization work under the same execution budget.
-        let _ = crate::identity::data_digest(&receipt, crate::limits::MAX_RECEIPT_BYTES, &budget)?;
-        Ok(ExtractionResult { data, receipt })
+            budget,
+            evidence: std::cell::OnceCell::new(),
+        })
     }
+}
 
-    fn extraction_identity(&self, compiled: &CompiledPlan) -> Result<String, ExtractionError> {
-        let preparation = crate::canonical_json(&self.limits)?;
-        let metadata = crate::canonical_json(self.snapshot.metadata())?;
-        let semantics = SEMANTICS_VERSION.to_be_bytes();
-        let identity = crate::identity::framed(
-            "htmlcut.extraction/5",
-            &[
-                self.snapshot.source_sha256().as_bytes(),
-                compiled.digest.as_bytes(),
-                metadata.as_bytes(),
-                preparation.as_bytes(),
-                &semantics,
-            ],
-        );
-        Ok(identity)
+pub(crate) fn projection_failure(
+    mut error: ExtractionError,
+    limits: &crate::ExecutionLimits,
+    remaining: usize,
+) -> ExtractionError {
+    if error.resource_counter.as_deref() == Some("value_bytes") {
+        let (counter, bound) = if limits.max_value_bytes as usize <= remaining {
+            ("max_value_bytes", limits.max_value_bytes)
+        } else {
+            ("max_total_value_bytes", limits.max_total_value_bytes)
+        };
+        let facts = ExtractionError::resource("projection", counter, bound.into());
+        error.resource_counter = facts.resource_counter.clone();
+        error.configured_bound = facts.configured_bound;
+        error.message = facts.message;
     }
+    error
 }
 
 pub(crate) fn selected_positions(
@@ -187,7 +136,7 @@ pub(crate) fn selected_positions(
     maximum: u32,
 ) -> Result<Vec<usize>, ExtractionError> {
     if matches!(selection, Selection::All { .. }) && count > maximum {
-        let mut error = ExtractionError::limit("selection");
+        let mut error = ExtractionError::resource("selection", "max_selected", maximum.into());
         error.candidate_count = Some(count);
         return Err(error);
     }
@@ -198,29 +147,38 @@ pub(crate) fn selected_positions(
             "Candidate count does not meet the declared selection bounds.",
         );
         error.candidate_count = Some(count);
+        match selection {
+            Selection::Single => {
+                error.expected_min = Some(1);
+                error.expected_max = Some(1);
+            }
+            Selection::All { min, max } => {
+                error.expected_min = Some(*min);
+                error.expected_max = *max;
+            }
+            Selection::Nth { index } => {
+                error.required_index = Some(*index);
+            }
+        }
         error
     };
     match selection {
-        Selection::Single {} if count == 0 => Err(ExtractionError::new(
-            ErrorCode::NoMatch,
-            "selection",
-            "The plan selected no candidates.",
-        )),
-        Selection::Single {} if count > 1 => {
-            let mut error = ExtractionError::new(
-                ErrorCode::AmbiguousSelection,
-                "selection",
-                "Single selection requires exactly one candidate.",
-            );
-            error.candidate_count = Some(count);
+        Selection::Single if count == 0 => {
+            let mut error = cardinality();
+            error.code = ErrorCode::NoMatch;
+            error.message = "Exactly-one selection matched zero candidates.".into();
             Err(error)
         }
-        Selection::Single {} => Ok(vec![0]),
+        Selection::Single if count > 1 => {
+            let mut error = cardinality();
+            error.code = ErrorCode::AmbiguousSelection;
+            error.message = "Exactly-one selection matched multiple candidates.".into();
+            Err(error)
+        }
+        Selection::Single => Ok(vec![0]),
         Selection::Nth { index } if *index > count => Err(cardinality()),
         Selection::Nth { index } => Ok(vec![(*index - 1) as usize]),
-        Selection::All { min, max }
-            if count < *min || count > max.unwrap_or(maximum).min(maximum) =>
-        {
+        Selection::All { min, max } if count < *min || max.is_some_and(|max| count > max) => {
             Err(cardinality())
         }
         Selection::All { .. } => Ok((0..count as usize).collect()),
@@ -279,7 +237,7 @@ fn matches_payloads<'a>(
     let mut result = Vec::new();
     let mut matcher = selector
         .budgeted(document, anchor, budget)
-        .map_err(|error| selector_failure(error, "selection"))?;
+        .map_err(|error| selector_failure(error, "selection", budget))?;
     for root in roots {
         for node in root.descendants() {
             charge(budget, 1)?;
@@ -288,10 +246,11 @@ fn matches_payloads<'a>(
             };
             if matcher
                 .matches(&element)
-                .map_err(|error| selector_failure(error, "selection"))?
+                .map_err(|error| selector_failure(error, "selection", budget))?
             {
                 if result.len() >= maximum as usize {
-                    let mut error = ExtractionError::limit("selection");
+                    let mut error =
+                        ExtractionError::resource("selection", "max_candidates", maximum.into());
                     error.observed_at_least = Some(maximum + 1);
                     return Err(error);
                 }
@@ -302,19 +261,26 @@ fn matches_payloads<'a>(
     Ok(result)
 }
 
-pub(crate) fn spend_cells(remaining: &mut u32, count: u32) -> Result<(), ExtractionError> {
+pub(crate) fn spend_cells(
+    remaining: &mut u32,
+    count: u32,
+    configured: u32,
+) -> Result<(), ExtractionError> {
     *remaining = remaining
         .checked_sub(count)
-        .ok_or_else(|| ExtractionError::limit("cells"))?;
+        .ok_or_else(|| ExtractionError::resource("cells", "max_cells", configured.into()))?;
     Ok(())
 }
 
 fn selector_failure(
     error: scraper::selector::SelectorMatchError,
     stage: &'static str,
+    budget: &SelectorWorkBudget,
 ) -> ExtractionError {
     match error {
-        scraper::selector::SelectorMatchError::WorkLimitExceeded => ExtractionError::limit(stage),
+        scraper::selector::SelectorMatchError::WorkLimitExceeded => {
+            ExtractionError::resource(stage, "max_work", budget.configured().into())
+        }
         scraper::selector::SelectorMatchError::DocumentMismatch => ExtractionError::new(
             ErrorCode::InternalInvariant,
             stage,
@@ -337,7 +303,7 @@ pub(crate) fn exclusions(
         .iter()
         .map(|selector| selector.budgeted(document, Some(root), budget))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| selector_failure(error, "exclusion"))?;
+        .map_err(|error| selector_failure(error, "exclusion", budget))?;
     for node in root.descendants() {
         charge(budget, 1)?;
         let Some(element) = ElementRef::wrap(node) else {
@@ -346,7 +312,7 @@ pub(crate) fn exclusions(
         for matcher in &mut matchers {
             if matcher
                 .matches(&element)
-                .map_err(|error| selector_failure(error, "exclusion"))?
+                .map_err(|error| selector_failure(error, "exclusion", budget))?
             {
                 excluded.insert(node.id());
                 break;
@@ -362,7 +328,13 @@ fn check_guards(
     compiled: &CompiledPlan,
     budget: &SelectorWorkBudget,
 ) -> Result<(), ExtractionError> {
-    for (guard, grammar) in compiled.plan.guards.iter().zip(&compiled.guards) {
+    for (guard_index, (guard, grammar)) in compiled
+        .plan
+        .expect
+        .iter()
+        .zip(&compiled.guards)
+        .enumerate()
+    {
         let scopes = match guard.scope {
             GuardScope::Document => vec![None],
             GuardScope::Selected => selected.iter().map(Some).collect(),
@@ -377,8 +349,8 @@ fn check_guards(
                 budget,
             )
             .map_err(|mut error| {
-                if scope.is_some() && matches!(compiled.plan.projection, Projection::Records { .. })
-                {
+                error.plan_path = Some(format!("expect[{guard_index}]"));
+                if scope.is_some() && compiled.plan.fields.is_some() {
                     error.row_index = Some(index as u32 + 1);
                 }
                 error
@@ -403,94 +375,50 @@ fn check_guard_scope(
         limits.max_candidates,
         budget,
     )?;
-    if nodes.len() < guard.min as usize || nodes.len() > guard.max.unwrap() as usize {
-        return Err(guard_failure());
+    if nodes.len() < guard.min as usize || nodes.len() > guard.max as usize {
+        return Err(guard_failure(guard, nodes.len() as u32));
     }
+    if guard.equals.is_none() && guard.pattern.is_none() {
+        return Ok(());
+    }
+    let count = nodes.len() as u32;
     for node in nodes {
-        let projection = match &guard.read {
-            GuardRead::DomText {} => ValueProjection::DomText {},
-            GuardRead::Attribute { name } => ValueProjection::Attribute { name: name.clone() },
-        };
         let value = crate::projection::project(
             node,
-            &projection,
+            guard.read.as_ref().expect("normalized predicate reading"),
             &HashSet::new(),
-            &[],
             None,
             limits.max_value_bytes as usize,
             budget,
-        )?;
-        let satisfied = match &guard.predicate {
-            None => true,
-            Some(Predicate::Exact { value: expected }) => value == *expected,
-            Some(Predicate::Regex { .. }) => {
-                charge(budget, value.len().div_ceil(64) + 1)?;
-                grammar.predicate.as_ref().unwrap().is_match(&value)
-            }
+        )
+        .map_err(|error| projection_failure(error, limits, limits.max_value_bytes as usize))?;
+        let satisfied = if let Some(expected) = &guard.equals {
+            value == *expected
+        } else {
+            charge(budget, value.len().div_ceil(64) + 1)?;
+            grammar
+                .predicate
+                .as_ref()
+                .expect("compiled regex predicate")
+                .is_match(&value)
         };
         if !satisfied {
-            return Err(guard_failure());
+            return Err(guard_failure(guard, count));
         }
     }
     Ok(())
 }
 
-fn guard_failure() -> ExtractionError {
-    ExtractionError::new(
+fn guard_failure(guard: &crate::Guard, count: u32) -> ExtractionError {
+    let mut error = ExtractionError::new(
         ErrorCode::GuardFailed,
         "guard",
-        "An original-DOM guard expectation failed.",
-    )
-}
-
-fn find(
-    matcher: &Matcher,
-    source: &str,
-    cursor: usize,
-    budget: &SelectorWorkBudget,
-) -> Result<Option<(usize, usize)>, ExtractionError> {
-    // Conservative pre-search charging also bounds regex search over an unmatched tail.
-    charge(budget, (source.len() - cursor).div_ceil(64) + 1)?;
-    let found = matcher.find(source, cursor);
-    if found.is_some_and(|(start, end)| start == end) {
-        return Err(ExtractionError::new(
-            ErrorCode::EmptyBoundaryMatch,
-            "slice",
-            "Source boundaries must consume at least one byte.",
-        ));
-    }
-    Ok(found)
-}
-
-fn slice_ranges(
-    source: &str,
-    start: &Matcher,
-    end: &Matcher,
-    include_start: bool,
-    include_end: bool,
-    maximum: u32,
-    budget: &SelectorWorkBudget,
-) -> Result<Vec<SourceRange>, ExtractionError> {
-    let mut ranges = Vec::new();
-    let mut cursor = 0;
-    while let Some((open_start, open_end)) = find(start, source, cursor, budget)? {
-        let Some((close_start, close_end)) = find(end, source, open_end, budget)? else {
-            return Err(ExtractionError::new(
-                ErrorCode::MissingBoundary,
-                "slice",
-                "An opening boundary has no following closing boundary.",
-            ));
-        };
-        if ranges.len() >= maximum as usize {
-            return Err(ExtractionError::limit("slice"));
-        }
-        ranges.push(SourceRange {
-            start: if include_start { open_start } else { open_end },
-            end: if include_end { close_end } else { close_start },
-        });
-        cursor = close_end;
-    }
-    Ok(ranges)
+        "An original-DOM expectation failed.",
+    );
+    error.candidate_count = Some(count);
+    error.expected_min = Some(guard.min);
+    error.expected_max = Some(guard.max);
+    error
 }
 
 #[cfg(test)]
