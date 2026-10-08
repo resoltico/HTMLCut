@@ -107,7 +107,14 @@ fn native_named_pipe_paths_are_refused_for_every_file_role() {
     );
     let proof: serde_json::Value = serde_json::from_str(&proof).unwrap();
     assert_eq!(proof["passed"], true);
-    assert_eq!(proof["rows"].as_array().unwrap().len(), 3);
+    let rows = proof["rows"].as_array().unwrap();
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["role"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["source", "plan"]
+    );
+    assert!(rows.iter().all(|row| row["passed"] == true));
 }
 
 #[test]
