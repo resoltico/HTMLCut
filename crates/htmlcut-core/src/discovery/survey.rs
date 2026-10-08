@@ -3,10 +3,10 @@
 
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 use ego_tree::iter::Edge;
 use schemars::JsonSchema;
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
 use serde::{Deserialize, Serialize};
 
 use super::structural_preview;
@@ -143,7 +143,7 @@ impl PreparedDocument {
                 crate::compilation::compile_selector(css)
             })
             .transpose()?;
-        let budget = SelectorWorkBudget::new(MAX_WORK);
+        let budget = WorkBudget::new(MAX_WORK);
         let document = self.document()?;
         let root = if let Some(selector) = &selector {
             let matches = crate::execution::matches(
@@ -225,7 +225,7 @@ impl PreparedDocument {
 
 fn samples(
     members: &[ElementRef<'_>],
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<SurveySample>, ExtractionError> {
     let mut result = Vec::new();
     for member in members.iter().take(2) {
@@ -250,7 +250,7 @@ fn excluded_element(element: ElementRef<'_>) -> bool {
 fn collect_groups<'a>(
     parent: ElementRef<'a>,
     limit: usize,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
     top: &mut Vec<Candidate<'a>>,
     group_count: &mut u32,
 ) -> Result<(), ExtractionError> {
@@ -363,7 +363,7 @@ fn add_group(
 
 fn class_signature(
     element: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<Vec<String>>, ExtractionError> {
     let Some(value) = element.attr("class") else {
         return Ok(Some(Vec::new()));
@@ -388,7 +388,7 @@ fn class_signature(
 
 fn members<'a>(
     candidate: &Candidate<'a>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     let mut found = Vec::with_capacity(candidate.count as usize);
     for child in candidate.parent.children() {
@@ -408,7 +408,7 @@ fn members<'a>(
 
 fn element_descriptor(
     element: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<SurveyElement, ExtractionError> {
     let tag = element.value().name();
     let mut complete = true;

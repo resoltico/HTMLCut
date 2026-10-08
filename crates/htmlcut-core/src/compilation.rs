@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded, source-independent query compilation and normalized query encoding.
 
+use crate::dom::Selector;
 use crate::limits::{MAX_PATTERN_DEPTH, MAX_REGEX_BYTES};
 use crate::{ErrorCode, ExtractionError, ExtractionPlan};
 use regex::{Regex, RegexBuilder};
-use scraper::Selector;
 use std::sync::Arc;
 
 pub(crate) struct CompiledGuard {

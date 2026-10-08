@@ -55,6 +55,33 @@ jobs:
           MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-core --lib tests::selector_and_reading_contract_remain_miri_sound -- --exact
           MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-servo-arc --lib
           MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-tendril --lib subtendril
+  focused-smoke:
+    name: Linux bounded parser and relational smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component rust-src --profile minimal
+          cargo install cargo-fuzz --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-fuzz" {print $2}')" --locked
+      - name: Execute both bounded smokes
+        shell: bash
+        run: ./scripts/focused-smoke.sh "$RUNNER_TEMP/focused-smoke"
+      - name: Preserve smoke logs and crash inputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: focused-smoke
+          path: ${{ runner.temp }}/focused-smoke/
+          if-no-files-found: warn
+
   semver:
     name: Published core API
     runs-on: ubuntu-24.04
@@ -114,7 +141,7 @@ jobs:
   check:
     name: Check
     if: always()
-    needs: [release-target-matrix, linux-maintainer, release-target-smoke, semver]
+    needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, semver]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

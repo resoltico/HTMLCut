@@ -1,54 +1,59 @@
 # Architecture
 
-HTMLCut is a strict saved/rendered UTF-8 HTML extractor: an immutable prepared DOM,
-a reusable compiled query, owned typed results, and a native CLI that bounds JSON
-encoding before publishing any bytes. Acquisition and rendering belong to callers.
+HTMLCut accepts saved/rendered UTF-8 HTML, prepares one immutable private DOM,
+compiles reusable closed queries, and returns complete owned typed values/counts.
+Acquisition, rendering, source trust and business interpretation belong to callers.
+Results hold no source, DOM, query, residual work or eager encoded payload. Core
+success establishes query completion; the CLI separately bounds JSON before output.
 
-## Design
+## Implemented boundaries
 
-Retain CSS selection, complete counts, one/all/nth, required/optional/many fields,
-original context and sibling scope, exclusions, count/equality/regex guards, text,
-literal, Markdown, HTML, attributes and explicit-base URL readings. Retire receipts,
-identities, bundles and replay. Results retain only values and useful counts, allowing
-the source and prepared DOM to be dropped independently. Typed core success proves
-query completion; it does not prove JSON encoding or delivery.
+`dom/parser.rs` admits element/node allocations and attachments before mutation;
+`dom/tree_sink.rs` supplies the public html5ever TreeSink operations over ego-tree.
+UTF-8 feeds are at most 4096 bytes, and failures discard the partial document.
+Unfinished text/comment/raw tokens can span feeds and are bounded by source bytes.
+Same-token refusal still requires narrow html5ever/markup5ever stop hooks.
 
-Use aligned upstream parser/selector public boundaries if independently proven safe.
-A bounded TreeSink admits allocations and attachments before mutation. A public
-TokenSink guard refuses forwarding after sticky failure, including end/foreign
-callbacks; UTF-8 chunks bound feed granularity. Unfinished lexical tokens can span
-chunks and remain bounded by source bytes, not the DOM-node limit. Parser refusal
-must never return a partial DOM or use panic as ordinary control flow.
+`dom/selector.rs` supplies static CSS grammar and a budget-carrying public Element
+adapter. Navigation charges every visited node, including skipped non-elements;
+name/type/attribute/class predicates charge callbacks and inspected byte batches.
+A matcher holds one SelectorCaches for its immutable document/selector/scope pass.
+It checks sticky exhaustion after matching, so negation cannot turn refusal into a
+successful non-match or match. No selector-engine internal budget hooks remain.
 
-A product-owned selector Element adapter charges inner navigation and predicates,
-retains one cache for each immutable matching pass, and checks sticky exhaustion
-after matching. Filtered serialization walks the original DOM without mutation.
-Logical work limits apply at owned boundaries, not every upstream instruction;
-none of these limits provides process CPU/RSS isolation.
+`dom/serialization.rs` streams filtered immutable HTML through the upstream public
+Serialize trait. The private DOM has no clone/filter/mutation-helper product API.
+Core callers retain original context for row scopes, guards and projections.
+Logical limits apply at declared boundaries; they are not exact upstream instruction
+counts or process CPU/RSS isolation. See [contract](core.md).
 
-## Skeptical review
+The CLI bounds complete deterministic JSON before single-file atomic staging or
+stdout. A query/encoding failure publishes no data; a stdout write failure can
+expose a prefix. Atomic rename is not a multi-file transaction. Reproduction uses
+[ordinary files](operations.md); receipts/bundles/replay are removed.
 
-TreeSink refusal alone is unsafe: the retained audit counterexample `<i></i>`
-under elements=3 can leave adoption bookkeeping inconsistent. The token guard
-only stops later tokens. An independently authored `<b><p>X</b>Y` with elements=5
-panics inside adoption bookkeeping even behind that guard. Retained same-token stop
-hooks now refuse before inconsistent bookkeeping. Templates, foster parenting,
-adoption, reparenting, foreign content and unfinished tokens require direct
-rejection controls. An outer candidate counter cannot bound one :has or nth walk.
-Exhaustion inside a predicate must remain a resource error even if upstream
-matching returns false or negation returns true. Cached and cold paths must have
-identical complete results.
+## Design and separate skeptical challenge
 
-Upstream version numbers do not prove pointer safety. Strict-provenance Miri and
-ownership controls decide whether servo_arc/tendril corrections can be removed.
-Preserve the narrow necessary safeguards if their replacement fails; publication
-and registry installability cannot be claimed while local safety carriers remain.
+Separate DOM admission, immutable serialization and matching/accounting from the
+parser/pointer graph. Use one aligned html5ever 0.40 / selectors 0.41 type graph.
+Moving these product responsibilities permits scraper retirement without deleting
+its required behavior or replacing mature parsing with a handwritten parser.
 
-Delivery uses the existing bounded writer and atomic single-file staging. Encoding
-must finish before staging or stdout. Failure before delivery emits no data; a
-stdout write failure can expose a prefix, and atomic rename is not a multi-file
-transaction. No replacement archive/manifest framework is needed. Direct Cargo
-checks and focused native/package/release scripts replace xtask administration.
-Retain four native targets, attribution, integrity, source binding, immutable
-publication and anonymous downloaded-binary execution. Exact-source CI remains
-an external prerequisite; local success cannot establish it.
+A guarded public TokenSink cannot interrupt the current token: `<b><p>X</b>Y` at
+five elements panics in upstream adoption bookkeeping. Keep the demonstrated
+same-token stop hooks. Registry tendril/servo_arc also fail their independent
+ownership/provenance controls; preserve corrected transitive package identities.
+
+Challenge matching independently of those parser failures. The upstream nth-cache
+debug recomputation panics after a public navigation callback refuses, and recursive
+relative traversal overflows at supported depth 4000. Retain only iterative relative
+traversal and removal of that redundant diagnostic recomputation, with independent
+cached/cold, scope, ancestor/sibling/negation, depth and refusal controls. The wrapper
+owns all work and pass caches; outer candidate counts alone cannot bound inner work.
+
+Five necessary carrier responsibilities and their specific blockers are documented
+in [dependencies](dependencies.md). Verified distribution of corrected packages is
+separate from full upstream adoption and actual crates.io publication. Local and
+required CI commands remain direct tools, with bounded smoke and focused native
+package/release controls. Authoritative CI and external rollout remain separate
+from locally executed evidence; see [release handoff](release-protocol.md).

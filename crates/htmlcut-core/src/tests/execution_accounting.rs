@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn work_debits_are_exact_and_failed_debits_do_not_consume_partial_capacity() {
-    let budget = SelectorWorkBudget::new(3);
+    let budget = WorkBudget::new(3);
     charge(&budget, 0).unwrap();
     assert_eq!(budget.remaining(), 3);
     charge(&budget, 2).unwrap();
@@ -39,7 +39,7 @@ fn regex_guards_debit_a_search_even_for_an_empty_value() {
         pattern: None,
     });
     let exact = CompiledPlan::compile(&plan).unwrap();
-    let exact_budget = SelectorWorkBudget::new(1000);
+    let exact_budget = WorkBudget::new(1000);
     check_guards(
         &document,
         &[SelectionScope {
@@ -53,7 +53,7 @@ fn regex_guards_debit_a_search_even_for_an_empty_value() {
     plan.expect[0].equals = None;
     plan.expect[0].pattern = Some("^$".into());
     let regex = CompiledPlan::compile(&plan).unwrap();
-    let regex_budget = SelectorWorkBudget::new(1000);
+    let regex_budget = WorkBudget::new(1000);
     check_guards(
         &document,
         &[SelectionScope {
@@ -75,7 +75,7 @@ fn exclusion_scope_from_another_document_is_an_invariant_refusal() {
         .select(&Selector::parse("article").unwrap())
         .next()
         .unwrap();
-    let budget = SelectorWorkBudget::new(1000);
+    let budget = WorkBudget::new(1000);
     let error = exclusions(&first, root, &[Selector::parse("p").unwrap()], &budget).unwrap_err();
     assert_eq!(error.code, ErrorCode::InternalInvariant);
     assert_eq!(error.stage, "exclusion");

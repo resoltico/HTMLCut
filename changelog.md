@@ -25,15 +25,19 @@ Notable changes to this project are documented in this file. The format is based
 
 - Core/CLI registry manifests are prepared. Tests use the existing maintained
   tempfile dependency; the unpublished temporary-directory helper is removed.
-  Registry package checks remain blocked by unpublished parser/pointer carriers.
+  Audited necessary carriers have a dependency-complete verified package graph;
+  actual registry ownership/availability and publication remain pending.
 
 - Direct Cargo and focused native/release checks replace xtask, custom coverage and
   mutation administration, source-shape policy and the duplicated API baseline.
   Published-core API checks use immutable Git source. Four native target promises,
   legal attribution, integrity, source binding and public-download controls remain.
-- SHA-2 runtime machinery is removed. Upstream parser adoption and registry publication
-  remain blocked by strict-provenance proof; retained carriers protect the current
-  parser/selector and pointer boundaries.
+- SHA-2 runtime machinery and the scraper carrier are removed. Product-owned DOM,
+  matching/accounting and immutable serialization adapters retain strict semantics.
+  Five intentionally distributable carriers preserve reproduced parser, selector
+  depth/refusal and pointer safeguards; full upstream adoption remains unresolved.
+- Required CI runs short parser and relational smoke with failure/crash retention.
+  Core registry packages include self-contained API examples and canonical fixtures.
 
 ## [20.0.0] - 2026-10-06
 

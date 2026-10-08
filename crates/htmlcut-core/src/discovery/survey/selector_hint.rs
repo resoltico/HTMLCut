@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! CSS hints are emitted only after matching exactly the surveyed original nodes.
 
-use scraper::{ElementRef, Html};
-use selectors::work_budget::SelectorWorkBudget;
+use crate::budget::WorkBudget;
+use crate::dom::{ElementRef, Html};
 
 use super::{Candidate, class_signature};
 use crate::ExtractionError;
@@ -11,7 +11,7 @@ pub(super) fn verified(
     document: &Html,
     group: &Candidate<'_>,
     members: &[ElementRef<'_>],
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<String>, ExtractionError> {
     let mut candidates = Vec::new();
     let tag = &group.key.tag;
@@ -100,8 +100,8 @@ fn escaped_identifier(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use scraper::Html;
-    use selectors::work_budget::SelectorWorkBudget;
+    use crate::budget::WorkBudget;
+    use crate::dom::Html;
 
     use super::{css_escape, same_nodes, verified};
     use crate::discovery::survey::{Candidate, GroupKey};
@@ -119,7 +119,7 @@ mod tests {
         let nodes = document
             .tree
             .nodes()
-            .filter_map(scraper::ElementRef::wrap)
+            .filter_map(crate::dom::ElementRef::wrap)
             .filter(|element| element.value().name() == "p")
             .collect::<Vec<_>>();
         assert!(same_nodes(&nodes, &nodes));
@@ -132,7 +132,7 @@ mod tests {
         let elements = document
             .tree
             .nodes()
-            .filter_map(scraper::ElementRef::wrap)
+            .filter_map(crate::dom::ElementRef::wrap)
             .collect::<Vec<_>>();
         let parent = elements
             .iter()
@@ -157,7 +157,7 @@ mod tests {
                 &document,
                 &group,
                 &[members[1], members[0]],
-                &SelectorWorkBudget::new(10_000)
+                &WorkBudget::new(10_000)
             )
             .unwrap(),
             None

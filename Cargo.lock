@@ -522,15 +522,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "getopts"
-version = "0.2.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe4fbac503b8d1f88e6676011885f34b7174f46e59956bba534ba83abded4df"
-dependencies = [
- "unicode-width",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -593,8 +584,10 @@ dependencies = [
  "boon",
  "cssparser",
  "ego-tree",
- "htmlcut-scraper",
+ "htmlcut-html5ever",
  "htmlcut-selectors",
+ "htmlcut-tendril",
+ "precomputed-hash",
  "pulldown-cmark",
  "regex",
  "schemars",
@@ -625,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-html5ever"
-version = "0.40.1-htmlcut.2"
+version = "0.40.1-htmlcut.3"
 dependencies = [
  "criterion",
  "htmlcut-markup5ever",
@@ -636,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-markup5ever"
-version = "0.40.0-htmlcut.1"
+version = "0.40.0-htmlcut.2"
 dependencies = [
  "htmlcut-tendril",
  "log",
@@ -644,22 +637,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "htmlcut-scraper"
-version = "0.27.0-htmlcut.10"
-dependencies = [
- "cssparser",
- "ego-tree",
- "getopts",
- "htmlcut-html5ever",
- "htmlcut-selectors",
- "htmlcut-tendril",
- "precomputed-hash",
- "serde",
-]
-
-[[package]]
 name = "htmlcut-selectors"
-version = "0.41.0-htmlcut.2"
+version = "0.41.0-htmlcut.3"
 dependencies = [
  "bitflags",
  "cssparser",
@@ -674,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-servo-arc"
-version = "0.5.0-htmlcut.2"
+version = "0.5.0-htmlcut.3"
 dependencies = [
  "serde",
  "stable_deref_trait",
@@ -682,7 +661,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-tendril"
-version = "0.5.1-htmlcut.1"
+version = "0.5.1-htmlcut.2"
 dependencies = [
  "criterion",
  "encoding_rs",
@@ -1527,12 +1506,6 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
-
-[[package]]
-name = "unicode-width"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "url"

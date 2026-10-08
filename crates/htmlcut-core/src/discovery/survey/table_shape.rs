@@ -3,8 +3,8 @@
 
 use std::collections::HashSet;
 
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 
 use super::{Candidate, TableShape};
 use crate::ExtractionError;
@@ -12,7 +12,7 @@ use crate::ExtractionError;
 pub(super) fn summarize(
     group: &Candidate<'_>,
     members: &[ElementRef<'_>],
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<TableShape>, ExtractionError> {
     if group.key.tag != "tr" {
         return Ok(None);
@@ -90,7 +90,7 @@ pub(super) fn summarize(
 
 fn header_text(
     cell: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<String>, ExtractionError> {
     let (text, complete) =
         crate::projection::text(cell, &HashSet::new(), true, 128, Some(128), budget)?;

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Selector-scoped counts and deliberately abbreviated samples of one immutable snapshot.
 
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 use schemars::JsonSchema;
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
 use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, ExtractionError, PreparedDocument};
@@ -67,7 +67,7 @@ impl PreparedDocument {
         &'a self,
         css: &str,
         samples: u32,
-    ) -> Result<(Vec<ElementRef<'a>>, SelectorWorkBudget), ExtractionError> {
+    ) -> Result<(Vec<ElementRef<'a>>, WorkBudget), ExtractionError> {
         if !(1..=10).contains(&samples) {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidOptions,
@@ -78,7 +78,7 @@ impl PreparedDocument {
         crate::plan::validation::pattern(css)?;
         let selector = crate::compilation::compile_selector(css)?;
         let limits = crate::ExecutionLimits::default();
-        let budget = SelectorWorkBudget::new(limits.max_work);
+        let budget = WorkBudget::new(limits.max_work);
         let document = self.document()?;
         let nodes =
             crate::execution::matches(document, None, &selector, limits.max_candidates, &budget)?;
@@ -88,7 +88,7 @@ impl PreparedDocument {
 
 fn identifier_sample(
     root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<InspectionSample, ExtractionError> {
     let tag = root.value().name();
     if tag.len() > 128 {
@@ -150,7 +150,7 @@ fn identifier_sample(
 
 fn structural_preview(
     root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
     maximum: usize,
 ) -> Result<(String, bool), ExtractionError> {
     crate::projection::text(

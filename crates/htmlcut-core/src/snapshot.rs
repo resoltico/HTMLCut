@@ -4,8 +4,8 @@
 use std::cell::OnceCell;
 use std::sync::Arc;
 
+use crate::dom::{Html, parser::ParseLimits};
 use schemars::JsonSchema;
-use scraper::{Html, html::ParseLimits};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -143,7 +143,7 @@ impl PreparedDocument {
                     },
                 )
                 .map_err(|failure| {
-                    use scraper::html::ParseLimitExceeded;
+                    use crate::dom::parser::ParseLimitExceeded;
                     let (counter, bound) = match failure {
                         ParseLimitExceeded::Elements => ("max_elements", self.limits.max_elements),
                         ParseLimitExceeded::Nodes => ("max_nodes", self.limits.max_nodes),

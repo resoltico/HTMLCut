@@ -11,7 +11,10 @@ with `cargo install NAME --version VERSION --locked`.
 
 The script runs direct formatting, clippy, semantic tests, explicitly selected large
 resource acceptance, rustdoc, focused release tests and one advisory/license check.
-No coverage score, mutation campaign or fuzz campaign is required. For optional full evaluation scripts install `evaluation/requirements.txt` in an isolated environment.
+The required Linux CI path also runs `./scripts/focused-smoke.sh`, the same bounded
+parser and relational smoke available locally. Install cargo-fuzz from the inventory
+and the pinned nightly toolchain first; see [the harness instructions](fuzz/README.md).
+No coverage score, full mutation campaign or full GA fuzz campaign is required. For optional full evaluation scripts install `evaluation/requirements.txt` in an isolated environment.
 Missing tools produce their normal command errors; install the named pinned tool.
 
 Retained unsafe dependency safeguards also require targeted Miri:

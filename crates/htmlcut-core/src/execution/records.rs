@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use scraper::Html;
-use selectors::work_budget::SelectorWorkBudget;
+use crate::budget::WorkBudget;
+use crate::dom::Html;
 
 use crate::plan::Selection;
 use crate::{CompiledPlan, ExtractionError, FieldCount, FieldMatch, FieldValue, RecordField};
@@ -13,7 +13,7 @@ pub(crate) struct RecordExecution<'a> {
     pub(crate) document: &'a Html,
     pub(crate) compiled: &'a CompiledPlan,
     pub(crate) base: Option<&'a str>,
-    pub(crate) budget: &'a SelectorWorkBudget,
+    pub(crate) budget: &'a WorkBudget,
     pub(crate) bytes: &'a mut usize,
     pub(crate) cells: &'a mut u32,
 }

@@ -9,7 +9,6 @@ use crate::parser::{Selector, SelectorImpl};
 use crate::relative_selector::cache::RelativeSelectorCache;
 use crate::relative_selector::filter::RelativeSelectorFilterMap;
 use crate::tree::{Element, OpaqueElement};
-use crate::work_budget::SelectorWorkBudget;
 
 /// What kind of selector matching mode we should use.
 ///
@@ -190,7 +189,6 @@ where
     pub selector_caches: &'a mut SelectorCaches,
 
     classes_and_ids_case_sensitivity: CaseSensitivity,
-    work_budget: Option<&'a SelectorWorkBudget>,
     _impl: ::std::marker::PhantomData<Impl>,
 }
 
@@ -217,26 +215,6 @@ where
             matching_for_invalidation,
             false,
         )
-    }
-
-    /// Installs bounded work accounting for this matching context.
-    pub fn set_work_budget(&mut self, work_budget: Option<&'a SelectorWorkBudget>) {
-        self.work_budget = work_budget;
-    }
-
-    /// Shares the current operation budget with internal traversal boundaries.
-    pub(crate) fn work_budget(&self) -> Option<&'a SelectorWorkBudget> {
-        self.work_budget
-    }
-
-    /// Whether an incomplete traversal exhausted the operation budget.
-    pub(crate) fn work_exhausted(&self) -> bool {
-        self.work_budget.is_some_and(SelectorWorkBudget::exhausted)
-    }
-
-    /// Consumes one selector matching work unit when this context is budgeted.
-    pub fn consume_work(&self) -> bool {
-        self.work_budget.is_none_or(SelectorWorkBudget::consume)
     }
 
     /// Constructs a new `MatchingContext` for revalidation.
@@ -310,7 +288,6 @@ where
             extra_data: Default::default(),
             current_relative_selector_anchor: None,
             selector_caches,
-            work_budget: None,
             _impl: ::std::marker::PhantomData,
         }
     }
@@ -546,7 +523,3 @@ where
         self.current_relative_selector_anchor
     }
 }
-
-#[cfg(test)]
-#[path = "tests/context.rs"]
-mod tests;

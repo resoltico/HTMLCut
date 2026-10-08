@@ -40,6 +40,30 @@ class WorkflowWiringTest(unittest.TestCase):
         triples = subprocess.check_output([str(ROOT / "scripts/release-targets.sh"), "triples"], text=True).splitlines()
         self.assertEqual([row["target_triple"] for row in matrix["include"]], triples)
 
+    def test_required_smoke_failure_propagates_and_retains_log(self):
+        text = (ROOT / ".github/workflows/ci.yml").read_text()
+        job = text.split("\n  focused-smoke:\n", 1)[1].split("\n  semver:\n", 1)[0]
+        command = job.split("      - name: Execute both bounded smokes\n", 1)[1].split("      - name:", 1)[0].split("        run: ", 1)[1].strip()
+        self.assertIn('if: always()', job)
+        self.assertIn('path: ${{ runner.temp }}/focused-smoke/', job)
+        aggregate = text.split("\n  check:\n", 1)[1]
+        self.assertIn('focused-smoke,', aggregate)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            cargo = bin_dir / 'cargo'
+            cargo.write_text('#!/usr/bin/env bash\nprintf "intentional smoke failure\\n" >&2\nexit 23\n')
+            cargo.chmod(0o755)
+            result = subprocess.run(['bash', '-c', command], cwd=ROOT,
+                                    env={**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
+                                         'RUNNER_TEMP': str(root)}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 23)
+            evidence = root / 'focused-smoke/parse_document_bytes'
+            self.assertIn('intentional smoke failure', (evidence / 'run.log').read_text())
+            self.assertTrue(any((evidence / 'corpus').iterdir()))
+            self.assertTrue((evidence / 'crashes').is_dir())
+
     def test_every_checkout_discards_credentials(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
             for step in re.split(r"\n      - ", path.read_text()):

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Exact work-accounting controls for the bounded survey helpers.
 
-use scraper::Html;
-use selectors::work_budget::SelectorWorkBudget;
+use crate::budget::WorkBudget;
+use crate::dom::Html;
 
 use super::{class_signature, element_descriptor, samples};
 use crate::ErrorCode;
@@ -13,13 +13,11 @@ fn sample_budget_failure_cannot_publish_a_partial_preview() {
     let members = document
         .tree
         .nodes()
-        .filter_map(scraper::ElementRef::wrap)
+        .filter_map(crate::dom::ElementRef::wrap)
         .filter(|element| element.value().name() == "p")
         .collect::<Vec<_>>();
     assert_eq!(
-        samples(&members, &SelectorWorkBudget::new(1))
-            .unwrap_err()
-            .code,
+        samples(&members, &WorkBudget::new(1)).unwrap_err().code,
         ErrorCode::ResourceLimit
     );
 }
@@ -32,17 +30,17 @@ fn identifier_scans_charge_the_value_and_processing_work() {
     let element = document
         .tree
         .nodes()
-        .filter_map(scraper::ElementRef::wrap)
+        .filter_map(crate::dom::ElementRef::wrap)
         .find(|element| element.value().name() == "div")
         .unwrap();
     assert_eq!(
-        class_signature(element, &SelectorWorkBudget::new(2))
+        class_signature(element, &WorkBudget::new(2))
             .unwrap_err()
             .code,
         ErrorCode::ResourceLimit
     );
     assert_eq!(
-        class_signature(element, &SelectorWorkBudget::new(3)).unwrap(),
+        class_signature(element, &WorkBudget::new(3)).unwrap(),
         Some(vec![class])
     );
 
@@ -50,19 +48,17 @@ fn identifier_scans_charge_the_value_and_processing_work() {
     let element = document
         .tree
         .nodes()
-        .filter_map(scraper::ElementRef::wrap)
+        .filter_map(crate::dom::ElementRef::wrap)
         .find(|element| element.value().name() == "div")
         .unwrap();
     assert_eq!(
-        element_descriptor(element, &SelectorWorkBudget::new(1))
+        element_descriptor(element, &WorkBudget::new(1))
             .unwrap_err()
             .code,
         ErrorCode::ResourceLimit
     );
     assert_eq!(
-        element_descriptor(element, &SelectorWorkBudget::new(2))
-            .unwrap()
-            .id,
+        element_descriptor(element, &WorkBudget::new(2)).unwrap().id,
         Some(id)
     );
 }

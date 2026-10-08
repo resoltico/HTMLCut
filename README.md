@@ -32,7 +32,8 @@ cargo install --path crates/htmlcut-cli --locked
 ```
 
 Rust is pinned in `rust-toolchain.toml`. Source installation is supported; crates.io
-installation is pending upstream pointer-safety proof and registry publication.
+installation is prepared with audited safety carriers and verified in a disposable
+dependency-complete registry. Real crates.io availability and publication remain pending.
 Native packages for Apple ARM/Intel, Linux x64 musl and Windows x64 MSVC are listed on
 [GitHub Releases](https://github.com/resoltico/HTMLCut/releases). This working source
 prepares 21.0.0 with query/semantics 7; it does not establish release availability.

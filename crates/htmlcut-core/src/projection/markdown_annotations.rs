@@ -16,7 +16,7 @@ pub(super) struct AnnotationContext<'a> {
     pub(super) resolve: bool,
     pub(super) base: Option<&'a str>,
     pub(super) maximum: usize,
-    pub(super) budget: &'a SelectorWorkBudget,
+    pub(super) budget: &'a WorkBudget,
 }
 
 pub(super) fn annotations(
@@ -90,7 +90,7 @@ fn label(
     root: ElementRef<'_>,
     excluded: &HashSet<NodeId>,
     maximum: usize,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<String, ExtractionError> {
     let mut output = ValueBuffer::new(maximum, budget);
     for edge in payload_edges(root, excluded, budget) {

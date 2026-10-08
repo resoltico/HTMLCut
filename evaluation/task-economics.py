@@ -4,7 +4,7 @@
 import argparse,hashlib,importlib.metadata,json,platform,statistics,subprocess,sys,time
 from pathlib import Path
 from bs4 import BeautifulSoup,NavigableString,Comment,Doctype
-ROOT=Path(__file__).resolve().parents[1];CORPUS=ROOT/'evaluation/corpus'
+ROOT=Path(__file__).resolve().parents[1];CORPUS=ROOT/'crates/htmlcut-core/tests/fixtures/pages'
 
 def compact(value):return json.dumps(value,ensure_ascii=False,separators=(',',':'),sort_keys=True)
 def record_values(soup):

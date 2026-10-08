@@ -119,11 +119,6 @@ impl<T> UniqueArc<T> {
             #[cfg(feature = "track_alloc_size")]
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).alloc_size), layout.size());
 
-            #[cfg(any())]
-            {
-                NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8)
-            }
-
             UniqueArc(Arc {
                 p,
                 phantom: PhantomData,
@@ -219,14 +214,6 @@ impl<T> Arc<T> {
             );
             ptr
         };
-
-        #[cfg(any())]
-        unsafe {
-            // FIXME(emilio): Would be so amazing to have
-            // std::intrinsics::type_name() around, so that we could also report
-            // a real size.
-            NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8);
-        }
 
         Arc {
             p,
@@ -340,34 +327,16 @@ impl<T: ?Sized> Arc<T> {
         unsafe { &*self.ptr() }
     }
 
-    #[inline(always)]
-    fn record_drop(&self) {
-        #[cfg(any())]
-        unsafe {
-            NS_LogDtor(self.ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8);
-        }
-    }
-
-    /// Marks this `Arc` as intentionally leaked for the purposes of refcount
-    /// logging.
-    ///
-    /// It's a logic error to call this more than once, but it's not unsafe, as
-    /// it'd just report negative leaks.
-    ///
-    /// The allocation is expected to live for the rest of the process, so this
-    /// also marks it static: clone()/drop() then skip the atomic refcount
-    /// updates.
+    /// Marks this allocation as static so clone/drop skip refcount updates.
+    /// The allocation remains alive for the rest of the process.
     #[inline(always)]
     pub fn mark_as_intentionally_leaked(&self) {
-        self.record_drop();
         self.inner().count.store(STATIC_REFCOUNT, Relaxed);
     }
 
-    // Non-inlined part of `drop`. Just invokes the destructor and calls the
-    // refcount logging machinery if enabled.
+    // Non-inlined part of `drop` destroys and deallocates the final owner.
     #[inline(never)]
     unsafe fn drop_slow(&mut self) {
-        self.record_drop();
         let inner = self.ptr();
 
         unsafe {
@@ -395,20 +364,6 @@ impl<T: ?Sized> Arc<T> {
     pub fn raw_ptr(&self) -> ptr::NonNull<()> {
         self.p.cast()
     }
-}
-
-#[cfg(any())]
-unsafe extern "C" {
-    fn NS_LogCtor(
-        aPtr: *mut std::os::raw::c_void,
-        aTypeName: *const std::os::raw::c_char,
-        aSize: u32,
-    );
-    fn NS_LogDtor(
-        aPtr: *mut std::os::raw::c_void,
-        aTypeName: *const std::os::raw::c_char,
-        aSize: u32,
-    );
 }
 
 impl<T: ?Sized> Clone for Arc<T> {
@@ -852,14 +807,6 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
             );
             p
         };
-        #[cfg(any())]
-        unsafe {
-            if !is_static {
-                // FIXME(emilio): Would be so amazing to have
-                // std::intrinsics::type_name() around.
-                NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8)
-            }
-        }
 
         // Return the fat Arc.
         assert_eq!(

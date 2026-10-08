@@ -2,20 +2,8 @@
 
 `SourceSnapshot` accepts immutable UTF-8 source plus explicit metadata and preserves full accepted bytes, including BOM/CRLF/NUL. `PreparedDocument` binds a validated preparation policy and lazily prepares one original DOM, caching success or failure. `CompiledPlan` validates current queries once and retains their bounded normalized JSON; each execution receives fresh shared work/cell/byte allowances. Parser types are private.
 
-```rust
-use htmlcut_core::{CompiledPlan, ExtractionPlan, Reading, PreparationLimits,
-    PreparedDocument, SnapshotMetadata, SourceSnapshot};
-let document = PreparedDocument::new(
-    SourceSnapshot::new("<p id='amount'>EUR 180</p><a href='next'>Link</a>", SnapshotMetadata::default())?,
-    PreparationLimits::default())?;
-let amount = CompiledPlan::compile(&ExtractionPlan::css("#amount")?)?;
-let mut link = ExtractionPlan::css("a")?;
-link.read = Some(Reading::Attribute("href".into()));
-let link = CompiledPlan::compile(&link)?;
-assert_eq!(document.execute(&amount)?.data().as_values().unwrap(), ["EUR 180"]);
-assert_eq!(document.execute(&link)?.data().as_values().unwrap(), ["next"]);
-# Ok::<(), htmlcut_core::ExtractionError>(())
-```
+The [runnable core API example](../crates/htmlcut-core/README.md) is the canonical
+package example and is checked by Rust doctests.
 
 `ExtractionResult::data()` borrows owned typed values; `into_data()` consumes them.
 `candidate_count()`, `selected_count()` and `field_counts()` expose complete counts.
@@ -50,9 +38,9 @@ HTML emphasis/strong roles, including header cells, use fixed generated `<em>`/`
 
 Preformatted content uses a fence longer than conflicting literal backtick runs. An explicit `language-*` class on pre or its sole direct HTML code child supplies a language: 1–64 ASCII characters, starting alphanumeric, then alphanumeric or `_+.-`. Malformed recognized tokens or distinct conflicting labels fail with `invalid_representation`; duplicate identical labels are accepted. No language is inferred. Parsed text is emitted literally, including trailing LFs, followed by exactly one framing LF before the closing fence. CommonMark code events therefore contain payload plus that one structural LF. Link/image metadata inside code is annotated after the fence, keeping program text intact. Block-containing anchors keep block content and receive a following conventional destination link. Destinations containing LF/CR/NUL fail with `invalid_representation`; raw attributes/HTML retain their parsed values. Literal syntax is escaped where it could forge Markdown structure.
 
-## Discovery, bounds and evidence
+## Discovery and limits
 
-`inspect(select, samples)` counts completely and returns 1–10 bounded samples containing exact id/classes, attribute names and the shared structural reading. Independent completeness labels identify identifier/name/text/sample omissions. Oversized identifiers are omitted rather than shortened into misleading selector tokens. Observations bind exact accepted-source SHA-256 and have a 16 KiB encoded cap.
+`inspect(select, samples)` counts completely and returns 1–10 bounded samples containing exact id/classes, attribute names and the shared structural reading. Independent completeness labels identify identifier/name/text/sample omissions. Oversized identifiers are omitted rather than shortened into misleading selector tokens. Typed observations contain counts, samples and completeness flags, without source digests. The CLI applies a 16 KiB encoded delivery cap; encoding failure publishes no observation.
 
 `survey(within, limit)` discovers repeated direct HTML siblings under a fresh 10 million-unit budget, with 1,024 signatures per parent and at most sixteen returned groups. Optional scope must select exactly one node. Groups can overlap. Every hint uses bounded CSS escaping and must match exact original members in order; null is a valid absence of proof. Table facts include complete structural-text headers (reading `text`), uniqueness, direct cell ranges and spans, without column meaning or grid reconstruction. Incomplete headers are not usable exact guards. For field discovery, extract one representative row's outer HTML.
 
@@ -72,7 +60,7 @@ identifiers/classes/attributes separately, and surveys at 16 groups/two samples 
 | elements/nodes | each parser allocation, including template fragments and fixed bookkeeping | before governed allocation |
 | depth | parent ancestry plus child-subtree height on attachment/reparenting | before attachment |
 | parse work | sink allocation, mutation, warnings, ancestry and subtree-edge accounting plus retained parser stop hooks | sticky refusal discards partial DOM |
-| execution work | owned traversal/context/value byte batches and retained inner selector entries/navigation/predicates | whole query refused, never a successful non-match |
+| execution work | owned traversal/context/value byte batches and selector Element navigation/predicate callbacks | whole query refused, never a successful non-match |
 | candidates | each matching pass, complete enumeration | before appending candidate above bound |
 | selected | selection cardinality | before projection |
 | cells | scalar strings or field containers plus many-valued strings | before append |
@@ -83,6 +71,7 @@ These are logical counters, not OS CPU/RSS isolation or exact instruction counts
 The parser stops through retained hooks at token reprocessing/adoption loops and mutation boundaries;
 current-token callbacks refuse mutations and the partial DOM is discarded. Source
 bytes bound unfinished text/comment/raw tokens, which can exceed a DOM node's payload.
-The upstream public-boundary experiment passed authored current-token cases but failed
-strict-provenance Miri in tendril 0.5.1. Its graph has not replaced the retained stack.
+Unmodified upstream current-token stopping, pointer ownership and selector depth/refusal
+controls still fail. Five narrow carriers remain; independent product boundaries are
+implemented and verified as described in [dependencies](dependencies.md).
 Exact fork-internal work semantics are no longer a public compatibility promise.

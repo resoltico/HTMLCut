@@ -3,7 +3,7 @@
 
 use super::*;
 
-pub(super) fn omitted_payload(element: &scraper::node::Element) -> bool {
+pub(super) fn omitted_payload(element: &crate::dom::Element) -> bool {
     let namespace: &str = element.name.ns.as_ref();
     (context::html(element) && matches!(element.name(), "script" | "style" | "template"))
         || (namespace == "http://www.w3.org/2000/svg"
@@ -13,7 +13,7 @@ pub(super) fn omitted_payload(element: &scraper::node::Element) -> bool {
 pub(super) fn payload_edges<'a>(
     root: ElementRef<'a>,
     excluded: &'a HashSet<NodeId>,
-    budget: &'a SelectorWorkBudget,
+    budget: &'a WorkBudget,
 ) -> impl Iterator<Item = Result<Edge<'a, Node>, ExtractionError>> + 'a {
     let mut skipped = 0_usize;
     root.traverse().filter_map(move |edge| {

@@ -3,11 +3,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[macro_use]
+extern crate html5ever;
+
+mod budget;
 mod compilation;
 mod data;
 mod discovery;
 #[cfg(any(test, doctest))]
 mod doctests;
+mod dom;
 mod encoding;
 mod execution;
 mod extraction;

@@ -32,7 +32,7 @@ fn block(name: &str) -> bool {
 fn complex_link(
     root: ElementRef<'_>,
     excluded: &HashSet<NodeId>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<bool, ExtractionError> {
     // The caller supplies an HTML anchor; its own tag is never a block role.
     for edge in payload_edges(root, excluded, budget) {
@@ -82,7 +82,7 @@ pub(super) fn render(
     resolve: bool,
     base: Option<&str>,
     maximum: usize,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<String, ExtractionError> {
     #[cfg(test)]
     super::record_projection(2);
@@ -351,7 +351,7 @@ fn finish_code(
 fn fence_length(
     root: ElementRef<'_>,
     excluded: &HashSet<NodeId>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<usize, ExtractionError> {
     let mut longest = 0;
     let mut run = 0;

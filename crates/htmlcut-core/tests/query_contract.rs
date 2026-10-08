@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Version-six contracts with independent values and rejecting controls.
+//! Current query contracts with independent values and rejecting controls.
 use htmlcut_core::*;
 use serde_json::{Value, json};
 

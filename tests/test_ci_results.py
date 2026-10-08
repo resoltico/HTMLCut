@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 """CI summary policy rejects every mandatory non-success."""
 import importlib.util
+import json
+import os
+import subprocess
 from pathlib import Path
 import unittest
 
@@ -24,6 +27,15 @@ class PolicyTest(unittest.TestCase):
             jobs = self.base()
             del jobs[name]
             self.assertIn(name, policy.failures(jobs))
+
+    def test_skipped_smoke_is_rejected_by_real_aggregate_command(self):
+        jobs = self.base()
+        jobs['focused-smoke']['result'] = 'skipped'
+        result = subprocess.run(
+            ['python3', str(Path(__file__).resolve().parents[1] / 'scripts/check-ci-results.py')],
+            env={**os.environ, 'JOB_RESULTS': json.dumps(jobs)}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('focused-smoke', result.stderr)
 
 class WorkflowTest(unittest.TestCase):
     def test_aggregate_runner_checks_out_its_validator_before_execution(self):
