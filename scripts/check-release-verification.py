@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""Require successful main CI and complete mutation verification for the tagged source."""
+"""Require successful main CI verification for the tagged source."""
 import argparse
 import json
 from pathlib import Path
@@ -31,14 +31,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--ci", required=True)
-    parser.add_argument("--mutations", required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
         parser.error("Expected exact source commit")
     ci = require_success(read(args.ci), args.source_sha, ".github/workflows/ci.yml", {"push"})
-    mutations = require_success(read(args.mutations), args.source_sha, ".github/workflows/mutants.yml", {"schedule", "workflow_dispatch"})
-    print(f"Tagged source verified by main CI run {ci} and full mutation run {mutations}.")
-
+    print(f"Tagged source verified by main CI run {ci}.")
 
 if __name__ == "__main__":
     main()

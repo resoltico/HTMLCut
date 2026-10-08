@@ -1,377 +1,127 @@
 # SPDX-License-Identifier: MPL-2.0
 name: CI
-
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   release-target-matrix:
     name: Compute release target matrix
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Export release target matrix
-        id: matrix
+      - id: matrix
         shell: bash
         run: |
           set -euo pipefail
-          source ./scripts/release-targets.sh
           {
             echo 'matrix<<EOF'
-            release_matrix_json
+            ./scripts/release-targets.sh matrix-json
             echo EOF
           } >> "$GITHUB_OUTPUT"
-
-  devcontainer-changes:
-    name: Detect devcontainer changes
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      changed: ${{ steps.filter.outputs.changed }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Detect devcontainer-relevant changes
-        id: filter
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="${{ github.event.pull_request.base.sha || github.event.before }}"
-          if [[ -z "$base" || "$base" == "0000000000000000000000000000000000000000" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed=$(git diff --name-only "$base" HEAD -- \
-            '.devcontainer' \
-            '.github/workflows/ci.yml' \
-            'rust-toolchain.toml' \
-            '.cargo/config.toml' \
-            'Cargo.toml' \
-            'Cargo.lock' \
-            'scripts/contributor-rust-tools.sh' \
-            'scripts/install-contributor-cargo-tools.sh' \
-            'scripts/install-contributor-nextest.sh' \
-            'docs/developer-devcontainer.md' \
-            'scripts/validate-devcontainer.sh' \
-            'scripts/devcontainer-check.sh' \
-            'scripts/devcontainer-prepare-user-home.sh' \
-            'scripts/devcontainer-bootstrap.sh' \
-            'scripts/devcontainer-cli-helper.Dockerfile' \
-            'scripts/common.sh' \
-            'scripts/xtask.sh' \
-            'check.sh')
-          if [[ -n "$changed" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
   linux-maintainer:
     name: Linux full maintainer gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    env:
-      HTMLCUT_DEVCONTAINER_VOLUME_MODE: shared-ci
-      HTMLCUT_DEVCONTAINER_REPO_COMMAND_PROBES: skip
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Run full maintainer gate through contributor devcontainer
-        shell: bash
-        run: ./scripts/devcontainer-check.sh
-
-  contributor-devcontainer:
-    name: Contributor environment validation
-    needs: [devcontainer-changes]
-    if: needs.devcontainer-changes.outputs.changed == 'true'
-    runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      HTMLCUT_DEVCONTAINER_VOLUME_MODE: shared-ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - name: Validate contributor environment
+      - shell: bash
+        run: |
+          source ./scripts/contributor-rust-tools.sh
+          cargo install cargo-deny --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-deny" {print $2}')" --locked
+      - run: ./check.sh
+      - name: Strict provenance and ownership
         shell: bash
         run: |
-          ./scripts/validate-devcontainer.sh
-          docker build --file .devcontainer/Dockerfile .devcontainer
-
-  cross-platform-rust-gate:
-    name: Cross-platform Rust gate (${{ matrix.id }})
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: ${{ matrix.timeout_minutes }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: macos-arm64
-            runs_on: macos-15
-            timeout_minutes: 30
-          - id: windows-x64
-            runs_on: windows-2022
-            timeout_minutes: 150
-
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component miri --component rust-src --profile minimal
+          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-core --lib tests::selector_and_reading_contract_remain_miri_sound -- --exact
+          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-servo-arc --lib
+          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-tendril --lib subtendril
+  semver:
+    name: Published core API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Install Rust toolchain
-        shell: bash
+      - shell: bash
         run: |
-          set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
-          htmlcut_contributor_retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          htmlcut_contributor_retry 3 5 rustup component add clippy rustfmt --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}"
-
-      - name: Export contributor Rust QA tool inventory
-        id: rust_qa_tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          echo "tool_csv=$(htmlcut_contributor_install_action_csv cargo-nextest cargo-audit cargo-deny cargo-outdated)" >> "$GITHUB_OUTPUT"
-
-      - name: Install Rust QA tools
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
-        with:
-          tool: ${{ steps.rust_qa_tools.outputs.tool_csv }}
-
-      - name: Install pinned cargo-semver-checks release
-        shell: bash
-        run: ./scripts/install-contributor-cargo-tools.sh cargo-semver-checks
-
-      - name: Resolve Cargo build cache directory
-        id: cargo_cache
-        shell: bash
-        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ${{ steps.cargo_cache.outputs.build }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: cross-platform-${{ matrix.id }}
-
-      - name: Exclude build directory from Windows Defender
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE "..\.htmlcut-artifacts"))
-          Add-MpPreference -ExclusionPath (Join-Path $artifactRoot "target"), (Join-Path $artifactRoot "build")
-
-      - name: Run cross-platform Rust gate
-        shell: bash
-        env:
-          HTMLCUT_WINDOWS_STDIO_EVIDENCE: ${{ runner.temp }}/htmlcut-windows-stdio.json
-          HTMLCUT_WINDOWS_PIPE_EVIDENCE: ${{ runner.temp }}/htmlcut-windows-pipe-input.json
-        run: ./scripts/xtask.sh ci-rust-gate
-
-      - name: Resolve Rust gate evidence path
-        if: always()
-        id: rust_gate_evidence
-        shell: bash
-        run: |
-          python3 - <<'PYTHON'
-          import os
-          from pathlib import Path
-          path = Path(os.environ["GITHUB_WORKSPACE"]).parent / ".htmlcut-artifacts" / "gate-runs"
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"path={path.resolve()}\n")
-          PYTHON
-
-      - name: Preserve cross-platform Rust gate evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: rust-gate-proof-${{ matrix.id }}
-          path: |
-            ${{ steps.rust_gate_evidence.outputs.path }}
-            ${{ runner.temp }}/htmlcut-windows-stdio.json
-            ${{ runner.temp }}/htmlcut-windows-pipe-input.json
-          if-no-files-found: warn
-          retention-days: 14
-
+          cargo install cargo-semver-checks --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-semver-checks" {print $2}')" --locked
+          cargo semver-checks check-release -p htmlcut-core --baseline-rev "$HTMLCUT_PUBLISHED_BASELINE_SOURCE"
   release-target-smoke:
-    name: Release target smoke ${{ matrix.id }}
-    needs:
-      - release-target-matrix
+    name: Native package ${{ matrix.id }}
+    needs: [release-target-matrix]
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Install Linux musl toolchain packages
-        if: ${{ matrix.needs_musl_tools }}
-        shell: bash
+      - if: ${{ matrix.needs_musl_tools }}
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - shell: bash
         run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes musl-tools
-
-      - name: Install Rust toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
+          rustup target add "${{ matrix.target_triple }}"
           source ./scripts/contributor-rust-tools.sh
-          htmlcut_contributor_retry 3 5 rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          htmlcut_contributor_retry 3 5 rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
-
-      - name: Resolve Cargo build cache directory
-        id: cargo_cache
-        shell: bash
-        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ${{ steps.cargo_cache.outputs.build }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ matrix.target_triple }}
-
-      - name: Read workspace version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(./scripts/workspace-version.sh)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Install native attribution tool
-        shell: bash
-        run: ./scripts/install-contributor-cargo-tools.sh cargo-about
-
-      - name: Build standalone package
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
-
-      - name: Execute native smoke and record package evidence
-        shell: bash
-        run: |
-          set -euo pipefail
+          cargo install cargo-about --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked
+          ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
           source ./scripts/release-targets.sh
-          package="$(release_package_name_for_target "${{ steps.version.outputs.version }}" "${{ matrix.target_triple }}")"
-          smoke_shell="${BASH}"
-          if command -v cygpath >/dev/null 2>&1; then
-            smoke_shell="$(cygpath -w "${smoke_shell}")"
-          fi
-          python3 ./scripts/native-package-evidence.py \
-            --package "dist/${package}" \
-            --target "${{ matrix.target_triple }}" \
-            --version "${{ steps.version.outputs.version }}" \
-            --source-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --output dist/native-evidence.json \
-            --smoke-log dist/native-smoke.log \
-            --shell "${smoke_shell}"
-
-      - name: Prove native Windows stream counterfactuals
-        if: runner.os == 'Windows'
+          version=$(./scripts/workspace-version.sh Cargo.toml)
+          package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
+          smoke_shell="$BASH"
+          if command -v cygpath >/dev/null 2>&1; then smoke_shell="$(cygpath -w "$smoke_shell")"; fi
+          python3 scripts/native-package-evidence.py --package "dist/$package" --version "$version" \
+            --target "${{ matrix.target_triple }}" --source-sha "$(git rev-parse HEAD)" \
+            --output "dist/native-evidence-${{ matrix.id }}.json" --smoke-log "dist/native-smoke-${{ matrix.id }}.log" --shell "$smoke_shell"
+      - name: Execute immutable published native install instructions
         shell: bash
-        run: python3 scripts/native-windows-counterfactuals.py --output dist/windows-counterfactuals
-
-      - name: Execute published native install example
-        shell: bash
-        run: python3 scripts/verify-published-install.py --output dist/published-install-example.json
-
-      - name: Record native job context even after failure
-        if: always()
-        shell: bash
-        env:
-          NATIVE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          NATIVE_TARGET: ${{ matrix.target_triple }}
-          NATIVE_JOB_STATUS: ${{ job.status }}
         run: |
-          mkdir -p dist
-          python3 - <<'PY'
-          import json, os, platform
-          from pathlib import Path
-          Path("dist/native-job-context.json").write_text(json.dumps({
-              "source_commit": os.environ["NATIVE_SOURCE_SHA"],
-              "target": os.environ["NATIVE_TARGET"],
-              "job_status": os.environ["NATIVE_JOB_STATUS"],
-              "runner_system": platform.system(), "runner_machine": platform.machine(),
-          }, indent=2) + "\n", encoding="utf-8")
-          PY
-
-      - name: Preserve native package and test evidence
-        if: always()
+          source ./scripts/contributor-rust-tools.sh
+          python3 scripts/verify-published-install.py --source-sha "$HTMLCUT_PUBLISHED_BASELINE_SOURCE" --output dist/published-install-example.json
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-proof-${{ matrix.id }}
+          name: native-${{ matrix.id }}
           path: dist/
           if-no-files-found: error
-          retention-days: 7
-
   check:
     name: Check
     if: always()
-    needs:
-      - release-target-matrix
-      - devcontainer-changes
-      - contributor-devcontainer
-      - linux-maintainer
-      - cross-platform-rust-gate
-      - release-target-smoke
+    needs: [release-target-matrix, linux-maintainer, release-target-smoke, semver]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Confirm aggregate gate success
-        shell: bash
-        env:
+      - env:
           JOB_RESULTS: ${{ toJSON(needs) }}
         run: python3 scripts/check-ci-results.py

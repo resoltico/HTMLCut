@@ -280,52 +280,6 @@ fn t31_help_and_version_write_or_flush_failures_do_not_report_success() {
 }
 
 #[test]
-fn t31_acquisition_time_destination_races_cannot_publish_bundles_or_receipts() {
-    struct RacingInput<'a> {
-        target: &'a std::path::Path,
-        body: io::Cursor<&'static [u8]>,
-        raced: bool,
-    }
-    impl Read for RacingInput<'_> {
-        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-            if !self.raced {
-                std::fs::create_dir(self.target)?;
-                self.raced = true;
-            }
-            self.body.read(output)
-        }
-    }
-    for flag in ["--bundle", "--receipt"] {
-        let root = tempfile::tempdir().unwrap();
-        let target = root.path().join("evidence.json");
-        let arguments = vec![
-            "htmlcut",
-            "extract",
-            "--stdin",
-            "--select",
-            "p",
-            flag,
-            target.to_str().unwrap(),
-        ];
-        let mut input = RacingInput {
-            target: &target,
-            body: io::Cursor::new(b"<p>value</p>"),
-            raced: false,
-        };
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        assert_eq!(app::run(arguments, &mut input, &mut stdout, &mut stderr), 5);
-        assert!(stdout.is_empty());
-        assert!(target.is_dir());
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&stderr).unwrap()["code"],
-            "publication"
-        );
-    }
-}
-
-#[test]
 fn t20_t29_default_json_accepts_a_complete_large_value_with_escaping() {
     let value = "\"".repeat(1024 * 1024);
     let html = format!("<p>{value}</p>");

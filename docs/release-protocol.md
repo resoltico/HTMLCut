@@ -1,72 +1,30 @@
----
-afad: "4.0"
-version: "20.0.0"
-domain: RELEASE
-updated: "2026-10-05"
-route:
-  keywords: [release protocol, release overview, gh cli, primary checkout, release phases, semver baseline]
-  questions: ["how is the HTMLCut release flow organized?", "which release doc covers GitHub publication?", "what invariants must hold for an HTMLCut release?"]
----
+# Release protocol
 
-# Release Protocol
+One CI workflow runs direct checks, immutable published-core API checks, targeted
+Miri and all four native package boundaries. Its required aggregate remains `Check`
+and rejects failed/skipped mandatory jobs. One release workflow binds every artifact
+to one immutable annotated tag/source on main, admits only completed same-source CI,
+serializes publication, generates attribution/checksums/build provenance, refuses
+published asset replacement and executes anonymous downloads on native runners.
 
-The HTMLCut release flow is driven by the GitHub CLI (`gh`). Every step that touches GitHub uses
-`gh`, not the GitHub web UI.
+After explicit publication authorization, create the annotated version tag and run
+the release workflow. `build-source-archives.sh REF` archives exact committed source;
+`build-release-artifact.sh TARGET` requires a clean source/version and bundles complete
+legal notices. `native-package-evidence.py` executes the extracted binary through
+semantic and actual OS I/O checks. `publish-github-release.sh` refuses changes to an
+already published release; `verify-github-release.sh` verifies immutable bytes.
 
-Release choreography lives in this document set. Contract-versioning policy lives in
-[versioning-policy.md](versioning-policy.md).
+External steps remain: run authoritative native CI, inspect branch protection before
+changing required names, confirm registry owners/access, notify consumers only when
+authorized, and publish only after authorization. Source/path install works now;
+registry packaging remains blocked by unpublished safety carriers. Do not publish
+carriers or remove pointer corrections merely to make a dry run pass. Preserve tags
+and published assets. No local check establishes remote publication or protection.
 
-## Phase Map
-
-- [Release Preflight](release-preflight.md) covers Step 0 through Step 4: tool access, checkout
-  choice, local verification, release branch creation, PR creation, CI, and merge handoff.
-- [Release Publishing](release-publishing.md) covers Step 5 through Step 9: tagging, workflow
-  monitoring, release-object verification, and host-native package verification.
-- [Release Closeout](release-closeout.md) covers Step 10 through Step 12: Dependabot hygiene,
-  semver-baseline refresh, and primary-checkout reconciliation.
-
-## Shared Release Invariants
-
-- `Cargo.toml` `[workspace.package] version` is the single release-version source of truth.
-- The local maintainer gate must pass before any release commit or tag.
-- Release commits happen on a `release/X.Y.Z` branch, not directly on `main`.
-- If dirty unpublished release-candidate work must be captured first, that capture happens on
-  `release-prep/X.Y.Z`, but the public PR, merge, and tag still flow through `release/X.Y.Z`.
-- If CI exposes a release-only defect after `release/X.Y.Z` is cut, fix it on that branch and
-  rerun the full local maintainer gate from the release worktree before pushing the follow-up
-  commit.
-- Tag publication is authoritative for release automation. PR merge alone does not publish.
-- Release tags are annotated, immutable records pointing at the merged `origin/main` commit; a
-  release tag must never be created from an ambiguous local `HEAD`.
-- The release workflow requires the tagged source to be reachable from `origin/main` and have
-  successful exact-source main CI and full mutation runs. PR-diff mutation success is insufficient.
-- Publication is serialized across tags. Matching already-published releases are verified without
-  edits; an older unpublished draft cannot replace a newer stable release as latest.
-- Every post-tag publication action derives the release version and asset names from the immutable
-  tagged `Cargo.toml`; a newer `main` checkout may supply repaired release tooling but must not
-  redefine an existing release's identity.
-- The GitHub release object and its asset inventory are the authoritative publication record.
-- The checked-in semver baseline is refreshed only after the corresponding release is published.
-- If a separate worktree is used, the primary checkout must still end the session truthful and
-  synchronized with `origin/main`, and no disposable worktree may keep owning `main` once the
-  primary checkout needs to reclaim it during closeout.
-
-## Shared Inputs
-
-- [Quality Gates](quality-gates.md) defines the maintained local gate.
-- [Platform Support](platform-support.md) defines the release-target matrix and deployment floors.
-- [Versioning Policy](versioning-policy.md) defines package, schema and extraction-semantics
-  versioning plus the immutable published API baseline policy.
-- `scripts/release-targets.sh`, `.github/workflows/ci.yml`, and `.github/workflows/release.yml`
-  implement the published target matrix and release asset inventory.
-
-## Working Rule
-
-If a release fact cannot be verified from the worktree, the GitHub release object, or the current
-checkout state, do not infer it from memory. Verify it directly in the relevant phase doc before
-continuing.
-
-If the primary checkout is dirty but already contains the intended release-candidate work, do not
-pretend that dirty `main` is release-ready. Capture that state onto a named prep branch first,
-then create the clean `release/X.Y.Z` worktree from the captured commit so the release branch
-still has one truthful source commit chain.
+Read-only inspection on 8 October 2026 found that GitHub main branch protection
+requires both `Check` and `cargo-mutants pull-request summary`, with strict checks.
+`Check` is retained. The mutation workflow is retired, so remote merges remain
+blocked until an explicitly authorized protection update removes its required
+summary. Do not report unrelated checks under the retired mutation status name.
+No repository rulesets were returned, and no protection settings were changed.
+Reinspect the remote settings before rollout. Local merging does not update them.

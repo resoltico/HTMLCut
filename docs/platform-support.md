@@ -1,27 +1,14 @@
----
-afad: "4.0"
-version: "20.0.0"
-domain: PLATFORM
-updated: "2026-10-05"
-route:
-  keywords: [platform support, release targets, standalone binaries, deployment floors, target matrix, devcontainer, ubuntu 24.04]
-  questions: ["which standalone targets does HTMLCut release?", "what platforms are maintained for HTMLCut?", "where is the release target policy defined?", "what platform does the HTMLCut contributor devcontainer use?"]
----
-
 # Platform Support
 
 This document defines HTMLCut's maintained build and release target policy.
 
 ## Local Development
 
-Local maintainer work has two maintained shapes:
+Use the pinned Rust toolchain on a native host and the direct commands in
+[CONTRIBUTING.md](../CONTRIBUTING.md). The primary maintainer host is
+`aarch64-apple-darwin`; Linux CI runs the full maintainer gate.
 
-- host-native on the current maintainer machine shape:
-  - `aarch64-apple-darwin`
-- contributor-container workflow through the committed Ubuntu `24.04` devcontainer:
-  - [developer-devcontainer.md](developer-devcontainer.md)
-
-Neither local shape is expected to produce every public release artifact. Cross-platform public
+Local development is not expected to produce every public release artifact. Cross-platform public
 artifact production belongs to GitHub release automation.
 
 ## Public Standalone Release Targets
@@ -90,7 +77,7 @@ GitHub release builds run on:
 - `windows-2022` for `x86_64-pc-windows-msvc`
 
 GitHub CI also runs release-target smoke on that same target matrix, including packaged-README
-checks, complete record/receipt/Markdown/inspection/bundle controls and real OS I/O from the
+checks, complete record/Markdown/inspection controls and real OS I/O from the
 unpacked binary, before the aggregate required check reports success. After publication, the
 release workflow repeats native verification over anonymous public downloads on all four targets.
 

@@ -81,7 +81,7 @@ fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_curren
                 "extract",
                 "--stdin",
                 "--plan-json",
-                r#"{"version":6,"select":"p","expect":[{"select":"p","pattern":"(?i)^VALUE$"}]}"#,
+                r#"{"version":7,"select":"p","expect":[{"select":"p","pattern":"(?i)^VALUE$"}]}"#,
             ],
             b"<p>value</p>".as_slice(),
             serde_json::json!(["value"]),
@@ -97,43 +97,10 @@ fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_curren
 }
 
 #[test]
-fn receipt_is_fixed_complete_and_off_success_stdout() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
-    let receipt = root.path().join("receipt.json");
-    let result = root.path().join("result.json");
-    let (code, out, err) = invoke(
-        &[
-            "htmlcut",
-            "extract",
-            "--stdin",
-            "--select",
-            "p",
-            "--receipt",
-            receipt.to_str().unwrap(),
-            "--output",
-            result.to_str().unwrap(),
-        ],
-        b"<p>180</p>",
-    );
-    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
-    assert!(out.is_empty());
-    let evidence: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(receipt).unwrap()).unwrap();
-    assert_eq!(evidence["schema"], "htmlcut.extraction.receipt");
-    assert_eq!(evidence["selected_count"], 1);
-    assert!(evidence.get("values").is_none());
-    assert!(evidence.get("plan").is_none());
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(result).unwrap()).unwrap(),
-        serde_json::json!(["180"])
-    );
-}
-
-#[test]
 fn invalid_record_raw_plan_is_rejected_before_source() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let path = root.path().join("plan.json");
-    std::fs::write(&path,br#"{"version":6,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
+    std::fs::write(&path,br#"{"version":7,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(
@@ -157,16 +124,12 @@ fn invalid_record_raw_plan_is_rejected_before_source() {
 
 #[test]
 fn native_help_named_schemas_and_inner_html_use_current_dispatch() {
-    for name in ["extract", "replay", "inspect", "schema"] {
+    for name in ["extract", "inspect", "schema"] {
         let (code, out, _) = invoke(&["htmlcut", name, "--help"], b"");
         assert_eq!(code, 0);
         assert!(String::from_utf8_lossy(&out).contains("Usage:"));
     }
-    for name in htmlcut_core::SCHEMA_NAMES
-        .iter()
-        .copied()
-        .chain(["htmlcut.bundle"])
-    {
+    for name in htmlcut_core::SCHEMA_NAMES.iter().copied() {
         let (code, out, err) = invoke(&["htmlcut", "schema", name], b"");
         assert_eq!(code, 0, "{}", String::from_utf8_lossy(&err));
         assert!(!out.is_empty());
@@ -196,7 +159,7 @@ fn native_help_named_schemas_and_inner_html_use_current_dispatch() {
         assert_eq!(invoke(&["htmlcut", "schema", name], b"").0, 2);
     }
     assert_eq!(invoke(&["htmlcut", "describe", "unsupported"], b"").0, 2);
-    assert_eq!(invoke(&["htmlcut", "replay", "missing.bundle"], b"").0, 5);
+    assert_eq!(invoke(&["htmlcut", "replay", "missing.bundle"], b"").0, 2);
 }
 
 #[test]

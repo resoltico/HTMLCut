@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 [toolchain]
-# HTMLCut pins the day-to-day toolchain exactly so local development, CI, and
-# release builds all converge on the same stable compiler surface. We install
-# nightly separately for branch coverage and live `cargo-fuzz` runs because
-# those maintained workflows still require it.
+# Stable compiler authority for development, CI and packaging.
 channel = "1.98.1"
 components = ["clippy", "rustfmt"]

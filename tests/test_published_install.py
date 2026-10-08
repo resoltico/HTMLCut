@@ -20,7 +20,7 @@ class PublishedInstallTests(unittest.TestCase):
 
     def test_native_workflow_discovers_the_install_execution_and_retains_it(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-        self.assertEqual(workflow.count("python3 scripts/verify-published-install.py --output dist/published-install-example.json"), 1)
+        self.assertEqual(workflow.count('python3 scripts/verify-published-install.py --source-sha "$HTMLCUT_PUBLISHED_BASELINE_SOURCE" --output dist/published-install-example.json'), 1)
         self.assertIn("path: dist/", workflow)
 
 

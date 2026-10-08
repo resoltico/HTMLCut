@@ -1,7 +1,6 @@
 /dist/
 /target/
 /tmp/
-/semver-baseline/htmlcut-core/target/
 /fuzz/artifacts/
 /fuzz/coverage/
 /fuzz/target/

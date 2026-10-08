@@ -19,7 +19,6 @@ mod tests;
 
 const MAX_WORK: u32 = 10_000_000;
 const MAX_SIGNATURES_PER_PARENT: usize = 1_024;
-const MAX_RESULT_BYTES: usize = 16 * 1_024;
 const SAMPLE_CHARACTERS: usize = 64;
 
 /// Exact bounded parsed identifiers of one parent element.
@@ -98,8 +97,6 @@ pub struct SurveyGroup {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SurveyResult {
-    /// SHA-256 of the accepted source bytes used for this survey.
-    pub source_sha256: String,
     /// Complete count of groups meeting the declared survey criteria.
     pub group_count: u32,
     /// Largest groups first, breaking ties by original document order.
@@ -218,12 +215,10 @@ impl PreparedDocument {
             });
         }
         let result = SurveyResult {
-            source_sha256: self.snapshot.source_sha256().into(),
             group_count,
             groups_complete: group_count as usize <= limit as usize,
             groups,
         };
-        let _ = crate::identity::encoded(&result, MAX_RESULT_BYTES, &budget)?;
         Ok(result)
     }
 }

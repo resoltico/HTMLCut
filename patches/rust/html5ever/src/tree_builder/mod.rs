@@ -335,6 +335,9 @@ where
         let mut more_tokens = VecDeque::new();
 
         loop {
+            if self.sink.stop_requested() {
+                return tokenizer::TokenSinkResult::Continue;
+            }
             let should_have_acknowledged_self_closing_flag = matches!(
                 token,
                 Token::Tag(Tag {
@@ -727,6 +730,9 @@ where
 
         // 2. 3. 4.
         for _ in 0..8 {
+            if self.sink.stop_requested() {
+                return;
+            }
             // 5.
             // We clone the Handle and Tag so they don't cause an immutable borrow of self.
             let maybe_fmt_entry = self
@@ -801,6 +807,9 @@ where
             // 13.1.
             let mut inner_counter = 0;
             loop {
+                if self.sink.stop_requested() {
+                    return;
+                }
                 // 13.2.
                 inner_counter += 1;
 
@@ -843,6 +852,11 @@ where
                     tag.attrs.clone(),
                     tag.had_duplicate_attributes,
                 );
+                // A refused allocation returns the sink's stop sentinel, which must
+                // never enter adoption bookkeeping as a real formatting element.
+                if self.sink.stop_requested() {
+                    return;
+                }
                 self.open_elems.borrow_mut()[node_index] = new_element.clone();
                 self.active_formatting.borrow_mut()[node_formatting_index] =
                     FormatEntry::Element(new_element.clone(), tag);
@@ -867,6 +881,10 @@ where
             self.sink.remove_from_parent(&last_node);
             self.insert_appropriately(AppendNode(last_node.clone()), Some(common_ancestor));
 
+            if self.sink.stop_requested() {
+                return;
+            }
+
             // 15.
             // FIXME: Is there a way to avoid cloning the attributes twice here (once on their own,
             // once as part of t.clone() above)?
@@ -876,6 +894,9 @@ where
                 fmt_elem_tag.attrs.clone(),
                 fmt_elem_tag.had_duplicate_attributes,
             );
+            if self.sink.stop_requested() {
+                return;
+            }
             let new_entry = FormatEntry::Element(new_element.clone(), fmt_elem_tag);
 
             // 16.
@@ -884,6 +905,10 @@ where
             // 17.
             self.sink
                 .append(&furthest_block, AppendNode(new_element.clone()));
+
+            if self.sink.stop_requested() {
+                return;
+            }
 
             // 18.
             // FIXME: We could probably get rid of the position_in_active_formatting() calls here

@@ -21,8 +21,6 @@ pub(crate) enum Operation {
     /// Select, check and read complete strings or related records.
     #[command(after_help = EXTRACT_HELP)]
     Extract(Box<Extract>),
-    /// Recompute and verify a self-contained USTAR snapshot bundle.
-    Replay(Replay),
     /// Survey repeated sibling/table groups, or count/sample an explicit selector.
     Inspect(Inspect),
     /// Retrieve one exhaustive named contract schema (optional for ordinary use).
@@ -33,7 +31,7 @@ const EXTRACT_HELP: &str = r#"Examples:
   htmlcut extract --file books.html --select article.product_pod --all --field title 'h3 a' attr:title --field price .price_color text
   htmlcut extract --file books.html --select article.product_pod --nth 1 --read outer-html --raw
   htmlcut extract --file page.html --select 'script[type="application/ld+json"]' --read literal --raw
-  htmlcut extract --file quotes.html --plan-json '{"version":6,"select":".quote","match":"all","fields":{"text":{"select":".text"},"author":{"select":".author","match":"optional"},"tags":{"select":".tag","match":"all","min":0}}}'
+  htmlcut extract --file quotes.html --plan-json '{"version":7,"select":".quote","match":"all","fields":{"text":{"select":".text"},"author":{"select":".author","match":"optional"},"tags":{"select":".tag","match":"all","min":0}}}'
 
 One requires one node; all defaults min=1; nth is one-based and counts every candidate.
 Optional fields return null only for absence; many defaults min=1. Missing attributes fail.
@@ -70,9 +68,6 @@ pub(crate) struct Output {
     /// Replace an existing output.
     #[arg(long)]
     pub(crate) overwrite: bool,
-    /// Optional receipt from remaining execution work.
-    #[arg(long)]
-    pub(crate) receipt: Option<PathBuf>,
 }
 #[derive(Args)]
 #[group(id = "query", required = true, multiple = false, args = ["select", "plan", "plan_json"])]
@@ -124,9 +119,6 @@ pub(crate) struct Extract {
     /// Include N following element siblings (0–63).
     #[arg(long)]
     pub(crate) following_siblings: Option<u32>,
-    /// USTAR replay bundle; excludes receipt.
-    #[arg(long, conflicts_with = "receipt")]
-    pub(crate) bundle: Option<PathBuf>,
 }
 impl Extract {
     pub(crate) fn extraction_plan(
@@ -227,12 +219,6 @@ impl Extract {
         plan.validate()?;
         Ok(plan)
     }
-}
-#[derive(Args)]
-pub(crate) struct Replay {
-    pub(crate) file: PathBuf,
-    #[command(flatten)]
-    pub(crate) output: Output,
 }
 #[derive(Args)]
 pub(crate) struct Inspect {

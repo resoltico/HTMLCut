@@ -24,7 +24,6 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-tar.workspace = true
 pulldown-cmark.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
@@ -95,13 +94,6 @@ bench = false
 [[bin]]
 name = "record_fields"
 path = "fuzz_targets/record_fields.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "bundle_replay"
-path = "fuzz_targets/bundle_replay.rs"
 test = false
 doc = false
 bench = false

@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn plan_field_failure_reports_only_declared_path_segments() {
-    let bad = br#"{"version":6,"select":"p","fields":{"SYNTHETIC_SECRET!":{"select":null}}}"#;
+    let bad = br#"{"version":7,"select":"p","fields":{"SYNTHETIC_SECRET!":{"select":null}}}"#;
     let error = ExtractionPlan::from_json(bad).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidPlan);
     assert_eq!(error.plan_path.as_deref(), Some("$.fields"));
@@ -12,7 +12,7 @@ fn plan_field_failure_reports_only_declared_path_segments() {
             .unwrap()
             .contains("SYNTHETIC_SECRET")
     );
-    let indexed = br#"{"version":6,"select":"p","expect":[{"select":"p"},{"scope":"selected"}]}"#;
+    let indexed = br#"{"version":7,"select":"p","expect":[{"select":"p"},{"scope":"selected"}]}"#;
     let error = ExtractionPlan::from_json(indexed).unwrap_err();
     assert_eq!(error.plan_path.as_deref(), Some("$.expect[1]"));
 }
@@ -95,7 +95,7 @@ fn incompatible_cardinality_readings_and_aggregate_selectors_never_compile() {
         "guards",
         "transforms",
     ] {
-        let mut wire = serde_json::json!({"version":6,"select":"p"});
+        let mut wire = serde_json::json!({"version":7,"select":"p"});
         wire[member] = serde_json::json!({});
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&wire).unwrap()).is_err());
     }
@@ -295,9 +295,9 @@ fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
             })
         );
     }
-    assert!(ExtractionPlan::from_json(br#"{"version":6}"#).is_err());
+    assert!(ExtractionPlan::from_json(br#"{"version":7}"#).is_err());
     let plan =
-        ExtractionPlan::from_json(br#"{"version":6,"select":"aside","match":"all"}"#).unwrap();
+        ExtractionPlan::from_json(br#"{"version":7,"select":"aside","match":"all"}"#).unwrap();
     assert_eq!(plan.match_mode, Match::All);
     assert_eq!(plan.min, None);
     assert_eq!(plan.max, None);

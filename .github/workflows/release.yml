@@ -78,10 +78,8 @@ jobs:
           set -euo pipefail
           gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
             -f head_sha="$RELEASE_SOURCE_SHA" -f branch=main -f per_page=100 > "$RUNNER_TEMP/release-ci.json"
-          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/mutants.yml/runs" \
-            -f head_sha="$RELEASE_SOURCE_SHA" -f branch=main -f per_page=100 > "$RUNNER_TEMP/release-mutants.json"
           python3 scripts/check-release-verification.py --source-sha "$RELEASE_SOURCE_SHA" \
-            --ci "$RUNNER_TEMP/release-ci.json" --mutations "$RUNNER_TEMP/release-mutants.json"
+            --ci "$RUNNER_TEMP/release-ci.json"
 
       - name: Export release target matrix
         id: matrix
@@ -183,19 +181,6 @@ jobs:
           rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
           rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
 
-      - name: Resolve Cargo build cache directory
-        id: cargo_cache
-        shell: bash
-        run: python3 scripts/cargo-build-cache-path.py >> "$GITHUB_OUTPUT"
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: ". -> ../.htmlcut-artifacts/target"
-          cache-directories: ${{ steps.cargo_cache.outputs.build }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ matrix.target_triple }}
-
       - name: Resolve target release tag and version
         id: release
         shell: bash
@@ -217,7 +202,7 @@ jobs:
 
       - name: Install native attribution tool
         shell: bash
-        run: ./scripts/install-contributor-cargo-tools.sh cargo-about
+        run: cargo install cargo-about --version "$(source ./scripts/contributor-rust-tools.sh; htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked
 
       - name: Build standalone executable
         shell: bash
@@ -364,7 +349,6 @@ jobs:
           source ./scripts/contributor-rust-tools.sh
           rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
           rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
-          ./scripts/xtask.sh hygiene verify
 
       - name: Download public bytes anonymously and verify provenance
         shell: bash

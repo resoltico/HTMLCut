@@ -99,3 +99,24 @@ fn inspection_acquisition_failure_emits_no_partial_answer() {
     assert_eq!(result.status.code(), Some(5));
     assert!(result.stdout.is_empty());
 }
+
+#[test]
+fn inspection_encoding_exhaustion_emits_no_data_prefix() {
+    let attributes = (0..8)
+        .map(|i| format!(" x{i}{}='value'", "a".repeat(254)))
+        .collect::<String>();
+    let source = format!("<p{attributes}>{}</p>", "✓".repeat(160)).repeat(10);
+    let one = invoke(
+        &["inspect", "--stdin", "--select", "p", "--samples", "1"],
+        source.as_bytes(),
+    );
+    assert!(one.status.success());
+    let all = invoke(
+        &["inspect", "--stdin", "--select", "p", "--samples", "10"],
+        source.as_bytes(),
+    );
+    assert_eq!(all.status.code(), Some(4));
+    assert!(all.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&all.stderr).unwrap();
+    assert_eq!(error["resource_counter"], "encoded_bytes");
+}

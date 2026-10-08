@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Real-process version-six query and delivery checks.
+//! Real-process query contract query and delivery checks.
 use std::{
     io::Write,
     process::{Command, Stdio},
@@ -18,7 +18,7 @@ fn run(args: &[&str], source: &str) -> std::process::Output {
     child.wait_with_output().unwrap()
 }
 #[test]
-fn inline_and_json_requests_share_canonical_data_and_receipts() {
+fn inline_and_json_requests_share_canonical_data() {
     let source = "<article><i>T</i><b>A</b><a href=''></a></article>";
     let inline = run(
         &[
@@ -47,7 +47,7 @@ fn inline_and_json_requests_share_canonical_data_and_receipts() {
         "{}",
         String::from_utf8_lossy(&inline.stderr)
     );
-    let query = r#"{"version":6,"select":"article","match":"all","fields":{"title":{"select":"i"},"href":{"select":"a","match":"optional","read":"attr:href"},"tags":{"select":"b","match":"all"}}}"#;
+    let query = r#"{"version":7,"select":"article","match":"all","fields":{"title":{"select":"i"},"href":{"select":"a","match":"optional","read":"attr:href"},"tags":{"select":"b","match":"all"}}}"#;
     let json = run(&["extract", "--stdin", "--plan-json", query], source);
     assert!(json.status.success());
     assert_eq!(inline.stdout, json.stdout);
@@ -124,12 +124,10 @@ fn merged_inspection_identifies_source_and_complete_attribute_names() {
         serde_json::json!(["class", "data-x"])
     );
     assert_eq!(value["samples"][0]["text"], "A");
-    assert_eq!(value["source_sha256"].as_str().unwrap().len(), 64);
     let survey = run(&["inspect", "--stdin"], source);
     assert!(survey.status.success());
     let groups: serde_json::Value = serde_json::from_slice(&survey.stdout).unwrap();
     assert_eq!(groups["group_count"], 1);
-    assert_eq!(groups["source_sha256"], value["source_sha256"]);
 }
 
 #[test]
@@ -159,7 +157,7 @@ fn query_stdin_is_intentional_and_field_parse_failures_are_lexical() {
     std::fs::write(&source, "<p>A</p>").unwrap();
     let output = run(
         &["extract", "--file", source.to_str().unwrap(), "--plan", "-"],
-        r#"{"version":6,"select":"p"}"#,
+        r#"{"version":7,"select":"p"}"#,
     );
     assert!(output.status.success());
     assert_eq!(output.stdout, b"[\"A\"]\n");
@@ -233,4 +231,25 @@ fn query_stdin_byte_limit_rejects_before_source_execution() {
     let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
     assert_eq!(error["resource_counter"], "input_bytes");
     assert_eq!(error["configured_bound"], 256 * 1024);
+}
+
+#[test]
+fn json_escaping_cannot_publish_data_beyond_the_encoded_byte_bound() {
+    let source = format!("<article data-value='{}'></article>", "\u{1}".repeat(20)).repeat(10_000);
+    let fields = (0..64)
+        .map(|i| {
+            (
+                format!("f{i:02}{}", "x".repeat(61)),
+                serde_json::json!({"select":":scope","read":"attr:data-value"}),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let plan = serde_json::json!({"version":7,"select":"article","match":"all","fields":fields,"limits":{"max_cells":1_000_000,"max_work":10_000_000}}).to_string();
+    // 121,620,001 encoded bytes exceed 64 MiB despite only 12.8 MB of leaf values.
+    let result = run(&["extract", "--stdin", "--plan-json", &plan], &source);
+    assert_eq!(result.status.code(), Some(4));
+    assert!(result.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&result.stderr).unwrap();
+    assert_eq!(error["resource_counter"], "encoded_bytes");
+    assert_eq!(error["configured_bound"], 64 * 1024 * 1024);
 }

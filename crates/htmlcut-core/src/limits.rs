@@ -261,8 +261,6 @@ pub const MAX_URL_PROCESSING_BYTES: usize = 32 * 1024;
 
 /// Maximum complete compact data JSON bytes, excluding its framing LF.
 pub const MAX_DATA_BYTES: usize = 64 * 1024 * 1024;
-/// Maximum serialized execution receipt bytes.
-pub const MAX_RECEIPT_BYTES: usize = 4 * 1024 * 1024;
 /// Maximum named fields in a record projection.
 /// Maximum number of named record fields in one extraction contract.
 pub const MAX_RECORD_FIELDS: usize = 64;

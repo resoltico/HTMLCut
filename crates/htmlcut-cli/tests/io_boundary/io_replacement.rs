@@ -3,7 +3,7 @@
 use super::*;
 
 #[test]
-fn regular_input_replaced_by_fifo_is_refused_for_source_plan_and_run() {
+fn regular_input_replaced_by_fifo_is_refused_for_source_and_plan() {
     let root = htmlcut_tempdir::tempdir().unwrap();
     let library = root.path().join("replaced-input.dylib");
     let compiled = Command::new("clang")
@@ -21,7 +21,7 @@ fn regular_input_replaced_by_fifo_is_refused_for_source_plan_and_run() {
         "{}",
         String::from_utf8_lossy(&compiled.stderr)
     );
-    for role in ["source", "plan", "replay"] {
+    for role in ["source", "plan"] {
         let target = root.path().join(format!("{role}.input"));
         let marker = root.path().join(format!("{role}.marker"));
         std::fs::write(&target, "<p>REGULAR BEFORE OPEN</p>").unwrap();
@@ -34,7 +34,6 @@ fn regular_input_replaced_by_fifo_is_refused_for_source_plan_and_run() {
                 "p",
             ],
             "plan" => vec!["extract", "--stdin", "--plan", target.to_str().unwrap()],
-            "replay" => vec!["replay", target.to_str().unwrap()],
             _ => unreachable!(),
         };
         let mut child = command()

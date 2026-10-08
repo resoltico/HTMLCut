@@ -1,13 +1,3 @@
----
-afad: "4.0"
-version: "20.0.0"
-domain: MAINTAINER
-updated: "2026-10-05"
-route:
-  keywords: [tempdir, htmlcut-tempdir, htmlcut_tempdir, TempDir, temporary directory, cleanup on drop, test helper]
-  questions: ["what is htmlcut-tempdir for?", "how do HTMLCut tests create disposable temp directories?", "what does the htmlcut_tempdir crate export?"]
----
-
 # Tempdir Helper Guide
 
 `htmlcut-tempdir` is the workspace's small internal temporary-directory helper crate.
@@ -54,7 +44,7 @@ Use this helper for short-lived scratch space in:
 
 - crate tests
 - CLI integration fixtures
-- `xtask` maintenance flows such as docs-contract sandboxes, fuzz-corpus staging, and release tests
+- disposable release tests
 
 Prefer `tempdir()` unless the explicit constructor form is materially clearer in the local code.
 
@@ -70,4 +60,4 @@ It does not provide:
 - public compatibility guarantees outside the HTMLCut workspace
 
 For the full workspace-member map, including where this crate sits relative to `htmlcut-core`,
-`htmlcut-cli`, `fuzz`, and `xtask`, use [workspace-layout.md](workspace-layout.md).
+`htmlcut-cli` and `fuzz`, use [architecture.md](architecture.md).

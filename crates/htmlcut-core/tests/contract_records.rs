@@ -18,7 +18,7 @@ fn compile(value: serde_json::Value) -> CompiledPlan {
 }
 
 fn plan(fields: serde_json::Value) -> serde_json::Value {
-    json!({"version":6,"select":"article","match":"all","fields":fields})
+    json!({"version":7,"select":"article","match":"all","fields":fields})
 }
 
 #[test]
@@ -38,27 +38,16 @@ fn complete_rows_preserve_field_relationships_and_counts() {
                 {"id":"b","title":"Second","price":"20","href":""}
             ])
         );
-        assert_eq!(
-            (
-                result.receipt().unwrap().candidate_count,
-                result.receipt().unwrap().selected_count
-            ),
-            (2, 2)
-        );
-        assert_eq!(result.receipt().unwrap().data_kind, DataKind::Records);
+        assert_eq!((result.candidate_count(), result.selected_count()), (2, 2));
         assert!(
             result
-                .receipt()
-                .unwrap()
-                .fields
+                .field_counts()
                 .values()
                 .all(|f| f.candidate_count == 2 && f.projected_count == 2 && f.absent_count == 0)
         );
         assert_eq!(
             result
-                .receipt()
-                .unwrap()
-                .fields
+                .field_counts()
                 .keys()
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
@@ -78,9 +67,9 @@ fn optional_absence_empty_text_and_empty_all_are_distinct() {
         serde_json::to_value(result.data()).unwrap(),
         json!([{"absent":null,"empty":"","all":[]}])
     );
-    assert_eq!(result.receipt().unwrap().fields["absent"].absent_count, 1);
-    assert_eq!(result.receipt().unwrap().fields["empty"].projected_count, 1);
-    assert_eq!(result.receipt().unwrap().fields["all"].projected_count, 0);
+    assert_eq!(result.field_counts()["absent"].absent_count, 1);
+    assert_eq!(result.field_counts()["empty"].projected_count, 1);
+    assert_eq!(result.field_counts()["all"].projected_count, 0);
 }
 
 #[test]
@@ -176,34 +165,20 @@ fn field_names_and_grammar_are_closed_and_old_wire_is_rejected() {
 }
 
 #[test]
-fn empty_payload_kinds_have_valid_nonexclusive_schema_and_distinct_receipts() {
+fn empty_data_kinds_have_valid_nonexclusive_schema_and_distinct_typed_variants() {
     let data_schema = schema("htmlcut.extraction.data").unwrap();
     assert!(data_schema.get("anyOf").is_some());
     let source = document("<p>x</p>");
     let records = compile(
-        json!({"version":6,"select":"article","match":"all","min":0,"fields":{"a":{"select":"b","read":"literal"}}}),
+        json!({"version":7,"select":"article","match":"all","min":0,"fields":{"a":{"select":"b","read":"literal"}}}),
     );
     let values =
-        compile(json!({"version":6,"select":"article","match":"all","min":0,"read":"literal"}));
+        compile(json!({"version":7,"select":"article","match":"all","min":0,"read":"literal"}));
     let a = source.execute(&records).unwrap();
     let b = source.execute(&values).unwrap();
     assert_eq!(serde_json::to_string(&a.data()).unwrap(), "[]");
-    assert_eq!(
-        a.receipt().unwrap().data_sha256,
-        "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-    );
-    assert_eq!(
-        a.receipt().unwrap().data_sha256,
-        b.receipt().unwrap().data_sha256
-    );
-    assert_ne!(
-        a.receipt().unwrap().data_kind,
-        b.receipt().unwrap().data_kind
-    );
-    assert_ne!(
-        a.receipt().unwrap().extraction_sha256,
-        b.receipt().unwrap().extraction_sha256
-    );
+    assert!(matches!(a.data(), htmlcut_core::ExtractionData::Records(rows) if rows.is_empty()));
+    assert!(matches!(b.data(), htmlcut_core::ExtractionData::Values(values) if values.is_empty()));
 }
 
 #[test]
@@ -247,7 +222,7 @@ fn fields_share_work_rather_than_getting_new_independent_budgets() {
         "<article id='a'><span>A</span></article><article id='b'><span>B</span></article>",
     );
     let scalar = compile(
-        json!({"version":6,"select":"article","limits":{"max_work":100},"match":"all","read":"attr:id"}),
+        json!({"version":7,"select":"article","limits":{"max_work":100},"match":"all","read":"attr:id"}),
     );
     assert!(source.execute(&scalar).is_ok());
     let fields = (0..64)
@@ -282,15 +257,9 @@ fn nth_and_nonempty_arrays_preserve_complete_counts_and_typed_accessors() {
         result.data().as_records().unwrap()[0]["all"],
         FieldValue::Many(vec!["A".into(), "B".into(), "C".into()])
     );
-    assert_eq!(
-        result.receipt().unwrap().fields["second"].candidate_count,
-        3
-    );
-    assert_eq!(
-        result.receipt().unwrap().fields["second"].projected_count,
-        1
-    );
-    assert_eq!(result.receipt().unwrap().fields["all"].projected_count, 3);
+    assert_eq!(result.field_counts()["second"].candidate_count, 3);
+    assert_eq!(result.field_counts()["second"].projected_count, 1);
+    assert_eq!(result.field_counts()["all"].projected_count, 3);
     let flat = source
         .execute(&CompiledPlan::compile(&ExtractionPlan::css("article").unwrap()).unwrap())
         .unwrap();
@@ -410,7 +379,6 @@ fn record_cells_and_scalar_schema_role_have_exact_declared_contracts() {
     let schema = schemars::schema_for!(ExtractionData);
     assert_eq!(schema.as_value()["title"], "ExtractionData");
     assert_eq!(MAX_DATA_BYTES, 67_108_864);
-    assert_eq!(MAX_RECEIPT_BYTES, 4_194_304);
 }
 
 #[test]

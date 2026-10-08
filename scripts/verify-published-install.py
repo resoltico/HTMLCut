@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""Execute the exact native install example from the current published API baseline tag."""
+"""Execute the exact native install example from an immutable published source commit."""
 import argparse
 import hashlib
 import json
@@ -22,21 +22,20 @@ def install_block(document, windows):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-sha", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    baseline = tomllib.loads((root / "semver-baseline/htmlcut-core/BASELINE.toml").read_text())
-    version = baseline["package_version"]
-    workspace = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
-    if version != workspace:
-        args.output.write_text(json.dumps(dict(applicable=False,
-            reason="Workspace version is not the current published baseline")) + "\n")
-        return
-    tag = baseline["source_git_ref"]
-    if tag != "v" + version or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
-        raise ValueError("Published install provenance is not an exact stable tag")
-    source = subprocess.check_output(["git", "rev-parse", tag + "^{commit}"], cwd=root, text=True).strip()
-    document = subprocess.check_output(["git", "show", tag + ":docs/getting-started.md"], cwd=root, text=True)
+    source = args.source_sha
+    if not re.fullmatch(r"[0-9a-f]{40}", source):
+        parser.error("Expected immutable published source commit")
+    manifest = subprocess.check_output(["git", "show", source + ":Cargo.toml"], cwd=root, text=True)
+    version = tomllib.loads(manifest)["workspace"]["package"]["version"]
+    tag = "v" + version
+    tagged_source = subprocess.check_output(["git", "rev-parse", tag + "^{commit}"], cwd=root, text=True).strip()
+    if tagged_source != source:
+        raise ValueError("Published version tag differs from immutable source")
+    document = subprocess.check_output(["git", "show", source + ":docs/getting-started.md"], cwd=root, text=True)
     windows = platform.system() == "Windows"
     code = install_block(document, windows)
     if f'"{version}"' not in code and f"VERSION={version}\n" not in code:

@@ -3,14 +3,13 @@ $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Named-pipe proof requires Windows' }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $rows = @()
-foreach ($role in @('source', 'plan', 'bundle')) {
+foreach ($role in @('source', 'plan')) {
     $name = 'htmlcut-input-' + [Guid]::NewGuid().ToString('N')
     $pipe = New-Object System.IO.Pipes.NamedPipeServerStream($name, [System.IO.Pipes.PipeDirection]::InOut)
     $path = '\\.\pipe\' + $name
     $arguments = $(switch ($role) {
         'source' { @('extract', '--file', $path, '--select', 'p') }
         'plan' { @('extract', '--stdin', '--plan', $path) }
-        'bundle' { @('replay', $path) }
     })
     $row = [ordered]@{role=$role; passed=$false; server_waited_for_connection=$false}
     $process = New-Object System.Diagnostics.Process

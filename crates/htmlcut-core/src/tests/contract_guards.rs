@@ -91,13 +91,7 @@ fn t16_t17_complete_counts_positions_and_explicit_empty_selection() {
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
     assert_eq!(result.data().as_values().unwrap(), ["B"]);
-    assert_eq!(
-        (
-            result.receipt().unwrap().candidate_count,
-            result.receipt().unwrap().selected_count
-        ),
-        (3, 1)
-    );
+    assert_eq!((result.candidate_count(), result.selected_count()), (3, 1));
     plan.limits.max_candidates = 2;
     assert_eq!(
         source
@@ -233,5 +227,5 @@ fn t17_the_last_one_based_position_is_valid_and_preserves_the_complete_count() {
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
     assert_eq!(result.data().as_values().unwrap(), ["C"]);
-    assert_eq!(result.receipt().unwrap().candidate_count, 3);
+    assert_eq!(result.candidate_count(), 3);
 }

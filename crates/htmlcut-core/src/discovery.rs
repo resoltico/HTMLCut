@@ -37,8 +37,6 @@ pub struct InspectionSample {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InspectionResult {
-    /// SHA-256 binding this requested observation to the accepted source bytes.
-    pub source_sha256: String,
     /// Complete match count, never a lower bound or estimate.
     pub count: u32,
     /// Samples in original document order.
@@ -58,12 +56,10 @@ impl PreparedDocument {
             .map(|node| identifier_sample(*node, &budget))
             .collect::<Result<Vec<_>, _>>()?;
         let result = InspectionResult {
-            source_sha256: self.snapshot.source_sha256().into(),
             count,
             samples_complete: count <= samples,
             samples: selected,
         };
-        let _ = crate::identity::encoded(&result, 16 * 1024, &budget)?;
         Ok(result)
     }
 

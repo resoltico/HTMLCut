@@ -7,7 +7,7 @@ use libfuzzer_sys::fuzz_target;
 #[allow(dead_code)]
 mod cli;
 #[cfg(all(feature = "fuzzing", not(test)))]
-use cli::{app, bundle, bundle_io, command, command_diagnostics, input, publication};
+use cli::{app, command, command_diagnostics, input, publication};
 #[cfg(all(feature = "fuzzing", not(test)))]
 fuzz_target!(|data: &[u8]| {
     let suffix = String::from_utf8_lossy(&data[..data.len().min(4096)]);

@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[test]
 fn current_query_fields_and_expectations_reject_unknown_members() {
-    let query = json!({"version":6,"select":"p","fields":{"text":{"select":":scope"}},"expect":[{"select":"p"}]});
+    let query = json!({"version":7,"select":"p","fields":{"text":{"select":":scope"}},"expect":[{"select":"p"}]});
     ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).unwrap();
     for location in ["root", "field", "expect", "limits"] {
         let mut invalid = query.clone();
@@ -46,7 +46,7 @@ fn current_query_fields_and_expectations_reject_unknown_members() {
 }
 #[test]
 fn exclusions_are_root_or_field_members_and_never_reading_wrappers() {
-    let valid = json!({"version":6,"select":"p","read":"literal"});
+    let valid = json!({"version":7,"select":"p","read":"literal"});
     let mut invalid = valid.clone();
     invalid["projection"] = json!({"exclude":[".private"]});
     assert!(ExtractionPlan::from_json(&serde_json::to_vec(&invalid).unwrap()).is_err());

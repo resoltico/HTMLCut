@@ -1,43 +1,42 @@
-
-
 # HTMLCut
 
-HTMLCut executes declared extraction contracts over immutable UTF-8 HTML snapshots. Its Rust core and native CLI return requested values or records, reject unmet assumptions, and bound preparation, matching and output work.
-
-This source uses query/receipt wire version 6 and semantics 6. Version 20.0.0 makes breaking changes; verify package availability on GitHub Releases. Retired requests, APIs, commands and flags have no compatibility adapters.
-
-Build with the pinned Rust toolchain from a clean checkout:
+Strict extraction from saved or rendered UTF-8 HTML, with a reusable Rust core.
+HTMLCut checks declared selectors, counts and fields and returns complete values or
+source-free structured errors. It does not fetch pages or execute JavaScript.
 
 ```sh
-cargo install --path crates/htmlcut-cli --locked
-htmlcut extract --help
+htmlcut extract --file page.html --select h1
 htmlcut inspect --file page.html
-htmlcut extract --file page.html --select article --nth 1 --read outer-html --raw
-htmlcut extract --file page.html --select 'article a' --all --read attr:href
+htmlcut extract --file books.html --select article.product_pod --all --field title 'h3 a' attr:title --field price .price_color text
 ```
 
-Default output is a canonical JSON array of strings or records plus one LF, identical for terminals and pipes. Default selection requires exactly one node. `--all` defaults to minimum one; `--nth N` is positive and one-based, with complete candidate counting. Missing attributes fail; present empty strings remain values. `--raw` emits exactly one scalar without LF.
+A JSON plan supplies richer bounds and assumptions:
 
-For related records, declare `--field NAME SELECT READ`, `--optional-field NAME SELECT READ`, or `--many-field NAME SELECT READ`. Optional returns null only when no node exists; many requires at least one. Use current JSON for zero-or-more arrays, bounded/nth fields and richer expectations:
+```json
+{"version":7,"select":"article","match":"all","fields":{"title":{"select":"h2"},"summary":{"select":".summary","match":"optional"}}}
+```
+
+Run `htmlcut extract --file page.html --plan query.json`. Output is a bare JSON array
+plus one LF. `--raw` writes exactly one scalar without LF; `--output FILE` atomically
+creates a file, and `--overwrite` explicitly permits replacement. Queries can read
+text, literal text, Markdown, parsed HTML, attributes and URLs with an explicit base.
+Logical resource limits do not establish process CPU/RSS isolation. A selector can
+meet every guard and still identify the wrong business entity.
+
+From a clean checkout install Rust through rustup and a native linker (Xcode Command
+Line Tools on macOS, a C compiler on Linux, Visual Studio C++ tools on Windows), then:
 
 ```sh
-htmlcut extract --file quotes.html --plan-json '{"version":6,"select":".quote","match":"all","fields":{"author":{"select":".author","match":"optional"},"tags":{"select":".tag","match":"all","min":0},"text":{"select":".text"}}}'
+cargo build --release --locked -p htmlcut-cli
+cargo install --path crates/htmlcut-cli --locked
 ```
 
-Fields run in lexical name order within each original row. `--following-siblings N` adds exactly N element-sibling subtrees (0–63), rejecting missing siblings or overlap with another root candidate. Selectors can inspect original ancestor/sibling context; returned payload stays within the row forest. `--exclude`, `--field-exclude` and `--expect-text` provide small conveniences over the same compiler. Numeric conversion, filtering, ranking, joins and business meaning remain caller code.
+Rust is pinned in `rust-toolchain.toml`. Source installation is supported; crates.io
+installation is pending upstream pointer-safety proof and registry publication.
+Native packages for Apple ARM/Intel, Linux x64 musl and Windows x64 MSVC are listed on
+[GitHub Releases](https://github.com/resoltico/HTMLCut/releases). This working source
+prepares 21.0.0 with query/semantics 7; it does not establish release availability.
+Receipts, bundles, replay and identity APIs are retired without compatibility layers.
 
-The default `text` reading collapses Unicode whitespace outside original HTML pre ancestry, separates structural blocks/breaks and omits inert script/style/template payloads. It retains hidden and noscript content and does not infer browser visibility or main content. `literal` preserves parsed descendant-text concatenation. `markdown` retains selected prose, roles, links, images, code, source list ordinals and table cells as nested lists. `inner-html`/`outer-html` serialize parsed DOM. Relative URL readings require explicit base metadata.
-
-Selected byte-boundary slicing and source-range receipts are removed. Literal text and parsed HTML can change accepted spelling, CRLF, entities or NUL; they do not replace byte cutting. Use guarded caller byte/string code for those jobs. The complete accepted UTF-8 source remains exact in snapshots and replay bundles.
-
-`inspect --select CSS` counts completely and samples bounded identifiers, attribute names and structural text with separate completeness labels. Without select, it surveys repeated siblings and table shapes. Hints are verified against exact original-node membership and order. Discover unknown fields by reading one representative row's outer HTML, then validate the declared fields across every requested row. No recursive inspection or arbitrary attribute-value sampler is needed.
-
-Callers supply saved/rendered UTF-8 HTML and own acquisition, charset conversion, authentication and browser state. HTMLCut does not fetch, crawl or execute JavaScript. Prefer a native API or direct browser/JSON extraction when it already solves the task.
-
-The Rust core retains reusable compiled queries, one lazy prepared DOM (including cached failures), and fresh shared execution budgets. Results have private immutable typed data and one bounded canonical encoding. Ordinary execution performs no identity hashing or receipt serialization. `--receipt FILE` requests execution identities/counts separately; `--bundle FILE` captures source/query/configuration/evidence in closed uncompressed USTAR. They are mutually exclusive. `htmlcut replay FILE` recomputes from bundled bytes after original files move or disappear. Evidence uses the execution's remaining work; cache hits do not grant free logical work. Holding typed data and encoded bytes is bounded duplication.
-
-Artifacts stage before publication. Each file is atomically created/replaced; overwrite requires `--overwrite`. Multiple files/stdout are not a transaction, and later delivery failure can leave a sidecar or pipe bytes. Receipts identify execution/integrity, not authenticity or delivery. Logical bounds do not promise OS CPU/RAM isolation or sanitization.
-
-Distribution uses GitHub native/source archives. Rust consumers use git/path dependencies; owned package registry publication is disabled. See [Getting Started](docs/getting-started.md), [CLI](docs/cli.md), [Core](docs/core.md), [Schemas](docs/schema.md), [Documentation Index](docs/README.md), [Quality Gates](docs/quality-gates.md), [Changelog](changelog.md), [License](LICENSE), [Notice](NOTICE), and [Patents](PATENTS.md).
-
-HTMLCut’s original source is licensed under [MPL-2.0](LICENSE). Third-party components retain their own licenses; see [NOTICE](NOTICE) and [Patent Notes](PATENTS.md).
+See the [contract reference](docs/core.md), [CLI](docs/cli.md),
+[ordinary-files reproduction](docs/operations.md), and [contributor checks](CONTRIBUTING.md).

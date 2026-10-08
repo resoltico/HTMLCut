@@ -4,9 +4,32 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** query/semantics 7 and owned typed Rust results separate extraction
+  completion from JSON encoding and publication. Results no longer retain input or
+  encoded data; the CLI bounds complete compact JSON at 64 MiB before its framing LF.
+- **Breaking:** receipts, input/query/extraction identities, bundles, replay and their
+  APIs/flags/schemas are removed. Use ordinary exact source/query/policy/output files
+  and an immutable executable for reproduction; authenticity and cross-version
+  equivalence are not established. Inspection no longer emits source digests.
+
 ### Fixed
 
-- Maintainer API-baseline refresh restores fork identities and version requirements from the published workspace manifest, including dependency updates, instead of substituting historical versions. The semver gate explicitly selects `htmlcut-core` so its `publish = false` setting cannot silently exclude API checks.
+- Low-limit malformed formatting now refuses safely before adoption bookkeeping;
+  a direct `<b><p>X</b>Y` allocation-limit control exposed a parser panic.
+- Selector tail ownership uses the same allocation-provenance path in production
+  and Miri, adding one pointer to each internal HeaderSlice allocation.
+
+### Internal
+
+- Direct Cargo and focused native/release checks replace xtask, custom coverage and
+  mutation administration, source-shape policy and the duplicated API baseline.
+  Published-core API checks use immutable Git source. Four native target promises,
+  legal attribution, integrity, source binding and public-download controls remain.
+- SHA-2 runtime machinery is removed. Upstream parser adoption and registry publication
+  remain blocked by strict-provenance proof; retained carriers protect the current
+  parser/selector and pointer boundaries.
 
 ## [20.0.0] - 2026-10-06
 
@@ -126,7 +149,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Changed
 
 - **Breaking CLI change:** the supported commands are `extract`, `run`, `inspect`, `describe`, and `schema`. Old commands, request envelopes and aliases are rejected. Default extraction uses exactly one match, literal `dom_text`, and compact deterministic JSON; `--raw` emits one exact value without an added newline.
-- **Breaking Rust API change:** `htmlcut-core` is the single execution contract, with immutable UTF-8 snapshots, reusable compiled plans, lazy bounded prepared documents, requested projections and one typed error family. The interop runtime, translation profiles and CLI Rust library are removed.
+- **Breaking Rust API change:** `htmlcut-core` is the single execution contract, with immutable UTF-8 snapshots, reusable compiled plans, lazy bounded prepared documents, requested projections and one typed error family.
 - Text extraction preserves the selected payload. Explicit `document_text` retains headings, links, image alternatives, lists, tables and preformatted text; hidden content remains included. Exclusions and whitespace/URL transforms are caller-declared rather than inferred.
 - Source slicing is a separate byte-preserving strategy with half-open UTF-8 ranges. It does not prepare a DOM or automatically render/reparse its result. Inner/outer HTML remain parsed-DOM serialization.
 - Acquisition belongs to the CLI: bounded HTTP(S) GET, strict charset/BOM decoding and file/stdin input. Saved runs separate acquisition from the plan; automatic URL persistence stores runtime environment-variable references rather than their values.
@@ -154,14 +177,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Added
 
-- Rust integrations can compile a source-independent `htmlcut_core::interop::v2::Plan`, prepare one bounded `HtmlInput` as an opaque, non-serializable `PreparedDocument`, and execute multiple plans against that snapshot; preparation failures have their own typed error document, and successful results identify the prepared source.
-- Interop plans can bound selector work, candidates, selected matches, per-match output bytes, and total output bytes; exhausted limits return typed diagnostics instead of a partial result or a no-match answer.
 - Prepared documents support bounded element exploration in document order under one shared per-page work budget, snapshot-bound pagination, namespace-aware paths, safe attribute and text previews, and selector proposals proved unique on that snapshot; target resolution requires the path, element name, domain-separated descendant-text fingerprint, and any supplied semantic attributes to agree.
-- The JSON-only `htmlcut inspect elements` and `htmlcut inspect propose` commands expose exploration and fail-closed target resolution to CLI users; `inspect elements --cursor` continues an unchanged source and option set, so capture changing web pages to a file before traversing multiple pages. The schema registry includes preparation, exploration, and target-resolution result and error families; see the [Interop v2 guide](docs/interop-v2.md) for the fingerprint contract.
 
 ### Changed
 
-- **Breaking for Rust integrations:** `htmlcut-v2` uses `htmlcut.plan@9`, `htmlcut.result@10`, and `htmlcut.error@4`; plans declare execution budgets, results carry prepared-source identity and fixed-width counts and ranges, and errors use a required tagged `detail` union instead of an open-ended map. Update plan builders, validators, and persisted interop documents; older revisions are rejected.
 - **Breaking for serialized core documents:** the core request specification is version `8`, extraction results are schema version `7`, and source-inspection results are schema version `6`. `wire::v2` preflights an identity envelope, rejects unknown fields, and uses fixed-width public numbers; readers and writers of earlier wire or core schema revisions must migrate their documents.
 - The minimum supported Rust version is `1.98.1`, matching the pinned development toolchain; downstream builds and CI using Rust `1.98.0` or earlier must update.
 - Attribute maps use lexical ordering in every build, and the bundled `htmlcut-scraper` fork no longer accepts its optional `deterministic` feature. Direct fork users must drop that feature; consumers comparing serialized HTML or structured attributes byte-for-byte should refresh expectations for the new ordering.
@@ -171,7 +190,6 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Removed
 
-- **Breaking:** `htmlcut_core::interop::v1` and its one-shot plan and execution entry points are gone; use `compile_plan`, `prepare_document`, and `execute` through `interop::v2`.
 - **Breaking:** `htmlcut_core::wire::v1`, the public parsed-DOM facade, and the `document.parse` catalog operation are gone; use `wire::v2` for serialized documents and `prepare_document` for reusable parsed HTML.
 
 ### Fixed
@@ -218,7 +236,6 @@ Notable changes to this project are documented in this file. The format is based
 - CLI operation, help, catalog, and schema surfaces now derive from a more explicit canonical contract model for input forms, selection and value modes, conditional output defaults, parameter requirements, cross-parameter constraints, notes, examples, and report command labels, with direct drift checks for every registered surface.
 - Content inspection now expresses extraction and reading preferences through named score components and candidate-bias policies for title and primary-heading preservation, link and utility-chrome reduction, content completeness, readable density, stable selectors, ancestor promotion, and deterministic tie-breaking, making the recommendation theory independently testable without changing the public inspection schema.
 - Reader-text rendering now exposes and directly verifies the policy boundaries for brief notices, terminal auxiliary sections, ordered and unordered list containers, duplicate heading removal, image-caption context, heading whitespace, table rows, compact utility widgets, and substantive text detection.
-- Runtime and serialization bookkeeping now use the domain `RuntimeOptions` defaults as the interop execution authority and directly verify that runtime, inspection, extraction-request, and reusable-definition JSON omit only default-valued fields while preserving every configured non-default through conversion and round trips.
 - HTTP source-loading policy now names and directly verifies advisory HEAD fallback versus terminal failure, declared content-length exceedance, decoded and preloaded byte limits, and the exact accepted-limit boundaries used by files, URLs, stdin, and in-memory input.
 - Bundle-path bookkeeping now uses one component-aware lexical normalization model on Unix and Windows while preserving absolute roots, unresolved parent traversal, and canonicalized existing parents.
 - Full mutation campaigns now derive matrix selectors, cache identities, artifact names, expected downloads, and summary rows from one generated shard plan instead of maintaining parallel shard facts in workflow YAML and aggregation logic.
@@ -229,7 +246,7 @@ Notable changes to this project are documented in this file. The format is based
 - Diff-scoped local mutation runs now stage their input before artifact hygiene cleanup, so unified diffs stored in repository scratch remain available to cargo-mutants and are removed after execution.
 - CSS URL, `srcset`, delimiter-pair, and delimiter-markup scanners now enforce bounded work, in-range character boundaries, and strictly advancing cursors, returning the original value or a closed diagnostic instead of allowing malformed traversal state to become an unbounded loop.
 - Reader text no longer classifies a notice longer than 420 characters as brief because collection stopped at the same boundary, no longer treats whitespace-only rendering as substantive before a terminal auxiliary section, and searches image-caption context across three actual element ancestors rather than spending depth on non-element nodes.
-- Mutation fixtures for local HTTP transport and oversized preloaded interop input now use bounded waits and small injected limits, so suppressed requests and rejected size checks produce immediate deterministic failures instead of campaign timeouts or parser-sized allocations.
+- Mutation fixtures for local HTTP transport now use bounded waits and small injected limits, so suppressed requests produce immediate deterministic failures instead of campaign timeouts or parser-sized allocations.
 
 ## [13.0.0] - 2026-08-25
 
@@ -270,7 +287,6 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Added
 
-- Added the CSS-only `plain_text` output to `htmlcut-v1`, which returns direct DOM descendant text after the configured whitespace policy without HTML-aware heading, list, link, table, or other structural decoration.
 - Added plain-text evidence to every CSS-selector selected match: `plain_text_output` preserves the original selected DOM value, and `comparison_plain_text_output` records the detached canonicalized value when applicable; structured output retains original evidence without embedding comparison-only data.
 
 ### Changed
@@ -293,34 +309,26 @@ Notable changes to this project are documented in this file. The format is based
 - Maintainer gates now emit concise human progress by default or one `htmlcut.gate_run@1` JSON report with `--format json`; each completed run retains ordered command and internal-check evidence, separate stdout/stderr logs, durations, normalized Rust-style warnings, and bounded failure diagnostics under the managed artifact root.
 - Artifact hygiene now inventories and budgets retained gate evidence, keeps the 20 most recent completed reports, and removes those rebuildable reports only through `cargo xtask hygiene clean --mode rebuildable`.
 - Release closeout now requires the full maintainer gate after committing the refreshed semver baseline and before its direct `main` push, so the published closeout state is verified rather than relying on a conditional prose instruction that followed an earlier push command.
-- `htmlcut-v1` now publishes `htmlcut.result@8` and `htmlcut.error@3`. The revised documents bound every public error and diagnostic message to 1024 UTF-8 bytes and reject invalid selector-error payloads before canonical JSON or digests are produced.
 - Invalid CSS selector errors now validate the exact safe message and carry a closed, one-based source position plus an HTMLCut-owned parse-error class in both the diagnostic and error-detail carriers; the two copies must agree exactly.
 
 ### Fixed
 - Quiet maintainer-command execution now preserves both output streams and reveals bounded diagnostics when a command fails instead of discarding the information needed to diagnose the gate.
 - Cross-platform maintainer CI now excludes Unix-only artifact-permission regressions from Windows builds, keeping strict warnings-as-errors verification portable.
-- Interop error finalization now sanitizes rejected diagnostics into bounded structured rejection evidence instead of reusing an invalid payload or aborting while constructing its fallback error, including malformed digest inputs.
 
 ## [11.0.0] - 2026-07-15
 
 ### Added
-- `htmlcut-v1` CSS-selector text and structured plans can now declare `dom_canonicalization` to remove explicitly named attributes or whitespace-only text nodes from a detached selected clone, while candidate selection and original DOM evidence remain unchanged.
 - Added validator-grade `htmlcut.plan@7` and `htmlcut.result@7` JSON Schema exports for the DOM-canonicalization and evidence-boundary rules that standard JSON Schema can express; runtime validation continues to enforce cross-field equality and canonical digest invariants.
 
 ### Changed
-- The `htmlcut-v1` result model now separates original evidence from comparison output: `text_output`, HTML fields, match metadata, and structured payloads retain their original-DOM values, while canonicalized CSS comparison text is exposed separately as `comparison_text_output` and becomes text output's `output_value` when configured.
-- Advanced the interop plan and result schema revisions to `7` and `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` to `3`. Canonicalization is valid only for CSS text or structured output; delimiter, raw-HTML, and direct-attribute outputs reject it rather than accepting an inert policy, and direct-attribute measurement continues to use original match metadata.
-- Refreshed the checked-in `htmlcut-core` semver baseline from `v10.3.1`, so subsequent compatibility checks compare against the released interop error contract rather than an older public snapshot.
 
 ## [10.3.1] - 2026-07-15
 
 ### Fixed
-- Interop extraction errors now always retain the pre-selection `candidateCount` in `details.core_details`, including `NO_MATCH`, so downstream policy engines can persist the exact candidate count together with HTMLCut's diagnostic reason.
 
 ## [10.3.0] - 2026-07-15
 
 ### Changed
-- HTMLCut now publishes an independently versioned extraction-semantics identity for interop consumers: `HTMLCUT_EXTRACTION_SEMANTICS_VERSION` and `HtmlInput::extraction_identity_sha256(&Plan)` bind the complete input, complete plan, and the monotonic semantics counter without coupling persisted identity to crate, core-specification, or dependency versions.
 - Raised every shipped crate's published Rust floor and the pinned stable toolchain to Rust `1.97`/`1.97.0`; refreshed the Cargo graph, QA tools, and immutable GitHub Actions pins.
 - Release closeout now says the quiet but required sequencing step explicitly: when the session itself changes maintainer tooling or release docs after publication, commit the refreshed `semver-baseline/htmlcut-core` snapshot first and rerun the full maintainer gate from that committed `main` tree, because `cargo xtask check` intentionally rejects a dirty checked-in semver baseline.
 - Release publication now uses annotated tags pinned to the merged `origin/main` commit, and post-tag reruns derive their version and asset inventory from the immutable tagged manifest rather than from potentially newer `main` release tooling.
@@ -363,7 +371,7 @@ Notable changes to this project are documented in this file. The format is based
 ## [10.0.0] - 2026-05-14
 
 ### Changed
-- Promoted the workspace and current unpublished contract line to `10.0.0` because the request, interop, and runtime boundary cleanups in this development line intentionally break the published `9.0.0` surface and therefore require a new major release identity.
+- Promoted the workspace and current unpublished contract line to `10.0.0` because the request and runtime boundary cleanups in this development line intentionally break the published `9.0.0` surface and therefore require a new major release identity.
 - Bumped the request-side public contract to `htmlcut.extraction_definition@4` and core request spec version `7`, made persisted request identities explicit and mandatory, and rewrote slice request documents to carry a nested `request.extraction.pattern` object instead of the older flatter boundary layout.
 - Refined release closeout guidance so overlapping Dependabot PRs that touch the same write set are consolidated through one maintainer-owned `main` update instead of churny sequential merges that immediately put sibling branches behind.
 - Updated the workspace dependency graph to `assert_cmd 2.2.2` and `scraper 0.27.0` after the `9.0.0` publication, keeping post-release `main` aligned with the reviewed Dependabot payloads without leaving superseded bot branches open.
@@ -380,10 +388,10 @@ Notable changes to this project are documented in this file. The format is based
 ## [9.0.0] - 2026-05-13
 
 ### Changed
-- Promoted the workspace and published contract surface to `9.0.0` because this release makes intentional hard breaks across `htmlcut-core`, the CLI request/output vocabulary, and the interop planning contracts in pursuit of a cleaner public model.
+- Promoted the workspace and published contract surface to `9.0.0` because this release makes intentional hard breaks across `htmlcut-core`, the CLI request/output vocabulary in pursuit of a cleaner public model.
 - Hardened the core request/runtime contract around explicit validated boundary types: reusable extraction-definition files and exported schemas now flow through a dedicated `htmlcut_core::wire::v1` document layer, slice requests serialize named `boundary_retention` modes, slice HTML outputs distinguish `selected-html` from true `inner-html`, and runtime options now use validated non-zero byte/timeout wrappers plus an explicit TLS trust policy.
 - Consolidated repository toolchain ownership so `rust-toolchain.toml` owns the exact stable pin, `[workspace.package] rust-version` carries the published compatibility floor, the contributor bootstrap scripts expose that toolchain contract canonically, and cross-platform CI now runs a shared `cargo xtask ci-rust-gate` plan instead of maintaining a second hard-coded Rust gate in GitHub Actions.
-- Consolidated the full `htmlcut-core` example, extraction, interop acceptance, and interop property suites into the crate's in-library all-features test harness and taught the maintained Rust gates to verify that surface through `cargo test -p htmlcut-core --lib --all-features --locked`, eliminating pathological macOS startup/discovery overhead from standalone core test binaries.
+- Consolidated the full `htmlcut-core` example and extraction suites into the crate's in-library all-features test harness and taught the maintained Rust gates to verify that surface through `cargo test -p htmlcut-core --lib --all-features --locked`, eliminating pathological macOS startup/discovery overhead from standalone core test binaries.
 - Reworked the CLI help and discovery surfaces so grammar comes first and operator guidance comes second: short `-h` output now stays concise, long `--help` output carries examples plus an explicit operator guide, `inspect` previews share the same value-mode vocabulary as final extraction, and `catalog` / `schema` text now use public contract-family labels instead of leaking internal Rust type or module spellings.
 - Rewrote the root README in direct onboarding language, replaced metaphor-heavy reusable-request wording with literal command guidance, linked the storefront README to the complete `docs/README.md` documentation index, and tightened the docs contract so that index must keep covering every maintained Markdown document under `docs/`.
 
@@ -423,8 +431,6 @@ Notable changes to this project are documented in this file. The format is based
 - Promoted the workspace to `8.0.0` because this slice intentionally breaks public `htmlcut-core` contracts: `ContractValueError` gains an explicit whitespace-rejection variant and `SchemaStability::Frozen` is removed from the live schema surface.
 - The generic extraction contract now treats rendering as an output concern rather than a request sidecar: `ExtractionRequest` carries `output.rendering`, reusable extraction-definition files are now `htmlcut.extraction_definition@2`, and the generic request/result/report families advance to `htmlcut.extraction_request@5`, `htmlcut.extraction_result@6`, and `htmlcut.extraction_report@6`.
 - `inspect source` now publishes two selector families instead of one ambiguous `content_candidates` list: `extraction_candidates` for cleaner saved fragments and `reading_candidates` for title-preserving review. The source-inspection schema families advance to `htmlcut.source_inspection_result@5` and `htmlcut.source_inspection_report@5`.
-- The interop v1 published language is now owned cleanly inside `htmlcut_core::interop::v1` instead of borrowing core request/result types directly: selector text, delimiter boundaries, output selection, diagnostics, and byte ranges are now explicit interop-owned contracts.
-- The interop v1 schema families now publish `htmlcut.plan@4`, `htmlcut.result@5`, and `htmlcut.error@2`; successful result documents now carry a top-level `output` contract plus per-match `output_value`, `text_output`, `selected_html_output`, `inner_html_output`, and `outer_html_output` fields, and the v1 output surface now includes `attribute`, `structured`, and `selected_html`.
 - The schema and operation registries now use static slice inventories instead of heap-backed lazy vectors, and `cargo xtask check` runs its preflight Rust test subsets through `cargo nextest` instead of mixing test runners inside one workspace gate.
 - Raised the declared workspace dependency floors to `clap 4.6.1` and `schemars 1.2.1`, matching the maintained lockfile and the versions exercised by the current gate.
 - HTMLCut-owned HTTPS loading now uses the bundled `webpki-roots` trust set instead of the `platform-verifier` stack, removing a transitive dependency split that the maintained dependency policy rejects.
@@ -433,8 +439,7 @@ Notable changes to this project are documented in this file. The format is based
 - URL HEAD-first preflight no longer retries GET after a hard connection failure, now accepts `text/xhtml+xml` as HTML, and the docs/help surfaces describe the narrower fallback behavior accurately.
 - Slice markup warnings now use a quote-aware markup scanner instead of raw character backtracking, selector validation preserves parser error details, whitespace-padded attribute names fail validation up front, and stream size limits stop at the configured byte cap.
 - CLI output/request-file/bundle flows now preserve diagnostics when file writes fail, bundle reports resolve fresh artifact paths to canonical absolute locations, and request-file writes no longer duplicate an incomplete second overwrite-policy check at the write site. Bundle-path fallback resolution now also normalizes `.` and `..` segments consistently across platforms, including Windows temp directories.
-- Interop fallback errors now produce self-validating digests, `meta refresh` URL rewriting no longer reformats separators, and source-load failure metadata no longer pays an unnecessary heap allocation hop.
-- The frozen `htmlcut-v1` acceptance corpus now covers selector and delimiter attribute output plus structured output, so the expanded interop contract is fixture-backed across more than the legacy text and HTML paths.
+- `meta refresh` URL rewriting no longer reformats separators, and source-load failure metadata no longer pays an unnecessary heap allocation hop.
 - Plain-text HTML rendering now preserves heading delineation, inline link targets, and nested-list indentation, and opt-in URL rewriting keeps empty self-links unchanged instead of forcing them to resolve against the page URL. Inspection now ignores empty headings while preserving accordion or button-backed heading titles, and structured text output renders table rows plus compact label-value rows as readable plain text instead of flattening them into loose paragraphs.
 - `inspect source` now suggests likely content-root selectors, prioritizes sampled headings and link previews from the strongest content candidate on noisy pages, hides placeholder `#` and `javascript:` anchors from plain-text output, and the CLI help surface now teaches that `--output none` requires `--bundle`.
 - Content-candidate ranking now prefers stable structural selectors over brittle exact-path fallbacks, recognizes title-bearing wrappers without regressing inner-article pages, and plain text rendering drops more utility chrome on noisy pages while preserving nested heading wrappers such as `<h1><div><div>…`.
@@ -464,19 +469,17 @@ Notable changes to this project are documented in this file. The format is based
 ## [6.0.0] - 2026-04-29
 
 ### Changed
-- Tightened the `htmlcut_core::interop::v1` surface with reusable `prepare_plan(...)` / `execute_validated_plan(...)` APIs, multi-match selection support, enforced size limits for preloaded HTML inputs, and canonical digest validation for interop result/error documents instead of relying on construction order.
-- Removed the redundant `validate_plan(...)` preflight from `htmlcut_core::interop::v1`; `prepare_plan(...)` is now the sole maintained validated-plan entrypoint before execution.
 - Structured CLI failures emitted on the JSON path now use a first-class `htmlcut.error_report` schema, and the published `htmlcut_cli` Rust surface now exports first-class `CliErrorCode` / `ErrorReportCode` types plus the error-report structs and schema constants alongside the existing command-report types.
 - Source loading now exposes an explicit `--fetch-connect-timeout-ms` contract alongside the overall `--fetch-timeout-ms` budget instead of hiding a hardcoded 5-second connect ceiling under the total timeout flag.
 - Operation catalog entries, CLI command contracts, and CLI help documents now derive from one canonical core-owned operation surface spec instead of three manually synchronized registries.
 - The public schema registry now materializes JSON Schema documents through typed `SchemaExportError` results instead of aborting on serialization failures.
-- Promoted the workspace to `6.0.0` to reflect the intentional `htmlcut-core` contract changes in interop validation, diagnostic typing, and regex/default contract cleanup.
+- Promoted the workspace to `6.0.0` to reflect the intentional `htmlcut-core` contract changes in diagnostic typing, and regex/default contract cleanup.
 
 ### Fixed
-- Corrected byte-size rendering and CLI/docs unit labels to use IEC `KiB`/`MiB`/`GiB`, removed the no-op default regex `u` flag from the core/interop pipeline, and refreshed the maintained docs around those public contracts.
+- Corrected byte-size rendering and CLI/docs unit labels to use IEC `KiB`/`MiB`/`GiB`, removed the no-op default regex `u` flag from the core pipeline, and refreshed the maintained docs around those public contracts.
 - Selector extraction now rewrites URLs from one cloned parsed DOM instead of reparsing inner and outer HTML per selected match, the core/CLI catalog metadata gains live drift assertions for `rust_shape`/surface strings, and `cargo xtask check` now includes `cargo doc --workspace --no-deps` so broken public docs fail the maintainer gate.
 - Ordered-list text extraction now preserves real list numbering including `start` / `reversed` / `li[value]` semantics, selector text extraction now preserves selected-node `img[alt]` and preformatted whitespace, slice extraction no longer parses a selected fragment just to emit `inner-html`, and JSON CLI error reports now carry typed code fields plus any captured `source_load_steps` trace.
-- Core rendering no longer rescans or reallocates whole output buffers just to decide spacing or trim trailing blank lines, slice-match construction no longer relies on `expect(...)` panics for value/output invariants, and interop plan-digest failures now return structured internal errors instead of aborting.
+- Core rendering no longer rescans or reallocates whole output buffers just to decide spacing or trim trailing blank lines, slice-match construction no longer relies on `expect(...)` panics for value/output invariants.
 - File and URL source loaders now take typed inputs from the dispatcher instead of relying on runtime `unreachable!` checks, schema-catalog validation now reports unknown schema refs instead of panicking, HTTP URL loading now caps the connect phase separately inside the existing fetch timeout budget, and the macOS/Windows CI gate now runs dependency freshness, advisory, and policy checks alongside formatting, clippy, and tests.
 - Invalid selector and slice requests now fail during request validation before any source I/O or document parsing, and delimiter-pattern compilation is reused across the later extraction phase instead of being rediscovered only after the source is loaded.
 - The maintained `cargo xtask` entrypoint and every executable release helper script now explain themselves through `--help`, the canonical `scripts/release-targets.sh` registry is directly inspectable from the shell, and the runnable namespace core example now prints a compact JSON summary instead of exiting silently.
@@ -509,7 +512,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Changed
 - Tightened the maintainer release protocol so post-merge and closeout sync steps use explicit `git fetch ...` plus `git merge --ff-only origin/main` instead of implicit `git pull`, documented the required `main` branch-ownership handoff when a disposable release worktree is used, and added explicit cleanup for stale `release-prep/X.Y.Z` branches after the shipped history absorbs them.
 - Filled the remaining documentation gaps around workspace topology and publication metadata by adding dedicated maintained guides for the `htmlcut_cli` library surface and the internal `htmlcut_tempdir` helper crate, plus explicit release-doc coverage for GitHub build-provenance attestations alongside the downloadable asset inventory.
-- Recut the root `htmlcut --help` experience around a single-sourced package banner, workflow-first guidance, and reusable-request examples, while promoting the polished `HTMLCut` display name across human-facing version, catalog, and schema text banners without changing the machine JSON `tool` field. HTMLCut now also matches the maintained `ffhn` help/version contract by restoring clap's `help` subcommand and limiting `--version` to top-level use instead of accepting it under subcommands.
+- Recut the root `htmlcut --help` experience around a single-sourced package banner, workflow-first guidance, and reusable-request examples, while promoting the polished `HTMLCut` display name across human-facing version, catalog, and schema text banners without changing the machine JSON `tool` field. Restored clap's `help` subcommand and limited `--version` to top-level use.
 - Corrected the standalone-package release smoke script and the maintainer publishing protocol to verify the canonical `HTMLCut X.Y.Z` first version line, and added release-doc plus release-script regression tests so future help/version banner changes cannot silently break tag publication.
 
 ## [4.4.0] - 2026-04-23
@@ -518,12 +521,11 @@ Notable changes to this project are documented in this file. The format is based
 - Moved the checked-in `fuzz/` package into the main Cargo workspace, restored one shared `Cargo.lock`, and re-enabled root Cargo Dependabot updates now that the maintained libFuzzer targets no longer live behind a second lockfile and duplicate maintenance gates.
 - Expanded the maintained `cargo deny` license allowlist to include `NCSA`, which keeps the first-class `libfuzzer-sys` workspace dependency enforceable by policy instead of having to hide fuzzing from the normal dependency gate.
 - Localized the LLVM compiler requirement to the maintained `cargo xtask coverage` and `cargo xtask fuzz-smoke` flows, replacing the old repo-wide `CC=clang` override with explicit clang/clang++ preflight checks plus per-command toolchain injection where it is actually needed.
-- Broke up the remaining core help-contract, slice-extraction, frozen interop execution, and oversized CLI contract-test god-files into focused modules so command help ownership, delimiter extraction, adapter compilation/projection/error mapping, and contract assertions no longer share multi-responsibility files.
+- Broke up the remaining core help-contract, slice-extraction, and oversized CLI contract-test god-files into focused modules so command help ownership, delimiter extraction, adapter compilation/projection/error mapping, and contract assertions no longer share multi-responsibility files.
 - Broke up the remaining maintainer docs-contract runner, coverage gate, and CLI help-rendering god-files into focused modules so example parsing/runtime checks, coverage command/report/file tracking, and help caching/rendering no longer share single mixed-responsibility files.
 - Broke the remaining `xtask` command-execution/preflight seam and oversized CLI preparation construction test into focused modules, so maintainer command launching, prerequisite detection, and raw-argv/builder/rendering assertions no longer live in mixed-responsibility files.
 - Broke the remaining `xtask` gate-plan seam, CLI extraction-preparation seam, and CLI discovery rendering seam into focused modules, so gate assembly/path resolution/semver helpers, preview vs extraction preparation, and catalog vs schema text rendering no longer share mixed-responsibility files.
 - Broke the remaining oversized CLI rendering, execution-path, request-file-builder, inspect, and parity test seams into focused modules, so rendering coverage, request-file loading/preparation, preview/error integration flows, and core-vs-CLI parity matrices no longer hide unrelated assertions inside a handful of monolithic test files.
-- Broke the remaining oversized `htmlcut-core` catalog, document, extraction, source, and interop regression suites into focused modules, so core contract validation, document/source behavior, extractor coverage, and frozen interop assertions no longer share a few 500+ line test files.
 - Replaced the generic CLI help-cache dispatchers and the empty `xtask::coverage` re-export shell with explicit façade accessors, so impossible `document.parse` help paths and zero-line module glue no longer survive inside the maintained public helper layer.
 - Tightened the maintainer docs contract so `PATENTS.md` must stay aligned with the live `deny.toml` license allowlist, documented the actual docs-contract scope as “all maintained public Markdown except changelog,” and updated the release preflight guide to match the live GitHub conversation-resolution branch-protection rule.
 - Default repository search now excludes the frozen `semver-baseline/` snapshot through `.ignore`, so normal symbol search stays on the maintained live tree unless a maintainer explicitly opts into baseline inspection.
@@ -531,7 +533,6 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 - Concrete fenced `htmlcut ...` examples in the maintained Markdown docs are now executed inside a fixture-backed temp sandbox instead of only being shell-split and clap-parsed, so broken request-file/output-file flows and other non-runnable examples now fail the docs contract.
-- The maintained public Rust examples in `docs/architecture.md`, `docs/core.md`, `docs/interop-v1.md`, and `docs/schema.md` now run through `htmlcut-core` doctest harnesses, so those Markdown examples fail the normal workspace doc-test gate when they drift.
 - Missing-argument CLI parse failures no longer switch to JSON just because a positional token is literally named `inspect`; only the real parsed inspect command path or an explicit structured output request can opt those failures into JSON formatting.
 - Root README quick-start examples now start from an explicit demo page, and the documented request-file/output-file CLI flows are covered by integration smoke so those concrete examples stay runnable instead of only parsing.
 - The Windows standalone ZIP PowerShell packaging fallback now writes forward-slash archive entry names instead of backslash-separated members, so future published ZIPs unpack cleanly with standard ZIP tooling outside Windows as well as with `Expand-Archive`.
@@ -554,7 +555,6 @@ Notable changes to this project are documented in this file. The format is based
 - `cargo xtask check` now runs the full `xtask` library test suite, so manifest policy, release-target registry helpers, and other maintainer invariants are enforced by the gate instead of compiling unused beside it.
 - The maintainer docs-contract now validates release target triples, workflow runner mappings, macOS deployment floor, and release asset names in the maintained docs against the canonical `scripts/release-targets.sh` registry.
 - Corrected the fuzzing docs to the real working `cargo +nightly fuzz run --fuzz-dir fuzz ...` form after live verification showed the previously documented `--manifest-path` usage did not work with `cargo-fuzz 0.13.1`.
-- Broke up the frozen `htmlcut_core::interop::v1` type-definition god-file into focused shared, plan, and result/error modules so the frozen interop contract stays easier to audit without mixing unrelated concerns into one monolith.
 - Reorganized the maintainer release documentation into an overview plus focused preflight, publishing, and closeout guides so the release process is easier to audit and keep in sync with the scripts and workflows.
 - The release protocol now explicitly covers dirty primary checkouts that already contain real unpublished release-candidate work: move that state onto a named prep branch first, then create the clean `release/X.Y.Z` worktree from that captured commit instead of guessing from a dirty `main`.
 - Rewrote the maintained docs in current-state language, removing release-note phrasing like "now" from stable behavior descriptions and standardizing on the canonical `extraction-definition` terminology.
@@ -562,7 +562,6 @@ Notable changes to this project are documented in this file. The format is based
 - The core-owned CLI contract catalog now records the real default stdout override for `--value inner-html` and `--value outer-html`, so generated help, `htmlcut catalog`, and the maintained CLI docs match live extraction behavior instead of silently implying text output.
 - Corrected the documented slice regex-flag surface so generated help, catalog text, and the maintained CLI guide now include `U`, and explain that `g` is accepted for compatibility but ignored.
 - Refreshed the root README install and quick-start examples so the maintained release-install commands use the current release version, create the target install directory explicitly, verify checksums portably on macOS/Linux, and present the reusable request-file flow in runnable order.
-- Tightened the maintainer docs so developer setup no longer tells contributors to run the full gate twice, the release protocol now verifies the host-native standalone package instead of hardcoding Apple Silicon in the local post-release smoke step, and the architecture/core guides use more precise terminology around the frozen interop surface and non-exhaustive root exports.
 - The coverage gate now derives its tracked module inventory from the live `htmlcut-core`, `htmlcut-cli`, and `xtask` source trees with an explicit declarative-only exclusion list, so future seam splits cannot silently fall outside the enforced 100% line-and-branch bar.
 - Added `cargo xtask fuzz-smoke`, which stages each checked-in fuzz corpus into temporary scratch before running libFuzzer so short maintainer smoke campaigns no longer mutate the repository-owned seed corpora.
 - `cargo xtask fuzz-smoke` now preflights nightly plus `cargo-fuzz` before it launches and forces the documented `CC=clang CXX=clang++` toolchain environment for fuzz-driver invocations on the maintained macOS path.
@@ -590,8 +589,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Changed
 - The maintainer docs-contract now walks the maintained public Markdown tree recursively, skips hidden/internal/generated directories, requires retrieval `keywords` and `questions` in both frontmatter and HTML-comment metadata, and parses fenced concrete `htmlcut ...` examples with shell-compatible tokenization instead of a homegrown splitter.
 - Broke up the remaining docs-contract and CLI-contract god-files into focused modules, and split the oversized CLI library test seams into thematic modules so contract behavior no longer hides inside multi-hundred-line monoliths.
-- Broke up the remaining core request, source-loading, document-rendering, extraction-runtime, and frozen `htmlcut_core::interop::v1` god-files into focused modules so canonical contracts, adapter execution, and stable-JSON logic no longer share giant mixed-owner files.
-- Tightened the canonical contract-lint and curated coverage proof so optional output defaults, output-less command contracts, and empty-target value restrictions are all asserted directly, and the frozen selector interop adapter now reuses one canonical `html` field read instead of re-reading the same structured payload slot twice.
+- Broke up the remaining core request, source-loading, document-rendering, extraction-runtime, god-files into focused modules so canonical contracts, adapter execution, and stable-JSON logic no longer share giant mixed-owner files.
 - Removed the undocumented `htmlcut analyze` alias so the CLI keeps one canonical command surface: `catalog`, `schema`, `inspect`, `select`, and `slice`.
 - Removed the stale `scripts/qa-gate.sh` duplicate entrypoint; `./check.sh` and `cargo xtask check` remain the maintained gate surfaces.
 - Request-definition failures now keep recovery guidance across missing files, unsupported schema revisions, and strategy mismatches, always pointing back to the maintained extraction-definition schema plus the matching catalog contract.
@@ -600,7 +598,6 @@ Notable changes to this project are documented in this file. The format is based
 - `htmlcut-core` now also owns the canonical help documents for root discovery, non-operation commands, and CLI-visible operations, so `htmlcut-cli` renders help summaries and analysis prose from the same contract owner that already owns modes, notes, examples, and command paths.
 - `htmlcut-cli` now parses the core-owned choice domains for match, value, output, pattern, whitespace, and fetch-preflight modes directly instead of keeping duplicate local enums that had to be mapped back into `htmlcut-core`.
 - Broke up the remaining CLI preparation and execution god-files into focused submodules so request building, raw-arg heuristics, and output/request-file I/O no longer hide inside single multi-domain files.
-- The curated 100% coverage gate now follows the live executable module layout after the seam splits, including the frozen interop adapter and the refactored core engine modules, instead of silently tracking deleted monolith paths.
 - Contract-lint now renders the real clap help, catalog/schema text summaries, and representative recovery errors and fails if any of those user-facing surfaces mention operation IDs or schema names that are not registered in `htmlcut-core`.
 
 ### Fixed
@@ -610,7 +607,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Added
 - Added a core-owned `OperationCliContract` registry so operation command paths, mode inventories, defaults, parameter rules, notes, and examples now have one canonical owner in `htmlcut-core`.
-- Added a typed `DiagnosticCode` registry in `htmlcut-core` and switched CLI error classification plus interop error mapping onto that canonical code owner.
+- Added a typed `DiagnosticCode` registry in `htmlcut-core` and switched CLI error classification onto that canonical code owner.
 - Added explicit contract-lint coverage for operation catalogs, CLI parser enums, command examples, and help/schema discovery examples, plus a checked-in `./check.sh` maintainer entrypoint that runs the full xtask gate.
 - Added contract-lint coverage that parses the real clap surfaces and fails if command names or applied default values drift away from the canonical core-owned CLI contract.
 - Added checked-in fuzz seed corpora for all maintained cargo-fuzz targets so local fuzz smoke runs start from known balanced cases instead of an empty corpus.
@@ -649,17 +646,15 @@ Notable changes to this project are documented in this file. The format is based
 ## [4.0.0] - 2026-04-14
 
 ### Added
-- Added property-based interop regression coverage for canonical stable JSON ordering, digest determinism, self-digest exclusion, and stable JSON round-trips across `htmlcut_core::interop::v1` plan, result, and error documents.
-- Added a checked-in `fuzz/` package with libFuzzer targets for decoded HTML parsing, selector extraction, delimiter-boundary extraction, and frozen interop request building through public `htmlcut-core` surfaces.
+- Added a checked-in `fuzz/` package with libFuzzer targets for decoded HTML parsing, selector extraction, and delimiter-boundary extraction through public `htmlcut-core` surfaces.
 - Added a first-class `htmlcut.extraction_definition@1` schema plus `htmlcut_core::ExtractionDefinition` for reusable serialized extraction runs.
 - Added CLI support for `--request-file <PATH>` across `select`, `slice`, `inspect select`, and `inspect slice`.
 - Added `--output-file <PATH>` so callers can write exactly the stdout payload to one file without bundle scaffolding.
 - Added URL `HEAD` preflight with a `--fetch-preflight head-first|get-only` escape hatch for servers that do not tolerate HEAD.
 - Added a runnable core example at `crates/htmlcut-core/examples/reusable_extraction_definition.rs`.
-- Added a focused maintainer versioning policy doc plus a repo-root contributing guide so release, semver-baseline, frozen-interop, fixture-update, and documentation-sync rules no longer depend on oral history.
+- Added a focused maintainer versioning policy doc plus a repo-root contributing guide so release, semver-baseline, fixture-update, and documentation-sync rules no longer depend on oral history.
 
 ### Changed
-- Renamed the interop module from `htmlcut_core::interop::ffhn_v1` to `htmlcut_core::interop::v1`, removing all consumer-specific type and constant prefixes (`Ffhn*`, `FFHN_*`). The interop profile identifier changed from `ffhn-htmlcut-v1` to `htmlcut-v1`, and the three frozen JSON schema names changed from `htmlcut.ffhn_plan`, `htmlcut.ffhn_result`, `htmlcut.ffhn_error` to `htmlcut.plan`, `htmlcut.result`, `htmlcut.error`.
 - Reduced the `htmlcut-core` crate-root surface to the stable high-level API and moved detailed request/result contract types behind `htmlcut_core::request` and `htmlcut_core::result` namespaces.
 - Renamed the ambiguous `Html` extraction value mode to `InnerHtml` across Rust contracts, CLI parsing, catalog/schema output, and user-facing docs. The CLI spelling is now `--value inner-html`.
 - Bumped the versioned request/result and CLI report schema revisions so the serialized contract change is explicit, and documented the structured-match metadata union emitted by extraction results.
@@ -677,7 +672,7 @@ Notable changes to this project are documented in this file. The format is based
 ## [3.0.0] - 2026-04-05
 
 ### Changed
-- Overhauled and rebuilt HTMLCut in Rust, with explicit architectural provisions introduced specifically for [`FFHN`](https://github.com/resoltico/ffhn) interop.
+- Overhauled and rebuilt HTMLCut in Rust.
 
 ## [2.0.0] - 2026-03-18
 

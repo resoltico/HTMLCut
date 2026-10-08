@@ -12,7 +12,7 @@ use htmlcut_core::{
 use std::{
     ffi::OsString,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 const METADATA_BYTES: usize = 16_384;
 
@@ -76,13 +76,7 @@ fn dispatch(
 ) -> Result<(), ExtractionError> {
     match operation {
         Operation::Schema { name } => {
-            let schema = if name == "htmlcut.bundle" {
-                schemars::schema_for!(crate::bundle::Manifest<'static>)
-                    .as_value()
-                    .clone()
-            } else {
-                htmlcut_core::schema(&name)?
-            };
+            let schema = htmlcut_core::schema(&name)?;
             emit_json(&schema, crate::input::MAX_CONFIG_BYTES, stdout)
         }
         Operation::Extract(arguments) => {
@@ -112,7 +106,7 @@ fn dispatch(
                         .cloned(),
                 )
                 .collect::<Vec<_>>();
-            validate(&inputs, &arguments.output, arguments.bundle.as_deref())?;
+            validate(&inputs, &arguments.output)?;
             let snapshot = crate::input::snapshot(
                 arguments.source.source.file.as_deref(),
                 stdin,
@@ -120,28 +114,8 @@ fn dispatch(
             )?;
             let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
             let result = document.execute(&compiled)?;
-            publish(
-                &result,
-                &arguments.output,
-                arguments.bundle.as_deref(),
-                stdout,
-            )
-        }
-        Operation::Replay(arguments) => {
-            validate(
-                std::slice::from_ref(&arguments.file),
-                &arguments.output,
-                None,
-            )?;
-            let replay = crate::bundle::read(&arguments.file)?;
-            if arguments.output.raw && replay.plan.plan().fields.is_some() {
-                return Err(options("Raw output cannot represent records."));
-            }
-            let result = replay.document.execute(&replay.plan)?;
-            if *result.receipt()? != replay.expected {
-                return Err(crate::bundle::mismatch());
-            }
-            publish(&result, &arguments.output, None, stdout)
+            drop(document);
+            publish(&result, &arguments.output, stdout)
         }
         Operation::Inspect(arguments) => {
             if let Some(select) = arguments.select.as_deref().or(arguments.within.as_deref()) {
@@ -176,25 +150,14 @@ fn dispatch(
     }
 }
 
-fn validate(
-    inputs: &[PathBuf],
-    output: &Output,
-    bundle: Option<&Path>,
-) -> Result<(), ExtractionError> {
-    let targets = output
-        .output
-        .iter()
-        .chain(output.receipt.iter())
-        .cloned()
-        .chain(bundle.map(Path::to_path_buf))
-        .collect::<Vec<_>>();
+fn validate(inputs: &[PathBuf], output: &Output) -> Result<(), ExtractionError> {
+    let targets = output.output.iter().cloned().collect::<Vec<_>>();
     crate::publication::validate_destinations(inputs, &targets, output.overwrite)
 }
 
 fn publish(
     result: &ExtractionResult,
     output: &Output,
-    bundle: Option<&Path>,
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     let bytes = if output.raw {
@@ -203,35 +166,16 @@ fn publish(
             _ => return Err(options("Raw output requires exactly one flat string.")),
         }
     } else {
-        let mut bytes = result.payload().to_vec();
+        let mut bytes =
+            crate::publication::json_payload(result.data(), htmlcut_core::MAX_DATA_BYTES)?;
         bytes.push(b'\n');
         bytes
-    };
-    let evidence = if let Some(path) = bundle {
-        Some(Staged::prepare_with(path, output.overwrite, |writer| {
-            crate::bundle::write(writer, result)
-        })?)
-    } else if let Some(path) = &output.receipt {
-        Some(Staged::prepare(
-            path,
-            &{
-                let mut bytes = result.receipt_payload()?.to_vec();
-                bytes.push(b'\n');
-                bytes
-            },
-            output.overwrite,
-        )?)
-    } else {
-        None
     };
     let target = output
         .output
         .as_ref()
         .map(|path| Staged::prepare(path, &bytes, output.overwrite))
         .transpose()?;
-    if let Some(evidence) = evidence {
-        evidence.commit()?;
-    }
     match target {
         Some(target) => target.commit(),
         None => emit(bytes, stdout),

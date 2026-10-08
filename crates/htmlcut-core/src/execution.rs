@@ -95,18 +95,11 @@ impl PreparedDocument {
             )
         };
         let selected_count = selected.len() as u32;
-        let payload = crate::identity::encoded(&data, crate::MAX_DATA_BYTES, &budget)?;
         Ok(ExtractionResult {
             data,
-            payload,
-            source: self.snapshot.clone(),
-            query: compiled.normalized_bytes.clone(),
-            preparation: self.limits.clone(),
             candidate_count: count,
             selected_count,
             fields,
-            budget,
-            evidence: std::cell::OnceCell::new(),
         })
     }
 }

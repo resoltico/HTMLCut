@@ -7,7 +7,7 @@ fn native_help_and_named_schemas_share_current_closed_vocabulary() {
     let output = invoke(&["--help"], b"");
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();
-    for name in ["extract", "inspect", "replay", "schema"] {
+    for name in ["extract", "inspect", "schema"] {
         assert!(help.contains(name));
     }
     for name in ["describe", "outline"] {
@@ -28,11 +28,7 @@ fn native_help_and_named_schemas_share_current_closed_vocabulary() {
     ] {
         assert!(help.contains(required), "{required}");
     }
-    for name in htmlcut_core::SCHEMA_NAMES
-        .iter()
-        .copied()
-        .chain(["htmlcut.bundle"])
-    {
+    for name in htmlcut_core::SCHEMA_NAMES.iter().copied() {
         let output = invoke(&["schema", name], b"");
         assert!(
             output.status.success(),

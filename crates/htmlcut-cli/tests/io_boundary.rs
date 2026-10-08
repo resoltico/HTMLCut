@@ -204,7 +204,6 @@ fn special_file_paths_fail_without_waiting_for_a_writer() {
     for args in [
         vec!["extract", "--file", fifo.to_str().unwrap(), "--select", "p"],
         vec!["extract", "--stdin", "--plan", fifo.to_str().unwrap()],
-        vec!["replay", fifo.to_str().unwrap()],
     ] {
         let mut child = command()
             .args(&args)

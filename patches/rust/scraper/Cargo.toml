@@ -14,7 +14,7 @@ publish = false
 edition = "2024"
 rust-version = "1.98.1"
 name = "htmlcut-scraper"
-version = "0.27.0-htmlcut.9"
+version = "0.27.0-htmlcut.10"
 authors = ["June McEnroe <june@causal.agency>"]
 build = false
 autolib = false
@@ -77,7 +77,7 @@ optional = true
 [dependencies.html5ever]
 package = "htmlcut-html5ever"
 path = "../html5ever"
-version = "0.40.1-htmlcut.1"
+version = "0.40.1-htmlcut.2"
 
 [dependencies.precomputed-hash]
 version = "0.1.1"
@@ -85,7 +85,7 @@ version = "0.1.1"
 [dependencies.selectors]
 package = "htmlcut-selectors"
 path = "../selectors"
-version = "0.41.0-htmlcut.1"
+version = "0.41.0-htmlcut.2"
 
 [dependencies.serde]
 version = "1.0.229"

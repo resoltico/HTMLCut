@@ -14,5 +14,5 @@ pub(super) fn compile(value: Value) -> CompiledPlan {
         .unwrap()
 }
 pub(super) fn data(source: &str, query: Value) -> Value {
-    serde_json::from_slice(document(source).execute(&compile(query)).unwrap().payload()).unwrap()
+    serde_json::to_value(document(source).execute(&compile(query)).unwrap().data()).unwrap()
 }

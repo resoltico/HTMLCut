@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bounded, source-independent query compilation and lazy query identity.
+//! Bounded, source-independent query compilation and normalized query encoding.
 
 use crate::limits::{MAX_PATTERN_DEPTH, MAX_REGEX_BYTES};
 use crate::{ErrorCode, ExtractionError, ExtractionPlan};
 use regex::{Regex, RegexBuilder};
 use scraper::Selector;
-use std::{cell::OnceCell, sync::Arc};
+use std::sync::Arc;
 
 pub(crate) struct CompiledGuard {
     pub(crate) selector: Selector,
@@ -25,13 +25,12 @@ pub struct CompiledPlan {
     pub(crate) exclusions: Vec<Selector>,
     pub(crate) fields: Vec<CompiledField>,
     pub(crate) normalized_bytes: Arc<str>,
-    digest: OnceCell<String>,
 }
 impl CompiledPlan {
     /// Validates and normalizes all construction routes, retaining one bounded query encoding.
     pub fn compile(plan: &ExtractionPlan) -> Result<Self, ExtractionError> {
         let plan = plan.normalized()?;
-        let normalized_bytes = crate::identity::query_bytes(&plan)?;
+        let normalized_bytes = crate::encoding::query_bytes(&plan)?;
         let regex_count = plan
             .expect
             .iter()
@@ -106,7 +105,6 @@ impl CompiledPlan {
             exclusions,
             fields,
             normalized_bytes: Arc::from(normalized_bytes),
-            digest: OnceCell::new(),
         })
     }
     /// Effective defaults and preserved explicit assumptions used by this compiled query.
@@ -116,12 +114,6 @@ impl CompiledPlan {
     /// Canonical normalized JSON, independent of downstream serde_json feature choices.
     pub fn normalized_json(&self) -> &str {
         &self.normalized_bytes
-    }
-    /// Lazily computes the domain-separated identity of the stored normalized query.
-    pub fn plan_sha256(&self) -> &str {
-        self.digest.get_or_init(|| {
-            crate::identity::framed("htmlcut.plan/6", &[self.normalized_bytes.as_bytes()])
-        })
     }
 }
 

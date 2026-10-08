@@ -11,14 +11,14 @@ use query_support::{compile, data, document};
 fn closed_members_nulls_duplicates_and_retired_contracts_are_rejected() {
     for query in [
         r#"{"version":5,"select":"p"}"#,
-        r#"{"version":6.0,"select":"p"}"#,
-        r#"{"version":6,"select":"p","select":"q"}"#,
-        r#"{"version":6,"select":"p","fields":{"a":{"select":"p","select":"q"}}}"#,
-        r#"{"version":6,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"q"}}}"#,
-        r#"{"version":6,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#,
-        r#"{"version":6,"select":"p","limits":{"max_cells":1,"max_cells":2}}"#,
-        r#"{"version":6,"select":"p","schema":"htmlcut.extraction.plan"}"#,
-        r#"{"version":6,"select":"p","strategy":{"kind":"css","selector":"p"}}"#,
+        r#"{"version":7.0,"select":"p"}"#,
+        r#"{"version":7,"select":"p","select":"q"}"#,
+        r#"{"version":7,"select":"p","fields":{"a":{"select":"p","select":"q"}}}"#,
+        r#"{"version":7,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"q"}}}"#,
+        r#"{"version":7,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#,
+        r#"{"version":7,"select":"p","limits":{"max_cells":1,"max_cells":2}}"#,
+        r#"{"version":7,"select":"p","schema":"htmlcut.extraction.plan"}"#,
+        r#"{"version":7,"select":"p","strategy":{"kind":"css","selector":"p"}}"#,
     ] {
         assert!(
             ExtractionPlan::from_json(query.as_bytes()).is_err(),
@@ -37,7 +37,7 @@ fn closed_members_nulls_duplicates_and_retired_contracts_are_rejected() {
         "following_siblings",
         "limits",
     ] {
-        let mut query = json!({"version":6,"select":"p"});
+        let mut query = json!({"version":7,"select":"p"});
         query[member] = Value::Null;
         assert!(
             ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).is_err(),
@@ -47,7 +47,7 @@ fn closed_members_nulls_duplicates_and_retired_contracts_are_rejected() {
     for member in ["select", "match", "min", "max", "index", "read", "exclude"] {
         let mut field = json!({"select":"p"});
         field[member] = Value::Null;
-        let query = json!({"version":6,"select":"p","fields":{"a":field}});
+        let query = json!({"version":7,"select":"p","fields":{"a":field}});
         assert!(
             ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).is_err(),
             "{member}"
@@ -66,7 +66,7 @@ fn supplied_defaults_do_not_hide_inapplicable_members() {
         json!({"match":"nth"}),
         json!({"match":"all","min":2,"max":1}),
     ] {
-        let mut query = json!({"version":6,"select":"p"});
+        let mut query = json!({"version":7,"select":"p"});
         query
             .as_object_mut()
             .unwrap()
@@ -74,7 +74,7 @@ fn supplied_defaults_do_not_hide_inapplicable_members() {
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).is_err());
     }
     for extra in [json!({"read":"text"}), json!({"exclude":[]})] {
-        let mut query = json!({"version":6,"select":"p","fields":{"a":{"select":"p"}}});
+        let mut query = json!({"version":7,"select":"p","fields":{"a":{"select":"p"}}});
         query
             .as_object_mut()
             .unwrap()
@@ -89,7 +89,7 @@ fn supplied_defaults_do_not_hide_inapplicable_members() {
     ] {
         assert!(
             ExtractionPlan::from_json(
-                &serde_json::to_vec(&json!({"version":6,"select":"p","expect":[guard]})).unwrap()
+                &serde_json::to_vec(&json!({"version":7,"select":"p","expect":[guard]})).unwrap()
             )
             .is_err()
         );
@@ -98,27 +98,28 @@ fn supplied_defaults_do_not_hide_inapplicable_members() {
 #[test]
 fn canonical_defaults_and_field_order_preserve_explicit_assumptions() {
     let a = compile(
-        json!({"version":6,"select":"article","match":"all","fields":{"z":{"select":".z"},"a":{"select":".a"}}}),
+        json!({"version":7,"select":"article","match":"all","fields":{"z":{"select":".z"},"a":{"select":".a"}}}),
     );
     let b = compile(
-        json!({"select":"article","version":6,"min":1,"following_siblings":0,"limits":{},"match":"all","expect":[],"fields":{"a":{"select":".a","read":"text","match":"one","exclude":[]},"z":{"select":".z"}}}),
+        json!({"select":"article","version":7,"min":1,"following_siblings":0,"limits":{},"match":"all","expect":[],"fields":{"a":{"select":".a","read":"text","match":"one","exclude":[]},"z":{"select":".z"}}}),
     );
     assert_eq!(a.normalized_json(), b.normalized_json());
-    assert_eq!(a.plan_sha256(), b.plan_sha256());
+    assert_eq!(a.normalized_json(), b.normalized_json());
     let c = compile(
-        json!({"version":6,"select":"article","match":"all","max":10000,"fields":{"a":{"select":".a"},"z":{"select":".z"}}}),
+        json!({"version":7,"select":"article","match":"all","max":10000,"fields":{"a":{"select":".a"},"z":{"select":".z"}}}),
     );
     assert_ne!(a.normalized_json(), c.normalized_json());
     let source = document("<article><i class=a>A</i><i class=z>Z</i></article>");
     let first = source.execute(&a).unwrap();
     let second = source.execute(&b).unwrap();
-    assert_eq!(first.payload(), br#"[{"a":"A","z":"Z"}]"#);
-    assert_eq!(first.receipt().unwrap(), second.receipt().unwrap());
+    assert_eq!(first.data(), second.data());
+    assert_eq!(
+        serde_json::to_vec(first.data()).unwrap(),
+        br#"[{"a":"A","z":"Z"}]"#
+    );
     assert_eq!(
         first
-            .receipt()
-            .unwrap()
-            .fields
+            .field_counts()
             .keys()
             .map(String::as_str)
             .collect::<Vec<_>>(),
@@ -135,13 +136,13 @@ fn names_are_validated_and_first_failure_is_lexical_in_selected_output_order() {
         "SYNTHETIC_SECRET!",
         &"x".repeat(65),
     ] {
-        let mut query = json!({"version":6,"select":"article","fields":{}});
+        let mut query = json!({"version":7,"select":"article","fields":{}});
         query["fields"][key] = json!({"select":"p"});
         let error = ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).unwrap_err();
         assert!(!serde_json::to_string(&error).unwrap().contains(key) || key.is_empty());
     }
     let query = compile(
-        json!({"version":6,"select":"article","match":"nth","index":2,"fields":{"z":{"select":".missing"},"a":{"select":".absent"}}}),
+        json!({"version":7,"select":"article","match":"nth","index":2,"fields":{"z":{"select":".missing"},"a":{"select":".absent"}}}),
     );
     let error = document("<article></article><article></article>")
         .execute(&query)
@@ -153,7 +154,7 @@ fn names_are_validated_and_first_failure_is_lexical_in_selected_output_order() {
 }
 #[test]
 fn fields_preserve_null_empty_arrays_attributes_and_relationships() {
-    let query = json!({"version":6,"select":"article","match":"all","fields":{
+    let query = json!({"version":7,"select":"article","match":"all","fields":{
         "optional":{"select":".absent","match":"optional"},"empty":{"select":"i"},
         "tags":{"select":"b","match":"all","min":0},"href":{"select":"a","read":"attr:href"}}});
     assert_eq!(
@@ -165,7 +166,7 @@ fn fields_preserve_null_empty_arrays_attributes_and_relationships() {
         {"optional":null,"empty":"","tags":["X","Y"],"href":""}, {"optional":null,"empty":"E","tags":[],"href":"/a"}])
     );
     let optional = compile(
-        json!({"version":6,"select":"article","fields":{"href":{"select":"a","match":"optional","read":"attr:href"}}}),
+        json!({"version":7,"select":"article","fields":{"href":{"select":"a","match":"optional","read":"attr:href"}}}),
     );
     assert_eq!(
         document("<article><a></a></article>")
@@ -206,7 +207,7 @@ fn structural_text_has_independent_boundary_inert_and_pre_answers() {
         ),
     ] {
         assert_eq!(
-            data(source, json!({"version":6,"select":select})),
+            data(source, json!({"version":7,"select":select})),
             json!([expected]),
             "{source}"
         );
@@ -214,21 +215,21 @@ fn structural_text_has_independent_boundary_inert_and_pre_answers() {
     assert_eq!(
         data(
             "<div>A<script>S</script><p>B</p></div>",
-            json!({"version":6,"select":"div","read":"literal"})
+            json!({"version":7,"select":"div","read":"literal"})
         ),
         json!(["ASB"])
     );
     assert_eq!(
         data(
             "<template><p>inside</p></template>",
-            json!({"version":6,"select":"template"})
+            json!({"version":7,"select":"template"})
         ),
         json!([""])
     );
     assert_eq!(
         data(
             "<template><p>inside</p></template>",
-            json!({"version":6,"select":"p"})
+            json!({"version":7,"select":"p"})
         ),
         json!(["inside"])
     );
@@ -236,7 +237,7 @@ fn structural_text_has_independent_boundary_inert_and_pre_answers() {
 #[test]
 fn guards_check_original_content_count_only_presence_and_empty_roots() {
     let query =
-        json!({"version":6,"select":".price","expect":[{"select":"h1","equals":"Product A"}]});
+        json!({"version":7,"select":".price","expect":[{"select":"h1","equals":"Product A"}]});
     assert_eq!(
         data(
             "<h1>Product <b>A</b></h1><p class=price>10</p>",
@@ -256,7 +257,7 @@ fn guards_check_original_content_count_only_presence_and_empty_roots() {
             ErrorCode::GuardFailed
         );
     }
-    let empty = json!({"version":6,"select":".missing","match":"all","min":0,"expect":[{"select":"[data-x]"}]});
+    let empty = json!({"version":7,"select":".missing","match":"all","min":0,"expect":[{"select":"[data-x]"}]});
     assert_eq!(data("<p data-x=''></p>", empty.clone()), json!([]));
     assert_eq!(
         document("<p></p>")
@@ -268,48 +269,17 @@ fn guards_check_original_content_count_only_presence_and_empty_roots() {
     assert_eq!(
         data(
             "<p></p>",
-            json!({"version":6,"select":".missing","match":"all","min":0,"expect":[{"select":".missing","scope":"selected","equals":"impossible"}]})
+            json!({"version":7,"select":".missing","match":"all","min":0,"expect":[{"select":".missing","scope":"selected","equals":"impossible"}]})
         ),
         json!([])
     );
     assert_eq!(
         data(
             "<div>A<i> B</i></div>",
-            json!({"version":6,"select":"div","exclude":["i"],"expect":[{"select":"div","equals":"A B"}]})
+            json!({"version":7,"select":"div","exclude":["i"],"expect":[{"select":"div","equals":"A B"}]})
         ),
         json!(["A"])
     );
-}
-#[test]
-fn result_evidence_is_bound_immutable_optional_and_failure_cached() {
-    let source = document("<p>A</p>");
-    let mut plan = ExtractionPlan::css("p").unwrap();
-    let compiled = CompiledPlan::compile(&plan).unwrap();
-    let first = source.execute(&compiled).unwrap();
-    plan.select = "wrong".into();
-    assert_eq!(first.payload(), br#"["A"]"#);
-    assert_eq!(first.normalized_json(), compiled.normalized_json());
-    let receipt = first.receipt().unwrap();
-    assert_eq!(receipt, first.receipt().unwrap());
-    let other = document("<p>A</p><!-- different -->")
-        .execute(&compiled)
-        .unwrap();
-    assert_eq!(other.payload(), first.payload());
-    assert_ne!(
-        other.receipt().unwrap().source_sha256,
-        receipt.source_sha256
-    );
-    assert_ne!(
-        other.receipt().unwrap().extraction_sha256,
-        receipt.extraction_sha256
-    );
-    let huge = document(&format!("<p>A</p><!--{}-->", "x".repeat(100000)));
-    let limited = compile(json!({"version":6,"select":"p","limits":{"max_work":100}}));
-    let result = huge.execute(&limited).unwrap();
-    assert_eq!(result.payload(), br#"["A"]"#);
-    let error = result.receipt().unwrap_err();
-    assert_eq!(error.code, ErrorCode::ResourceLimit);
-    assert_eq!(error, result.receipt().unwrap_err());
 }
 #[test]
 fn bounded_observations_stop_at_emitted_content_and_keep_complete_headers() {
@@ -359,15 +329,15 @@ fn generated_query_schema_has_omission_only_members_and_distinct_match_contracts
     compiler.add_resource(location, contract).unwrap();
     let index = compiler.compile(location, &mut schemas).unwrap();
     for valid in [
-        json!({"version":6,"select":"p"}),
-        json!({"version":6,"select":"p","fields":{"a":{"select":"p","match":"optional"}}}),
-        json!({"version":6,"select":"p","expect":[{"select":"p","equals":"A"}]}),
-        json!({"version":6,"select":"p","limits":{"max_work":100}}),
+        json!({"version":7,"select":"p"}),
+        json!({"version":7,"select":"p","fields":{"a":{"select":"p","match":"optional"}}}),
+        json!({"version":7,"select":"p","expect":[{"select":"p","equals":"A"}]}),
+        json!({"version":7,"select":"p","limits":{"max_work":100}}),
     ] {
         assert!(schemas.validate(&valid, index).is_ok(), "{valid}");
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&valid).unwrap()).is_ok());
     }
-    let invalid = json!({"version":6,"select":"p","match":"optional"});
+    let invalid = json!({"version":7,"select":"p","match":"optional"});
     assert!(schemas.validate(&invalid, index).is_err());
     for member in [
         "min",
@@ -380,17 +350,17 @@ fn generated_query_schema_has_omission_only_members_and_distinct_match_contracts
         "limits",
         "expect",
     ] {
-        let mut invalid = json!({"version":6,"select":"p"});
+        let mut invalid = json!({"version":7,"select":"p"});
         invalid[member] = Value::Null;
         assert!(schemas.validate(&invalid, index).is_err(), "{member}");
     }
     for member in ["min", "max", "index", "read", "exclude"] {
-        let mut invalid = json!({"version":6,"select":"p","fields":{"a":{"select":"p"}}});
+        let mut invalid = json!({"version":7,"select":"p","fields":{"a":{"select":"p"}}});
         invalid["fields"]["a"][member] = Value::Null;
         assert!(schemas.validate(&invalid, index).is_err(), "field {member}");
     }
     for member in ["read", "equals", "pattern"] {
-        let mut invalid = json!({"version":6,"select":"p","expect":[{"select":"p"}]});
+        let mut invalid = json!({"version":7,"select":"p","expect":[{"select":"p"}]});
         invalid["expect"][0][member] = Value::Null;
         assert!(
             schemas.validate(&invalid, index).is_err(),
@@ -407,7 +377,7 @@ fn root_and_field_cardinality_reject_every_inapplicable_count_position() {
         json!({"match":"nth","index":1,"max":1}),
         json!({"match":"one","max":1}),
     ] {
-        let mut root = json!({"version":6,"select":"p"});
+        let mut root = json!({"version":7,"select":"p"});
         root.as_object_mut()
             .unwrap()
             .extend(members.as_object().unwrap().clone());
@@ -417,7 +387,7 @@ fn root_and_field_cardinality_reject_every_inapplicable_count_position() {
             .as_object_mut()
             .unwrap()
             .extend(members.as_object().unwrap().clone());
-        let root = json!({"version":6,"select":"p","fields":{"value":field}});
+        let root = json!({"version":7,"select":"p","fields":{"value":field}});
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&root).unwrap()).is_err());
     }
 }
@@ -425,7 +395,7 @@ fn root_and_field_cardinality_reject_every_inapplicable_count_position() {
 #[test]
 fn optional_field_ambiguity_reports_its_zero_to_one_contract() {
     let error = document("<article><b>A</b><b>B</b></article>")
-        .execute(&compile(json!({"version":6,"select":"article","fields":{
+        .execute(&compile(json!({"version":7,"select":"article","fields":{
             "author":{"select":"b","match":"optional"}}})))
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::AmbiguousSelection);
@@ -437,7 +407,7 @@ fn optional_field_ambiguity_reports_its_zero_to_one_contract() {
 
 #[test]
 fn normalized_field_modes_preserve_omission_and_roundtrip_idempotently() {
-    let implicit = json!({"version":6,"select":"article","fields":{
+    let implicit = json!({"version":7,"select":"article","fields":{
         "many":{"select":"i","match":"all"}, "one":{"select":"b"},
         "optional":{"select":"u","match":"optional"}, "nth":{"select":"a","match":"nth","index":2}}});
     let mut explicit = implicit.clone();
@@ -462,7 +432,7 @@ fn malformed_field_members_report_safe_names_and_paths() {
     let reject =
         |query: Value| ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).unwrap_err();
     for name in ["author", "_price2", "fields", "read"] {
-        let query = json!({"version":6,"select":"p","fields":{name:{"select":"p","read":false}}});
+        let query = json!({"version":7,"select":"p","fields":{name:{"select":"p","read":false}}});
         let error = reject(query);
         assert_eq!(error.field_name.as_deref(), Some(name));
         assert_eq!(
@@ -471,21 +441,21 @@ fn malformed_field_members_report_safe_names_and_paths() {
         );
     }
     for name in ["unsafe name", "private.password", "${secret}"] {
-        let error = reject(json!({"version":6,"select":"p","fields":{name:false}}));
+        let error = reject(json!({"version":7,"select":"p","fields":{name:false}}));
         assert!(error.field_name.is_none());
         assert_eq!(error.plan_path.as_deref(), Some("$.fields"));
         assert!(!serde_json::to_string(&error).unwrap().contains(name));
     }
     for query in [
-        json!({"version":6,"select":false}),
-        json!({"version":6,"select":"p","secret":false}),
+        json!({"version":7,"select":false}),
+        json!({"version":7,"select":"p","secret":false}),
     ] {
         let error = reject(query);
         assert!(error.field_name.is_none());
         assert!(!error.plan_path.as_deref().unwrap().contains("secret"));
     }
     let error =
-        reject(json!({"version":6,"select":"p","fields":{"author":{"select":"p","secret":false}}}));
+        reject(json!({"version":7,"select":"p","fields":{"author":{"select":"p","secret":false}}}));
     assert_eq!(error.field_name.as_deref(), Some("author"));
     assert!(!error.plan_path.as_deref().unwrap().contains("secret"));
 }

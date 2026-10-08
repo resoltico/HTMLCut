@@ -66,27 +66,26 @@ fn selector_and_reading_contract_remain_miri_sound() {
         );
     }
     let document = prepared("<article><p>value</p></article>");
-    let plan = ExtractionPlan::from_json(br#"{"version":6,"select":"article","fields":{"text":{"select":"p"},"optional":{"select":".absent","match":"optional"}}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"version":7,"select":"article","fields":{"text":{"select":"p"},"optional":{"select":".absent","match":"optional"}}}"#).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let first = document.execute(&compiled).unwrap();
     let second = document.execute(&compiled).unwrap();
-    assert_eq!(first.payload(), br#"[{"optional":null,"text":"value"}]"#);
-    assert_eq!(first.payload(), second.payload());
-    assert_eq!(first.receipt().unwrap(), second.receipt().unwrap());
+    assert_eq!(
+        serde_json::to_vec(first.data()).unwrap(),
+        br#"[{"optional":null,"text":"value"}]"#
+    );
+    assert_eq!(first.data(), second.data());
     let document = prepared(
         "<article><p>A</p></article><!-- gap --><aside><p>\u{a0}<code>x`y</code><em>!</em>\u{2003}</p></aside>",
     );
-    let plan = ExtractionPlan::from_json(br#"{"version":6,"select":"article","following_siblings":1,"fields":{"reading":{"select":":scope + aside p","read":"markdown"},"normalized":{"select":":scope + aside p"}}}"#).unwrap();
+    let plan = ExtractionPlan::from_json(br#"{"version":7,"select":"article","following_siblings":1,"fields":{"reading":{"select":":scope + aside p","read":"markdown"},"normalized":{"select":":scope + aside p"}}}"#).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let first = document.execute(&compiled).unwrap();
     assert_eq!(
         serde_json::to_value(first.data()).unwrap(),
         serde_json::json!([{"reading":"\u{a0}``x`y``<em>\\!</em>\u{2003}","normalized":"x`y!"}])
     );
-    assert_eq!(
-        first.payload(),
-        document.execute(&compiled).unwrap().payload()
-    );
+    assert_eq!(first.data(), document.execute(&compiled).unwrap().data());
 }
 
 #[test]
@@ -97,13 +96,7 @@ fn structural_default_is_lazy_reused_and_includes_hidden_content() {
     for _ in 0..2 {
         let result = source.execute(&compiled).unwrap();
         assert_eq!(result.data().as_values().unwrap(), ["ABC"]);
-        assert_eq!(
-            (
-                result.receipt().unwrap().candidate_count,
-                result.receipt().unwrap().selected_count
-            ),
-            (1, 1)
-        );
+        assert_eq!((result.candidate_count(), result.selected_count()), (1, 1));
     }
     assert_eq!(source.parse_count(), 1);
 }
@@ -165,12 +158,12 @@ fn no_match_duplicates_and_empty_attributes_are_distinct() {
 
 #[test]
 fn closed_json_rejects_nested_duplicates_unknown_members_and_retired_versions() {
-    let minimal = br#"{"version":6,"select":"p"}"#;
+    let minimal = br#"{"version":7,"select":"p"}"#;
     ExtractionPlan::from_json(minimal).unwrap();
     for value in [
-        br#"{"version":6,"select":"p","select":"aside"}"#.as_slice(),
-        br#"{"version":6,"select":"p","unknown":true}"#.as_slice(),
-        br#"{"version":6,"select":"p","schema":"htmlcut.extraction.plan"}"#.as_slice(),
+        br#"{"version":7,"select":"p","select":"aside"}"#.as_slice(),
+        br#"{"version":7,"select":"p","unknown":true}"#.as_slice(),
+        br#"{"version":7,"select":"p","schema":"htmlcut.extraction.plan"}"#.as_slice(),
         br#"{"version":2,"select":"p"}"#.as_slice(),
     ] {
         assert!(ExtractionPlan::from_json(value).is_err());
@@ -183,8 +176,8 @@ mod discovery;
 mod fidelity;
 #[path = "contract_guards.rs"]
 mod guards;
-#[path = "contract_identity.rs"]
-mod identity;
+#[path = "schema_contract.rs"]
+mod schema_contract;
 
 #[path = "contract_budgets.rs"]
 mod budgets;
@@ -230,6 +223,3 @@ fn t06_t07_attribute_only_execution_never_calls_unrequested_projection_or_previe
     }
     assert_eq!(crate::projection::take_projection_calls(), [0, 1, 1, 1]);
 }
-
-#[path = "evidence_accounting.rs"]
-mod evidence_accounting;

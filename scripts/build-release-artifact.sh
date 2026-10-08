@@ -185,7 +185,7 @@ Registry dependency source is available at the exact name/version links in NOTIC
 ## More
 
 - CLI guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/cli.md
-- Getting started: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/getting-started.md
+- Getting started: https://github.com/resoltico/HTMLCut/blob/${source_commit}/README.md
 - Core embedding guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/core.md
 EOF
 }

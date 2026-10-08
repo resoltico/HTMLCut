@@ -558,3 +558,190 @@ fn ancestor_depth_check_accepts_the_existing_exact_depth() {
     assert_eq!(sink.parent_depth(element), Some(1));
     assert!(!sink.stop_requested());
 }
+
+#[test]
+fn adoption_counterexample_rejects_at_three_elements_and_accepts_at_four() {
+    assert_eq!(
+        Html::parse_document_bounded(
+            "<i></i>",
+            ParseLimits {
+                elements: 3,
+                ..limits()
+            }
+        ),
+        Err(ParseLimitExceeded::Elements),
+    );
+    let parsed = Html::parse_document_bounded(
+        "<i></i>",
+        ParseLimits {
+            elements: 4,
+            ..limits()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        parsed.html(),
+        "<html><head></head><body><i></i></body></html>"
+    );
+}
+
+#[test]
+fn authored_current_token_and_eof_cases_refuse_without_returning_a_partial_tree() {
+    // Each source forces a distinct tree-builder path. These are fixed authored
+    // rejection controls, including unfinished tokens emitted during EOF.
+    for source in [
+        "<b><i>X</b>Y</i>",
+        "<template><b>X</b></template>",
+        "<table>X<tr><td>Y</table>",
+        "<svg><foreignObject><p>X</p></foreignObject></svg>",
+        "<main><!--é unfinished comment",
+        "<script>é unfinished raw data",
+        "<main>é unfinished text",
+    ] {
+        for (policy, expected) in [
+            (
+                ParseLimits {
+                    elements: 3,
+                    ..limits()
+                },
+                ParseLimitExceeded::Elements,
+            ),
+            (
+                ParseLimits {
+                    nodes: 2,
+                    ..limits()
+                },
+                ParseLimitExceeded::Nodes,
+            ),
+            (
+                ParseLimits {
+                    depth: 1,
+                    ..limits()
+                },
+                ParseLimitExceeded::Depth,
+            ),
+            (
+                ParseLimits {
+                    work: 1,
+                    ..limits()
+                },
+                ParseLimitExceeded::Work,
+            ),
+        ] {
+            assert_eq!(
+                Html::parse_document_bounded(source, policy),
+                Err(expected),
+                "{source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn unfinished_utf8_text_comment_and_script_tokens_preserve_complete_values() {
+    let selector = |name| crate::Selector::parse(name).unwrap();
+    let text = Html::parse_document_bounded("<main>é unfinished text", limits()).unwrap();
+    assert_eq!(
+        text.select(&selector("main"))
+            .next()
+            .unwrap()
+            .text()
+            .collect::<String>(),
+        "é unfinished text"
+    );
+    let script = Html::parse_document_bounded("<script>é unfinished raw data", limits()).unwrap();
+    assert_eq!(
+        script
+            .select(&selector("script"))
+            .next()
+            .unwrap()
+            .text()
+            .collect::<String>(),
+        "é unfinished raw data"
+    );
+    let comment = Html::parse_document_bounded("<main><!--é unfinished comment", limits()).unwrap();
+    assert_eq!(
+        comment
+            .select(&selector("main"))
+            .next()
+            .unwrap()
+            .inner_html(),
+        "<!--é unfinished comment-->"
+    );
+}
+
+#[test]
+fn refusal_during_adoption_template_foster_foreign_and_eof_allocation_is_safe() {
+    for (source, policy, expected) in [
+        (
+            "<b><p>X</b>Y",
+            ParseLimits {
+                elements: 5,
+                ..limits()
+            },
+            ParseLimitExceeded::Elements,
+        ),
+        (
+            "<template>",
+            ParseLimits {
+                nodes: 5,
+                ..limits()
+            },
+            ParseLimitExceeded::Nodes,
+        ),
+        (
+            "<table>X",
+            ParseLimits {
+                nodes: 6,
+                ..limits()
+            },
+            ParseLimitExceeded::Nodes,
+        ),
+        (
+            "<svg><g>",
+            ParseLimits {
+                elements: 4,
+                ..limits()
+            },
+            ParseLimitExceeded::Elements,
+        ),
+        (
+            "<main><!--é",
+            ParseLimits {
+                nodes: 6,
+                ..limits()
+            },
+            ParseLimitExceeded::Nodes,
+        ),
+        (
+            "<script>é",
+            ParseLimits {
+                nodes: 5,
+                ..limits()
+            },
+            ParseLimitExceeded::Nodes,
+        ),
+        (
+            "<main>é",
+            ParseLimits {
+                nodes: 6,
+                ..limits()
+            },
+            ParseLimitExceeded::Nodes,
+        ),
+        (
+            "<main>é",
+            ParseLimits {
+                depth: 3,
+                ..limits()
+            },
+            ParseLimitExceeded::Depth,
+        ),
+    ] {
+        assert_eq!(
+            Html::parse_document_bounded(source, policy),
+            Err(expected),
+            "{source}"
+        );
+    }
+}
