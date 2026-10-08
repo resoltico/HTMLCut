@@ -16,6 +16,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
+- CSS ancestor/sibling matching now rejects a failed intermediate compound before
+  continuing traversal. Plans that relied on incorrect matches can now reject or
+  return an explicitly permitted empty selection.
+
 - Low-limit malformed formatting now refuses safely before adoption bookkeeping;
   a direct `<b><p>X</b>Y` allocation-limit control exposed a parser panic.
 - Selector tail ownership uses the same allocation-provenance path in production
