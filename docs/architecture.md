@@ -17,7 +17,8 @@ Same-token refusal still requires narrow html5ever/markup5ever stop hooks.
 `dom/selector.rs` supplies static CSS grammar and a budget-carrying public Element
 adapter. Navigation charges every visited node, including skipped non-elements;
 name/type/attribute/class predicates charge callbacks and inspected byte batches.
-A matcher holds one SelectorCaches for its immutable document/selector/scope pass.
+Iterative parsed-selector admission bounds combined matching paths at 64 units
+before selectors enter the recursive mature matcher. A matcher holds one SelectorCaches for its immutable document/selector/scope pass.
 It checks sticky exhaustion after matching, so negation cannot turn refusal into a
 successful non-match or match. No selector-engine internal budget hooks remain.
 
@@ -57,3 +58,19 @@ separate from full upstream adoption and actual crates.io publication. Local and
 required CI commands remain direct tools, with bounded smoke and focused native
 package/release controls. Authoritative CI and external rollout remain separate
 from locally executed evidence; see [release handoff](release-protocol.md).
+
+## Selector admission correction: design and separate challenge
+
+A raw syntax-nesting cap misses long combinator chains: the accepted 2001-compound
+query aborted a default 2 MiB consumer thread. Retain the matching engine and add
+one fixed, product-owned parsed matching-depth admission rule. Walk borrowed AST
+nodes iteratively so admission itself does not recurse on excessive input.
+
+Challenge the combined path rather than isolated chain/nesting caps. A branch at
+a leftward compound inherits that active chain, whereas a rightmost branch finishes
+before later leftward compounds execute. Measure the maximum alternative, including
+later list branches, :is/:where/:not/:has and functional selector arguments. Relative
+anchors count too. Forgiving-list parsing can discard invalid branches: inspect the
+retained AST, not raw punctuation. Public-core subprocess tests execute exact
+boundary controls on a 2 MiB thread; a separate original-tree probe must abort or
+violate the declared refusal. CLI refusal must remain exit 4 with empty stdout.

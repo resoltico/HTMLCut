@@ -47,7 +47,7 @@ Preformatted content uses a fence longer than conflicting literal backtick runs.
 Preparation defaults are 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048 and parser work 10,000,000. Execution defaults are work 1,000,000, candidates 100,000, selected 10,000, cells 100,000, one value 8 MiB and total leaf bytes 64 MiB. Each field slot costs one cell, including null/empty arrays; each all-valued string costs another. Complete candidates are counted for all/nth. Explicit maxima remain assumptions and are never silently clamped to resource limits.
 
 Queries admit at most 256 KiB including normalized defaults and escaping; patterns at
-most 8 KiB, syntax depth 64, fields 64 and expectations/aggregate exclusions 32 each.
+most 8 KiB, syntax depth 64, parsed selector matching depth 64, fields 64 and expectations/aggregate exclusions 32 each.
 Regex programs and DFA allowances share 8 MiB. CLI compact JSON admits at most
 64 MiB before LF; encoding failure publishes no data. Core results are typed and
 have no encoded-byte cap. Inspection caps samples at 10, previews at 160 characters,
@@ -57,6 +57,7 @@ identifiers/classes/attributes separately, and surveys at 16 groups/two samples 
 |---|---|---|
 | source bytes | UTF-8 acceptance and preparation, before parsing | oversized source rejected |
 | query bytes | before JSON parsing and normalized encoding | oversized plan rejected |
+| selector matching depth | parsed right-to-left compound/branch paths, before a selector is retained | compilation ResourceLimit above 64 units |
 | elements/nodes | each parser allocation, including template fragments and fixed bookkeeping | before governed allocation |
 | depth | parent ancestry plus child-subtree height on attachment/reparenting | before attachment |
 | parse work | sink allocation, mutation, warnings, ancestry and subtree-edge accounting plus retained parser stop hooks | sticky refusal discards partial DOM |
@@ -75,3 +76,13 @@ Unmodified upstream current-token stopping, pointer ownership and selector depth
 controls still fail. Five narrow carriers remain; independent product boundaries are
 implemented and verified as described in [dependencies](dependencies.md).
 Exact fork-internal work semantics are no longer a public compatibility promise.
+
+Matching-depth admission is separate from syntactic bracket/parenthesis depth and
+DOM depth. Each selector starts at one compound unit; combinator sequences add
+units right-to-left. A nested logical, relational or selector-argument branch adds
+its path to the depth of its containing compound. Alternatives and successive
+branches use the maximum path; relative selectors include their synthetic anchor.
+The iterative parsed-structure check refuses depth above 64 with compilation
+`selector_matching_depth` / configured_bound=64 before matching. It applies to
+roots, fields, guards, exclusions, inspection and generated discovery hints.
+Neither a work budget nor a larger thread stack substitutes for this admission.

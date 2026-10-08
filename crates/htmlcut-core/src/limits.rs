@@ -248,6 +248,8 @@ pub const MAX_PLAN_BYTES: usize = 256 * 1024;
 pub const MAX_PATTERN_BYTES: usize = 8 * 1024;
 /// Maximum selector/regular-expression syntactic nesting.
 pub const MAX_PATTERN_DEPTH: u32 = 64;
+/// Maximum parsed selector matching-depth units along one combined chain/branch path.
+pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
 /// Maximum compiled regular-expression size.
 pub const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum guards and exclusions individually per plan.

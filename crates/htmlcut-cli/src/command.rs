@@ -39,6 +39,8 @@ Use JSON for min=0/bounded/nth fields. Names are ASCII identifiers, at most 64 b
 Text is static: structural boundaries, Unicode whitespace collapse, parsed pre retained,
 inert payloads omitted, hidden/noscript retained. Literal/HTML are not byte-exact cutting.
 Unknown fields: inspect --file FILE, then extract one row's outer-html as above.
+Selectors admit at most 64 parsed matching-depth units across active chains/branches;
+this differs from syntax nesting and DOM depth. Excess depth is a resource refusal.
 Default data is bare canonical JSON plus LF; raw is one scalar without LF."#;
 
 #[derive(Args)]

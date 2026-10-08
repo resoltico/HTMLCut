@@ -169,13 +169,7 @@ pub(crate) fn compile_selector(value: &str) -> Result<Selector, ExtractionError>
             depth = depth.saturating_sub(1);
         }
     }
-    Selector::parse(value).map_err(|_| {
-        ExtractionError::new(
-            ErrorCode::InvalidSelector,
-            "compilation",
-            "The CSS selector is invalid or unsupported.",
-        )
-    })
+    Selector::parse(value)
 }
 
 fn compile_regex(pattern: &str, regex_budget: usize) -> Result<Regex, ExtractionError> {

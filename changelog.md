@@ -6,6 +6,12 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
+- **Breaking resource admission:** selectors exceeding 64 parsed matching-depth
+  units now receive a compilation ResourceLimit before execution. Combined
+  combinator/logical/relational paths count toward one bound across all selector
+  routes; syntax depth and DOM depth remain separate. Previously admitted long
+  chains could abort a normal Rust consumer thread.
+
 - **Breaking:** query/semantics 7 and owned typed Rust results separate extraction
   completion from JSON encoding and publication. Results no longer retain input or
   encoded data; the CLI bounds complete compact JSON at 64 MiB before its framing LF.

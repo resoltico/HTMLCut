@@ -13,6 +13,9 @@ use selectors::{
     parser::{self, ParseRelative, SelectorList, SelectorParseErrorKind},
 };
 use std::fmt;
+
+#[path = "selector_depth.rs"]
+mod depth;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Selector {
     selectors: SelectorList<StaticSelectors>,
@@ -42,11 +45,18 @@ pub(crate) struct BudgetedMatcher<'s, 'd> {
     caches: SelectorCaches,
 }
 impl Selector {
-    pub fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, crate::ExtractionError> {
         let mut parser = cssparser::Parser::new(value);
-        SelectorList::parse(&Parser, &mut parser, ParseRelative::No)
-            .map(|selectors| Self { selectors })
-            .map_err(|e| format!("{e:?}"))
+        let selectors =
+            SelectorList::parse(&Parser, &mut parser, ParseRelative::No).map_err(|_| {
+                crate::ExtractionError::new(
+                    crate::ErrorCode::InvalidSelector,
+                    "compilation",
+                    "The CSS selector is invalid or unsupported.",
+                )
+            })?;
+        depth::admit(&selectors)?;
+        Ok(Self { selectors })
     }
     pub fn budgeted<'s, 'd>(
         &'s self,

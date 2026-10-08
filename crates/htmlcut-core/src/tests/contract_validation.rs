@@ -179,10 +179,20 @@ fn t29_compilation_depth_quoting_flags_and_regex_size_are_bounded() {
     for depth in [63, 64, 65] {
         let selector = format!("{}p{}", ":is(".repeat(depth), ")".repeat(depth));
         let result = CompiledPlan::compile(&ExtractionPlan::css(selector).unwrap());
-        if depth == 65 {
-            assert_eq!(result.err().unwrap().code, ErrorCode::ResourceLimit);
-        } else {
+        if depth == 63 {
             assert!(result.is_ok());
+        } else {
+            let error = result.err().unwrap();
+            assert_eq!(error.code, ErrorCode::ResourceLimit);
+            assert_eq!(
+                error.resource_counter.as_deref(),
+                Some(if depth == 64 {
+                    "selector_matching_depth"
+                } else {
+                    "syntax_depth"
+                })
+            );
+            assert_eq!(error.configured_bound, Some(64));
         }
     }
     assert_eq!(
