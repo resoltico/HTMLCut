@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 #[test]
-fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
+fn directory_device_and_socket_paths_cannot_be_file_sources_or_plans() {
     let root = tempfile::tempdir().unwrap();
     let socket_path = root.path().join("input.socket");
     let _socket = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
