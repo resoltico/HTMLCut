@@ -9,4 +9,3 @@
 - [Platforms](platform-support.md)
 - [Release protocol](release-protocol.md)
 - [Contributing](../CONTRIBUTING.md)
-- [Temporary directory support](tempdir.md)

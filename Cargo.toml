@@ -3,7 +3,6 @@
 members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
-    "crates/htmlcut-tempdir",
     "fuzz",
     "patches/rust/scraper",
     "patches/rust/selectors",
@@ -15,7 +14,6 @@ members = [
 default-members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
-    "crates/htmlcut-tempdir",
 ]
 resolver = "3"
 
@@ -39,7 +37,6 @@ tempfile = "3.27.0"
 os_pipe = "1.2.3"
 rustix = { version = "1.1.5", features = ["fs"] }
 htmlcut-core = { path = "crates/htmlcut-core", version = "21.0.0" }
-htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "21.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
 # The selector/parser stack must travel with htmlcut-core into downstream git consumers.

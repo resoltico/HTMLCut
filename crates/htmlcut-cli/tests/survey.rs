@@ -76,7 +76,7 @@ fn malformed_scope_limit_and_missing_input_publish_no_survey() {
         );
         assert!(result.stdout.is_empty());
     }
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let missing = root.path().join("missing.html");
     let result = invoke(&["inspect", "--file", missing.to_str().unwrap()], b"");
     assert_eq!(result.status.code(), Some(5));

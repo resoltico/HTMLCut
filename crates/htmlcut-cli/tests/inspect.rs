@@ -55,7 +55,7 @@ fn targeted_inspection_counts_completely_and_labels_preview_abbreviation() {
 
 #[test]
 fn file_inspection_accepts_explicit_base_metadata_and_returns_complete_samples() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let path = root.path().join("source.html");
     std::fs::write(&path, "<p id='row'>é</p>").unwrap();
     let output = invoke(
@@ -84,7 +84,7 @@ fn file_inspection_accepts_explicit_base_metadata_and_returns_complete_samples()
 
 #[test]
 fn inspection_acquisition_failure_emits_no_partial_answer() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let absent = root.path().join("absent.html");
     let result = invoke(
         &[

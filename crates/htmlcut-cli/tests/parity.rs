@@ -4,7 +4,7 @@ use support::invoke;
 
 #[test]
 fn file_stdin_and_inline_library_have_equal_deterministic_results() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let html = "<p id='amount'>EUR 180</p>";
     let source = {
         let path = root.path().join("page.html");

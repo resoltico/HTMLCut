@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn regular_input_replaced_by_fifo_is_refused_for_source_and_plan() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let library = root.path().join("replaced-input.dylib");
     let compiled = Command::new("clang")
         .args(["-Wall", "-Wextra", "-Werror", "-dynamiclib"])

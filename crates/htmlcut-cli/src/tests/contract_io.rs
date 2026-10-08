@@ -55,7 +55,7 @@ fn destination_changed_during_acquisition_never_publishes_a_result() {
             Ok(bytes.len())
         }
     }
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let target = root.path().join("output.json");
     let mut source = ChangeDestination {
         path: target.clone(),
@@ -205,7 +205,7 @@ fn t20_t22_raw_cardinality_and_json_escaping_are_staged() {
 
 #[test]
 fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let target = root.path().join("result.json");
     let staged = crate::publication::Staged::prepare(&target, b"replacement", false).unwrap();
     std::fs::write(&target, b"winner").unwrap();
@@ -245,7 +245,7 @@ fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
 #[cfg(unix)]
 #[test]
 fn t31_symlink_destinations_cannot_follow_or_clobber_the_source() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     let alias = root.path().join("alias");
     std::fs::write(&source, "<p>180</p>").unwrap();

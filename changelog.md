@@ -23,6 +23,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
+- Core/CLI registry manifests are prepared. Tests use the existing maintained
+  tempfile dependency; the unpublished temporary-directory helper is removed.
+  Registry package checks remain blocked by unpublished parser/pointer carriers.
+
 - Direct Cargo and focused native/release checks replace xtask, custom coverage and
   mutation administration, source-shape policy and the duplicated API baseline.
   Published-core API checks use immutable Git source. Four native target promises,

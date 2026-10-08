@@ -577,7 +577,6 @@ version = "21.0.0"
 dependencies = [
  "clap",
  "htmlcut-core",
- "htmlcut-tempdir",
  "os_pipe",
  "rustix",
  "schemars",
@@ -596,13 +595,13 @@ dependencies = [
  "ego-tree",
  "htmlcut-scraper",
  "htmlcut-selectors",
- "htmlcut-tempdir",
  "pulldown-cmark",
  "regex",
  "schemars",
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "tempfile",
  "thiserror",
  "url",
 ]
@@ -680,10 +679,6 @@ dependencies = [
  "serde",
  "stable_deref_trait",
 ]
-
-[[package]]
-name = "htmlcut-tempdir"
-version = "21.0.0"
 
 [[package]]
 name = "htmlcut-tendril"

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
 name = "htmlcut-core"
-publish = false
+publish = true
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -29,7 +29,7 @@ url.workspace = true
 [dev-dependencies]
 pulldown-cmark.workspace = true
 boon.workspace = true
-htmlcut-tempdir.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

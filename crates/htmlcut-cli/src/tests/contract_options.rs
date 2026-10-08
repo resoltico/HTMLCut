@@ -98,7 +98,7 @@ fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_curren
 
 #[test]
 fn invalid_record_raw_plan_is_rejected_before_source() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let path = root.path().join("plan.json");
     std::fs::write(&path,br#"{"version":7,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
     let mut out = Vec::new();

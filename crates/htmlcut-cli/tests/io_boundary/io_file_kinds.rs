@@ -8,7 +8,7 @@ use std::sync::{
 
 #[test]
 fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let socket_path = root.path().join("input.socket");
     let _socket = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
     for path in [root.path(), std::path::Path::new("/dev/null"), &socket_path] {
@@ -47,7 +47,7 @@ fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
 
 #[test]
 fn regular_symlink_and_hardlink_inputs_preserve_complete_values() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     std::fs::write(&source, "<p>LINK VALUE</p>").unwrap();
     let symbolic = root.path().join("symbolic.html");
@@ -74,7 +74,7 @@ fn regular_symlink_and_hardlink_inputs_preserve_complete_values() {
 
 #[test]
 fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_values() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("stable-source.html");
     std::fs::write(&source, "<p>HELLO</p>").unwrap();
     let plan =

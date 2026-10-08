@@ -25,7 +25,7 @@ mod file_kinds;
 #[cfg(windows)]
 #[test]
 fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let evidence = root.path().join("windows-stdio.json");
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../scripts/native-windows-stdio.ps1");
@@ -69,7 +69,7 @@ fn native_console_unicode_and_mixed_streams_preserve_values_and_error_channels()
 #[cfg(windows)]
 #[test]
 fn native_named_pipe_paths_are_refused_for_every_file_role() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let evidence = root.path().join("windows-pipe-input.json");
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../scripts/native-windows-pipe-input.ps1");
@@ -112,7 +112,7 @@ fn native_named_pipe_paths_are_refused_for_every_file_role() {
 
 #[test]
 fn readonly_stdout_never_reports_nonempty_delivery_success() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     std::fs::write(&source, "<p>Hello</p>").unwrap();
     let sink = root.path().join("sink.txt");
@@ -192,7 +192,7 @@ fn readonly_stdout_never_reports_nonempty_delivery_success() {
 #[cfg(unix)]
 #[test]
 fn special_file_paths_fail_without_waiting_for_a_writer() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let fifo = root.path().join("input");
     assert!(
         Command::new("mkfifo")
@@ -234,7 +234,7 @@ fn special_file_paths_fail_without_waiting_for_a_writer() {
 
 #[test]
 fn unreadable_stdin_and_undeliverable_diagnostics_are_real_failures() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let sink = root.path().join("sink");
     let output = command()
         .args(["extract", "--stdin", "--select", "p"])
@@ -262,7 +262,7 @@ fn unreadable_stdin_and_undeliverable_diagnostics_are_real_failures() {
 #[cfg(unix)]
 #[test]
 fn inherited_closed_descriptors_are_repaired_by_the_pinned_runtime() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     std::fs::write(&source, "<p>Hello</p>").unwrap();
     for (close, args, expected) in [
@@ -309,7 +309,7 @@ fn inherited_closed_descriptors_are_repaired_by_the_pinned_runtime() {
 #[cfg(target_os = "macos")]
 #[test]
 fn descriptor_closed_at_delivery_is_not_sanitized_into_success() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let fixture = root.path().join("closed-writer.dylib");
     let compiler = Command::new("clang")
         .args(["-Wall", "-Wextra", "-Werror", "-dynamiclib"])
@@ -364,7 +364,7 @@ fn descriptor_closed_at_delivery_is_not_sanitized_into_success() {
 #[test]
 fn a_reader_disappearing_after_a_real_prefix_prevents_delivery_success() {
     use std::io::Read;
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     std::fs::write(&source, format!("<p>{}</p>", "x".repeat(1_000_000))).unwrap();
     let (mut reader, writer) = os_pipe::pipe().unwrap();

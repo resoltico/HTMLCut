@@ -152,7 +152,7 @@ fn impossible_raw_shapes_are_rejected_before_acquisition() {
 
 #[test]
 fn query_stdin_is_intentional_and_field_parse_failures_are_lexical() {
-    let directory = htmlcut_tempdir::tempdir().unwrap();
+    let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("source.html");
     std::fs::write(&source, "<p>A</p>").unwrap();
     let output = run(
@@ -219,7 +219,7 @@ fn raw_all_bounds_containing_one_allow_real_cardinality_to_decide() {
 
 #[test]
 fn query_stdin_byte_limit_rejects_before_source_execution() {
-    let directory = htmlcut_tempdir::tempdir().unwrap();
+    let directory = tempfile::tempdir().unwrap();
     let source = directory.path().join("source.html");
     std::fs::write(&source, "<p>A</p>").unwrap();
     let output = run(
