@@ -117,7 +117,7 @@ jobs:
         run: |
           rustup target add "${{ matrix.target_triple }}"
           source ./scripts/contributor-rust-tools.sh
-          cargo install cargo-about --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked
+          cargo install cargo-about --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked --features cli
           ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
           source ./scripts/release-targets.sh
           version=$(./scripts/workspace-version.sh Cargo.toml)

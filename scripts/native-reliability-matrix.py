@@ -24,6 +24,19 @@ def main():
     run('binary-version',['--version'],raw=f'htmlcut {package_version}\n'.encode())
     with tempfile.TemporaryDirectory(prefix='htmlcut-native-contract-') as directory:
         root=Path(directory)
+        # Exercise the matching admission change against every extracted native binary.
+        safe_selector='* '*63+'span'
+        safe_source=('<div>'*63+'<span>X</span>'+'</div>'*63).encode()
+        run('matching-depth-boundary',['extract','--stdin','--select',safe_selector],safe_source,expected=['X'])
+        for ancestors in [64,2000]:
+            selector='* '*ancestors+'span.private-query-marker'
+            result=run(f'matching-depth-refusal-{ancestors+1}',
+                ['extract','--stdin','--select',selector],
+                b'<span class="private-query-marker">private-source-marker</span>',failure=4)
+            facts=json.loads(result.stderr)
+            rows[-1]['passed'] &= facts['code']=='resource_limit' and facts['stage']=='compilation'
+            rows[-1]['passed'] &= facts['resource_counter']=='selector_matching_depth' and facts['configured_bound']==64
+            rows[-1]['passed'] &= b'private-query-marker' not in result.stderr and b'private-source-marker' not in result.stderr
         for label,source,css,projection,expected in [
             ('literal-hidden','<p>A<span hidden>B</span><template>T</template></p>','p','literal',['ABT']),
             ('reading-hidden','<p>A<span hidden>B</span><template>T</template><script>S</script></p>','p','markdown',['AB']),

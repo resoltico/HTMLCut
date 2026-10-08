@@ -3,7 +3,7 @@
 Install rustup and the native linker for your OS. Cargo reads `rust-toolchain.toml`.
 Python 3.11+ is needed for release checks. Install the tools listed by
 `source scripts/contributor-rust-tools.sh; htmlcut_contributor_cargo_tool_inventory`
-with `cargo install NAME --version VERSION --locked`.
+with `cargo install NAME --version VERSION --locked`. Add `--features cli` when installing `cargo-about`; its binary is feature-gated.
 
 ```sh
 ./check.sh
