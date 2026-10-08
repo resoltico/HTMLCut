@@ -178,6 +178,11 @@ main() {
         [[ -x "${binary_path}" ]] || htmlcut_die "packaged binary is not executable: ${binary_path}"
     fi
 
+    case "${target_triple}" in
+        aarch64-apple-darwin|x86_64-apple-darwin)
+            python3 "${script_dir}/verify-macos-signature.py" "${binary_path}"
+            ;;
+    esac
     "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
     local smoke_dir="${extract_root}/smoke-fixture"
     local fixture_path="${smoke_dir}/page.html"

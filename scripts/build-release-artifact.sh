@@ -188,6 +188,26 @@ Registry dependency source is available at the exact name/version links in NOTIC
 - Getting started: https://github.com/resoltico/HTMLCut/blob/${source_commit}/README.md
 - Core embedding guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/core.md
 EOF
+    case "${target_triple}" in
+        aarch64-apple-darwin|x86_64-apple-darwin)
+            cat >> "${package_dir}/README.md" <<'EOF'
+
+## macOS signature
+
+The executable is signed ad hoc: its signature checks sealed-code integrity, but
+provides no Developer ID identity or Apple notarization. Verify the extracted bytes:
+
+```sh
+codesign --verify --strict --verbose=2 ./htmlcut
+```
+
+A valid ad-hoc signature does not guarantee Gatekeeper acceptance of a quarantined
+download. If macOS blocks a download you trust, follow
+[Apple's per-application approval guidance](https://support.apple.com/en-us/102445).
+Package checksums and GitHub provenance are separate reference checks.
+EOF
+            ;;
+    esac
 }
 
 print_usage() {
@@ -228,6 +248,11 @@ main() {
     is_supported_release_target "${target_triple}" || htmlcut_usage_error \
         "${command_name}" \
         "unsupported release target triple: ${target_triple}"
+    case "${target_triple}" in
+        aarch64-apple-darwin|x86_64-apple-darwin)
+            [[ -x /usr/bin/codesign ]] || htmlcut_die "Apple packages require /usr/bin/codesign; build on macOS with its command-line tools"
+            ;;
+    esac
 
     local version
     version="$(htmlcut_workspace_version "${script_dir}" "${repo_root}")"
@@ -312,6 +337,14 @@ main() {
         "${source_commit}"
     [[ "$(git -C "${repo_root}" rev-parse --verify HEAD)" == "${source_commit}" ]] || htmlcut_die "package source changed during build"
     [[ -z "$(git -C "${repo_root}" status --porcelain)" ]] || htmlcut_die "package source became dirty during build"
+    case "${target_triple}" in
+        aarch64-apple-darwin|x86_64-apple-darwin)
+            /usr/bin/codesign --force --sign - --timestamp=none --identifier htmlcut "${package_dir}/${compiled_binary_name}" \
+                || htmlcut_die "ad-hoc signing of staged macOS executable failed"
+            python3 "${script_dir}/verify-macos-signature.py" "${package_dir}/${compiled_binary_name}" \
+                || htmlcut_die "staged macOS signature failed strict verification or ad-hoc metadata checks"
+            ;;
+    esac
     create_release_archive "${staging_root}" "${package_dir_name}" "${artifact_path}" "${archive_extension}"
 
     printf 'Built %s for HTMLCut %s with Cargo profile %s\n' "${artifact_name}" "${version}" "${cargo_profile}"

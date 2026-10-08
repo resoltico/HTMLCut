@@ -52,6 +52,14 @@ That floor applies to:
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
 
+Both macOS executables are explicitly signed ad hoc before packaging. The signature
+checks sealed-code integrity; it provides no Developer ID identity or Apple notarization.
+After extraction, run `codesign --verify --strict --verbose=2 ./htmlcut`.
+A valid ad-hoc signature does not guarantee Gatekeeper acceptance of a quarantined
+download. If macOS blocks a download you trust, use
+[Apple's per-application approval flow](https://support.apple.com/en-us/102445).
+Package checksums and GitHub provenance remain separate reference checks.
+
 Windows standalone artifacts target:
 
 - Windows x64 through the `x86_64-pc-windows-msvc` toolchain

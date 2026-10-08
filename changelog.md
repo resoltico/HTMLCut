@@ -6,6 +6,11 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
+- macOS ARM64 and Intel distributions explicitly sign the staged executable ad hoc
+  and verify extracted sealed-code integrity before package tests. This provides
+  neither Developer ID authentication nor Apple notarization or guaranteed
+  Gatekeeper acceptance; see [platform guidance](docs/platform-support.md).
+
 - **Breaking resource admission:** selectors exceeding 64 parsed matching-depth
   units now receive a compilation ResourceLimit before execution. Combined
   combinator/logical/relational paths count toward one bound across all selector

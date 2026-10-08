@@ -150,6 +150,18 @@ semantic and actual OS I/O checks. `publish-github-release.sh` refuses changes t
 published releases; `verify-github-release.sh` verifies immutable bytes. Preserve
 all published tags, releases and assets.
 
+The common builder signs only the staged macOS executable with
+`codesign --force --sign - --timestamp=none --identifier htmlcut` before archiving.
+Extracted ARM64 and Intel executables undergo strict signature and ad-hoc identifier
+verification before execution; native evidence includes their post-sign hashes and
+real unsigned/tampered rejection controls. Verify a downloaded macOS executable with
+`codesign --verify --strict --verbose=2 ./htmlcut`. Ad-hoc signing checks sealed-code
+integrity, supplies no Developer ID identity or Apple notarization, and does not
+guarantee Gatekeeper acceptance of a quarantined download. For a trusted download
+blocked by macOS, follow [Apple's per-application approval guidance](https://support.apple.com/en-us/102445).
+Checksums and GitHub provenance remain separate reference checks. This policy
+applies to newly built packages; published assets remain unchanged.
+
 ## Required-status handoff
 
 Read-only inspection on 8 October 2026 found strict main protection requiring
