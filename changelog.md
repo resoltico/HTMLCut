@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [21.0.0] - 2026-10-09 (unpublished)
+
 ### Changed
 
 - **Breaking query contract:** query and semantics versions advance from 6 to 7. Update saved v20 queries to `"version":7` and revalidate their selection, count and guard assumptions; old versions are rejected without compatibility readers. The `version`/`select`/`read`/`match`/`fields`/`expect` query shape remains; see the [contract reference](docs/core.md).
