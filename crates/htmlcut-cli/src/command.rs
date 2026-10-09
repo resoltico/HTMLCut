@@ -22,10 +22,20 @@ pub(crate) enum Operation {
     #[command(after_help = EXTRACT_HELP)]
     Extract(Box<Extract>),
     /// Survey repeated sibling/table groups, or count/sample an explicit selector.
+    #[command(after_help = INSPECT_HELP)]
     Inspect(Inspect),
     /// Retrieve one exhaustive named contract schema (optional for ordinary use).
-    Schema { name: String },
+    Schema {
+        #[arg(value_parser = clap::builder::PossibleValuesParser::new(htmlcut_core::SCHEMA_NAMES.iter().copied()))]
+        name: String,
+    },
 }
+const INSPECT_HELP: &str = r#"Survey eligibility: at least three direct HTML siblings sharing a tag, optionally
+constrained by a bounded class signature. Non-HTML, head, script, style, template, pre, code and noscript
+branches are excluded. Groups can overlap; no semantic fields are inferred.
+For smaller groups, use targeted --select and --samples, then one row's outer HTML:
+  htmlcut inspect --file page.html --select article --samples 2
+  htmlcut extract --file page.html --select article --nth 1 --read outer-html --raw"#;
 const EXTRACT_HELP: &str = r#"Examples:
   htmlcut extract --stdin --select h1
   htmlcut extract --file books.html --select article.product_pod --all --field title 'h3 a' attr:title --field price .price_color text

@@ -62,6 +62,7 @@ pub(crate) fn io_failure(error: std::io::Error) -> ExtractionError {
 pub(crate) fn io_failure_ref(error: &std::io::Error) -> ExtractionError {
     let problem = match error.kind() {
         std::io::ErrorKind::NotFound => htmlcut_core::IoProblem::NotFound,
+        std::io::ErrorKind::AlreadyExists => htmlcut_core::IoProblem::AlreadyExists,
         std::io::ErrorKind::PermissionDenied => htmlcut_core::IoProblem::PermissionDenied,
         std::io::ErrorKind::BrokenPipe => htmlcut_core::IoProblem::BrokenPipe,
         _ => {

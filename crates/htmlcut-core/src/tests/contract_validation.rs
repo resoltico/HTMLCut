@@ -289,23 +289,123 @@ fn t29_selector_comment_terminators_and_invalid_slashes_reach_the_authoritative_
 
 #[test]
 fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
-    for wire in [
-        r#"{"select":"p"}"#,
-        r#"{"version":5,"select":"p"}"#,
-        r#"{"version":"6","select":"p"}"#,
+    for (wire, code, path, problem) in [
+        (
+            r#"{"select":"PRIVATE_SELECTOR"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::MissingRequired,
+        ),
+        (
+            r#"{"version":null,"select":"PRIVATE_SELECTOR"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":"PRIVATE_VALUE","select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":true,"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":7.0,"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":{},"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":[],"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":5,"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::UnsupportedVersion,
+        ),
+        (
+            r#"{"version":-1,"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::UnsupportedVersion,
+        ),
+        (
+            r#"{"version":4294967296,"select":"p"}"#,
+            ErrorCode::InvalidSchema,
+            "$.version",
+            ConfigurationProblem::UnsupportedVersion,
+        ),
+        (
+            r#"{"version":7}"#,
+            ErrorCode::InvalidPlan,
+            "$.select",
+            ConfigurationProblem::MissingRequired,
+        ),
+        (
+            r#"{"version":7,"select":null}"#,
+            ErrorCode::InvalidPlan,
+            "$.select",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"{"version":7,"select":false}"#,
+            ErrorCode::InvalidPlan,
+            "$.select",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"["PRIVATE_VALUE"]"#,
+            ErrorCode::InvalidPlan,
+            "$",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            r#"null"#,
+            ErrorCode::InvalidPlan,
+            "$",
+            ConfigurationProblem::InvalidValue,
+        ),
     ] {
         let error = ExtractionPlan::from_json(wire.as_bytes()).unwrap_err();
-        assert_eq!(error.code, ErrorCode::InvalidSchema);
+        assert_eq!(error.code, code, "{wire}");
         assert_eq!(error.stage, "plan");
+        assert_eq!(error.plan_path.as_deref(), Some(path));
         assert_eq!(
             error.cause,
             Some(FailureCause::Configuration {
                 role: ConfigurationRole::Plan,
-                problem: ConfigurationProblem::UnsupportedVersion
+                problem
             })
         );
+        let serialized = serde_json::to_string(&error).unwrap();
+        assert!(!serialized.contains("PRIVATE_"));
+        assert!(serialized.len() < 1024);
     }
-    assert!(ExtractionPlan::from_json(br#"{"version":7}"#).is_err());
+    let repaired = ExtractionPlan::from_json(br#"{"version":7,"select":"p"}"#).unwrap();
+    assert_eq!(
+        prepared("<p>value</p>")
+            .execute(&CompiledPlan::compile(&repaired).unwrap())
+            .unwrap()
+            .data
+            .as_values()
+            .unwrap(),
+        &["value"]
+    );
     let plan =
         ExtractionPlan::from_json(br#"{"version":7,"select":"aside","match":"all"}"#).unwrap();
     assert_eq!(plan.match_mode, Match::All);

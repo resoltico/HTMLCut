@@ -27,6 +27,14 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
+- CLI file-publication errors retain portable I/O causes for absent/denied parents,
+  existing destinations and commit failures while preserving atomic publication.
+  Omitted query version/select and command input are classified as missing;
+  invalid version types differ from unsupported integer versions. Errors remain
+  source-free. Schema help lists the core's supported names; inspection help
+  explains the survey's minimum-three eligibility and targeted inspection for
+  smaller groups.
+
 - CSS ancestor/sibling matching now rejects a failed intermediate compound before
   continuing traversal. Plans that relied on incorrect matches can now reject or
   return an explicitly permitted empty selection.

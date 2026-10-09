@@ -209,7 +209,14 @@ fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
     let target = root.path().join("result.json");
     let staged = crate::publication::Staged::prepare(&target, b"replacement", false).unwrap();
     std::fs::write(&target, b"winner").unwrap();
-    assert!(staged.commit().is_err());
+    let error = staged.commit().unwrap_err();
+    assert_eq!(
+        error.evidence.cause,
+        Some(htmlcut_core::FailureCause::Io {
+            operation: htmlcut_core::IoOperation::Publication,
+            problem: htmlcut_core::IoProblem::AlreadyExists,
+        })
+    );
     assert_eq!(std::fs::read(&target).unwrap(), b"winner");
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     crate::publication::Staged::prepare(&target, b"replacement", true)
@@ -250,7 +257,16 @@ fn t31_symlink_destinations_cannot_follow_or_clobber_the_source() {
     let alias = root.path().join("alias");
     std::fs::write(&source, "<p>180</p>").unwrap();
     std::os::unix::fs::symlink(&source, &alias).unwrap();
-    assert!(crate::publication::Staged::prepare(&alias, b"changed", true).is_err());
+    let error = crate::publication::Staged::prepare(&alias, b"changed", true)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.evidence.cause,
+        Some(htmlcut_core::FailureCause::Io {
+            operation: htmlcut_core::IoOperation::Publication,
+            problem: htmlcut_core::IoProblem::UnsupportedKind,
+        })
+    );
     assert_eq!(std::fs::read_to_string(&source).unwrap(), "<p>180</p>");
 }
 

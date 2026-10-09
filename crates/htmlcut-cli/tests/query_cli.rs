@@ -253,3 +253,88 @@ fn json_escaping_cannot_publish_data_beyond_the_encoded_byte_bound() {
     assert_eq!(error["resource_counter"], "encoded_bytes");
     assert_eq!(error["configured_bound"], 64 * 1024 * 1024);
 }
+
+#[test]
+fn required_input_diagnostics_distinguish_omission_type_and_version() {
+    let missing_command = run(&[], "PRIVATE_SOURCE");
+    assert_eq!(missing_command.status.code(), Some(2));
+    assert!(missing_command.stdout.is_empty());
+    let diagnostic: serde_json::Value = serde_json::from_slice(&missing_command.stderr).unwrap();
+    assert_eq!(diagnostic["cause"]["kind"], "configuration");
+    assert_eq!(diagnostic["cause"]["role"], "arguments");
+    assert_eq!(diagnostic["cause"]["problem"], "missing_required");
+    for (plan, problem, path, message) in [
+        (
+            r#"{"select":"PRIVATE_SELECTOR"}"#,
+            "missing_required",
+            "$.version",
+            "requires a version member",
+        ),
+        (
+            r#"{"version":null,"select":"p"}"#,
+            "invalid_value",
+            "$.version",
+            "version must be an integer",
+        ),
+        (
+            r#"{"version":"PRIVATE_VALUE","select":"p"}"#,
+            "invalid_value",
+            "$.version",
+            "version must be an integer",
+        ),
+        (
+            r#"{"version":7.0,"select":"p"}"#,
+            "invalid_value",
+            "$.version",
+            "version must be an integer",
+        ),
+        (
+            r#"{"version":5,"select":"p"}"#,
+            "unsupported_version",
+            "$.version",
+            "Unsupported query version",
+        ),
+        (
+            r#"{"version":7}"#,
+            "missing_required",
+            "$.select",
+            "requires a select member",
+        ),
+        (
+            r#"{"version":7,"select":null}"#,
+            "invalid_value",
+            "$.select",
+            "select member must be a string",
+        ),
+    ] {
+        let output = run(
+            &["extract", "--stdin", "--plan-json", plan],
+            "<p>PRIVATE_SOURCE</p>",
+        );
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let diagnostic: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(diagnostic["plan_path"], path);
+        assert_eq!(diagnostic["cause"]["kind"], "configuration");
+        assert_eq!(diagnostic["cause"]["role"], "plan");
+        assert_eq!(diagnostic["cause"]["problem"], problem);
+        assert!(diagnostic["message"].as_str().unwrap().contains(message));
+        assert!(
+            !String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("PRIVATE_")
+        );
+    }
+    let repaired = run(
+        &[
+            "extract",
+            "--stdin",
+            "--plan-json",
+            r#"{"version":7,"select":"p"}"#,
+        ],
+        "<p>value</p>",
+    );
+    assert_eq!(repaired.status.code(), Some(0));
+    assert_eq!(repaired.stdout, b"[\"value\"]\n");
+    assert!(repaired.stderr.is_empty());
+}

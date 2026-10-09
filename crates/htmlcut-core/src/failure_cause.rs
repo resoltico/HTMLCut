@@ -54,15 +54,17 @@ pub enum IoOperation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IoProblem {
-    /// The input does not exist.
+    /// A required filesystem entry does not exist.
     NotFound,
+    /// The destination already exists and cannot be replaced.
+    AlreadyExists,
     /// Access is denied.
     PermissionDenied,
     /// A descriptor cannot perform the requested operation.
     InvalidDescriptor,
     /// A pipe has no reader.
     BrokenPipe,
-    /// Input is not an ordinary file.
+    /// A filesystem entry is not an ordinary file.
     UnsupportedKind,
     /// I/O failed for a reason not otherwise classified.
     Other,

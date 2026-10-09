@@ -4,6 +4,60 @@ mod support;
 use support::invoke;
 
 #[test]
+fn small_groups_use_targeted_inspection_while_survey_requires_three_members() {
+    let help = invoke(&["inspect", "--help"], b"");
+    assert!(help.status.success());
+    let help = String::from_utf8(help.stdout).unwrap();
+    for fact in [
+        "at least three",
+        "direct HTML siblings",
+        "--select",
+        "--samples",
+        "outer-html",
+    ] {
+        assert!(help.contains(fact), "{fact} missing from inspect help");
+    }
+    let pair = b"<section><article class=record>First</article><article class=record>Second</article></section>";
+    let survey = invoke(&["inspect", "--stdin"], pair);
+    assert!(survey.status.success());
+    let survey: serde_json::Value = serde_json::from_slice(&survey.stdout).unwrap();
+    assert_eq!(survey["group_count"], 0);
+    assert_eq!(survey["groups_complete"], true);
+    assert_eq!(survey["groups"], serde_json::json!([]));
+    let targeted = invoke(
+        &[
+            "inspect",
+            "--stdin",
+            "--select",
+            "article.record",
+            "--samples",
+            "2",
+        ],
+        pair,
+    );
+    assert!(targeted.status.success());
+    let targeted: serde_json::Value = serde_json::from_slice(&targeted.stdout).unwrap();
+    assert_eq!(targeted["count"], 2);
+    assert_eq!(targeted["samples"].as_array().unwrap().len(), 2);
+    let triple = b"<section><article class=record>First</article><article class=record>Second</article><article class=record>Third</article></section>";
+    let survey = invoke(&["inspect", "--stdin"], triple);
+    assert!(survey.status.success());
+    let survey: serde_json::Value = serde_json::from_slice(&survey.stdout).unwrap();
+    assert_eq!(survey["group_count"], 1);
+    assert_eq!(survey["groups"][0]["count"], 3);
+    let selector = survey["groups"][0]["selector"].as_str().unwrap();
+    let members = invoke(
+        &["extract", "--stdin", "--select", selector, "--all"],
+        triple,
+    );
+    assert!(members.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&members.stdout).unwrap(),
+        serde_json::json!(["First", "Second", "Third"])
+    );
+}
+
+#[test]
 fn survey_surfaces_a_table_group_with_header_and_row_shape_evidence() {
     let source = b"<table id=population><tr><th>Location</th><th>Population</th></tr><tr><td>India</td><td>1</td></tr><tr><td>China</td><td>2</td></tr></table>";
     let result = invoke(&["inspect", "--stdin"], source);

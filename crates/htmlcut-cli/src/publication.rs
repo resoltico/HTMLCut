@@ -24,6 +24,7 @@ pub(crate) fn io_failure(
     let problem = match error.kind() {
         io::ErrorKind::PermissionDenied => htmlcut_core::IoProblem::PermissionDenied,
         io::ErrorKind::NotFound => htmlcut_core::IoProblem::NotFound,
+        io::ErrorKind::AlreadyExists => htmlcut_core::IoProblem::AlreadyExists,
         io::ErrorKind::BrokenPipe => htmlcut_core::IoProblem::BrokenPipe,
         _ => {
             #[cfg(unix)]
@@ -100,12 +101,21 @@ pub(crate) fn normalized_target(path: &Path) -> Result<PathBuf, ExtractionError>
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let parent = fs::canonicalize(parent).map_err(|_| failure())?;
+    let parent = fs::canonicalize(parent)
+        .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))?;
     let target = parent.join(name);
-    if let Ok(metadata) = fs::symlink_metadata(&target)
-        && (metadata.file_type().is_symlink() || !metadata.is_file())
-    {
-        return Err(failure());
+    match fs::symlink_metadata(&target) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(failure().with_cause(htmlcut_core::FailureCause::Io {
+                operation: htmlcut_core::IoOperation::Publication,
+                problem: htmlcut_core::IoProblem::UnsupportedKind,
+            }));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(io_failure(error, htmlcut_core::IoOperation::Publication));
+        }
     }
     Ok(target)
 }
@@ -127,8 +137,15 @@ pub(crate) fn validate_destinations(
                 "Input and output destinations must be distinct.",
             ));
         }
-        if !overwrite && target.exists() {
-            return Err(failure());
+        if !overwrite
+            && target
+                .try_exists()
+                .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))?
+        {
+            return Err(io_failure(
+                io::Error::from(io::ErrorKind::AlreadyExists),
+                htmlcut_core::IoOperation::Publication,
+            ));
         }
         seen.push(target);
     }
@@ -167,7 +184,8 @@ impl Staged {
         write: impl FnOnce(&mut fs::File) -> Result<(), ExtractionError>,
     ) -> Result<Self, ExtractionError> {
         let target = normalized_target(target)?;
-        let mut file = NamedTempFile::new_in(target.parent().unwrap()).map_err(|_| failure())?;
+        let mut file = NamedTempFile::new_in(target.parent().unwrap())
+            .map_err(|error| io_failure(error, htmlcut_core::IoOperation::Publication))?;
         finish_staged_writer(file.as_file_mut(), write, |file| file.sync_all())?;
         Ok(Self {
             file,
@@ -184,7 +202,7 @@ impl Staged {
             self.file.persist_noclobber(&self.target)
         }
         .map(|_| ())
-        .map_err(|_| failure())
+        .map_err(|error| io_failure(error.error, htmlcut_core::IoOperation::Publication))
     }
 }
 
