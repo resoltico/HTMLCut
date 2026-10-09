@@ -102,6 +102,9 @@ def main():
     validate_binding(args.package, args.target, args.version, args.source_sha, args.shell)
     before = package_digest(args.package)
     io_command = ["cargo", "test", "-p", "htmlcut-cli", "--test", "io_boundary", "--target", args.target, "--locked"]
+    commit_command = ["cargo", "test", "-p", "htmlcut-cli", "--bin", "htmlcut",
+                      "publication::writer_tests::failed_commit_preserves_the_filesystem_cause_and_allows_repair",
+                      "--target", args.target, "--locked", "--", "--exact"]
     binary_sha256 = None
     macos_signature = None
     try:
@@ -131,6 +134,8 @@ def main():
                     environment["HTMLCUT_WINDOWS_PIPE_EVIDENCE"] = str(windows_pipe_path.resolve())
                 subprocess.run(io_command, check=True, stdout=log, stderr=subprocess.STDOUT,
                                env=environment, timeout=600)
+                subprocess.run(commit_command, check=True, stdout=log, stderr=subprocess.STDOUT,
+                               env=environment, timeout=600)
                 if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256:
                     raise ValueError("Packaged executable changed during native I/O tests")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -157,6 +162,8 @@ def main():
         "binary_sha256": binary_sha256,
         "native_io_command": io_command,
         "native_io_exit_status": 0,
+        "publication_commit_command": commit_command,
+        "publication_commit_exit_status": 0,
         "matrix": matrix_path.name,
         "matrix_sha256": hashlib.sha256(matrix_path.read_bytes()).hexdigest(),
         "smoke_log_sha256": hashlib.sha256(args.smoke_log.read_bytes()).hexdigest(),

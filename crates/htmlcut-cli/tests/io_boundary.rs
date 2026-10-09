@@ -422,3 +422,104 @@ fn a_reader_disappearing_after_a_real_prefix_prevents_delivery_success() {
     assert_eq!(error["cause"]["operation"], "stdout");
     assert_eq!(error["cause"]["problem"], "broken_pipe");
 }
+
+#[test]
+fn publication_cause_facts_distinguish_missing_parent_and_existing_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("PRIVATE_SOURCE.html");
+    std::fs::write(&source, "<p>PRIVATE_PAYLOAD</p>").unwrap();
+    let parent = root.path().join("PRIVATE_PARENT");
+    let target = parent.join("PRIVATE_OUTPUT.json");
+    let run = |overwrite: bool, raw: bool| {
+        let mut cmd = command();
+        cmd.args(["extract", "--file"])
+            .arg(&source)
+            .args(["--select", "p", "--output"])
+            .arg(&target);
+        if overwrite {
+            cmd.arg("--overwrite");
+        }
+        if raw {
+            cmd.arg("--raw");
+        }
+        cmd.output().unwrap()
+    };
+    let refusal = |output: std::process::Output, problem: &str| {
+        assert_eq!(output.status.code(), Some(5));
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.len() < 1024);
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("PRIVATE_"));
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["code"], "publication");
+        assert_eq!(
+            error["cause"],
+            serde_json::json!({
+                "kind": "io", "operation": "publication", "problem": problem,
+            })
+        );
+    };
+    refusal(run(false, false), "not_found");
+    assert!(!target.exists());
+    std::fs::create_dir(&parent).unwrap();
+    let repaired = run(false, false);
+    assert!(repaired.status.success());
+    assert!(repaired.stdout.is_empty() && repaired.stderr.is_empty());
+    assert_eq!(std::fs::read(&target).unwrap(), b"[\"PRIVATE_PAYLOAD\"]\n");
+    refusal(run(false, true), "already_exists");
+    assert_eq!(std::fs::read(&target).unwrap(), b"[\"PRIVATE_PAYLOAD\"]\n");
+    let replaced = run(true, true);
+    assert!(replaced.status.success());
+    assert!(replaced.stdout.is_empty() && replaced.stderr.is_empty());
+    assert_eq!(std::fs::read(&target).unwrap(), b"PRIVATE_PAYLOAD");
+    assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 1);
+    std::fs::remove_file(&target).unwrap();
+    std::fs::create_dir(&target).unwrap();
+    refusal(run(true, false), "unsupported_kind");
+    assert!(target.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn denied_output_staging_has_a_portable_cause_and_succeeds_after_repair() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("PRIVATE_SOURCE.html");
+    std::fs::write(&source, "<p>PRIVATE_PAYLOAD</p>").unwrap();
+    let parent = root.path().join("PRIVATE_PARENT");
+    std::fs::create_dir(&parent).unwrap();
+    let target = parent.join("PRIVATE_RESULT");
+    // No search permission refuses destination inspection; no write permission refuses staging.
+    for mode in [0o000, 0o500] {
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(mode)).unwrap();
+        let output = command()
+            .args(["extract", "--file"])
+            .arg(&source)
+            .args(["--select", "p", "--output"])
+            .arg(&target)
+            .output()
+            .unwrap();
+        // Restore before assertions so the enclosing directory is removable on failure.
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(output.status.code(), Some(5));
+        assert!(output.stdout.is_empty());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("PRIVATE_"));
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(
+            error["cause"],
+            serde_json::json!({
+                "kind": "io", "operation": "publication", "problem": "permission_denied",
+            })
+        );
+        assert!(!target.exists());
+        assert_eq!(std::fs::read_dir(&parent).unwrap().count(), 0);
+    }
+    let repaired = command()
+        .args(["extract", "--file"])
+        .arg(&source)
+        .args(["--select", "p", "--output"])
+        .arg(&target)
+        .output()
+        .unwrap();
+    assert!(repaired.status.success());
+    assert_eq!(std::fs::read(&target).unwrap(), b"[\"PRIVATE_PAYLOAD\"]\n");
+}

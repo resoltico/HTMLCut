@@ -29,7 +29,9 @@ fn known_option(command: &Command, context: &str) -> Option<String> {
 
 pub(crate) fn failure(error: &clap::Error) -> ExtractionError {
     let problem = match error.kind() {
-        ErrorKind::MissingRequiredArgument | ErrorKind::MissingSubcommand => {
+        ErrorKind::MissingRequiredArgument
+        | ErrorKind::MissingSubcommand
+        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
             ConfigurationProblem::MissingRequired
         }
         ErrorKind::ArgumentConflict => ConfigurationProblem::ConflictingOptions,
@@ -102,6 +104,23 @@ mod tests {
                     .contains("SYNTHETIC_SECRET")
             );
         }
+    }
+
+    #[test]
+    fn actual_missing_command_help_is_a_required_input_failure() {
+        let error = Cli::try_parse_from(["htmlcut"]).err().unwrap();
+        assert_eq!(
+            error.kind(),
+            ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+        let result = failure(&error);
+        assert_eq!(
+            result.evidence.cause,
+            Some(FailureCause::Configuration {
+                role: ConfigurationRole::Arguments,
+                problem: ConfigurationProblem::MissingRequired,
+            })
+        );
     }
 
     #[test]

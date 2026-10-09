@@ -42,7 +42,19 @@ Preformatted content uses a fence longer than conflicting literal backtick runs.
 
 `inspect(select, samples)` counts completely and returns 1–10 bounded samples containing exact id/classes, attribute names and the shared structural reading. Independent completeness labels identify identifier/name/text/sample omissions. Oversized identifiers are omitted rather than shortened into misleading selector tokens. Typed observations contain counts, samples and completeness flags, without source digests. The CLI applies a 16 KiB encoded delivery cap; encoding failure publishes no observation.
 
-`survey(within, limit)` discovers repeated direct HTML siblings under a fresh 10 million-unit budget, with 1,024 signatures per parent and at most sixteen returned groups. Optional scope must select exactly one node. Groups can overlap. Every hint uses bounded CSS escaping and must match exact original members in order; null is a valid absence of proof. Table facts include complete structural-text headers (reading `text`), uniqueness, direct cell ranges and spans, without column meaning or grid reconstruction. Incomplete headers are not usable exact guards. For field discovery, extract one representative row's outer HTML.
+`survey(within, limit)` discovers groups of at least three direct HTML siblings
+sharing a tag, optionally constrained by a bounded class signature, under a fresh 10 million-unit budget,
+with 1,024 signatures per parent and at most sixteen returned groups. Non-HTML,
+head, script, style, template, pre, code and noscript branches are excluded.
+Optional scope must select exactly one node. Groups can overlap; the survey does
+not infer semantic fields or columns. An empty complete survey means no eligible
+groups, not that the page has no records. For one or two records, use
+`inspect(select, samples)` (CLI `--select CSS --samples 2`) to count and sample,
+then extract one representative row's outer HTML for field discovery. Every hint
+uses bounded CSS escaping and must match exact original members in order; null
+is a valid absence of proof. Table facts include complete structural-text headers
+(reading `text`), uniqueness, direct cell ranges and spans, without column meaning
+or grid reconstruction. Incomplete headers are not usable exact guards.
 
 Preparation defaults are 50 MiB source, 250,000 elements, 1,000,000 nodes, depth 2,048 and parser work 10,000,000. Execution defaults are work 1,000,000, candidates 100,000, selected 10,000, cells 100,000, one value 8 MiB and total leaf bytes 64 MiB. Each field slot costs one cell, including null/empty arrays; each all-valued string costs another. Complete candidates are counted for all/nth. Explicit maxima remain assumptions and are never silently clamped to resource limits.
 

@@ -13,12 +13,52 @@ fn refuses_extra<T: serde::de::DeserializeOwned>(valid: &str, extra: &serde_json
 }
 #[cfg(all(feature = "fuzzing", not(test)))]
 fuzz_target!(|data: &[u8]| {
-    use htmlcut_core::{ExtractionPlan, Guard, Reading, RecordField};
+    use htmlcut_core::{
+        ConfigurationProblem, ConfigurationRole, ExtractionPlan, FailureCause, Guard, Reading,
+        RecordField,
+    };
     let raw = &data[..data.len().min(4096)];
     let extra = serde_json::from_slice(raw).unwrap_or(serde_json::Value::Null);
     let _ = htmlcut_core::parse_closed_json(raw, htmlcut_core::MAX_PLAN_BYTES);
     let _ = ExtractionPlan::from_json(raw);
     let _ = serde_json::from_slice::<ExtractionPlan>(raw);
+    for (wire, path, problem) in [
+        (
+            serde_json::json!({"select":"p"}),
+            "$.version",
+            ConfigurationProblem::MissingRequired,
+        ),
+        (
+            serde_json::json!({"version":null,"select":"p"}),
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            serde_json::json!({"version":"private","select":"p"}),
+            "$.version",
+            ConfigurationProblem::InvalidValue,
+        ),
+        (
+            serde_json::json!({"version":5,"select":"p"}),
+            "$.version",
+            ConfigurationProblem::UnsupportedVersion,
+        ),
+        (
+            serde_json::json!({"version":7}),
+            "$.select",
+            ConfigurationProblem::MissingRequired,
+        ),
+    ] {
+        let error = ExtractionPlan::from_json(&serde_json::to_vec(&wire).unwrap()).unwrap_err();
+        assert_eq!(error.plan_path.as_deref(), Some(path));
+        assert_eq!(
+            error.cause,
+            Some(FailureCause::Configuration {
+                role: ConfigurationRole::Plan,
+                problem,
+            })
+        );
+    }
     refuses_extra::<ExtractionPlan>(r#"{"version":7,"select":"p"}"#, &extra);
     refuses_extra::<RecordField>(r#"{"select":"p"}"#, &extra);
     refuses_extra::<Guard>(r#"{"select":"p"}"#, &extra);

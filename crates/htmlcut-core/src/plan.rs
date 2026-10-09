@@ -211,16 +211,63 @@ impl ExtractionPlan {
         Self::from_value(crate::parse_closed_json(bytes, crate::MAX_PLAN_BYTES)?)
     }
     fn from_value(mut value: serde_json::Value) -> Result<Self, ExtractionError> {
-        if value.get("version").and_then(serde_json::Value::as_u64) != Some(SCHEMA_VERSION.into()) {
-            return Err(ExtractionError::new(
-                ErrorCode::InvalidSchema,
-                "plan",
-                "Unsupported query version.",
+        let failure = |code, path: &str, problem, message| {
+            let mut error = ExtractionError::new(code, "plan", message).with_cause(
+                crate::FailureCause::Configuration {
+                    role: crate::ConfigurationRole::Plan,
+                    problem,
+                },
+            );
+            error.plan_path = Some(path.into());
+            error
+        };
+        let object = value.as_object().ok_or_else(|| {
+            failure(
+                ErrorCode::InvalidPlan,
+                "$",
+                crate::ConfigurationProblem::InvalidValue,
+                "The query must be a JSON object.",
             )
-            .with_cause(crate::FailureCause::Configuration {
-                role: crate::ConfigurationRole::Plan,
-                problem: crate::ConfigurationProblem::UnsupportedVersion,
-            }));
+        })?;
+        let version = object.get("version").ok_or_else(|| {
+            failure(
+                ErrorCode::InvalidSchema,
+                "$.version",
+                crate::ConfigurationProblem::MissingRequired,
+                "The query requires a version member.",
+            )
+        })?;
+        if !version.is_i64() && !version.is_u64() {
+            return Err(failure(
+                ErrorCode::InvalidSchema,
+                "$.version",
+                crate::ConfigurationProblem::InvalidValue,
+                "The query version must be an integer.",
+            ));
+        }
+        if version.as_u64() != Some(SCHEMA_VERSION.into()) {
+            return Err(failure(
+                ErrorCode::InvalidSchema,
+                "$.version",
+                crate::ConfigurationProblem::UnsupportedVersion,
+                "Unsupported query version.",
+            ));
+        }
+        let select = object.get("select").ok_or_else(|| {
+            failure(
+                ErrorCode::InvalidPlan,
+                "$.select",
+                crate::ConfigurationProblem::MissingRequired,
+                "The query requires a select member.",
+            )
+        })?;
+        if !select.is_string() {
+            return Err(failure(
+                ErrorCode::InvalidPlan,
+                "$.select",
+                crate::ConfigurationProblem::InvalidValue,
+                "The query select member must be a string.",
+            ));
         }
         // Sort incoming objects before field deserialization too, including under
         // downstream preserve_order unification; malformed fields fail lexically.
