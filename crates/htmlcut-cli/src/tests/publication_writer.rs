@@ -155,9 +155,14 @@ fn failed_commit_preserves_the_filesystem_cause_and_allows_repair() {
     std::fs::create_dir(&parent).unwrap();
     let target = parent.join("private-result");
     let staged = Staged::prepare(&target, b"new", false).unwrap();
-    // Move the real parent after staging, so persist encounters a missing destination parent.
-    // This exercises tempfile's PersistError, rather than a constructed error or preflight.
+    // Both fixtures reach tempfile's PersistError after successful staging.
+    // Windows locks the parent while the staging handle is open: create a competing
+    // destination there instead. POSIX permits moving the parent to make it absent.
+    #[cfg(windows)]
+    std::fs::write(&target, b"old").unwrap();
+    #[cfg(not(windows))]
     let moved = root.path().join("moved-parent");
+    #[cfg(not(windows))]
     std::fs::rename(&parent, &moved).unwrap();
     let error = staged.commit().unwrap_err();
     assert_eq!(error.code, ErrorCode::Publication);
@@ -165,7 +170,11 @@ fn failed_commit_preserves_the_filesystem_cause_and_allows_repair() {
         error.evidence.cause,
         Some(FailureCause::Io {
             operation: IoOperation::Publication,
-            problem: IoProblem::NotFound,
+            problem: if cfg!(windows) {
+                IoProblem::AlreadyExists
+            } else {
+                IoProblem::NotFound
+            },
         })
     );
     assert!(
@@ -173,11 +182,15 @@ fn failed_commit_preserves_the_filesystem_cause_and_allows_repair() {
             .unwrap()
             .contains("private-result")
     );
+    #[cfg(windows)]
+    assert_eq!(std::fs::read(&target).unwrap(), b"old");
+    #[cfg(not(windows))]
     assert!(!target.exists());
     // The moved staging path is intentionally retained here; tempfile cannot know a renamed
     // directory's location, and the enclosing temporary directory removes it after the test.
+    #[cfg(not(windows))]
     std::fs::rename(&moved, &parent).unwrap();
-    Staged::prepare(&target, b"repaired", false)
+    Staged::prepare(&target, b"repaired", cfg!(windows))
         .unwrap()
         .commit()
         .unwrap();
