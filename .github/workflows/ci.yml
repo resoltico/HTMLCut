@@ -42,10 +42,9 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - shell: bash
-        run: |
-          source ./scripts/contributor-rust-tools.sh
-          cargo install cargo-deny --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-deny" {print $2}')" --locked
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-deny
       - run: ./check.sh
       - name: Strict provenance and ownership
         shell: bash
@@ -70,7 +69,9 @@ jobs:
           set -euo pipefail
           source ./scripts/contributor-rust-tools.sh
           rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component rust-src --profile minimal
-          cargo install cargo-fuzz --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-fuzz" {print $2}')" --locked
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-fuzz
       - name: Execute both bounded smokes
         shell: bash
         run: ./scripts/focused-smoke.sh "$RUNNER_TEMP/focused-smoke"
@@ -92,10 +93,12 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-semver-checks
       - shell: bash
         run: |
           source ./scripts/contributor-rust-tools.sh
-          cargo install cargo-semver-checks --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-semver-checks" {print $2}')" --locked
           cargo semver-checks check-release -p htmlcut-core --baseline-rev "$HTMLCUT_PUBLISHED_BASELINE_SOURCE"
   release-target-smoke:
     name: Native package ${{ matrix.id }}
@@ -113,13 +116,15 @@ jobs:
           fetch-depth: 0
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-about
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           rustup target add "${{ matrix.target_triple }}"
           source ./scripts/contributor-rust-tools.sh
-          cargo install cargo-about --version "$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked --features cli
           ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
           source ./scripts/release-targets.sh
           version=$(./scripts/workspace-version.sh Cargo.toml)

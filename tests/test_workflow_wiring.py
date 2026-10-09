@@ -92,3 +92,55 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertNotIn("scripts/build-release-artifact.sh", body)
         self.assertIn("dist/published-*.json", body)
         self.assertIn("dist/native-evidence-${{ matrix.id }}*.json", text)
+
+
+class ContributorToolCacheTest(unittest.TestCase):
+    def test_install_uses_pinned_compiler_locked_version_and_required_feature(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            cargo = bin_dir / "cargo"
+            cargo.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" > "$ARGUMENT_LOG"
+while [[ "$1" != --root ]]; do shift; done
+mkdir -p "$2/bin"
+printf '#!/usr/bin/env bash\\nprintf "cargo-about 0.9.2\\\\n"\\n' > "$2/bin/cargo-about"
+chmod +x "$2/bin/cargo-about"
+""")
+            cargo.chmod(0o755)
+            install_root = root / "tool"
+            log = root / "arguments"
+            command = 'source scripts/contributor-rust-tools.sh; htmlcut_install_contributor_cargo_tool cargo-about "$INSTALL_ROOT"'
+            result = subprocess.run(["bash", "-c", command], cwd=ROOT,
+                env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                     "INSTALL_ROOT": str(install_root), "ARGUMENT_LOG": str(log)}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            pinned = subprocess.check_output(["bash", "-c", 'source scripts/contributor-rust-tools.sh; echo "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN"'], cwd=ROOT, text=True).strip()
+            self.assertEqual(log.read_text().splitlines(), ["+" + pinned, "install", "cargo-about", "--version", "0.9.2", "--locked", "--root", str(install_root), "--features", "cli"])
+            log.unlink()
+            self.assertEqual(subprocess.run(["bash", "-c", command], cwd=ROOT,
+                env={**os.environ, "INSTALL_ROOT": str(install_root)}, capture_output=True).returncode, 0)
+            self.assertFalse(log.exists(), "Valid cached executable must not reinstall")
+            (install_root / "bin/cargo-about").write_text('#!/usr/bin/env bash\nprintf "cargo-about 0.1.0\\n"\n')
+            rejected = subprocess.run(["bash", "-c", command], cwd=ROOT,
+                env={**os.environ, "INSTALL_ROOT": str(install_root)}, capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("version mismatch", rejected.stderr)
+
+    def test_cache_only_saves_trusted_main_tools_and_preserves_all_jobs(self):
+        action = (ROOT / ".github/actions/cargo-tool/action.yml").read_text()
+        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/main'", action)
+        self.assertIn("if: github.event_name != 'push' || github.ref != 'refs/heads/main'", action)
+        self.assertIn("actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9", action)
+        self.assertNotIn("restore-keys:", action)
+        self.assertIn("$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}", action)
+        self.assertIn('"scripts/contributor-rust-tools.sh", "rust-toolchain.toml"', action)
+        self.assertNotIn(".htmlcut-artifacts", action)
+        self.assertNotIn("dist/", action)
+        ci = (ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertEqual(ci.count("uses: ./.github/actions/cargo-tool"), 4)
+        self.assertIn("needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, semver]", ci)
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertEqual(release.count("uses: ./.github/actions/cargo-tool"), 1)

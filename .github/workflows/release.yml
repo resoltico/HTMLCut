@@ -201,8 +201,9 @@ jobs:
           echo "compiled_binary=$(binary_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
 
       - name: Install native attribution tool
-        shell: bash
-        run: cargo install cargo-about --version "$(source ./scripts/contributor-rust-tools.sh; htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-about" {print $2}')" --locked --features cli
+        uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-about
 
       - name: Build standalone executable
         shell: bash
