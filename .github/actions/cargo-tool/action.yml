@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Pinned contributor Cargo tool
+description: Reuse trusted pinned tool binaries without caching project products or evidence
+inputs:
+  tool:
+    description: Tool name from the authoritative contributor inventory
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: inventory
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        RUNNER_OS_ID: ${{ runner.os }}
+        RUNNER_ARCH_ID: ${{ runner.arch }}
+      run: |
+        set -euo pipefail
+        source ./scripts/contributor-rust-tools.sh
+        htmlcut_contributor_cargo_tool_inventory | awk -v tool="$TOOL" '$1 == tool {found=1} END {exit !found}'
+        temporary="$RUNNER_TEMP"
+        if command -v cygpath >/dev/null 2>&1; then temporary="$(cygpath -u "$temporary")"; fi
+        root="$temporary/htmlcut-cargo-tools/$TOOL"
+        cache_path="$root"
+        if command -v cygpath >/dev/null 2>&1; then cache_path="$(cygpath -w "$root")"; fi
+        inventory_hash=$(python3 -c 'import hashlib; from pathlib import Path; h=hashlib.sha256(); [h.update(Path(p).read_bytes()) for p in ["scripts/contributor-rust-tools.sh", "rust-toolchain.toml"]]; print(h.hexdigest())')
+        {
+          echo "root=$root"
+          echo "cache_path=$cache_path"
+          echo "key=cargo-tool-$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}-$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN-$TOOL-$inventory_hash"
+        } >> "$GITHUB_OUTPUT"
+    - name: Restore and retain trusted main tool cache
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.inventory.outputs.cache_path }}
+        key: ${{ steps.inventory.outputs.key }}
+    - name: Restore tool cache without saving
+      if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.inventory.outputs.cache_path }}
+        key: ${{ steps.inventory.outputs.key }}
+    - name: Install or verify exact pinned tool
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        INSTALL_ROOT: ${{ steps.inventory.outputs.root }}
+      run: |
+        set -euo pipefail
+        source ./scripts/contributor-rust-tools.sh
+        htmlcut_install_contributor_cargo_tool "$TOOL" "$INSTALL_ROOT"
+        binary_path="$INSTALL_ROOT/bin"
+        if command -v cygpath >/dev/null 2>&1; then binary_path="$(cygpath -w "$binary_path")"; fi
+        echo "$binary_path" >> "$GITHUB_PATH"
