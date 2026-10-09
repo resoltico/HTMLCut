@@ -15,8 +15,6 @@ associated documentation, configuration and synthetic test/evaluation fixtures.
 Vendored material under patches/ retains its upstream license expressions and
 notices. It is not relicensed by the project license declaration.
 
-The API baseline under semver-baseline/ is retained source from the published
-release identified by its BASELINE.toml. It retains that release's license.
 In source distributions, the earlier project MIT text is in
 LICENSES/HTMLCut-published-MIT.txt; that text
 records the published grant and is not an MIT alternative for newly covered

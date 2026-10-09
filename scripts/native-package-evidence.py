@@ -103,6 +103,7 @@ def main():
     before = package_digest(args.package)
     io_command = ["cargo", "test", "-p", "htmlcut-cli", "--test", "io_boundary", "--target", args.target, "--locked"]
     binary_sha256 = None
+    macos_signature = None
     try:
         with args.smoke_log.open("wb") as log:
             subprocess.run([args.shell, "./scripts/smoke-release-artifact.sh", args.target],
@@ -110,6 +111,14 @@ def main():
             with tempfile.TemporaryDirectory(prefix="native-package-", dir=dist) as directory:
                 binary = unpack_binary(args.package, args.target, Path(directory)).resolve()
                 binary_sha256 = hashlib.sha256(binary.read_bytes()).hexdigest()
+                if 'apple' in args.target:
+                    signature = subprocess.run([sys.executable, 'scripts/verify-macos-signature.py', str(binary),
+                                                '--rejection-controls'], capture_output=True, text=True, timeout=120)
+                    log.write(signature.stdout.encode() + signature.stderr.encode())
+                    signature.check_returncode()
+                    macos_signature = json.loads(signature.stdout)
+                    if macos_signature['binary_sha256'] != binary_sha256:
+                        raise ValueError('macOS signature evidence differs from the packaged executable')
                 matrix_path = args.output.with_name(args.output.stem + "-matrix.json")
                 subprocess.run([sys.executable, "scripts/native-reliability-matrix.py", "--binary", str(binary),
                                 "--output", str(matrix_path)], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=600)
@@ -165,6 +174,8 @@ def main():
             raise ValueError("Native Windows pipe proof differs from the packaged executable")
         evidence["windows_pipe_input"] = windows_pipe_path.name
         evidence["windows_pipe_input_sha256"] = hashlib.sha256(windows_pipe_path.read_bytes()).hexdigest()
+    if macos_signature is not None:
+        evidence['macos_signature'] = macos_signature
     args.output.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 
 

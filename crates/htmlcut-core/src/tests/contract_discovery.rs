@@ -108,7 +108,7 @@ fn identifier_inspection_labels_empty_results_and_rejects_invalid_requests_befor
 }
 
 #[test]
-fn identifier_inspection_refuses_an_oversized_encoded_answer() {
+fn typed_inspection_keeps_bounded_samples_before_cli_encoding() {
     let tag = "x".repeat(128);
     let classes = (0..8)
         .map(|i| format!("c{i}{}", "x".repeat(62)))
@@ -125,10 +125,10 @@ fn identifier_inspection_refuses_an_oversized_encoded_answer() {
     assert!(one.samples[0].identifiers_complete);
     assert!(crate::canonical_json(&one).unwrap().len() > 1024);
     let document = prepared(&element.repeat(10));
-    assert_eq!(
-        document.inspect(&tag, 10).unwrap_err().code,
-        ErrorCode::ResourceLimit
-    );
+    let complete = document.inspect(&tag, 10).unwrap();
+    assert_eq!(complete.count, 10);
+    assert_eq!(complete.samples.len(), 10);
+    assert!(complete.samples_complete);
 }
 
 #[test]
@@ -267,7 +267,7 @@ fn normalized_spaces_reserve_a_complete_scalar_pair_at_the_preview_boundary() {
 }
 
 #[test]
-fn full_supported_names_are_retained_and_the_complete_answer_cap_is_not_truncation() {
+fn full_supported_names_are_retained_in_complete_typed_samples() {
     let names = (0..8)
         .map(|i| format!("x{i}{}", "a".repeat(254)))
         .collect::<Vec<_>>();
@@ -283,10 +283,9 @@ fn full_supported_names_are_retained_and_the_complete_answer_cap_is_not_truncati
     assert!(one.samples[0].attributes_complete);
     assert_eq!(one.samples[0].text, "✓".repeat(160));
     assert!(one.samples[0].text_complete);
-    assert_eq!(
-        document.inspect("p", 10).unwrap_err().code,
-        ErrorCode::ResourceLimit
-    );
+    let complete = document.inspect("p", 10).unwrap();
+    assert_eq!(complete.samples.len(), 10);
+    assert!(complete.samples_complete);
     let tag = "x".repeat(128);
     assert_eq!(
         prepared(&format!("<{tag}></{tag}>"))

@@ -24,10 +24,3 @@ class ReleaseVerificationTest(unittest.TestCase):
         with self.assertRaises(ValueError): check([run, newer])
         rerun = copy.deepcopy(run); rerun.update(run_attempt=2, conclusion="cancelled")
         with self.assertRaises(ValueError): check([run, rerun])
-
-    def test_diff_mutation_success_is_not_full_campaign_evidence(self):
-        run = dict(id=3, run_number=3, run_attempt=1, head_sha="a"*40, head_branch="main",
-            event="pull_request", path=".github/workflows/mutants.yml", status="completed", conclusion="success")
-        with self.assertRaises(ValueError): module.require_success(dict(workflow_runs=[run]), "a"*40, run["path"], {"schedule", "workflow_dispatch"})
-        run["event"] = "workflow_dispatch"
-        self.assertEqual(module.require_success(dict(workflow_runs=[run]), "a"*40, run["path"], {"schedule", "workflow_dispatch"}), 3)

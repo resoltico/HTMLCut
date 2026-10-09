@@ -7,15 +7,14 @@ use std::sync::{
 };
 
 #[test]
-fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+fn directory_device_and_socket_paths_cannot_be_file_sources_or_plans() {
+    let root = tempfile::tempdir().unwrap();
     let socket_path = root.path().join("input.socket");
     let _socket = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
     for path in [root.path(), std::path::Path::new("/dev/null"), &socket_path] {
         for arguments in [
             vec!["extract", "--file", path.to_str().unwrap(), "--select", "p"],
             vec!["extract", "--stdin", "--plan", path.to_str().unwrap()],
-            vec!["replay", path.to_str().unwrap()],
         ] {
             let mut child = command()
                 .args(arguments)
@@ -48,7 +47,7 @@ fn directory_device_and_socket_paths_cannot_be_file_sources_plans_or_runs() {
 
 #[test]
 fn regular_symlink_and_hardlink_inputs_preserve_complete_values() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     std::fs::write(&source, "<p>LINK VALUE</p>").unwrap();
     let symbolic = root.path().join("symbolic.html");
@@ -75,31 +74,16 @@ fn regular_symlink_and_hardlink_inputs_preserve_complete_values() {
 
 #[test]
 fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_values() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("stable-source.html");
     std::fs::write(&source, "<p>HELLO</p>").unwrap();
     let plan =
         htmlcut_core::canonical_json(&htmlcut_core::ExtractionPlan::css("p").unwrap()).unwrap();
-    let bundle = root.path().join("stable.htmlcut.tar");
-    let generated = command()
-        .args([
-            "extract",
-            "--file",
-            source.to_str().unwrap(),
-            "--select",
-            "p",
-            "--bundle",
-            bundle.to_str().unwrap(),
-        ])
-        .output()
-        .unwrap();
-    assert!(generated.status.success());
-    for role in ["source", "plan", "replay"] {
+    for role in ["source", "plan"] {
         let path = root.path().join(format!("{role}.input"));
         let content = match role {
             "source" => b"<p>HELLO</p>".to_vec(),
             "plan" => plan.as_bytes().to_vec(),
-            "replay" => std::fs::read(&bundle).unwrap(),
             _ => unreachable!(),
         };
         std::fs::write(&path, &content).unwrap();
@@ -143,7 +127,6 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                         path.to_str().unwrap(),
                         "--raw",
                     ],
-                    "replay" => vec!["replay", path.to_str().unwrap()],
                     _ => unreachable!(),
                 };
                 let mut child = command()
@@ -164,13 +147,7 @@ fn concurrent_atomic_regular_fifo_replacement_never_blocks_or_returns_partial_va
                 let output = child.wait_with_output().unwrap();
                 match output.status.code() {
                     Some(0) => {
-                        if role == "replay" {
-                            let value: serde_json::Value =
-                                serde_json::from_slice(&output.stdout).unwrap();
-                            assert_eq!(value, serde_json::json!(["HELLO"]));
-                        } else {
-                            assert_eq!(output.stdout, b"HELLO");
-                        }
+                        assert_eq!(output.stdout, b"HELLO");
                         assert!(output.stderr.is_empty());
                     }
                     Some(5) => {

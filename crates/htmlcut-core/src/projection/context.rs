@@ -4,14 +4,14 @@
 use super::*;
 use std::collections::HashMap;
 
-pub(super) fn html(element: &scraper::node::Element) -> bool {
+pub(super) fn html(element: &crate::dom::Element) -> bool {
     let namespace: &str = element.name.ns.as_ref();
     namespace == "http://www.w3.org/1999/xhtml"
 }
 
 pub(super) fn inherited_pre(
     root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<bool, ExtractionError> {
     for parent in root.ancestors() {
         crate::execution::charge(budget, 1)?;
@@ -34,7 +34,7 @@ impl ListContext {
     pub(super) fn ordinal(
         &mut self,
         item: ElementRef<'_>,
-        budget: &SelectorWorkBudget,
+        budget: &WorkBudget,
     ) -> Result<Option<i64>, ExtractionError> {
         crate::execution::charge(budget, 1)?;
         let Some(parent) = item.parent().and_then(ElementRef::wrap) else {
@@ -86,10 +86,7 @@ impl ListContext {
     }
 }
 
-fn integer(
-    value: Option<&str>,
-    budget: &SelectorWorkBudget,
-) -> Result<Option<i64>, ExtractionError> {
+fn integer(value: Option<&str>, budget: &WorkBudget) -> Result<Option<i64>, ExtractionError> {
     if let Some(value) = value {
         crate::execution::charge(budget, value.len().div_ceil(64) + 1)?;
     }
@@ -118,7 +115,7 @@ mod tests {
 
     #[test]
     fn empty_integer_attribute_still_consumes_one_metadata_unit() {
-        let budget = SelectorWorkBudget::new(1);
+        let budget = WorkBudget::new(1);
         assert_eq!(integer(Some(""), &budget).unwrap(), None);
         assert_eq!(budget.remaining(), 0);
         assert!(!budget.exhausted());
@@ -129,12 +126,12 @@ mod tests {
 
     #[test]
     fn document_root_and_non_list_members_have_no_ordered_ordinal() {
-        let document = scraper::Html::parse_document("<ol><li>A</li><span>B</span></ol>");
-        let budget = SelectorWorkBudget::new(1000);
+        let document = crate::dom::Html::parse_document("<ol><li>A</li><span>B</span></ol>");
+        let budget = WorkBudget::new(1000);
         let mut context = ListContext::default();
         for css in ["html", "span"] {
             let element = document
-                .select(&scraper::Selector::parse(css).unwrap())
+                .select(&crate::dom::Selector::parse(css).unwrap())
                 .next()
                 .unwrap();
             assert_eq!(context.ordinal(element, &budget).unwrap(), None);

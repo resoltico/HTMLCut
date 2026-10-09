@@ -1,1 +1,1 @@
-{"version":6,"select":"p","match":"one","fields":{"text":{"select":":scope + template","read":"literal"}},"following_siblings":1}
+{"version":7,"select":"p","match":"one","fields":{"text":{"select":":scope + template","read":"literal"}},"following_siblings":1}

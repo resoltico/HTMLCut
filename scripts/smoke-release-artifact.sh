@@ -178,10 +178,14 @@ main() {
         [[ -x "${binary_path}" ]] || htmlcut_die "packaged binary is not executable: ${binary_path}"
     fi
 
+    case "${target_triple}" in
+        aarch64-apple-darwin|x86_64-apple-darwin)
+            python3 "${script_dir}/verify-macos-signature.py" "${binary_path}"
+            ;;
+    esac
     "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
     local smoke_dir="${extract_root}/smoke-fixture"
     local fixture_path="${smoke_dir}/page.html"
-    local request_path="${smoke_dir}/article-links.htmlcut.tar"
     mkdir -p "${smoke_dir}"
     printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > "${fixture_path}"
 
@@ -190,17 +194,11 @@ main() {
         "${binary_path}" extract --file "${fixture_path}" \
             --select 'article a.more' \
             --read attr:href \
-            --bundle "${request_path}" --raw \
+            --raw \
             | tr -d '\r'
     )"
-    [[ -f "${request_path}" ]] || htmlcut_die "packaged binary did not emit snapshot bundle ${request_path}"
     [[ "${first_output}" == "../guide.html" ]] || htmlcut_die \
         "packaged binary returned unexpected extraction output: ${first_output}"
-
-    local replay_output
-    replay_output="$("${binary_path}" replay "${request_path}" --raw | tr -d '\r')"
-    [[ "${replay_output}" == "${first_output}" ]] || htmlcut_die \
-        "bundle replay drifted: expected ${first_output}, got ${replay_output}"
 
     printf 'Smoke-tested %s\n' "${package_name}"
 }

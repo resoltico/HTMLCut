@@ -4,7 +4,7 @@ use std::io::Write;
 
 #[test]
 fn pending_normalized_space_survives_empty_protected_fragments_and_protects_edges() {
-    let budget = SelectorWorkBudget::new(100);
+    let budget = WorkBudget::new(100);
     let mut buffer = ValueBuffer::new(128, &budget);
     buffer.text("  ", false, true).unwrap();
     buffer.text("", true, true).unwrap();
@@ -40,7 +40,7 @@ fn html_buffer_flush_preserves_bytes_and_the_remaining_capacity() {
 
 #[test]
 fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_cost_work() {
-    let budget = SelectorWorkBudget::new(4);
+    let budget = WorkBudget::new(4);
     let mut buffer = ValueBuffer::new(1024, &budget);
     buffer.push(&"a".repeat(63)).unwrap();
     assert_eq!(budget.remaining(), 3);
@@ -49,12 +49,12 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
     buffer.push("c").unwrap();
     assert_eq!(budget.remaining(), 2);
     assert_eq!(buffer.finish().len(), 65);
-    let html = scraper::Html::parse_document("<p data-empty=''></p>");
+    let html = crate::dom::Html::parse_document("<p data-empty=''></p>");
     let root = html
-        .select(&scraper::Selector::parse("p").unwrap())
+        .select(&crate::dom::Selector::parse("p").unwrap())
         .next()
         .unwrap();
-    let budget = SelectorWorkBudget::new(2);
+    let budget = WorkBudget::new(2);
     let value = project(
         root,
         &Reading::Attribute("data-empty".into()),
@@ -71,7 +71,7 @@ fn chunked_value_writes_charge_only_new_byte_blocks_and_empty_attributes_still_c
 #[test]
 fn an_empty_markdown_destination_still_costs_one_processing_unit() {
     for (units, accepted) in [(1, false), (2, true)] {
-        let budget = SelectorWorkBudget::new(units);
+        let budget = WorkBudget::new(units);
         let mut writer = super::markdown_writer::MarkdownWriter::new(4, &budget);
         let result = writer.destination("");
         assert_eq!(result.is_ok(), accepted);
@@ -86,12 +86,12 @@ fn an_empty_markdown_destination_still_costs_one_processing_unit() {
 
 #[test]
 fn filtered_html_work_exhaustion_is_distinct_from_the_value_byte_bound() {
-    let document = scraper::Html::parse_document("<p>A</p>");
+    let document = crate::dom::Html::parse_document("<p>A</p>");
     let root = document
-        .select(&scraper::Selector::parse("p").unwrap())
+        .select(&crate::dom::Selector::parse("p").unwrap())
         .next()
         .unwrap();
-    let budget = SelectorWorkBudget::new(1);
+    let budget = WorkBudget::new(1);
     let error = project(
         root,
         &Reading::OuterHtml,
@@ -115,12 +115,12 @@ fn literal_input_and_output_each_charge_only_their_new_utf8_byte_blocks() {
         "a".repeat(65),
         format!("{}é", "a".repeat(63)),
     ] {
-        let html = scraper::Html::parse_document(&format!("<p>{value}</p>"));
+        let html = crate::dom::Html::parse_document(&format!("<p>{value}</p>"));
         let root = html
-            .select(&scraper::Selector::parse("p").unwrap())
+            .select(&crate::dom::Selector::parse("p").unwrap())
             .next()
             .unwrap();
-        let budget = SelectorWorkBudget::new(1000);
+        let budget = WorkBudget::new(1000);
         let (actual, complete) = text(root, &HashSet::new(), false, 1024, None, &budget).unwrap();
         assert_eq!(actual, value);
         assert!(complete);
@@ -134,11 +134,11 @@ fn literal_input_and_output_each_charge_only_their_new_utf8_byte_blocks() {
 
 #[test]
 fn structural_boundary_before_nonwhitespace_pre_content_is_retained() {
-    let html = scraper::Html::parse_document(
+    let html = crate::dom::Html::parse_document(
         "<article><p>before</p><pre>code</pre><p>after</p></article>",
     );
     let root = html
-        .select(&scraper::Selector::parse("article").unwrap())
+        .select(&crate::dom::Selector::parse("article").unwrap())
         .next()
         .unwrap();
     let (actual, complete) = text(
@@ -147,7 +147,7 @@ fn structural_boundary_before_nonwhitespace_pre_content_is_retained() {
         true,
         1024,
         None,
-        &SelectorWorkBudget::new(1000),
+        &WorkBudget::new(1000),
     )
     .unwrap();
     assert_eq!(actual, "before code after");

@@ -3,10 +3,10 @@
 
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 use ego_tree::iter::Edge;
 use schemars::JsonSchema;
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
 use serde::{Deserialize, Serialize};
 
 use super::structural_preview;
@@ -19,7 +19,6 @@ mod tests;
 
 const MAX_WORK: u32 = 10_000_000;
 const MAX_SIGNATURES_PER_PARENT: usize = 1_024;
-const MAX_RESULT_BYTES: usize = 16 * 1_024;
 const SAMPLE_CHARACTERS: usize = 64;
 
 /// Exact bounded parsed identifiers of one parent element.
@@ -98,8 +97,6 @@ pub struct SurveyGroup {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SurveyResult {
-    /// SHA-256 of the accepted source bytes used for this survey.
-    pub source_sha256: String,
     /// Complete count of groups meeting the declared survey criteria.
     pub group_count: u32,
     /// Largest groups first, breaking ties by original document order.
@@ -146,7 +143,7 @@ impl PreparedDocument {
                 crate::compilation::compile_selector(css)
             })
             .transpose()?;
-        let budget = SelectorWorkBudget::new(MAX_WORK);
+        let budget = WorkBudget::new(MAX_WORK);
         let document = self.document()?;
         let root = if let Some(selector) = &selector {
             let matches = crate::execution::matches(
@@ -218,19 +215,17 @@ impl PreparedDocument {
             });
         }
         let result = SurveyResult {
-            source_sha256: self.snapshot.source_sha256().into(),
             group_count,
             groups_complete: group_count as usize <= limit as usize,
             groups,
         };
-        let _ = crate::identity::encoded(&result, MAX_RESULT_BYTES, &budget)?;
         Ok(result)
     }
 }
 
 fn samples(
     members: &[ElementRef<'_>],
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<SurveySample>, ExtractionError> {
     let mut result = Vec::new();
     for member in members.iter().take(2) {
@@ -255,7 +250,7 @@ fn excluded_element(element: ElementRef<'_>) -> bool {
 fn collect_groups<'a>(
     parent: ElementRef<'a>,
     limit: usize,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
     top: &mut Vec<Candidate<'a>>,
     group_count: &mut u32,
 ) -> Result<(), ExtractionError> {
@@ -368,7 +363,7 @@ fn add_group(
 
 fn class_signature(
     element: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<Vec<String>>, ExtractionError> {
     let Some(value) = element.attr("class") else {
         return Ok(Some(Vec::new()));
@@ -393,7 +388,7 @@ fn class_signature(
 
 fn members<'a>(
     candidate: &Candidate<'a>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     let mut found = Vec::with_capacity(candidate.count as usize);
     for child in candidate.parent.children() {
@@ -413,7 +408,7 @@ fn members<'a>(
 
 fn element_descriptor(
     element: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<SurveyElement, ExtractionError> {
     let tag = element.value().name();
     let mut complete = true;

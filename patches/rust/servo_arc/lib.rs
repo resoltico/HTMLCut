@@ -119,11 +119,6 @@ impl<T> UniqueArc<T> {
             #[cfg(feature = "track_alloc_size")]
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).alloc_size), layout.size());
 
-            #[cfg(any())]
-            {
-                NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8)
-            }
-
             UniqueArc(Arc {
                 p,
                 phantom: PhantomData,
@@ -219,14 +214,6 @@ impl<T> Arc<T> {
             );
             ptr
         };
-
-        #[cfg(any())]
-        unsafe {
-            // FIXME(emilio): Would be so amazing to have
-            // std::intrinsics::type_name() around, so that we could also report
-            // a real size.
-            NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8);
-        }
 
         Arc {
             p,
@@ -340,34 +327,16 @@ impl<T: ?Sized> Arc<T> {
         unsafe { &*self.ptr() }
     }
 
-    #[inline(always)]
-    fn record_drop(&self) {
-        #[cfg(any())]
-        unsafe {
-            NS_LogDtor(self.ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8);
-        }
-    }
-
-    /// Marks this `Arc` as intentionally leaked for the purposes of refcount
-    /// logging.
-    ///
-    /// It's a logic error to call this more than once, but it's not unsafe, as
-    /// it'd just report negative leaks.
-    ///
-    /// The allocation is expected to live for the rest of the process, so this
-    /// also marks it static: clone()/drop() then skip the atomic refcount
-    /// updates.
+    /// Marks this allocation as static so clone/drop skip refcount updates.
+    /// The allocation remains alive for the rest of the process.
     #[inline(always)]
     pub fn mark_as_intentionally_leaked(&self) {
-        self.record_drop();
         self.inner().count.store(STATIC_REFCOUNT, Relaxed);
     }
 
-    // Non-inlined part of `drop`. Just invokes the destructor and calls the
-    // refcount logging machinery if enabled.
+    // Non-inlined part of `drop` destroys and deallocates the final owner.
     #[inline(never)]
     unsafe fn drop_slow(&mut self) {
-        self.record_drop();
         let inner = self.ptr();
 
         unsafe {
@@ -395,20 +364,6 @@ impl<T: ?Sized> Arc<T> {
     pub fn raw_ptr(&self) -> ptr::NonNull<()> {
         self.p.cast()
     }
-}
-
-#[cfg(any())]
-unsafe extern "C" {
-    fn NS_LogCtor(
-        aPtr: *mut std::os::raw::c_void,
-        aTypeName: *const std::os::raw::c_char,
-        aSize: u32,
-    );
-    fn NS_LogDtor(
-        aPtr: *mut std::os::raw::c_void,
-        aTypeName: *const std::os::raw::c_char,
-        aSize: u32,
-    );
 }
 
 impl<T: ?Sized> Clone for Arc<T> {
@@ -688,6 +643,20 @@ impl<T: Serialize> Serialize for Arc<T> {
 /// Structure to allow Arc-managing some fixed-sized data and a variably-sized
 /// slice in a single allocation.
 ///
+/// Header and tail types determine whether the allocation can be sent or shared.
+///
+/// ```compile_fail
+/// use servo_arc::HeaderSlice;
+/// fn require_send<T: Send>() {}
+/// require_send::<HeaderSlice<(), std::rc::Rc<u32>>>();
+/// ```
+///
+/// ```compile_fail
+/// use servo_arc::HeaderSlice;
+/// fn require_sync<T: Sync>() {}
+/// require_sync::<HeaderSlice<(), std::cell::Cell<u32>>>();
+/// ```
+///
 /// cbindgen:derive-eq=false
 /// cbindgen:derive-neq=false
 #[derive(Eq)]
@@ -699,12 +668,17 @@ pub struct HeaderSlice<H, T> {
     /// The length of the slice at our end.
     len: usize,
 
-    #[cfg(miri)]
+    // Keep allocation provenance when borrowing the fixed-size header.
     data_ptr: *mut T,
 
     /// The dynamically-sized data.
     data: [T; 0],
 }
+
+// The pointer addresses the owned tail in the same allocation. Shared access
+// exposes only &[T]; mutable access requires &mut self, just as for an owned slice.
+unsafe impl<H: Send, T: Send> Send for HeaderSlice<H, T> {}
+unsafe impl<H: Sync, T: Sync> Sync for HeaderSlice<H, T> {}
 
 impl<H: PartialEq, T: PartialEq> PartialEq for HeaderSlice<H, T> {
     fn eq(&self, other: &Self) -> bool {
@@ -715,24 +689,10 @@ impl<H: PartialEq, T: PartialEq> PartialEq for HeaderSlice<H, T> {
 impl<H, T> Drop for HeaderSlice<H, T> {
     fn drop(&mut self) {
         unsafe {
-            #[cfg(miri)]
-            {
-                // Carry the tail pointer provenance from construction so drop does not need to
-                // reconstruct a mutable DST from the thin HeaderSlice pointer.
-                let mut ptr = self.data_ptr;
-                for _ in 0..self.len {
-                    std::mem::drop(std::ptr::read(ptr));
-                    ptr = ptr.add(1);
-                }
-            }
-
-            #[cfg(not(miri))]
-            {
-                let mut ptr = self.data_mut();
-                for _ in 0..self.len {
-                    std::ptr::drop_in_place(ptr);
-                    ptr = ptr.offset(1);
-                }
+            let mut ptr = self.data_ptr;
+            for _ in 0..self.len {
+                std::ptr::drop_in_place(ptr);
+                ptr = ptr.add(1);
             }
         }
     }
@@ -748,46 +708,16 @@ impl<H: fmt::Debug, T: fmt::Debug> fmt::Debug for HeaderSlice<H, T> {
 }
 
 impl<H, T> HeaderSlice<H, T> {
-    #[cfg(not(miri))]
-    #[inline(always)]
-    fn data(&self) -> *const T {
-        unsafe {
-            (ptr::from_ref(self) as *const u8).add(size_of::<HeaderSlice<H, T>>()) as *const T
-        }
-    }
-
-    #[cfg(not(miri))]
-    #[inline(always)]
-    fn data_mut(&mut self) -> *mut T {
-        unsafe { (ptr::from_mut(self) as *mut u8).add(size_of::<HeaderSlice<H, T>>()) as *mut T }
-    }
-
     /// Returns the dynamically sized slice in this HeaderSlice.
-    #[cfg(miri)]
     #[inline(always)]
     pub fn slice(&self) -> &[T] {
         unsafe { &*ptr::slice_from_raw_parts(self.data_ptr.cast_const(), self.len) }
     }
 
     /// Returns the dynamically sized slice in this HeaderSlice.
-    #[cfg(not(miri))]
-    #[inline(always)]
-    pub fn slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.data(), self.len) }
-    }
-
-    /// Returns the dynamically sized slice in this HeaderSlice.
-    #[cfg(miri)]
     #[inline(always)]
     pub fn slice_mut(&mut self) -> &mut [T] {
         unsafe { &mut *ptr::slice_from_raw_parts_mut(self.data_ptr, self.len) }
-    }
-
-    /// Returns the dynamically sized slice in this HeaderSlice.
-    #[cfg(not(miri))]
-    #[inline(always)]
-    pub fn slice_mut(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.data_mut(), self.len) }
     }
 
     /// Returns the len of the slice.
@@ -849,7 +779,6 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).alloc_size), layout.size());
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).data.header), header);
             ptr::write(ptr::addr_of_mut!((*p.as_ptr()).data.len), num_items);
-            #[cfg(miri)]
             ptr::write(
                 ptr::addr_of_mut!((*p.as_ptr()).data.data_ptr),
                 buffer.add(offset) as *mut T,
@@ -878,14 +807,6 @@ impl<H, T> Arc<HeaderSlice<H, T>> {
             );
             p
         };
-        #[cfg(any())]
-        unsafe {
-            if !is_static {
-                // FIXME(emilio): Would be so amazing to have
-                // std::intrinsics::type_name() around.
-                NS_LogCtor(p.as_ptr() as *mut _, b"ServoArc\0".as_ptr() as *const _, 8)
-            }
-        }
 
         // Return the fat Arc.
         assert_eq!(
@@ -1110,6 +1031,46 @@ mod tests {
                 (*self.0).fetch_add(1, SeqCst);
             }
         }
+    }
+
+    #[test]
+    fn tail_mutation_preserves_ownership_until_the_last_arc_drops() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ThinArc<u32, u32>>();
+        use std::sync::{Arc as Shared, atomic::AtomicUsize};
+        struct Item {
+            value: u32,
+            drops: Shared<AtomicUsize>,
+        }
+        impl Drop for Item {
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, SeqCst);
+            }
+        }
+        let drops = Shared::new(AtomicUsize::new(0));
+        let mut arc = Arc::from_header_and_iter(
+            17_u32,
+            [
+                Item {
+                    value: 1,
+                    drops: drops.clone(),
+                },
+                Item {
+                    value: 2,
+                    drops: drops.clone(),
+                },
+            ]
+            .into_iter(),
+        );
+        Arc::get_mut(&mut arc).unwrap().slice_mut()[1].value = 9;
+        let owner = arc.clone();
+        assert!(Arc::get_mut(&mut arc).is_none());
+        assert_eq!(owner.slice()[1].value, 9);
+        assert_eq!(owner.header, 17);
+        drop(arc);
+        assert_eq!(drops.load(SeqCst), 0);
+        drop(owner);
+        assert_eq!(drops.load(SeqCst), 2);
     }
 
     #[test]

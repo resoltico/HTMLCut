@@ -6,19 +6,11 @@ use crate::parser::SelectorImpl;
 use cssparser::ToCss;
 use std::fmt;
 
-#[cfg(any())]
-use to_shmem_derive::ToShmem;
-
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct AttrSelectorWithOptionalNamespace<Impl: SelectorImpl> {
-    #[cfg_attr(any(), shmem(field_bound))]
     pub namespace: Option<NamespaceConstraint<(Impl::NamespacePrefix, Impl::NamespaceUrl)>>,
-    #[cfg_attr(any(), shmem(field_bound))]
     pub local_name: Impl::LocalName,
     pub local_name_lower: Impl::LocalName,
-    #[cfg_attr(any(), shmem(field_bound))]
     pub operation: ParsedAttrSelectorOperation<Impl::AttrValue>,
 }
 
@@ -32,7 +24,6 @@ impl<Impl: SelectorImpl> AttrSelectorWithOptionalNamespace<Impl> {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum NamespaceConstraint<NamespaceUrl> {
     Any,
 
@@ -41,7 +32,6 @@ pub enum NamespaceConstraint<NamespaceUrl> {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum ParsedAttrSelectorOperation<AttrValue> {
     Exists,
     WithValue {
@@ -78,7 +68,6 @@ impl<AttrValue> AttrSelectorOperation<AttrValue> {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum AttrSelectorOperator {
     Equal,
     Includes,
@@ -144,7 +133,6 @@ impl AttrSelectorOperator {
 pub static SELECTOR_WHITESPACE: &[char] = &[' ', '\t', '\n', '\r', '\x0C'];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum ParsedCaseSensitivity {
     /// 's' was specified.
     ExplicitCaseSensitive,

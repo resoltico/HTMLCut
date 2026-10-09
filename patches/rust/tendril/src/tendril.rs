@@ -30,9 +30,11 @@ const MAX_INLINE_TAG: usize = 0xF;
 const EMPTY_TAG: usize = 0xF;
 
 #[inline(always)]
-fn inline_tag(len: u32) -> NonZeroUsize {
+fn inline_tag<A: Atomicity>(len: u32) -> ptr::NonNull<Header<A>> {
     debug_assert!(len <= MAX_INLINE_LEN as u32);
-    unsafe { NonZeroUsize::new_unchecked(if len == 0 { EMPTY_TAG } else { len as usize }) }
+    // Inline tags are never dereferenced. Heap tags retain their allocation provenance.
+    ptr::NonNull::dangling()
+        .with_addr(NonZeroUsize::new(if len == 0 { EMPTY_TAG } else { len as usize }).unwrap())
 }
 
 /// The multithreadedness of a tendril.
@@ -165,8 +167,8 @@ pub enum SubtendrilError {
 ///
 /// Whereas `String` allocates in the heap for any non-empty string, `Tendril`
 /// can store small strings (up to 8 bytes) in-line, without a heap allocation.
-/// `Tendril` retains a separate heap-header provenance pointer, so its current
-/// representation is three machine words on 64-bit platforms.
+/// `Tendril` is also smaller than `String` on 64-bit platforms — 16 bytes
+/// versus 24. The tagged heap pointer retains its allocation provenance.
 ///
 /// The type parameter `F` specifies the format of the tendril, for example
 /// UTF-8 text or uninterpreted bytes. The parameter will be instantiated
@@ -185,11 +187,8 @@ where
     F: fmt::Format,
     A: Atomicity,
 {
-    ptr: Cell<NonZeroUsize>,
-    // Preserve heap-header provenance separately from the tagged integer bits
-    // stored in `ptr` so strict-provenance interpreters can reconstruct the
-    // header safely for owned and shared tendrils.
-    heap_ptr: Cell<*mut Header<A>>,
+    // Inline tags have no referent; heap tags retain allocation provenance.
+    ptr: Cell<ptr::NonNull<Header<A>>>,
     buf: UnsafeCell<Buffer>,
     marker: PhantomData<*mut F>,
     refcount_marker: PhantomData<A>,
@@ -229,7 +228,7 @@ where
     #[inline]
     fn clone(&self) -> Tendril<F, A> {
         unsafe {
-            if self.ptr.get().get() > MAX_INLINE_TAG {
+            if self.ptr.get().addr().get() > MAX_INLINE_TAG {
                 self.make_buf_shared();
                 self.incref();
             }
@@ -247,7 +246,7 @@ where
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let p = self.ptr.get().get();
+            let p = self.ptr.get().addr().get();
             if p <= MAX_INLINE_TAG {
                 return;
             }
@@ -533,7 +532,7 @@ where
 {
     #[inline]
     fn fmt(&self, f: &mut strfmt::Formatter) -> strfmt::Result {
-        let kind = match self.ptr.get().get() {
+        let kind = match self.ptr.get().addr().get() {
             p if p <= MAX_INLINE_TAG => "inline",
             p if p & 1 == 1 => "shared",
             _ => "owned",
@@ -609,7 +608,7 @@ where
     /// slice, if any.
     #[inline(always)]
     pub fn len32(&self) -> u32 {
-        match self.ptr.get().get() {
+        match self.ptr.get().addr().get() {
             EMPTY_TAG => 0,
             n if n <= MAX_INLINE_LEN => n as u32,
             _ => unsafe { self.raw_len() },
@@ -619,7 +618,7 @@ where
     /// Is the backing buffer shared?
     #[inline]
     pub fn is_shared(&self) -> bool {
-        let n = self.ptr.get().get();
+        let n = self.ptr.get().addr().get();
 
         (n > MAX_INLINE_TAG) && ((n & 1) == 1)
     }
@@ -627,18 +626,16 @@ where
     /// Is the backing buffer shared with this other `Tendril`?
     #[inline]
     pub fn is_shared_with(&self, other: &Tendril<F, A>) -> bool {
-        let n = self.ptr.get().get();
+        let n = self.ptr.get().addr().get();
 
-        (n > MAX_INLINE_TAG) && (n == other.ptr.get().get())
+        (n > MAX_INLINE_TAG) && (n == other.ptr.get().addr().get())
     }
 
     /// Truncate to length 0 without discarding any owned storage.
     #[inline]
     pub fn clear(&mut self) {
-        if self.ptr.get().get() <= MAX_INLINE_TAG {
-            self.ptr
-                .set(unsafe { NonZeroUsize::new_unchecked(EMPTY_TAG) });
-            self.heap_ptr.set(ptr::null_mut());
+        if self.ptr.get().addr().get() <= MAX_INLINE_TAG {
+            self.ptr.set(inline_tag(0));
         } else {
             let (_, shared, _) = unsafe { self.assume_buf() };
             if shared {
@@ -778,7 +775,9 @@ where
         let new_len = self.len32().checked_add(other.len32()).expect(OFLOW);
 
         unsafe {
-            if (self.ptr.get().get() > MAX_INLINE_TAG) && (other.ptr.get().get() > MAX_INLINE_TAG) {
+            if (self.ptr.get().addr().get() > MAX_INLINE_TAG)
+                && (other.ptr.get().addr().get() > MAX_INLINE_TAG)
+            {
                 let (self_buf, self_shared, _) = self.assume_buf();
                 let (other_buf, other_shared, _) = other.assume_buf();
 
@@ -1047,12 +1046,16 @@ where
 
     #[inline]
     unsafe fn make_buf_shared(&self) {
-        let p = self.ptr.get().get();
+        let p = self.ptr.get().addr().get();
         if p & 1 == 0 {
             let header = self.header();
             (*header).cap = self.aux();
 
-            self.ptr.set(NonZeroUsize::new_unchecked(p | 1));
+            self.ptr.set(
+                self.ptr
+                    .get()
+                    .map_addr(|address| NonZeroUsize::new_unchecked(address.get() | 1)),
+            );
             self.set_aux(0);
         }
     }
@@ -1063,7 +1066,7 @@ where
     #[inline]
     fn make_owned(&mut self) {
         unsafe {
-            let ptr = self.ptr.get().get();
+            let ptr = self.ptr.get().addr().get();
             if ptr <= MAX_INLINE_TAG || (ptr & 1) == 1 {
                 *self = Tendril::owned_copy(self.as_byte_slice());
             }
@@ -1075,21 +1078,19 @@ where
         self.make_owned();
         let mut buf = self.assume_buf().0;
         buf.grow(cap);
-        self.ptr.set(NonZeroUsize::new_unchecked(buf.ptr as usize));
-        self.heap_ptr.set(buf.ptr);
+        self.ptr.set(ptr::NonNull::new_unchecked(buf.ptr));
         self.set_aux(buf.cap);
     }
 
     #[inline(always)]
     unsafe fn header(&self) -> *mut Header<A> {
-        let header = self.heap_ptr.get();
-        debug_assert!(!header.is_null());
-        header
+        debug_assert!(self.ptr.get().addr().get() > MAX_INLINE_TAG);
+        self.ptr.get().as_ptr().map_addr(|address| address & !1)
     }
 
     #[inline]
     unsafe fn assume_buf(&self) -> (Buf32<Header<A>>, bool, u32) {
-        let ptr = self.ptr.get().get();
+        let ptr = self.ptr.get().addr().get();
         let header = self.header();
         let shared = (ptr & 1) == 1;
         let (cap, offset) = match shared {
@@ -1113,7 +1114,6 @@ where
         let len = x.len();
         let t = Tendril {
             ptr: Cell::new(inline_tag(len as u32)),
-            heap_ptr: Cell::new(ptr::null_mut()),
             buf: UnsafeCell::new(Buffer { inline: [0; 8] }),
             marker: PhantomData,
             refcount_marker: PhantomData,
@@ -1125,8 +1125,7 @@ where
     #[inline]
     unsafe fn owned(x: Buf32<Header<A>>) -> Tendril<F, A> {
         Tendril {
-            ptr: Cell::new(NonZeroUsize::new_unchecked(x.ptr as usize)),
-            heap_ptr: Cell::new(x.ptr),
+            ptr: Cell::new(ptr::NonNull::new_unchecked(x.ptr)),
             buf: UnsafeCell::new(Buffer {
                 heap: Heap {
                     len: x.len,
@@ -1150,8 +1149,9 @@ where
     #[inline]
     unsafe fn shared(buf: Buf32<Header<A>>, off: u32, len: u32) -> Tendril<F, A> {
         Tendril {
-            ptr: Cell::new(NonZeroUsize::new_unchecked((buf.ptr as usize) | 1)),
-            heap_ptr: Cell::new(buf.ptr),
+            ptr: Cell::new(ptr::NonNull::new_unchecked(
+                buf.ptr.map_addr(|address| address | 1),
+            )),
             buf: UnsafeCell::new(Buffer {
                 heap: Heap { len, aux: off },
             }),
@@ -1163,7 +1163,7 @@ where
     #[inline]
     fn as_byte_slice(&self) -> &[u8] {
         unsafe {
-            match self.ptr.get().get() {
+            match self.ptr.get().addr().get() {
                 EMPTY_TAG => &[],
                 n if n <= MAX_INLINE_LEN => (*self.buf.get()).inline.get_unchecked(..n),
                 _ => {
@@ -1182,7 +1182,7 @@ where
     #[inline]
     fn as_mut_byte_slice(&mut self) -> &mut [u8] {
         unsafe {
-            match self.ptr.get().get() {
+            match self.ptr.get().addr().get() {
                 EMPTY_TAG => &mut [],
                 n if n <= MAX_INLINE_LEN => (*self.buf.get()).inline.get_unchecked_mut(..n),
                 _ => {
@@ -1468,7 +1468,7 @@ where
     #[inline]
     pub unsafe fn push_uninitialized(&mut self, n: u32) {
         let new_len = self.len32().checked_add(n).expect(OFLOW);
-        if new_len <= MAX_INLINE_LEN as u32 && self.ptr.get().get() <= MAX_INLINE_TAG {
+        if new_len <= MAX_INLINE_LEN as u32 && self.ptr.get().addr().get() <= MAX_INLINE_TAG {
             self.ptr.set(inline_tag(new_len))
         } else {
             self.make_owned_with_capacity(new_len);
@@ -1625,9 +1625,8 @@ mod test {
     #[test]
     fn assert_sizes() {
         use std::mem;
-        // Tendrils retain a tagged pointer, a strict-provenance heap-header pointer, and an
-        // eight-byte inline-or-heap payload. The old test omitted the provenance pointer.
-        let handle_size = mem::size_of::<*const ()>() * 2 + 8;
+        // One provenance-preserving tagged pointer and eight inline-or-heap bytes.
+        let handle_size = mem::size_of::<*const ()>() + 8;
 
         assert_eq!(handle_size, mem::size_of::<ByteTendril>());
         assert_eq!(handle_size, mem::size_of::<StrTendril>());

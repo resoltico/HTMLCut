@@ -47,7 +47,7 @@ fn publication_buffer_flush_never_resets_serialization_capacity() {
 }
 
 #[test]
-fn receipts_are_complete_or_error_at_each_serialization_boundary() {
+fn data_encoding_is_complete_or_error_at_each_serialization_boundary() {
     use htmlcut_core::{CompiledPlan, ExtractionPlan, PreparedDocument, SourceSnapshot};
     let plan = CompiledPlan::compile(&ExtractionPlan::css("p").unwrap()).unwrap();
     let source = PreparedDocument::new(
@@ -56,10 +56,10 @@ fn receipts_are_complete_or_error_at_each_serialization_boundary() {
     )
     .unwrap();
     let result = source.execute(&plan).unwrap();
-    let expected = json_stream(result.receipt().unwrap(), 4096).unwrap();
-    assert!(!String::from_utf8_lossy(&expected).contains("private body"));
+    let expected = json_stream(result.data(), 4096).unwrap();
+    assert_eq!(expected, b"[\"private body\"]\n");
     for maximum in 0..=expected.len() + 1 {
-        let actual = json_stream(result.receipt().unwrap(), maximum);
+        let actual = json_stream(result.data(), maximum);
         if maximum < expected.len() {
             assert_eq!(actual.unwrap_err().code, ErrorCode::ResourceLimit);
         } else {

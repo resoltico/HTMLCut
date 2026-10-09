@@ -19,15 +19,15 @@ fuzz_target!(|data: &[u8]| {
     let _ = htmlcut_core::parse_closed_json(raw, htmlcut_core::MAX_PLAN_BYTES);
     let _ = ExtractionPlan::from_json(raw);
     let _ = serde_json::from_slice::<ExtractionPlan>(raw);
-    refuses_extra::<ExtractionPlan>(r#"{"version":6,"select":"p"}"#, &extra);
+    refuses_extra::<ExtractionPlan>(r#"{"version":7,"select":"p"}"#, &extra);
     refuses_extra::<RecordField>(r#"{"select":"p"}"#, &extra);
     refuses_extra::<Guard>(r#"{"select":"p"}"#, &extra);
     for duplicate in [
-        br#"{"version":6,"select":"p","select":"p"}"#.as_slice(),
-        br#"{"version":6,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"p"}}}"#.as_slice(),
-        br#"{"version":6,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}"#.as_slice(),
-        br#"{"version":6,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#.as_slice(),
-        br#"{"version":6,"select":"p","limits":{"max_work":1,"max_work":2}}"#.as_slice(),
+        br#"{"version":7,"select":"p","select":"p"}"#.as_slice(),
+        br#"{"version":7,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"p"}}}"#.as_slice(),
+        br#"{"version":7,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}"#.as_slice(),
+        br#"{"version":7,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#.as_slice(),
+        br#"{"version":7,"select":"p","limits":{"max_work":1,"max_work":2}}"#.as_slice(),
     ] { assert!(ExtractionPlan::from_json(duplicate).is_err()); }
     for read in [
         "text",
@@ -50,7 +50,7 @@ fuzz_target!(|data: &[u8]| {
         "exclude",
         "following_siblings",
     ] {
-        let mut wire = serde_json::json!({"version":6,"select":"p"});
+        let mut wire = serde_json::json!({"version":7,"select":"p"});
         wire[member] = serde_json::Value::Null;
         assert!(serde_json::from_value::<ExtractionPlan>(wire).is_err());
     }

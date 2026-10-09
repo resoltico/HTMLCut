@@ -31,8 +31,7 @@ pub fn drive(input: SelectorInput) {
         let second = document.execute(&compiled);
         match (first, second) {
             (Ok(first), Ok(second)) => {
-                assert_eq!(first.payload(), second.payload());
-                assert_eq!(first.receipt(), second.receipt());
+                assert_eq!(first.data(), second.data());
             }
             (Err(first), Err(second)) => assert_eq!(first, second),
             _ => panic!("repeated execution changed success state"),

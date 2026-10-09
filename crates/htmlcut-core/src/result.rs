@@ -5,9 +5,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 6;
-/// Version of projection, selection and identity semantics.
-pub const SEMANTICS_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
+/// Version of projection and selection semantics.
+pub const SEMANTICS_VERSION: u32 = 7;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -53,10 +53,6 @@ pub enum ErrorCode {
     Decoding,
     /// Adapter could not publish the complete staged result.
     Publication,
-    /// The closed replay container is malformed.
-    InvalidBundle,
-    /// Recomputed execution differs from bundled evidence.
-    ReplayMismatch,
     /// An internal invariant failed.
     InternalInvariant,
 }
@@ -72,8 +68,7 @@ impl ErrorCode {
             | Self::InvalidRegex
             | Self::InvalidLimit
             | Self::InvalidBaseUrl
-            | Self::InvalidOptions
-            | Self::InvalidBundle => 2,
+            | Self::InvalidOptions => 2,
             Self::NoMatch
             | Self::AmbiguousSelection
             | Self::Cardinality
@@ -81,8 +76,7 @@ impl ErrorCode {
             | Self::OverlappingRowScope
             | Self::MissingAttribute
             | Self::InvalidRepresentation
-            | Self::GuardFailed
-            | Self::ReplayMismatch => 3,
+            | Self::GuardFailed => 3,
             Self::ResourceLimit => 4,
             Self::Acquisition | Self::Decoding | Self::Publication => 5,
             Self::InternalInvariant => 6,
@@ -107,7 +101,7 @@ pub struct ExtractionError {
     pub stage: String,
     /// Bounded safe explanation.
     pub message: String,
-    /// Sparse identity/count evidence, boxed to keep the returned error family small.
+    /// Sparse stage/count/resource facts, boxed to keep the returned error family small.
     #[serde(flatten)]
     pub evidence: Box<ErrorEvidence>,
 }

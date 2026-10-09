@@ -1,17 +1,19 @@
----
-afad: "4.0"
-version: "20.0.0"
-domain: OPERATIONS
-updated: "2026-10-05"
-route:
-  keywords: [operations, extract, run, inspect, describe, schema]
-  questions: ["What operations does the CLI expose?"]
----
+# Ordinary-files reproduction
 
-# Operations
+Keep the exact UTF-8 `source.html`, normalized `query.json`, explicit base URL and
+preparation policy in ordinary files, `output.json`, and the exact executable plus
+its `--version` (or an immutable release source/package reference). The CLI uses
+`PreparationLimits::default()`; Rust callers should serialize their actual policy.
+Obtain normalized query bytes through `CompiledPlan::normalized_json()`.
 
-Use standard native help for current commands: `extract`, `inspect`, `replay` and `schema`.
+```sh
+htmlcut --version > executable-version.txt
+htmlcut extract --file source.html --plan query.json --base-url https://example.test/ --output output.json
+htmlcut extract --file source.html --plan query.json --base-url https://example.test/ > recomputed.json
+cmp output.json recomputed.json
+```
 
-Extract compiles current queries and reads complete strings/records from caller-owned file/stdin HTML. Inspect surveys repeated groups or, with select, counts and samples explicit nodes. Replay recomputes and verifies a closed source/query/configuration bundle. Schema retrieves one optional exhaustive named shape. No describe catalog or command aliases remain.
-
-Cardinality, readings and assumptions are explicit. Acquisition, rendering, business transformations and comparison belong to callers. Failed assumptions never become alternate successful representations; extraction never truncates success. Bounded observation omissions are labeled. See [CLI](cli.md), [Core](core.md) and [Schemas](schema.md).
+Retain the explicit base argument with those files; omit it only when no base was used.
+Ordinary tools can copy the files and compare complete output. This loses one-command
+self-contained replay and proves neither authenticity nor cross-version equivalence.
+No custom archive or manifest protocol is supplied.

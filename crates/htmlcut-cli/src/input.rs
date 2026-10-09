@@ -27,10 +27,6 @@ pub(crate) fn acquisition() -> ExtractionError {
     )
 }
 
-pub(crate) fn open_file(path: &Path) -> Result<File, ExtractionError> {
-    regular_file::open(path)
-}
-
 pub(crate) fn snapshot(
     file: Option<&Path>,
     stdin: &mut dyn Read,

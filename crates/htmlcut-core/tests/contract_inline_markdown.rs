@@ -275,7 +275,7 @@ fn explicit_unicode_normalization_trims_only_unprotected_generated_space() {
     ] {
         assert_eq!(read(source, "p, div", true).unwrap(), expected);
     }
-    let plan = json!({"version":6,"select":"p","match":"one","read":"literal"});
+    let plan = json!({"version":7,"select":"p","match":"one","read":"literal"});
     let doc = PreparedDocument::new(
         SourceSnapshot::new("<p>\u{a0}World\u{2003}</p>", SnapshotMetadata::default()).unwrap(),
         PreparationLimits::default(),

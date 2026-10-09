@@ -10,7 +10,7 @@ fn execute(
     optional: bool,
     nth: bool,
 ) -> Result<ExtractionResult, ExtractionError> {
-    let mut plan = json!({"version":6,"select":"tr.entry","match":"all","fields":{"title":{"select":":scope td","read":"literal"},"score":{"select":":scope + tr .score","match":"one","read":"literal"}},"following_siblings":following});
+    let mut plan = json!({"version":7,"select":"tr.entry","match":"all","fields":{"title":{"select":":scope td","read":"literal"},"score":{"select":":scope + tr .score","match":"one","read":"literal"}},"following_siblings":following});
     if optional {
         plan["fields"]["score"]["match"] = json!("optional");
     }
@@ -38,7 +38,7 @@ fn execute_plan(
 #[test]
 fn forest_candidate_ceiling_is_shared_and_context_cannot_return_outside_payload() {
     let source = "<main><article><i class=cell>A</i></article><aside><i class=cell>B</i></aside><aside class=outside>C</aside></main>";
-    let mut plan = json!({"version":6,"select":"article","limits":{"max_candidates":2},"match":"one","fields":{"cells":{"select":".cell","match":"all","read":"literal"},"outside":{"select":":scope ~ .outside","match":"optional","read":"literal"}},"following_siblings":1});
+    let mut plan = json!({"version":7,"select":"article","limits":{"max_candidates":2},"match":"one","fields":{"cells":{"select":".cell","match":"all","read":"literal"},"outside":{"select":":scope ~ .outside","match":"optional","read":"literal"}},"following_siblings":1});
     assert_eq!(
         serde_json::to_value(execute_plan(source, plan.clone()).unwrap().data()).unwrap(),
         json!([{"cells":["A","B"],"outside":null}])
@@ -59,7 +59,7 @@ fn maximum_group_preserves_all_elements_and_rejects_a_missing_last_sibling() {
         "<main><article>A</article>{}</main>",
         "<aside>B</aside>".repeat(63)
     );
-    let plan = json!({"version":6,"select":"article","match":"one","fields":{"payloads":{"select":"article, aside","match":"all","read":"literal"}},"following_siblings":63});
+    let plan = json!({"version":7,"select":"article","match":"one","fields":{"payloads":{"select":"article, aside","match":"all","read":"literal"}},"following_siblings":63});
     let result = execute_plan(&source, plan.clone()).unwrap();
     let expected = std::iter::once("A")
         .chain(std::iter::repeat_n("B", 63))
@@ -80,7 +80,7 @@ fn maximum_group_preserves_all_elements_and_rejects_a_missing_last_sibling() {
 
 #[test]
 fn added_subtree_cannot_hide_a_nested_root_candidate() {
-    let plan = json!({"version":6,"select":"article","match":"nth","index":1,"fields":{"text":{"select":":scope","read":"literal"}},"following_siblings":1});
+    let plan = json!({"version":7,"select":"article","match":"nth","index":1,"fields":{"text":{"select":":scope","read":"literal"}},"following_siblings":1});
     let error = execute_plan(
         "<main><article>A</article><aside><article>B</article></aside></main>",
         plan,
@@ -98,18 +98,10 @@ fn sibling_payloads_retain_anchor_context_and_complete_relationships() {
         serde_json::to_value(result.data()).unwrap(),
         json!([{"title":"A","score":"10"},{"title":"B","score":"20"}])
     );
-    assert_eq!(
-        (
-            result.receipt().unwrap().candidate_count,
-            result.receipt().unwrap().selected_count
-        ),
-        (2, 2)
-    );
+    assert_eq!((result.candidate_count(), result.selected_count()), (2, 2));
     assert!(
         result
-            .receipt()
-            .unwrap()
-            .fields
+            .field_counts()
             .values()
             .all(|f| f.candidate_count == 2 && f.projected_count == 2)
     );
@@ -162,7 +154,7 @@ fn following_scope_configuration_is_bounded_before_execution() {
 
 #[test]
 fn selected_guards_enumerate_the_whole_group_once() {
-    let value = json!({"version":6,"select":"tr.entry","match":"one","fields":{"title":{"select":":scope td","read":"literal"}},"following_siblings":1,"expect":[{"scope":"selected","select":".score","min":1,"max":1,"equals":"10","read":"literal"}]});
+    let value = json!({"version":7,"select":"tr.entry","match":"one","fields":{"title":{"select":":scope td","read":"literal"}},"following_siblings":1,"expect":[{"scope":"selected","select":".score","min":1,"max":1,"equals":"10","read":"literal"}]});
     let compiled = CompiledPlan::compile(
         &ExtractionPlan::from_json(&serde_json::to_vec(&value).unwrap()).unwrap(),
     )

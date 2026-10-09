@@ -46,7 +46,7 @@ pub fn drive(input: InspectionInput) {
         format!("{normalized} END")
     };
     let controlled_document = crate::snapshot::document(&controlled).unwrap();
-    let request = serde_json::json!({"version":6,"select":"main","expect":[{"select":"main","equals":expected}]});
+    let request = serde_json::json!({"version":7,"select":"main","expect":[{"select":"main","equals":expected}]});
     let plan =
         htmlcut_core::ExtractionPlan::from_json(&serde_json::to_vec(&request).unwrap()).unwrap();
     let result = controlled_document

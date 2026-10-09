@@ -16,7 +16,7 @@ pub(super) struct MarkdownWriter<'a> {
 }
 
 impl<'a> MarkdownWriter<'a> {
-    pub(super) fn new(maximum: usize, budget: &'a SelectorWorkBudget) -> Self {
+    pub(super) fn new(maximum: usize, budget: &'a WorkBudget) -> Self {
         Self {
             output: ValueBuffer::new(maximum, budget),
             prefix: String::new(),
@@ -221,7 +221,7 @@ mod code_span_work_tests {
     #[test]
     fn literal_atom_requires_scan_and_emission_allowances() {
         for (units, accepted) in [(3, false), (4, true)] {
-            let budget = SelectorWorkBudget::new(units);
+            let budget = WorkBudget::new(units);
             let mut writer = MarkdownWriter::new(128, &budget);
             let result = writer.code_span("x");
             assert_eq!(result.is_ok(), accepted);
@@ -232,7 +232,7 @@ mod code_span_work_tests {
             }
         }
         for (units, accepted) in [(6, false), (7, true)] {
-            let budget = SelectorWorkBudget::new(units);
+            let budget = WorkBudget::new(units);
             let mut writer = MarkdownWriter::new(128, &budget);
             let payload = "x".repeat(65);
             let result = writer.code_span(&payload);

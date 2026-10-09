@@ -8,9 +8,7 @@ use support::invoke;
 fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() {
     let directory = tempfile::tempdir().unwrap();
     let plan = directory.path().join("country.plan.json");
-    let inline_receipt = directory.path().join("inline.receipt.json");
-    let structured_receipt = directory.path().join("structured.receipt.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({"version":6,"select":"tr","match":"one","fields":{"country":{"select":"td","exclude":["sup.reference"],"read":"text"}},"following_siblings":0})).unwrap()).unwrap();
+    std::fs::write(&plan, serde_json::to_vec(&json!({"version":7,"select":"tr","match":"one","fields":{"country":{"select":"td","exclude":["sup.reference"],"read":"text"}},"following_siblings":0})).unwrap()).unwrap();
     let source = b"<table><tr><td>China<sup class=reference>[1]</sup></td></tr></table>";
     let inline = invoke(
         &[
@@ -25,30 +23,17 @@ fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() 
             "--field-exclude",
             "country",
             "sup.reference",
-            "--receipt",
-            inline_receipt.to_str().unwrap(),
         ],
         source,
     );
     let structured = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--plan",
-            plan.to_str().unwrap(),
-            "--receipt",
-            structured_receipt.to_str().unwrap(),
-        ],
+        &["extract", "--stdin", "--plan", plan.to_str().unwrap()],
         source,
     );
     assert!(inline.status.success());
     assert!(structured.status.success());
     assert_eq!(inline.stdout, b"[{\"country\":\"China\"}]\n");
     assert_eq!(inline.stdout, structured.stdout);
-    assert_eq!(
-        std::fs::read(inline_receipt).unwrap(),
-        std::fs::read(structured_receipt).unwrap()
-    );
 
     for args in [
         vec![
@@ -342,12 +327,10 @@ fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
 }
 
 #[test]
-fn structured_and_inline_authoring_bind_identical_plan_and_receipt() {
+fn structured_and_inline_authoring_bind_identical_data() {
     let directory = tempfile::tempdir().unwrap();
     let plan = directory.path().join("fields.json");
-    let inline_receipt = directory.path().join("inline.receipt.json");
-    let structured_receipt = directory.path().join("structured.receipt.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({"version":6,"select":"article","match":"one","fields":{"title":{"select":"a","read":"attr:title"},"price":{"select":":scope + aside .price","read":"text"},"url":{"select":"a","read":"url:href"}},"following_siblings":1})).unwrap()).unwrap();
+    std::fs::write(&plan, serde_json::to_vec(&json!({"version":7,"select":"article","match":"one","fields":{"title":{"select":"a","read":"attr:title"},"price":{"select":":scope + aside .price","read":"text"},"url":{"select":"a","read":"url:href"}},"following_siblings":1})).unwrap()).unwrap();
     let source = "<main><article><a title=T href=next>x</a></article><aside><span class=price>\u{a0}10\u{2003}</span></aside></main>".as_bytes();
     let inline = invoke(
         &[
@@ -371,8 +354,6 @@ fn structured_and_inline_authoring_bind_identical_plan_and_receipt() {
             "url:href",
             "--base-url",
             "https://example.test/",
-            "--receipt",
-            inline_receipt.to_str().unwrap(),
         ],
         source,
     );
@@ -384,8 +365,6 @@ fn structured_and_inline_authoring_bind_identical_plan_and_receipt() {
             plan.to_str().unwrap(),
             "--base-url",
             "https://example.test/",
-            "--receipt",
-            structured_receipt.to_str().unwrap(),
         ],
         source,
     );
@@ -404,10 +383,6 @@ fn structured_and_inline_authoring_bind_identical_plan_and_receipt() {
         json!([{"title":"T","price":"10","url":"https://example.test/next"}])
     );
     assert_eq!(inline.stdout, structured.stdout);
-    assert_eq!(
-        std::fs::read(inline_receipt).unwrap(),
-        std::fs::read(structured_receipt).unwrap()
-    );
 }
 
 #[test]

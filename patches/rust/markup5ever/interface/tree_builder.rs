@@ -132,7 +132,7 @@ pub trait ElemName: Debug {
 /// the same parser.
 pub trait TreeSink {
     /// Requests termination after a maintained resource boundary has failed.
-    /// Ordinary HTML sinks keep their historical behavior through the default.
+    /// Sinks without a resource refusal return false.
     fn stop_requested(&self) -> bool {
         false
     }

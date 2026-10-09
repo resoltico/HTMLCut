@@ -1,15 +1,3 @@
-<!--
-AFAD:
-  afad: "4.0"
-  version: "20.0.0"
-  domain: LEGAL
-  updated: "2026-10-05"
-RETRIEVAL_HINTS:
-  keywords: [patents, patent grant, apache-2.0, mpl-2.0, mit, isc, ncsa, dependency licenses]
-  questions: [what is HTMLCut's patent posture?, which dependency license families include explicit patent grants?, where should I look for legal attribution?]
-  related: [README.md, NOTICE, deny.toml]
--->
-
 # Patent Notes
 
 HTMLCut's original code is licensed under MPL-2.0. Section 2.1(b) grants rights

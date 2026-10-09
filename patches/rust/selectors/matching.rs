@@ -18,6 +18,7 @@ use crate::parser::{
 use crate::relative_selector::cache::RelativeSelectorCachedMatch;
 use crate::tree::Element;
 use bitflags::bitflags;
+use debug_unreachable::debug_unreachable;
 use log::debug;
 use smallvec::SmallVec;
 use std::borrow::Borrow;
@@ -94,20 +95,20 @@ impl ElementSelectorFlags {
     /// Returns the subset of flags that apply to the element.
     pub fn for_self(self) -> ElementSelectorFlags {
         self & (ElementSelectorFlags::HAS_EMPTY_SELECTOR
-            .union(ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR)
-            .union(ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR_NON_SUBJECT)
-            .union(ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING)
-            .union(ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR))
+            | ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR
+            | ElementSelectorFlags::ANCHORS_RELATIVE_SELECTOR_NON_SUBJECT
+            | ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING
+            | ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR)
     }
 
     /// Returns the subset of flags that apply to the parent.
     pub fn for_parent(self) -> ElementSelectorFlags {
         self & (ElementSelectorFlags::HAS_SLOW_SELECTOR
-            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)
-            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH)
-            .union(ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF)
-            .union(ElementSelectorFlags::HAS_EDGE_CHILD_SELECTOR)
-            .union(ElementSelectorFlags::MAY_HAVE_TREE_COUNTING_FUNCTION))
+            | ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS
+            | ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH
+            | ElementSelectorFlags::HAS_SLOW_SELECTOR_NTH_OF
+            | ElementSelectorFlags::HAS_EDGE_CHILD_SELECTOR
+            | ElementSelectorFlags::MAY_HAVE_TREE_COUNTING_FUNCTION)
     }
 }
 
@@ -406,7 +407,7 @@ where
 
     let iter = selector.iter_from(selector.len() - from_offset);
     debug_assert!(
-        iter.clone().next().is_some(),
+        iter.clone().next().is_some() || from_offset != selector.len(),
         "Got the math wrong: {:?} | {:?} | {} {}",
         selector,
         selector.iter_raw_match_order().as_slice(),
@@ -450,9 +451,6 @@ pub fn matches_complex_selector<E>(
 where
     E: Element,
 {
-    if !context.consume_work() {
-        return KleeneValue::False;
-    }
     // If this is the special pseudo-element mode, consume the ::pseudo-element
     // before proceeding, since the caller has already handled that part.
     if context.matching_mode() == MatchingMode::ForStatelessPseudoElement
@@ -469,10 +467,13 @@ where
                 }
             }
             ref other => {
-                panic!(
-                    "Used MatchingMode::ForStatelessPseudoElement in a non-pseudo selector {:?}",
+                debug_assert!(
+                    false,
+                    "Used MatchingMode::ForStatelessPseudoElement \
+                     in a non-pseudo selector {:?}",
                     other
                 );
+                return KleeneValue::False;
             }
         }
 
@@ -523,9 +524,6 @@ fn matches_relative_selector<E: Element>(
         }
         let mut next_element = element.first_element_child();
         while let Some(el) = next_element {
-            if !context.consume_work() {
-                return false;
-            }
             if context.needs_selector_flags() {
                 el.apply_selector_flags(
                     ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR,
@@ -574,9 +572,6 @@ fn matches_relative_selector<E: Element>(
         };
         let mut next_element = element.next_sibling_element();
         while let Some(el) = next_element {
-            if !context.consume_work() {
-                return false;
-            }
             if context.needs_selector_flags() {
                 el.apply_selector_flags(sibling_flag);
             }
@@ -616,13 +611,11 @@ fn relative_selector_match_early<E: Element>(
     {
         return Some(cached.matched());
     }
-    // See if we can fast-reject without escaping current traversal accounting.
-    let budget = context.work_budget();
-    let quirks_mode = context.quirks_mode();
+    // See if we can fast-reject.
     if context
         .selector_caches
         .relative_selector_filter_map
-        .fast_reject(element, selector, quirks_mode, budget)
+        .fast_reject(element, selector, context.quirks_mode())
     {
         // Alright, add as unmatched to cache.
         context.selector_caches.relative_selector.add(
@@ -646,7 +639,7 @@ fn match_relative_selectors<E: Element>(
         // correct, arguably. But the ideal solution isn't super-clear either. For now,
         // cope with it and explicitly reject it at match time. See [1] for discussion.
         //
-        // [1]: <https://github.com/w3c/csswg-drafts/issues/9600>
+        // [1]: https://github.com/w3c/csswg-drafts/issues/9600
         return KleeneValue::False;
     }
     if let Some(may_return_unknown) = context.matching_for_invalidation_comparison() {
@@ -688,9 +681,6 @@ fn do_match_relative_selectors<E: Element>(
     }
 
     for relative_selector in selectors.iter() {
-        if !context.consume_work() {
-            return false;
-        }
         if let Some(result) = relative_selector_match_early(relative_selector, element, context) {
             if result {
                 return true;
@@ -700,9 +690,6 @@ fn do_match_relative_selectors<E: Element>(
         }
 
         let matched = matches_relative_selector(relative_selector, element, context, rightmost);
-        if context.work_exhausted() {
-            return false;
-        }
         context.selector_caches.relative_selector.add(
             element.opaque(),
             relative_selector,
@@ -726,12 +713,11 @@ fn matches_relative_selector_subtree<E: Element>(
     context: &mut MatchingContext<E::Impl>,
     rightmost: SubjectOrPseudoElement,
 ) -> bool {
+    // The supported DOM depth exceeds the native test-thread stack. Keep this
+    // walk iterative; navigation remains owned and charged by the Element adapter.
     let boundary = element.opaque();
     let mut current = element.first_element_child();
     while let Some(el) = current {
-        if !context.consume_work() {
-            return false;
-        }
         if context.needs_selector_flags() {
             el.apply_selector_flags(
                 ElementSelectorFlags::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR,
@@ -746,9 +732,6 @@ fn matches_relative_selector_subtree<E: Element>(
         }
         let mut cursor = el;
         loop {
-            if !context.consume_work() {
-                return false;
-            }
             if let Some(sibling) = cursor.next_sibling_element() {
                 current = Some(sibling);
                 break;
@@ -811,9 +794,6 @@ where
         return Some(curr);
     }
     loop {
-        if !context.consume_work() {
-            return None;
-        }
         let parent = curr.containing_shadow_host();
         if parent.as_ref().map(|h| h.opaque()) == scope {
             return Some(curr);
@@ -834,9 +814,6 @@ where
     let scope = context.current_host?;
     let mut current_slot = element.assigned_slot()?;
     while current_slot.containing_shadow_host().unwrap().opaque() != scope {
-        if !context.consume_work() {
-            return None;
-        }
         current_slot = current_slot.assigned_slot()?;
     }
     Some(current_slot)
@@ -900,9 +877,6 @@ fn matches_complex_selector_internal<E>(
 where
     E: Element,
 {
-    if !context.consume_work() {
-        return SelectorMatchingResult::NotMatchedGlobally;
-    }
     debug!(
         "Matching complex selector {:?} for {:?}",
         selector_iter, element
@@ -934,6 +908,12 @@ where
         element.apply_selector_flags(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS);
     }
 
+    if matches_compound_selector == KleeneValue::False {
+        // We don't short circuit unknown here, since the rest of the selector
+        // to the left of this compound may still return false.
+        return SelectorMatchingResult::NotMatchedAndRestartFromClosestLaterSibling;
+    }
+
     if !is_pseudo_combinator {
         rightmost = SubjectOrPseudoElement::No;
         first_subject_compound = SubjectOrPseudoElement::No;
@@ -955,9 +935,6 @@ where
 
     let mut element = element.clone();
     loop {
-        if !context.consume_work() {
-            return candidate_not_found;
-        }
         if element.is_link() {
             visited_handling = VisitedHandlingMode::AllLinksUnvisited;
         }
@@ -1071,9 +1048,6 @@ where
     let current_host = context.current_host;
     if current_host != Some(host.opaque()) {
         loop {
-            if !context.consume_work() {
-                return false;
-            }
             let outer_host = host.containing_shadow_host();
             if outer_host.as_ref().map(|h| h.opaque()) == current_host {
                 break;
@@ -1093,9 +1067,6 @@ where
     parts.iter().all(|part| {
         let mut part = part.clone();
         for host in hosts.iter().rev() {
-            if !context.consume_work() {
-                return false;
-            }
             part = match host.imported_part(&part) {
                 Some(p) => p,
                 None => return false,
@@ -1224,7 +1195,7 @@ pub(crate) fn compound_matches_featureless_host<Impl: SelectorImpl>(
             }
             Component::Negation(l) => {
                 // For now preserving behavior, see
-                // <https://github.com/w3c/csswg-drafts/issues/10179> for existing resolutions that
+                // https://github.com/w3c/csswg-drafts/issues/10179 for existing resolutions that
                 // tweak this behavior.
                 for selector in l.slice() {
                     if selector.matches_featureless_host(scope_matches_featureless_host)
@@ -1284,16 +1255,7 @@ fn matches_simple_selector<E>(
 where
     E: Element,
 {
-    if !context.shared.consume_work() {
-        return KleeneValue::False;
-    }
-
-    if context.shared.in_negation() {
-        debug_assert!(
-            context.shared.is_nested(),
-            "Negation matching requires nested context"
-        );
-    }
+    debug_assert!(context.shared.is_nested() || !context.shared.in_negation());
     let rightmost = context.rightmost;
     KleeneValue::from(match *selector {
         Component::ID(ref id) => {
@@ -1411,7 +1373,9 @@ where
                 rightmost,
             );
         }
-        Component::Combinator(_) => unreachable!("Combinators must separate selector compounds"),
+        Component::Combinator(_) => unsafe {
+            debug_unreachable!("Shouldn't try to selector-match combinators")
+        },
         Component::RelativeSelectorAnchor => {
             let anchor = context.shared.relative_selector_anchor();
             // We may match inner relative selectors, in which case we want to always match.
@@ -1559,14 +1523,14 @@ where
             is_from_end,
             rightmost,
         );
-        if context.work_exhausted() {
-            return KleeneValue::False;
-        }
         context
             .nth_index_cache(is_of_type, is_from_end, selectors)
             .insert(element.opaque(), i);
         i
     };
+    // Recomputing an index for a debug assertion performs another governed walk.
+    // A refused Element callback can make that incomplete walk disagree before
+    // the product observes sticky exhaustion. Cache equivalence is tested instead.
 
     an_plus_b.matches_index(index).into()
 }
@@ -1597,9 +1561,6 @@ where
         let mut index: i32 = 1;
         let mut curr = element.clone();
         while let Some(e) = curr.prev_sibling_element() {
-            if !context.consume_work() {
-                return 0;
-            }
             curr = e;
             let matches = if is_of_type {
                 element.is_same_type(&curr)
@@ -1631,9 +1592,6 @@ where
         }
     };
     while let Some(e) = next(curr) {
-        if !context.consume_work() {
-            return 0;
-        }
         curr = e;
         let matches = if is_of_type {
             element.is_same_type(&curr)
@@ -1661,7 +1619,3 @@ where
 
     index
 }
-
-#[cfg(test)]
-#[path = "tests/matching.rs"]
-mod tests;

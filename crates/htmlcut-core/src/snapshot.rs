@@ -2,10 +2,10 @@
 //! Accepted immutable source and lazy, failure-caching preparation.
 
 use std::cell::OnceCell;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
+use crate::dom::{Html, parser::ParseLimits};
 use schemars::JsonSchema;
-use scraper::{Html, html::ParseLimits};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -15,7 +15,7 @@ use crate::{ErrorCode, ExtractionError, PreparationLimits};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct SnapshotMetadata {
-    /// Effective absolute HTTP(S) base URL; operational evidence must redact its query.
+    /// Effective absolute HTTP(S) base URL.
     pub base_url: Option<String>,
 }
 
@@ -24,7 +24,6 @@ pub struct SnapshotMetadata {
 pub struct SourceSnapshot {
     html: Arc<str>,
     metadata: SnapshotMetadata,
-    source_digest: Arc<OnceLock<String>>,
 }
 
 impl SourceSnapshot {
@@ -70,7 +69,6 @@ impl SourceSnapshot {
         Ok(Self {
             html: Arc::from(html),
             metadata,
-            source_digest: Arc::new(OnceLock::new()),
         })
     }
     /// Exact accepted source, including CRLF and original source spelling.
@@ -80,11 +78,6 @@ impl SourceSnapshot {
     /// Explicit metadata, never derived from DOM contents.
     pub fn metadata(&self) -> &SnapshotMetadata {
         &self.metadata
-    }
-    /// SHA-256 of exact accepted UTF-8 bytes.
-    pub fn source_sha256(&self) -> &str {
-        self.source_digest
-            .get_or_init(|| crate::identity::sha256(self.html.as_bytes()))
     }
 }
 
@@ -101,7 +94,6 @@ pub struct PreparedDocument {
     pub(crate) snapshot: SourceSnapshot,
     pub(crate) limits: PreparationLimits,
     dom: OnceCell<Result<Html, ExtractionError>>,
-    digest: OnceCell<String>,
     #[cfg(test)]
     parses: std::cell::Cell<u32>,
 }
@@ -124,7 +116,6 @@ impl PreparedDocument {
             snapshot,
             limits,
             dom: OnceCell::new(),
-            digest: OnceCell::new(),
             #[cfg(test)]
             parses: std::cell::Cell::new(0),
         })
@@ -133,26 +124,9 @@ impl PreparedDocument {
     pub fn snapshot(&self) -> &SourceSnapshot {
         &self.snapshot
     }
-    /// Actual immutable preparation policy, needed for self-contained replay.
+    /// Actual immutable preparation policy.
     pub fn preparation_limits(&self) -> &PreparationLimits {
         &self.limits
-    }
-    /// Snapshot/metadata/preparation-policy identity, distinct from extraction data.
-    pub fn prepared_sha256(&self) -> &str {
-        self.digest.get_or_init(|| {
-            let metadata = crate::canonical_json(&self.snapshot.metadata)
-                .expect("validated metadata serializes");
-            let policy =
-                crate::canonical_json(&self.limits).expect("validated preparation serializes");
-            crate::identity::framed(
-                "htmlcut.prepared/3",
-                &[
-                    self.snapshot.source_sha256().as_bytes(),
-                    metadata.as_bytes(),
-                    policy.as_bytes(),
-                ],
-            )
-        })
     }
     fn prepared_dom(&self) -> Result<&Html, ExtractionError> {
         self.dom
@@ -169,7 +143,7 @@ impl PreparedDocument {
                     },
                 )
                 .map_err(|failure| {
-                    use scraper::html::ParseLimitExceeded;
+                    use crate::dom::parser::ParseLimitExceeded;
                     let (counter, bound) = match failure {
                         ParseLimitExceeded::Elements => ("max_elements", self.limits.max_elements),
                         ParseLimitExceeded::Nodes => ("max_nodes", self.limits.max_nodes),
@@ -188,5 +162,22 @@ impl PreparedDocument {
     #[cfg(test)]
     pub(crate) fn parse_count(&self) -> u32 {
         self.parses.get()
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    #[test]
+    fn results_release_the_source_when_prepared_document_is_dropped() {
+        let snapshot = SourceSnapshot::new("<p>owned</p>", SnapshotMetadata::default()).unwrap();
+        let weak = Arc::downgrade(&snapshot.html);
+        let document = PreparedDocument::new(snapshot, PreparationLimits::default()).unwrap();
+        let query =
+            crate::CompiledPlan::compile(&crate::ExtractionPlan::css("p").unwrap()).unwrap();
+        let result = document.execute(&query).unwrap();
+        drop(document);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(result.data().as_values().unwrap(), ["owned"]);
     }
 }

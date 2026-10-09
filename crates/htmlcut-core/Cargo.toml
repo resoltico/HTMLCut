@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
 name = "htmlcut-core"
-publish = false
+publish = true
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "MPL-2.0 AND ISC"
 authors.workspace = true
 repository.workspace = true
-description = "Bounded snapshot queries with original-DOM records, structural readings and optional replay evidence."
+description = "Bounded snapshot queries with original-DOM records, structural readings and complete typed results."
 
 [features]
 default = []
@@ -17,20 +17,21 @@ default = []
 cssparser.workspace = true
 ego-tree.workspace = true
 regex.workspace = true
-scraper.workspace = true
+html5ever.workspace = true
+tendril.workspace = true
+precomputed-hash.workspace = true
 schemars.workspace = true
 selectors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
-sha2.workspace = true
 thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
 pulldown-cmark.workspace = true
 boon.workspace = true
-htmlcut-tempdir.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

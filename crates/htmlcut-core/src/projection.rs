@@ -3,9 +3,9 @@
 
 use std::collections::HashSet;
 
+use crate::budget::WorkBudget;
+use crate::dom::{ElementRef, Node};
 use ego_tree::{NodeId, iter::Edge};
-use scraper::{ElementRef, Node};
-use selectors::work_budget::SelectorWorkBudget;
 
 use crate::{ErrorCode, ExtractionError, Reading};
 
@@ -19,12 +19,12 @@ mod markdown_writer;
 pub(crate) struct ValueBuffer<'a> {
     value: String,
     maximum: usize,
-    budget: &'a SelectorWorkBudget,
+    budget: &'a WorkBudget,
     pending_space: bool,
 }
 
 impl<'a> ValueBuffer<'a> {
-    pub(crate) fn new(maximum: usize, budget: &'a SelectorWorkBudget) -> Self {
+    pub(crate) fn new(maximum: usize, budget: &'a WorkBudget) -> Self {
         Self {
             value: String::new(),
             maximum,
@@ -89,7 +89,7 @@ pub(crate) fn project(
     excluded: &HashSet<NodeId>,
     base: Option<&str>,
     maximum: usize,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<String, ExtractionError> {
     let resolve = matches!(projection, Reading::Url(_) | Reading::ResolvedMarkdown);
     match projection {
@@ -172,7 +172,7 @@ pub(crate) fn text(
     structural: bool,
     maximum: usize,
     preview_characters: Option<usize>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<(String, bool), ExtractionError> {
     #[cfg(test)]
     record_projection(1);
@@ -256,7 +256,7 @@ struct TextOutput<'a> {
     preview_characters: Option<usize>,
     characters: usize,
     pending: bool,
-    budget: &'a SelectorWorkBudget,
+    budget: &'a WorkBudget,
 }
 impl TextOutput<'_> {
     fn separator(&mut self) {

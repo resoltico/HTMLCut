@@ -124,7 +124,7 @@ pub(crate) fn validate_destinations(
         let target = normalized_target(path)?;
         if inputs.contains(&target) || seen.contains(&target) {
             return Err(super::input::options(
-                "Input, result and evidence destinations must be distinct.",
+                "Input and output destinations must be distinct.",
             ));
         }
         if !overwrite && target.exists() {

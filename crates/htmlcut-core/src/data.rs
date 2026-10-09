@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bare requested data; empty arrays retain their kind in typed execution and receipts.
+//! Bare requested data; empty arrays retain their kind in typed execution.
 
 use std::{borrow::Cow, collections::BTreeMap};
 

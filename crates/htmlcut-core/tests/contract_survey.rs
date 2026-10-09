@@ -18,7 +18,6 @@ fn a_regular_header_table_reports_rows_without_inventing_a_field_plan() {
     let source = "<table id=population class=wikitable><tr><th>Location</th><th>Population</th></tr><tr><td>India</td><td>1</td></tr><tr><td>China</td><td>2</td></tr><tr></tr></table>";
     let page = document(source);
     let result = page.survey(None, 8).unwrap();
-    assert_eq!(result.source_sha256, page.snapshot().source_sha256());
     assert_eq!(result.group_count, 1);
     assert!(result.groups_complete);
     let group = &result.groups[0];
@@ -168,7 +167,7 @@ fn long_or_multiple_header_rows_are_labeled_incomplete() {
 }
 
 #[test]
-fn survey_refuses_an_oversized_encoded_answer() {
+fn typed_survey_returns_all_requested_bounded_groups_before_encoding() {
     let classes = (0..8)
         .map(|i| format!("c{i}{}", "x".repeat(62)))
         .collect::<Vec<_>>()
@@ -188,10 +187,10 @@ fn survey_refuses_an_oversized_encoded_answer() {
         .collect::<String>();
     let page = document(&source);
     assert!(page.survey(None, 1).is_ok());
-    assert_eq!(
-        page.survey(None, 16).unwrap_err().code,
-        ErrorCode::ResourceLimit
-    );
+    let result = page.survey(None, 16).unwrap();
+    assert_eq!(result.groups.len(), 16);
+    assert_eq!(result.group_count, 17);
+    assert!(!result.groups_complete);
 }
 
 #[test]

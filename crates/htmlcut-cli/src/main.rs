@@ -2,8 +2,6 @@
 #![forbid(unsafe_code)]
 
 mod app;
-mod bundle;
-mod bundle_io;
 mod command;
 mod command_diagnostics;
 mod input;

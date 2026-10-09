@@ -3,9 +3,9 @@
 
 use std::collections::HashSet;
 
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 use ego_tree::NodeId;
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
 
 use crate::{ErrorCode, ExtractionError};
 
@@ -18,7 +18,7 @@ pub(super) fn selected_scopes<'a>(
     selected: &[ElementRef<'a>],
     candidates: &[ElementRef<'a>],
     following: u32,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<SelectionScope<'a>>, ExtractionError> {
     let candidate_ids = if following > 0 {
         super::charge(budget, candidates.len())?;
@@ -42,7 +42,7 @@ fn scope<'a>(
     anchor: ElementRef<'a>,
     following: u32,
     candidates: &HashSet<NodeId>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<SelectionScope<'a>, ExtractionError> {
     let mut following_siblings = Vec::with_capacity(following as usize);
     let mut cursor = anchor.next_sibling();
@@ -85,10 +85,10 @@ mod scope_budget_tests {
 
     #[test]
     fn anchor_only_scope_needs_no_candidate_set_or_expansion_pass() {
-        let document = scraper::Html::parse_document("<article>A</article><article>B</article>");
-        let selector = scraper::Selector::parse("article").unwrap();
+        let document = crate::dom::Html::parse_document("<article>A</article><article>B</article>");
+        let selector = crate::dom::Selector::parse("article").unwrap();
         let roots = document.select(&selector).collect::<Vec<_>>();
-        let budget = SelectorWorkBudget::new(1);
+        let budget = WorkBudget::new(1);
         let scopes = selected_scopes(&roots, &roots, 0, &budget).unwrap();
         assert_eq!(scopes.len(), 2);
         for (scope, anchor) in scopes.iter().zip(&roots) {

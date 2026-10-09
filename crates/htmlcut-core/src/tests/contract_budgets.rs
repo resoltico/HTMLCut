@@ -408,3 +408,32 @@ fn t29_url_raw_and_resolved_lengths_accept_the_exact_bound() {
         ErrorCode::ResourceLimit
     );
 }
+
+#[test]
+fn unfinished_utf8_tokens_obey_source_byte_caps_before_parsing() {
+    for source in ["<main>é", "<main><!--é", "<script>é"] {
+        let bytes = source.len() as u32;
+        for (cap, accepted) in [(bytes - 1, false), (bytes, true), (bytes + 1, true)] {
+            let snapshot = SourceSnapshot::new(source, SnapshotMetadata::default()).unwrap();
+            let prepared = PreparedDocument::new(
+                snapshot,
+                PreparationLimits {
+                    max_source_bytes: cap,
+                    ..Default::default()
+                },
+            );
+            if accepted {
+                let plan = CompiledPlan::compile(&ExtractionPlan::css("html").unwrap()).unwrap();
+                assert!(
+                    prepared.unwrap().execute(&plan).is_ok(),
+                    "{source}, cap={cap}"
+                );
+            } else {
+                let error = prepared.err().expect("source byte cap must reject");
+                assert_eq!(error.code, ErrorCode::ResourceLimit);
+                assert_eq!(error.resource_counter.as_deref(), Some("max_source_bytes"));
+                assert_eq!(error.configured_bound, Some(u64::from(cap)));
+            }
+        }
+    }
+}

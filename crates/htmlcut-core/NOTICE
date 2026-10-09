@@ -1,0 +1,6 @@
+HTMLCut core includes DOM, parser sink, selector and serialization portions
+adapted from rust-scraper. Those portions retain their ISC terms and copyright
+attribution in LICENSE-ISC. Original HTMLCut source retains MPL-2.0 terms in
+LICENSE. The package license expression requires both applicable sets of terms.
+Upstream source: https://github.com/rust-scraper/scraper
+HTMLCut source and modifications: https://github.com/resoltico/HTMLCut

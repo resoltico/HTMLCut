@@ -3,14 +3,14 @@ $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Named-pipe proof requires Windows' }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $rows = @()
-foreach ($role in @('source', 'plan', 'bundle')) {
+$roles = @('source', 'plan')
+foreach ($role in $roles) {
     $name = 'htmlcut-input-' + [Guid]::NewGuid().ToString('N')
     $pipe = New-Object System.IO.Pipes.NamedPipeServerStream($name, [System.IO.Pipes.PipeDirection]::InOut)
     $path = '\\.\pipe\' + $name
     $arguments = $(switch ($role) {
         'source' { @('extract', '--file', $path, '--select', 'p') }
         'plan' { @('extract', '--stdin', '--plan', $path) }
-        'bundle' { @('replay', $path) }
     })
     $row = [ordered]@{role=$role; passed=$false; server_waited_for_connection=$false}
     $process = New-Object System.Diagnostics.Process
@@ -35,7 +35,7 @@ foreach ($role in @('source', 'plan', 'bundle')) {
     finally { $process.Dispose(); $pipe.Dispose() }
     $rows += [pscustomobject]$row
 }
-$passed = $rows.Count -eq 3 -and @($rows | Where-Object { -not $_.passed }).Count -eq 0
+$passed = $rows.Count -eq $roles.Count -and @($rows | Where-Object { -not $_.passed }).Count -eq 0
 $proof = [ordered]@{schema='htmlcut.native-windows-pipe-input'; version=1; binary_sha256=(Get-FileHash -LiteralPath $Binary -Algorithm SHA256).Hash.ToLowerInvariant(); rows=$rows; passed=$passed}
 [System.IO.File]::WriteAllText($Evidence, ($proof | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 if (-not $passed) { throw "Native pipe file-role refusals failed; evidence: $Evidence" }

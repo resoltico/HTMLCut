@@ -24,6 +24,19 @@ def main():
     run('binary-version',['--version'],raw=f'htmlcut {package_version}\n'.encode())
     with tempfile.TemporaryDirectory(prefix='htmlcut-native-contract-') as directory:
         root=Path(directory)
+        # Exercise the matching admission change against every extracted native binary.
+        safe_selector='* '*63+'span'
+        safe_source=('<div>'*63+'<span>X</span>'+'</div>'*63).encode()
+        run('matching-depth-boundary',['extract','--stdin','--select',safe_selector],safe_source,expected=['X'])
+        for ancestors in [64,2000]:
+            selector='* '*ancestors+'span.private-query-marker'
+            result=run(f'matching-depth-refusal-{ancestors+1}',
+                ['extract','--stdin','--select',selector],
+                b'<span class="private-query-marker">private-source-marker</span>',failure=4)
+            facts=json.loads(result.stderr)
+            rows[-1]['passed'] &= facts['code']=='resource_limit' and facts['stage']=='compilation'
+            rows[-1]['passed'] &= facts['resource_counter']=='selector_matching_depth' and facts['configured_bound']==64
+            rows[-1]['passed'] &= b'private-query-marker' not in result.stderr and b'private-source-marker' not in result.stderr
         for label,source,css,projection,expected in [
             ('literal-hidden','<p>A<span hidden>B</span><template>T</template></p>','p','literal',['ABT']),
             ('reading-hidden','<p>A<span hidden>B</span><template>T</template><script>S</script></p>','p','markdown',['AB']),
@@ -78,37 +91,23 @@ def main():
         path=root/'records.plan.json';path.write_text(json.dumps(plan),encoding="utf-8")
         source=root/'source.html';source.write_text('<article><h2>First é</h2><p class="price">10</p></article><article><h2>Second</h2><p class="price">20</p></article>',encoding="utf-8")
         expected=[dict(title='First é',price='10',absent=None,empty=[]),dict(title='Second',price='20',absent=None,empty=[])]
-        bundle=root/'snapshot.htmlcut.tar';run('direct-records-and-bundle',['extract','--file',str(source),'--plan',str(path),'--bundle',str(bundle)],expected=expected)
-        moved=root/'moved.htmlcut.tar';bundle.rename(moved);source.unlink();path.unlink()
-        run('moved-input-independent-replay',['replay',str(moved)],expected=expected)
-        receipt=root/'receipt.json'
-        replay=run('separate-record-receipt',['replay',str(moved),'--receipt',str(receipt)],expected=expected)
-        canonical=json.dumps(expected,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
-        evidence=json.loads(receipt.read_bytes())
-        rows[-1]['passed'] &= replay.stdout==canonical+b'\n' and evidence['schema']=='htmlcut.extraction.receipt'
-        rows[-1]['passed'] &= evidence['version']==wire_version and evidence['semantics']==wire_version and evidence['data_kind']=='records'
-        rows[-1]['passed'] &= evidence['candidate_count']==2 and evidence['selected_count']==2
-        rows[-1]['passed'] &= evidence['data_sha256']==hashlib.sha256(canonical).hexdigest()
-        rows[-1]['passed'] &= evidence['fields']=={
-            'title':dict(candidate_count=2,projected_count=2,absent_count=0),
-            'price':dict(candidate_count=2,projected_count=2,absent_count=0),
-            'absent':dict(candidate_count=0,projected_count=0,absent_count=2),
-            'empty':dict(candidate_count=0,projected_count=0,absent_count=0)}
-        rows[-1]['passed'] &= b'First' not in receipt.read_bytes() and str(root).encode() not in receipt.read_bytes()
-        run('record-raw-refused',['replay',str(moved),'--raw'],failure=2)
-        published=root/'data.json';run('file-data',['replay',str(moved),'--output',str(published)],raw=b'')
+        command=['extract','--file',str(source),'--plan',str(path)]
+        first=run('direct-records',command,expected=expected)
+        run('ordinary-files-reproduction',command,raw=first.stdout)
+        run('record-raw-refused',command+['--raw'],failure=2)
+        published=root/'data.json';run('file-data',command+['--output',str(published)],raw=b'')
         rows[-1]['passed'] &= json.loads(published.read_bytes())==expected
-        run('no-overwrite',['replay',str(moved),'--output',str(published)],failure=5)
-        run('bundle-collision',['replay',str(moved),'--output',str(moved),'--overwrite'],failure=2)
+        run('no-overwrite',command+['--output',str(published)],failure=5)
+        run('input-output-collision',command+['--output',str(source),'--overwrite'],failure=2)
         inspection=run('scoped-inspection',['inspect','--stdin','--select','p','--samples','2'],b'<p>A</p><p>B</p><p>C</p>')
         value=json.loads(inspection.stdout);rows[-1]['passed'] &= value['count']==3 and len(value['samples'])==2 and not value['samples_complete']
         outline_source=b'<table id=population><tr><th>Location</th><th>Population</th></tr><tr><td>India</td><td>1</td></tr><tr><td>China</td><td>2</td></tr></table>'
         outline=run('group-outline',['inspect','--stdin'],outline_source)
         value=json.loads(outline.stdout);group=value['groups'][0]
-        rows[-1]['passed'] &= value['source_sha256']==hashlib.sha256(outline_source).hexdigest() and value['group_count']==1 and value['groups_complete']
+        rows[-1]['passed'] &= value['group_count']==1 and value['groups_complete']
         rows[-1]['passed'] &= group['selector']=='#population tr' and group['count']==3 and group['table']['headers']==['Location','Population'] and group['table']['data_rows']==2
         sample_source=b'<main id=content class="docs main" data-secret=private><table><tr><td>China</td><td>17.3%</td></tr></table></main>'
-        run('combined-inspection',['inspect','--stdin','--select','main'],sample_source,expected=dict(source_sha256=hashlib.sha256(sample_source).hexdigest(),count=1,samples=[dict(tag='main',id='content',classes=['docs','main'],identifiers_complete=True,attributes=['class','data-secret','id'],attributes_complete=True,text='China 17.3%',text_complete=True)],samples_complete=True))
+        run('combined-inspection',['inspect','--stdin','--select','main'],sample_source,expected=dict(count=1,samples=[dict(tag='main',id='content',classes=['docs','main'],identifiers_complete=True,attributes=['class','data-secret','id'],attributes_complete=True,text='China 17.3%',text_complete=True)],samples_complete=True))
         for version in range(1,wire_version):
             old=dict(plan,version=version);path.write_text(json.dumps(old),encoding="utf-8");run(f'unsupported-wire-{version}',['extract','--stdin','--plan',str(path)],b'<article></article>',failure=2)
         simple={'version':wire_version,'select':'#amount','expect':[{'select':'#label','equals':'Cost'}]}

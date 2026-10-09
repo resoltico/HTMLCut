@@ -18,7 +18,6 @@ fn survey_surfaces_a_table_group_with_header_and_row_shape_evidence() {
         serde_json::json!(["Location", "Population"])
     );
     assert_eq!(value["groups"][0]["table"]["data_rows"], 2);
-    assert_eq!(value["source_sha256"].as_str().unwrap().len(), 64);
 }
 
 #[test]
@@ -77,9 +76,38 @@ fn malformed_scope_limit_and_missing_input_publish_no_survey() {
         );
         assert!(result.stdout.is_empty());
     }
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let missing = root.path().join("missing.html");
     let result = invoke(&["inspect", "--file", missing.to_str().unwrap()], b"");
     assert_eq!(result.status.code(), Some(5));
     assert!(result.stdout.is_empty());
+}
+
+#[test]
+fn survey_encoding_exhaustion_emits_no_partial_answer() {
+    let classes = (0..8)
+        .map(|i| format!("c{i}{}", "x".repeat(62)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = (0..16)
+        .map(|i| {
+            let id = format!("p{i:02}{}", "x".repeat(125));
+            let articles = format!(
+                "<article class='{classes}'>{}</article>",
+                "\u{1}".repeat(64)
+            )
+            .repeat(3);
+            format!("<section id='{id}'>{articles}</section>")
+        })
+        .collect::<String>();
+    assert!(
+        invoke(&["inspect", "--stdin", "--limit", "1"], source.as_bytes())
+            .status
+            .success()
+    );
+    let result = invoke(&["inspect", "--stdin", "--limit", "16"], source.as_bytes());
+    assert_eq!(result.status.code(), Some(4));
+    assert!(result.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&result.stderr).unwrap();
+    assert_eq!(error["resource_counter"], "encoded_bytes");
 }

@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
-    let html = include_str!("../../../../evaluation/corpus/technical.html");
+    let html = include_str!("../../tests/fixtures/pages/technical.html");
     let source = prepared(html);
     let mut plan = ExtractionPlan::css("#policy").unwrap();
     plan.read = Some(Reading::Literal);
@@ -46,7 +46,7 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
 
 #[test]
 fn t34_supplied_rendered_dom_is_data_and_scripts_are_never_executed() {
-    let html = include_str!("../../../../evaluation/corpus/rendered.html");
+    let html = include_str!("../../tests/fixtures/pages/rendered.html");
     let mut plan = ExtractionPlan::css(".quote").unwrap();
     plan.match_mode = Match::All;
     plan.min = Some(1);
@@ -64,7 +64,7 @@ fn t34_supplied_rendered_dom_is_data_and_scripts_are_never_executed() {
 
 #[test]
 fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
-    let html = include_str!("../../../../evaluation/corpus/malformed.html");
+    let html = include_str!("../../tests/fixtures/pages/malformed.html");
     let source = prepared(html);
     let mut plan = ExtractionPlan::css("main").unwrap();
     plan.read = Some(Reading::Literal);

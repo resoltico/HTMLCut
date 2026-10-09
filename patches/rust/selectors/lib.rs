@@ -3,9 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 #![allow(clippy::all)]
-// The vendored HTMLCut runtime subset intentionally excludes upstream nightly-only
-// benchmarking hooks and Gecko shared-memory serialization support.
-#![cfg_attr(any(), feature(test))]
 
 pub mod attr;
 pub mod bloom;
@@ -19,7 +16,6 @@ pub mod relative_selector;
 pub mod sink;
 mod tree;
 pub mod visitor;
-pub mod work_budget;
 
 pub use crate::nth_index_cache::NthIndexCache;
 pub use crate::parser::{Parser, SelectorImpl, SelectorList};

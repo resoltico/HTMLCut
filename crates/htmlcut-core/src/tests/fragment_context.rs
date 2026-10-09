@@ -297,13 +297,7 @@ fn excluded_pre_fragment_root_emits_no_synthetic_fence_or_payload() {
         .execute(&CompiledPlan::compile(&plan).unwrap())
         .unwrap();
     assert_eq!(result.data().as_values().unwrap(), [""]);
-    assert_eq!(
-        (
-            result.receipt().unwrap().candidate_count,
-            result.receipt().unwrap().selected_count
-        ),
-        (1, 1)
-    );
+    assert_eq!((result.candidate_count(), result.selected_count()), (1, 1));
 }
 
 #[test]

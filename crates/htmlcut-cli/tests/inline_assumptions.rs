@@ -5,14 +5,12 @@ use serde_json::json;
 use support::invoke;
 
 #[test]
-fn scalar_exclusion_has_the_same_data_and_receipt_as_a_plan() {
+fn scalar_exclusion_has_the_same_data_as_a_plan() {
     let root = tempfile::tempdir().unwrap();
     let plan = root.path().join("reading.json");
-    let inline_receipt = root.path().join("inline.receipt.json");
-    let plan_receipt = root.path().join("plan.receipt.json");
     std::fs::write(
         &plan,
-        serde_json::to_vec(&json!({"version":6,"select":"p","exclude":["sup.reference"],"match":"one","read":"markdown"}))
+        serde_json::to_vec(&json!({"version":7,"select":"p","exclude":["sup.reference"],"match":"one","read":"markdown"}))
         .unwrap(),
     )
     .unwrap();
@@ -27,30 +25,17 @@ fn scalar_exclusion_has_the_same_data_and_receipt_as_a_plan() {
             "markdown",
             "--exclude",
             "sup.reference",
-            "--receipt",
-            inline_receipt.to_str().unwrap(),
         ],
         source,
     );
     let structured = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--plan",
-            plan.to_str().unwrap(),
-            "--receipt",
-            plan_receipt.to_str().unwrap(),
-        ],
+        &["extract", "--stdin", "--plan", plan.to_str().unwrap()],
         source,
     );
     assert!(inline.status.success());
     assert!(structured.status.success());
     assert_eq!(inline.stdout, b"[\"China\"]\n");
     assert_eq!(inline.stdout, structured.stdout);
-    assert_eq!(
-        std::fs::read(inline_receipt).unwrap(),
-        std::fs::read(plan_receipt).unwrap()
-    );
 }
 
 #[test]

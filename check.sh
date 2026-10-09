@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
 set -euo pipefail
-
-# Stable maintainer entrypoint: keep local docs, CI muscle memory, and the Rust gate on one path.
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd "$repo_root"
-
-./scripts/xtask.sh check
+cd "$(dirname "$0")"
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo test --locked --workspace --all-features
+cargo test --locked -p htmlcut-core --lib million_element_selector_inspection_fails_closed -- --ignored
+RUSTDOCFLAGS=-Dwarnings cargo doc --locked --workspace --all-features --no-deps
+python3 -m unittest discover -s tests -v
+cargo deny --locked check

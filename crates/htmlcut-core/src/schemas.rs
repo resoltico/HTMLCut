@@ -9,7 +9,6 @@ use crate::{ErrorCode, ExtractionData, ExtractionError, ExtractionPlan};
 pub const SCHEMA_NAMES: &[&str] = &[
     "htmlcut.extraction.plan",
     "htmlcut.extraction.data",
-    "htmlcut.extraction.receipt",
     "htmlcut.extraction.error",
     "htmlcut.inspection",
     "htmlcut.survey",
@@ -23,7 +22,6 @@ pub fn schema(name: &str) -> Result<Value, ExtractionError> {
         "htmlcut.extraction.error" => schemars::schema_for!(ExtractionError),
         "htmlcut.inspection" => schemars::schema_for!(crate::InspectionResult),
         "htmlcut.survey" => schemars::schema_for!(crate::SurveyResult),
-        "htmlcut.extraction.receipt" => schemars::schema_for!(crate::ExecutionReceipt),
         _ => {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidSchema,

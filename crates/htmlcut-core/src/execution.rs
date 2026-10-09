@@ -3,9 +3,9 @@
 
 use std::collections::HashSet;
 
+use crate::budget::WorkBudget;
+use crate::dom::{ElementRef, Html, Node, Selector};
 use ego_tree::{NodeId, NodeRef};
-use scraper::{ElementRef, Html, Node, Selector};
-use selectors::work_budget::SelectorWorkBudget;
 
 mod records;
 mod scope;
@@ -17,7 +17,7 @@ use crate::{
     PreparedDocument,
 };
 
-pub(crate) fn charge(budget: &SelectorWorkBudget, units: usize) -> Result<(), ExtractionError> {
+pub(crate) fn charge(budget: &WorkBudget, units: usize) -> Result<(), ExtractionError> {
     if units > budget.remaining() as usize {
         return Err(ExtractionError::resource(
             "execution",
@@ -37,7 +37,7 @@ impl PreparedDocument {
     /// Executes one compiled query using a fresh budget and the lazily prepared original DOM.
     pub fn execute(&self, compiled: &CompiledPlan) -> Result<ExtractionResult, ExtractionError> {
         let plan = &compiled.plan;
-        let budget = SelectorWorkBudget::new(plan.limits.max_work);
+        let budget = WorkBudget::new(plan.limits.max_work);
         let mut bytes = plan.limits.max_total_value_bytes as usize;
         let mut cells = plan.limits.max_cells;
         let document = self.document()?;
@@ -95,18 +95,11 @@ impl PreparedDocument {
             )
         };
         let selected_count = selected.len() as u32;
-        let payload = crate::identity::encoded(&data, crate::MAX_DATA_BYTES, &budget)?;
         Ok(ExtractionResult {
             data,
-            payload,
-            source: self.snapshot.clone(),
-            query: compiled.normalized_bytes.clone(),
-            preparation: self.limits.clone(),
             candidate_count: count,
             selected_count,
             fields,
-            budget,
-            evidence: std::cell::OnceCell::new(),
         })
     }
 }
@@ -190,7 +183,7 @@ pub(crate) fn matches<'a>(
     scope: Option<ElementRef<'a>>,
     selector: &Selector,
     maximum: u32,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     let root = scope
         .map(|element| *element)
@@ -210,7 +203,7 @@ pub(crate) fn matches_scope<'a>(
     scope: Option<&SelectionScope<'a>>,
     selector: &Selector,
     maximum: u32,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     match scope {
         Some(scope) => matches_payloads(
@@ -232,7 +225,7 @@ fn matches_payloads<'a>(
     roots: impl Iterator<Item = NodeRef<'a, Node>>,
     selector: &Selector,
     maximum: u32,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Vec<ElementRef<'a>>, ExtractionError> {
     let mut result = Vec::new();
     let mut matcher = selector
@@ -273,15 +266,15 @@ pub(crate) fn spend_cells(
 }
 
 fn selector_failure(
-    error: scraper::selector::SelectorMatchError,
+    error: crate::dom::selector::SelectorMatchError,
     stage: &'static str,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> ExtractionError {
     match error {
-        scraper::selector::SelectorMatchError::WorkLimitExceeded => {
+        crate::dom::selector::SelectorMatchError::WorkLimitExceeded => {
             ExtractionError::resource(stage, "max_work", budget.configured().into())
         }
-        scraper::selector::SelectorMatchError::DocumentMismatch => ExtractionError::new(
+        crate::dom::selector::SelectorMatchError::DocumentMismatch => ExtractionError::new(
             ErrorCode::InternalInvariant,
             stage,
             "Selector scope and candidates must belong to one document.",
@@ -293,7 +286,7 @@ pub(crate) fn exclusions(
     document: &Html,
     root: ElementRef<'_>,
     selectors: &[Selector],
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<HashSet<NodeId>, ExtractionError> {
     let mut excluded = HashSet::new();
     if selectors.is_empty() {
@@ -326,7 +319,7 @@ fn check_guards(
     document: &Html,
     selected: &[SelectionScope<'_>],
     compiled: &CompiledPlan,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<(), ExtractionError> {
     for (guard_index, (guard, grammar)) in compiled
         .plan
@@ -366,7 +359,7 @@ fn check_guard_scope(
     grammar: &crate::compilation::CompiledGuard,
     scope: Option<&SelectionScope<'_>>,
     limits: &crate::ExecutionLimits,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<(), ExtractionError> {
     let nodes = matches_scope(
         document,

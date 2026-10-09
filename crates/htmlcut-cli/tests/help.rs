@@ -8,7 +8,6 @@ fn current_help_version_and_retired_vocabulary() {
         vec!["--help"],
         vec!["extract", "--help"],
         vec!["inspect", "--help"],
-        vec!["replay", "--help"],
     ] {
         let output = invoke(&args, b"");
         assert!(output.status.success());
@@ -22,6 +21,7 @@ fn current_help_version_and_retired_vocabulary() {
         format!("htmlcut {}\n", env!("CARGO_PKG_VERSION"))
     );
     for args in [
+        vec!["replay", "--help"],
         vec!["select"],
         vec!["slice"],
         vec!["catalog"],

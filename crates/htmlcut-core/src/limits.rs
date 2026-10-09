@@ -248,6 +248,8 @@ pub const MAX_PLAN_BYTES: usize = 256 * 1024;
 pub const MAX_PATTERN_BYTES: usize = 8 * 1024;
 /// Maximum selector/regular-expression syntactic nesting.
 pub const MAX_PATTERN_DEPTH: u32 = 64;
+/// Maximum parsed selector matching-depth units along one combined chain/branch path.
+pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
 /// Maximum compiled regular-expression size.
 pub const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum guards and exclusions individually per plan.
@@ -261,8 +263,6 @@ pub const MAX_URL_PROCESSING_BYTES: usize = 32 * 1024;
 
 /// Maximum complete compact data JSON bytes, excluding its framing LF.
 pub const MAX_DATA_BYTES: usize = 64 * 1024 * 1024;
-/// Maximum serialized execution receipt bytes.
-pub const MAX_RECEIPT_BYTES: usize = 4 * 1024 * 1024;
 /// Maximum named fields in a record projection.
 /// Maximum number of named record fields in one extraction contract.
 pub const MAX_RECORD_FIELDS: usize = 64;

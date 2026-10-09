@@ -16,10 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     link.read = Some(Reading::Attribute("href".into()));
     let link = CompiledPlan::compile(&link)?;
     for plan in [&amount, &link] {
-        println!(
-            "{}",
-            std::str::from_utf8(document.execute(plan)?.payload())?
-        );
+        println!("{}", serde_json::to_string(document.execute(plan)?.data())?);
     }
     Ok(())
 }

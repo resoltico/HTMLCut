@@ -55,7 +55,7 @@ fn destination_changed_during_acquisition_never_publishes_a_result() {
             Ok(bytes.len())
         }
     }
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let target = root.path().join("output.json");
     let mut source = ChangeDestination {
         path: target.clone(),
@@ -205,7 +205,7 @@ fn t20_t22_raw_cardinality_and_json_escaping_are_staged() {
 
 #[test]
 fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let target = root.path().join("result.json");
     let staged = crate::publication::Staged::prepare(&target, b"replacement", false).unwrap();
     std::fs::write(&target, b"winner").unwrap();
@@ -245,7 +245,7 @@ fn t31_atomic_create_race_overwrite_collision_and_cleanup() {
 #[cfg(unix)]
 #[test]
 fn t31_symlink_destinations_cannot_follow_or_clobber_the_source() {
-    let root = htmlcut_tempdir::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source.html");
     let alias = root.path().join("alias");
     std::fs::write(&source, "<p>180</p>").unwrap();
@@ -276,52 +276,6 @@ fn t31_help_and_version_write_or_flush_failures_do_not_report_success() {
             );
             assert!(!String::from_utf8_lossy(&error).contains("secret"));
         }
-    }
-}
-
-#[test]
-fn t31_acquisition_time_destination_races_cannot_publish_bundles_or_receipts() {
-    struct RacingInput<'a> {
-        target: &'a std::path::Path,
-        body: io::Cursor<&'static [u8]>,
-        raced: bool,
-    }
-    impl Read for RacingInput<'_> {
-        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-            if !self.raced {
-                std::fs::create_dir(self.target)?;
-                self.raced = true;
-            }
-            self.body.read(output)
-        }
-    }
-    for flag in ["--bundle", "--receipt"] {
-        let root = tempfile::tempdir().unwrap();
-        let target = root.path().join("evidence.json");
-        let arguments = vec![
-            "htmlcut",
-            "extract",
-            "--stdin",
-            "--select",
-            "p",
-            flag,
-            target.to_str().unwrap(),
-        ];
-        let mut input = RacingInput {
-            target: &target,
-            body: io::Cursor::new(b"<p>value</p>"),
-            raced: false,
-        };
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        assert_eq!(app::run(arguments, &mut input, &mut stdout, &mut stderr), 5);
-        assert!(stdout.is_empty());
-        assert!(target.is_dir());
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
-        assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&stderr).unwrap()["code"],
-            "publication"
-        );
     }
 }
 

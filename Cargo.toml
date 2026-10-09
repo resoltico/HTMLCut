@@ -3,27 +3,21 @@
 members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
-    "crates/htmlcut-tempdir",
     "fuzz",
-    "xtask",
-    "patches/rust/scraper",
     "patches/rust/selectors",
     "patches/rust/servo_arc",
     "patches/rust/html5ever",
     "patches/rust/markup5ever",
     "patches/rust/tendril",
-    "patches/rust/sha2",
 ]
 default-members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
-    "crates/htmlcut-tempdir",
 ]
-exclude = ["semver-baseline/htmlcut-core"]
 resolver = "3"
 
 [workspace.package]
-version = "20.0.0"
+version = "21.0.0"
 edition = "2024"
 rust-version = "1.98.1"
 description = "Bounded extraction from immutable HTML snapshots with explicit projections, strict guards, reusable plans, and compact deterministic results."
@@ -38,26 +32,22 @@ pulldown-cmark = { version = "0.13.4", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
 cssparser = "0.38.0"
 ego-tree = "0.11.0"
+precomputed-hash = "0.1.1"
+html5ever = { package = "htmlcut-html5ever", path = "patches/rust/html5ever", version = "0.40.1-htmlcut.3" }
+tendril = { package = "htmlcut-tendril", path = "patches/rust/tendril", version = "0.5.1-htmlcut.2" }
 tempfile = "3.27.0"
-tar = { version = "0.4.46", default-features = false }
 os_pipe = "1.2.3"
 rustix = { version = "1.1.5", features = ["fs"] }
-htmlcut-core = { path = "crates/htmlcut-core", version = "20.0.0" }
-htmlcut-tempdir = { path = "crates/htmlcut-tempdir", version = "20.0.0" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "21.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
 # The selector/parser stack must travel with htmlcut-core into downstream git consumers.
-scraper = { package = "htmlcut-scraper", path = "patches/rust/scraper", version = "0.27.0-htmlcut.9", default-features = false, features = ["errors"] }
 schemars = "1.2.2"
-selectors = { package = "htmlcut-selectors", path = "patches/rust/selectors", version = "0.41.0-htmlcut.1" }
-shell-words = "1.1.1"
+selectors = { package = "htmlcut-selectors", path = "patches/rust/selectors", version = "0.41.0-htmlcut.3" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 serde_path_to_error = "0.1.20"
-sha2 = { package = "htmlcut-sha2", path = "patches/rust/sha2", version = "0.11.0-htmlcut.1", default-features = false }
 thiserror = "2.0.21"
-time = { version = "0.3.55", features = ["formatting", "parsing"] }
-toml = "1.1.6"
 url = "2.5.8"
 
 [workspace.lints.rust]

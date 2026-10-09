@@ -1,27 +1,76 @@
----
-afad: "4.0"
-version: "20.0.0"
-domain: ARCHITECTURE
-updated: "2026-10-05"
-route:
-  keywords: [architecture, surfaces, htmlcut-cli, htmlcut-core, extraction contract, ownership boundary, discovery model]
-  questions: ["what are the maintained HTMLCut surfaces?", "when should I reuse compiled plans and prepared documents?", "what does HTMLCut own versus downstream consumers?"]
----
-
 # Architecture
 
-HTMLCut has one supported pure Rust API, `htmlcut-core`, and one native binary, `htmlcut`. The core accepts immutable caller-owned UTF-8 snapshots with explicit metadata/preparation, compiles a closed current query, prepares the original bounded DOM lazily, and executes with fresh shared counters. Parser types stay private. No filesystem/network/browser/environment/clock/process acquisition occurs in the core.
+HTMLCut accepts saved/rendered UTF-8 HTML, prepares one immutable private DOM,
+compiles reusable closed queries, and returns complete owned typed values/counts.
+Acquisition, rendering, source trust and business interpretation belong to callers.
+Results hold no source, DOM, query, residual work or eager encoded payload. Core
+success establishes query completion; the CLI separately bounds JSON before output.
 
-One direct typed compiler serves JSON, inline CLI and Rust construction. Query version 6 contains select/read/match, named fields, expectations and execution limits. Root and field cardinality differ explicitly; no retired contract translation or compatibility wrapper exists. Canonical normalized bytes are validated and retained once, independent of serde feature choices.
+## Implemented boundaries
 
-Field payload stays in the original selected row forest; selector predicates retain original context. Expectations inspect original content before exclusions. One shared text traversal supplies full values, predicates, bounded previews and complete table headers. Literal, Markdown and parsed HTML are separate requested readings. Exact selected-byte slicing is removed; full accepted source remains intact.
+`dom/parser.rs` admits element/node allocations and attachments before mutation;
+`dom/tree_sink.rs` supplies the public html5ever TreeSink operations over ego-tree.
+UTF-8 feeds are at most 4096 bytes, and failures discard the partial document.
+Unfinished text/comment/raw tokens can span feeds and are bounded by source bytes.
+Same-token refusal still requires narrow html5ever/markup5ever stop hooks.
 
-Execution constructs private typed values and one bounded canonical JSON payload. The result owns immutable execution provenance/counts and the actual residual work allowance. Source/query/configuration hashes and receipt encoding are lazy; receipt success/failure is cached. Hash-cache hits do not replenish logical work. Holding values plus encoded bytes is bounded duplication, not a measured memory reduction.
+`dom/selector.rs` supplies static CSS grammar and a budget-carrying public Element
+adapter. Navigation charges every visited node, including skipped non-elements;
+name/type/attribute/class predicates charge callbacks and inspected byte batches.
+Iterative parsed-selector admission bounds combined matching paths at 64 units
+before selectors enter the recursive mature matcher. A matcher holds one SelectorCaches for its immutable document/selector/scope pass.
+It checks sticky exhaustion after matching, so negation cannot turn refusal into a
+successful non-match or match. No selector-engine internal budget hooks remain.
 
-The CLI owns intentional file/stdin input, UTF-8 decoding, standard native help, coherent inspection, JSON/raw framing and native staged publication. It reuses core payload bytes. Requested evidence comes from the result alone. Artifacts stage before the first file commit; single-file atomicity does not make several files/stdout a transaction.
+`dom/serialization.rs` streams filtered immutable HTML through the upstream public
+Serialize trait. The private DOM has no clone/filter/mutation-helper product API.
+Core callers retain original context for row scopes, guards and projections.
+Logical limits apply at declared boundaries; they are not exact upstream instruction
+counts or process CPU/RSS isolation. See [contract](core.md).
 
-Replay retains a closed uncompressed three-member USTAR container containing manifest, normalized query and exact source. It validates bounded declared sizes, exact member/header/padding/footer rules and actual I/O failures without unpacking. Recomputed evidence must agree with the bundle. Transport family remains 1; embedded query/receipt/semantics are current version 6.
+The CLI bounds complete deterministic JSON before single-file atomic staging or
+stdout. A query/encoding failure publishes no data; a stdout write failure can
+expose a prefix. Atomic rename is not a multi-file transaction. Reproduction uses
+[ordinary files](operations.md); receipts/bundles/replay are removed.
 
-Maintained parser/selector/serialization and provenance forks protect retained pure-library properties. Logical counters do not provide OS isolation; hashes do not authenticate origin or business meaning. Acquisition, rendering, normalization of business values, joins and ranking belong to callers.
+## Design and separate skeptical challenge
 
-See [Core](core.md), [CLI](cli.md), [Schemas](schema.md) and [Extraction Contract](extraction-contract-spec.md).
+Separate DOM admission, immutable serialization and matching/accounting from the
+parser/pointer graph. Use one aligned html5ever 0.40 / selectors 0.41 type graph.
+Moving these product responsibilities permits scraper retirement without deleting
+its required behavior or replacing mature parsing with a handwritten parser.
+
+A guarded public TokenSink cannot interrupt the current token: `<b><p>X</b>Y` at
+five elements panics in upstream adoption bookkeeping. Keep the demonstrated
+same-token stop hooks. Registry tendril/servo_arc also fail their independent
+ownership/provenance controls; preserve corrected transitive package identities.
+
+Challenge matching independently of those parser failures. The upstream nth-cache
+debug recomputation panics after a public navigation callback refuses, and recursive
+relative traversal overflows at supported depth 4000. Retain only iterative relative
+traversal and removal of that redundant diagnostic recomputation, with independent
+cached/cold, scope, ancestor/sibling/negation, depth and refusal controls. The wrapper
+owns all work and pass caches; outer candidate counts alone cannot bound inner work.
+
+Five necessary carrier responsibilities and their specific blockers are documented
+in [dependencies](dependencies.md). Verified distribution of corrected packages is
+separate from full upstream adoption and actual crates.io publication. Local and
+required CI commands remain direct tools, with bounded smoke and focused native
+package/release controls. Authoritative CI and external rollout remain separate
+from locally executed evidence; see [release handoff](release-protocol.md).
+
+## Selector admission correction: design and separate challenge
+
+A raw syntax-nesting cap misses long combinator chains: the accepted 2001-compound
+query aborted a default 2 MiB consumer thread. Retain the matching engine and add
+one fixed, product-owned parsed matching-depth admission rule. Walk borrowed AST
+nodes iteratively so admission itself does not recurse on excessive input.
+
+Challenge the combined path rather than isolated chain/nesting caps. A branch at
+a leftward compound inherits that active chain, whereas a rightmost branch finishes
+before later leftward compounds execute. Measure the maximum alternative, including
+later list branches, :is/:where/:not/:has and functional selector arguments. Relative
+anchors count too. Forgiving-list parsing can discard invalid branches: inspect the
+retained AST, not raw punctuation. Public-core subprocess tests execute exact
+boundary controls on a 2 MiB thread; a separate original-tree probe must abort or
+violate the declared refusal. CLI refusal must remain exit 4 with empty stdout.

@@ -1,1 +1,1 @@
-{"version":6,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}
+{"version":7,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}

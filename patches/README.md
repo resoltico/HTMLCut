@@ -1,85 +1,46 @@
-<!--
-AFAD:
-  afad: "4.0"
-  version: "20.0.0"
-  domain: DEPENDENCY
-  updated: "2026-10-05"
-RETRIEVAL_HINTS:
-  keywords: [local dependency patch, vendored dependency stack, scraper, selectors, html5ever, markup5ever, servo_arc, tendril, miri, strict provenance]
-  questions: ["why does HTMLCut vendor the selector and parser stack locally?", "how do I verify the local dependency patches?", "when can the local overrides be removed?"]
--->
+# Retained dependency safeguards
 
-# Local Dependency Patches
+HTMLCut owns five distributable dependency carriers. The parser/atom graph uses
+html5ever 0.40.1 and markup5ever 0.40.0; the selector graph uses selectors 0.41.0.
+Explicit dependency identities carry necessary safeguards into downstream path,
+Git and packaged consumers. A consumer does not inherit root-only Cargo patches.
+The carrier versions and dependency edges are authoritative in their manifests.
 
-This repository carries paired runtime forks for enforced parser/selector budgets, filtered
-immutable serialization and strict-provenance corrections. Git/path consumers receive the same
-safeguards through explicit owned path packages. Refresh upstream sources while retaining the
-applicable hooks; removal requires proof that the replacement provides those guarantees.
+| Responsibility | Implemented boundary | Reason a carrier remains |
+| --- | --- | --- |
+| Bounded DOM allocation, attachment, depth and reparenting | Product `crates/htmlcut-core/src/dom/parser.rs` and `dom/tree_sink.rs` | No scraper carrier; the product owns admission and its private DOM. |
+| Sticky current-token parser termination | html5ever driver/tokenizer/tree builder and markup5ever TreeSink | Registry html5ever 0.40.1 panics on `<b><p>X</b>Y` at elements=5 during adoption, before a public TokenSink guard regains control. |
+| Atom and TreeSink type identities | markup5ever | Carries the stop-request trait and the parser's corrected tendril dependency. |
+| Inner navigation/predicate work, shared pass caches | Product `dom/selector.rs` and `budget.rs` | The carrier retains iterative relative traversal (supported-depth stack overflow), removes diagnostic nth recomputation (panic after refusal), and routes its transitive Arc to the demonstrated correction. Product code owns accounting. |
+| Filtered immutable serialization | Product `dom/serialization.rs` | No scraper mutation or serialization helpers remain. |
+| Heap/shared tendril ownership | tendril | Registry tendril 0.5.1 fails strict-provenance Miri on integer-to-pointer reconstruction. |
+| Arc tail, tagged variant and borrowed ownership | servo_arc | Registry servo_arc 0.5.0 fails the independent tail write, borrowed clone and tagged-variant controls. |
 
-## Downstream-Safe Stack Carriers
+The parser delta stops token reprocessing and adoption before a refused allocation
+sentinel can enter formatting bookkeeping. The tokenizer stops further processing,
+and finish returns the sink's typed failure. A partial DOM never becomes a product
+success. Guarding only the next token does not establish this property.
 
-HTMLCut no longer relies on root-only `[patch.crates-io]` entries for this safety line, because
-downstream git consumers do not inherit those root patches. The workspace therefore carries
-repo-owned local copies of these crates so `htmlcut-core` exports the fixed stack in its own
-dependency graph:
+Tendril stores one provenance-preserving tagged `NonNull` pointer. Inline tags have
+no referent and are never dereferenced; heap tags use strict pointer-address APIs.
+This avoids duplicated tag/header state and retains the upstream 16-byte
+representation on 64-bit platforms. Cloning, growth, shared substrings, clearing
+and dropping retain their independent ownership controls.
 
-- `rust/scraper`
-- `rust/selectors`
-- `rust/html5ever`
-- `rust/markup5ever`
+The servo_arc tail pointer is unconditional: normal and Miri builds use the same
+layout and ownership behavior. It costs one internal pointer per HeaderSlice.
+Header/tail Send/Sync bounds remain required. ArcBorrow preserves the allocation
+pointer; ArcUnion tagging preserves its provenance. Unconditionally disabled Gecko
+logging bodies have been removed from this owned package.
 
-Those vendored manifests route downstream consumers onto the patched `servo_arc` and `tendril`
-sources below. The source-level strict-provenance fixes themselves still live in those two crates.
-HTMLCut intentionally ships only the runtime subset of that stack: upstream-only bench,
-shared-memory, and Gecko refcount-logging feature surfaces stay trimmed so the maintained
-`--all-features` and doctest gates prove the same contract that downstream consumers receive.
+Strict-provenance Miri rejects the selected upstream tendril integer casts and
+servo_arc tagged casts as unsupported operations; that alone is not proof of
+undefined behavior. The servo_arc tail/borrow controls produce Stacked Borrows
+rejections, whose model remains experimental. These exact failed replacement
+proofs justify retaining corrections, without claiming exploitability.
 
-## `rust/servo_arc`
-
-- Source: crates.io `servo_arc` `0.5.0`
-- Scope: pointer-provenance fixes on the selector stack used by `scraper` and `htmlcut-core`
-- Reason: selector preparation historically exposed a Miri provenance failure through
-  `scraper -> selectors -> servo_arc`; bounded DOM extraction retains the correction. Source
-  slicing does not prepare a DOM or perform title lookup in v15.
-- Current state: the local patch preserves tail provenance through `HeaderSlice` construction and
-  drop
-
-## `rust/tendril`
-
-- Source: crates.io `tendril` `0.5.1`
-- Scope: strict-provenance fixes on the HTML parser stack used by `markup5ever`, `html5ever`,
-  `scraper`, and `htmlcut-core`
-- Reason: DOM parsing historically exposed a strict-provenance failure through
-  `scraper -> html5ever -> markup5ever -> tendril`; parsing is bounded during construction; exact full accepted source remains separately immutable.
-- Current state: the local patch preserves heap-header provenance separately from the tagged pointer
-  bits, with the previous revision verified under strict provenance; the refreshed sources await
-  their release Miri proof
-
-## Upstream refresh and verification status
-
-The 1 October refresh uses scraper 0.27.0, selectors 0.41.0, servo_arc 0.5.0,
-html5ever 0.40.1, markup5ever 0.40.0 and tendril 0.5.1. Scraper's owned revision advances
-to carry the new selector error API and paired stack; owned version suffixes distinguish every
-modified carrier from its upstream release. Selector errors no longer borrow discarded token
-payloads, while qualified-name diagnostic locations remain explicit. SHA-2 stays on the current
-0.11.0 release with its ARM64 fix and refreshed dependency minima.
-
-The previous clean source passed Miri, fuzz and native verification. At the refresh handoff, gates were deferred at the user's request;
-release verification now validates the changed sources. See [dependency refresh](../docs/dependency-refresh.md).
-
-## Verification
-
-- `cargo xtask miri`
-
-Only after a registry stack proves the same bounded/provenance/serialization guarantees, restore the registry-backed `scraper` dependency in
-[Cargo.toml](../Cargo.toml), remove the vendored `htmlcut-*` path packages under `patches/rust/`,
-and confirm that `cargo xtask miri` still passes.
-
-## `rust/sha2`
-
-The direct `htmlcut-sha2` dependency retains RustCrypto SHA-2 0.11.0 and its MIT/Apache licensing. Eight ARM64 SHA-256 NEON constant-load pointers originate from complete four-u32 slices, correcting the borrow-range violation previously detected during snapshot hashing. Algorithm, hardware backend and Miri flags are unchanged. The earlier verified revision passed independent identity vectors and Miri; the refreshed compiler/dependency configuration awaits release verification. See [patch provenance](rust/sha2/HTMLCUT-PATCH.md).
-
-
-The owned servo_arc tagged-union module preserves allocation provenance when setting and clearing its pointer tag. Its constructors, borrow/clone/drop and identity/value behavior are covered by direct ownership tests and strict-provenance Miri; application unsafe-code prohibitions are unchanged.
-
-The current extraction CLI has no HTTP/charset acquisition stack. The parser no longer builds a document-order element index for retired cursor discovery; targeted inspection traverses the immutable DOM under fresh bounds. Current-source release verification must cover the changed parser and every retained provenance/resource correction.
+Run the targeted commands in [Contributing](../CONTRIBUTING.md). Full upstream
+adoption remains unmet while these carrier responsibilities persist. Preparing
+and verifying a dependency-complete distribution does not close that goal or
+establish crates.io ownership/publication. The operator handoff in
+[release protocol](../docs/release-protocol.md) records those separate prerequisites.

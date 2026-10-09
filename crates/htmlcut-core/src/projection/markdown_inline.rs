@@ -45,7 +45,7 @@ pub(super) struct Ancestry<'a> {
 
 pub(super) fn ancestry<'a>(
     root: ElementRef<'a>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Ancestry<'a>, ExtractionError> {
     let mut pre = None;
     let mut code = false;
@@ -89,7 +89,7 @@ pub(super) fn ancestry<'a>(
 
 pub(super) fn language(
     pre: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<Option<String>, ExtractionError> {
     let mut result = None;
     classes(pre.attr("class"), &mut result, budget)?;
@@ -118,7 +118,7 @@ pub(super) fn language(
 fn classes(
     value: Option<&str>,
     result: &mut Option<String>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<(), ExtractionError> {
     let Some(value) = value else {
         return Ok(());
@@ -153,7 +153,7 @@ mod language_work_tests {
 
     #[test]
     fn explicit_empty_class_still_costs_a_processing_unit() {
-        let budget = SelectorWorkBudget::new(1);
+        let budget = WorkBudget::new(1);
         let mut result = None;
         classes(Some(""), &mut result, &budget).unwrap();
         assert_eq!(result, None);
@@ -163,7 +163,7 @@ mod language_work_tests {
     #[test]
     fn language_scan_cannot_spend_less_than_its_processing_allowance() {
         for (units, accepted) in [(1, false), (2, true)] {
-            let budget = SelectorWorkBudget::new(units);
+            let budget = WorkBudget::new(units);
             let mut result = None;
             let outcome = classes(Some("language-rust"), &mut result, &budget);
             assert_eq!(outcome.is_ok(), accepted);

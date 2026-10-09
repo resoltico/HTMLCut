@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Selector-scoped counts and deliberately abbreviated samples of one immutable snapshot.
 
+use crate::budget::WorkBudget;
+use crate::dom::ElementRef;
 use schemars::JsonSchema;
-use scraper::ElementRef;
-use selectors::work_budget::SelectorWorkBudget;
 use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, ExtractionError, PreparedDocument};
@@ -37,8 +37,6 @@ pub struct InspectionSample {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InspectionResult {
-    /// SHA-256 binding this requested observation to the accepted source bytes.
-    pub source_sha256: String,
     /// Complete match count, never a lower bound or estimate.
     pub count: u32,
     /// Samples in original document order.
@@ -58,12 +56,10 @@ impl PreparedDocument {
             .map(|node| identifier_sample(*node, &budget))
             .collect::<Result<Vec<_>, _>>()?;
         let result = InspectionResult {
-            source_sha256: self.snapshot.source_sha256().into(),
             count,
             samples_complete: count <= samples,
             samples: selected,
         };
-        let _ = crate::identity::encoded(&result, 16 * 1024, &budget)?;
         Ok(result)
     }
 
@@ -71,7 +67,7 @@ impl PreparedDocument {
         &'a self,
         css: &str,
         samples: u32,
-    ) -> Result<(Vec<ElementRef<'a>>, SelectorWorkBudget), ExtractionError> {
+    ) -> Result<(Vec<ElementRef<'a>>, WorkBudget), ExtractionError> {
         if !(1..=10).contains(&samples) {
             return Err(ExtractionError::new(
                 ErrorCode::InvalidOptions,
@@ -82,7 +78,7 @@ impl PreparedDocument {
         crate::plan::validation::pattern(css)?;
         let selector = crate::compilation::compile_selector(css)?;
         let limits = crate::ExecutionLimits::default();
-        let budget = SelectorWorkBudget::new(limits.max_work);
+        let budget = WorkBudget::new(limits.max_work);
         let document = self.document()?;
         let nodes =
             crate::execution::matches(document, None, &selector, limits.max_candidates, &budget)?;
@@ -92,7 +88,7 @@ impl PreparedDocument {
 
 fn identifier_sample(
     root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
 ) -> Result<InspectionSample, ExtractionError> {
     let tag = root.value().name();
     if tag.len() > 128 {
@@ -154,7 +150,7 @@ fn identifier_sample(
 
 fn structural_preview(
     root: ElementRef<'_>,
-    budget: &SelectorWorkBudget,
+    budget: &WorkBudget,
     maximum: usize,
 ) -> Result<(String, bool), ExtractionError> {
     crate::projection::text(

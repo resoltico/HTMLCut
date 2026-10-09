@@ -1,0 +1,8 @@
+HTMLCut safety dependency
+
+This package retains upstream source and its license notices from https://github.com/servo/stylo.
+The upstream authors listed in Cargo.toml retain attribution. HTMLCut maintains
+the changes in this package at https://github.com/resoltico/HTMLCut. The package
+name identifies an independently maintained dependency; it is not an upstream
+release. Refer to docs/dependencies.md in the matching HTMLCut source for the
+retained safeguard, rejected replacement control and maintenance obligation.

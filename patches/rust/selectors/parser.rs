@@ -16,7 +16,7 @@ pub use crate::visitor::SelectorVisitor;
 use bitflags::bitflags;
 use cssparser::match_ignore_ascii_case;
 use cssparser::parse_nth;
-use cssparser::{BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind, SourceLocation};
+use cssparser::{BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind};
 use cssparser::{CowRcStr, Delimiter};
 use cssparser::{Parser as CssParser, ToCss, Token};
 use debug_unreachable::debug_unreachable;
@@ -27,9 +27,6 @@ use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Debug};
 use std::iter::Rev;
 use std::slice;
-
-#[cfg(any())]
-use to_shmem_derive::ToShmem;
 
 /// A trait that represents a pseudo-element.
 pub trait PseudoElement: Sized + ToCss {
@@ -195,7 +192,7 @@ pub type SelectorParseError = ParseError<SelectorParseErrorKind>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SelectorParseErrorKind {
-    NoQualifiedNameInAttributeSelector { location: SourceLocation },
+    NoQualifiedNameInAttributeSelector,
     EmptySelector,
     DanglingCombinator,
     NonCompoundSelector,
@@ -228,7 +225,7 @@ macro_rules! with_all_bounds {
         ///
         /// NB: We need Clone so that we can derive(Clone) on struct with that
         /// are parameterized on SelectorImpl. See
-        /// <<https://github.com/rust-lang/rust/issues/26925>>
+        /// <https://github.com/rust-lang/rust/issues/26925>
         pub trait SelectorImpl: Clone + Debug + Sized + 'static {
             type ExtraMatchingData<'a>: Sized + Default;
             type AttrValue: $($InSelector)*;
@@ -240,7 +237,7 @@ macro_rules! with_all_bounds {
             type BorrowedLocalName: ?Sized + Eq;
 
             /// non tree-structural pseudo-classes
-            /// (see: <https://drafts.csswg.org/selectors/#structural-pseudos)>
+            /// (see: <https://drafts.csswg.org/selectors/#structural-pseudos>)
             type NonTSPseudoClass: $($CommonBounds)* + NonTSPseudoClass;
 
             /// pseudo-elements
@@ -375,10 +372,7 @@ pub trait Parser<'i> {
 /// A selector list is a tagged pointer with either a single selector, or a ThinArc<()> of multiple
 /// selectors.
 #[derive(Clone, Eq, Debug, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct SelectorList<Impl: SelectorImpl>(
-    #[cfg_attr(any(), shmem(field_bound))]
     ThinArcUnion<SpecificityAndFlags, Component<Impl>, (), Selector<Impl>>,
 );
 
@@ -496,7 +490,7 @@ impl<Impl: SelectorImpl> SelectorList<Impl> {
     }
 
     /// Parse a comma-separated list of Selectors.
-    /// <<https://drafts.csswg.org/selectors/#grouping>>
+    /// <https://drafts.csswg.org/selectors/#grouping>
     ///
     /// Return the Selectors or Err if there is an invalid selector.
     pub fn parse<'i, P>(
@@ -844,10 +838,8 @@ impl MatchesFeaturelessHost {
 /// This reordering doesn't change the semantics of selector matching, and we
 /// handle it in to_css to make it invisible to serialization.
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 #[repr(transparent)]
-pub struct Selector<Impl: SelectorImpl>(#[cfg_attr(any(), shmem(field_bound))] SelectorData<Impl>);
+pub struct Selector<Impl: SelectorImpl>(SelectorData<Impl>);
 
 impl<Impl: SelectorImpl> Selector<Impl> {
     /// See Arc::mark_as_intentionally_leaked
@@ -1614,7 +1606,6 @@ impl<'a, Impl: SelectorImpl> Iterator for AncestorIter<'a, Impl> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum Combinator {
     Child,        //  >
     Descendant,   // space
@@ -1658,8 +1649,6 @@ impl Combinator {
 
 /// An enum for the different types of :nth- pseudoclasses
 #[derive(Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub enum NthType {
     Child,
     LastChild,
@@ -1685,8 +1674,6 @@ impl NthType {
 
 /// The properties that comprise an An+B syntax
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct AnPlusB(pub i32, pub i32);
 
 impl AnPlusB {
@@ -1705,7 +1692,7 @@ impl AnPlusB {
 
 impl ToCss for AnPlusB {
     /// Serialize <an+b> (part of the CSS Syntax spec).
-    /// <<https://drafts.csswg.org/css-syntax-3/#serialize-an-anb-value>>
+    /// <https://drafts.csswg.org/css-syntax-3/#serialize-an-anb-value>
     #[inline]
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result
     where
@@ -1730,8 +1717,6 @@ impl ToCss for AnPlusB {
 /// nth-child(An+B)).
 /// <https://www.w3.org/TR/selectors-3/#nth-child-pseudo>
 #[derive(Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct NthSelectorData {
     pub ty: NthType,
     pub is_function: bool,
@@ -1817,11 +1802,7 @@ impl NthSelectorData {
 /// nth-child(An+B [of S]?)).
 /// <https://www.w3.org/TR/selectors-4/#nth-child-pseudo>
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
-pub struct NthOfSelectorData<Impl: SelectorImpl>(
-    #[cfg_attr(any(), shmem(field_bound))] ThinArc<NthSelectorData, Selector<Impl>>,
-);
+pub struct NthOfSelectorData<Impl: SelectorImpl>(ThinArc<NthSelectorData, Selector<Impl>>);
 
 impl<Impl: SelectorImpl> NthOfSelectorData<Impl> {
     /// Returns selector data for :nth-{,last-}{child,of-type}(An+B [of S])
@@ -1848,7 +1829,6 @@ impl<Impl: SelectorImpl> NthOfSelectorData<Impl> {
 
 /// Flag indicating where a given relative selector's match would be contained.
 #[derive(Clone, Copy, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
 pub enum RelativeSelectorMatchHint {
     /// Within this element's subtree.
     InSubtree,
@@ -1978,13 +1958,10 @@ impl RelativeSelectorCombinatorCount {
 
 /// Storage for a relative selector.
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct RelativeSelector<Impl: SelectorImpl> {
     /// Match space constraining hint.
     pub match_hint: RelativeSelectorMatchHint,
     /// The selector. Guaranteed to contain `RelativeSelectorAnchor` and the relative combinator in parse order.
-    #[cfg_attr(any(), shmem(field_bound))]
     pub selector: Selector<Impl>,
 }
 
@@ -2061,18 +2038,15 @@ impl<Impl: SelectorImpl> RelativeSelector<Impl> {
 /// A CSS simple selector or combinator. We store both in the same enum for
 /// optimal packing and cache performance, see [1].
 ///
-/// [1]: https://bugzilla.mozilla.org/show_bug.cgi?id=1357973
+/// [1]: <https://bugzilla.mozilla.org/show_bug.cgi?id=1357973>
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub enum Component<Impl: SelectorImpl> {
     LocalName(LocalName<Impl>),
 
-    ID(#[cfg_attr(any(), shmem(field_bound))] Impl::Identifier),
-    Class(#[cfg_attr(any(), shmem(field_bound))] Impl::Identifier),
+    ID(Impl::Identifier),
+    Class(Impl::Identifier),
 
     AttributeInNoNamespaceExists {
-        #[cfg_attr(any(), shmem(field_bound))]
         local_name: Impl::LocalName,
         local_name_lower: Impl::LocalName,
     },
@@ -2080,7 +2054,6 @@ pub enum Component<Impl: SelectorImpl> {
     AttributeInNoNamespace {
         local_name: Impl::LocalName,
         operator: AttrSelectorOperator,
-        #[cfg_attr(any(), shmem(field_bound))]
         value: Impl::AttrValue,
         case_sensitivity: ParsedCaseSensitivity,
     },
@@ -2091,11 +2064,8 @@ pub enum Component<Impl: SelectorImpl> {
     ExplicitAnyNamespace,
 
     ExplicitNoNamespace,
-    DefaultNamespace(#[cfg_attr(any(), shmem(field_bound))] Impl::NamespaceUrl),
-    Namespace(
-        #[cfg_attr(any(), shmem(field_bound))] Impl::NamespacePrefix,
-        #[cfg_attr(any(), shmem(field_bound))] Impl::NamespaceUrl,
-    ),
+    DefaultNamespace(Impl::NamespaceUrl),
+    Namespace(Impl::NamespacePrefix, Impl::NamespaceUrl),
 
     /// Pseudo-classes
     Negation(SelectorList<Impl>),
@@ -2113,7 +2083,7 @@ pub enum Component<Impl: SelectorImpl> {
     ParentSelector,
     Nth(NthSelectorData),
     NthOf(NthOfSelectorData<Impl>),
-    NonTSPseudoClass(#[cfg_attr(any(), shmem(field_bound))] Impl::NonTSPseudoClass),
+    NonTSPseudoClass(Impl::NonTSPseudoClass),
     /// The ::slotted() pseudo-element:
     ///
     /// <https://drafts.csswg.org/css-scoping/#slotted-pseudo>
@@ -2128,7 +2098,7 @@ pub enum Component<Impl: SelectorImpl> {
     Slotted(Selector<Impl>),
     /// The `::part` pseudo-element.
     ///   <https://drafts.csswg.org/css-shadow-parts/#part>
-    Part(#[cfg_attr(any(), shmem(field_bound))] Box<[Impl::Identifier]>),
+    Part(Box<[Impl::Identifier]>),
     /// The `:host` pseudo-class:
     ///
     /// <https://drafts.csswg.org/css-scoping/#host-selector>
@@ -2161,7 +2131,7 @@ pub enum Component<Impl: SelectorImpl> {
     /// An invalid selector inside :is() / :where().
     Invalid(Arc<String>),
     /// An implementation-dependent pseudo-element selector.
-    PseudoElement(#[cfg_attr(any(), shmem(field_bound))] Impl::PseudoElement),
+    PseudoElement(Impl::PseudoElement),
 
     Combinator(Combinator),
 
@@ -2327,10 +2297,7 @@ impl<Impl: SelectorImpl> Component<Impl> {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-#[cfg_attr(any(), derive(ToShmem))]
-#[cfg_attr(any(), shmem(no_bounds))]
 pub struct LocalName<Impl: SelectorImpl> {
-    #[cfg_attr(any(), shmem(field_bound))]
     pub name: Impl::LocalName,
     pub lower_name: Impl::LocalName,
 }
@@ -3059,13 +3026,10 @@ where
 
     input.skip_whitespace();
 
-    let qualified_name_location = input.current_source_location();
     match parse_qualified_name(parser, input, /* in_attr_selector = */ true)? {
         None => {
             return Err(ParseError::custom(
-                SelectorParseErrorKind::NoQualifiedNameInAttributeSelector {
-                    location: qualified_name_location,
-                },
+                SelectorParseErrorKind::NoQualifiedNameInAttributeSelector,
             ));
         }
         Some((_, None)) => unreachable!(),
@@ -3883,12 +3847,7 @@ pub mod tests {
     }
 
     impl DummyParser {
-        pub fn with_namespace(mut self, prefix: &str, url: &str) -> Self {
-            self.ns_prefixes.insert(prefix.into(), url.into());
-            self
-        }
-
-        pub fn default_with_namespace(default_ns: DummyAtom) -> DummyParser {
+        fn default_with_namespace(default_ns: DummyAtom) -> DummyParser {
             DummyParser {
                 default_ns: Some(default_ns),
                 ns_prefixes: Default::default(),
@@ -3911,12 +3870,6 @@ pub mod tests {
 
     #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
     pub struct DummyAttrValue(String);
-
-    impl AsRef<str> for DummyAttrValue {
-        fn as_ref(&self) -> &str {
-            &self.0
-        }
-    }
 
     impl ToCss for DummyAttrValue {
         fn to_css<W>(&self, dest: &mut W) -> fmt::Result
@@ -3963,10 +3916,7 @@ pub mod tests {
 
     impl PrecomputedHash for DummyAtom {
         fn precomputed_hash(&self) -> u32 {
-            use std::hash::{Hash, Hasher};
-            let mut hash = std::collections::hash_map::DefaultHasher::new();
-            self.0.hash(&mut hash);
-            hash.finish() as u32
+            self.0.as_ptr() as u32
         }
     }
 

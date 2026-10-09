@@ -4,7 +4,7 @@
 import argparse,hashlib,importlib.metadata,json,platform,statistics,subprocess,sys,time
 from pathlib import Path
 from bs4 import BeautifulSoup,NavigableString,Comment,Doctype
-ROOT=Path(__file__).resolve().parents[1];CORPUS=ROOT/'evaluation/corpus'
+ROOT=Path(__file__).resolve().parents[1];CORPUS=ROOT/'crates/htmlcut-core/tests/fixtures/pages'
 
 def compact(value):return json.dumps(value,ensure_ascii=False,separators=(',',':'),sort_keys=True)
 def record_values(soup):
@@ -60,7 +60,7 @@ def main():
             stock=dict(select='.stock',read='literal'),
             rating=dict(select='.rating',read='literal'),
             url=dict(select='a',read='attr:href')))]:
-        plan=dict(version=6,select=selector)
+        plan=dict(version=7,select=selector)
         if task in ['titles','urls','mapping']:plan.update(match='all',min=1)
         if fields is not None:plan['fields']=fields
         elif reading is not None:plan['read']=reading
@@ -75,16 +75,6 @@ def main():
         actual=[dict(n,rating=int(n['rating'])) for n in data] if task=='mapping' else data
         assert actual==expected,task
         # The mapper converts one primitive only; no caller HTML reparsing occurs.
-        receipt_path=plans/(task+'.receipt.json');bundle_path=plans/(task+'.htmlcut.tar')
-        for artifact in [receipt_path,bundle_path]:
-            if artifact.exists():artifact.unlink()
-        receipt_command=command+['--receipt',str(receipt_path)];receipt_run=subprocess.run(receipt_command,check=True,capture_output=True,timeout=30)
-        assert receipt_run.stdout==raw
-        receipt_raw=receipt_path.read_bytes();receipt=json.loads(receipt_raw)
-        assert receipt['data_sha256']==hashlib.sha256(compact(data).encode()).hexdigest()
-        bundle_command=command+['--bundle',str(bundle_path)];bundle_run=subprocess.run(bundle_command,check=True,capture_output=True,timeout=30)
-        assert bundle_run.stdout==raw
-        replay=subprocess.check_output([binary,'replay',str(bundle_path)],timeout=30);assert replay==raw
         alternative=[sys.executable,str(Path(__file__).resolve()),'--reference-task',task,'--fixture',str(source)]
         if other_raw is not None:assert json.loads(other_raw)==expected
         warm=[]; source_text=source.read_text()
@@ -95,8 +85,7 @@ def main():
             parser_warm_parse_select=dict(samples_ns=warm,median_ns=statistics.median(warm)) if warm else None,
             payload_bytes=len(raw),payload_tokens=tokens(raw.decode()),parser_output_tokens=tokens(other_raw.decode()) if other_raw is not None else None,
             plan_tokens=tokens(plan),source_tokens=tokens(source.read_text()),caller_mapping='rating string to int only' if task=='mapping' else None,
-            receipt=dict(command=receipt_command,bytes=len(receipt_raw),tokens=tokens(receipt_raw.decode()),not_default_stdout=True),
-            bundle=dict(command=bundle_command,bytes=bundle_path.stat().st_size,replay_equal=True,not_default_stdout=True),observed_retries=0))
+            observed_retries=0))
     report=dict(scope='fixed offline synthetic equivalent-correct tasks; not billing or blind agent reasoning',
         tokenizer=dict(name='tiktoken',version=importlib.metadata.version('tiktoken'),encoding='o200k_base'),
         versions={n:importlib.metadata.version(n) for n in ['beautifulsoup4','lxml','tiktoken']},python=platform.python_version(),

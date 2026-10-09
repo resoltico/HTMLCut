@@ -27,7 +27,7 @@ fuzz_target!(|data: &[u8]| {
         ));
         expected.push(serde_json::json!({"id":format!("row{index}"),"text":text,"absent":null}));
     }
-    let plan = serde_json::json!({"version":6,"select":"article","match":"all","min":0,"fields":{"id":{"select":":scope","read":"attr:id"},"text":{"select":"p","read":"literal"},"absent":{"select":".absent","match":"optional","read":"literal"}},"following_siblings":1});
+    let plan = serde_json::json!({"version":7,"select":"article","match":"all","min":0,"fields":{"id":{"select":":scope","read":"attr:id"},"text":{"select":"p","read":"literal"},"absent":{"select":".absent","match":"optional","read":"literal"}},"following_siblings":1});
     let plan = ExtractionPlan::from_json(&serde_json::to_vec(&plan).unwrap()).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let document = PreparedDocument::new(
@@ -41,8 +41,7 @@ fuzz_target!(|data: &[u8]| {
         serde_json::json!(expected)
     );
     let second = document.execute(&compiled).unwrap();
-    assert_eq!(result.payload(), second.payload());
-    assert_eq!(result.receipt().unwrap(), second.receipt().unwrap());
+    assert_eq!(result.data(), second.data());
 });
 #[cfg(any(test, not(feature = "fuzzing")))]
 fn main() {}

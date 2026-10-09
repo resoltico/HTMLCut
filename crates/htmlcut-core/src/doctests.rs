@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Maintained current public API examples.
-#[doc = include_str!("../../../docs/architecture.md")]
-#[allow(dead_code)]
-pub struct ArchitectureExamples;
-#[doc = include_str!("../../../docs/core.md")]
+//! Maintained current public API example from the packaged README.
+#[doc = include_str!("../README.md")]
 #[allow(dead_code)]
 pub struct CoreExamples;
-#[doc = include_str!("../../../docs/schema.md")]
-#[allow(dead_code)]
-pub struct SchemaExamples;
