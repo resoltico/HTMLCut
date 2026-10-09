@@ -6,61 +6,30 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- macOS ARM64 and Intel distributions explicitly sign the staged executable ad hoc
-  and verify extracted sealed-code integrity before package tests. This provides
-  neither Developer ID authentication nor Apple notarization or guaranteed
-  Gatekeeper acceptance; see [platform guidance](docs/platform-support.md).
+- **Breaking query contract:** query and semantics versions advance from 6 to 7. Update saved v20 queries to `"version":7` and revalidate their selection, count and guard assumptions; old versions are rejected without compatibility readers. The `version`/`select`/`read`/`match`/`fields`/`expect` query shape remains; see the [contract reference](docs/core.md).
+- **Breaking Rust result contract:** extraction returns owned typed data and complete candidate, selection and field counts without retaining the source, query, DOM or encoded payload. Use the data/count accessors and perform encoding explicitly; successful core extraction, inspection or survey no longer establishes JSON encoding or delivery success. The CLI admits complete compact data JSON up to 64 MiB before its framing LF and inspection/survey JSON up to 16 KiB, refusing encoding overflow before publication; core typed results have no encoded-byte cap.
+- **Breaking selector admission:** root, field, guard, exclusion and inspection selectors exceeding 64 parsed matching-depth units receive a compilation `ResourceLimit` before execution. Combined combinator and nested logical/relational paths count toward one bound, separately from syntax nesting and DOM depth. Revise excessive selectors; previously admitted long chains could abort a normal Rust consumer thread.
+- **Breaking work accounting:** selector work is charged at core-owned navigation/predicate/traversal boundaries rather than fork-internal matcher calls, and core execution no longer charges JSON encoding. Reassess tightly configured `max_work` allowances; exact old work cutovers are not a compatibility promise. Logical counters do not provide OS CPU/RSS isolation; see [resource boundaries](docs/core.md#discovery-and-limits).
+- macOS ARM64 and Intel packaged executables are explicitly signed ad hoc before archiving and strictly verified after extraction. This checks sealed-code integrity, supplies neither Developer ID authentication nor Apple notarization, and does not guarantee Gatekeeper acceptance of a quarantined download; see [platform guidance](docs/platform-support.md).
+- `schema --help` lists the supported names directly from the core schema API. Inspection help/reference explain the existing minimum of three eligible same-tag direct siblings, optionally constrained by class signatures, and point smaller groups to `--select`/`--samples` and representative outer HTML. Survey eligibility and field inference have not been expanded.
 
-- **Breaking resource admission:** selectors exceeding 64 parsed matching-depth
-  units now receive a compilation ResourceLimit before execution. Combined
-  combinator/logical/relational paths count toward one bound across all selector
-  routes; syntax depth and DOM depth remain separate. Previously admitted long
-  chains could abort a normal Rust consumer thread.
+### Removed
 
-- **Breaking:** query/semantics 7 and owned typed Rust results separate extraction
-  completion from JSON encoding and publication. Results no longer retain input or
-  encoded data; the CLI bounds complete compact JSON at 64 MiB before its framing LF.
-- **Breaking:** receipts, input/query/extraction identities, bundles, replay and their
-  APIs/flags/schemas are removed. Use ordinary exact source/query/policy/output files
-  and an immutable executable for reproduction; authenticity and cross-version
-  equivalence are not established. Inspection no longer emits source digests.
+- **Breaking reproduction/API removal:** execution receipts, source/query/extraction identities, bundles, `replay`, their Rust APIs/CLI flags and the `htmlcut.extraction.receipt`/`htmlcut.bundle` schemas are removed; inspection and survey no longer return source digests. Update consumers that use `ExtractionResult` receipt/payload/snapshot accessors or removed error variants. Retain exact source, normalized query, explicit base/preparation policy, output and immutable executable as [ordinary files](docs/operations.md); v21 cannot replay old bundles, and ordinary-file reproduction establishes neither authenticity nor cross-version equivalence. There is no migration or compatibility layer.
+- Contributor `cargo xtask`, custom coverage/mutation administration, source-shape gates, the copied API baseline and the devcontainer setup are removed. Use the native toolchain, direct Cargo commands and `./check.sh` documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Fixed
 
-- CLI file-publication errors retain portable I/O causes for absent/denied parents,
-  existing destinations and commit failures while preserving atomic publication.
-  Omitted query version/select and command input are classified as missing;
-  invalid version types differ from unsupported integer versions. Errors remain
-  source-free. Schema help lists the core's supported names; inspection help
-  explains the survey's minimum-three eligibility and targeted inspection for
-  smaller groups.
-
-- CSS ancestor/sibling matching now rejects a failed intermediate compound before
-  continuing traversal. Plans that relied on incorrect matches can now reject or
-  return an explicitly permitted empty selection.
-
-- Low-limit malformed formatting now refuses safely before adoption bookkeeping;
-  a direct `<b><p>X</b>Y` allocation-limit control exposed a parser panic.
-- Selector tail ownership uses the same allocation-provenance path in production
-  and Miri, adding one pointer to each internal HeaderSlice allocation.
+- **Breaking CSS matching fix:** ancestor/sibling matching rejects a failed intermediate compound before continuing traversal. Queries that relied on incorrect matches can now fail cardinality or guards, or return an explicitly permitted empty selection; review selectors and expected results.
+- Malformed HTML formatting under low allocation limits now refuses before adoption bookkeeping, avoiding a parser panic and discarding the partial DOM.
+- Selector `HeaderSlice` allocations retain an explicit tail pointer in production as in Miri, preserving pointer ownership with one additional stored pointer.
+- **Breaking diagnostic fixes:** file-publication errors retain portable operation/problem facts for absent or denied parents, existing destinations, unsupported kinds and commit failures while preserving atomic create/replace and old-file protection. `IoProblem::AlreadyExists` / `already_exists` is added; update exhaustive Rust matches and schema/diagnostic consumers. Missing query version/select or command input is classified as `missing_required`, wrong version/select types as `invalid_value`, and present unsupported integer versions as `unsupported_version`, with fixed safe member paths. Supplied paths, values and OS error strings remain excluded.
 
 ### Internal
 
-- Core/CLI registry manifests are prepared. Tests use the existing maintained
-  tempfile dependency; the unpublished temporary-directory helper is removed.
-  Audited necessary carriers have a dependency-complete verified package graph;
-  actual registry ownership/availability and publication remain pending.
-
-- Direct Cargo and focused native/release checks replace xtask, custom coverage and
-  mutation administration, source-shape policy and the duplicated API baseline.
-  Published-core API checks use immutable Git source. Four native target promises,
-  legal attribution, integrity, source binding and public-download controls remain.
-- SHA-2 runtime machinery and the scraper carrier are removed. Product-owned DOM,
-  matching/accounting and immutable serialization adapters retain strict semantics.
-  Five intentionally distributable carriers preserve reproduced parser, selector
-  depth/refusal and pointer safeguards; full upstream adoption remains unresolved.
-- Required CI runs short parser and relational smoke with failure/crash retention.
-  Core registry packages include self-contained API examples and canonical fixtures.
+- The core owns DOM admission, selector accounting and filtered immutable serialization; scraper and SHA-2 runtime carriers are retired. Five narrow parser/selector/pointer carriers remain for demonstrated stopping, refusal and ownership safeguards; [full upstream adoption remains unresolved](docs/dependencies.md).
+- Required verification retains direct fmt/clippy/tests/rustdoc/advisory/license checks, targeted Miri, immutable published-core API checks, bounded 1,000-run parser/relational smokes and native package/signature/I/O controls on all four targets. Release verification remains bound to exact-source main push CI and published-download checks; bounded smoke does not establish full GA assurance.
+- Core/CLI registry manifests and the dependency-complete carrier graph are prepared, with self-contained core examples and fixtures and isolated-registry package/install verification. Official registry ownership, availability, publication and installation remain pending; see the [release protocol](docs/release-protocol.md).
 
 ## [20.0.0] - 2026-10-06
 
