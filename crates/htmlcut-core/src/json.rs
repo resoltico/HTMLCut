@@ -21,9 +21,23 @@ pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::E
             maximum as u64,
         ));
     }
+    read(bytes, maximum).map_err(|error| {
+        let message = error.to_string();
+        if message.starts_with("Closed JSON exceeds its nesting budget.") {
+            return crate::ExtractionError::resource("json", "json_depth", MAX_JSON_DEPTH as u64);
+        }
+        crate::ExtractionError::new(
+            crate::ErrorCode::InvalidJson,
+            "json",
+            "JSON is invalid, too deeply nested, or contains duplicate object keys.",
+        )
+    })
+}
+
+pub(crate) fn read(bytes: &[u8], maximum: usize) -> Result<Value, serde_json::Error> {
     let budget = Cell::new(maximum);
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
-    let value = Seed {
+    Seed {
         depth: 0,
         budget: &budget,
     }
@@ -31,19 +45,6 @@ pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::E
     .and_then(|value| {
         deserializer.end()?;
         Ok(value)
-    });
-    value.map_err(|error| {
-        let message = error.to_string();
-        if message.starts_with("Closed JSON exceeds its nesting budget.") {
-            return crate::ExtractionError::resource("json", "json_depth", MAX_JSON_DEPTH as u64);
-        }
-        // Encoded JSON bounds decoded strings/keys plus one unit per value;
-        // this byte-admitted route cannot exhaust Seed's materialization budget.
-        crate::ExtractionError::new(
-            crate::ErrorCode::InvalidJson,
-            "json",
-            "JSON is invalid, too deeply nested, or contains duplicate object keys.",
-        )
     })
 }
 

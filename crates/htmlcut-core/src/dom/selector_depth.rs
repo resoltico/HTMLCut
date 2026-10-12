@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded, iterative admission of parsed matching paths before recursive execution.
-use crate::{ExtractionError, limits::MAX_SELECTOR_MATCHING_DEPTH};
+use crate::limits::MAX_SELECTOR_MATCHING_DEPTH;
 use scraper::selector::Simple;
 use selectors::parser::{Component, SelectorList};
 
-pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ExtractionError> {
+pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ()> {
     // Components are in right-to-left matching order. A nested branch inherits
     // only its containing compound's active depth, not later leftward compounds.
     // Borrowed work items avoid recursion in this admission walk itself.
@@ -63,13 +63,9 @@ pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ExtractionError> 
     Ok(())
 }
 
-fn check(depth: usize) -> Result<(), ExtractionError> {
+fn check(depth: usize) -> Result<(), ()> {
     if depth > MAX_SELECTOR_MATCHING_DEPTH {
-        return Err(ExtractionError::resource(
-            "compilation",
-            "selector_matching_depth",
-            MAX_SELECTOR_MATCHING_DEPTH as u64,
-        ));
+        return Err(());
     }
     Ok(())
 }

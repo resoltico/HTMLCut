@@ -5,6 +5,7 @@
 
 mod budget;
 mod compilation;
+mod contract;
 mod data;
 mod discovery;
 #[cfg(any(test, doctest))]
@@ -22,6 +23,7 @@ mod plan;
 mod projection;
 mod result;
 mod schemas;
+mod select;
 mod snapshot;
 #[cfg(test)]
 #[path = "tests/extraction_contract.rs"]
@@ -29,6 +31,7 @@ mod tests;
 mod value;
 
 pub use compilation::CompiledPlan;
+pub use contract::Contract;
 pub use data::{ExtractionData, FieldValue};
 pub use discovery::{InspectionResult, InspectionSample};
 pub use document::{Document, Source};

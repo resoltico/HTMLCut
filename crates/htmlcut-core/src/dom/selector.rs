@@ -39,7 +39,13 @@ impl Selector {
                     "The CSS selector is invalid or unsupported.",
                 )
             })?;
-        depth::admit(&list)?;
+        depth::admit(&list).map_err(|()| {
+            crate::ExtractionError::resource(
+                "compilation",
+                "selector_matching_depth",
+                crate::limits::MAX_SELECTOR_MATCHING_DEPTH as u64,
+            )
+        })?;
         Ok(Self(list))
     }
     fn matches_upstream(

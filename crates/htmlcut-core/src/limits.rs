@@ -310,3 +310,12 @@ pub const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 
 /// Maximum admitted active CSS matching path before upstream recursive execution.
 pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
+
+// Contract grammar bounds; schema copies derive from these authorities.
+pub(crate) const MAX_CONTRACT_BYTES: usize = 256 * 1024;
+pub(crate) const MAX_CONTRACT_NODES: usize = 512;
+pub(crate) const MAX_RECORD_DEPTH: usize = 8;
+pub(crate) const MAX_ENTRIES: usize = 32;
+pub(crate) const MAX_DECLARED_COUNT: usize = 1_000_000;
+pub(crate) const MAX_ATTRIBUTE_NAME_CHARS: usize = 256;
+pub(crate) const MAX_FIELD_NAME_CHARS: usize = 64;
