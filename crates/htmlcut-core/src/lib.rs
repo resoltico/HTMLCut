@@ -9,6 +9,7 @@ mod data;
 mod discovery;
 #[cfg(any(test, doctest))]
 mod doctests;
+mod document;
 mod dom;
 mod encoding;
 mod error;
@@ -30,6 +31,7 @@ mod value;
 pub use compilation::CompiledPlan;
 pub use data::{ExtractionData, FieldValue};
 pub use discovery::{InspectionResult, InspectionSample};
+pub use document::{Document, Source};
 pub use encoding::canonical_json;
 pub use error::{Code, Error, ErrorFacts};
 pub use extraction::{ExtractionResult, FieldCount};

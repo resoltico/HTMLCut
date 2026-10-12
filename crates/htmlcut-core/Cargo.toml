@@ -18,6 +18,7 @@ cssparser.workspace = true
 selectors.workspace = true
 scraper.workspace = true
 ego-tree.workspace = true
+encoding_rs.workspace = true
 regex.workspace = true
 html5ever.workspace = true
 schemars.workspace = true

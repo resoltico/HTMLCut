@@ -29,6 +29,37 @@ impl Default for Limits {
     }
 }
 
+pub(crate) struct Clock {
+    started: std::time::Instant,
+    limit: Option<std::time::Duration>,
+    iterations: std::cell::Cell<usize>,
+}
+impl Clock {
+    pub(crate) fn new(limits: &Limits) -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            limit: limits.time_limit,
+            iterations: std::cell::Cell::new(0),
+        }
+    }
+    pub(crate) fn check(&self) -> Result<(), crate::Error> {
+        if let Some(limit) = self.limit {
+            if self.started.elapsed() >= limit {
+                return Err(crate::Error::limit("time", limit.as_secs_f64()));
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn tick(&self) -> Result<(), crate::Error> {
+        let count = self.iterations.get().wrapping_add(1);
+        self.iterations.set(count);
+        if count & 1023 == 0 {
+            self.check()?;
+        }
+        Ok(())
+    }
+}
+
 /// Immutable policy for accepting and preparing a snapshot.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
