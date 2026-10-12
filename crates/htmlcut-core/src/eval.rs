@@ -251,9 +251,16 @@ impl<'d> Engine<'d> {
                     check,
                 } => {
                     let mut excluded = HashSet::<NodeId>::new();
-                    for selector in exclude {
-                        for element in candidates(Some(selector), &extent, &self.clock)? {
-                            excluded.insert(element.id());
+                    if matches!(
+                        read,
+                        crate::contract::Reading::Text
+                            | crate::contract::Reading::TextContent
+                            | crate::contract::Reading::OuterHtml
+                    ) {
+                        for selector in exclude {
+                            for element in candidates(Some(selector), &extent, &self.clock)? {
+                                excluded.insert(element.id());
+                            }
                         }
                     }
                     let value =
