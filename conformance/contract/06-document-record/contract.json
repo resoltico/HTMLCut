@@ -1,0 +1,15 @@
+{
+  "fields": {
+    "title": "title",
+    "heading": "h1",
+    "shown": {
+      "select": ".summary strong",
+      "nth": 1
+    },
+    "ids": {
+      "select": "article",
+      "match": "all",
+      "read": "attr:id"
+    }
+  }
+}

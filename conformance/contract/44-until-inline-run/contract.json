@@ -1,0 +1,19 @@
+{
+  "select": "#byline b.k",
+  "match": "all",
+  "until": "b.k",
+  "fields": {
+    "key": {
+      "pattern": "^(?<value>.+):$"
+    },
+    "line": {
+      "select": ":scope",
+      "until": "b.k"
+    },
+    "links": {
+      "select": "a",
+      "match": "all",
+      "min": 0
+    }
+  }
+}

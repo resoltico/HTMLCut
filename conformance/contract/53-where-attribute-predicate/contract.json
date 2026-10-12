@@ -1,0 +1,12 @@
+{
+  "select": "article.product",
+  "match": "all",
+  "where": [
+    {
+      "select": "p.availability",
+      "read": "attr:class",
+      "pattern": "\\binstock\\b"
+    }
+  ],
+  "read": "attr:id"
+}

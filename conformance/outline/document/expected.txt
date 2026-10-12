@@ -1,0 +1,18 @@
+html
+  head
+    meta [charset]
+    title "Catalogue | Example Books"
+  body
+    h1 "All products"
+    p.summary "Showing of results"
+      strong ×2 "3"
+    ol.row
+      li ×3
+        article#b1.product
+          h3
+            a [href title] "First Light: A ..."
+          p.star-rating.Three
+            i ×3
+          div.price-box
+            p.price "£51.77"
+            p.availability.instock "In stock" (+1 inside)

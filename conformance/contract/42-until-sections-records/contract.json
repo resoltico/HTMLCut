@@ -1,0 +1,15 @@
+{
+  "select": "main > h2",
+  "match": "all",
+  "until": "h2",
+  "fields": {
+    "anchor": {
+      "read": "attr:id"
+    },
+    "heading": {},
+    "blocks": {
+      "select": ":scope ~ *",
+      "match": "all"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "expect": [
+    {
+      "select": ".captcha, .error-banner",
+      "min": 0,
+      "max": 0
+    },
+    {
+      "select": "article.product",
+      "min": 3,
+      "max": 3
+    }
+  ],
+  "select": "h1"
+}

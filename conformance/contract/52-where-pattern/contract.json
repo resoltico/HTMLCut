@@ -1,0 +1,14 @@
+{
+  "select": "table.facts tr",
+  "match": "all",
+  "where": [
+    {
+      "select": "th",
+      "pattern": "^Price"
+    }
+  ],
+  "fields": {
+    "label": "th",
+    "amount": "td"
+  }
+}

@@ -1,0 +1,6 @@
+{
+ "error": "limit_exceeded",
+ "message": "document has more than 50 nodes; raise --max-nodes",
+ "limit": "nodes",
+ "bound": 50
+}

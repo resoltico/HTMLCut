@@ -1,0 +1,4 @@
+{
+  "select": "article#b2 h3",
+  "read": "outer-html"
+}

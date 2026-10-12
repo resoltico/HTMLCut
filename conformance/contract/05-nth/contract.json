@@ -1,0 +1,4 @@
+{
+  "select": "article.product h3 a",
+  "nth": 2
+}

@@ -1,0 +1,28 @@
+{
+  "select": "tr.athing",
+  "match": "all",
+  "until": "tr.athing, tr.more",
+  "fields": {
+    "id": {
+      "read": "attr:id"
+    },
+    "rank": {
+      "select": ".rank",
+      "pattern": "^(?<value>[0-9]+)\\.$"
+    },
+    "title": ".titleline > a",
+    "url": {
+      "select": ".titleline > a",
+      "read": "url:href"
+    },
+    "points": {
+      "select": ".score",
+      "match": "optional",
+      "pattern": "^(?<value>[0-9]+) points?$"
+    },
+    "user": {
+      "select": ".user",
+      "match": "optional"
+    }
+  }
+}

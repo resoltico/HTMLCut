@@ -1,0 +1,6 @@
+{
+ "error": "invalid_selector",
+ "message": "$.fields.t.select: invalid CSS selector 'h3 a[': Malformed attribute selector at position 4",
+ "path": "$.fields.t.select",
+ "select": "h3 a["
+}

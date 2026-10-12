@@ -1,0 +1,10 @@
+3 matches for article.product
+article#b1.product
+  h3
+    a [href="catalogue/first-light_1/index.html" title="First Light: A Novel"] "First Light: A ..."
+  p.star-rating.Three
+    i ×3
+  div.price-box
+    p.price "£51.77"
+    p.availability.instock "In stock"
+      i.icon

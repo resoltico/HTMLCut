@@ -1,0 +1,5 @@
+{
+ "error": "invalid_pattern",
+ "message": "$.pattern: invalid regular expression: missing ), unterminated subpattern at position 0",
+ "path": "$.pattern"
+}

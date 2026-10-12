@@ -1,0 +1,8 @@
+{
+ "error": "count_mismatch",
+ "message": "$: 'article.product' matched 3; expected 4..",
+ "path": "$",
+ "select": "article.product",
+ "found": 3,
+ "expected": "4.."
+}

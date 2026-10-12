@@ -3,3 +3,6 @@
 
 # Corpora are exact byte inputs, including malformed encodings .
 fuzz/corpus/** -text -diff
+
+# Conformance pages and expectations are byte-exact.
+conformance/** -text -diff

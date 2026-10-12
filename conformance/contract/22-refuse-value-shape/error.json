@@ -1,0 +1,9 @@
+{
+ "error": "value_mismatch",
+ "message": "$.fields.books.fields.price: value does not satisfy pattern",
+ "path": "$.fields.books.fields.price",
+ "row": [
+  2
+ ],
+ "value": "Call for price"
+}

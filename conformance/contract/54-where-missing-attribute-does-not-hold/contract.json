@@ -1,0 +1,11 @@
+{
+  "select": "article.product h3 a",
+  "match": "all",
+  "min": 0,
+  "where": [
+    {
+      "read": "attr:data-missing",
+      "equals": "x"
+    }
+  ]
+}
