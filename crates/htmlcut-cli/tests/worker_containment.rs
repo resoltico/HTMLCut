@@ -45,7 +45,7 @@ fn deadline_kills_and_reaps_a_worker_that_never_finishes() {
         .unwrap();
     assert!(output.status.success());
     assert!(output.stdout.is_empty());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, b"HCPROBE8\n");
     assert!(start.elapsed() >= Duration::from_secs(9));
     assert!(start.elapsed() < Duration::from_secs(20));
 }
@@ -74,6 +74,25 @@ fn historical_parser_stress_cannot_replace_an_existing_destination() {
     assert!(!String::from_utf8_lossy(&output.stderr).contains("source.html"));
 }
 
+fn await_timeout_workload(supervisor: &mut std::process::Child) {
+    use std::io::Read;
+    let mut diagnostics = supervisor.stderr.take().unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut marker = [0; 9];
+        let result = diagnostics.read_exact(&mut marker).map(|_| marker);
+        let _ = send.send(result);
+    });
+    let ready = receive.recv_timeout(Duration::from_secs(2));
+    if !matches!(&ready, Ok(Ok(marker)) if marker == b"HCPROBE8\n") {
+        let _ = supervisor.kill();
+        let _ = supervisor.wait();
+        let _ = reader.join();
+        panic!("Private timeout workload did not acknowledge readiness: {ready:?}");
+    }
+    reader.join().unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn killing_the_supervisor_does_not_leave_a_running_worker() {
@@ -81,9 +100,10 @@ fn killing_the_supervisor_does_not_leave_a_running_worker() {
         .env("HTMLCUT_PRIVATE_WORKER", "verify-timeout")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    await_timeout_workload(&mut supervisor);
     let parent = supervisor.id();
     let deadline = Instant::now() + Duration::from_secs(3);
     let worker = loop {
@@ -105,8 +125,6 @@ fn killing_the_supervisor_does_not_leave_a_running_worker() {
         assert!(Instant::now() < deadline, "private worker did not start");
         std::thread::sleep(Duration::from_millis(20));
     };
-    // Wait until the worker installs its independent lifetime guard.
-    std::thread::sleep(Duration::from_millis(200));
     supervisor.kill().unwrap();
     supervisor.wait().unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -126,6 +144,122 @@ fn killing_the_supervisor_does_not_leave_a_running_worker() {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[cfg(windows)]
+#[test]
+fn killing_the_supervisor_does_not_leave_a_running_worker() {
+    let started = Instant::now();
+    let mut supervisor = Command::new(binary())
+        .env("HTMLCUT_PRIVATE_WORKER", "verify-timeout")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    await_timeout_workload(&mut supervisor);
+    // One PowerShell process avoids a second startup hiding cleanup behind the
+    // worker's normal ten-second timeout. Its complete lifetime is bounded below.
+    let script = format!(
+        r#"
+$ErrorActionPreference = 'Stop'
+try {{
+    $supervisorId = {parent}
+    $discoveryDeadline = [DateTime]::UtcNow.AddSeconds(4)
+    $workerId = $null
+    do {{
+        $worker = Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $supervisorId" -OperationTimeoutSec 2 | Select-Object -First 1
+        if ($null -ne $worker) {{ $workerId = [uint32]$worker.ProcessId; break }}
+        Start-Sleep -Milliseconds 25
+    }} while ([DateTime]::UtcNow -lt $discoveryDeadline)
+    if ($null -eq $workerId) {{ throw 'Private worker did not start' }}
+    # The Rust test already consumed the timeout workload ACK. Its child has
+    # consumed all request input and never reads it again, ruling out pipe EOF.
+    $null = Get-Process -Id $supervisorId -ErrorAction Stop
+    $null = Get-Process -Id $workerId -ErrorAction Stop
+    Stop-Process -Id $supervisorId -Force -ErrorAction Stop
+    $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(1)
+    while ($null -ne (Get-Process -Id $workerId -ErrorAction SilentlyContinue)) {{
+        if ([DateTime]::UtcNow -ge $cleanupDeadline) {{ throw 'Worker survived supervisor termination' }}
+        Start-Sleep -Milliseconds 25
+    }}
+    [Console]::WriteLine($workerId)
+    exit 0
+}} catch {{
+    [Console]::Error.WriteLine($_.Exception.Message)
+    if ($null -ne $workerId) {{ Stop-Process -Id $workerId -Force -ErrorAction SilentlyContinue }}
+    exit 4
+}}
+"#,
+        parent = supervisor.id()
+    );
+    let inspection = Command::new("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut inspection = match inspection {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = supervisor.kill();
+            let _ = supervisor.wait();
+            panic!("Windows process inspection could not start: {error}");
+        }
+    };
+    // This includes PowerShell startup and CIM latency and finishes comfortably
+    // before natural worker timeout; a surviving Job must fail this control.
+    let deadline = started + Duration::from_secs(7);
+    let inspected = loop {
+        match inspection.try_wait() {
+            Ok(Some(_)) => break true,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = inspection.kill();
+                break false;
+            }
+        }
+    };
+    let result = inspection.wait_with_output();
+    // Reap the supervisor killed by Stop-Process; on failed inspection, kill it
+    // ourselves so a failed assertion also cleans up the Job and its worker.
+    let _ = supervisor.kill();
+    let reaped = supervisor.wait();
+    assert!(
+        inspected,
+        "Windows process inspection exceeded its seven-second bound"
+    );
+    let output = result.unwrap();
+    assert!(
+        output.status.success(),
+        "Windows supervisor-death control failed: {output:?}"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u32>()
+            .is_ok(),
+        "No live worker PID was verified: {output:?}"
+    );
+    assert!(
+        reaped.is_ok(),
+        "Killed supervisor was not reaped: {reaped:?}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "Cleanup overlapped natural worker timeout"
+    );
 }
 
 #[test]

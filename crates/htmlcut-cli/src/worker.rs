@@ -147,6 +147,18 @@ fn execute_mode(
                         return Err(failure());
                     }
                     probe_started_ref.store(true, Ordering::SeqCst);
+                    if mode == "timeout" {
+                        // Private evaluation observes the existing workload-start ACK.
+                        // Public extraction mode never emits this fixed diagnostic.
+                        if std::io::stderr()
+                            .write_all(b"HCPROBE8\n")
+                            .and_then(|_| std::io::stderr().flush())
+                            .is_err()
+                        {
+                            let _ = output_events.send(Some(failure()));
+                            return Err(failure());
+                        }
+                    }
                 }
                 bounded(&mut output, RESPONSE_BYTES + 5, "worker_stdout_bytes")
             } else if phase[0] == 1 {

@@ -55,7 +55,7 @@ publication requires separate authorization and core must be published before CL
 The semver command against actual v21 succeeded under the major-version policy;
 it skipped 254 compatibility checks, so it does not establish API compatibility.
 
-The CLI suite includes thirteen native controls, including redirected source/plan stdin identity and grammar precedence. Independent native tests demonstrated touched allocation refusal near 1 GiB,
+The CLI suite defines thirteen native controls on each platform, including redirected source/plan stdin identity, grammar precedence and supervisor-death cleanup. Both supervisor-death controls consume the existing private worker workload acknowledgement before terminating the supervisor; Windows then verifies disappearance before the ordinary deadline; its native execution is a required package gate. Independent native tests demonstrated touched allocation refusal near 1 GiB,
 blocked input and timeout termination near ten seconds, flood/crash/malformed-frame
 refusals, supervisor lifetime protection, hardlink refusal and atomic publication.
 The legitimate 50 MiB inert-script snapshot succeeds under the policy.
@@ -66,12 +66,12 @@ under [design QA](design-qa/implementation-review.md).
 
 [Current results](contract-matrix/results/comparison-summary.json) bind the final
 release-profile executable SHA-256
-`8f88dc02c3dd7ce932786a3929b15095b356929a83656f05374e98ffc3e5745c`.
+`f952b2c67a991715ed7847c068704fe8e263b8f8adfc9cd25dbe4d5037a889c2`.
 Every positive complete output matches published v21 byte-for-byte; every intended
 refusal emits no data. Each run has fifteen internally randomized same-machine
 trials. The two versions were run sequentially, not interleaved, and raw timings
-are retained. Catalogue median launch was 3.54 ms for v21 versus 9.05 ms for the
-worker candidate; the worst per-task median ratio was 2.78, within the pre-registered
+are retained. Catalogue median launch was 5.25 ms for v21 versus 8.90 ms for the
+worker candidate; the worst per-task median ratio was 2.74, within the pre-registered
 sixfold threshold. This is a measured worker startup cost, not a speed improvement.
 
 [Warm comparison](contract-matrix/results/warm-comparison.json) checks all twenty
@@ -91,10 +91,12 @@ not executed. They are not represented as passing or as product dependencies.
 ## Work-package status and external rollout
 
 W01–W05 and W07–W11 are implemented and locally verified as scoped above. W06 native
-policy code and Apple ARM proof are complete; Intel macOS/Linux/Windows require
-native CI. W12 manifests/locks/licensing/source/native packaging/CI are implemented;
-all four native package jobs remain authoritative. W13 independent local design
-and implementation QA is complete; the PR stays draft until required CI succeeds.
+policy and W12 manifests/locks/licensing/source/native packaging/CI are implemented;
+all four source-bound native package jobs must pass on the final PR head. Earlier
+native gates passed on the production implementation, then artifact review identified
+and added the Windows supervisor-death negative control. W13 independent design
+and implementation QA is complete; review readiness requires that additional
+control and all other required gates to pass on the delivered tree.
 The PR head and source-bound native artifacts supply the authoritative commit,
 changed-file inventory and platform results; local success cannot replace them.
 

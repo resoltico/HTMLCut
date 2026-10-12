@@ -1,52 +1,52 @@
 {
-  "scope": "same-machine sequential runs, internally randomized trials; final candidate includes redirected stdin identity guards; cross-version commands not interleaved",
+  "scope": "same-machine sequential runs, internally randomized trials; final candidate includes workload-acknowledged supervisor-death evaluation; cross-version commands not interleaved",
   "pre_registered_max_median_ratio": 6,
   "all_passed": true,
   "ratios": [
     {
       "task": "catalog",
-      "median_ratio": 2.5538323398254312
+      "median_ratio": 1.6937239957523342
     },
     {
       "task": "guarded",
-      "median_ratio": 2.60773023179639
+      "median_ratio": 2.399028383135203
     },
     {
       "task": "guarded-drift",
-      "median_ratio": 2.7052950516847307
+      "median_ratio": 2.6731193368041257
     },
     {
       "task": "catalog-missing-field",
-      "median_ratio": 2.3415929019712074
+      "median_ratio": 2.4354430379746836
     },
     {
       "task": "ambiguous",
-      "median_ratio": 2.6136541080290603
+      "median_ratio": 2.5928528708133975
     },
     {
       "task": "technical",
-      "median_ratio": 2.46862189129381
+      "median_ratio": 2.5672769970278497
     },
     {
       "task": "links",
-      "median_ratio": 2.6450734173683284
+      "median_ratio": 2.627990679987264
     },
     {
       "task": "article",
-      "median_ratio": 2.6706212195397536
+      "median_ratio": 2.635593373682094
     },
     {
       "task": "jsonld",
-      "median_ratio": 2.7777734005672863
+      "median_ratio": 2.7369650746268652
     },
     {
       "task": "unrendered",
-      "median_ratio": 2.599671159107877
+      "median_ratio": 2.594362936128379
     },
     {
       "task": "rendered",
-      "median_ratio": 2.6782867903512213
+      "median_ratio": 2.634379161221495
     }
   ],
-  "final_binary_sha256": "8f88dc02c3dd7ce932786a3929b15095b356929a83656f05374e98ffc3e5745c"
+  "final_binary_sha256": "f952b2c67a991715ed7847c068704fe8e263b8f8adfc9cd25dbe4d5037a889c2"
 }
