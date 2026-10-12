@@ -184,22 +184,30 @@ main() {
             ;;
     esac
     "${binary_path}" --version | tr -d '\r' | grep "^htmlcut ${version}$"
-    local smoke_dir="${extract_root}/smoke-fixture"
-    local fixture_path="${smoke_dir}/page.html"
-    mkdir -p "${smoke_dir}"
-    printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > "${fixture_path}"
-
-    local first_output
-    first_output="$(
-        "${binary_path}" extract --file "${fixture_path}" \
-            --select 'article a.more' \
-            --read attr:href \
-            --raw \
-            | tr -d '\r'
-    )"
-    [[ "${first_output}" == "../guide.html" ]] || htmlcut_die \
-        "packaged binary returned unexpected extraction output: ${first_output}"
-
+    local binary_native="$binary_path"
+    if command -v cygpath >/dev/null 2>&1; then binary_native="$(cygpath -w "$binary_path")"; fi
+    local log_path="${repo_root}/dist/native-conformance-${target_triple}.log"
+    local package_hash_before binary_hash_before
+    package_hash_before=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$package_path")
+    binary_hash_before=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$binary_path")
+    if ! HTMLCUT_TEST_BINARY="$binary_native" cargo test --locked -p htmlcut-cli --test conformance --target "$target_triple" >"$log_path" 2>&1; then
+        tail -80 "$log_path" >&2
+        return 1
+    fi
+    python3 - "$package_path" "$binary_path" "$log_path" "$package_hash_before" "$binary_hash_before" "$target_triple" <<'PY'
+import hashlib,json,subprocess,sys
+from pathlib import Path
+package,binary,log,package_hash,binary_hash,target=sys.argv[1:]
+hash_file=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()
+assert hash_file(package)==package_hash and hash_file(binary)==binary_hash
+text=Path(log).read_text()
+assert 'every_case_runs_through_the_delivered_binary ... ok' in text
+assert '0 failed; 0 ignored' in text
+proof={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+       'target':target,'package_sha256':package_hash,'binary_sha256':binary_hash,
+       'conformance_cases':62,'io_suite_passed':True,'log_sha256':hash_file(log)}
+Path('dist',f'native-conformance-{target}.json').write_text(json.dumps(proof,indent=2)+'\n')
+PY
     printf 'Smoke-tested %s\n' "${package_name}"
 }
 

@@ -64,7 +64,8 @@ impl ErrorCode {
 }
 
 /// One failure, with only the facts known at the point of refusal.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, thiserror::Error)]
+#[error("{message}")]
 #[non_exhaustive]
 pub struct Error {
     /// Stable failure code.
@@ -165,12 +166,6 @@ impl std::ops::DerefMut for Error {
         &mut self.facts
     }
 }
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-impl std::error::Error for Error {}
 
 #[cfg(test)]
 mod tests {

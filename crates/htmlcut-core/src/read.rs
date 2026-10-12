@@ -262,11 +262,10 @@ fn text(scope: &Scope<'_>, excluded: &HashSet<NodeId>, clock: &Clock) -> Result<
                                         .value()
                                         .as_element()
                                         .is_some_and(|e| html(e) && matches!(e.name(), "td" | "th"))
+                                        && !excluded.contains(&sibling.id())
                                     {
-                                        if !excluded.contains(&sibling.id()) {
-                                            lines.cells.push(String::new());
-                                            break;
-                                        }
+                                        lines.cells.push(String::new());
+                                        break;
                                     }
                                     previous = sibling.prev_sibling();
                                 }
@@ -563,8 +562,10 @@ mod tests {
     #[test]
     fn output_policy_applies_to_the_final_capture_without_an_intermediate_value_limit() {
         let html = format!("<p>{}<b>x</b></p>", "a".repeat(10_000));
-        let mut limits = Limits::default();
-        limits.max_output_bytes = 3;
+        let limits = Limits {
+            max_output_bytes: 3,
+            ..Limits::default()
+        };
         let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
         let contract = Contract::from_json(
             r#"{"select":"p","read":"outer-html","pattern":"<b>(?<value>x)</b>"}"#,

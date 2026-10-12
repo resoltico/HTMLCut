@@ -42,7 +42,7 @@ class WorkflowWiringTest(unittest.TestCase):
 
     def test_required_smoke_failure_propagates_and_retains_log(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
-        job = text.split("\n  focused-smoke:\n", 1)[1].split("\n  semver:\n", 1)[0]
+        job = text.split("\n  focused-smoke:\n", 1)[1].split("\n  minimum-rust:\n", 1)[0]
         command = job.split("      - name: Execute both bounded smokes\n", 1)[1].split("      - name:", 1)[0].split("        run: ", 1)[1].strip()
         self.assertIn('if: always()', job)
         self.assertIn('path: ${{ runner.temp }}/focused-smoke/', job)
@@ -59,7 +59,7 @@ class WorkflowWiringTest(unittest.TestCase):
                                     env={**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
                                          'RUNNER_TEMP': str(root)}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 23)
-            evidence = root / 'focused-smoke/parse_document_bytes'
+            evidence = root / 'focused-smoke/contract_bytes'
             self.assertIn('intentional smoke failure', (evidence / 'run.log').read_text())
             self.assertTrue(any((evidence / 'corpus').iterdir()))
             self.assertTrue((evidence / 'crashes').is_dir())
@@ -88,10 +88,10 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}", body)
         self.assertIn("--source-digest \"$RELEASE_SOURCE_SHA\"", body)
         self.assertIn("curl --fail --location", body)
-        self.assertIn("scripts/native-package-evidence.py", body)
+        self.assertIn("scripts/smoke-release-artifact.sh", body)
         self.assertNotIn("scripts/build-release-artifact.sh", body)
-        self.assertIn("dist/published-*.json", body)
-        self.assertIn("dist/native-evidence-${{ matrix.id }}*.json", text)
+        self.assertIn("dist/native-conformance-*", body)
+        self.assertIn("dist/native-conformance-*", text)
 
 
 class ContributorToolCacheTest(unittest.TestCase):
@@ -140,7 +140,7 @@ chmod +x "$2/bin/cargo-about"
         self.assertNotIn(".htmlcut-artifacts", action)
         self.assertNotIn("dist/", action)
         ci = (ROOT / ".github/workflows/ci.yml").read_text()
-        self.assertEqual(ci.count("uses: ./.github/actions/cargo-tool"), 4)
-        self.assertIn("needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, semver]", ci)
+        self.assertEqual(ci.count("uses: ./.github/actions/cargo-tool"), 3)
+        self.assertIn("needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, minimum-rust]", ci)
         release = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertEqual(release.count("uses: ./.github/actions/cargo-tool"), 1)

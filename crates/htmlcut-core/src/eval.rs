@@ -52,10 +52,10 @@ pub(crate) fn candidates<'d>(
     for root in &scope.extent {
         for node in root.descendants() {
             clock.tick()?;
-            if let Some(element) = ElementRef::wrap(node) {
-                if select.matches(element, scope.anchor, &mut caches) {
-                    found.push(element);
-                }
+            if let Some(element) = ElementRef::wrap(node)
+                && select.matches(element, scope.anchor, &mut caches)
+            {
+                found.push(element);
             }
         }
     }
@@ -461,8 +461,10 @@ mod tests {
                 .extract(&contract)
                 .unwrap();
             let size = value.to_json(usize::MAX).unwrap().len();
-            let mut limits = Limits::default();
-            limits.max_output_bytes = size;
+            let mut limits = Limits {
+                max_output_bytes: size,
+                ..Limits::default()
+            };
             assert!(
                 Document::parse(Source::new(html.as_bytes()), &limits)
                     .unwrap()

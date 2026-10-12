@@ -209,11 +209,11 @@ fn describe(
     clock: &Clock,
 ) -> Result<String, Error> {
     let mut line = identifier(element.value().name())?;
-    if count == 1 {
-        if let Some(id) = element.value().id().filter(|id| !id.is_empty()) {
-            line.push('#');
-            line.push_str(&identifier(id)?);
-        }
+    if count == 1
+        && let Some(id) = element.value().id().filter(|id| !id.is_empty())
+    {
+        line.push('#');
+        line.push_str(&identifier(id)?);
     }
     let classes = classes(element);
     for class in classes.iter().take(4) {
@@ -284,8 +284,10 @@ mod tests {
             let bytes = std::fs::read(path.join("page.html")).unwrap();
             let config: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(path.join("outline.json")).unwrap()).unwrap();
-            let mut options = OutlineOptions::default();
-            options.select = config["select"].as_str().map(String::from);
+            let mut options = OutlineOptions {
+                select: config["select"].as_str().map(String::from),
+                ..OutlineOptions::default()
+            };
             if let Some(depth) = config["depth"].as_u64() {
                 options.depth = depth as usize;
             }
@@ -307,9 +309,11 @@ mod tests {
     fn shapes_order_classes_source_attributes_and_clipping_are_preserved() {
         let html = "<main><p id=a class='z A b c d' z='1' a='2' b='3' c='4' d='5' e='6' f='7'>quoted \"text\"</p><p class='z A b c d'><b>shape</b></p><p class='z A b c d'>same shape</p></main>";
         let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
-        let mut options = OutlineOptions::default();
-        options.select = Some("main".into());
-        options.attrs = true;
+        let options = OutlineOptions {
+            select: Some("main".into()),
+            attrs: true,
+            ..OutlineOptions::default()
+        };
         assert_eq!(
             document.outline(&options).unwrap(),
             "1 match for main\nmain\n  p.z.A.b.c.+1 [z=\"1\" a=\"2\" b=\"3\" c=\"4\" d=\"5\" e=\"6\" …] ×2 \"quoted \\\"text\\\"\"\n  p.z.A.b.c.+1\n    b \"shape\"\n"
@@ -318,11 +322,15 @@ mod tests {
     #[test]
     fn foreign_roots_stop_and_output_limits_refuse_instead_of_truncating_bytes() {
         let html = "<svg id=x><g><path></path></g></svg>";
-        let mut limits = Limits::default();
-        limits.max_output_bytes = 1;
+        let limits = Limits {
+            max_output_bytes: 1,
+            ..Limits::default()
+        };
         let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
-        let mut options = OutlineOptions::default();
-        options.select = Some("svg".into());
+        let options = OutlineOptions {
+            select: Some("svg".into()),
+            ..OutlineOptions::default()
+        };
         assert_eq!(
             document.outline(&options).unwrap_err().limit.as_deref(),
             Some("output_bytes")
@@ -340,9 +348,11 @@ mod tests {
             &crate::Limits::default(),
         )
         .unwrap();
-        let mut options = OutlineOptions::default();
-        options.select = Some("main\np".into());
-        options.max_lines = 1;
+        let options = OutlineOptions {
+            select: Some("main\np".into()),
+            max_lines: 1,
+            ..OutlineOptions::default()
+        };
         assert_eq!(
             document.outline(&options).unwrap(),
             "1 match for \"main\\np\"\n… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"

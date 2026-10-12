@@ -1,8 +1,0 @@
-malloc exit=3
-pid=91692 uid=501 virtual=500511801344 resident=1638400
-setrlimit AS cap=500646019072 rc=0 errno=0
-allocatedMiB=32 resident=35225600
-allocatedMiB=64 resident=68796416
-allocatedMiB=96 resident=102367232
-allocatedMiB=128 resident=135938048
-allocation refused atMiB=128 errno=12

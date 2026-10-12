@@ -72,13 +72,13 @@ impl Document {
                 ego_tree::iter::Edge::Open(node) => {
                     if fragment_depth > 0 || matches!(node.value(), scraper::Node::Fragment) {
                         fragment_depth += 1;
-                    } else if let Some(e) = scraper::ElementRef::wrap(node) {
-                        if e.value().name.ns == html5ever::ns!(html) && e.value().name() == "base" {
-                            if let Some(href) = e.value().attr("href") {
-                                document_base = resolve(href, fallback.as_ref());
-                                break;
-                            }
-                        }
+                    } else if let Some(e) = scraper::ElementRef::wrap(node)
+                        && e.value().name.ns == html5ever::ns!(html)
+                        && e.value().name() == "base"
+                        && let Some(href) = e.value().attr("href")
+                    {
+                        document_base = resolve(href, fallback.as_ref());
+                        break;
                     }
                 }
                 ego_tree::iter::Edge::Close(_) if fragment_depth > 0 => fragment_depth -= 1,
@@ -264,16 +264,16 @@ fn prescan_meta(bytes: &[u8]) -> Option<&'static Encoding> {
                     _ => (),
                 }
             }
-            if need_pragma == Some(false) || (need_pragma == Some(true) && got_pragma) {
-                if let Some(encoding) = charset {
-                    return Some(if encoding == UTF_16LE || encoding == UTF_16BE {
-                        UTF_8
-                    } else if encoding == X_USER_DEFINED {
-                        WINDOWS_1252
-                    } else {
-                        encoding
-                    });
-                }
+            if (need_pragma == Some(false) || (need_pragma == Some(true) && got_pragma))
+                && let Some(encoding) = charset
+            {
+                return Some(if encoding == UTF_16LE || encoding == UTF_16BE {
+                    UTF_8
+                } else if encoding == X_USER_DEFINED {
+                    WINDOWS_1252
+                } else {
+                    encoding
+                });
             }
         } else if tail[0] == b'<'
             && tail.get(1).is_some_and(|c| {

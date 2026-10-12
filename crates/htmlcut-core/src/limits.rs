@@ -38,10 +38,10 @@ impl Clock {
         }
     }
     pub(crate) fn check(&self) -> Result<(), crate::Error> {
-        if let Some(limit) = self.limit {
-            if self.started.elapsed() >= limit {
-                return Err(crate::Error::limit("time", limit.as_secs_f64()));
-            }
+        if let Some(limit) = self.limit
+            && self.started.elapsed() >= limit
+        {
+            return Err(crate::Error::limit("time", limit.as_secs_f64()));
         }
         Ok(())
     }

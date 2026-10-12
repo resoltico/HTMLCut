@@ -115,7 +115,7 @@ fn pattern_count(value: &Json) -> usize {
     usize::from(map.contains_key("pattern")) + predicates + children
 }
 
-fn object<'a>(value: &'a Json, path: &str, allowed: &[&str]) -> Result<Map<String, Json>, Error> {
+fn object(value: &Json, path: &str, allowed: &[&str]) -> Result<Map<String, Json>, Error> {
     let map = if let Some(text) = value.as_str() {
         Map::from_iter([(String::from("select"), Json::String(text.into()))])
     } else {

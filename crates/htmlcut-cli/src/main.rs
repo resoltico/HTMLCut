@@ -27,20 +27,6 @@ fn guarded(
         ))
     })
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn panic_boundary_produces_an_internal_failure() {
-        let error = super::guarded(|| panic!("boundary witness")).unwrap_err();
-        assert_eq!(error.error, htmlcut_core::ErrorCode::Internal);
-        assert_eq!(error.error.exit_status(), 6);
-        assert_eq!(
-            error.to_json_line().iter().filter(|c| **c == b'\n').count(),
-            1
-        );
-    }
-}
 fn entry() -> Result<(), Error> {
     let args = std::env::args_os().collect::<Vec<_>>();
     if args
@@ -60,4 +46,18 @@ fn entry() -> Result<(), Error> {
     let args = cli::Cli::try_parse_from(args)
         .map_err(|error| Error::new(ErrorCode::InvalidArguments, error.to_string()))?;
     run::execute(args.command)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn panic_boundary_produces_an_internal_failure() {
+        let error = super::guarded(|| panic!("boundary witness")).unwrap_err();
+        assert_eq!(error.error, htmlcut_core::ErrorCode::Internal);
+        assert_eq!(error.error.exit_status(), 6);
+        assert_eq!(
+            error.to_json_line().iter().filter(|c| **c == b'\n').count(),
+            1
+        );
+    }
 }
