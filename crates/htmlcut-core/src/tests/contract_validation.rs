@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn plan_field_failure_reports_only_declared_path_segments() {
-    let bad = br#"{"version":7,"select":"p","fields":{"SYNTHETIC_SECRET!":{"select":null}}}"#;
+    let bad = br#"{"version":8,"select":"p","fields":{"SYNTHETIC_SECRET!":{"select":null}}}"#;
     let error = ExtractionPlan::from_json(bad).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidPlan);
     assert_eq!(error.plan_path.as_deref(), Some("$.fields"));
@@ -12,7 +12,7 @@ fn plan_field_failure_reports_only_declared_path_segments() {
             .unwrap()
             .contains("SYNTHETIC_SECRET")
     );
-    let indexed = br#"{"version":7,"select":"p","expect":[{"select":"p"},{"scope":"selected"}]}"#;
+    let indexed = br#"{"version":8,"select":"p","expect":[{"select":"p"},{"scope":"selected"}]}"#;
     let error = ExtractionPlan::from_json(indexed).unwrap_err();
     assert_eq!(error.plan_path.as_deref(), Some("$.expect[1]"));
 }
@@ -95,7 +95,7 @@ fn incompatible_cardinality_readings_and_aggregate_selectors_never_compile() {
         "guards",
         "transforms",
     ] {
-        let mut wire = serde_json::json!({"version":7,"select":"p"});
+        let mut wire = serde_json::json!({"version":8,"select":"p"});
         wire[member] = serde_json::json!({});
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&wire).unwrap()).is_err());
     }
@@ -136,39 +136,6 @@ fn expectation_predicate_reading_count_and_regex_constraints_are_closed() {
     p.expect[0].equals = None;
     p.expect[0].pattern = Some(String::new());
     reject(p);
-}
-#[test]
-fn readings_apply_url_resolution_only_to_supported_positions() {
-    for name in [
-        "href",
-        "src",
-        "action",
-        "poster",
-        "cite",
-        "formaction",
-        "data",
-    ] {
-        let mut p = ExtractionPlan::css("p").unwrap();
-        p.read = Some(Reading::Url(name.into()));
-        p.validate().unwrap();
-    }
-    for name in ["srcset", "id", "", "bad name"] {
-        let mut p = ExtractionPlan::css("p").unwrap();
-        p.read = Some(Reading::Url(name.into()));
-        reject(p);
-    }
-    let mut p = ExtractionPlan::css("p").unwrap();
-    p.read = Some(Reading::ResolvedMarkdown);
-    p.validate().unwrap();
-    for retired in [
-        "dom_text",
-        "normalized_text",
-        "resolved_markdown",
-        "attribute:id",
-        "source",
-    ] {
-        assert!(retired.parse::<Reading>().is_err());
-    }
 }
 
 #[test]
@@ -315,7 +282,7 @@ fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
             ConfigurationProblem::InvalidValue,
         ),
         (
-            r#"{"version":7.0,"select":"p"}"#,
+            r#"{"version":8.0,"select":"p"}"#,
             ErrorCode::InvalidSchema,
             "$.version",
             ConfigurationProblem::InvalidValue,
@@ -351,19 +318,19 @@ fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
             ConfigurationProblem::UnsupportedVersion,
         ),
         (
-            r#"{"version":7}"#,
+            r#"{"version":8}"#,
             ErrorCode::InvalidPlan,
             "$.select",
             ConfigurationProblem::MissingRequired,
         ),
         (
-            r#"{"version":7,"select":null}"#,
+            r#"{"version":8,"select":null}"#,
             ErrorCode::InvalidPlan,
             "$.select",
             ConfigurationProblem::InvalidValue,
         ),
         (
-            r#"{"version":7,"select":false}"#,
+            r#"{"version":8,"select":false}"#,
             ErrorCode::InvalidPlan,
             "$.select",
             ConfigurationProblem::InvalidValue,
@@ -396,7 +363,7 @@ fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
         assert!(!serialized.contains("PRIVATE_"));
         assert!(serialized.len() < 1024);
     }
-    let repaired = ExtractionPlan::from_json(br#"{"version":7,"select":"p"}"#).unwrap();
+    let repaired = ExtractionPlan::from_json(br#"{"version":8,"select":"p"}"#).unwrap();
     assert_eq!(
         prepared("<p>value</p>")
             .execute(&CompiledPlan::compile(&repaired).unwrap())
@@ -407,7 +374,7 @@ fn current_integer_version_and_select_are_required_and_all_defaults_nonempty() {
         &["value"]
     );
     let plan =
-        ExtractionPlan::from_json(br#"{"version":7,"select":"aside","match":"all"}"#).unwrap();
+        ExtractionPlan::from_json(br#"{"version":8,"select":"aside","match":"all"}"#).unwrap();
     assert_eq!(plan.match_mode, Match::All);
     assert_eq!(plan.min, None);
     assert_eq!(plan.max, None);

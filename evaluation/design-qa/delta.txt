@@ -1,0 +1,8 @@
+delta exit=3
+pid=80408 uid=501 virtual=500512243712 resident=1654784
+setrlimit AS cap=500646461440 rc=0 errno=0
+allocatedMiB=32
+allocatedMiB=64
+allocatedMiB=96
+allocatedMiB=128
+allocation refused atMiB=128 errno=12

@@ -4,7 +4,7 @@
 use std::cell::OnceCell;
 use std::sync::Arc;
 
-use crate::dom::{Html, parser::ParseLimits};
+use crate::dom::Html;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -133,25 +133,7 @@ impl PreparedDocument {
             .get_or_init(|| {
                 #[cfg(test)]
                 self.parses.set(self.parses.get() + 1);
-                Html::parse_document_bounded(
-                    self.snapshot.html(),
-                    ParseLimits {
-                        elements: self.limits.max_elements,
-                        nodes: self.limits.max_nodes,
-                        depth: self.limits.max_depth,
-                        work: self.limits.max_parse_work,
-                    },
-                )
-                .map_err(|failure| {
-                    use crate::dom::parser::ParseLimitExceeded;
-                    let (counter, bound) = match failure {
-                        ParseLimitExceeded::Elements => ("max_elements", self.limits.max_elements),
-                        ParseLimitExceeded::Nodes => ("max_nodes", self.limits.max_nodes),
-                        ParseLimitExceeded::Depth => ("max_depth", self.limits.max_depth),
-                        ParseLimitExceeded::Work => ("max_parse_work", self.limits.max_parse_work),
-                    };
-                    ExtractionError::resource("preparation", counter, bound.into())
-                })
+                crate::dom::parser::prepare(self.snapshot.html(), &self.limits)
             })
             .as_ref()
             .map_err(Clone::clone)

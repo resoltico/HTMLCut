@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, io::Read, path::PathBuf};
 #[command(
     name = "htmlcut",
     version,
-    about = "Bounded queries over caller-owned UTF-8 HTML snapshots."
+    about = "Fail-closed extraction contracts over caller-owned HTML snapshots."
 )]
 pub(crate) struct Cli {
     #[command(subcommand)]
@@ -21,7 +21,7 @@ pub(crate) enum Operation {
     /// Select, check and read complete strings or related records.
     #[command(after_help = EXTRACT_HELP)]
     Extract(Box<Extract>),
-    /// Survey repeated sibling/table groups, or count/sample an explicit selector.
+    /// Count and sample an explicit selector.
     #[command(after_help = INSPECT_HELP)]
     Inspect(Inspect),
     /// Retrieve one exhaustive named contract schema (optional for ordinary use).
@@ -30,28 +30,18 @@ pub(crate) enum Operation {
         name: String,
     },
 }
-const INSPECT_HELP: &str = r#"Survey eligibility: at least three direct HTML siblings sharing a tag, optionally
-constrained by a bounded class signature. Non-HTML, head, script, style, template, pre, code and noscript
-branches are excluded. Groups can overlap; no semantic fields are inferred.
-For smaller groups, use targeted --select and --samples, then one row's outer HTML:
-  htmlcut inspect --file page.html --select article --samples 2
-  htmlcut extract --file page.html --select article --nth 1 --read outer-html --raw"#;
+const INSPECT_HELP: &str = "Examples:\n  htmlcut inspect --file page.html --select article --samples 2\n  htmlcut extract --file page.html --select article --nth 1 --read outer-html --raw";
 const EXTRACT_HELP: &str = r#"Examples:
-  htmlcut extract --stdin --select h1
-  htmlcut extract --file books.html --select article.product_pod --all --field title 'h3 a' attr:title --field price .price_color text
-  htmlcut extract --file books.html --select article.product_pod --nth 1 --read outer-html --raw
-  htmlcut extract --file page.html --select 'script[type="application/ld+json"]' --read literal --raw
-  htmlcut extract --file quotes.html --plan-json '{"version":7,"select":".quote","match":"all","fields":{"text":{"select":".text"},"author":{"select":".author","match":"optional"},"tags":{"select":".tag","match":"all","min":0}}}'
+  htmlcut extract --stdin --select h1 --raw
+  htmlcut extract --file books.html --select article --all --field title h3 text --field price .price text --expect-text h1 Catalogue
+  htmlcut extract --file snapshot.html --plan extraction.json
 
 One requires one node; all defaults min=1; nth is one-based and counts every candidate.
-Optional fields return null only for absence; many defaults min=1. Missing attributes fail.
-Use JSON for min=0/bounded/nth fields. Names are ASCII identifiers, at most 64 bytes.
-Text is static: structural boundaries, Unicode whitespace collapse, parsed pre retained,
-inert payloads omitted, hidden/noscript retained. Literal/HTML are not byte-exact cutting.
-Unknown fields: inspect --file FILE, then extract one row's outer-html as above.
-Selectors admit at most 64 parsed matching-depth units across active chains/branches;
-this differs from syntax nesting and DOM depth. Excess depth is a resource refusal.
-Default data is bare canonical JSON plus LF; raw is one scalar without LF."#;
+Fields select within one row subtree; optional absence is null; missing attributes fail.
+Use version-8 JSON plans for bounded fields and selected/document contextual guards.
+Text is structural, literal is parsed text, outer-html is normalized serialization.
+Default output is complete compact JSON plus LF; raw is one scalar without LF.
+CLI execution has a ten-second active-worker deadline; caller input wait is excluded."#;
 
 #[derive(Args)]
 #[group(id = "source", required = true, multiple = false)]
@@ -89,10 +79,10 @@ pub(crate) struct Extract {
     #[command(flatten)]
     pub(crate) output: Output,
     /// Query file; '-' uses query stdin.
-    #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text", "following_siblings"])]
+    #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text"])]
     pub(crate) plan: Option<PathBuf>,
     /// Query JSON.
-    #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text", "following_siblings"])]
+    #[arg(long, conflicts_with_all = ["all", "nth", "min", "max", "read", "fields", "optional_fields", "many_fields", "field_excludes", "exclude", "expect_text"])]
     pub(crate) plan_json: Option<String>,
     /// Inline CSS.
     #[arg(long)]
@@ -107,7 +97,7 @@ pub(crate) struct Extract {
     pub(crate) min: Option<u32>,
     #[arg(long, requires = "all")]
     pub(crate) max: Option<u32>,
-    /// text (default), literal, markdown, resolved-markdown, inner-html, outer-html, attr:NAME, url:NAME.
+    /// text (default), literal, outer-html, attr:NAME, url:NAME.
     #[arg(long, conflicts_with_all = ["fields", "optional_fields", "many_fields"])]
     pub(crate) read: Option<Reading>,
     /// Exclude descendants; repeatable, scalar only.
@@ -128,9 +118,6 @@ pub(crate) struct Extract {
     /// Exclude field descendants; repeatable.
     #[arg(long = "field-exclude", num_args = 2, value_names = ["NAME", "SELECT"], action = clap::ArgAction::Append)]
     pub(crate) field_excludes: Vec<String>,
-    /// Include N following element siblings (0–63).
-    #[arg(long)]
-    pub(crate) following_siblings: Option<u32>,
 }
 impl Extract {
     pub(crate) fn extraction_plan(
@@ -227,7 +214,6 @@ impl Extract {
         if !fields.is_empty() {
             plan.fields = Some(fields);
         }
-        plan.following_siblings = self.following_siblings;
         plan.validate()?;
         Ok(plan)
     }
@@ -236,16 +222,10 @@ impl Extract {
 pub(crate) struct Inspect {
     #[command(flatten)]
     pub(crate) source: SourceOptions,
-    /// Explicit selector enables count/sample mode; omitted means repeated-group survey.
-    #[arg(long, conflicts_with_all = ["within", "limit"])]
-    pub(crate) select: Option<String>,
-    /// Targeted samples, 1–10 (default 3); requires select.
-    #[arg(long, requires = "select")]
-    pub(crate) samples: Option<u32>,
-    /// Survey scope: exactly one selected original-DOM element.
+    /// Selector whose complete count and bounded samples are returned.
     #[arg(long)]
-    pub(crate) within: Option<String>,
-    /// Survey groups, 1–16 (default 4).
-    #[arg(long)]
-    pub(crate) limit: Option<u32>,
+    pub(crate) select: String,
+    /// Targeted samples, 1–10 (default 3).
+    #[arg(long, default_value_t = 3)]
+    pub(crate) samples: u32,
 }

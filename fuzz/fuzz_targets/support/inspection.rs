@@ -46,7 +46,7 @@ pub fn drive(input: InspectionInput) {
         format!("{normalized} END")
     };
     let controlled_document = crate::snapshot::document(&controlled).unwrap();
-    let request = serde_json::json!({"version":7,"select":"main","expect":[{"select":"main","equals":expected}]});
+    let request = serde_json::json!({"version":8,"select":"main","expect":[{"select":"main","equals":expected}]});
     let plan =
         htmlcut_core::ExtractionPlan::from_json(&serde_json::to_vec(&request).unwrap()).unwrap();
     let result = controlled_document
@@ -59,22 +59,4 @@ pub fn drive(input: InspectionInput) {
     let observed = controlled_document.inspect("main", 1).unwrap();
     assert_eq!(observed.samples[0].text, expected);
     assert!(observed.samples[0].text_complete);
-    let limit = u32::from(input.samples % 18);
-    let first = document.survey(None, limit);
-    let second = document.survey(None, limit);
-    assert_eq!(first, second);
-    if let Ok(result) = first {
-        assert!(result.groups.len() <= 16);
-        assert_eq!(
-            result.groups_complete,
-            result.group_count as usize == result.groups.len()
-        );
-        assert!(result.groups.iter().all(|group| {
-            group.samples.len() <= 2
-                && group
-                    .samples
-                    .iter()
-                    .all(|sample| sample.text.chars().count() <= 64)
-        }));
-    }
 }

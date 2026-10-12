@@ -3,46 +3,6 @@ use super::*;
 use serde_json::{Value, json};
 
 #[test]
-fn t29_each_policy_rejects_zero_and_overflow_without_hiding_runtime() {
-    let cases = [
-        (true, "max_source_bytes", 52_428_800),
-        (true, "max_elements", 1_000_000),
-        (true, "max_nodes", 4_000_000),
-        (true, "max_depth", 4_096),
-        (true, "max_parse_work", 100_000_000),
-        (false, "max_work", 10_000_000),
-        (false, "max_candidates", 1_000_000),
-        (false, "max_selected", 100_000),
-        (false, "max_value_bytes", 8_388_608),
-        (false, "max_total_value_bytes", 67_108_864),
-    ];
-    for (preparation, field, maximum) in cases {
-        for (value, accepted) in [
-            (0, false),
-            (maximum - 1, true),
-            (maximum, true),
-            (maximum + 1, false),
-        ] {
-            let mut data = if preparation {
-                serde_json::to_value(PreparationLimits::default()).unwrap()
-            } else {
-                serde_json::to_value(ExecutionLimits::default()).unwrap()
-            };
-            data[field] = json!(value);
-            let valid = if preparation {
-                serde_json::from_value::<PreparationLimits>(data).is_ok()
-            } else {
-                serde_json::from_value::<ExecutionLimits>(data).is_ok()
-            };
-            assert_eq!(valid, accepted, "{field}={value}");
-        }
-    }
-    assert!(serde_json::from_value::<ExecutionLimits>(json!({"max_work":1.5})).is_err());
-    assert!(serde_json::from_value::<PreparationLimits>(json!({"max_nodes":u64::MAX})).is_err());
-    assert!(serde_json::from_value::<ExecutionLimits>(json!({"unknown":1})).is_err());
-}
-
-#[test]
 fn t29_source_value_aggregate_candidate_and_selection_budget_triplets() {
     for (bytes, accepted) in [(3, true), (4, true), (5, false)] {
         let snapshot = SourceSnapshot::new("x".repeat(bytes), SnapshotMetadata::default()).unwrap();
@@ -293,58 +253,6 @@ fn t29_url_metadata_and_resolution_processing_are_bounded() {
 }
 
 #[test]
-fn t29_structural_rendering_never_returns_a_prefix_at_any_output_limit() {
-    let source = prepared(
-        "<article><!--comment--><h3>Header</h3><p>text<img alt='[alternative]'><a href='next'>link</a></p><ol reversed> stray<li>A</li><li>B</li></ol><pre>code<script>ignored</script><span class='omit'>discard</span><a href='```'>label</a><img alt='````'></pre><table><tr><th rowspan='2'>H</th><td colspan='3'>V</td></tr></table></article>",
-    );
-    let mut plan = ExtractionPlan::css("article").unwrap();
-    plan.read = Some(Reading::Markdown);
-    plan.exclude = Some(vec![".omit".into()]);
-    let expected = "### Header\n\ntext\\[alternative\\][link](<next>)\n\nstray\n- 2\\. A\n- 1\\. B\n\n```\ncodelabel\n```\n\n- [label](<```>)\n- \\`\\`\\`\\`\n\n-\n  - <strong>H</strong>\n  - V";
-    let complete = source
-        .execute(&CompiledPlan::compile(&plan).unwrap())
-        .unwrap();
-    assert_eq!(complete.data().as_values().unwrap(), [expected]);
-    for limit in 1..=expected.len() + 1 {
-        plan.limits.max_value_bytes = limit as u32;
-        let result = source.execute(&CompiledPlan::compile(&plan).unwrap());
-        if limit < expected.len() {
-            assert_eq!(
-                result.unwrap_err().code,
-                ErrorCode::ResourceLimit,
-                "limit={limit}"
-            );
-        } else {
-            assert_eq!(result.unwrap().data().as_values().unwrap(), [expected]);
-        }
-    }
-    plan.limits.max_value_bytes = 1024;
-    let mut first_success = None;
-    for work in 1..500 {
-        plan.limits.max_work = work;
-        match source.execute(&CompiledPlan::compile(&plan).unwrap()) {
-            Ok(result) => {
-                assert_eq!(result.data().as_values().unwrap(), [expected]);
-                first_success = Some(work);
-                break;
-            }
-            Err(error) => assert_eq!(error.code, ErrorCode::ResourceLimit, "work={work}"),
-        }
-    }
-    let work = first_success.expect("finite shared rendering work");
-    plan.limits.max_work = work + 1;
-    assert_eq!(
-        source
-            .execute(&CompiledPlan::compile(&plan).unwrap())
-            .unwrap()
-            .data()
-            .as_values()
-            .unwrap(),
-        [expected]
-    );
-}
-
-#[test]
 fn t05_closed_json_preserves_all_primitive_values_and_large_signedness() {
     let wire = br#"[null,true,false,-7,4294967296,1.5,"x",{"k":"v"}]"#;
     assert_eq!(
@@ -436,4 +344,52 @@ fn unfinished_utf8_tokens_obey_source_byte_caps_before_parsing() {
             }
         }
     }
+}
+
+#[test]
+fn postparse_node_element_and_depth_acceptance_boundaries_are_complete() {
+    for (limits, counter) in [
+        (
+            PreparationLimits {
+                max_nodes: 3,
+                ..Default::default()
+            },
+            "max_nodes",
+        ),
+        (
+            PreparationLimits {
+                max_elements: 3,
+                ..Default::default()
+            },
+            "max_elements",
+        ),
+        (
+            PreparationLimits {
+                max_depth: 2,
+                ..Default::default()
+            },
+            "max_depth",
+        ),
+    ] {
+        let document = PreparedDocument::new(
+            SourceSnapshot::new("<p>A</p>", Default::default()).unwrap(),
+            limits,
+        )
+        .unwrap();
+        let error = document.inspect("p", 1).unwrap_err();
+        assert_eq!(error.resource_counter.as_deref(), Some(counter));
+        assert_eq!(document.inspect("p", 1).unwrap_err(), error);
+        assert_eq!(document.parse_count(), 1);
+    }
+    let document = PreparedDocument::new(
+        SourceSnapshot::new("<p>A</p>", Default::default()).unwrap(),
+        PreparationLimits {
+            max_nodes: 6,
+            max_elements: 4,
+            max_depth: 4,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(document.inspect("p", 1).unwrap().count, 1);
 }

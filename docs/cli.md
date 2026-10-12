@@ -1,37 +1,40 @@
 # CLI
 
-Use `extract`, `inspect` and optional `schema NAME`; help lists exact flags.
-`schema --help` derives all supported names from the core schema API; retrieving
-schemas remains optional for ordinary extraction.
+Use `extract`, `inspect` and optional `schema NAME`. Schema help lists supported
+canonical names from the core API; ordinary extraction needs no schema retrieval.
+
 `extract` requires exactly one source (`--file FILE` or `--stdin`) and query
-(`--select CSS`, `--plan FILE`, or `--plan-json JSON`). A query file `-` uses stdin;
-source and query cannot share stdin. Only regular files are accepted. Input must
-be UTF-8; BOM, CRLF and NUL remain exact in the snapshot.
+(`--select CSS`, `--plan FILE` or `--plan-json JSON`). Query file `-` consumes stdin;
+source and query cannot share stdin. Named inputs must resolve to regular files;
+they are opened and read once with bounded admission. UTF-8 is required; snapshots
+preserve accepted BOM/CRLF/NUL. Acquisition/rendering happens outside HTMLCut.
 
-Inline one/all/nth selection and named required/optional/many fields compile through
-the same closed contract as JSON. `--expect-text CSS TEXT` checks original document
-context. Use JSON for count/regex bounds and nth fields. See [full semantics](core.md).
-`inspect --file FILE` surveys eligible groups of at least three direct HTML
-siblings; it excludes non-HTML and head/script/style/template/pre/code/noscript
-branches. An empty survey does not establish that the page has no records. For smaller groups,
-`--select CSS --samples 2` counts all matches and emits bounded samples; extract
-one row's outer HTML to author fields. Inspection contains no source digest.
+Inline one/all/nth and required/optional/many field flags compile through the same
+version-8 contract as JSON. `--expect-text CSS TEXT` checks document context;
+use JSON for count/regex guards, field nth and plural bounds.
+Readings are text/literal/outer-html/attr:NAME/url:NAME.
+`inspect --file FILE --select CSS --samples 2` counts completely and returns bounded
+samples. Extract one row's outer HTML to inspect its structure. Unscoped survey,
+sibling forests and document conversion readings are removed without aliases.
 
-JSON is compact, deterministic, at most 64 MiB without its single LF. `--raw`
-requires one scalar and emits its exact UTF-8 bytes without LF. Encoding completes
-before stdout or single-file staging. `--output FILE` uses atomic create;
-`--overwrite` permits atomic replacement. Inputs/output must be distinct and
-symlink/nonregular destinations are refused. Write/flush errors remain failures;
-a pipe can receive a prefix before failure. Atomic files do not promise crash durability.
+The private worker applies native resource policy before parsing, and the parent
+buffers bounded channels under a ten-second active-worker deadline. Waiting for caller-owned source input
+is excluded; no source bytes are parsed during that wait. Only a verified complete response
+and successful child termination permit publication. No child panic or raw child
+diagnostic is forwarded. See [architecture](architecture.md) for guarantees.
 
-Failures are source-free JSON on stderr: code, stage, field/path/count/resource facts
-and useful recovery causes. Exit classes: 2 configuration, 3 semantic refusal,
-4 resource exhaustion, 5 I/O, 6 internal invariant. No query failure publishes partial
-data. Receipts, bundles, replay and their schemas are unsupported.
+Successful JSON is a deterministic compact bare array, at most 64 MiB before one LF.
+`--raw` requires exactly one scalar and writes UTF-8 without LF. `--output FILE`
+atomically creates a file; `--overwrite` permits replacement. Query, worker,
+encoding and staging failures leave an existing destination intact. Input/output
+aliases and symlink/nonregular destinations are refused. Stdout write/flush errors
+remain failures; a downstream pipe can receive a prefix after publication begins.
+Atomic files do not promise crash durability.
 
-File-publication causes identify `operation: publication` and portable problems
-such as `not_found`, `permission_denied`, `already_exists` or `unsupported_kind`
-when known. They expose no supplied path or OS error text. Missing query version
-or select members use `missing_required` at fixed `$.version`/`$.select` paths;
-null or wrong types use `invalid_value`, while present unsupported integer
-versions use `unsupported_version`. An omitted command is `missing_required`.
+Failures are bounded source-free JSON on stderr: code, stage and safe field/path/
+count/resource facts. Exit classes are 2 configuration, 3 semantic refusal,
+4 resource exhaustion, 5 I/O and 6 internal invariant. Supplied paths, source values
+and OS error strings are excluded. File errors retain portable operation/problem
+facts such as not_found, permission_denied, already_exists and unsupported_kind.
+Missing plan version/select uses missing_required; null/wrong types uses invalid_value;
+unsupported integer versions use unsupported_version. Old plans are rejected.

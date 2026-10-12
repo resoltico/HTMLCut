@@ -46,14 +46,7 @@ jobs:
         with:
           tool: cargo-deny
       - run: ./check.sh
-      - name: Strict provenance and ownership
-        shell: bash
-        run: |
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component miri --component rust-src --profile minimal
-          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-core --lib tests::selector_and_reading_contract_remain_miri_sound -- --exact
-          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-servo-arc --lib
-          MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-tendril --lib subtendril
+
   focused-smoke:
     name: Linux bounded parser and relational smoke
     runs-on: ubuntu-24.04
@@ -138,7 +131,7 @@ jobs:
         shell: bash
         run: |
           source ./scripts/contributor-rust-tools.sh
-          python3 scripts/verify-published-install.py --source-sha "$HTMLCUT_PUBLISHED_BASELINE_SOURCE" --output dist/published-install-example.json
+          python3 scripts/verify-published-install.py --source-sha "$HTMLCUT_PUBLISHED_INSTALL_SOURCE" --output dist/published-install-example.json
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

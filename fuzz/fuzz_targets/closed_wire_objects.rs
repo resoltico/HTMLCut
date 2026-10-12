@@ -44,7 +44,7 @@ fuzz_target!(|data: &[u8]| {
             ConfigurationProblem::UnsupportedVersion,
         ),
         (
-            serde_json::json!({"version":7}),
+            serde_json::json!({"version":8}),
             "$.select",
             ConfigurationProblem::MissingRequired,
         ),
@@ -59,15 +59,15 @@ fuzz_target!(|data: &[u8]| {
             })
         );
     }
-    refuses_extra::<ExtractionPlan>(r#"{"version":7,"select":"p"}"#, &extra);
+    refuses_extra::<ExtractionPlan>(r#"{"version":8,"select":"p"}"#, &extra);
     refuses_extra::<RecordField>(r#"{"select":"p"}"#, &extra);
     refuses_extra::<Guard>(r#"{"select":"p"}"#, &extra);
     for duplicate in [
-        br#"{"version":7,"select":"p","select":"p"}"#.as_slice(),
-        br#"{"version":7,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"p"}}}"#.as_slice(),
-        br#"{"version":7,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}"#.as_slice(),
-        br#"{"version":7,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#.as_slice(),
-        br#"{"version":7,"select":"p","limits":{"max_work":1,"max_work":2}}"#.as_slice(),
+        br#"{"version":8,"select":"p","select":"p"}"#.as_slice(),
+        br#"{"version":8,"select":"p","fields":{"a":{"select":"p"},"a":{"select":"p"}}}"#.as_slice(),
+        br#"{"version":8,"select":"p","fields":{"a":{"select":"p","read":"text","read":"literal"}}}"#.as_slice(),
+        br#"{"version":8,"select":"p","expect":[{"select":"p","min":0,"min":1}]}"#.as_slice(),
+        br#"{"version":8,"select":"p","limits":{"max_work":1,"max_work":2}}"#.as_slice(),
     ] { assert!(ExtractionPlan::from_json(duplicate).is_err()); }
     for read in [
         "text",
@@ -90,7 +90,7 @@ fuzz_target!(|data: &[u8]| {
         "exclude",
         "following_siblings",
     ] {
-        let mut wire = serde_json::json!({"version":7,"select":"p"});
+        let mut wire = serde_json::json!({"version":8,"select":"p"});
         wire[member] = serde_json::Value::Null;
         assert!(serde_json::from_value::<ExtractionPlan>(wire).is_err());
     }

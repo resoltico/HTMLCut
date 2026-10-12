@@ -15,7 +15,6 @@ pub fn document(html: &str) -> Option<PreparedDocument> {
         max_elements: 512,
         max_nodes: 2048,
         max_depth: 64,
-        max_parse_work: 100_000,
     };
     PreparedDocument::new(
         SourceSnapshot::new(text(html, 32768), SnapshotMetadata::default()).ok()?,

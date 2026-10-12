@@ -1,76 +1,65 @@
 # Architecture
 
-HTMLCut accepts saved/rendered UTF-8 HTML, prepares one immutable private DOM,
-compiles reusable closed queries, and returns complete owned typed values/counts.
-Acquisition, rendering, source trust and business interpretation belong to callers.
-Results hold no source, DOM, query, residual work or eager encoded payload. Core
-success establishes query completion; the CLI separately bounds JSON before output.
+HTMLCut is an extraction-contract engine for caller-owned HTML snapshots.
+The Rust core compiles closed plans, lazily prepares an immutable upstream scraper
+DOM, checks complete cardinalities and original-DOM guards, and projects owned
+strings/records. It has no acquisition, browser, reader or converter subsystem.
 
-## Implemented boundaries
+The CLI supervisor admits plans and regular-file/UTF-8 source bytes, communicates
+with one private child running the same executable, verifies its bounded response
+and successful termination, then uses the existing atomic publisher. Worker stdout
+and stderr remain private until a complete result is admitted. A ten-second active-worker deadline (excluding caller input wait), bounded
+concurrent pipe pumping and kill/reap cleanup protect against blocked or runaway
+workers. A worker failure cannot become a partial successful extraction.
 
-`dom/parser.rs` admits element/node allocations and attachments before mutation;
-`dom/tree_sink.rs` supplies the public html5ever TreeSink operations over ego-tree.
-UTF-8 feeds are at most 4096 bytes, and failures discard the partial document.
-Unfinished text/comment/raw tokens can span feeds and are bounded by source bytes.
-Same-token refusal still requires narrow html5ever/markup5ever stop hooks.
+## Native resource policy
 
-`dom/selector.rs` supplies static CSS grammar and a budget-carrying public Element
-adapter. Navigation charges every visited node, including skipped non-elements;
-name/type/attribute/class predicates charge callbacks and inspected byte batches.
-Iterative parsed-selector admission bounds combined matching paths at 64 units
-before selectors enter the recursive mature matcher. A matcher holds one SelectorCaches for its immutable document/selector/scope pass.
-It checks sticky exhaustion after matching, so negation cannot turn refusal into a
-successful non-match or match. No selector-engine internal budget hooks remain.
+Resource policy is installed before untrusted parsing/matching. Linux uses native
+address-space limits. macOS uses a virtual-size baseline measured in the fresh
+worker plus a bounded virtual-growth allowance: a small absolute cap cannot fit
+Darwin's large shared virtual reservations. A native over-cap mapping preflight
+must fail before input is accepted. This is a virtual-growth guarantee, **not an
+exact RSS cap**; pre-existing mappings can become resident. Worker startup and
+baseline must be bounded and independently tested. Windows uses a Job Object
+assigned before input release, with a process-memory cap and kill-on-close.
+The worker allowance is 1 GiB, declared once in `worker.rs`; the macOS pre-input
+resident baseline must be at most 64 MiB. Linux limits total virtual size; Windows
+limits process committed memory. These differ from exact total RSS. A valid
+50 MiB inert-script snapshot is a required native acceptance case.
 
-`dom/serialization.rs` streams filtered immutable HTML through the upstream public
-Serialize trait. The private DOM has no clone/filter/mutation-helper product API.
-Core callers retain original context for row scopes, guards and projections.
-Logical limits apply at declared boundaries; they are not exact upstream instruction
-counts or process CPU/RSS isolation. See [contract](core.md).
+Only the narrowly scoped OS wrapper permits unsafe calls. Product extraction
+remains safe Rust. This isolates a fixed binary's untrusted data processing; it is
+not a sandbox for arbitrary code or plugins. The library does not install these
+physical controls. Source limits precede upstream parse; prepared node/depth limits
+are post-parse admission, and owned traversal units do not count all upstream work.
 
-The CLI bounds complete deterministic JSON before single-file atomic staging or
-stdout. A query/encoding failure publishes no data; a stdout write failure can
-expose a prefix. Atomic rename is not a multi-file transaction. Reproduction uses
-[ordinary files](operations.md); receipts/bundles/replay are removed.
+## Design and challenge
 
-## Design and separate skeptical challenge
+The handoff is a proposal, not an independent correctness oracle. Our selected
+architecture keeps the reduced version-8 contract and existing publication code,
+uses the public upstream selector parser/matcher with upstream element callbacks, and removes
+the five parser/selector carriers only when the worker boundary is verified.
+A hand-written parser, a second extraction engine and compatibility adapters add
+ownership without solving this task and are excluded.
 
-Separate DOM admission, immutable serialization and matching/accounting from the
-parser/pointer graph. Use one aligned html5ever 0.40 / selectors 0.41 type graph.
-Moving these product responsibilities permits scraper retirement without deleting
-its required behavior or replacing mature parsing with a handwritten parser.
+The [separate skeptical design review](../evaluation/design-qa/README.md) found
+three important corrections: macOS needs a baseline-relative cap; virtual growth
+must not be described as RSS; upstream opaque per-element matching loses shared
+positional caches. The implementation instead compiles the public upstream selector
+AST with scraper's public parser and uses upstream matching contexts/caches; this
+also retains iterative 64-unit matching-depth admission without customized engines. Native probes and source inspection establish feasibility, not
+finished product assurance. Anchor-inclusive matching, original context, negative
+guards, exact complete values and native resource failure tests remain mandatory.
 
-A guarded public TokenSink cannot interrupt the current token: `<b><p>X</b>Y` at
-five elements panics in upstream adoption bookkeeping. Keep the demonstrated
-same-token stop hooks. Registry tendril/servo_arc also fail their independent
-ownership/provenance controls; preserve corrected transitive package identities.
+For paired small-query CLI trials, the pre-registered acceptance threshold is a
+median launch-time ratio of at most six to published v21 on the same machine and
+fixtures, while preserving complete values/refusals. The worker adds an intentional
+process launch and IPC boundary. Positional selectors and warm DOM/plan reuse need
+separate measurements; cold Python launches are not warm-parser comparators.
+No byte ratio is reported as a token saving. Measurements and failures are retained
+in [evaluation](../evaluation/README.md).
 
-Challenge matching independently of those parser failures. The upstream nth-cache
-debug recomputation panics after a public navigation callback refuses, and recursive
-relative traversal overflows at supported depth 4000. Retain only iterative relative
-traversal and removal of that redundant diagnostic recomputation, with independent
-cached/cold, scope, ancestor/sibling/negation, depth and refusal controls. The wrapper
-owns all work and pass caches; outer candidate counts alone cannot bound inner work.
-
-Five necessary carrier responsibilities and their specific blockers are documented
-in [dependencies](dependencies.md). Verified distribution of corrected packages is
-separate from full upstream adoption and actual crates.io publication. Local and
-required CI commands remain direct tools, with bounded smoke and focused native
-package/release controls. Authoritative CI and external rollout remain separate
-from locally executed evidence; see [release handoff](release-protocol.md).
-
-## Selector admission correction: design and separate challenge
-
-A raw syntax-nesting cap misses long combinator chains: the accepted 2001-compound
-query aborted a default 2 MiB consumer thread. Retain the matching engine and add
-one fixed, product-owned parsed matching-depth admission rule. Walk borrowed AST
-nodes iteratively so admission itself does not recurse on excessive input.
-
-Challenge the combined path rather than isolated chain/nesting caps. A branch at
-a leftward compound inherits that active chain, whereas a rightmost branch finishes
-before later leftward compounds execute. Measure the maximum alternative, including
-later list branches, :is/:where/:not/:has and functional selector arguments. Relative
-anchors count too. Forgiving-list parsing can discard invalid branches: inspect the
-retained AST, not raw punctuation. Public-core subprocess tests execute exact
-boundary controls on a 2 MiB thread; a separate original-tree probe must abort or
-violate the declared refusal. CLI refusal must remain exit 4 with empty stdout.
+Atomic file create/replace is a single-file publication guarantee, without crash
+durability. Once a complete result begins writing to arbitrary stdout, a failed
+recipient can observe a prefix. Source content, business identity and domain
+interpretation remain caller responsibilities.

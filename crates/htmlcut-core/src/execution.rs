@@ -54,12 +54,7 @@ impl PreparedDocument {
             .into_iter()
             .map(|index| candidates[index])
             .collect::<Vec<_>>();
-        let scopes = scope::selected_scopes(
-            &selected,
-            &candidates,
-            plan.following_siblings.unwrap_or(0),
-            &budget,
-        )?;
+        let scopes = scope::selected_scopes(&selected);
         check_guards(document, &scopes, compiled, &budget)?;
         let (data, fields) = if plan.fields.is_some() {
             let output = records::RecordExecution {
@@ -209,8 +204,7 @@ pub(crate) fn matches_scope<'a>(
         Some(scope) => matches_payloads(
             document,
             Some(scope.anchor),
-            std::iter::once(*scope.anchor)
-                .chain(scope.following_siblings.iter().map(|root| **root)),
+            std::iter::once(*scope.anchor),
             selector,
             maximum,
             budget,

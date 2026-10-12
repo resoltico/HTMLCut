@@ -20,13 +20,15 @@ clap.workspace = true
 htmlcut-core.workspace = true
 tempfile.workspace = true
 os_pipe.workspace = true
-schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-url.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true
+libc.workspace = true
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

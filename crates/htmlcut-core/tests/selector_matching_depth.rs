@@ -307,11 +307,11 @@ fn every_public_selector_admission_route_refuses_the_same_depth() {
     let selector = format!("{}span.private-query-marker", "* ".repeat(64));
     let source = "<span class='private-query-marker'>private-source-marker</span>";
     for query in [
-        json!({"version":7,"select":selector}),
-        json!({"version":7,"select":"span","fields":{"value":{"select":selector}}}),
-        json!({"version":7,"select":"span","fields":{"value":{"select":"span","exclude":[selector]}}}),
-        json!({"version":7,"select":"span","exclude":[selector]}),
-        json!({"version":7,"select":"span","expect":[{"select":selector}]}),
+        json!({"version":8,"select":selector}),
+        json!({"version":8,"select":"span","fields":{"value":{"select":selector}}}),
+        json!({"version":8,"select":"span","fields":{"value":{"select":"span","exclude":[selector]}}}),
+        json!({"version":8,"select":"span","exclude":[selector]}),
+        json!({"version":8,"select":"span","expect":[{"select":selector}]}),
     ] {
         check_process_input(
             "JSON selector admission route",

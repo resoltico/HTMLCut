@@ -8,7 +8,7 @@ use support::invoke;
 fn inline_field_exclusion_matches_a_structured_plan_and_rejects_unknown_names() {
     let directory = tempfile::tempdir().unwrap();
     let plan = directory.path().join("country.plan.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({"version":7,"select":"tr","match":"one","fields":{"country":{"select":"td","exclude":["sup.reference"],"read":"text"}},"following_siblings":0})).unwrap()).unwrap();
+    std::fs::write(&plan, serde_json::to_vec(&json!({"version":8,"select":"tr","match":"one","fields":{"country":{"select":"td","exclude":["sup.reference"],"read":"text"}}})).unwrap()).unwrap();
     let source = b"<table><tr><td>China<sup class=reference>[1]</sup></td></tr></table>";
     let inline = invoke(
         &[
@@ -194,38 +194,6 @@ fn scalar_resolved_attribute_read_needs_no_plan_file() {
 }
 
 #[test]
-fn sibling_group_inline_request_has_complete_named_values() {
-    let result = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--select",
-            "tr.entry",
-            "--field",
-            "title",
-            ":scope td",
-            "literal",
-            "--field",
-            "score",
-            ":scope + tr .score",
-            "text",
-            "--following-siblings",
-            "1",
-        ],
-        b"<table><tr class=entry><td>Title</td></tr><tr><td class=score> 10 </td></tr></table>",
-    );
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
-        json!([{"title":"Title","score":"10"}])
-    );
-}
-
-#[test]
 fn retired_ambiguous_and_invalid_reading_requests_have_no_success_data() {
     for arguments in [
         vec![
@@ -287,25 +255,7 @@ fn invalid_reading_request_rejects_large_input_before_consuming_it() {
 }
 
 #[test]
-fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
-    let result = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--select",
-            "p",
-            "--read",
-            "resolved-markdown",
-            "--base-url",
-            "https://example.test/",
-        ],
-        b"<p><a href=next>Next</a></p>",
-    );
-    assert!(result.status.success());
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
-        json!(["[Next](<https://example.test/next>)"])
-    );
+fn inline_field_count_limit_uses_the_public_grammar() {
     let mut arguments = vec![
         "extract".to_string(),
         "--stdin".into(),
@@ -324,65 +274,6 @@ fn resolved_markdown_and_field_count_limit_use_the_public_grammar() {
     let result = invoke(&arguments, b"<article>x</article>");
     assert_eq!(result.status.code(), Some(2));
     assert!(result.stdout.is_empty());
-}
-
-#[test]
-fn structured_and_inline_authoring_bind_identical_data() {
-    let directory = tempfile::tempdir().unwrap();
-    let plan = directory.path().join("fields.json");
-    std::fs::write(&plan, serde_json::to_vec(&json!({"version":7,"select":"article","match":"one","fields":{"title":{"select":"a","read":"attr:title"},"price":{"select":":scope + aside .price","read":"text"},"url":{"select":"a","read":"url:href"}},"following_siblings":1})).unwrap()).unwrap();
-    let source = "<main><article><a title=T href=next>x</a></article><aside><span class=price>\u{a0}10\u{2003}</span></aside></main>".as_bytes();
-    let inline = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--select",
-            "article",
-            "--following-siblings",
-            "1",
-            "--field",
-            "title",
-            "a",
-            "attr:title",
-            "--field",
-            "price",
-            ":scope + aside .price",
-            "text",
-            "--field",
-            "url",
-            "a",
-            "url:href",
-            "--base-url",
-            "https://example.test/",
-        ],
-        source,
-    );
-    let structured = invoke(
-        &[
-            "extract",
-            "--stdin",
-            "--plan",
-            plan.to_str().unwrap(),
-            "--base-url",
-            "https://example.test/",
-        ],
-        source,
-    );
-    assert!(
-        inline.status.success(),
-        "{}",
-        String::from_utf8_lossy(&inline.stderr)
-    );
-    assert!(
-        structured.status.success(),
-        "{}",
-        String::from_utf8_lossy(&structured.stderr)
-    );
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&inline.stdout).unwrap(),
-        json!([{"title":"T","price":"10","url":"https://example.test/next"}])
-    );
-    assert_eq!(inline.stdout, structured.stdout);
 }
 
 #[test]

@@ -60,7 +60,7 @@ def main():
             stock=dict(select='.stock',read='literal'),
             rating=dict(select='.rating',read='literal'),
             url=dict(select='a',read='attr:href')))]:
-        plan=dict(version=7,select=selector)
+        plan=dict(version=json.loads(subprocess.check_output([binary,"schema","htmlcut.extraction.plan"]))["properties"]["version"]["const"],select=selector)
         if task in ['titles','urls','mapping']:plan.update(match='all',min=1)
         if fields is not None:plan['fields']=fields
         elif reading is not None:plan['read']=reading

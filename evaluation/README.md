@@ -1,43 +1,36 @@
 # Extraction-contract evaluation
 
-The offline corpus is original synthetic HTML authored for HTMLCut under the repository MPL-2.0 license. Its manifest records immutable byte hashes, origin and scope. It covers technical linked identifiers, hidden content, lists/tables/preformatted content, alternative text, Unicode, malformed HTML and caller-supplied rendered DOM without executing JavaScript.
+The [contract matrix](contract-matrix/matrix.py) contains the handoff's original
+synthetic snapshots, version-7 and version-8 plans, SHA-256 manifest and independent
+expected values. The supplied pilot reports `baseline.json` and `warm.json` describe
+the handoff environment; they are historical evidence, not current candidate results.
+New execution reports are retained under `contract-matrix/results`.
 
-Task economics are correctness-qualified measurements. Bare data, one-time help/inspection/plan costs are measured separately. Named tokenizer counts are proxies, not agent billing or measured model reasoning. Fresh-process timing and prepared in-process reuse are separate. Domain mapping remains caller code. No universal performance or market-adoption claim is implied.
-
-The maintained benchmark script records commands, fixture hashes, tool versions, complete validated values, observed retries and raw timing samples. Final-candidate results belong in the implementation evidence summary after actual execution; a configured benchmark is not a result.
-
-Install the current evaluation dependencies from [requirements.txt](requirements.txt) into a
-caller-owned Python environment. The report records actual installed versions and a named
-tokenizer; it does not silently reuse a historical measurement after a dependency/source change.
-
-
-For a clean checkout, create a caller-owned environment and install the pinned evaluation inputs:
-
-```bash
+```sh
 python3 -m venv /path/outside/repository/evaluation-python
 /path/outside/repository/evaluation-python/bin/python -m pip install -r evaluation/requirements.txt
-/path/outside/repository/evaluation-python/bin/python evaluation/task-economics.py --binary /path/to/htmlcut --output /path/outside/repository/offline.json
+/path/outside/repository/evaluation-python/bin/python evaluation/contract-matrix/matrix.py --binary /absolute/path/htmlcut-v21 --plan-version 7 --repeats 15 --output /path/v21.json
+/path/outside/repository/evaluation-python/bin/python evaluation/contract-matrix/matrix.py --binary /absolute/path/htmlcut-candidate --plan-version 8 --repeats 15 --output /path/candidate.json
 ```
 
-`captured-tasks.py` requires a frozen caller-owned capture directory containing catalogue,
-product-details, Hacker News, Python pathlib and unrendered quote inputs, with
-`capture-manifest.json` hashes and retained acquisition failures. Supply the rendered browser
-fragment, its method record and complete quote values through their explicit path arguments.
-Wikipedia acquisition failure is reported without inventing a successful capture. Browser rendering and
-network acquisition happen before evaluation; the runner never fetches a page. Supply verified
-native candidate binary and its source/binary binding record, installed htmlq/pup paths,
-and a captured release API JSON response. `--help` lists the required paths.
+The runner validates all complete values and intended refusals, uses strict root/
+field cardinalities in the Python references and records binary/script identities,
+versions, commands and raw timings. The article comparison normalizes whitespace
+while checking complete ordered text. A guard/count failure must produce no stdout.
+The browser test runs offline JavaScript in Chromium if Playwright is available;
+reader/converter and jq checks describe their different appropriate tasks.
+A missing tool is reported as unexecuted, not silently passed.
 
-The public suite compares complete direct records and caller shortlists, scalar titles,
-news, product fields, guarded price, protected technical code, reading output, inline JSON and
-rendered quotes; it checks inspection size. Fresh
-processes have three warmups and fifteen randomized checked launches. RSS uses separate checked
-launches and retained native time output. Python warm parse/map and reused-document mapping use
-cached input bytes; they do not include file I/O. Title tools share one randomized trial order.
-The code reports versioned dependencies, actual binary/input hashes and canonical requested
-values. Setup help costs remain separate from data.
+Fresh CLI launches include process startup. `warm.py` measures preloaded Python
+parse/extract separately; Rust reusable document/plan examples measure core work.
+`task-economics.py` measures the maintained small corpus and named tokenizer sizes;
+`captured-tasks.py` accepts separately frozen caller captures and comparisons. Native
+resource evidence uses real kernel boundaries, not parser mocks or exit-0-only checks.
+See [independent design QA](design-qa/README.md) and the implementation report for
+actual native platforms, exact commands, complete failures and unresolved gates.
 
-Heuristic reading output and already structured API/JSON inputs have their own scope: HTMLCut
-is unnecessary for the latter. Browser measurements identify their automation/acquisition scope.
-These controls qualify the specified snapshots; they are not a browser visibility model, general
-HTML conformance study, market adoption result, or measurement of billed agent reasoning.
+Output bytes, source bytes and plan/help sizes are distinct from model tokens.
+Named tokenizer counts are proxies, not billing or a blind agent study. Equal
+compact JSON yields equal output tokens for the same tokenizer. No universal speed,
+market-demand or commercial-value claim follows from these synthetic tasks.
+Historical [v15 results](v15-results.md) retain their original scope and attribution.

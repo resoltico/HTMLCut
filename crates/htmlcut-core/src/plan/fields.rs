@@ -15,12 +15,6 @@ pub enum Reading {
     Text,
     /// Literal parsed descendant-text concatenation, including inert content.
     Literal,
-    /// Selected-content Markdown with protected code and structural roles.
-    Markdown,
-    /// Markdown whose supported URLs use explicit base metadata.
-    ResolvedMarkdown,
-    /// Parsed descendants' HTML serialization.
-    InnerHtml,
     /// Parsed HTML including the selected root.
     OuterHtml,
     /// Required attribute; a present empty value is a value.
@@ -33,9 +27,6 @@ impl fmt::Display for Reading {
         match self {
             Self::Text => f.write_str("text"),
             Self::Literal => f.write_str("literal"),
-            Self::Markdown => f.write_str("markdown"),
-            Self::ResolvedMarkdown => f.write_str("resolved-markdown"),
-            Self::InnerHtml => f.write_str("inner-html"),
             Self::OuterHtml => f.write_str("outer-html"),
             Self::Attribute(name) => write!(f, "attr:{name}"),
             Self::Url(name) => write!(f, "url:{name}"),
@@ -48,9 +39,6 @@ impl FromStr for Reading {
         let read = match value {
             "text" => Self::Text,
             "literal" => Self::Literal,
-            "markdown" => Self::Markdown,
-            "resolved-markdown" => Self::ResolvedMarkdown,
-            "inner-html" => Self::InnerHtml,
             "outer-html" => Self::OuterHtml,
             _ => {
                 if let Some(name) = value.strip_prefix("attr:") {
@@ -79,10 +67,10 @@ impl<'de> Deserialize<'de> for Reading {
     }
 }
 fn reading_schema(_: &mut SchemaGenerator) -> Schema {
-    schemars::json_schema!({"type":"string", "pattern":"^(text|literal|markdown|resolved-markdown|inner-html|outer-html|attr:.+|url:(href|src|action|poster|cite|formaction|data))$"})
+    schemars::json_schema!({"type":"string", "pattern":"^(text|literal|outer-html|attr:.+|url:(href|src|action|poster|cite|formaction|data))$"})
 }
 
-/// Cardinality within one selected row forest; optionality never hides a missing attribute.
+/// Cardinality within one selected row subtree; optionality never hides a missing attribute.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldMatch {
@@ -97,7 +85,7 @@ pub enum FieldMatch {
     Nth,
 }
 
-/// One field projected within the selected original-DOM row forest.
+/// One field projected within the selected original-DOM row subtree.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordField {

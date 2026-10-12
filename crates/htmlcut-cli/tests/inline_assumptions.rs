@@ -10,7 +10,7 @@ fn scalar_exclusion_has_the_same_data_as_a_plan() {
     let plan = root.path().join("reading.json");
     std::fs::write(
         &plan,
-        serde_json::to_vec(&json!({"version":7,"select":"p","exclude":["sup.reference"],"match":"one","read":"markdown"}))
+        serde_json::to_vec(&json!({"version":8,"select":"p","exclude":["sup.reference"],"match":"one","read":"text"}))
         .unwrap(),
     )
     .unwrap();
@@ -22,7 +22,7 @@ fn scalar_exclusion_has_the_same_data_as_a_plan() {
             "--select",
             "p",
             "--read",
-            "markdown",
+            "text",
             "--exclude",
             "sup.reference",
         ],

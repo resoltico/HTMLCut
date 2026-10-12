@@ -5,16 +5,12 @@ use crate::command::{Cli, Operation, Output};
 use crate::input::options;
 use crate::publication::Staged;
 use clap::Parser;
-use htmlcut_core::{
-    CompiledPlan, ExtractionData, ExtractionError, ExtractionResult, PreparationLimits,
-    PreparedDocument,
-};
+use htmlcut_core::ExtractionError;
 use std::{
     ffi::OsString,
     io::{Read, Write},
     path::PathBuf,
 };
-const METADATA_BYTES: usize = 16_384;
 
 pub(crate) fn run<I, T>(
     arguments: I,
@@ -80,13 +76,13 @@ fn dispatch(
             emit_json(&schema, crate::input::MAX_CONFIG_BYTES, stdout)
         }
         Operation::Extract(arguments) => {
-            let compiled = CompiledPlan::compile(&arguments.extraction_plan(stdin)?)?;
-            if arguments.output.raw && compiled.plan().fields.is_some() {
+            let plan = arguments.extraction_plan(stdin)?;
+            if arguments.output.raw && plan.fields.is_some() {
                 return Err(options("Raw output cannot represent records."));
             }
             if arguments.output.raw
-                && compiled.plan().match_mode == htmlcut_core::Match::All
-                && (compiled.plan().min.unwrap_or(1) > 1 || compiled.plan().max == Some(0))
+                && plan.match_mode == htmlcut_core::Match::All
+                && (plan.min.unwrap_or(1) > 1 || plan.max == Some(0))
             {
                 return Err(options(
                     "Raw output requires exactly one scalar; declared all bounds cannot provide it.",
@@ -107,45 +103,45 @@ fn dispatch(
                 )
                 .collect::<Vec<_>>();
             validate(&inputs, &arguments.output)?;
-            let snapshot = crate::input::snapshot(
-                arguments.source.source.file.as_deref(),
-                stdin,
-                arguments.source.base_url.as_deref(),
+            let bytes = crate::worker::execute(
+                crate::worker::Request {
+                    plan: Some(plan),
+                    inspect: None,
+                    samples: 0,
+                    raw: arguments.output.raw,
+                },
+                || {
+                    crate::input::snapshot(
+                        arguments.source.source.file.as_deref(),
+                        stdin,
+                        arguments.source.base_url.as_deref(),
+                    )
+                },
             )?;
-            let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            let result = document.execute(&compiled)?;
-            drop(document);
-            publish(&result, &arguments.output, stdout)
+            publish(bytes, &arguments.output, stdout)
         }
         Operation::Inspect(arguments) => {
-            if let Some(select) = arguments.select.as_deref().or(arguments.within.as_deref()) {
-                let _ = CompiledPlan::compile(&htmlcut_core::ExtractionPlan::css(select)?)?;
-            }
-            if arguments.select.is_some() && !(1..=10).contains(&arguments.samples.unwrap_or(3)) {
+            if !(1..=10).contains(&arguments.samples) {
                 return Err(options("Samples must be between one and ten."));
             }
-            if arguments.select.is_none() && !(1..=16).contains(&arguments.limit.unwrap_or(4)) {
-                return Err(options("Group limit must be between one and sixteen."));
-            }
-            let snapshot = crate::input::snapshot(
-                arguments.source.source.file.as_deref(),
-                stdin,
-                arguments.source.base_url.as_deref(),
-            )?;
-            let document = PreparedDocument::new(snapshot, PreparationLimits::default())?;
-            if let Some(select) = &arguments.select {
-                emit_json(
-                    &document.inspect(select, arguments.samples.unwrap_or(3))?,
-                    METADATA_BYTES,
-                    stdout,
-                )
-            } else {
-                emit_json(
-                    &document.survey(arguments.within.as_deref(), arguments.limit.unwrap_or(4))?,
-                    METADATA_BYTES,
-                    stdout,
-                )
-            }
+            emit(
+                crate::worker::execute(
+                    crate::worker::Request {
+                        plan: None,
+                        inspect: Some(arguments.select),
+                        samples: arguments.samples,
+                        raw: false,
+                    },
+                    || {
+                        crate::input::snapshot(
+                            arguments.source.source.file.as_deref(),
+                            stdin,
+                            arguments.source.base_url.as_deref(),
+                        )
+                    },
+                )?,
+                stdout,
+            )
         }
     }
 }
@@ -155,22 +151,7 @@ fn validate(inputs: &[PathBuf], output: &Output) -> Result<(), ExtractionError> 
     crate::publication::validate_destinations(inputs, &targets, output.overwrite)
 }
 
-fn publish(
-    result: &ExtractionResult,
-    output: &Output,
-    stdout: &mut dyn Write,
-) -> Result<(), ExtractionError> {
-    let bytes = if output.raw {
-        match result.data() {
-            ExtractionData::Values(values) if values.len() == 1 => values[0].as_bytes().to_vec(),
-            _ => return Err(options("Raw output requires exactly one flat string.")),
-        }
-    } else {
-        let mut bytes =
-            crate::publication::json_payload(result.data(), htmlcut_core::MAX_DATA_BYTES)?;
-        bytes.push(b'\n');
-        bytes
-    };
+fn publish(bytes: Vec<u8>, output: &Output, stdout: &mut dyn Write) -> Result<(), ExtractionError> {
     let target = output
         .output
         .as_ref()

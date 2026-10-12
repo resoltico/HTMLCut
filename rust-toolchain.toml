@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 [toolchain]
 # Stable compiler authority for development, CI and packaging.
-channel = "1.98.1"
+channel = "1.99.0"
 components = ["clippy", "rustfmt"]

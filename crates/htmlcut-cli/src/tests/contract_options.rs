@@ -81,7 +81,7 @@ fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_curren
                 "extract",
                 "--stdin",
                 "--plan-json",
-                r#"{"version":7,"select":"p","expect":[{"select":"p","pattern":"(?i)^VALUE$"}]}"#,
+                r#"{"version":8,"select":"p","expect":[{"select":"p","pattern":"(?i)^VALUE$"}]}"#,
             ],
             b"<p>value</p>".as_slice(),
             serde_json::json!(["value"]),
@@ -100,7 +100,7 @@ fn scalar_attributes_regex_expectations_and_explicit_empty_selection_have_curren
 fn invalid_record_raw_plan_is_rejected_before_source() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("plan.json");
-    std::fs::write(&path,br#"{"version":7,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
+    std::fs::write(&path,br#"{"version":8,"select":"p","match":"one","fields":{"text":{"select":":scope","read":"literal"}}}"#).unwrap();
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(
@@ -123,7 +123,7 @@ fn invalid_record_raw_plan_is_rejected_before_source() {
 }
 
 #[test]
-fn native_help_named_schemas_and_inner_html_use_current_dispatch() {
+fn native_help_named_schemas_and_outer_html_use_current_dispatch() {
     for name in ["extract", "inspect", "schema"] {
         let (code, out, _) = invoke(&["htmlcut", name, "--help"], b"");
         assert_eq!(code, 0);
@@ -143,12 +143,12 @@ fn native_help_named_schemas_and_inner_html_use_current_dispatch() {
                 "--select",
                 "p",
                 "--read",
-                "inner-html",
+                "outer-html",
                 "--raw"
             ],
             b"<p>A<b>B</b></p>"
         ),
-        (0, b"A<b>B</b>".to_vec(), vec![])
+        (0, b"<p>A<b>B</b></p>".to_vec(), vec![])
     );
     for name in [
         "htmlcut.run",

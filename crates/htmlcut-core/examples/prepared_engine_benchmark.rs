@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Records the reusable prepared-engine model for the current extraction contract.
 //!
-//! The companion `scripts/benchmark-prepared-engine.sh` program measures this example against the
-//! immutable `v16.0.0` CLI workflow. This executable deliberately reports model facts only; its
-//! wall-clock duration is not a correctness assertion.
+//! This executable reports the prepared-document/compiled-plan reuse model.
+//! Its wall-clock duration is not a correctness assertion.
 
 #![forbid(unsafe_code)]
 
@@ -34,7 +33,7 @@ fn main() {
         assert_eq!(
             result.data().as_values().unwrap(),
             [format!(
-                "Headline {index}Prepared engine benchmark content."
+                "Headline {index} Prepared engine benchmark content."
             )]
         );
         values.extend(result.data().as_values().unwrap().iter().cloned());

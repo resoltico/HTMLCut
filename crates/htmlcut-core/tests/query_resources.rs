@@ -9,21 +9,21 @@ use query_support::{compile, data, document};
 #[test]
 fn diagnostics_identify_owning_counter_field_and_completed_assumptions() {
     let parsed = ExtractionPlan::from_json(
-        br#"{"version":7,"select":"article","fields":{"price":{"select":"["}}}"#,
+        br#"{"version":8,"select":"article","fields":{"price":{"select":"["}}}"#,
     )
     .unwrap();
     let error = CompiledPlan::compile(&parsed).err().unwrap();
     assert_eq!(error.field_name.as_deref(), Some("price"));
     assert_eq!(error.plan_path.as_deref(), Some("fields.price.select"));
     for query in [
-        json!({"version":7,"select":"p","match":"nth","index":3,"limits":{"max_candidates":2}}),
-        json!({"version":7,"select":"p","expect":[{"select":"p","max":3}],"limits":{"max_candidates":2}}),
+        json!({"version":8,"select":"p","match":"nth","index":3,"limits":{"max_candidates":2}}),
+        json!({"version":8,"select":"p","expect":[{"select":"p","max":3}],"limits":{"max_candidates":2}}),
     ] {
         assert!(ExtractionPlan::from_json(&serde_json::to_vec(&query).unwrap()).is_err());
     }
     let error = document("<p>A</p><p>B</p>")
         .execute(&compile(
-            json!({"version":7,"select":"p","match":"all","expect":[{"select":"p"}]}),
+            json!({"version":8,"select":"p","match":"all","expect":[{"select":"p"}]}),
         ))
         .unwrap_err();
     assert_eq!(
@@ -37,7 +37,7 @@ fn diagnostics_identify_owning_counter_field_and_completed_assumptions() {
     );
     let error = document("<p>AB</p>")
         .execute(&compile(
-            json!({"version":7,"select":"p","limits":{"max_value_bytes":1}}),
+            json!({"version":8,"select":"p","limits":{"max_value_bytes":1}}),
         ))
         .unwrap_err();
     assert_eq!(
@@ -46,7 +46,7 @@ fn diagnostics_identify_owning_counter_field_and_completed_assumptions() {
     );
     let error = document("<p>AB</p><p>CD</p>")
         .execute(&compile(
-            json!({"version":7,"select":"p","match":"all","limits":{"max_total_value_bytes":3}}),
+            json!({"version":8,"select":"p","match":"all","limits":{"max_total_value_bytes":3}}),
         ))
         .unwrap_err();
     assert_eq!(
@@ -54,12 +54,12 @@ fn diagnostics_identify_owning_counter_field_and_completed_assumptions() {
         (Some("max_total_value_bytes"), Some(3))
     );
     let huge = format!("<p>{}</p>", "A".repeat(10000));
-    let error = document(&huge).execute(&compile(json!({"version":7,"select":"p","limits":{"max_work":100,"max_total_value_bytes":15000}}))).unwrap_err();
+    let error = document(&huge).execute(&compile(json!({"version":8,"select":"p","limits":{"max_work":100,"max_total_value_bytes":15000}}))).unwrap_err();
     assert_eq!(
         (error.resource_counter.as_deref(), error.configured_bound),
         (Some("max_work"), Some(100))
     );
-    let error = document("<p>AB</p>").execute(&compile(json!({"version":7,"select":"p","read":"literal","expect":[{"select":"p","equals":"AB"}],"limits":{"max_value_bytes":1}}))).unwrap_err();
+    let error = document("<p>AB</p>").execute(&compile(json!({"version":8,"select":"p","read":"literal","expect":[{"select":"p","equals":"AB"}],"limits":{"max_value_bytes":1}}))).unwrap_err();
     assert_eq!(
         (error.resource_counter.as_deref(), error.configured_bound),
         (Some("max_value_bytes"), Some(1))
@@ -67,86 +67,9 @@ fn diagnostics_identify_owning_counter_field_and_completed_assumptions() {
 }
 
 #[test]
-fn preparation_failures_identify_exact_policy_counter_and_reuse_failure() {
-    for (limits, counter, bound) in [
-        (
-            PreparationLimits {
-                max_nodes: 1,
-                ..Default::default()
-            },
-            "max_nodes",
-            1,
-        ),
-        (
-            PreparationLimits {
-                max_depth: 1,
-                ..Default::default()
-            },
-            "max_depth",
-            1,
-        ),
-        (
-            PreparationLimits {
-                max_parse_work: 1,
-                ..Default::default()
-            },
-            "max_parse_work",
-            1,
-        ),
-    ] {
-        let source = PreparedDocument::new(
-            SourceSnapshot::new("<p>A</p>", Default::default()).unwrap(),
-            limits,
-        )
-        .unwrap();
-        let query = compile(json!({"version":7,"select":"p"}));
-        let first = source.execute(&query).unwrap_err();
-        let second = source.execute(&query).unwrap_err();
-        assert_eq!(first, second);
-        assert_eq!(
-            (first.resource_counter.as_deref(), first.configured_bound),
-            (Some(counter), Some(bound))
-        );
-    }
-}
-
-#[test]
-fn signed_ordinals_reject_both_overflow_directions_but_explicit_reset_can_recover() {
-    let query = compile(json!({"version":7,"select":"ol","read":"markdown"}));
-    for source in [
-        "<ol start='9223372036854775808'><li>A</li></ol>",
-        "<ol start='-9223372036854775809'><li>A</li></ol>",
-        "<ol start='9223372036854775807'><li>A</li><li>B</li></ol>",
-        "<ol reversed start='-9223372036854775808'><li>A</li><li>B</li></ol>",
-    ] {
-        let error = document(source).execute(&query).unwrap_err();
-        assert_eq!(
-            (
-                error.code,
-                error.resource_counter.as_deref(),
-                error.configured_bound
-            ),
-            (
-                ErrorCode::ResourceLimit,
-                Some("signed_list_ordinal_bits"),
-                Some(64)
-            )
-        );
-        assert!(!serde_json::to_string(&error).unwrap().contains("922337"));
-    }
-    assert_eq!(
-        data(
-            "<ol start='9223372036854775807'><li>A</li><li value='0'>B</li></ol>",
-            json!({"version":7,"select":"ol","read":"markdown"})
-        ),
-        json!(["- 9223372036854775807\\. A\n- 0\\. B"])
-    );
-}
-
-#[test]
 fn url_processing_cap_rejects_real_uts46_expansion_at_its_exact_edge() {
     let prefix = format!("https://{}a/", "㌖.".repeat(1926));
-    let query = compile(json!({"version":7,"select":"a","read":"url:href"}));
+    let query = compile(json!({"version":8,"select":"a","read":"url:href"}));
     for (extra, accepted) in [(16, true), (17, false)] {
         let url = format!("{prefix}{}", "x".repeat(extra));
         assert!(url.len() <= 8192);
@@ -198,14 +121,14 @@ fn rust_query_encoding_admits_escaped_defaults_before_source_execution() {
 
 #[test]
 fn complete_counts_and_cell_resources_do_not_clamp_assumptions() {
-    let query = compile(json!({"version":7,"select":"p","match":"nth","index":2}));
+    let query = compile(json!({"version":8,"select":"p","match":"nth","index":2}));
     let result = document("<p>A</p><p>B</p><p>C</p>")
         .execute(&query)
         .unwrap();
     assert_eq!((result.candidate_count(), result.selected_count()), (3, 1));
     assert_eq!(serde_json::to_vec(result.data()).unwrap(), br#"["B"]"#);
     let query = compile(
-        json!({"version":7,"select":"p","match":"all","max":3,"limits":{"max_selected":2}}),
+        json!({"version":8,"select":"p","match":"all","max":3,"limits":{"max_selected":2}}),
     );
     let error = document("<p>A</p><p>B</p><p>C</p>")
         .execute(&query)
@@ -215,7 +138,7 @@ fn complete_counts_and_cell_resources_do_not_clamp_assumptions() {
         (ErrorCode::ResourceLimit, Some(3))
     );
     let query = compile(
-        json!({"version":7,"select":"article","fields":{"a":{"select":".absent","match":"optional"},"b":{"select":".absent","match":"all","min":0}},"limits":{"max_cells":1}}),
+        json!({"version":8,"select":"article","fields":{"a":{"select":".absent","match":"optional"},"b":{"select":".absent","match":"all","min":0}},"limits":{"max_cells":1}}),
     );
     let error = document("<article></article>").execute(&query).unwrap_err();
     assert_eq!(
@@ -228,7 +151,7 @@ fn complete_counts_and_cell_resources_do_not_clamp_assumptions() {
 fn url_limit_ownership_distinguishes_normalization_and_the_fixed_processing_cap() {
     let error = document("<a href='https://a'>A</a>")
         .execute(&compile(
-            json!({"version":7,"select":"a","read":"url:href","limits":{"max_value_bytes":9}}),
+            json!({"version":8,"select":"a","read":"url:href","limits":{"max_value_bytes":9}}),
         ))
         .unwrap_err();
     assert_eq!(error.resource_counter.as_deref(), Some("max_value_bytes"));
@@ -237,7 +160,7 @@ fn url_limit_ownership_distinguishes_normalization_and_the_fixed_processing_cap(
     let source = format!("<a href='{url}'>A</a>");
     let error = document(&source)
         .execute(&compile(
-            json!({"version":7,"select":"a","read":"url:href","limits":{"max_value_bytes":32768}}),
+            json!({"version":8,"select":"a","read":"url:href","limits":{"max_value_bytes":32768}}),
         ))
         .unwrap_err();
     assert_eq!(
@@ -245,4 +168,15 @@ fn url_limit_ownership_distinguishes_normalization_and_the_fixed_processing_cap(
         Some("url_processing_bytes")
     );
     assert_eq!(error.configured_bound, Some(32768));
+}
+
+#[test]
+fn text_does_not_interpret_numeric_metadata_as_list_ordinals() {
+    assert_eq!(
+        data(
+            "<ol start='9223372036854775808'><li>A</li><li>B</li></ol>",
+            json!({"version":8,"select":"ol"})
+        ),
+        json!(["A B"])
+    );
 }

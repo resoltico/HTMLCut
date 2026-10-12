@@ -1,0 +1,12 @@
+{
+  "Cargo.toml": "25f5030aa03bfc1ccd0b7c4e168b701ee55ea3604ba1eed0899d4557069b1d63",
+  "Cargo.lock": "551700da59f1b09b741701d5b723a0b5649c111be93e62458d112dd28fec51f3",
+  "crates/htmlcut-core/Cargo.toml": "48fb7b2323b2fe0bff3ba8ac036429959eccba44632324217a6cde205fcdc541",
+  "crates/htmlcut-cli/Cargo.toml": "9110158c328509175c456c8843e53ab3724824af77a6db03115c342df2f42c74",
+  "crates/htmlcut-core/src/dom/selector.rs": "4a5c922ede9c56f49dbc62ea278161195692e3b8591d816ade3c85da268ddbee",
+  "crates/htmlcut-core/src/dom/selector_depth.rs": "dd815077ec9cd73d3b9e10d2b9d00d1e0252761e3b36cdf878a55bdf2208c647",
+  "crates/htmlcut-core/src/dom/parser.rs": "48a48f3abb7d8c55152a20384590752b02e7e677bf2d0e8ff0de7f88e10f3a7e",
+  "crates/htmlcut-cli/src/worker.rs": "01ad4a3e05f4b0a6cb5dae2f83b77b5b5952429a1bf079b685f61442db3b1e28",
+  "crates/htmlcut-cli/src/native_resource.rs": "6a2202e958172135a30c99cb38c35c8a3f2b1dd134789a167cd1ceb455e3938d",
+  "crates/htmlcut-cli/src/publication.rs": "6c0198ba06f69199befe1abaf7052698de6ca9d9e89d7c7da888b2df66d3ee8a"
+}

@@ -1,0 +1,229 @@
+{
+  "catalog": [
+    {
+      "price": "EUR 10.01",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 001",
+      "url": "/books/001"
+    },
+    {
+      "price": "EUR 10.02",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 002",
+      "url": "/books/002"
+    },
+    {
+      "price": "EUR 10.03",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 003",
+      "url": "/books/003"
+    },
+    {
+      "price": "EUR 10.04",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 004",
+      "url": "/books/004"
+    },
+    {
+      "price": "EUR 10.05",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 005",
+      "url": "/books/005"
+    },
+    {
+      "price": "EUR 10.06",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 006",
+      "url": "/books/006"
+    },
+    {
+      "price": "EUR 10.07",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 007",
+      "url": "/books/007"
+    },
+    {
+      "price": "EUR 10.08",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 008",
+      "url": "/books/008"
+    },
+    {
+      "price": "EUR 10.09",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 009",
+      "url": "/books/009"
+    },
+    {
+      "price": "EUR 10.10",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 010",
+      "url": "/books/010"
+    },
+    {
+      "price": "EUR 10.11",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 011",
+      "url": "/books/011"
+    },
+    {
+      "price": "EUR 10.12",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 012",
+      "url": "/books/012"
+    },
+    {
+      "price": "EUR 10.13",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 013",
+      "url": "/books/013"
+    },
+    {
+      "price": "EUR 10.14",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 014",
+      "url": "/books/014"
+    },
+    {
+      "price": "EUR 10.15",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 015",
+      "url": "/books/015"
+    },
+    {
+      "price": "EUR 10.16",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 016",
+      "url": "/books/016"
+    },
+    {
+      "price": "EUR 10.17",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 017",
+      "url": "/books/017"
+    },
+    {
+      "price": "EUR 10.18",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 018",
+      "url": "/books/018"
+    },
+    {
+      "price": "EUR 10.19",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 019",
+      "url": "/books/019"
+    },
+    {
+      "price": "EUR 10.20",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 020",
+      "url": "/books/020"
+    },
+    {
+      "price": "EUR 10.21",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 021",
+      "url": "/books/021"
+    },
+    {
+      "price": "EUR 10.22",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 022",
+      "url": "/books/022"
+    },
+    {
+      "price": "EUR 10.23",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 023",
+      "url": "/books/023"
+    },
+    {
+      "price": "EUR 10.24",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 024",
+      "url": "/books/024"
+    },
+    {
+      "price": "EUR 10.25",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 025",
+      "url": "/books/025"
+    },
+    {
+      "price": "EUR 10.26",
+      "rating": "2",
+      "stock": "In stock",
+      "title": "Title 026",
+      "url": "/books/026"
+    },
+    {
+      "price": "EUR 10.27",
+      "rating": "3",
+      "stock": "In stock",
+      "title": "Title 027",
+      "url": "/books/027"
+    },
+    {
+      "price": "EUR 10.28",
+      "rating": "4",
+      "stock": "In stock",
+      "title": "Title 028",
+      "url": "/books/028"
+    },
+    {
+      "price": "EUR 10.29",
+      "rating": "5",
+      "stock": "In stock",
+      "title": "Title 029",
+      "url": "/books/029"
+    },
+    {
+      "price": "EUR 10.30",
+      "rating": "1",
+      "stock": "In stock",
+      "title": "Title 030",
+      "url": "/books/030"
+    }
+  ],
+  "guarded": [
+    "EUR 3,140.00"
+  ],
+  "jsonld": [
+    "{\"@type\":\"Product\",\"name\":\"Kit A\",\"price\":19.99}"
+  ],
+  "links": [
+    "https://example.invalid/catalog/docs/terms.html"
+  ],
+  "rendered": [
+    "Rendered only"
+  ],
+  "technical": [
+    "Free-threading Py_mod_gil and PYTHON_GIL. Hidden note"
+  ]
+}

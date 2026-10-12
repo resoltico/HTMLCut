@@ -23,11 +23,11 @@ fuzz_target!(|data: &[u8]| {
             .replace('<', "&lt;")
             .replace('>', "&gt;");
         source.push_str(&format!(
-            "<article id='row{index}'></article><!-- gap --><aside><p>{escaped}</p></aside>"
+            "<article id='row{index}'><p>{escaped}</p></article>"
         ));
         expected.push(serde_json::json!({"id":format!("row{index}"),"text":text,"absent":null}));
     }
-    let plan = serde_json::json!({"version":7,"select":"article","match":"all","min":0,"fields":{"id":{"select":":scope","read":"attr:id"},"text":{"select":"p","read":"literal"},"absent":{"select":".absent","match":"optional","read":"literal"}},"following_siblings":1});
+    let plan = serde_json::json!({"version":8,"select":"article","match":"all","min":0,"fields":{"id":{"select":":scope","read":"attr:id"},"text":{"select":"p","read":"literal"},"absent":{"select":".absent","match":"optional","read":"literal"}}});
     let plan = ExtractionPlan::from_json(&serde_json::to_vec(&plan).unwrap()).unwrap();
     let compiled = CompiledPlan::compile(&plan).unwrap();
     let document = PreparedDocument::new(

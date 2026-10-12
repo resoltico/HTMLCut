@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
+# Nightly is used only for libFuzzer instrumentation, not ordinary test coverage.
 # Pinned QA tools; install with cargo install NAME --version VERSION --locked.
 HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
 HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN="nightly-2026-09-30"
-# Immutable source of the published 20.0.0 core and its native install instructions.
-HTMLCUT_PUBLISHED_BASELINE_SOURCE="61b4404d83616022fa8d3395ece7e173ecb4f8c7"
+# Immutable source of the published 21.0.0 core API.
+HTMLCUT_PUBLISHED_BASELINE_SOURCE="4cd5752740b6d26aa63594fa3ea001d3290db71d"
+# Last published source with frozen native-download command blocks (v21 removed that guide).
+# This verifies the historical install path; it is not the current API baseline.
+HTMLCUT_PUBLISHED_INSTALL_SOURCE="61b4404d83616022fa8d3395ece7e173ecb4f8c7"
 htmlcut_contributor_cargo_tool_inventory() {
     cat <<'TOOLS'
 cargo-deny 0.20.2 cargo-deny

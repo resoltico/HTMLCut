@@ -4,6 +4,19 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking extraction contract:** plans and semantics advance to version 8. Rewrite version-7 plans; only structural text, literal text, outer HTML, attributes and explicit-base URL readings remain. Records contain one anchor subtree, and targeted inspection requires an explicit selector. There is no compatibility reader or adapter.
+- **Breaking Rust resource assurance:** DOM parsing uses the unmodified upstream scraper stack; preparation node/depth limits admit the completed DOM rather than interrupt upstream allocations. `PreparationLimits::max_parse_work` is removed, and execution work counts owned traversal/value work rather than every upstream matcher callback. Direct Rust callers must isolate adversarial input themselves.
+- CLI parsing, matching and encoding run in a private supervised worker. Linux address-space, macOS baseline-relative virtual-growth and Windows Job process-memory policies precede input processing; an ineffective policy refuses execution. The ten-second active-worker deadline excludes caller input wait. Complete bounded responses and successful termination precede atomic file or stdout publication; stdout recipient write failures can still expose a prefix. See [resource guarantees](docs/architecture.md).
+- **Breaking Rust toolchain requirement:** development, CI, packaging and downstream Rust consumers require Rust 1.99.0, declared in `rust-toolchain.toml` and the workspace minimum version.
+
+
+### Removed
+
+- Markdown, resolved Markdown, inner HTML, heuristic survey, `following_siblings` record forests and their Rust/CLI/schema surfaces. Use a reader/converter or caller domain code for those jobs.
+- All five customized parser/selector carrier packages and their publishing/Miri lanes. Runtime dependencies come from the maintained upstream registry graph; nightly remains only for libFuzzer instrumentation.
+
 ## [21.0.0] - 2026-10-12
 
 ### Changed

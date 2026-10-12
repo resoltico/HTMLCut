@@ -5,9 +5,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Wire-family version, independent of extraction semantics.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 /// Version of projection and selection semantics.
-pub const SEMANTICS_VERSION: u32 = 7;
+pub const SEMANTICS_VERSION: u32 = 8;
 
 /// Closed failure codes shared by CLI and Rust callers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -33,10 +33,6 @@ pub enum ErrorCode {
     AmbiguousSelection,
     /// Selection cardinality differs from the declared bounds.
     Cardinality,
-    /// A declared row group has too few following element siblings.
-    MissingRowSibling,
-    /// An added row subtree contains another complete root candidate.
-    OverlappingRowScope,
     /// Requested attribute is absent.
     MissingAttribute,
     /// Selected content cannot be represented under the requested formatting convention.
@@ -72,8 +68,6 @@ impl ErrorCode {
             Self::NoMatch
             | Self::AmbiguousSelection
             | Self::Cardinality
-            | Self::MissingRowSibling
-            | Self::OverlappingRowScope
             | Self::MissingAttribute
             | Self::InvalidRepresentation
             | Self::GuardFailed => 3,
