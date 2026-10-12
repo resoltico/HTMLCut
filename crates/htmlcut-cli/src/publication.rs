@@ -164,6 +164,27 @@ pub(crate) fn validate_destinations(
     Ok(())
 }
 
+/// Compare a known pinned stdin file against the current publication destination.
+pub(crate) fn validate_stdin_identity(
+    identity: Option<(u64, u64)>,
+    target: Option<&Path>,
+) -> Result<(), ExtractionError> {
+    if let (Some(identity), Some(target)) = (identity, target) {
+        let target = normalized_target(target)?;
+        match crate::native_resource::file_identity(&target) {
+            Ok(Some(target_identity)) if identity == target_identity => {
+                return Err(super::input::options(
+                    "Input and output destinations must be distinct.",
+                ));
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_failure(error, htmlcut_core::IoOperation::Publication)),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub(crate) struct Staged {
     file: NamedTempFile,
     target: PathBuf,

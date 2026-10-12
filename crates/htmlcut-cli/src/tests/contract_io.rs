@@ -16,7 +16,7 @@ fn native_path_errors_are_typed_without_persisting_path_text() {
     let mut output = Vec::new();
     let mut errors = Vec::new();
     assert_eq!(
-        app::run(args, &mut io::empty(), &mut output, &mut errors),
+        app::run_anonymous(args, &mut io::empty(), &mut output, &mut errors),
         5
     );
     assert!(output.is_empty());
@@ -63,7 +63,7 @@ fn destination_changed_during_acquisition_never_publishes_a_result() {
     };
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let code = app::run(
+    let code = app::run_anonymous(
         [
             "htmlcut",
             "extract",
@@ -133,7 +133,7 @@ fn utf8_snapshots_preserve_bom_crlf_nul_and_reject_other_encodings() {
 fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
     let mut output = Vec::new();
     let mut error = Vec::new();
-    let code = app::run(
+    let code = app::run_anonymous(
         ["htmlcut", "extract", "--stdin", "--select", "p"],
         &mut ReadFailure,
         &mut output,
@@ -152,7 +152,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
             ..Default::default()
         };
         let mut error = Vec::new();
-        let code = app::run(
+        let code = app::run_anonymous(
             ["htmlcut", "extract", "--stdin", "--select", "p"],
             &mut io::Cursor::new(b"<p>180</p>"),
             &mut writer,
@@ -165,7 +165,7 @@ fn t31_read_write_flush_and_diagnostic_failures_are_truthful_and_redacted() {
         assert!(!error.message.contains("secret"));
         assert_eq!(writer.bytes.is_empty(), !flush_only);
     }
-    let code = app::run(
+    let code = app::run_anonymous(
         ["htmlcut", "extract", "--stdin", "--select", "missing"],
         &mut io::Cursor::new(b"<p>180</p>"),
         &mut Vec::new(),
@@ -279,7 +279,7 @@ fn t31_help_and_version_write_or_flush_failures_do_not_report_success() {
                 ..Default::default()
             };
             let mut error = Vec::new();
-            let code = app::run(
+            let code = app::run_anonymous(
                 ["htmlcut", option],
                 &mut io::Cursor::new(b""),
                 &mut writer,

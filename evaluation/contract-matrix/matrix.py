@@ -183,7 +183,7 @@ def main():
                         'observations':observations})
     api=subprocess.run(['jq','-c','.items[0].value',str(R/'api.json')],capture_output=True) if shutil.which('jq') else None
     report={'scope':'original synthetic offline workloads, fixed conditions; not universal, not a blinded agent study',
-            'repo_commit':'4cd5752740b6d26aa63594fa3ea001d3290db71d',
+            'audited_baseline_source':'4cd5752740b6d26aa63594fa3ea001d3290db71d',
             'versions':versions,'binary_executed':bool(b),'query_version':args.plan_version,'paired_trials':args.repeats,'results':results,
             'browser':optional_browser(), 'pandoc':optional_pandoc(),
             'json_direct':{'tool':'jq','status':'passed' if api and api.returncode==0 else 'not_executed','output':api.stdout.decode().strip() if api and api.returncode==0 else None},

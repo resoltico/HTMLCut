@@ -7,7 +7,7 @@ mod io;
 fn invoke(args: &[&str], input: &[u8]) -> (i32, Vec<u8>, Vec<u8>) {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
-    let code = app::run(
+    let code = app::run_anonymous(
         args.iter().copied(),
         &mut std::io::Cursor::new(input),
         &mut stdout,

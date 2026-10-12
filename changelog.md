@@ -19,7 +19,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
-- **Breaking output-collision fix:** hardlinks from an output to a source or plan are refused by native file identity, including with `--overwrite`. Choose a distinct destination; equal-content distinct files remain supported.
+- **Breaking output-collision fix:** outputs referring to a named input or redirected regular-file stdin source/plan are refused by native file identity, including hardlinks and `--overwrite`. Choose a distinct destination; equal-content distinct files remain supported.
 
 ## [21.0.0] - 2026-10-12
 

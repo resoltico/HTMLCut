@@ -385,17 +385,28 @@ pub(crate) fn file_identity(path: &std::path::Path) -> io::Result<Option<(u64, u
     if handle == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
-    let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
-    // SAFETY: owned valid file handle and full initialized ABI structure.
-    let valid = unsafe { GetFileType(handle) } == FILE_TYPE_DISK
-        && unsafe { GetFileInformationByHandle(handle, &mut information) } != 0;
-    let error = io::Error::last_os_error();
+    let identity = windows_handle_identity(handle);
     // SAFETY: owned handle is closed exactly once, after all queries complete.
     unsafe {
         CloseHandle(handle);
     }
-    if !valid {
-        return Err(error);
+    identity?
+        .map(Some)
+        .ok_or_else(|| io::Error::other("File kind changed during admission"))
+}
+#[cfg(windows)]
+fn windows_handle_identity(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+) -> io::Result<Option<(u64, u64)>> {
+    use windows_sys::Win32::Storage::FileSystem::*;
+    // SAFETY: callers pass a currently owned or borrowed valid handle.
+    if unsafe { GetFileType(handle) } != FILE_TYPE_DISK {
+        return Ok(None);
+    }
+    let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: valid handle and full initialized ABI structure; no ownership transfer.
+    if unsafe { GetFileInformationByHandle(handle, &mut information) } == 0 {
+        return Err(io::Error::last_os_error());
     }
     if information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(io::Error::other("File identity changed during admission"));
@@ -404,4 +415,18 @@ pub(crate) fn file_identity(path: &std::path::Path) -> io::Result<Option<(u64, u
         information.dwVolumeSerialNumber as u64,
         ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
     )))
+}
+
+#[cfg(unix)]
+pub(crate) fn reader_identity(reader: &os_pipe::PipeReader) -> io::Result<Option<(u64, u64)>> {
+    let metadata = rustix::fs::fstat(reader)?;
+    if rustix::fs::FileType::from_raw_mode(metadata.st_mode) != rustix::fs::FileType::RegularFile {
+        return Ok(None);
+    }
+    Ok(Some((metadata.st_dev as u64, metadata.st_ino as u64)))
+}
+#[cfg(windows)]
+pub(crate) fn reader_identity(reader: &os_pipe::PipeReader) -> io::Result<Option<(u64, u64)>> {
+    use std::os::windows::io::AsRawHandle;
+    windows_handle_identity(reader.as_raw_handle().cast())
 }

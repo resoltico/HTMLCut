@@ -120,9 +120,9 @@ pub(crate) struct Extract {
     pub(crate) field_excludes: Vec<String>,
 }
 impl Extract {
-    pub(crate) fn extraction_plan(
+    pub(crate) fn extraction_plan<R: Read + ?Sized>(
         &self,
-        stdin: &mut dyn Read,
+        stdin: &mut R,
     ) -> Result<ExtractionPlan, htmlcut_core::ExtractionError> {
         if let Some(path) = &self.plan {
             if path.as_os_str() == "-" {

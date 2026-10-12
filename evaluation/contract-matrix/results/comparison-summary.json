@@ -1,52 +1,52 @@
 {
-  "scope": "same-machine sequential runs, internally randomized trials; final candidate rerun after grammar-before-acquisition correction; cross-version commands not interleaved",
+  "scope": "same-machine sequential runs, internally randomized trials; final candidate includes redirected stdin identity guards; cross-version commands not interleaved",
   "pre_registered_max_median_ratio": 6,
   "all_passed": true,
   "ratios": [
     {
       "task": "catalog",
-      "median_ratio": 2.8246144587548305
+      "median_ratio": 2.5538323398254312
     },
     {
       "task": "guarded",
-      "median_ratio": 2.9892614574484906
+      "median_ratio": 2.60773023179639
     },
     {
       "task": "guarded-drift",
-      "median_ratio": 2.973405263678249
+      "median_ratio": 2.7052950516847307
     },
     {
       "task": "catalog-missing-field",
-      "median_ratio": 2.7809607818790947
+      "median_ratio": 2.3415929019712074
     },
     {
       "task": "ambiguous",
-      "median_ratio": 3.0917103722639787
+      "median_ratio": 2.6136541080290603
     },
     {
       "task": "technical",
-      "median_ratio": 2.9772798674211143
+      "median_ratio": 2.46862189129381
     },
     {
       "task": "links",
-      "median_ratio": 3.011237693531515
+      "median_ratio": 2.6450734173683284
     },
     {
       "task": "article",
-      "median_ratio": 3.035571459609146
+      "median_ratio": 2.6706212195397536
     },
     {
       "task": "jsonld",
-      "median_ratio": 3.250389644056929
+      "median_ratio": 2.7777734005672863
     },
     {
       "task": "unrendered",
-      "median_ratio": 3.09303409892608
+      "median_ratio": 2.599671159107877
     },
     {
       "task": "rendered",
-      "median_ratio": 3.082474038849625
+      "median_ratio": 2.6782867903512213
     }
   ],
-  "final_binary_sha256": "ebdce07cc6a3929eda6ac6f8b1c7365dfb28c0e7a6968b74752c48e6760d958b"
+  "final_binary_sha256": "8f88dc02c3dd7ce932786a3929b15095b356929a83656f05374e98ffc3e5745c"
 }

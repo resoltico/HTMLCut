@@ -38,3 +38,8 @@ and OS error strings are excluded. File errors retain portable operation/problem
 facts such as not_found, permission_denied, already_exists and unsupported_kind.
 Missing plan version/select uses missing_required; null/wrong types uses invalid_value;
 unsupported integer versions use unsupported_version. Old plans are rejected.
+
+Known regular-file stdin identities participate in source/plan output-alias refusal.
+The CLI uses the already duplicated reader handle, including `--plan -`; it does not
+infer origins for anonymous pipes. Callers keep destinations distinct from upstream
+files when piping bytes from another process.

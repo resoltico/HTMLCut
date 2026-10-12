@@ -221,3 +221,154 @@ fn output_aliases_are_compared_by_physical_identity_not_content() {
     assert_eq!(std::fs::read(distinct).unwrap(), b"[\"complete\"]\n");
     assert_eq!(std::fs::read(source).unwrap(), html);
 }
+
+#[test]
+fn regular_file_stdin_source_and_plan_refuse_direct_and_hardlink_output_aliases() {
+    for plan_stdin in [false, true] {
+        for hardlink in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let html = directory.path().join("source.html");
+            let plan = directory.path().join("query.json");
+            std::fs::write(&html, b"<p>owned</p>").unwrap();
+            std::fs::write(&plan, br#"{"version":8,"select":"p"}"#).unwrap();
+            let input = if plan_stdin { &plan } else { &html };
+            let original = std::fs::read(input).unwrap();
+            let alias = directory.path().join("alias");
+            let target = if hardlink {
+                std::fs::hard_link(input, &alias).unwrap();
+                &alias
+            } else {
+                input
+            };
+            let mut command = Command::new(binary());
+            command.arg("extract");
+            if plan_stdin {
+                command.arg("--file").arg(&html).args(["--plan", "-"]);
+            } else {
+                command.args(["--stdin", "--select", "p"]);
+            }
+            let output = command
+                .arg("--output")
+                .arg(target)
+                .arg("--overwrite")
+                .stdin(Stdio::from(std::fs::File::open(input).unwrap()))
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "plan_stdin={plan_stdin}, hardlink={hardlink}: {output:?}"
+            );
+            assert!(output.stdout.is_empty());
+            assert_eq!(std::fs::read(input).unwrap(), original);
+            assert_eq!(std::fs::read(target).unwrap(), original);
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["code"], "invalid_options");
+            for name in ["source.html", "query.json", "alias"] {
+                assert!(!String::from_utf8_lossy(&output.stderr).contains(name));
+            }
+        }
+    }
+}
+
+#[test]
+fn regular_file_stdin_supports_equal_content_distinct_targets() {
+    for plan_stdin in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let html = directory.path().join("source.html");
+        let plan = directory.path().join("query.json");
+        let target = directory.path().join("output");
+        std::fs::write(&html, b"<p>owned</p>").unwrap();
+        std::fs::write(&plan, br#"{"version":8,"select":"p"}"#).unwrap();
+        let input = if plan_stdin { &plan } else { &html };
+        let original = std::fs::read(input).unwrap();
+        std::fs::write(&target, &original).unwrap();
+        let mut command = Command::new(binary());
+        command.arg("extract");
+        if plan_stdin {
+            command.arg("--file").arg(&html).args(["--plan", "-"]);
+        } else {
+            command.args(["--stdin", "--select", "p"]);
+        }
+        let output = command
+            .arg("--output")
+            .arg(&target)
+            .arg("--overwrite")
+            .stdin(Stdio::from(std::fs::File::open(input).unwrap()))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "plan_stdin={plan_stdin}: {output:?}"
+        );
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+        assert_eq!(std::fs::read(input).unwrap(), original);
+        assert_eq!(std::fs::read(target).unwrap(), b"[\"owned\"]\n");
+    }
+}
+
+#[test]
+fn grammar_refusal_does_not_acquire_an_unused_native_stdin_handle() {
+    let directory = tempfile::tempdir().unwrap();
+    let sink = directory.path().join("write-only.txt");
+    let output = Command::new(binary())
+        .args(["extract", "--stdin", "--select", "["])
+        .stdin(Stdio::from(std::fs::File::create(&sink).unwrap()))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["code"], "invalid_selector");
+    for arguments in [vec!["--help"], vec!["schema", "htmlcut.extraction.plan"]] {
+        let output = Command::new(binary())
+            .args(arguments)
+            .stdin(Stdio::from(std::fs::File::create(&sink).unwrap()))
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(!output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn stdin_plan_grammar_is_checked_before_alias_or_destination_admission() {
+    for (plan_text, code) in [
+        (r#"{"version":8,"select":"["}"#, "invalid_selector"),
+        (
+            r#"{"version":8,"select":"p","expect":[{"select":"p","pattern":"["}]}"#,
+            "invalid_regex",
+        ),
+    ] {
+        for alias in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let source = directory.path().join("source.html");
+            let plan = directory.path().join("plan.json");
+            std::fs::write(&source, b"<p>owned</p>").unwrap();
+            std::fs::write(&plan, plan_text).unwrap();
+            let target = if alias {
+                plan.clone()
+            } else {
+                directory.path().join("missing-directory/output")
+            };
+            let output = Command::new(binary())
+                .arg("extract")
+                .arg("--file")
+                .arg(&source)
+                .args(["--plan", "-", "--output"])
+                .arg(target)
+                .arg("--overwrite")
+                .stdin(Stdio::from(std::fs::File::open(&plan).unwrap()))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(2));
+            assert!(output.stdout.is_empty());
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["code"], code);
+            assert_eq!(std::fs::read(plan).unwrap(), plan_text.as_bytes());
+            assert_eq!(std::fs::read(source).unwrap(), b"<p>owned</p>");
+        }
+    }
+}

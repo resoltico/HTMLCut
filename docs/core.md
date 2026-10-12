@@ -86,3 +86,8 @@ The CLI independently bounds serialized data to 64 MiB before LF and inspection
 to 16 KiB, then publishes only a complete successful worker response. Core typed
 results do not promise encoded size or OS resource containment. See
 [architecture](architecture.md) for the worker policy and its precise guarantee.
+
+Known regular-file stdin identities participate in source/plan output-alias refusal.
+The CLI uses the already duplicated reader handle, including `--plan -`; it does not
+infer origins for anonymous pipes. Callers keep destinations distinct from upstream
+files when piping bytes from another process.

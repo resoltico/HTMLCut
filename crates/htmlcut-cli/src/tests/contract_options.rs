@@ -45,7 +45,7 @@ fn invalid_options_and_retired_vocabulary_fail_before_consuming_source() {
         args.extend(extras);
         let mut out = Vec::new();
         let mut err = Vec::new();
-        assert_eq!(app::run(args, &mut Unread, &mut out, &mut err), 2);
+        assert_eq!(app::run_anonymous(args, &mut Unread, &mut out, &mut err), 2);
         assert!(out.is_empty());
         assert!(!err.is_empty());
     }
@@ -104,7 +104,7 @@ fn invalid_record_raw_plan_is_rejected_before_source() {
     let mut out = Vec::new();
     let mut err = Vec::new();
     assert_eq!(
-        app::run(
+        app::run_anonymous(
             [
                 "htmlcut",
                 "extract",
@@ -168,7 +168,7 @@ fn invalid_base_metadata_is_rejected_before_any_source_consumption() {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
         assert_eq!(
-            app::run(
+            app::run_anonymous(
                 [
                     "htmlcut",
                     command,

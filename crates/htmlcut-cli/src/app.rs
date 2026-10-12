@@ -6,15 +6,11 @@ use crate::input::options;
 use crate::publication::Staged;
 use clap::Parser;
 use htmlcut_core::ExtractionError;
-use std::{
-    ffi::OsString,
-    io::{Read, Write},
-    path::PathBuf,
-};
+use std::{ffi::OsString, io::Write, path::PathBuf};
 
-pub(crate) fn run<I, T>(
+pub(crate) fn run<I, T, R: crate::input::InputRead + ?Sized>(
     arguments: I,
-    stdin: &mut dyn Read,
+    stdin: &mut R,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> i32
@@ -49,6 +45,20 @@ where
     }
 }
 
+#[cfg(test)]
+pub(crate) fn run_anonymous<I, T>(
+    arguments: I,
+    stdin: &mut dyn std::io::Read,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    run(arguments, stdin, stdout, stderr)
+}
+
 fn report(error: ExtractionError, stderr: &mut dyn Write) -> i32 {
     let code = error.code.exit_class() as i32;
     if let Ok(bytes) = crate::publication::json(&error, 4096) {
@@ -65,9 +75,9 @@ fn report(error: ExtractionError, stderr: &mut dyn Write) -> i32 {
     code
 }
 
-fn dispatch(
+fn dispatch<R: crate::input::InputRead + ?Sized>(
     operation: Operation,
-    stdin: &mut dyn Read,
+    stdin: &mut R,
     stdout: &mut dyn Write,
 ) -> Result<(), ExtractionError> {
     match operation {
@@ -77,6 +87,10 @@ fn dispatch(
         }
         Operation::Extract(arguments) => {
             let plan = arguments.extraction_plan(stdin)?;
+            let query_stdin = arguments
+                .plan
+                .as_ref()
+                .is_some_and(|path| path.as_os_str() == "-");
             if arguments.output.raw && plan.fields.is_some() {
                 return Err(options("Raw output cannot represent records."));
             }
@@ -110,14 +124,24 @@ fn dispatch(
                     raw: arguments.output.raw,
                 },
                 || {
+                    if query_stdin {
+                        validate_stream(stdin, &arguments.output)?;
+                    }
                     validate(&inputs, &arguments.output)?;
-                    crate::input::snapshot(
+                    let snapshot = crate::input::snapshot(
                         arguments.source.source.file.as_deref(),
                         stdin,
                         arguments.source.base_url.as_deref(),
-                    )
+                    )?;
+                    if arguments.source.source.stdin {
+                        validate_stream(stdin, &arguments.output)?;
+                    }
+                    Ok(snapshot)
                 },
             )?;
+            if query_stdin || arguments.source.source.stdin {
+                validate_stream(stdin, &arguments.output)?;
+            }
             publish(bytes, &arguments.output, stdout)
         }
         Operation::Inspect(arguments) => {
@@ -144,6 +168,19 @@ fn dispatch(
             )
         }
     }
+}
+
+fn validate_stream<R: crate::input::InputRead + ?Sized>(
+    stdin: &R,
+    output: &Output,
+) -> Result<(), ExtractionError> {
+    if output.output.is_none() {
+        return Ok(());
+    }
+    let identity = stdin
+        .regular_file_identity()
+        .map_err(crate::input::io_failure)?;
+    crate::publication::validate_stdin_identity(identity, output.output.as_deref())
 }
 
 fn validate(inputs: &[PathBuf], output: &Output) -> Result<(), ExtractionError> {
