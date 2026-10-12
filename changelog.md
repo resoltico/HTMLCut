@@ -4,7 +4,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
-## [21.0.0] - 2026-10-09 (unpublished)
+## [21.0.0] - 2026-10-12
 
 ### Changed
 
@@ -31,7 +31,7 @@ Notable changes to this project are documented in this file. The format is based
 
 - The core owns DOM admission, selector accounting and filtered immutable serialization; scraper and SHA-2 runtime carriers are retired. Five narrow parser/selector/pointer carriers remain for demonstrated stopping, refusal and ownership safeguards; [full upstream adoption remains unresolved](docs/dependencies.md).
 - Required verification retains direct fmt/clippy/tests/rustdoc/advisory/license checks, targeted Miri, immutable published-core API checks, bounded 1,000-run parser/relational smokes and native package/signature/I/O controls on all four targets. Release verification remains bound to exact-source main push CI and published-download checks; bounded smoke does not establish full GA assurance.
-- Core/CLI registry manifests and the dependency-complete carrier graph are prepared, with self-contained core examples and fixtures and isolated-registry package/install verification. Official registry ownership, availability, publication and installation remain pending; see the [release protocol](docs/release-protocol.md).
+- Core/CLI and all five required carriers are published on crates.io under owner `resoltico`, with self-contained core examples and fixtures. A fresh registry-only locked installation of `htmlcut-cli =21.0.0` with Rust 1.98.1 verified the official dependency graph and strict extraction, refusal, Unicode and diagnostic controls on macOS ARM64. Published crate archives bind to source `9c81df6bb06572cd2f2186d6d9a9efb628e63203`; subsequent release-note corrections do not alter those immutable packages. See the [release protocol](docs/release-protocol.md).
 
 ## [20.0.0] - 2026-10-06
 
