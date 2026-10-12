@@ -20,6 +20,7 @@ mod extraction;
 mod failure_cause;
 mod json;
 mod limits;
+mod outline;
 mod plan;
 mod projection;
 mod read;
@@ -48,6 +49,7 @@ pub use limits::{
     ExecutionLimits, Limits, MAX_DATA_BYTES, MAX_PLAN_BYTES, MAX_RECORD_FIELDS, MAX_SOURCE_BYTES,
     PreparationLimits,
 };
+pub use outline::OutlineOptions;
 pub use plan::{ExtractionPlan, FieldMatch, Guard, GuardScope, Match, Reading, RecordField};
 pub use result::{ErrorCode, ErrorEvidence, ExtractionError, SCHEMA_VERSION, SEMANTICS_VERSION};
 pub use schemas::{SCHEMA_NAMES, schema};
