@@ -24,7 +24,7 @@ fn native_help_and_named_schemas_share_current_closed_vocabulary() {
         "--many-field",
         "outer-html",
         "literal",
-        "\"min\":0",
+        "version-8",
     ] {
         assert!(help.contains(required), "{required}");
     }

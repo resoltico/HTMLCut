@@ -18,7 +18,7 @@ fn compile(value: serde_json::Value) -> CompiledPlan {
 }
 
 fn plan(fields: serde_json::Value) -> serde_json::Value {
-    json!({"version":7,"select":"article","match":"all","fields":fields})
+    json!({"version":8,"select":"article","match":"all","fields":fields})
 }
 
 #[test]
@@ -170,10 +170,10 @@ fn empty_data_kinds_have_valid_nonexclusive_schema_and_distinct_typed_variants()
     assert!(data_schema.get("anyOf").is_some());
     let source = document("<p>x</p>");
     let records = compile(
-        json!({"version":7,"select":"article","match":"all","min":0,"fields":{"a":{"select":"b","read":"literal"}}}),
+        json!({"version":8,"select":"article","match":"all","min":0,"fields":{"a":{"select":"b","read":"literal"}}}),
     );
     let values =
-        compile(json!({"version":7,"select":"article","match":"all","min":0,"read":"literal"}));
+        compile(json!({"version":8,"select":"article","match":"all","min":0,"read":"literal"}));
     let a = source.execute(&records).unwrap();
     let b = source.execute(&values).unwrap();
     assert_eq!(serde_json::to_string(&a.data()).unwrap(), "[]");
@@ -222,7 +222,7 @@ fn fields_share_work_rather_than_getting_new_independent_budgets() {
         "<article id='a'><span>A</span></article><article id='b'><span>B</span></article>",
     );
     let scalar = compile(
-        json!({"version":7,"select":"article","limits":{"max_work":100},"match":"all","read":"attr:id"}),
+        json!({"version":8,"select":"article","limits":{"max_work":100},"match":"all","read":"attr:id"}),
     );
     assert!(source.execute(&scalar).is_ok());
     let fields = (0..64)

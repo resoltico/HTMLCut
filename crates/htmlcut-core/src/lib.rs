@@ -3,9 +3,6 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-#[macro_use]
-extern crate html5ever;
-
 mod budget;
 mod compilation;
 mod data;
@@ -30,10 +27,7 @@ mod tests;
 
 pub use compilation::CompiledPlan;
 pub use data::{ExtractionData, FieldValue};
-pub use discovery::{
-    InspectionResult, InspectionSample, SurveyElement, SurveyGroup, SurveyResult, SurveySample,
-    TableShape,
-};
+pub use discovery::{InspectionResult, InspectionSample};
 pub use encoding::canonical_json;
 pub use extraction::{ExtractionResult, FieldCount};
 pub use failure_cause::{

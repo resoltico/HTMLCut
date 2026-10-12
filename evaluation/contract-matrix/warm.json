@@ -1,0 +1,181 @@
+{
+  "scope": "warm in-process parse and extract only, input string preloaded, 50 unrandomized iterations; per-task observed for this environment only",
+  "tasks": [
+    {
+      "task": "catalog",
+      "bytes": 21842,
+      "results": {
+        "bs4": {
+          "median_ms": 6.808797,
+          "p95_ms": 9.783072,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 1.0713,
+          "p95_ms": 1.381153,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "guarded",
+      "bytes": 107,
+      "results": {
+        "bs4": {
+          "median_ms": 0.13515,
+          "p95_ms": 0.294335,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.016620000000000003,
+          "p95_ms": 0.027591,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "guarded-drift",
+      "bytes": 109,
+      "results": {
+        "bs4": {
+          "median_ms": 0.1126415,
+          "p95_ms": 0.183562,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.011652,
+          "p95_ms": 0.043865,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "catalog-missing-field",
+      "bytes": 21806,
+      "results": {
+        "bs4": {
+          "median_ms": 5.9824845,
+          "p95_ms": 9.154542,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.7388925,
+          "p95_ms": 0.846743,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "ambiguous",
+      "bytes": 128,
+      "results": {
+        "bs4": {
+          "median_ms": 0.10660800000000001,
+          "p95_ms": 0.202038,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.0146115,
+          "p95_ms": 0.046148,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "technical",
+      "bytes": 118,
+      "results": {
+        "bs4": {
+          "median_ms": 0.105181,
+          "p95_ms": 0.235428,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.017085,
+          "p95_ms": 0.038867,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "links",
+      "bytes": 61,
+      "results": {
+        "bs4": {
+          "median_ms": 0.0864125,
+          "p95_ms": 0.245554,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.013941,
+          "p95_ms": 0.050415,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "article",
+      "bytes": 10182,
+      "results": {
+        "bs4": {
+          "median_ms": 0.119822,
+          "p95_ms": 0.341525,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.017345,
+          "p95_ms": 0.028612,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "jsonld",
+      "bytes": 92,
+      "results": {
+        "bs4": {
+          "median_ms": 0.067505,
+          "p95_ms": 0.162811,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.013174499999999999,
+          "p95_ms": 0.045317,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "unrendered",
+      "bytes": 149,
+      "results": {
+        "bs4": {
+          "median_ms": 0.0812,
+          "p95_ms": 0.164423,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.011507,
+          "p95_ms": 0.016865,
+          "samples": 50
+        }
+      }
+    },
+    {
+      "task": "rendered",
+      "bytes": 86,
+      "results": {
+        "bs4": {
+          "median_ms": 0.08329349999999999,
+          "p95_ms": 0.153637,
+          "samples": 50
+        },
+        "lxml": {
+          "median_ms": 0.012994499999999999,
+          "p95_ms": 0.023735,
+          "samples": 50
+        }
+      }
+    }
+  ]
+}

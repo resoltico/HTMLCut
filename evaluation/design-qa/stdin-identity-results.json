@@ -1,0 +1,83 @@
+{
+  "binary_sha256": "834536179c65a6e28dd008cfd500078722c891a10287e23acedc64032ef7a3eb",
+  "profile": "debug",
+  "tests": [
+    {
+      "name": "source-same-file",
+      "exit": 2,
+      "code": "invalid_options",
+      "original_preserved": true
+    },
+    {
+      "name": "source-hardlink",
+      "exit": 2,
+      "code": "invalid_options",
+      "original_preserved": true
+    },
+    {
+      "name": "source-distinct-positive",
+      "exit": 0,
+      "complete_output": "[\"owned\"]\n",
+      "input_preserved": true
+    },
+    {
+      "name": "plan-same-file",
+      "exit": 2,
+      "code": "invalid_options",
+      "original_preserved": true
+    },
+    {
+      "name": "plan-hardlink",
+      "exit": 2,
+      "code": "invalid_options",
+      "original_preserved": true
+    },
+    {
+      "name": "plan-distinct-positive",
+      "exit": 0,
+      "complete_output": "[\"owned\"]\n",
+      "input_preserved": true
+    },
+    {
+      "name": "anonymous-pipe-positive",
+      "exit": 0,
+      "complete_output": "[\"pipe\"]\n"
+    },
+    {
+      "name": "invalid_selector-alias",
+      "exit": 2,
+      "code": "invalid_selector",
+      "plan_preserved": true
+    },
+    {
+      "name": "invalid_selector-missing-destination-parent",
+      "exit": 2,
+      "code": "invalid_selector",
+      "plan_preserved": true
+    },
+    {
+      "name": "invalid_regex-alias",
+      "exit": 2,
+      "code": "invalid_regex",
+      "plan_preserved": true
+    },
+    {
+      "name": "invalid_regex-missing-destination-parent",
+      "exit": 2,
+      "code": "invalid_regex",
+      "plan_preserved": true
+    },
+    {
+      "name": "closed-unused-stdin-extract",
+      "exit": 2
+    },
+    {
+      "name": "closed-unused-stdin---help",
+      "exit": 0
+    },
+    {
+      "name": "closed-unused-stdin-schema",
+      "exit": 0
+    }
+  ]
+}

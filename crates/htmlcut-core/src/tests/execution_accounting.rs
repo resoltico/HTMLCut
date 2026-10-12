@@ -22,52 +22,6 @@ fn work_debits_are_exact_and_failed_debits_do_not_consume_partial_capacity() {
 }
 
 #[test]
-fn regex_guards_debit_a_search_even_for_an_empty_value() {
-    let document = Html::parse_document("<p></p>");
-    let root = document
-        .select(&Selector::parse("p").unwrap())
-        .next()
-        .unwrap();
-    let mut plan = crate::ExtractionPlan::css("p").unwrap();
-    plan.expect.push(crate::Guard {
-        scope: GuardScope::Selected,
-        select: ":scope".into(),
-        min: 1,
-        max: 1,
-        read: Some(crate::Reading::Literal),
-        equals: Some(String::new()),
-        pattern: None,
-    });
-    let exact = CompiledPlan::compile(&plan).unwrap();
-    let exact_budget = WorkBudget::new(1000);
-    check_guards(
-        &document,
-        &[SelectionScope {
-            anchor: root,
-            following_siblings: vec![],
-        }],
-        &exact,
-        &exact_budget,
-    )
-    .unwrap();
-    plan.expect[0].equals = None;
-    plan.expect[0].pattern = Some("^$".into());
-    let regex = CompiledPlan::compile(&plan).unwrap();
-    let regex_budget = WorkBudget::new(1000);
-    check_guards(
-        &document,
-        &[SelectionScope {
-            anchor: root,
-            following_siblings: vec![],
-        }],
-        &regex,
-        &regex_budget,
-    )
-    .unwrap();
-    assert_eq!(exact_budget.remaining() - regex_budget.remaining(), 1);
-}
-
-#[test]
 fn exclusion_scope_from_another_document_is_an_invariant_refusal() {
     let first = Html::parse_document("<article><p>A</p></article>");
     let second = Html::parse_document("<article><p>B</p></article>");

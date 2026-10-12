@@ -7,22 +7,18 @@ use libfuzzer_sys::fuzz_target;
 #[allow(dead_code)]
 mod cli;
 #[cfg(all(feature = "fuzzing", not(test)))]
-use cli::{app, command, command_diagnostics, input, publication};
+use cli::{command, command_diagnostics, input};
 #[cfg(all(feature = "fuzzing", not(test)))]
 fuzz_target!(|data: &[u8]| {
     let suffix = String::from_utf8_lossy(&data[..data.len().min(4096)]);
     let unknown = format!("--unrecognized-{suffix}");
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let code = app::run(
-        ["htmlcut", "extract", "--stdin", "--select", "p", &unknown],
-        &mut std::io::Cursor::new(b"<p>value</p>"),
-        &mut stdout,
-        &mut stderr,
-    );
-    assert_eq!(code, 2);
-    assert!(stdout.is_empty());
-    let error: serde_json::Value = serde_json::from_slice(&stderr).unwrap();
+    use clap::Parser;
+    let parse_error =
+        command::Cli::try_parse_from(["htmlcut", "extract", "--stdin", "--select", "p", &unknown])
+            .err()
+            .unwrap();
+    let failure = command_diagnostics::failure(&parse_error);
+    let error = serde_json::to_value(&failure).unwrap();
     assert_eq!(error["schema"], "htmlcut.extraction.error");
 });
 #[cfg(any(test, not(feature = "fuzzing")))]

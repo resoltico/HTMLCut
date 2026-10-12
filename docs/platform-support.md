@@ -85,7 +85,7 @@ GitHub release builds run on:
 - `windows-2022` for `x86_64-pc-windows-msvc`
 
 GitHub CI also runs release-target smoke on that same target matrix, including packaged-README
-checks, complete record/Markdown/inspection controls and real OS I/O from the
+checks, complete record/text/inspection and worker resource controls and real OS I/O from the
 unpacked binary, before the aggregate required check reports success. After publication, the
 release workflow repeats native verification over anonymous public downloads on all four targets.
 

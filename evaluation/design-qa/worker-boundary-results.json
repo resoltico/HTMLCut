@@ -1,0 +1,208 @@
+{
+  "binary_sha256": "f2d016ddeed1744a4633803d666bd9dd3e5ee152b940ba4e0250e79abc88bcdb",
+  "profile": "release",
+  "platform": "Darwin mm4erst.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:02:57 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8132 arm64",
+  "tests": [
+    {
+      "name": "memory",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.0832
+    },
+    {
+      "name": "pressure",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.1205
+    },
+    {
+      "name": "stdout-flood",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.023
+    },
+    {
+      "name": "stderr-flood",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.0097
+    },
+    {
+      "name": "abnormal",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.0091
+    },
+    {
+      "name": "malformed",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 0.009
+    },
+    {
+      "name": "blocked-input",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 10.0118
+    },
+    {
+      "name": "timeout",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed_seconds": 10.0174
+    },
+    {
+      "name": "measured-pressure",
+      "exit": 0,
+      "measurement": {
+        "allocated_bytes": 1040187392,
+        "policy_bytes": 1073741824,
+        "resident_bytes": 1043595264
+      }
+    },
+    {
+      "name": "hardlink-alias-refusal",
+      "exit": 2,
+      "stderr": "{\"schema\":\"htmlcut.extraction.error\",\"version\":8,\"code\":\"invalid_options\",\"stage\":\"options\",\"message\":\"Input and output destinations must be distinct.\",\"cause\":{\"kind\":\"configuration\",\"role\":\"arguments\",\"problem\":\"invalid_value\"}}\n",
+      "source_and_alias_preserved": true
+    },
+    {
+      "name": "catalog-inspect",
+      "arguments": [
+        "inspect",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/catalog.html",
+        "--select",
+        "article",
+        "--samples",
+        "2"
+      ],
+      "exit": 0,
+      "stdout": "{\"count\":30,\"samples\":[{\"tag\":\"article\",\"id\":null,\"classes\":[\"book\"],\"identifiers_complete\":true,\"attributes\":[\"class\",\"data-id\"],\"attributes_complete\":true,\"text\":\"Title 001EUR 10.01In stock2\",\"text_complete\":true},{\"tag\":\"article\",\"id\":null,\"classes\":[\"book\"],\"identifiers_complete\":true,\"attributes\":[\"class\",\"data-id\"],\"attributes_complete\":true,\"text\":\"Title 002EUR 10.02In stock3\",\"text_complete\":true}],\"samples_complete\":false}\n",
+      "stderr": "",
+      "stdout_bytes": 436
+    },
+    {
+      "name": "catalog-row-html",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/catalog.html",
+        "--select",
+        "article.book",
+        "--nth",
+        "1",
+        "--read",
+        "outer-html",
+        "--raw"
+      ],
+      "exit": 0,
+      "stdout": "<article class=\"book\" data-id=\"1\"><a class=\"item\" href=\"/books/001\" title=\"Title 001\">Title 001</a><span class=\"price\">EUR 10.01</span><span class=\"stock\">In stock</span><span class=\"rating\">2</span></article>",
+      "stderr": "",
+      "stdout_bytes": 209
+    },
+    {
+      "name": "catalog-guarded-plan",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/catalog.html",
+        "--plan",
+        "/tmp/htmlcut-independent-qa/catalog-plan.json"
+      ],
+      "exit": 0,
+      "stdout": "[{\"price\":\"EUR 10.01\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 001\",\"url\":\"/books/001\"},{\"price\":\"EUR 10.02\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 002\",\"url\":\"/books/002\"},{\"price\":\"EUR 10.03\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 003\",\"url\":\"/books/003\"},{\"price\":\"EUR 10.04\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 004\",\"url\":\"/books/004\"},{\"price\":\"EUR 10.05\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 005\",\"url\":\"/books/005\"},{\"price\":\"EUR 10.06\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 006\",\"url\":\"/books/006\"},{\"price\":\"EUR 10.07\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 007\",\"url\":\"/books/007\"},{\"price\":\"EUR 10.08\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 008\",\"url\":\"/books/008\"},{\"price\":\"EUR 10.09\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 009\",\"url\":\"/books/009\"},{\"price\":\"EUR 10.10\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 010\",\"url\":\"/books/010\"},{\"price\":\"EUR 10.11\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 011\",\"url\":\"/books/011\"},{\"price\":\"EUR 10.12\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 012\",\"url\":\"/books/012\"},{\"price\":\"EUR 10.13\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 013\",\"url\":\"/books/013\"},{\"price\":\"EUR 10.14\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 014\",\"url\":\"/books/014\"},{\"price\":\"EUR 10.15\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 015\",\"url\":\"/books/015\"},{\"price\":\"EUR 10.16\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 016\",\"url\":\"/books/016\"},{\"price\":\"EUR 10.17\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 017\",\"url\":\"/books/017\"},{\"price\":\"EUR 10.18\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 018\",\"url\":\"/books/018\"},{\"price\":\"EUR 10.19\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 019\",\"url\":\"/books/019\"},{\"price\":\"EUR 10.20\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 020\",\"url\":\"/books/020\"},{\"price\":\"EUR 10.21\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 021\",\"url\":\"/books/021\"},{\"price\":\"EUR 10.22\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 022\",\"url\":\"/books/022\"},{\"price\":\"EUR 10.23\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 023\",\"url\":\"/books/023\"},{\"price\":\"EUR 10.24\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 024\",\"url\":\"/books/024\"},{\"price\":\"EUR 10.25\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 025\",\"url\":\"/books/025\"},{\"price\":\"EUR 10.26\",\"rating\":\"2\",\"stock\":\"In stock\",\"title\":\"Title 026\",\"url\":\"/books/026\"},{\"price\":\"EUR 10.27\",\"rating\":\"3\",\"stock\":\"In stock\",\"title\":\"Title 027\",\"url\":\"/books/027\"},{\"price\":\"EUR 10.28\",\"rating\":\"4\",\"stock\":\"In stock\",\"title\":\"Title 028\",\"url\":\"/books/028\"},{\"price\":\"EUR 10.29\",\"rating\":\"5\",\"stock\":\"In stock\",\"title\":\"Title 029\",\"url\":\"/books/029\"},{\"price\":\"EUR 10.30\",\"rating\":\"1\",\"stock\":\"In stock\",\"title\":\"Title 030\",\"url\":\"/books/030\"}]\n",
+      "stderr": "",
+      "stdout_bytes": 2792
+    },
+    {
+      "name": "catalog-missing-field",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/catalog-missing-field.html",
+        "--plan",
+        "/tmp/htmlcut-independent-qa/catalog-plan.json"
+      ],
+      "exit": 3,
+      "stdout": "",
+      "stderr": "{\"schema\":\"htmlcut.extraction.error\",\"version\":8,\"code\":\"no_match\",\"stage\":\"selection\",\"message\":\"Exactly-one selection matched zero candidates.\",\"row_index\":17,\"field_name\":\"price\",\"expected_min\":1,\"expected_max\":1,\"candidate_count\":0}\n",
+      "stdout_bytes": 0
+    },
+    {
+      "name": "repair-inspect",
+      "arguments": [
+        "inspect",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/guarded.html",
+        "--select",
+        "h2,p",
+        "--samples",
+        "3"
+      ],
+      "exit": 0,
+      "stdout": "{\"count\":3,\"samples\":[{\"tag\":\"h2\",\"id\":\"section\",\"classes\":[],\"identifiers_complete\":true,\"attributes\":[\"id\"],\"attributes_complete\":true,\"text\":\"Repair Costs\",\"text_complete\":true},{\"tag\":\"p\",\"id\":null,\"classes\":[],\"identifiers_complete\":true,\"attributes\":[],\"attributes_complete\":true,\"text\":\"Premium: EUR 120\",\"text_complete\":true},{\"tag\":\"p\",\"id\":\"repair-total\",\"classes\":[],\"identifiers_complete\":true,\"attributes\":[\"id\"],\"attributes_complete\":true,\"text\":\"EUR 3,140.00\",\"text_complete\":true}],\"samples_complete\":true}\n",
+      "stderr": "",
+      "stdout_bytes": 523
+    },
+    {
+      "name": "repair-row-html",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/guarded.html",
+        "--select",
+        "#repair-total",
+        "--read",
+        "outer-html",
+        "--raw"
+      ],
+      "exit": 0,
+      "stdout": "<p id=\"repair-total\">EUR 3,140.00</p>",
+      "stderr": "",
+      "stdout_bytes": 37
+    },
+    {
+      "name": "repair-guarded-plan",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/guarded.html",
+        "--plan",
+        "/tmp/htmlcut-independent-qa/repair-plan.json"
+      ],
+      "exit": 0,
+      "stdout": "[\"EUR 3,140.00\"]\n",
+      "stderr": "",
+      "stdout_bytes": 17
+    },
+    {
+      "name": "repair-context-drift",
+      "arguments": [
+        "extract",
+        "--file",
+        "/tmp/htmlcut-handoff-read/HTMLCut_design_handoff_2026-10-12/evidence/fixtures/guarded-drift.html",
+        "--plan",
+        "/tmp/htmlcut-independent-qa/repair-plan.json"
+      ],
+      "exit": 3,
+      "stdout": "",
+      "stderr": "{\"schema\":\"htmlcut.extraction.error\",\"version\":8,\"code\":\"guard_failed\",\"stage\":\"guard\",\"message\":\"An original-DOM expectation failed.\",\"expected_min\":1,\"expected_max\":1,\"plan_path\":\"expect[0]\",\"candidate_count\":1}\n",
+      "stdout_bytes": 0
+    },
+    {
+      "name": "concurrent-no-overwrite",
+      "writers": 8,
+      "winners": 1,
+      "complete_output": "[\"unchanged-source\"]\n"
+    }
+  ]
+}

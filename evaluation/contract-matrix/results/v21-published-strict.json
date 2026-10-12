@@ -1,0 +1,1157 @@
+{
+  "scope": "original synthetic offline workloads, fixed conditions; not universal, not a blinded agent study",
+  "audited_baseline_source": "4cd5752740b6d26aa63594fa3ea001d3290db71d",
+  "versions": {
+    "matrix_sha256": "27fd4246346379eaab1ce6024ce4d99ff9759257f15cc5bd26bb2b919c59fed2",
+    "python": "3.14.8",
+    "beautifulsoup4": "4.15.0",
+    "lxml": "6.1.3",
+    "htmlcut": "htmlcut 21.0.0",
+    "binary_sha256": "9b53c189b8f02f591a66a79463e03bda5aae5557dad174259ebb6e2fbcd45b4d"
+  },
+  "binary_executed": true,
+  "query_version": 7,
+  "paired_trials": 15,
+  "results": [
+    {
+      "task": "catalog",
+      "source": "catalog.html",
+      "source_bytes": 21842,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 2792,
+          "stderr_bytes": 0,
+          "output_sha256": "8c20f11eb0d26d483cd628de4c3e5a7e5a01e81c0a924baf8e0aa5db53a78f34",
+          "median_fresh_process_ms": 5.253709,
+          "samples_ms": [
+            4.1235,
+            9.710375,
+            5.920041,
+            4.402792,
+            4.538583,
+            5.247417,
+            5.403042,
+            5.716958,
+            5.776917,
+            5.901291,
+            5.253709,
+            5.447666,
+            5.17675,
+            4.223291,
+            3.981041
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/catalog.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/catalog.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 2792,
+          "stderr_bytes": 0,
+          "output_sha256": "8c20f11eb0d26d483cd628de4c3e5a7e5a01e81c0a924baf8e0aa5db53a78f34",
+          "median_fresh_process_ms": 167.909709,
+          "samples_ms": [
+            681.80775,
+            435.870833,
+            455.829417,
+            148.661958,
+            483.747291,
+            141.8795,
+            111.612583,
+            167.909709,
+            441.102542,
+            337.187125,
+            160.223583,
+            172.24025,
+            113.0665,
+            156.034375,
+            104.021709
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "catalog",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 2792,
+          "stderr_bytes": 0,
+          "output_sha256": "8c20f11eb0d26d483cd628de4c3e5a7e5a01e81c0a924baf8e0aa5db53a78f34",
+          "median_fresh_process_ms": 155.228625,
+          "samples_ms": [
+            547.009042,
+            455.458333,
+            372.213667,
+            155.228625,
+            194.354417,
+            170.283208,
+            128.5305,
+            162.229208,
+            123.696042,
+            137.004375,
+            138.718417,
+            122.420708,
+            155.596625,
+            107.179791,
+            146.965875
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "catalog",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "guarded",
+      "source": "guarded.html",
+      "source_bytes": 107,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 17,
+          "stderr_bytes": 0,
+          "output_sha256": "3d99002c0eb23a0b92cf489ca1032fa1511ff89d947a8350d82c63af46a5afe2",
+          "median_fresh_process_ms": 3.663584,
+          "samples_ms": [
+            3.223875,
+            4.102709,
+            3.748916,
+            3.663584,
+            3.407459,
+            4.621083,
+            3.656041,
+            3.69675,
+            4.113125,
+            3.670042,
+            5.5085,
+            3.543833,
+            3.409792,
+            3.64825,
+            3.526625
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/guarded.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/guarded.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 17,
+          "stderr_bytes": 0,
+          "output_sha256": "3d99002c0eb23a0b92cf489ca1032fa1511ff89d947a8350d82c63af46a5afe2",
+          "median_fresh_process_ms": 101.79275,
+          "samples_ms": [
+            116.542167,
+            119.12075,
+            97.147125,
+            106.221042,
+            104.029208,
+            131.797792,
+            103.768542,
+            108.61425,
+            101.79275,
+            101.403,
+            96.792625,
+            95.211875,
+            84.437333,
+            87.592167,
+            87.137333
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "guarded",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 17,
+          "stderr_bytes": 0,
+          "output_sha256": "3d99002c0eb23a0b92cf489ca1032fa1511ff89d947a8350d82c63af46a5afe2",
+          "median_fresh_process_ms": 106.207292,
+          "samples_ms": [
+            172.764417,
+            118.427875,
+            111.77875,
+            107.0735,
+            119.084417,
+            126.135042,
+            103.87775,
+            106.207292,
+            120.392666,
+            96.466416,
+            93.607291,
+            83.799917,
+            84.092083,
+            84.062375,
+            85.899
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "guarded",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "guarded-drift",
+      "source": "guarded-drift.html",
+      "source_bytes": 109,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "htmlcut": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 214,
+          "output_sha256": null,
+          "median_fresh_process_ms": 3.333917,
+          "samples_ms": [
+            2.984167,
+            3.666458,
+            3.285625,
+            3.550334,
+            3.586584,
+            3.359166,
+            2.801625,
+            3.436083,
+            3.333917,
+            3.363041,
+            3.363042,
+            3.324333,
+            3.3205,
+            3.235709,
+            3.258042
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/guarded-drift.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/guarded.json"
+          ]
+        },
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 56,
+          "output_sha256": null,
+          "median_fresh_process_ms": 84.332917,
+          "samples_ms": [
+            102.658708,
+            85.699209,
+            83.697458,
+            84.546375,
+            86.700959,
+            81.895833,
+            84.471083,
+            84.332917,
+            82.481416,
+            82.804375,
+            87.43575,
+            84.595292,
+            81.248542,
+            82.359917,
+            82.036709
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "guarded-drift",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 56,
+          "output_sha256": null,
+          "median_fresh_process_ms": 83.753875,
+          "samples_ms": [
+            84.708875,
+            86.147916,
+            84.024958,
+            84.141625,
+            85.868667,
+            83.753875,
+            82.598708,
+            82.715416,
+            80.974083,
+            88.971084,
+            83.660709,
+            93.367084,
+            82.764083,
+            81.257167,
+            82.1225
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "guarded-drift",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "catalog-missing-field",
+      "source": "catalog-missing-field.html",
+      "source_bytes": 21806,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "htmlcut": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 237,
+          "output_sha256": null,
+          "median_fresh_process_ms": 3.703125,
+          "samples_ms": [
+            3.2005,
+            3.70125,
+            3.792166,
+            3.487917,
+            3.593583,
+            3.682875,
+            3.224708,
+            4.175208,
+            3.541875,
+            3.703125,
+            3.763541,
+            3.777125,
+            4.247375,
+            3.961,
+            3.7495
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/catalog-missing-field.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/catalog.json"
+          ]
+        },
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 90.149208,
+          "samples_ms": [
+            90.149208,
+            99.234541,
+            90.731333,
+            87.546292,
+            88.391666,
+            90.320834,
+            89.975375,
+            95.705208,
+            86.100125,
+            87.360292,
+            85.814792,
+            92.939542,
+            91.639667,
+            172.54975,
+            89.16975
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "catalog-missing-field",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 84.998417,
+          "samples_ms": [
+            89.034,
+            87.806375,
+            90.860667,
+            82.666083,
+            82.502667,
+            85.668208,
+            85.0655,
+            82.618834,
+            82.006042,
+            82.629667,
+            86.207416,
+            84.998417,
+            85.756375,
+            84.206583,
+            81.432209
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "catalog-missing-field",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "ambiguous",
+      "source": "ambiguous.html",
+      "source_bytes": 128,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "htmlcut": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 216,
+          "output_sha256": null,
+          "median_fresh_process_ms": 3.344,
+          "samples_ms": [
+            2.935834,
+            3.275584,
+            3.270833,
+            3.353292,
+            3.503166,
+            3.288,
+            2.995708,
+            3.85025,
+            3.578542,
+            3.251542,
+            16.793,
+            3.415167,
+            3.575875,
+            3.257583,
+            3.344
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/ambiguous.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/ambiguous.json"
+          ]
+        },
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 54,
+          "output_sha256": null,
+          "median_fresh_process_ms": 86.172583,
+          "samples_ms": [
+            88.101042,
+            83.794042,
+            86.172583,
+            82.662292,
+            82.370416,
+            84.790542,
+            84.95275,
+            89.121084,
+            83.93975,
+            82.691125,
+            117.991792,
+            90.382041,
+            91.268,
+            90.480375,
+            88.60675
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "ambiguous",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 54,
+          "output_sha256": null,
+          "median_fresh_process_ms": 82.344625,
+          "samples_ms": [
+            84.79625,
+            82.344625,
+            80.300375,
+            80.896583,
+            79.655583,
+            81.956542,
+            83.610292,
+            84.217291,
+            82.541125,
+            81.353208,
+            99.838959,
+            86.372416,
+            84.414375,
+            81.009167,
+            82.211583
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "ambiguous",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "technical",
+      "source": "technical.html",
+      "source_bytes": 118,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 58,
+          "stderr_bytes": 0,
+          "output_sha256": "7f3a3abff03ed39f7bb7cf09e05d1cebba9f06552301be1caa5f45f86f0a84f7",
+          "median_fresh_process_ms": 3.406625,
+          "samples_ms": [
+            3.037791,
+            3.321625,
+            3.423208,
+            3.444417,
+            3.46775,
+            3.681125,
+            2.691667,
+            3.4505,
+            3.406625,
+            3.3725,
+            3.447209,
+            3.363166,
+            3.779,
+            3.288667,
+            3.399625
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/technical.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/technical.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 58,
+          "stderr_bytes": 0,
+          "output_sha256": "7f3a3abff03ed39f7bb7cf09e05d1cebba9f06552301be1caa5f45f86f0a84f7",
+          "median_fresh_process_ms": 83.612208,
+          "samples_ms": [
+            90.004375,
+            158.04,
+            83.271583,
+            84.848375,
+            81.730333,
+            82.967708,
+            83.612208,
+            85.009167,
+            81.935041,
+            82.512833,
+            81.421792,
+            82.366333,
+            87.325584,
+            87.350709,
+            89.844333
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "technical",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 58,
+          "stderr_bytes": 0,
+          "output_sha256": "7f3a3abff03ed39f7bb7cf09e05d1cebba9f06552301be1caa5f45f86f0a84f7",
+          "median_fresh_process_ms": 82.450083,
+          "samples_ms": [
+            99.990583,
+            86.733375,
+            83.388125,
+            81.253625,
+            80.191,
+            80.593708,
+            88.27125,
+            83.461875,
+            80.578583,
+            85.895625,
+            80.639458,
+            80.777083,
+            82.450083,
+            86.300042,
+            81.498333
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "technical",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "links",
+      "source": "links.html",
+      "source_bytes": 61,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 52,
+          "stderr_bytes": 0,
+          "output_sha256": "67ca519fd2fed21be92dad1faad129a3efa4b3e16622db4aec60d317315c768f",
+          "median_fresh_process_ms": 3.420167,
+          "samples_ms": [
+            2.70875,
+            3.509458,
+            3.477834,
+            3.404417,
+            3.414375,
+            3.420167,
+            2.976833,
+            3.346708,
+            3.54725,
+            3.795375,
+            3.456834,
+            3.293042,
+            3.356,
+            3.7205,
+            3.506083
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/links.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/links.json",
+            "--base-url",
+            "https://example.invalid/catalog/"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 52,
+          "stderr_bytes": 0,
+          "output_sha256": "67ca519fd2fed21be92dad1faad129a3efa4b3e16622db4aec60d317315c768f",
+          "median_fresh_process_ms": 86.144667,
+          "samples_ms": [
+            82.035792,
+            83.318291,
+            86.144667,
+            86.352083,
+            82.946125,
+            89.472792,
+            83.386458,
+            86.423916,
+            87.5895,
+            86.947875,
+            86.544875,
+            83.142333,
+            82.639125,
+            85.647667,
+            87.678417
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "links",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 52,
+          "stderr_bytes": 0,
+          "output_sha256": "67ca519fd2fed21be92dad1faad129a3efa4b3e16622db4aec60d317315c768f",
+          "median_fresh_process_ms": 82.713208,
+          "samples_ms": [
+            81.524167,
+            82.713208,
+            85.391834,
+            83.1305,
+            81.959083,
+            81.793667,
+            81.437583,
+            81.646,
+            86.584292,
+            95.489875,
+            82.98925,
+            81.144083,
+            82.478792,
+            85.273,
+            83.027458
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "links",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "article",
+      "source": "article.html",
+      "source_bytes": 10182,
+      "expected": "complete ordered characters after whitespace normalization",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 84,
+          "stderr_bytes": 0,
+          "output_sha256": "a8cc846a23d7394b757bb3de40744d70dfd32160292f2cc12083834d00d7428e",
+          "median_fresh_process_ms": 3.426458,
+          "samples_ms": [
+            2.664667,
+            3.5575,
+            3.674416,
+            3.426458,
+            3.370708,
+            3.370625,
+            2.754625,
+            3.4385,
+            3.357542,
+            3.412333,
+            3.365959,
+            3.585625,
+            3.665083,
+            3.451084,
+            3.53125
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/article.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/article.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 84,
+          "stderr_bytes": 0,
+          "output_sha256": "a8cc846a23d7394b757bb3de40744d70dfd32160292f2cc12083834d00d7428e",
+          "median_fresh_process_ms": 84.41975,
+          "samples_ms": [
+            82.553708,
+            88.02,
+            83.497208,
+            86.216208,
+            84.268084,
+            84.41975,
+            82.657167,
+            81.600375,
+            85.19325,
+            86.214459,
+            85.319167,
+            84.493916,
+            82.642458,
+            86.387417,
+            82.9455
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "article",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 84,
+          "stderr_bytes": 0,
+          "output_sha256": "a8cc846a23d7394b757bb3de40744d70dfd32160292f2cc12083834d00d7428e",
+          "median_fresh_process_ms": 82.43475,
+          "samples_ms": [
+            81.834125,
+            81.397875,
+            79.793083,
+            84.23625,
+            83.777209,
+            87.734666,
+            82.560458,
+            80.820333,
+            80.857917,
+            90.219958,
+            83.211291,
+            82.43475,
+            82.733833,
+            80.639917,
+            82.281084
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "article",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "jsonld",
+      "source": "jsonld.html",
+      "source_bytes": 92,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 63,
+          "stderr_bytes": 0,
+          "output_sha256": "296eb81710443629fb5ed8a5e0093b5d3a8f81a828e7dc2cfd7e10bec79cd7be",
+          "median_fresh_process_ms": 3.35,
+          "samples_ms": [
+            3.071708,
+            3.349708,
+            3.25025,
+            3.761167,
+            3.401917,
+            3.465459,
+            3.007583,
+            3.652333,
+            3.343166,
+            3.497917,
+            3.219958,
+            3.584375,
+            3.501708,
+            3.195291,
+            3.35
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/jsonld.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/jsonld.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 63,
+          "stderr_bytes": 0,
+          "output_sha256": "296eb81710443629fb5ed8a5e0093b5d3a8f81a828e7dc2cfd7e10bec79cd7be",
+          "median_fresh_process_ms": 84.976125,
+          "samples_ms": [
+            86.896167,
+            84.572417,
+            82.631125,
+            85.093666,
+            92.23575,
+            86.074209,
+            84.450959,
+            84.976125,
+            83.211375,
+            89.758875,
+            82.243541,
+            85.995792,
+            86.18675,
+            84.267125,
+            83.184333
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "jsonld",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 63,
+          "stderr_bytes": 0,
+          "output_sha256": "296eb81710443629fb5ed8a5e0093b5d3a8f81a828e7dc2cfd7e10bec79cd7be",
+          "median_fresh_process_ms": 81.900458,
+          "samples_ms": [
+            84.284708,
+            81.677541,
+            80.794208,
+            82.301791,
+            80.761583,
+            86.905166,
+            81.900458,
+            84.772958,
+            80.144333,
+            80.937166,
+            85.5705,
+            82.47825,
+            82.376084,
+            81.562459,
+            80.797375
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "jsonld",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "unrendered",
+      "source": "app-unrendered.html",
+      "source_bytes": 149,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "htmlcut": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 201,
+          "output_sha256": null,
+          "median_fresh_process_ms": 3.367959,
+          "samples_ms": [
+            3.027958,
+            3.545209,
+            3.183375,
+            3.364667,
+            3.367959,
+            3.257709,
+            2.927042,
+            3.512167,
+            3.258708,
+            3.488,
+            3.524125,
+            3.337334,
+            3.46525,
+            3.439333,
+            3.522084
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/app-unrendered.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/rendered.json"
+          ]
+        },
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 84.543958,
+          "samples_ms": [
+            85.629542,
+            87.334292,
+            81.975625,
+            82.108375,
+            81.807125,
+            84.543958,
+            82.623042,
+            86.378667,
+            85.048417,
+            84.051125,
+            82.278167,
+            81.143041,
+            87.821083,
+            85.880917,
+            84.720125
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "unrendered",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 82.586375,
+          "samples_ms": [
+            85.143416,
+            83.83975,
+            82.586375,
+            81.969833,
+            79.978542,
+            84.543458,
+            87.695958,
+            85.894292,
+            80.593416,
+            83.783834,
+            80.54525,
+            81.366167,
+            83.57975,
+            79.5735,
+            81.548625
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "unrendered",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "rendered",
+      "source": "app-rendered.html",
+      "source_bytes": 86,
+      "expected": "complete JSON equality",
+      "observations": {
+        "htmlcut": {
+          "exit": 0,
+          "stdout_bytes": 18,
+          "stderr_bytes": 0,
+          "output_sha256": "5c093d2411055752a6d425242dcaadd646ab34fb568822bfb458a28c74b702b4",
+          "median_fresh_process_ms": 3.474791,
+          "samples_ms": [
+            2.820542,
+            3.475875,
+            3.469041,
+            3.304375,
+            3.493,
+            3.492,
+            2.983459,
+            3.413083,
+            3.389625,
+            3.659917,
+            3.474791,
+            3.289333,
+            3.628917,
+            3.554667,
+            3.759875
+          ],
+          "command": [
+            "/private/tmp/htmlcut-published-v21/htmlcut-21.0.0-aarch64-apple-darwin/htmlcut",
+            "extract",
+            "--file",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/fixtures/app-rendered.html",
+            "--plan",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/plans/rendered.json"
+          ]
+        },
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 18,
+          "stderr_bytes": 0,
+          "output_sha256": "5c093d2411055752a6d425242dcaadd646ab34fb568822bfb458a28c74b702b4",
+          "median_fresh_process_ms": 85.373708,
+          "samples_ms": [
+            81.94575,
+            89.997708,
+            85.373708,
+            83.1795,
+            98.078708,
+            85.265792,
+            82.837209,
+            88.747292,
+            84.169375,
+            86.525083,
+            83.918334,
+            81.772791,
+            94.9215,
+            86.681875,
+            85.745791
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "rendered",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 18,
+          "stderr_bytes": 0,
+          "output_sha256": "5c093d2411055752a6d425242dcaadd646ab34fb568822bfb458a28c74b702b4",
+          "median_fresh_process_ms": 84.51,
+          "samples_ms": [
+            80.492708,
+            82.262166,
+            86.154042,
+            84.51,
+            86.345875,
+            91.066625,
+            81.90675,
+            91.6825,
+            84.176125,
+            87.063708,
+            82.377792,
+            82.037708,
+            84.759709,
+            85.169959,
+            83.725041
+          ],
+          "command": [
+            "/private/tmp/htmlcut-evaluation-python/bin/python",
+            "/Users/erst/Tools/HTMLCut/evaluation/contract-matrix/matrix.py",
+            "--reference",
+            "rendered",
+            "lxml"
+          ]
+        }
+      }
+    }
+  ],
+  "browser": {
+    "status": "passed",
+    "quote": [
+      "Rendered only"
+    ],
+    "rendered_input_sha256": "297b45f48f11ebcff24d20977eb240cbfe93375121a8353757448aa59468410d"
+  },
+  "pandoc": {
+    "status": "not_installed"
+  },
+  "json_direct": {
+    "tool": "jq",
+    "status": "passed",
+    "output": "\"correct\""
+  },
+  "limits": "No model token accounting; no evidence of commercial demand; no trust/semantic oracle; no network capture; no current binary benchmark if binary_executed=false."
+}

@@ -132,8 +132,22 @@ def main():
                     environment["HTMLCUT_WINDOWS_STDIO_EVIDENCE"] = str(windows_path.resolve())
                     windows_pipe_path = args.output.with_name(args.output.stem + "-windows-pipe-input.json")
                     environment["HTMLCUT_WINDOWS_PIPE_EVIDENCE"] = str(windows_pipe_path.resolve())
+                pressure = subprocess.run([str(binary)], check=True, capture_output=True,
+                                          env={**environment, "HTMLCUT_PRIVATE_WORKER": "measure-pressure"},
+                                          timeout=30)
+                if pressure.stderr:
+                    raise ValueError("Native pressure proof emitted unexpected diagnostics")
+                worker_resource = json.loads(pressure.stdout)
+                if (not all(isinstance(worker_resource.get(key), int) for key in
+                            ("allocated_bytes", "resident_bytes", "policy_bytes")) or
+                        not 0 < worker_resource["allocated_bytes"] <= worker_resource["policy_bytes"] or
+                        worker_resource["resident_bytes"] <= 0):
+                    raise ValueError("Native worker pressure proof is incomplete")
                 subprocess.run(io_command, check=True, stdout=log, stderr=subprocess.STDOUT,
                                env=environment, timeout=600)
+                subprocess.run(["cargo", "test", "--locked", "-p", "htmlcut-cli", "--test",
+                                "worker_containment", "--target", args.target], check=True,
+                               stdout=log, stderr=subprocess.STDOUT, env=environment, timeout=600)
                 subprocess.run(commit_command, check=True, stdout=log, stderr=subprocess.STDOUT,
                                env=environment, timeout=600)
                 if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256:
@@ -160,6 +174,8 @@ def main():
         "smoke_command": ["./scripts/smoke-release-artifact.sh", args.target],
         "smoke_exit_status": 0,
         "binary_sha256": binary_sha256,
+        "worker_resource": worker_resource,
+        "worker_containment_exit_status": 0,
         "native_io_command": io_command,
         "native_io_exit_status": 0,
         "publication_commit_command": commit_command,

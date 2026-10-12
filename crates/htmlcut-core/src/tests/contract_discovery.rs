@@ -225,7 +225,6 @@ fn million_element_selector_inspection_fails_closed() {
         PreparationLimits {
             max_elements: 1_000_000,
             max_nodes: 4_000_000,
-            max_parse_work: 100_000_000,
             ..Default::default()
         },
     )

@@ -1,7 +1,7 @@
 # Fuzz harnesses
 
-Harnesses cover retained parser/query/selector/Markdown/record and CLI surfaces.
-Compile with `cargo check --locked -p htmlcut-fuzz --all-targets`.
+Harnesses cover retained parser/query/selector/record and CLI surfaces.
+Compile with `cargo check --locked -p htmlcut-fuzz --all-targets --features fuzzing` to type-check the actual fuzz drivers.
 Authored adversarial regression/resource tests and the bounded parser and relational
 selector smokes are mandatory. The required Linux CI job runs both existing targets
 for at most 1,000 iterations each, with finite input, execution time and memory bounds.

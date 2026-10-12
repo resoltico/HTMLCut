@@ -7,7 +7,7 @@ fn source(count: usize) -> String {
 }
 
 #[test]
-fn positional_pass_reuses_scratch_with_linear_charged_work() {
+fn positional_selection_counts_every_candidate_with_linear_traversal_accounting() {
     let mut measurements = Vec::new();
     for count in [1000, 2000, 4000, 8000] {
         let html = Html::parse_document(&source(count));
@@ -29,7 +29,7 @@ fn positional_pass_reuses_scratch_with_linear_charged_work() {
 }
 
 #[test]
-fn uncached_positional_walk_is_charged_even_when_it_would_match() {
+fn positional_matching_refuses_an_exhausted_operation_budget() {
     let html = Html::parse_document(&source(10000));
     let last = html
         .tree
@@ -41,7 +41,8 @@ fn uncached_positional_walk_is_charged_even_when_it_would_match() {
         .unwrap();
     for css in ["p:nth-child(10000)", "p:nth-of-type(10000)"] {
         let selector = Selector::parse(css).unwrap();
-        let budget = WorkBudget::new(100);
+        let budget = WorkBudget::new(1);
+        assert!(budget.consume());
         assert!(
             selector
                 .budgeted(&html, None, &budget)
@@ -133,7 +134,8 @@ fn relative_search_refuses_exhausted_work_instead_of_returning_false() {
         "main:has(section ~ aside span)",
     ] {
         let selector = Selector::parse(css).unwrap();
-        let budget = WorkBudget::new(100);
+        let budget = WorkBudget::new(1);
+        assert!(budget.consume());
         assert!(
             selector
                 .budgeted(&html, None, &budget)
@@ -289,7 +291,8 @@ fn non_element_sibling_navigation_and_negated_search_cannot_hide_exhaustion() {
     let last = html.select(&Selector::parse("#b").unwrap()).next().unwrap();
     for css in ["p + p", "p ~ p", "p:nth-child(2)"] {
         let selector = Selector::parse(css).unwrap();
-        let budget = WorkBudget::new(30);
+        let budget = WorkBudget::new(1);
+        assert!(budget.consume());
         let mut matcher = selector.budgeted(&html, None, &budget).unwrap();
         assert!(matcher.matches(&last).is_err(), "{css}");
         assert!(budget.exhausted(), "{css}");
@@ -301,7 +304,8 @@ fn non_element_sibling_navigation_and_negated_search_cannot_hide_exhaustion() {
         .unwrap();
     for css in ["main:not(:has(.missing))", "main:not(:has(.late))"] {
         let selector = Selector::parse(css).unwrap();
-        let budget = WorkBudget::new(30);
+        let budget = WorkBudget::new(1);
+        assert!(budget.consume());
         let mut matcher = selector.budgeted(&html, None, &budget).unwrap();
         assert!(matcher.matches(&root).is_err(), "{css}");
         assert!(budget.exhausted());
@@ -335,7 +339,8 @@ fn relative_descendant_search_remains_safe_at_the_supported_dom_depth() {
             expected,
             "{css}"
         );
-        let limited = WorkBudget::new(30);
+        let limited = WorkBudget::new(1);
+        assert!(limited.consume());
         assert!(
             selector
                 .budgeted(&html, None, &limited)
@@ -349,7 +354,7 @@ fn relative_descendant_search_remains_safe_at_the_supported_dom_depth() {
 }
 
 #[test]
-fn long_attribute_class_and_id_predicates_refuse_before_unbounded_comparison() {
+fn long_attribute_class_and_id_predicates_have_complete_values_and_refuse_exhausted_budget() {
     let tail = "x".repeat(64_000);
     let html = Html::parse_document(&format!(
         "<main><p id='needle{tail}' data-code='needle{tail}' class='needle {tail}'></p></main>"
@@ -371,7 +376,8 @@ fn long_attribute_class_and_id_predicates_refuse_before_unbounded_comparison() {
             expected,
             "{css}"
         );
-        let limited = WorkBudget::new(30);
+        let limited = WorkBudget::new(1);
+        assert!(limited.consume());
         assert!(
             selector
                 .budgeted(&html, None, &limited)

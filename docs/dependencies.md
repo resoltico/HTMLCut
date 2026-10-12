@@ -1,36 +1,26 @@
-# Dependency responsibilities and maintenance
+# Dependency responsibilities
 
-The selected graph aligns html5ever/markup5ever 0.40, web_atoms/string_cache types,
-selectors 0.41, servo_arc 0.5 and tendril 0.5.1. Actual owned package versions and
-edges are declared in Cargo.toml/Cargo.lock and each carrier manifest. There is no
-root-only patch: path, Git and registry consumers must receive the same corrections.
+HTMLCut uses the maintained, unmodified published `scraper` stack for HTML5 parsing,
+DOM storage and CSS matching. Cargo.toml declares supported dependency ranges;
+Cargo.lock pins reproducible builds. Scraper's optional CLI and unused parser-error
+collection features are disabled; repaired HTML is still parsed by upstream. The graph contains no privately customized
+html5ever, markup5ever, selectors, tendril or servo_arc packages and no patch paths.
 
-| Responsibility | Current owner | Replacement outcome |
-| --- | --- | --- |
-| DOM allocation/depth/reparenting admission | core `dom/parser.rs`, `dom/tree_sink.rs` | Implemented via public TreeSink over upstream ego-tree; scraper retired. |
-| Static CSS grammar, inner navigation/predicate accounting, pass caches | core `dom/selector.rs`, `budget.rs` | Public Element callbacks verified with scope, nth/:has/ancestor/sibling/negation and cached/cold controls; internal engine budgets removed. |
-| Filtered immutable HTML | core `dom/serialization.rs` | Upstream public Serialize boundary; obsolete scraper clone/mutation helpers removed. |
-| Current-token parser stopping | htmlcut-html5ever | Upstream 0.40.1 still panics on `<b><p>X</b>Y`, elements=5, before the outer guard can stop it. |
-| Stop trait and atom/tendril routing | htmlcut-markup5ever | Required by the parser hooks and corrected transitive tendril; no independent mature parser body change. |
-| Safe relative traversal and refusal with cached nth | htmlcut-selectors | Upstream recursive depth-4000 search overflows; its extra debug nth recomputation panics after refusal. Two narrow engine corrections plus the Arc edge remain. |
-| Tagged heap/shared string provenance | htmlcut-tendril | A single provenance-preserving NonNull tag restores 16-byte ARM64 layout; upstream integer reconstruction fails the specified strict Miri proof. |
-| Tail/tag/borrow ownership | htmlcut-servo-arc | Tail pointer remains unconditional; independent upstream tail and borrowed-clone ownership controls fail, and tagged casts fail strict provenance. |
+Product code owns the closed extraction plan, logical admission, cardinalities,
+contextual guards, row-relative fields, bounded text/HTML projection and result
+encoding. Parser and selector engine internals remain upstream responsibilities.
+Logical limits do not claim callback-by-callback upstream interruption.
+The CLI worker supplies the [physical resource boundary](architecture.md).
 
-The retained parser/selector bodies are mature upstream sources with narrow declared
-deltas, not replacement implementations. Carrier authorship and original license
-texts/notices remain with their sources. Core adaptations retain ISC attribution.
-Maintaining these five packages means reviewing upstream changes, keeping the type
-graph aligned and rerunning the corresponding stopping/ownership/refusal controls.
-No version-number comparison alone establishes safe removal.
+Upstream pointer checks from the removed forks are not claims that unmodified
+upstream code passes strict Miri. Worker isolation confines parser/selector crashes
+to the child, and the supervisor refuses incomplete or abnormal responses.
+In-process Rust callers must isolate adversarial work themselves.
 
-Upstream pointer proof failures are precise evidence, not a claim of exploitability;
-Stacked Borrows is experimental. One failed parser or pointer path does not halt
-independent work. The product boundaries above were separately implemented and
-challenged. Full registry-only upstream adoption remains unresolved while these
-specific responsibilities require carriers.
-
-Registry distribution is prepared and verified through an isolated dependency-
-complete Cargo source registry, including package compilation and installation with
-workspace path edges unavailable. This does not establish real registry ownership,
-availability or external publication. See [release protocol](release-protocol.md)
-for ordered packages, official dry-run prerequisites and exact operator actions.
+There is one core package and one CLI package, with libFuzzer harnesses for owned
+contracts and historical regressions. Nightly remains necessary for libFuzzer
+instrumentation; normal builds/tests use stable. Native packages derive complete
+attribution from the actual locked target graph and compiler runtime. ISC-adapted
+projection/serialization portions retain their attribution in the core package.
+The [release protocol](release-protocol.md) requires clean downstream compilation
+and native package execution before publication.

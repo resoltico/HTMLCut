@@ -30,7 +30,7 @@ pub enum GuardScope {
     /// The entire original document, even when root selection is empty.
     #[default]
     Document,
-    /// Each selected original subtree or record forest.
+    /// Each selected original subtree.
     Selected,
 }
 
@@ -53,7 +53,7 @@ where
 pub struct Guard {
     /// Required CSS selector.
     pub select: String,
-    /// Document by default, or each selected subtree/forest.
+    /// Document by default, or each selected subtree.
     #[serde(default)]
     pub scope: GuardScope,
     /// Minimum matches, default one.
@@ -127,10 +127,6 @@ pub struct ExtractionPlan {
     /// Conjunctive count or value expectations.
     #[serde(default)]
     pub expect: Vec<Guard>,
-    /// Additional element siblings in a record forest; default zero.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "u32")]
-    pub following_siblings: Option<u32>,
     /// Fresh per-execution limits; partial JSON fills the maintained defaults.
     #[serde(default)]
     pub limits: ExecutionLimits,
@@ -157,8 +153,6 @@ struct PlanFields {
     fields: Option<BTreeMap<String, RecordField>>,
     #[serde(default)]
     expect: Vec<Guard>,
-    #[serde(default, deserialize_with = "present")]
-    following_siblings: Option<u32>,
     #[serde(default)]
     limits: ExecutionLimits,
 }
@@ -175,7 +169,6 @@ impl PlanFields {
             exclude: self.exclude,
             fields: self.fields,
             expect: self.expect,
-            following_siblings: self.following_siblings,
             limits: self.limits,
         }
     }
@@ -200,7 +193,6 @@ impl ExtractionPlan {
             exclude: None,
             fields: None,
             expect: Vec::new(),
-            following_siblings: None,
             limits: ExecutionLimits::default(),
         };
         plan.validate()?;
@@ -294,7 +286,6 @@ impl ExtractionPlan {
             plan.min = Some(plan.min.unwrap_or(1));
         }
         if let Some(fields) = &mut plan.fields {
-            plan.following_siblings = Some(plan.following_siblings.unwrap_or(0));
             for field in fields.values_mut() {
                 if field.match_mode == FieldMatch::All {
                     field.min = Some(field.min.unwrap_or(1));
@@ -363,7 +354,6 @@ fn safe_plan_path(path: &serde_path_to_error::Path) -> String {
                         | "exclude"
                         | "fields"
                         | "expect"
-                        | "following_siblings"
                         | "limits"
                         | "scope"
                         | "equals"

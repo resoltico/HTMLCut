@@ -28,6 +28,16 @@ impl Read for Input {
     }
 }
 
+impl crate::input::InputRead for Input {
+    fn regular_file_identity(&self) -> io::Result<Option<(u64, u64)>> {
+        self.reader
+            .as_ref()
+            .map(crate::native_resource::reader_identity)
+            .transpose()
+            .map(Option::flatten)
+    }
+}
+
 pub(crate) struct Output {
     writer: Option<os_pipe::PipeWriter>,
     error: bool,
@@ -142,6 +152,11 @@ mod tests {
     fn empty_operations_do_not_acquire_unused_streams() {
         let mut input = Input::default();
         assert_eq!(input.read(&mut []).unwrap(), 0);
+        assert!(input.reader.is_none());
+        assert_eq!(
+            crate::input::InputRead::regular_file_identity(&input).unwrap(),
+            None
+        );
         assert!(input.reader.is_none());
         for mut output in [Output::stdout(), Output::stderr()] {
             assert_eq!(output.write(&[]).unwrap(), 0);

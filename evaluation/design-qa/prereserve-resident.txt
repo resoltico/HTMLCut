@@ -1,0 +1,9 @@
+prereserve exit=3
+pid=91696 uid=501 virtual=500780859392 resident=1638400
+setrlimit AS cap=500915077120 rc=0 errno=0
+touched prereserveMiB=256 resident=270090240
+allocatedMiB=32 resident=303661056
+allocatedMiB=64 resident=337231872
+allocatedMiB=96 resident=370802688
+allocatedMiB=128 resident=404373504
+allocation refused atMiB=128 errno=12

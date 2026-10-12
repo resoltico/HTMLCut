@@ -1,0 +1,9 @@
+reset exit=3
+pid=88158 uid=501 virtual=500512358400 resident=1638400
+setrlimit AS cap=500646576128 rc=0 errno=0
+raise reset rc=-1 errno=1
+allocatedMiB=32
+allocatedMiB=64
+allocatedMiB=96
+allocatedMiB=128
+allocation refused atMiB=128 errno=12

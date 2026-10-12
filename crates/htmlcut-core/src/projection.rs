@@ -10,78 +10,6 @@ use ego_tree::{NodeId, iter::Edge};
 use crate::{ErrorCode, ExtractionError, Reading};
 
 mod context;
-mod markdown;
-mod markdown_annotations;
-mod markdown_inline;
-mod markdown_traversal;
-mod markdown_writer;
-
-pub(crate) struct ValueBuffer<'a> {
-    value: String,
-    maximum: usize,
-    budget: &'a WorkBudget,
-    pending_space: bool,
-}
-
-impl<'a> ValueBuffer<'a> {
-    pub(crate) fn new(maximum: usize, budget: &'a WorkBudget) -> Self {
-        Self {
-            value: String::new(),
-            maximum,
-            budget,
-            pending_space: false,
-        }
-    }
-    pub(crate) fn push(&mut self, value: &str) -> Result<(), ExtractionError> {
-        if value.len() > self.maximum.saturating_sub(self.value.len()) {
-            return Err(ExtractionError::resource(
-                "projection",
-                "value_bytes",
-                self.maximum as u64,
-            ));
-        }
-        let size = self.value.len() + value.len(); // The preceding remaining-capacity check proves no overflow.
-        crate::execution::charge(
-            self.budget,
-            size.div_ceil(64) - self.value.len().div_ceil(64),
-        )?;
-        self.value.push_str(value);
-        Ok(())
-    }
-    pub(crate) fn text(
-        &mut self,
-        value: &str,
-        pre: bool,
-        normalize: bool,
-    ) -> Result<(), ExtractionError> {
-        crate::execution::charge(self.budget, value.len().div_ceil(64))?;
-        if pre || !normalize {
-            if !value.is_empty() {
-                if self.pending_space {
-                    self.push(" ")?;
-                }
-                self.pending_space = false;
-                self.push(value)?;
-            }
-            return Ok(());
-        }
-        for c in value.chars() {
-            if c.is_whitespace() {
-                self.pending_space = !self.value.is_empty();
-                continue;
-            }
-            if self.pending_space {
-                self.push(" ")?;
-                self.pending_space = false;
-            }
-            self.push(c.encode_utf8(&mut [0; 4]))?;
-        }
-        Ok(())
-    }
-    pub(crate) fn finish(self) -> String {
-        self.value
-    }
-}
 
 pub(crate) fn project(
     root: ElementRef<'_>,
@@ -91,7 +19,7 @@ pub(crate) fn project(
     maximum: usize,
     budget: &WorkBudget,
 ) -> Result<String, ExtractionError> {
-    let resolve = matches!(projection, Reading::Url(_) | Reading::ResolvedMarkdown);
+    let resolve = matches!(projection, Reading::Url(_));
     match projection {
         Reading::Attribute(name) | Reading::Url(name) => {
             #[cfg(test)]
@@ -128,10 +56,8 @@ pub(crate) fn project(
             budget,
         )
         .map(|(text, _)| text),
-        Reading::Markdown | Reading::ResolvedMarkdown => {
-            markdown::render(root, excluded, resolve, base, maximum, budget)
-        }
-        Reading::InnerHtml | Reading::OuterHtml => {
+
+        Reading::OuterHtml => {
             #[cfg(test)]
             record_projection(3);
             let mut writer = HtmlBuffer {

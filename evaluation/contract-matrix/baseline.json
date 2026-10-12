@@ -1,0 +1,494 @@
+{
+  "scope": "original synthetic offline workloads, fixed conditions; not universal, not a blinded agent study",
+  "repo_commit": "4cd5752740b6d26aa63594fa3ea001d3290db71d",
+  "versions": {
+    "python": "3.13.5",
+    "beautifulsoup4": "4.14.3",
+    "lxml": "6.1.1"
+  },
+  "binary_executed": false,
+  "query_version": 7,
+  "paired_trials": 1,
+  "results": [
+    {
+      "task": "catalog",
+      "source": "catalog.html",
+      "source_bytes": 21842,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 2792,
+          "stderr_bytes": 0,
+          "output_sha256": "8c20f11eb0d26d483cd628de4c3e5a7e5a01e81c0a924baf8e0aa5db53a78f34",
+          "median_fresh_process_ms": 854.330918,
+          "samples_ms": [
+            854.330918
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "catalog",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 2792,
+          "stderr_bytes": 0,
+          "output_sha256": "8c20f11eb0d26d483cd628de4c3e5a7e5a01e81c0a924baf8e0aa5db53a78f34",
+          "median_fresh_process_ms": 882.939273,
+          "samples_ms": [
+            882.939273
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "catalog",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "guarded",
+      "source": "guarded.html",
+      "source_bytes": 107,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 17,
+          "stderr_bytes": 0,
+          "output_sha256": "3d99002c0eb23a0b92cf489ca1032fa1511ff89d947a8350d82c63af46a5afe2",
+          "median_fresh_process_ms": 827.998859,
+          "samples_ms": [
+            827.998859
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "guarded",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 17,
+          "stderr_bytes": 0,
+          "output_sha256": "3d99002c0eb23a0b92cf489ca1032fa1511ff89d947a8350d82c63af46a5afe2",
+          "median_fresh_process_ms": 763.633829,
+          "samples_ms": [
+            763.633829
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "guarded",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "guarded-drift",
+      "source": "guarded-drift.html",
+      "source_bytes": 109,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 56,
+          "output_sha256": null,
+          "median_fresh_process_ms": 708.05756,
+          "samples_ms": [
+            708.05756
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "guarded-drift",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 56,
+          "output_sha256": null,
+          "median_fresh_process_ms": 724.361363,
+          "samples_ms": [
+            724.361363
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "guarded-drift",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "catalog-missing-field",
+      "source": "catalog-missing-field.html",
+      "source_bytes": 21806,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 88,
+          "output_sha256": null,
+          "median_fresh_process_ms": 716.54623,
+          "samples_ms": [
+            716.54623
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "catalog-missing-field",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 62,
+          "output_sha256": null,
+          "median_fresh_process_ms": 959.239143,
+          "samples_ms": [
+            959.239143
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "catalog-missing-field",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "ambiguous",
+      "source": "ambiguous.html",
+      "source_bytes": 128,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 54,
+          "output_sha256": null,
+          "median_fresh_process_ms": 691.872583,
+          "samples_ms": [
+            691.872583
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "ambiguous",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 54,
+          "output_sha256": null,
+          "median_fresh_process_ms": 670.479715,
+          "samples_ms": [
+            670.479715
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "ambiguous",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "technical",
+      "source": "technical.html",
+      "source_bytes": 118,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 58,
+          "stderr_bytes": 0,
+          "output_sha256": "7f3a3abff03ed39f7bb7cf09e05d1cebba9f06552301be1caa5f45f86f0a84f7",
+          "median_fresh_process_ms": 724.110312,
+          "samples_ms": [
+            724.110312
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "technical",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 58,
+          "stderr_bytes": 0,
+          "output_sha256": "7f3a3abff03ed39f7bb7cf09e05d1cebba9f06552301be1caa5f45f86f0a84f7",
+          "median_fresh_process_ms": 728.521256,
+          "samples_ms": [
+            728.521256
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "technical",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "links",
+      "source": "links.html",
+      "source_bytes": 61,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 52,
+          "stderr_bytes": 0,
+          "output_sha256": "67ca519fd2fed21be92dad1faad129a3efa4b3e16622db4aec60d317315c768f",
+          "median_fresh_process_ms": 811.201247,
+          "samples_ms": [
+            811.201247
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "links",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 52,
+          "stderr_bytes": 0,
+          "output_sha256": "67ca519fd2fed21be92dad1faad129a3efa4b3e16622db4aec60d317315c768f",
+          "median_fresh_process_ms": 708.42174,
+          "samples_ms": [
+            708.42174
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "links",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "article",
+      "source": "article.html",
+      "source_bytes": 10182,
+      "expected": "same target but representation-specific whitespace",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 84,
+          "stderr_bytes": 0,
+          "output_sha256": "a8cc846a23d7394b757bb3de40744d70dfd32160292f2cc12083834d00d7428e",
+          "median_fresh_process_ms": 707.970284,
+          "samples_ms": [
+            707.970284
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "article",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 82,
+          "stderr_bytes": 0,
+          "output_sha256": "690dfe226b4b28edc7057f0c7d48d501eaa67fa7908102d62ed713feae37371a",
+          "median_fresh_process_ms": 748.158166,
+          "samples_ms": [
+            748.158166
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "article",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "jsonld",
+      "source": "jsonld.html",
+      "source_bytes": 92,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 63,
+          "stderr_bytes": 0,
+          "output_sha256": "296eb81710443629fb5ed8a5e0093b5d3a8f81a828e7dc2cfd7e10bec79cd7be",
+          "median_fresh_process_ms": 732.77238,
+          "samples_ms": [
+            732.77238
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "jsonld",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 63,
+          "stderr_bytes": 0,
+          "output_sha256": "296eb81710443629fb5ed8a5e0093b5d3a8f81a828e7dc2cfd7e10bec79cd7be",
+          "median_fresh_process_ms": 757.352496,
+          "samples_ms": [
+            757.352496
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "jsonld",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "unrendered",
+      "source": "app-unrendered.html",
+      "source_bytes": 149,
+      "expected": "atomic semantic refusal",
+      "observations": {
+        "bs4": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 717.7923,
+          "samples_ms": [
+            717.7923
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "unrendered",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 3,
+          "stdout_bytes": 0,
+          "stderr_bytes": 60,
+          "output_sha256": null,
+          "median_fresh_process_ms": 720.698002,
+          "samples_ms": [
+            720.698002
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "unrendered",
+            "lxml"
+          ]
+        }
+      }
+    },
+    {
+      "task": "rendered",
+      "source": "app-rendered.html",
+      "source_bytes": 86,
+      "expected": "complete JSON equality",
+      "observations": {
+        "bs4": {
+          "exit": 0,
+          "stdout_bytes": 18,
+          "stderr_bytes": 0,
+          "output_sha256": "5c093d2411055752a6d425242dcaadd646ab34fb568822bfb458a28c74b702b4",
+          "median_fresh_process_ms": 744.372215,
+          "samples_ms": [
+            744.372215
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "rendered",
+            "bs4"
+          ]
+        },
+        "lxml": {
+          "exit": 0,
+          "stdout_bytes": 18,
+          "stderr_bytes": 0,
+          "output_sha256": "5c093d2411055752a6d425242dcaadd646ab34fb568822bfb458a28c74b702b4",
+          "median_fresh_process_ms": 873.780182,
+          "samples_ms": [
+            873.780182
+          ],
+          "command": [
+            "/opt/pyvenv/bin/python",
+            "/mnt/data/HTMLCut_design_handoff_2026-10-12/evidence/matrix.py",
+            "--reference",
+            "rendered",
+            "lxml"
+          ]
+        }
+      }
+    }
+  ],
+  "browser": {
+    "status": "passed",
+    "quote": [
+      "Rendered only"
+    ],
+    "rendered_input_sha256": "297b45f48f11ebcff24d20977eb240cbfe93375121a8353757448aa59468410d"
+  },
+  "pandoc": {
+    "status": "passed",
+    "markdown_bytes": 10086,
+    "contains_boilerplate": true
+  },
+  "json_direct": {
+    "tool": "jq",
+    "status": "passed",
+    "output": "\"correct\""
+  },
+  "limits": "No model token accounting; no evidence of commercial demand; no trust/semantic oracle; no network capture; no current binary benchmark if binary_executed=false."
+}

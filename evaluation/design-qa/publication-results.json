@@ -1,0 +1,20 @@
+{
+  "atomic-failure": {
+    "exit": 3,
+    "stderr": "{\"schema\":\"htmlcut.extraction.error\",\"version\":8,\"code\":\"no_match\",\"stage\":\"selection\",\"message\":\"Exactly-one selection matched zero candidates.\",\"row_index\":2,\"field_name\":\"price\",\"expected_min\":1,\"expected_max\":1,\"candidate_count\":0}\n",
+    "old_destination_preserved": true,
+    "temporary_files_remaining": []
+  },
+  "supervisor-death": {
+    "supervisor": 55800,
+    "worker": 55802,
+    "worker_state_after": "gone",
+    "termination_observed_seconds": 0.0057
+  },
+  "semantic-limitation": {
+    "exit": 0,
+    "stdout": "[\"99\"]\n",
+    "observation": "A structurally valid wrong business entity succeeds when its identity is not guarded."
+  },
+  "binary_sha256": "020452d0ce551c94e79440b694a2e725260ecbe105d69592fe4f7b50fbdf51ba"
+}

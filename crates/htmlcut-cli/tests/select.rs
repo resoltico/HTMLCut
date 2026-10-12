@@ -20,16 +20,7 @@ fn structural_default_preserves_hidden_links_and_empty_values() {
 }
 
 #[test]
-fn markdown_and_html_are_explicit_and_raw_has_no_framing() {
-    let html = b"<p>Damage: <img alt='Broken mirror'> end.</p>";
-    let output = invoke(
-        &[
-            "extract", "--stdin", "--select", "p", "--read", "markdown", "--raw",
-        ],
-        html,
-    );
-    assert!(output.status.success());
-    assert_eq!(output.stdout, b"Damage: Broken mirror end.");
+fn outer_html_is_explicit_and_raw_has_no_framing() {
     let output = invoke(
         &[
             "extract",

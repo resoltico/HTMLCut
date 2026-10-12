@@ -4,11 +4,6 @@ members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
     "fuzz",
-    "patches/rust/selectors",
-    "patches/rust/servo_arc",
-    "patches/rust/html5ever",
-    "patches/rust/markup5ever",
-    "patches/rust/tendril",
 ]
 default-members = [
     "crates/htmlcut-core",
@@ -17,33 +12,32 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-version = "21.0.0"
+version = "22.0.0"
 edition = "2024"
-rust-version = "1.98.1"
-description = "Bounded extraction from immutable HTML snapshots with explicit projections, strict guards, reusable plans, and compact deterministic results."
+rust-version = "1.99.0"
+description = "Fail-closed extraction contracts for caller-owned HTML snapshots, with complete compact results."
 license = "MPL-2.0"
 authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
+libc = "0.2.186"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_Storage_FileSystem"] }
 arbitrary = { version = "1.4.2", features = ["derive"] }
 boon = "0.6.1"
-pulldown-cmark = { version = "0.13.4", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
-cssparser = "0.38.0"
 ego-tree = "0.11.0"
-precomputed-hash = "0.1.1"
-html5ever = { package = "htmlcut-html5ever", path = "patches/rust/html5ever", version = "0.40.1-htmlcut.3" }
-tendril = { package = "htmlcut-tendril", path = "patches/rust/tendril", version = "0.5.1-htmlcut.2" }
+scraper = { version = "0.27.0", default-features = false }
+cssparser = "0.37.0"
+selectors = "0.38.0"
+html5ever = "0.39.0"
 tempfile = "3.27.0"
 os_pipe = "1.2.3"
 rustix = { version = "1.1.5", features = ["fs"] }
-htmlcut-core = { path = "crates/htmlcut-core", version = "21.0.0" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "22.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
-# The selector/parser stack must travel with htmlcut-core into downstream git consumers.
 schemars = "1.2.2"
-selectors = { package = "htmlcut-selectors", path = "patches/rust/selectors", version = "0.41.0-htmlcut.3" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 serde_path_to_error = "0.1.20"
@@ -51,7 +45,7 @@ thiserror = "2.0.21"
 url = "2.5.8"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
 

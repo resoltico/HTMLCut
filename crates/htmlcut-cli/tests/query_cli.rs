@@ -47,7 +47,7 @@ fn inline_and_json_requests_share_canonical_data() {
         "{}",
         String::from_utf8_lossy(&inline.stderr)
     );
-    let query = r#"{"version":7,"select":"article","match":"all","fields":{"title":{"select":"i"},"href":{"select":"a","match":"optional","read":"attr:href"},"tags":{"select":"b","match":"all"}}}"#;
+    let query = r#"{"version":8,"select":"article","match":"all","fields":{"title":{"select":"i"},"href":{"select":"a","match":"optional","read":"attr:href"},"tags":{"select":"b","match":"all"}}}"#;
     let json = run(&["extract", "--stdin", "--plan-json", query], source);
     assert!(json.status.success());
     assert_eq!(inline.stdout, json.stdout);
@@ -124,10 +124,6 @@ fn merged_inspection_identifies_source_and_complete_attribute_names() {
         serde_json::json!(["class", "data-x"])
     );
     assert_eq!(value["samples"][0]["text"], "A");
-    let survey = run(&["inspect", "--stdin"], source);
-    assert!(survey.status.success());
-    let groups: serde_json::Value = serde_json::from_slice(&survey.stdout).unwrap();
-    assert_eq!(groups["group_count"], 1);
 }
 
 #[test]
@@ -157,7 +153,7 @@ fn query_stdin_is_intentional_and_field_parse_failures_are_lexical() {
     std::fs::write(&source, "<p>A</p>").unwrap();
     let output = run(
         &["extract", "--file", source.to_str().unwrap(), "--plan", "-"],
-        r#"{"version":7,"select":"p"}"#,
+        r#"{"version":8,"select":"p"}"#,
     );
     assert!(output.status.success());
     assert_eq!(output.stdout, b"[\"A\"]\n");
@@ -244,7 +240,7 @@ fn json_escaping_cannot_publish_data_beyond_the_encoded_byte_bound() {
             )
         })
         .collect::<serde_json::Map<_, _>>();
-    let plan = serde_json::json!({"version":7,"select":"article","match":"all","fields":fields,"limits":{"max_cells":1_000_000,"max_work":10_000_000}}).to_string();
+    let plan = serde_json::json!({"version":8,"select":"article","match":"all","fields":fields,"limits":{"max_cells":1_000_000,"max_work":10_000_000}}).to_string();
     // 121,620,001 encoded bytes exceed 64 MiB despite only 12.8 MB of leaf values.
     let result = run(&["extract", "--stdin", "--plan-json", &plan], &source);
     assert_eq!(result.status.code(), Some(4));
@@ -283,7 +279,7 @@ fn required_input_diagnostics_distinguish_omission_type_and_version() {
             "version must be an integer",
         ),
         (
-            r#"{"version":7.0,"select":"p"}"#,
+            r#"{"version":8.0,"select":"p"}"#,
             "invalid_value",
             "$.version",
             "version must be an integer",
@@ -295,13 +291,13 @@ fn required_input_diagnostics_distinguish_omission_type_and_version() {
             "Unsupported query version",
         ),
         (
-            r#"{"version":7}"#,
+            r#"{"version":8}"#,
             "missing_required",
             "$.select",
             "requires a select member",
         ),
         (
-            r#"{"version":7,"select":null}"#,
+            r#"{"version":8,"select":null}"#,
             "invalid_value",
             "$.select",
             "select member must be a string",
@@ -330,11 +326,58 @@ fn required_input_diagnostics_distinguish_omission_type_and_version() {
             "extract",
             "--stdin",
             "--plan-json",
-            r#"{"version":7,"select":"p"}"#,
+            r#"{"version":8,"select":"p"}"#,
         ],
         "<p>value</p>",
     );
     assert_eq!(repaired.status.code(), Some(0));
     assert_eq!(repaired.stdout, b"[\"value\"]\n");
     assert!(repaired.stderr.is_empty());
+}
+
+#[test]
+fn worker_compilation_refuses_bad_grammar_before_source_or_destination_access() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing-source-private-marker.html");
+    let destination = directory.path().join("result.json");
+    std::fs::write(&destination, b"previous result").unwrap();
+    for (plan, code) in [
+        (r#"{"version":8,"select":"["}"#, "invalid_selector"),
+        (
+            r#"{"version":8,"select":"p","expect":[{"select":"h1","pattern":"["}]}"#,
+            "invalid_regex",
+        ),
+    ] {
+        let output = run(
+            &[
+                "extract",
+                "--file",
+                missing.to_str().unwrap(),
+                "--plan-json",
+                plan,
+                "--output",
+                destination.to_str().unwrap(),
+                "--overwrite",
+            ],
+            "",
+        );
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["code"], code);
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("private-marker"));
+        assert_eq!(std::fs::read(&destination).unwrap(), b"previous result");
+    }
+    let output = run(
+        &[
+            "extract",
+            "--file",
+            missing.to_str().unwrap(),
+            "--select",
+            "p",
+        ],
+        "",
+    );
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
 }

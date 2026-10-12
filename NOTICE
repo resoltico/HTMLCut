@@ -12,8 +12,8 @@ Scope
 -----
 The project license covers original HTMLCut software and project-authored
 associated documentation, configuration and synthetic test/evaluation fixtures.
-Vendored material under patches/ retains its upstream license expressions and
-notices. It is not relicensed by the project license declaration.
+Registry dependencies retain their upstream license expressions and notices.
+They are not relicensed by the project license declaration.
 
 In source distributions, the earlier project MIT text is in
 LICENSES/HTMLCut-published-MIT.txt; that text
@@ -30,14 +30,13 @@ Matching HTMLCut source is available from the source archives on the same
 GitHub release and the exact source commit linked in the native package README:
 https://github.com/resoltico/HTMLCut/releases
 
-Source archives retain the local dependency sources and their original notices
-under patches/. Cargo.lock records exact registry dependency versions; their
+Cargo.lock records exact registry dependency versions; their
 source packages are available from https://crates.io/ using those names and
 versions. Their licenses remain applicable independently of the project license.
 
 Native distributions must include the complete dependency permission/license
-texts and required attributions for their locked build graph, including local
-patched dependencies and supplementary copyright notices. Do not treat a
+texts and required attributions for their locked build graph, including
+supplementary copyright notices. Do not treat a
 representative crate list or this project-scope notice as a complete dependency
 license report.
 

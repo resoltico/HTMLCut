@@ -156,7 +156,6 @@ impl ExtractionPlan {
                 || fields.len() > crate::MAX_RECORD_FIELDS
                 || self.read.is_some()
                 || self.exclude.is_some()
-                || self.following_siblings.unwrap_or(0) > crate::limits::MAX_FOLLOWING_SIBLINGS
             {
                 return Err(invalid());
             }
@@ -188,9 +187,6 @@ impl ExtractionPlan {
                 exclusions += field.exclude.len();
             }
         } else {
-            if self.following_siblings.is_some() {
-                return Err(invalid());
-            }
             let exclude = self.exclude.as_deref().unwrap_or_default();
             if exclude.len() > MAX_CHECKS {
                 return Err(invalid());

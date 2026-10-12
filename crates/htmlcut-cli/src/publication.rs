@@ -129,10 +129,22 @@ pub(crate) fn validate_destinations(
         .iter()
         .map(|path| fs::canonicalize(path).map_err(super::input::io_failure))
         .collect::<Result<Vec<_>, _>>()?;
+    let identities = inputs
+        .iter()
+        .map(|path| crate::native_resource::file_identity(path).map_err(super::input::io_failure))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut seen = Vec::new();
     for path in targets {
         let target = normalized_target(path)?;
-        if inputs.contains(&target) || seen.contains(&target) {
+        let identity = match crate::native_resource::file_identity(&target) {
+            Ok(identity) => identity,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(io_failure(error, htmlcut_core::IoOperation::Publication)),
+        };
+        if inputs.contains(&target)
+            || identity.is_some_and(|identity| identities.contains(&Some(identity)))
+            || seen.contains(&target)
+        {
             return Err(super::input::options(
                 "Input and output destinations must be distinct.",
             ));
@@ -148,6 +160,27 @@ pub(crate) fn validate_destinations(
             ));
         }
         seen.push(target);
+    }
+    Ok(())
+}
+
+/// Compare a known pinned stdin file against the current publication destination.
+pub(crate) fn validate_stdin_identity(
+    identity: Option<(u64, u64)>,
+    target: Option<&Path>,
+) -> Result<(), ExtractionError> {
+    if let (Some(identity), Some(target)) = (identity, target) {
+        let target = normalized_target(target)?;
+        match crate::native_resource::file_identity(&target) {
+            Ok(Some(target_identity)) if identity == target_identity => {
+                return Err(super::input::options(
+                    "Input and output destinations must be distinct.",
+                ));
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_failure(error, htmlcut_core::IoOperation::Publication)),
+            _ => {}
+        }
     }
     Ok(())
 }

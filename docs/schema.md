@@ -1,10 +1,11 @@
 # Schemas
 
-`htmlcut schema NAME` generates the current schema directly from Rust types.
-Names: `htmlcut.extraction.plan`, `htmlcut.extraction.data`, `htmlcut.extraction.error`,
-`htmlcut.inspection`, `htmlcut.survey`. Ordinary use needs no schema retrieval.
-Queries require integer version 7 and select; semantics version is 7. Unknown
-members, enum values, versions, null defaults and duplicate JSON keys fail directly.
-Cross-field invariants are enforced by the typed compiler. Bare data has no envelope;
-empty records and values both encode as `[]`. Their typed enum variants differ.
-See [contract](core.md) for cardinality, scopes, readings and limits.
+`schema NAME` generates one closed contract schema from the current Rust types.
+Canonical names are `htmlcut.extraction.plan`, `htmlcut.extraction.data`,
+`htmlcut.extraction.error` and `htmlcut.inspection`.
+Plans require integer version 8 and a nonempty select member. Unknown or duplicate
+members, explicit null in place of omitted default members, retired readings and
+following_siblings are refused. There is no version-7 reader or survey schema.
+Runtime validation also enforces cross-member rules such as cardinality, predicate
+compatibility and aggregate limits; a generated schema alone does not establish
+that a query will execute successfully.

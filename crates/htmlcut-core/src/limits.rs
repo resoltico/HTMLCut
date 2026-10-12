@@ -12,18 +12,15 @@ pub struct PreparationLimits {
     /// Maximum accepted UTF-8 bytes.
     #[schemars(range(min = 1, max = 52428800))]
     pub max_source_bytes: u32,
-    /// Maximum constructed element nodes, including templates.
+    /// Maximum accepted parsed element nodes, including templates.
     #[schemars(range(min = 1, max = 1000000))]
     pub max_elements: u32,
-    /// Maximum constructed DOM nodes, including fixed parser bookkeeping.
+    /// Maximum accepted parsed DOM nodes, including document and template fragments.
     #[schemars(range(min = 1, max = 4000000))]
     pub max_nodes: u32,
     /// Maximum DOM depth, counting the document root at zero.
     #[schemars(range(min = 1, max = 4096))]
     pub max_depth: u32,
-    /// Maximum parser construction and attachment accounting work.
-    #[schemars(range(min = 1, max = 100000000))]
-    pub max_parse_work: u32,
 }
 
 impl Default for PreparationLimits {
@@ -33,7 +30,6 @@ impl Default for PreparationLimits {
             max_elements: 250_000,
             max_nodes: 1_000_000,
             max_depth: 2_048,
-            max_parse_work: 10_000_000,
         }
     }
 }
@@ -69,13 +65,6 @@ impl PreparationLimits {
                 "max_depth is outside its supported range.",
             ));
         }
-        if self.max_parse_work == 0 || self.max_parse_work > 100_000_000 {
-            return Err(ExtractionError::new(
-                ErrorCode::InvalidLimit,
-                "validation",
-                "max_parse_work is outside its supported range.",
-            ));
-        }
         Ok(())
     }
 }
@@ -89,7 +78,6 @@ impl<'de> Deserialize<'de> for PreparationLimits {
             max_elements: u32,
             max_nodes: u32,
             max_depth: u32,
-            max_parse_work: u32,
         }
         impl Default for Input {
             fn default() -> Self {
@@ -98,7 +86,6 @@ impl<'de> Deserialize<'de> for PreparationLimits {
                     max_elements: 250_000,
                     max_nodes: 1_000_000,
                     max_depth: 2_048,
-                    max_parse_work: 10_000_000,
                 }
             }
         }
@@ -108,7 +95,6 @@ impl<'de> Deserialize<'de> for PreparationLimits {
             max_elements: input.max_elements,
             max_nodes: input.max_nodes,
             max_depth: input.max_depth,
-            max_parse_work: input.max_parse_work,
         };
         limits.validate().map_err(serde::de::Error::custom)?;
         Ok(limits)
@@ -122,7 +108,7 @@ pub(crate) const MAX_CANDIDATES: u32 = 1_000_000;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ExecutionLimits {
-    /// Aggregate traversal, matching and source-search work units.
+    /// Aggregate HTMLCut traversal and value-processing units; excludes upstream matching internals.
     #[schemars(range(min = 1, max = 10000000))]
     pub max_work: u32,
     /// Maximum enumerated selection candidates.
@@ -248,8 +234,6 @@ pub const MAX_PLAN_BYTES: usize = 256 * 1024;
 pub const MAX_PATTERN_BYTES: usize = 8 * 1024;
 /// Maximum selector/regular-expression syntactic nesting.
 pub const MAX_PATTERN_DEPTH: u32 = 64;
-/// Maximum parsed selector matching-depth units along one combined chain/branch path.
-pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
 /// Maximum compiled regular-expression size.
 pub const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum guards and exclusions individually per plan.
@@ -263,12 +247,11 @@ pub const MAX_URL_PROCESSING_BYTES: usize = 32 * 1024;
 
 /// Maximum complete compact data JSON bytes, excluding its framing LF.
 pub const MAX_DATA_BYTES: usize = 64 * 1024 * 1024;
-/// Maximum named fields in a record projection.
 /// Maximum number of named record fields in one extraction contract.
 pub const MAX_RECORD_FIELDS: usize = 64;
 
 /// Maximum accepted source bytes under the supported preparation policy.
 pub const MAX_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 
-/// Maximum following element siblings in one explicitly declared row group.
-pub(crate) const MAX_FOLLOWING_SIBLINGS: u32 = 63;
+/// Maximum admitted active CSS matching path before upstream recursive execution.
+pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;

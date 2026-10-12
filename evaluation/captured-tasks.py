@@ -16,10 +16,8 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from measurements import paired, warm
-from capture_reference import reference, from_document, reading_signature, technical_node, text as literal_text
+from capture_reference import reference, from_document, technical_node, text as literal_text
 from bs4 import BeautifulSoup
-from lxml import html as lxml_html
-from markdown_it import MarkdownIt
 import trafilatura
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +47,8 @@ assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT), 
 assert binding["binary_sha256"] == hashlib.sha256(BINARY.read_bytes()).hexdigest()
 assert subprocess.check_output([str(BINARY), "--version"]).decode().strip() == "htmlcut " + tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 
+wire_version = json.loads(subprocess.check_output([str(BINARY), "schema", "htmlcut.extraction.plan"]))["properties"]["version"]["const"]
+
 manifest = json.loads((CAPTURES / "capture-manifest.json").read_text())
 for entry in manifest["rows"]:
     if "sha256" in entry:
@@ -74,7 +74,7 @@ def soup(name):
 
 
 def value_plan(select, read=None, fields=None, expect=None):
-    plan = dict(version=7, select=select, match="all", min=1)
+    plan = dict(version=wire_version, select=select, match="all", min=1)
     if fields is not None:
         plan["fields"] = fields
     elif read is not None:
@@ -170,13 +170,8 @@ news = reference("news-records", source("news.html"))
 execute("news-records", "news.html", value_plan(".titleline", fields=dict(
     title=dict(select=":scope > a", read="literal"),
     url=dict(select=":scope > a", read="url:href"))), news, "https://news.ycombinator.com/")
-score_plan = value_plan("tr.athing", fields=dict(
-    title=dict(select=".titleline > a", read="literal"),
-    url=dict(select=".titleline > a", read="url:href"),
-    score=dict(select=":scope + tr .score", match="optional")))
-score_plan["following_siblings"] = 1
-execute("news-score-records", "news.html", score_plan,
-        reference("news-score-records", source("news.html")), "https://news.ycombinator.com/")
+rows.append(dict(task="news-score-records", candidate_supported=False,
+                 alternative="Caller joins adjacent news rows with domain-specific code; extraction records are anchor subtrees"))
 wiki_capture = next(row for row in manifest["rows"] if row["file"] == "wiki-countries.html")
 rows.append(dict(task="public-wikipedia-acquisition", acquisition=wiki_capture,
                  correctness="not evaluated: frozen acquisition failed", htmlcut_success=False))
@@ -184,36 +179,16 @@ details = reference("product-details", source("book-details.html"))
 execute("product-details", "book-details.html", value_plan(".table.table-striped tr", fields=dict(
     label=dict(select="th", read="literal"), value=dict(select="td", read="literal"))), details)
 price = reference("guarded-product-price", source("book-details.html"))[0]
-price_plan = dict(version=7, select=".product_main .price_color", read="literal", expect=[
+price_plan = dict(version=wire_version, select=".product_main .price_color", read="literal", expect=[
     dict(select=".product_main h1", read="literal", equals="A Light in the Attic")])
 execute("guarded-product-price", "book-details.html", price_plan, [price])
 
 css = 'dl:has(> dt[id="pathlib.PurePath.full_match"])'
 technical = soup("python-pathlib.html").select_one(css)
 execute("technical-literal", "python-pathlib.html", value_plan(css, "literal"), [technical.get_text()])
-plan = value_plan(css, "markdown")
-path = OUTPUT / "technical-markdown.plan.json"
-path.write_text(json.dumps(plan))
-result = subprocess.run([str(BINARY), "extract", "--file", str(CAPTURES / "python-pathlib.html"), "--plan", str(path)], check=True, capture_output=True)
-markdown = json.loads(result.stdout)[0]
-tokens = MarkdownIt("commonmark").parse(markdown)
-code = [token.content for token in tokens if token.type == "fence"]
-assert code == [pre.get_text() + "\n" for pre in technical.select("pre")]
-plain = " ".join(token.content for token in tokens if token.type == "fence") + " " + " ".join(child.content for token in tokens for child in (token.children or []) if child.type in ("text", "code_inline"))
-expected_words = collections.Counter(re.findall(r"\w+", technical.get_text()))
-actual_words = collections.Counter(re.findall(r"\w+", plain))
-assert not (expected_words - actual_words), ("technical retained words missing", expected_words - actual_words)
-reading = trafilatura.extract(str(technical), output_format="markdown", include_links=True, include_tables=True)
-expected_reading = reading_signature(lxml_html.fromstring(str(technical)), source=True)
-actual_reading = reading_signature(lxml_html.fragment_fromstring(MarkdownIt("commonmark").render(markdown), create_parent=True))
-assert actual_reading == expected_reading, "Technical reading changed ordered characters, roles, links or code"
-comparator_reading = reading_signature(lxml_html.fragment_fromstring(MarkdownIt("commonmark").render(reading or ""), create_parent=True))
-rows.append(dict(task="technical-markdown", markdown=markdown, code_payloads=code,
-                 correctness="complete ordered prose characters/inline roles/links and exact code blocks; ASCII prose spacing not scored",
-                 semantic_atoms=actual_reading, comparator_semantics_match=comparator_reading == expected_reading,
-                 source_word_occurrences=sum(expected_words.values()),
-                 comparator="trafilatura 2.3.0", comparator_markdown=reading,
-                 scope="Declared selected subsection versus heuristic reading of that same subsection; formatting conventions differ"))
+reading = trafilatura.extract(source("python-pathlib.html"), output_format="txt", include_links=True, include_tables=True)
+rows.append(dict(task="heuristic-reader", comparator="trafilatura", output=reading,
+                 scope="Automatic whole-document reading is outside the extraction contract; no claim of equivalent output"))
 
 browser = json.loads(evaluation_options.quote_values.read_text())
 quote_plan = value_plan(".quote", fields=dict(

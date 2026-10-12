@@ -1,0 +1,15 @@
+{
+  "platform": "Darwin mm4erst.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:02:57 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8132 arm64",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "execution_date": "2026-10-12",
+  "uid": 501,
+  "native_targets_executed": [
+    "aarch64-apple-darwin"
+  ],
+  "native_targets_not_executed": [
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc"
+  ],
+  "probe_logs": "Logs retain stdout and exit status from original probe; source now labels RLIMIT kind accurately. No executable is committed."
+}

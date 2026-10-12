@@ -8,9 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, ExtractionError, PreparedDocument};
 
-mod survey;
-pub use survey::{SurveyElement, SurveyGroup, SurveyResult, SurveySample, TableShape};
-
 /// Bounded selector identifiers and structural text for one sampled element.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

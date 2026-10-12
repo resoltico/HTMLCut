@@ -44,6 +44,7 @@ impl WorkBudget {
     }
 
     /// Returns whether matching exhausted this budget.
+    #[cfg(test)]
     pub fn exhausted(&self) -> bool {
         self.exhausted.get()
     }

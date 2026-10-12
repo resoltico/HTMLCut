@@ -17,15 +17,11 @@ and the pinned nightly toolchain first; see [the harness instructions](fuzz/READ
 No coverage score, full mutation campaign or full GA fuzz campaign is required. For optional full evaluation scripts install `evaluation/requirements.txt` in an isolated environment.
 Missing tools produce their normal command errors; install the named pinned tool.
 
-Retained unsafe dependency safeguards also require targeted Miri:
-
-```sh
-source scripts/contributor-rust-tools.sh
-rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component miri --component rust-src --profile minimal
-MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-core --lib tests::selector_and_reading_contract_remain_miri_sound -- --exact
-MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-servo-arc --lib
-MIRIFLAGS=-Zmiri-strict-provenance cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" miri test --locked -p htmlcut-tendril --lib subtendril
-```
+Nightly is needed only for libFuzzer instrumentation. Ordinary tests, clippy,
+rustdoc and builds use the pinned stable compiler; there is no coverage-score build.
+The removed dependency forks no longer require their Miri verification lanes.
+Review the narrow native worker OS wrappers separately and run their real resource
+controls on each native target; Miri cannot prove kernel resource enforcement.
 
 Check the public core against the published baseline:
 
@@ -36,6 +32,6 @@ cargo semver-checks check-release -p htmlcut-core --baseline-rev "$HTMLCUT_PUBLI
 
 Cargo materializes the immutable source outside the checkout; do not commit baseline
 copies. Let package versions determine allowed change level; never force major to
-hide a patch deletion. Native CI extracts packages and executes file/pipe/error and
+hide a patch deletion. Native CI extracts packages and executes file/pipe/error, worker containment and
 Unicode controls on all four supported targets. Keep the required `Check` status.
 See [release protocol](docs/release-protocol.md) for external rollout.

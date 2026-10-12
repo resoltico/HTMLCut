@@ -24,7 +24,6 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-pulldown-cmark.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
 url.workspace = true
@@ -73,13 +72,6 @@ bench = false
 [[bin]]
 name = "relational_selector_budget"
 path = "fuzz_targets/relational_selector_budget.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "markdown_cells"
-path = "fuzz_targets/markdown_cells.rs"
 test = false
 doc = false
 bench = false

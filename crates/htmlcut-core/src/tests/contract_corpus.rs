@@ -17,8 +17,8 @@ fn t33_offline_technical_corpus_has_full_literal_and_structural_oracles() {
             .unwrap(),
         [literal]
     );
-    plan.read = Some(Reading::Markdown);
-    let structural = "## Free-threading\n\nThe [global interpreter lock](<gil.html>) affects Windows and macOS.\n\n```\n--disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL\n```\n\nHidden source note remains included.\n\nBroken mirror\n\nCharges\n\n-\n  - <strong>Amount</strong>\n  - EUR 180";
+    plan.read = Some(Reading::Text);
+    let structural = "Free-threading The global interpreter lock affects Windows and macOS. --disable-gil\nPYTHON_GIL\nsys.version\nPy_mod_gil\nPyUnstable_Module_SetGIL Hidden source note remains included. Charges Amount EUR 180";
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -78,7 +78,7 @@ fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
             .unwrap(),
         [literal]
     );
-    plan.read = Some(Reading::Markdown);
+    plan.read = Some(Reading::Text);
     assert_eq!(
         source
             .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -86,7 +86,7 @@ fn t33_malformed_html_uses_html5_repairs_without_losing_literal_payload() {
             .data()
             .as_values()
             .unwrap(),
-        ["First\n\nSecondoutside\n\n-\n  - A\n  - B\n\nUnicode: é ✓ NBSP\u{a0} ZWSP\u{200b}"]
+        ["First Secondoutside A B Unicode: é ✓ NBSP ZWSP\u{200b}"]
     );
     assert_eq!(source.parse_count(), 1);
 }
@@ -115,7 +115,7 @@ fn t33_caption_classes_ids_and_unrelated_siblings_cannot_suppress_selected_conte
                 .unwrap(),
             ["BEGINChargesEUR 180END"]
         );
-        plan.read = Some(Reading::Markdown);
+        plan.read = Some(Reading::Text);
         assert_eq!(
             source
                 .execute(&CompiledPlan::compile(&plan).unwrap())
@@ -123,7 +123,7 @@ fn t33_caption_classes_ids_and_unrelated_siblings_cannot_suppress_selected_conte
                 .data()
                 .as_values()
                 .unwrap(),
-            ["BEGIN\n\nCharges\n\n-\n  - EUR 180\n\nEND"]
+            ["BEGIN Charges EUR 180 END"]
         );
     }
 }

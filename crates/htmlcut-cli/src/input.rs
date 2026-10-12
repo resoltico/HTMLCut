@@ -7,6 +7,14 @@ use std::{fs::File, io::Read, path::Path};
 #[path = "input/regular_file.rs"]
 mod regular_file;
 
+/// Native streams can identify a regular file; injected byte readers are anonymous.
+pub(crate) trait InputRead: Read {
+    fn regular_file_identity(&self) -> std::io::Result<Option<(u64, u64)>> {
+        Ok(None)
+    }
+}
+impl InputRead for dyn Read + '_ {}
+
 pub(crate) const MAX_SOURCE_BYTES: usize = htmlcut_core::MAX_SOURCE_BYTES;
 pub(crate) const MAX_CONFIG_BYTES: usize = htmlcut_core::MAX_PLAN_BYTES;
 
@@ -27,9 +35,9 @@ pub(crate) fn acquisition() -> ExtractionError {
     )
 }
 
-pub(crate) fn snapshot(
+pub(crate) fn snapshot<R: Read + ?Sized>(
     file: Option<&Path>,
-    stdin: &mut dyn Read,
+    stdin: &mut R,
     base: Option<&str>,
 ) -> Result<SourceSnapshot, ExtractionError> {
     // Reject invalid metadata before consuming an intentional input stream.
@@ -86,8 +94,8 @@ pub(crate) fn read_file(path: &Path, maximum: usize) -> Result<Vec<u8>, Extracti
     read_bounded(&mut regular_file::open(path)?, maximum)
 }
 
-pub(crate) fn read_bounded(
-    reader: &mut dyn Read,
+pub(crate) fn read_bounded<R: Read + ?Sized>(
+    reader: &mut R,
     maximum: usize,
 ) -> Result<Vec<u8>, ExtractionError> {
     let mut value = Vec::new();
