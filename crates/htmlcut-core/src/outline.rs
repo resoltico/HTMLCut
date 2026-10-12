@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded structural outlines, with deterministic sibling grouping.
 use crate::{
-    Code, Document, Error,
+    Document, Error, ErrorCode,
     eval::{Scope, candidates},
     limits::Clock,
     select::Selector,
@@ -187,7 +187,7 @@ fn identifier(value: &str) -> Result<String, Error> {
     let mut result = String::new();
     cssparser::serialize_identifier(value, &mut result).map_err(|_| {
         Error::new(
-            Code::Internal,
+            ErrorCode::Internal,
             "An outline identifier could not be encoded.",
         )
     })?;

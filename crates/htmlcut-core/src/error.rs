@@ -6,7 +6,7 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum Code {
+pub enum ErrorCode {
     /// The command-line request is malformed.
     InvalidArguments,
     /// The contract is malformed or exceeds a grammar bound.
@@ -41,7 +41,7 @@ pub enum Code {
     Internal,
 }
 
-impl Code {
+impl ErrorCode {
     /// The command-line exit class for this failure.
     pub fn exit_status(self) -> i32 {
         match self {
@@ -68,7 +68,7 @@ impl Code {
 #[non_exhaustive]
 pub struct Error {
     /// Stable failure code.
-    pub error: Code,
+    pub error: ErrorCode,
     /// Human-readable facts and repair context.
     pub message: String,
     /// Known diagnostic facts, kept off the error's stack representation.
@@ -120,7 +120,7 @@ pub struct ErrorFacts {
 
 impl Error {
     /// Constructs a failure without inventing unavailable facts.
-    pub fn new(error: Code, message: impl Into<String>) -> Self {
+    pub fn new(error: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             error,
             message: message.into(),
@@ -140,7 +140,7 @@ impl Error {
     pub fn limit(name: &str, bound: impl Into<serde_json::Value>) -> Self {
         let bound = bound.into();
         let mut error = Self::new(
-            Code::LimitExceeded,
+            ErrorCode::LimitExceeded,
             format!("The {name} limit of {bound} was exceeded."),
         );
         error.limit = Some(name.into());
@@ -180,35 +180,35 @@ mod tests {
         for (codes, expected) in [
             (
                 vec![
-                    Code::InvalidArguments,
-                    Code::InvalidContract,
-                    Code::InvalidSelector,
-                    Code::InvalidPattern,
-                    Code::InvalidEncoding,
-                    Code::InvalidBaseUrl,
+                    ErrorCode::InvalidArguments,
+                    ErrorCode::InvalidContract,
+                    ErrorCode::InvalidSelector,
+                    ErrorCode::InvalidPattern,
+                    ErrorCode::InvalidEncoding,
+                    ErrorCode::InvalidBaseUrl,
                 ],
                 2,
             ),
             (
                 vec![
-                    Code::CountMismatch,
-                    Code::ValueMismatch,
-                    Code::ExpectationFailed,
-                    Code::MissingAttribute,
-                    Code::UnresolvableUrl,
+                    ErrorCode::CountMismatch,
+                    ErrorCode::ValueMismatch,
+                    ErrorCode::ExpectationFailed,
+                    ErrorCode::MissingAttribute,
+                    ErrorCode::UnresolvableUrl,
                 ],
                 3,
             ),
-            (vec![Code::LimitExceeded], 4),
+            (vec![ErrorCode::LimitExceeded], 4),
             (
                 vec![
-                    Code::InputUnreadable,
-                    Code::UndecodableInput,
-                    Code::OutputUnwritable,
+                    ErrorCode::InputUnreadable,
+                    ErrorCode::UndecodableInput,
+                    ErrorCode::OutputUnwritable,
                 ],
                 5,
             ),
-            (vec![Code::Internal], 6),
+            (vec![ErrorCode::Internal], 6),
         ] {
             for code in codes {
                 assert_eq!(code.exit_status(), expected);
@@ -218,13 +218,13 @@ mod tests {
     #[test]
     fn unknown_facts_are_absent_and_messages_stay_on_one_line() {
         assert_eq!(
-            Error::new(Code::InvalidContract, "Bad\ncontract.").to_json_line(),
+            Error::new(ErrorCode::InvalidContract, "Bad\ncontract.").to_json_line(),
             b"{\"error\":\"invalid_contract\",\"message\":\"Bad\\ncontract.\"}\n"
         );
     }
     #[test]
     fn previews_count_characters_not_bytes() {
-        let e = Error::new(Code::ValueMismatch, "Wrong value.")
+        let e = Error::new(ErrorCode::ValueMismatch, "Wrong value.")
             .at("$.fields.x")
             .observed(&"🦀".repeat(121));
         assert_eq!(e.value.as_deref().unwrap(), "🦀".repeat(120));

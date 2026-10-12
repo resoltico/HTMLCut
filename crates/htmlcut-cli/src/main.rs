@@ -3,7 +3,7 @@
 mod cli;
 mod run;
 use clap::Parser;
-use htmlcut_core::{Code, Error};
+use htmlcut_core::{Error, ErrorCode};
 use std::{io::Write, process::ExitCode};
 
 fn main() -> ExitCode {
@@ -22,7 +22,7 @@ fn guarded(
 ) -> Result<(), Error> {
     std::panic::catch_unwind(action).unwrap_or_else(|_| {
         Err(Error::new(
-            Code::Internal,
+            ErrorCode::Internal,
             "An internal error interrupted the command.",
         ))
     })
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn panic_boundary_produces_an_internal_failure() {
         let error = super::guarded(|| panic!("boundary witness")).unwrap_err();
-        assert_eq!(error.error, htmlcut_core::Code::Internal);
+        assert_eq!(error.error, htmlcut_core::ErrorCode::Internal);
         assert_eq!(error.error.exit_status(), 6);
         assert_eq!(
             error.to_json_line().iter().filter(|c| **c == b'\n').count(),
@@ -58,6 +58,6 @@ fn entry() -> Result<(), Error> {
         );
     }
     let args = cli::Cli::try_parse_from(args)
-        .map_err(|error| Error::new(Code::InvalidArguments, error.to_string()))?;
+        .map_err(|error| Error::new(ErrorCode::InvalidArguments, error.to_string()))?;
     run::execute(args.command)
 }

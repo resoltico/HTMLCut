@@ -1,1 +1,0 @@
-{"version":8,"select":"article","match":"all","min":0,"fields":{"a":{"select":"p"},"z":{"select":".absent","match":"optional"}}}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Scope-relative recursive contract evaluation, with complete-result admission.
 use crate::{
-    Code, Contract, Document, Error, Value,
+    Contract, Document, Error, ErrorCode, Value,
     contract::{Body, Cardinality, Check, Node, Predicate},
     limits::Clock,
     select::Selector,
@@ -114,7 +114,7 @@ impl<'d> Engine<'d> {
                 &self.clock,
             ) {
                 Ok(value) => value,
-                Err(e) if e.error == Code::MissingAttribute => {
+                Err(e) if e.error == ErrorCode::MissingAttribute => {
                     return Ok(Some(PredicateFailure::MissingAttribute(count, expected)));
                 }
                 Err(e) => return Err(e),
@@ -137,7 +137,7 @@ impl<'d> Engine<'d> {
         for predicate in &node.expect {
             if let Some(failure) = self.holds(predicate, scope)? {
                 let mut e = location(
-                    Error::new(Code::ExpectationFailed, "An expectation failed."),
+                    Error::new(ErrorCode::ExpectationFailed, "An expectation failed."),
                     &predicate.path,
                     rows,
                 );
@@ -199,7 +199,7 @@ impl<'d> Engine<'d> {
             let selector = node.select.as_ref().map(|s| s.text.clone());
             let mut e = location(
                 Error::new(
-                    Code::CountMismatch,
+                    ErrorCode::CountMismatch,
                     format!(
                         "{}: selector {selector:?} found {count}; expected {expected}.",
                         node.path
@@ -266,8 +266,10 @@ impl<'d> Engine<'d> {
                     let value =
                         crate::read::read(self.document, &extent, read, &excluded, &self.clock)
                             .map_err(|e| {
-                                if matches!(e.error, Code::MissingAttribute | Code::UnresolvableUrl)
-                                {
+                                if matches!(
+                                    e.error,
+                                    ErrorCode::MissingAttribute | ErrorCode::UnresolvableUrl
+                                ) {
                                     location(e, &node.path, &here)
                                 } else {
                                     e
@@ -323,7 +325,7 @@ impl<'d> Engine<'d> {
         let failure = || {
             location(
                 Error::new(
-                    Code::ValueMismatch,
+                    ErrorCode::ValueMismatch,
                     format!(
                         "{path}: observed value {:?} does not satisfy its declared shape.",
                         value.chars().take(120).collect::<String>()
@@ -438,7 +440,7 @@ mod tests {
     #[test]
     fn an_unmatched_value_group_refuses_and_an_empty_participating_group_is_valid() {
         let error = extract("<p>b</p>", r#"{"select":"p","pattern":"(?<value>a)|b"}"#).unwrap_err();
-        assert_eq!(error.error, Code::ValueMismatch);
+        assert_eq!(error.error, ErrorCode::ValueMismatch);
         assert_eq!(error.value.as_deref(), Some("b"));
         assert_eq!(
             extract("<p>b</p>", r#"{"select":"p","pattern":"(?<value>a*)b"}"#).unwrap(),

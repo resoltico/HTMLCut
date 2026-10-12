@@ -276,6 +276,39 @@ fn nested_has_is_refused_as_invalid_css_before_input_access() {
         "invalid_selector"
     );
 }
+#[test]
+fn real_input_and_output_errors_keep_paths_and_operating_system_details() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing.html");
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&missing)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"], "input_unreadable");
+    assert_eq!(error["file"], missing.to_string_lossy().as_ref());
+    assert!(error["detail"].as_str().is_some_and(|s| !s.is_empty()));
+    let source = directory.path().join("source.html");
+    std::fs::write(&source, b"<h1>x</h1>").unwrap();
+    let target = directory.path().join("directory");
+    std::fs::create_dir(&target).unwrap();
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&target)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"], "output_unwritable");
+    assert!(error["detail"].is_string());
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+}
 #[cfg(unix)]
 #[test]
 fn process_substitution_and_fifo_inputs_are_readable_and_input_wait_is_not_timed() {

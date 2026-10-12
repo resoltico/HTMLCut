@@ -82,9 +82,9 @@ impl OutputSize {
             error: None,
         };
         if serde_json::to_writer(&mut counter, value).is_err() {
-            return Err(counter
-                .error
-                .unwrap_or_else(|| Error::new(crate::Code::Internal, "Result encoding failed.")));
+            return Err(counter.error.unwrap_or_else(|| {
+                Error::new(crate::ErrorCode::Internal, "Result encoding failed.")
+            }));
         }
         clock.check()
     }
@@ -109,7 +109,7 @@ impl Write for BoundedOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Code;
+    use crate::ErrorCode;
     #[test]
     fn encoding_counts_escaped_bytes_and_keeps_unicode_and_field_order() {
         let value = Value::Record(BTreeMap::from([
@@ -119,7 +119,7 @@ mod tests {
         let expected = "{\"a\":\"é\\n\\\"\",\"z\":null}".as_bytes();
         assert_eq!(value.to_json(expected.len()).unwrap(), expected);
         let error = value.to_json(expected.len() - 1).unwrap_err();
-        assert_eq!(error.error, Code::LimitExceeded);
+        assert_eq!(error.error, ErrorCode::LimitExceeded);
         assert_eq!(error.limit.as_deref(), Some("output_bytes"));
         assert_eq!(error.bound, Some((expected.len() - 1).into()));
     }

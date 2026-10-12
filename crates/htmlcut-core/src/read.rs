@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0 AND ISC
 //! Deterministic structural text and original-tree readings.
-use crate::{Code, Document, Error, contract::Reading, eval::Scope, limits::Clock};
+use crate::{Document, Error, ErrorCode, contract::Reading, eval::Scope, limits::Clock};
 use ego_tree::{NodeId, NodeRef, iter::Edge};
 use html5ever::serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize};
 use scraper::Node;
@@ -18,7 +18,7 @@ pub(crate) fn read(
         Reading::Attr(name) | Reading::Url(name) => {
             let value = attribute(scope.anchor.value(), name).ok_or_else(|| {
                 Error::new(
-                    Code::MissingAttribute,
+                    ErrorCode::MissingAttribute,
                     format!(
                         "The selected <{}> element has no {name:?} attribute.",
                         scope.anchor.value().name()
@@ -30,7 +30,7 @@ pub(crate) fn read(
                     .map(|u| u.into())
                     .ok_or_else(|| {
                         Error::new(
-                            Code::UnresolvableUrl,
+                            ErrorCode::UnresolvableUrl,
                             format!(
                                 "URL {:?} cannot be resolved without a usable document base URL.",
                                 value.chars().take(120).collect::<String>()
@@ -355,12 +355,19 @@ fn outer_html(
                 .and_then(|e| e.downcast_ref::<Error>())
                 .cloned()
                 .unwrap_or_else(|| {
-                    Error::new(Code::Internal, format!("HTML serialization failed: {e}."))
+                    Error::new(
+                        ErrorCode::Internal,
+                        format!("HTML serialization failed: {e}."),
+                    )
                 })
         })?;
     }
-    String::from_utf8(output)
-        .map_err(|_| Error::new(Code::Internal, "HTML serialization produced invalid UTF-8."))
+    String::from_utf8(output).map_err(|_| {
+        Error::new(
+            ErrorCode::Internal,
+            "HTML serialization produced invalid UTF-8.",
+        )
+    })
 }
 
 #[cfg(test)]
@@ -534,7 +541,7 @@ mod tests {
         let c = Contract::from_json(r##"{"select":"#x","read":"attr:viewbox"}"##).unwrap();
         assert_eq!(
             document.extract(&c).unwrap_err().error,
-            Code::MissingAttribute
+            ErrorCode::MissingAttribute
         );
         let c = Contract::from_json(r##"{"select":"#m","read":"url:content"}"##).unwrap();
         assert_eq!(

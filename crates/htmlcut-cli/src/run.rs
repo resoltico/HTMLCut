@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Complete input, a single publication claim, and atomic named output.
 use crate::cli::{self, Command, Common};
-use htmlcut_core::{Code, Contract, Document, Error, OutlineOptions, Source, Value};
+use htmlcut_core::{Contract, Document, Error, ErrorCode, OutlineOptions, Source, Value};
 use std::{
     fs::File,
     io::{self, IsTerminal, Read, Write},
@@ -20,8 +20,9 @@ const EXPIRED: u8 = 2;
 pub(crate) fn execute(command: Command) -> Result<(), Error> {
     match command {
         Command::Schema => {
-            let mut bytes = serde_json::to_vec(&Contract::schema())
-                .map_err(|e| Error::new(Code::Internal, format!("Schema encoding failed: {e}.")))?;
+            let mut bytes = serde_json::to_vec(&Contract::schema()).map_err(|e| {
+                Error::new(ErrorCode::Internal, format!("Schema encoding failed: {e}."))
+            })?;
             bytes.push(b'\n');
             publish(&bytes, None)
         }
@@ -43,7 +44,7 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                 let bytes = read_file(path, 256 * 1024, true)?;
                 let program = String::from_utf8(bytes).map_err(|e| {
                     Error::new(
-                        Code::InvalidContract,
+                        ErrorCode::InvalidContract,
                         format!("The contract file is not UTF-8: {e}."),
                     )
                 })?;
@@ -132,7 +133,7 @@ fn raw_bytes(value: Value) -> Result<Vec<u8>, Error> {
                     add(value);
                 } else {
                     return Err(Error::new(
-                        Code::Internal,
+                        ErrorCode::Internal,
                         "A raw value list contained a non-string.",
                     ));
                 }
@@ -140,7 +141,7 @@ fn raw_bytes(value: Value) -> Result<Vec<u8>, Error> {
         }
         _ => {
             return Err(Error::new(
-                Code::Internal,
+                ErrorCode::Internal,
                 "A non-value reached raw publication.",
             ));
         }
@@ -160,7 +161,7 @@ fn input(path: Option<&Path>, maximum: usize) -> Result<Vec<u8>, Error> {
     }
 }
 fn read_file(path: &Path, maximum: usize, contract: bool) -> Result<Vec<u8>, Error> {
-    let mut file = File::open(path).map_err(|e| io_error(Code::InputUnreadable, path, e))?;
+    let mut file = File::open(path).map_err(|e| io_error(ErrorCode::InputUnreadable, path, e))?;
     read(&mut file, maximum, path, contract)
 }
 fn read(
@@ -173,11 +174,11 @@ fn read(
     reader
         .take((maximum as u64).saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(|e| io_error(Code::InputUnreadable, path, e))?;
+        .map_err(|e| io_error(ErrorCode::InputUnreadable, path, e))?;
     if bytes.len() > maximum {
         return Err(if contract {
             Error::new(
-                Code::InvalidContract,
+                ErrorCode::InvalidContract,
                 format!("The contract exceeds the {maximum}-byte grammar bound."),
             )
         } else {
@@ -186,7 +187,7 @@ fn read(
     }
     Ok(bytes)
 }
-fn io_error(code: Code, path: &Path, detail: io::Error) -> Error {
+fn io_error(code: ErrorCode, path: &Path, detail: io::Error) -> Error {
     let file = path.to_string_lossy().into_owned();
     let detail = detail.to_string();
     let mut error = Error::new(code, format!("File {file:?}: {detail}."));
@@ -200,21 +201,21 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
             .lock()
             .write_all(bytes)
             .and_then(|()| io::stdout().flush())
-            .map_err(|e| io_error(Code::OutputUnwritable, Path::new("-"), e)),
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, Path::new("-"), e)),
         Some(path) => {
             let parent = path
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."));
             let mut temporary = tempfile::NamedTempFile::new_in(parent)
-                .map_err(|e| io_error(Code::OutputUnwritable, path, e))?;
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             temporary
                 .write_all(bytes)
                 .and_then(|()| temporary.flush())
-                .map_err(|e| io_error(Code::OutputUnwritable, path, e))?;
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             temporary
                 .persist(path)
-                .map_err(|e| io_error(Code::OutputUnwritable, path, e.error))?;
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e.error))?;
             Ok(())
         }
     }
@@ -307,7 +308,7 @@ mod tests {
         let target_directory = directory.path().join("destination");
         std::fs::create_dir(&target_directory).unwrap();
         let error = publish(b"new", Some(&target_directory)).unwrap_err();
-        assert_eq!(error.error, Code::OutputUnwritable);
+        assert_eq!(error.error, ErrorCode::OutputUnwritable);
         assert!(error.detail.is_some());
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
     }

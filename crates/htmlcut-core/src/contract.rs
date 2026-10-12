@@ -4,7 +4,7 @@ use crate::limits::{
     MAX_ATTRIBUTE_NAME_CHARS, MAX_CONTRACT_BYTES, MAX_CONTRACT_NODES, MAX_DECLARED_COUNT,
     MAX_ENTRIES, MAX_FIELD_NAME_CHARS, MAX_PATTERN_BYTES, MAX_RECORD_DEPTH, MAX_RECORD_FIELDS,
 };
-use crate::{Code, Error, select::Selector};
+use crate::{Error, ErrorCode, select::Selector};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value as Json};
 use std::collections::BTreeMap;
@@ -91,7 +91,7 @@ impl Contract {
 }
 
 fn invalid(path: Option<&str>, message: &str) -> Error {
-    let e = Error::new(Code::InvalidContract, message);
+    let e = Error::new(ErrorCode::InvalidContract, message);
     match path {
         Some(path) => e.at(path),
         None => e,
@@ -228,7 +228,7 @@ impl Compiler {
             let location = format!("{path}.pattern");
             if text.len() > MAX_PATTERN_BYTES { return Err(invalid(Some(&location), &format!("The pattern exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."))); }
             RegexBuilder::new(&text).size_limit(self.regex_bytes).dfa_size_limit(self.regex_bytes).nest_limit(64)
-                .build().map_err(|e| Error::new(Code::InvalidPattern,
+                .build().map_err(|e| Error::new(ErrorCode::InvalidPattern,
                     format!("Invalid regular expression or exceeded compiled-size bound {}: {e}.", self.regex_bytes)).at(&location))
         }).transpose()?;
         Ok(Check { equals, pattern })
@@ -580,7 +580,7 @@ mod tests {
             serde_json::json!({"min":2,"max":1,"match":"all"}),
         ] {
             let error = compile(value).err().expect("invalid grammar admitted");
-            assert_eq!(error.error, Code::InvalidContract);
+            assert_eq!(error.error, ErrorCode::InvalidContract);
             assert!(error.path.is_some());
         }
     }

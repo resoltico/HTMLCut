@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Command grammar; guide.txt is the complete reader-facing guide.
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use htmlcut_core::{Code, Error, Limits};
+use htmlcut_core::{Error, ErrorCode, Limits};
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
@@ -100,5 +100,5 @@ fn timeout(value: &str) -> Result<Duration, String> {
 }
 pub(crate) fn argument_error(message: &str) -> Error {
     let error = Cli::command().error(clap::error::ErrorKind::ArgumentConflict, message);
-    Error::new(Code::InvalidArguments, error.to_string())
+    Error::new(ErrorCode::InvalidArguments, error.to_string())
 }

@@ -1,39 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Closed JSON parsing before any duplicate-erasing map conversion.
-
-use std::cell::Cell;
-use std::fmt;
-
+//! Duplicate-rejecting bounded JSON before map conversion.
+use crate::limits::MAX_JSON_DEPTH;
+use serde::Deserializer;
 use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Number, Value};
-
-use crate::limits::{MAX_JSON_DEPTH, MAX_PLAN_BYTES};
-
-/// Reads one JSON document within the supplied encoded/materialized byte bound,
-/// rejecting nested duplicate keys before map creation.
-/// Adapter-owned documents add their own closed fields and semantic validation afterward.
-pub fn parse_closed_json(bytes: &[u8], maximum: usize) -> Result<Value, crate::ExtractionError> {
-    if bytes.len() > maximum {
-        return Err(crate::ExtractionError::resource(
-            "json",
-            "json_bytes",
-            maximum as u64,
-        ));
-    }
-    read(bytes, maximum).map_err(|error| {
-        let message = error.to_string();
-        if message.starts_with("Closed JSON exceeds its nesting budget.") {
-            return crate::ExtractionError::resource("json", "json_depth", MAX_JSON_DEPTH as u64);
-        }
-        crate::ExtractionError::new(
-            crate::ErrorCode::InvalidJson,
-            "json",
-            "JSON is invalid, too deeply nested, or contains duplicate object keys.",
-        )
-    })
-}
-
+use std::{cell::Cell, fmt};
 pub(crate) fn read(bytes: &[u8], maximum: usize) -> Result<Value, serde_json::Error> {
     let budget = Cell::new(maximum);
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
@@ -46,20 +17,6 @@ pub(crate) fn read(bytes: &[u8], maximum: usize) -> Result<Value, serde_json::Er
         deserializer.end()?;
         Ok(value)
     })
-}
-
-pub(crate) struct ClosedValue(pub Value);
-
-impl<'de> Deserialize<'de> for ClosedValue {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let budget = Cell::new(MAX_PLAN_BYTES);
-        Seed {
-            depth: 0,
-            budget: &budget,
-        }
-        .deserialize(deserializer)
-        .map(Self)
-    }
 }
 
 struct Seed<'a> {
@@ -147,7 +104,3 @@ impl<'de> Visitor<'de> for Seed<'_> {
         Ok(Value::Object(values))
     }
 }
-
-#[cfg(test)]
-#[path = "tests/json_deserializer.rs"]
-mod deserializer_tests;

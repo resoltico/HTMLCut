@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Byte decoding and incremental upstream tree admission.
-use crate::{Code, Error, Limits, limits::Clock};
+use crate::{Error, ErrorCode, Limits, limits::Clock};
 use encoding_rs::{
     DecoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
 };
@@ -55,7 +55,7 @@ impl Document {
             .map(|base| {
                 Url::parse(base).map_err(|e| {
                     Error::new(
-                        Code::InvalidBaseUrl,
+                        ErrorCode::InvalidBaseUrl,
                         format!("Invalid base URL {base:?}: {e}."),
                     )
                 })
@@ -172,7 +172,7 @@ fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
         (
             Encoding::for_label(label.as_bytes()).ok_or_else(|| {
                 Error::new(
-                    Code::InvalidEncoding,
+                    ErrorCode::InvalidEncoding,
                     format!("Unknown encoding label {label:?}."),
                 )
             })?,
@@ -207,7 +207,7 @@ fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
                 let offset = skip + consumed - usize::from(length) - usize::from(after);
                 let name = encoding.name().to_ascii_lowercase();
                 let mut e = Error::new(
-                    Code::UndecodableInput,
+                    ErrorCode::UndecodableInput,
                     format!("Input is not valid {name} at byte {offset}."),
                 );
                 e.encoding = Some(name);
@@ -512,7 +512,7 @@ mod tests {
                         );
                         assert!(matches!(
                             error.error,
-                            Code::UndecodableInput | Code::InvalidEncoding
+                            ErrorCode::UndecodableInput | ErrorCode::InvalidEncoding
                         ));
                         rejected += 1;
                         continue;

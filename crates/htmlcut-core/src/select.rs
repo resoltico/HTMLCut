@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Admitted upstream selectors with scope-local shared matching caches.
 use crate::limits::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};
-use crate::{Code, Error};
+use crate::{Error, ErrorCode};
 use selectors::{
     matching,
     parser::{ParseRelative, SelectorList},
 };
-#[path = "dom/selector_depth.rs"]
+#[path = "select_depth.rs"]
 mod depth;
 
 pub(crate) struct Selector {
@@ -16,7 +16,7 @@ pub(crate) struct Selector {
 impl Selector {
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
         let failure = |message: String| {
-            let mut e = Error::new(Code::InvalidSelector, message).at(path);
+            let mut e = Error::new(ErrorCode::InvalidSelector, message).at(path);
             e.select = Some(text.into());
             e
         };
