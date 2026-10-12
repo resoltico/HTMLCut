@@ -334,3 +334,50 @@ fn required_input_diagnostics_distinguish_omission_type_and_version() {
     assert_eq!(repaired.stdout, b"[\"value\"]\n");
     assert!(repaired.stderr.is_empty());
 }
+
+#[test]
+fn worker_compilation_refuses_bad_grammar_before_source_or_destination_access() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing-source-private-marker.html");
+    let destination = directory.path().join("result.json");
+    std::fs::write(&destination, b"previous result").unwrap();
+    for (plan, code) in [
+        (r#"{"version":8,"select":"["}"#, "invalid_selector"),
+        (
+            r#"{"version":8,"select":"p","expect":[{"select":"h1","pattern":"["}]}"#,
+            "invalid_regex",
+        ),
+    ] {
+        let output = run(
+            &[
+                "extract",
+                "--file",
+                missing.to_str().unwrap(),
+                "--plan-json",
+                plan,
+                "--output",
+                destination.to_str().unwrap(),
+                "--overwrite",
+            ],
+            "",
+        );
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["code"], code);
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("private-marker"));
+        assert_eq!(std::fs::read(&destination).unwrap(), b"previous result");
+    }
+    let output = run(
+        &[
+            "extract",
+            "--file",
+            missing.to_str().unwrap(),
+            "--select",
+            "p",
+        ],
+        "",
+    );
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+}

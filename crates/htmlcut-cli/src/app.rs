@@ -102,7 +102,6 @@ fn dispatch(
                         .cloned(),
                 )
                 .collect::<Vec<_>>();
-            validate(&inputs, &arguments.output)?;
             let bytes = crate::worker::execute(
                 crate::worker::Request {
                     plan: Some(plan),
@@ -111,6 +110,7 @@ fn dispatch(
                     raw: arguments.output.raw,
                 },
                 || {
+                    validate(&inputs, &arguments.output)?;
                     crate::input::snapshot(
                         arguments.source.source.file.as_deref(),
                         stdin,

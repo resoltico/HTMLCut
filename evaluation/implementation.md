@@ -19,7 +19,7 @@ challenged the actual tree and delivered binary.
 7. Short tested inline and saved-plan examples are supplied. Independent scripted agent exercises succeeded without retries; these were not blind trials.
 8. Business identity remains caller-owned. The reviewer demonstrated a valid wrong-business-identity success and documented the limitation.
 9. Query/worker/encoding failures produce no public data. Existing destinations survive; a real eight-writer no-overwrite race has exactly one complete winner. Hardlink aliases now refuse by physical identity on Unix/Windows.
-10. Values remain lexical strings/null/arrays. No domain typing, transformation DSL or speculative API is added.
+10. Grammar compilation precedes source-path/destination validation, preserving source-independent selector/regex refusals; all file protections still run before reading source or publishing. Values remain lexical strings/null/arrays. No domain typing, transformation DSL or speculative API is added.
 11. Actual published v21 bytes and final candidate pass all 11 supplied scenarios with their respective plans and full independent values/refusals. Strict references gained duplicate-field/missing-attribute controls and complete article-text validation. Historical pilot/benchmarks remain explicitly historical.
 12. README publication claims now distinguish published v21 from this unpublished candidate. Legal notices derive from the locked native graph; published history/tags/assets remain intact.
 
@@ -39,7 +39,7 @@ challenged the actual tree and delivered binary.
 On native macOS ARM, the isolated final `./check.sh` completed fmt, warnings-denied
 workspace Clippy, Rust tests/doctests, the explicit million-element refusal, rustdoc,
 37 Python maintenance tests and advisory/license/source checks. Its Rust commands
-executed 223 passing tests in total; the one ordinarily ignored large test was
+executed 224 passing tests in total; the one ordinarily ignored large test was
 explicitly executed successfully. A prior concurrent check hit the active-worker
 deadline while fuzzing/compilation competed with the large encoded-byte fixture;
 the unchanged fixture reached its intended byte refusal in 2.62 seconds when
@@ -66,12 +66,12 @@ under [design QA](design-qa/implementation-review.md).
 
 [Current results](contract-matrix/results/comparison-summary.json) bind the final
 release-profile executable SHA-256
-`8d809a8e604964a0f4fa77fdbd34854a755fe4878847385dfc9c7550a43c2dd4`.
+`ebdce07cc6a3929eda6ac6f8b1c7365dfb28c0e7a6968b74752c48e6760d958b`.
 Every positive complete output matches published v21 byte-for-byte; every intended
 refusal emits no data. Each run has fifteen internally randomized same-machine
 trials. The two versions were run sequentially, not interleaved, and raw timings
-are retained. Catalogue median launch was 3.51 ms for v21 versus 9.74 ms for the
-worker candidate; the worst per-task median ratio was 3.08, within the pre-registered
+are retained. Catalogue median launch was 3.51 ms for v21 versus 9.91 ms for the
+worker candidate; the worst per-task median ratio was 3.25, within the pre-registered
 sixfold threshold. This is a measured worker startup cost, not a speed improvement.
 
 [Warm comparison](contract-matrix/results/warm-comparison.json) checks all twenty

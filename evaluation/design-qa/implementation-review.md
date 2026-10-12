@@ -4,7 +4,7 @@
 
 A reviewer separate from the implementation pass inspected the maintained DOM/selector adapter, parsed matching-depth admission, all-arena preparation limits, CLI IPC, native resource policy and atomic publisher. Concrete findings were sent directly to the implementers and corrected before this report. No outstanding production-code defect was found in the reviewed local tree. Native macOS ARM evidence passes; native macOS Intel, Linux and Windows remain required acceptance gates, not inferred successes. This is conditional acceptance of the implementation, not authorization to tag or publish a release.
 
-The final feature-disabled candidate built with the release profile independently copied and checked here has SHA-256:
+The feature-disabled candidate built with the release profile independently copied and checked in the recorded native pass has SHA-256:
 
 `8d809a8e604964a0f4fa77fdbd34854a755fe4878847385dfc9c7550a43c2dd4`
 
@@ -71,3 +71,9 @@ These environment modes are private delivered-binary evaluations, not extraction
 ## Remaining acceptance gates
 
 Only native `aarch64-apple-darwin` was independently executed here. Native Intel macOS, Linux musl and Windows MSVC must prove allocation/deadline behavior, Job timing where applicable, source/output identity and file semantics, termination, actual packaged bytes and signing/packaging behavior. The oldest supported macOS floor was source-reviewed, not executed here. The implementer's full required gate, final paired performance comparisons, fuzz/property checks and all-platform CI need their own retained evidence. A locally passing review cannot turn an unrun or failing native gate green. Do not mark the PR ready until required authoritative checks complete successfully.
+
+## Subsequent source-independent grammar correction
+
+A later exact-app-diff review found the supervisor still canonicalized named input paths before worker grammar compilation. A missing source file therefore masked invalid CSS with an acquisition error. The implementer moved destination/input identity validation into the acquisition closure, after the capped worker's compile acknowledgement and before snapshot open/read or source-payload release. Independent skeptical inspection confirms alias, no-overwrite and atomic publication protection remain in place; closure failure kills/reaps the waiting worker and emits no data. Invalid CSS/regex plus missing source and an existing destination now have explicit negative controls, alongside valid CSS retaining the acquisition exit class.
+
+This is a source-review follow-up; the candidate hashes and native measurements above refer to the earlier immutable copies actually executed. The changed application composition requires the rerun final gate and new final binary/package hashes. Native evidence is not silently reassigned to different bytes.

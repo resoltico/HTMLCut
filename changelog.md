@@ -17,6 +17,10 @@ Notable changes to this project are documented in this file. The format is based
 - Markdown, resolved Markdown, inner HTML, heuristic survey, `following_siblings` record forests and their Rust/CLI/schema surfaces. Use a reader/converter or caller domain code for those jobs.
 - All five customized parser/selector carrier packages and their publishing/Miri lanes. Runtime dependencies come from the maintained upstream registry graph; nightly remains only for libFuzzer instrumentation.
 
+### Fixed
+
+- **Breaking output-collision fix:** hardlinks from an output to a source or plan are refused by native file identity, including with `--overwrite`. Choose a distinct destination; equal-content distinct files remain supported.
+
 ## [21.0.0] - 2026-10-12
 
 ### Changed
