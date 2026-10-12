@@ -1,0 +1,70 @@
+{
+  "source_commit": "29d0f64283bcac829a72d3a00452b8942c9f26a6",
+  "binary_sha256": "dbdb4e193ea15ecb7f5f6c871051957cdf4ad1189023647131c3067d9203f0ef",
+  "binary_bytes": 3380416,
+  "launch": {
+    "command": [
+      "/Users/erst/Tools/.htmlcut-artifacts/target/dist/htmlcut",
+      "get",
+      "h1",
+      "/Users/erst/Tools/HTMLCut/conformance/contract/01-value-one/page.html"
+    ],
+    "warmups": 3,
+    "fresh_process_trials": 30,
+    "median_ms": 2.4077915,
+    "samples_ms": [
+      6.077,
+      4.816375,
+      4.816834,
+      4.823584,
+      3.969709,
+      3.892875,
+      3.667292,
+      3.18875,
+      2.83075,
+      2.782834,
+      2.705458,
+      2.555541,
+      2.360708,
+      2.379583,
+      2.670083,
+      2.47025,
+      2.363958,
+      2.246459,
+      2.388083,
+      2.22,
+      2.4275,
+      2.254709,
+      2.34525,
+      2.372792,
+      2.259166,
+      2.214416,
+      2.178125,
+      1.89725,
+      2.261375,
+      2.173459
+    ]
+  },
+  "largest_conformance_page": {
+    "path": "conformance/contract/21-refuse-field-ambiguous/page.html",
+    "input_bytes": 1291,
+    "peak_resident_bytes": 4489216,
+    "exit": 3,
+    "tool": "macOS /usr/bin/time -l"
+  },
+  "line_counts": {
+    "core_rust": {
+      "baseline": 7752,
+      "candidate": 3930
+    },
+    "cli_rust": {
+      "baseline": 5821,
+      "candidate": 843
+    },
+    "scripts": {
+      "baseline": 2747,
+      "candidate": 2146
+    }
+  },
+  "line_count_scope": "All tracked Rust files under each crate, including tests/examples; scripts directory shell/Python/PowerShell/C# files. Includes blank lines/comments; excludes workflows and release tests."
+}
