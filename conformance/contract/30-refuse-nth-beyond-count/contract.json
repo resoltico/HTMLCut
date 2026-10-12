@@ -1,0 +1,5 @@
+{
+  "select": "article.product",
+  "nth": 4,
+  "read": "attr:id"
+}

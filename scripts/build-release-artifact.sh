@@ -167,7 +167,7 @@ Create a tiny fixture and extract one link:
 
 \`\`\`bash
 printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
-${binary_command} extract --file ./page.html --select 'article a.more' --read attr:href --raw
+${binary_command} get 'article a.more' ./page.html --read attr:href --raw
 \`\`\`
 
 ## Source availability and licensing
@@ -184,9 +184,9 @@ Registry dependency source is available at the exact name/version links in NOTIC
 
 ## More
 
-- CLI guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/cli.md
+- CLI guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/crates/htmlcut-cli/src/guide.txt
 - Getting started: https://github.com/resoltico/HTMLCut/blob/${source_commit}/README.md
-- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/core.md
+- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/${source_commit}/docs/design.md
 EOF
     case "${target_triple}" in
         aarch64-apple-darwin|x86_64-apple-darwin)

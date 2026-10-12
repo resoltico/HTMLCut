@@ -215,16 +215,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          smoke_shell="$BASH"
-          if command -v cygpath >/dev/null 2>&1; then
-            smoke_shell="$(cygpath -w "$smoke_shell")"
-          fi
-          python3 scripts/native-package-evidence.py \
-            --package "dist/${{ steps.artifact.outputs.package }}" \
-            --version "${{ steps.release.outputs.version }}" \
-            --target "${{ matrix.target_triple }}" --source-sha "$RELEASE_SOURCE_SHA" \
-            --output "dist/native-evidence-${{ matrix.id }}.json" \
-            --smoke-log "dist/native-smoke-${{ matrix.id }}.log" --shell "$smoke_shell"
+          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -237,8 +228,8 @@ jobs:
           name: ${{ matrix.artifact_bundle_name }}
           path: |
             dist/${{ steps.artifact.outputs.package }}
-            dist/native-evidence-${{ matrix.id }}*.json
-            dist/native-smoke-${{ matrix.id }}.log
+            dist/native-conformance-*
+            dist/native-conformance-*
           if-no-files-found: error
           retention-days: 7
 
@@ -383,15 +374,7 @@ jobs:
           source ./scripts/release-targets.sh
           VERSION="${RELEASE_TAG#v}"
           PACKAGE="$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")"
-          smoke_shell="$BASH"
-          if command -v cygpath >/dev/null 2>&1; then
-            smoke_shell="$(cygpath -w "$smoke_shell")"
-          fi
-          python3 scripts/native-package-evidence.py \
-            --package "dist/$PACKAGE" --version "$VERSION" \
-            --target "${{ matrix.target_triple }}" --source-sha "$RELEASE_SOURCE_SHA" \
-            --output dist/published-native-evidence.json --smoke-log dist/published-native-smoke.log \
-            --shell "$smoke_shell"
+          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
 
       - name: Preserve downloaded package and complete native proof
         if: always()
@@ -400,7 +383,7 @@ jobs:
           name: published-native-${{ matrix.id }}
           path: |
             dist/htmlcut-*
-            dist/published-*.json
-            dist/published-native-smoke.log
+            dist/native-conformance-*
+            dist/native-conformance-*
           if-no-files-found: error
           retention-days: 7

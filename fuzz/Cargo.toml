@@ -18,74 +18,22 @@ default = []
 fuzzing = []
 
 [dependencies]
-arbitrary.workspace = true
-clap.workspace = true
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tempfile.workspace = true
 htmlcut-core.workspace = true
 libfuzzer-sys.workspace = true
-url.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-rustix.workspace = true
 
 [lints]
 workspace = true
 
 [[bin]]
-name = "parse_document_bytes"
-path = "fuzz_targets/parse_document_bytes.rs"
+name = "contract_bytes"
+path = "fuzz_targets/contract_bytes.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "selector_parsing"
-path = "fuzz_targets/selector_parsing.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "extraction_request_building"
-path = "fuzz_targets/extraction_request_building.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "cli_parse_error_surface"
-path = "fuzz_targets/cli_parse_error_surface.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "selector_inspection"
-path = "fuzz_targets/selector_inspection.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "relational_selector_budget"
-path = "fuzz_targets/relational_selector_budget.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "closed_wire_objects"
-path = "fuzz_targets/closed_wire_objects.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "record_fields"
-path = "fuzz_targets/record_fields.rs"
+name = "extract"
+path = "fuzz_targets/extract.rs"
 test = false
 doc = false
 bench = false

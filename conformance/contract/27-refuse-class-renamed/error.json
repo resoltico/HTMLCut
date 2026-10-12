@@ -1,0 +1,11 @@
+{
+ "error": "count_mismatch",
+ "message": "$.fields.books.fields.price: '.price' matched 0; expected 1",
+ "path": "$.fields.books.fields.price",
+ "select": ".price",
+ "row": [
+  1
+ ],
+ "found": 0,
+ "expected": "1"
+}

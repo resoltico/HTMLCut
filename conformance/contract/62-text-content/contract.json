@@ -1,0 +1,5 @@
+{
+  "select": "#a p",
+  "nth": 1,
+  "read": "text-content"
+}

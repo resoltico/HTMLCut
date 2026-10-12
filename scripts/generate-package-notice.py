@@ -143,7 +143,9 @@ def main():
     version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     with tempfile.TemporaryDirectory(prefix="htmlcut-license-") as directory:
         config = Path(directory) / "about.toml"
-        config.write_text("accepted = " + json.dumps(policy["licenses"]["allow"]) +
+        accepted = sorted(set(policy["licenses"]["allow"]).union(
+            license for exception in policy["licenses"]["exceptions"] for license in exception["allow"]))
+        config.write_text("accepted = " + json.dumps(accepted) +
                           "\ntargets = " + json.dumps([args.target]) +
                           "\nignore-dev-dependencies = true\n[private]\nignore = false\n")
         result = subprocess.check_output(["cargo", "about", "generate", "--locked", "--fail",

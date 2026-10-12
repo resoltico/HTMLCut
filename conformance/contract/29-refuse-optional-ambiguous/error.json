@@ -1,0 +1,8 @@
+{
+ "error": "count_mismatch",
+ "message": "$: '.availability' matched 3; expected 0..1",
+ "path": "$",
+ "select": ".availability",
+ "found": 3,
+ "expected": "0..1"
+}

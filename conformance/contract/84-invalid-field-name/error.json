@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$.fields: field name 'book title' must be 1-64 characters of A-Z a-z 0-9 _ -",
+ "path": "$.fields"
+}

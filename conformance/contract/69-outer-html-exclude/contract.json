@@ -1,0 +1,7 @@
+{
+  "select": "article#b2 .price-box",
+  "read": "outer-html",
+  "exclude": [
+    ".badge"
+  ]
+}

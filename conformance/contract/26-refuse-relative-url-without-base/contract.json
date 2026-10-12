@@ -1,0 +1,5 @@
+{
+  "select": "h3 a",
+  "nth": 1,
+  "read": "url:href"
+}

@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$.read: unknown reading 'markdown'; use text, text-content, outer-html, attr:NAME or url:NAME",
+ "path": "$.read"
+}

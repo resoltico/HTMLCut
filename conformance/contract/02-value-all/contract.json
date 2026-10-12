@@ -1,0 +1,5 @@
+{
+  "select": "h3 a",
+  "match": "all",
+  "read": "attr:title"
+}

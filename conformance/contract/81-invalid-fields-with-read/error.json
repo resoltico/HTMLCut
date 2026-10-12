@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$: read cannot be combined with fields",
+ "path": "$.read"
+}

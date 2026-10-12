@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$: min and max require match all",
+ "path": "$"
+}

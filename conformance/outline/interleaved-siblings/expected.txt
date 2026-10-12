@@ -1,0 +1,12 @@
+1 match for #items
+table#items
+  tbody
+    tr.athing ×3
+      td.rank "1."
+      td.title (+3 inside)
+    tr ×3
+      td [colspan]
+      td.subtext "by |" (+3 inside)
+    tr.spacer ×3
+    tr.more
+      td (+1 inside)

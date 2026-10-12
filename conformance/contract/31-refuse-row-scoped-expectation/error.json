@@ -1,0 +1,11 @@
+{
+ "error": "expectation_failed",
+ "message": "$.fields.price.expect[0]: expectation not met",
+ "path": "$.fields.price.expect[0]",
+ "select": ".price-box.promo",
+ "row": [
+  2
+ ],
+ "found": 1,
+ "expected": "0"
+}

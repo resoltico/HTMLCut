@@ -1,0 +1,6 @@
+{
+ "error": "undecodable_input",
+ "message": "input is not valid utf-8 at byte 26",
+ "encoding": "utf-8",
+ "offset": 26
+}

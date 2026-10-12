@@ -18,17 +18,16 @@ cssparser.workspace = true
 selectors.workspace = true
 scraper.workspace = true
 ego-tree.workspace = true
+encoding_rs.workspace = true
 regex.workspace = true
 html5ever.workspace = true
-schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_path_to_error.workspace = true
 thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-boon.workspace = true
+jsonschema = { version = "0.58.6", default-features = false }
 tempfile.workspace = true
 
 [lints]

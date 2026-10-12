@@ -1,0 +1,4 @@
+{
+ "error": "invalid_contract",
+ "message": "contract is not valid JSON: Expecting ',' delimiter"
+}

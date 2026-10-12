@@ -1,0 +1,28 @@
+{
+  "expect": [
+    {
+      "select": "h1",
+      "equals": "All products"
+    },
+    {
+      "select": ".summary strong",
+      "min": 2,
+      "max": 2,
+      "equals": "3"
+    }
+  ],
+  "select": "article.product",
+  "match": "all",
+  "min": 3,
+  "max": 3,
+  "fields": {
+    "title": {
+      "select": "h3 a",
+      "read": "attr:title"
+    },
+    "price": {
+      "select": ".price",
+      "pattern": "^£[0-9]+\\.[0-9]{2}$"
+    }
+  }
+}

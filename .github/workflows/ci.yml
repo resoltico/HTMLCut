@@ -48,7 +48,7 @@ jobs:
       - run: ./check.sh
 
   focused-smoke:
-    name: Linux bounded parser and relational smoke
+    name: Linux contract and extraction fuzz smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -76,8 +76,8 @@ jobs:
           path: ${{ runner.temp }}/focused-smoke/
           if-no-files-found: warn
 
-  semver:
-    name: Published core API
+  minimum-rust:
+    name: Minimum supported Rust
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -86,13 +86,12 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-semver-checks
       - shell: bash
         run: |
-          source ./scripts/contributor-rust-tools.sh
-          cargo semver-checks check-release -p htmlcut-core --baseline-rev "$HTMLCUT_PUBLISHED_BASELINE_SOURCE"
+          set -euo pipefail
+          msrv=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["rust-version"])')
+          rustup toolchain install "$msrv" --profile minimal
+          cargo +"$msrv" test --locked --workspace
   release-target-smoke:
     name: Native package ${{ matrix.id }}
     needs: [release-target-matrix]
@@ -122,16 +121,8 @@ jobs:
           source ./scripts/release-targets.sh
           version=$(./scripts/workspace-version.sh Cargo.toml)
           package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
-          smoke_shell="$BASH"
-          if command -v cygpath >/dev/null 2>&1; then smoke_shell="$(cygpath -w "$smoke_shell")"; fi
-          python3 scripts/native-package-evidence.py --package "dist/$package" --version "$version" \
-            --target "${{ matrix.target_triple }}" --source-sha "$(git rev-parse HEAD)" \
-            --output "dist/native-evidence-${{ matrix.id }}.json" --smoke-log "dist/native-smoke-${{ matrix.id }}.log" --shell "$smoke_shell"
-      - name: Execute immutable published native install instructions
-        shell: bash
-        run: |
-          source ./scripts/contributor-rust-tools.sh
-          python3 scripts/verify-published-install.py --source-sha "$HTMLCUT_PUBLISHED_INSTALL_SOURCE" --output dist/published-install-example.json
+          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
+          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -141,7 +132,7 @@ jobs:
   check:
     name: Check
     if: always()
-    needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, semver]
+    needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, minimum-rust]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

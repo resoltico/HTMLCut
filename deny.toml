@@ -25,7 +25,11 @@ allow = [
     "Unlicense",
 ]
 confidence-threshold = 0.93
-exceptions = []
+exceptions = [
+    # scraper's source-order-preserving indexmap uses this unmodified hash implementation.
+    # Original terms/copyright are included in generated target attribution.
+    { crate = "foldhash@0.2.0", allow = ["Zlib"] },
+]
 
 [licenses.private]
 ignore = false

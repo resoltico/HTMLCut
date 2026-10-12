@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Run admitted selectors at the consumer thread/process boundary where stack aborts occurred.
-use htmlcut_core::{CompiledPlan, ErrorCode, ExtractionPlan, PreparedDocument, SourceSnapshot};
+use htmlcut_core::{Contract, Document, ErrorCode, Limits, OutlineOptions, Source};
 use serde_json::json;
 use std::process::Command;
 
@@ -62,30 +62,30 @@ fn consumer_thread_control() {
         .spawn(move || {
             let source = input["source"].as_str().unwrap();
             let selector = input["selector"].as_str().unwrap();
-            let snapshot = SourceSnapshot::new(source, Default::default()).unwrap();
-            let document = PreparedDocument::new(snapshot, Default::default()).unwrap();
-            if input["inspect"].as_bool().unwrap_or(false) {
-                assert_refusal(document.inspect(selector, 1).unwrap_err(), source, selector);
+            if input["outline"].as_bool().unwrap_or(false) {
+                let document =
+                    Document::parse(Source::new(source.as_bytes()), &Limits::default()).unwrap();
+                let mut options = OutlineOptions::default();
+                options.select = Some(selector.into());
+                assert_refusal(document.outline(&options).unwrap_err(), source, selector);
                 return;
             }
-            let request = if let Some(query) = input.get("query") {
-                ExtractionPlan::from_json(&serde_json::to_vec(query).unwrap()).unwrap()
-            } else {
-                let mut request = ExtractionPlan::css(selector).unwrap();
-                request.match_mode = htmlcut_core::Match::All;
-                request.min = Some(0);
-                request
-            };
-            let plan = CompiledPlan::compile(&request);
+            let query = input
+                .get("query")
+                .cloned()
+                .unwrap_or_else(|| json!({"select":selector,"match":"all","min":0}));
+            let contract = Contract::from_json(&query.to_string());
             if input["refused"].as_bool().unwrap() {
-                let error = plan.err().expect("unsafe selector was admitted");
-                assert_refusal(error, source, selector);
-            } else {
-                let result = document.execute(&plan.unwrap()).unwrap();
-                assert_eq!(
-                    serde_json::to_value(result.data().as_values().unwrap()).unwrap(),
-                    input["expected"]
+                assert_refusal(
+                    contract.err().expect("unsafe selector was admitted"),
+                    source,
+                    selector,
                 );
+            } else {
+                let document =
+                    Document::parse(Source::new(source.as_bytes()), &Limits::default()).unwrap();
+                let result = document.extract(&contract.unwrap()).unwrap();
+                assert_eq!(serde_json::to_value(result).unwrap(), input["expected"]);
             }
         })
         .unwrap()
@@ -94,19 +94,12 @@ fn consumer_thread_control() {
     eprintln!("consumer control completed");
 }
 
-fn assert_refusal(error: htmlcut_core::ExtractionError, source: &str, selector: &str) {
-    assert_eq!(error.code, ErrorCode::ResourceLimit);
-    assert_eq!(error.stage, "compilation");
-    assert_eq!(
-        error.resource_counter.as_deref(),
-        Some("selector_matching_depth")
-    );
-    assert_eq!(error.configured_bound, Some(64));
+fn assert_refusal(error: htmlcut_core::Error, source: &str, selector: &str) {
+    assert_eq!(error.error, ErrorCode::InvalidSelector);
+    assert_eq!(error.select.as_deref(), Some(selector));
+    assert!(error.message.contains("64"));
     let serialized = serde_json::to_string(&error).unwrap();
-    assert!(!serialized.contains(selector));
     assert!(!serialized.contains(source));
-    assert!(!serialized.contains("private-query-marker"));
-    assert!(!serialized.contains("private-source-marker"));
 }
 
 #[test]
@@ -307,11 +300,13 @@ fn every_public_selector_admission_route_refuses_the_same_depth() {
     let selector = format!("{}span.private-query-marker", "* ".repeat(64));
     let source = "<span class='private-query-marker'>private-source-marker</span>";
     for query in [
-        json!({"version":8,"select":selector}),
-        json!({"version":8,"select":"span","fields":{"value":{"select":selector}}}),
-        json!({"version":8,"select":"span","fields":{"value":{"select":"span","exclude":[selector]}}}),
-        json!({"version":8,"select":"span","exclude":[selector]}),
-        json!({"version":8,"select":"span","expect":[{"select":selector}]}),
+        json!({"select":selector}),
+        json!({"select":"span","fields":{"value":{"select":selector}}}),
+        json!({"select":"span","fields":{"value":{"select":"span","exclude":[selector]}}}),
+        json!({"select":"span","exclude":[selector]}),
+        json!({"select":"span","expect":[{"select":selector}]}),
+        json!({"select":"span","where":[{"select":selector}]}),
+        json!({"select":"span","until":selector}),
     ] {
         check_process_input(
             "JSON selector admission route",
@@ -319,8 +314,8 @@ fn every_public_selector_admission_route_refuses_the_same_depth() {
         );
     }
     check_process_input(
-        "targeted inspection selector admission",
-        json!({"source":source,"selector":selector,"inspect":true}),
+        "outline selector admission",
+        json!({"source":source,"selector":selector,"outline":true}),
     );
 }
 

@@ -1,0 +1,8 @@
+{
+  "select": "article",
+  "match": "all",
+  "read": "text",
+  "fields": {
+    "t": "h3"
+  }
+}

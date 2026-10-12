@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$: unknown member 'version'",
+ "path": "$.version"
+}

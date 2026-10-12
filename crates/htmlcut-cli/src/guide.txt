@@ -1,0 +1,44 @@
+htmlcut - extract exactly what a contract declares from an HTML document, or refuse
+
+Usage:
+  htmlcut outline [FILE] [--select CSS] [--depth N] [--max-lines N] [--attrs]
+  htmlcut get <CSS> [FILE] [--all] [--read READING] [--raw]
+  htmlcut run <CONTRACT-JSON> [FILE] [--raw]
+  htmlcut run --from-file <CONTRACT.json> [FILE] [--raw]
+  htmlcut schema
+
+FILE defaults to standard input. Results are compact JSON on stdout. A refusal
+prints one JSON line on stderr and nothing on stdout.
+
+Workflow:
+  htmlcut outline page.html --select 'article.product'
+  htmlcut get 'h1' page.html
+  htmlcut run '{"expect":[{"select":"h1","equals":"All products"}],"select":"article.product","match":"all","fields":{"title":{"select":"h3 a","read":"attr:title"},"price":{"select":".price","pattern":"^£(?<value>[0-9.]+)$"},"badge":{"select":".badge","match":"optional"}}}' page.html
+
+Contract node (a bare selector string means {"select": that string}):
+  select    CSS matched inside the enclosing match; omitted = that match itself
+  match     one (default) | optional (null when absent) | all (array; min, max)
+  nth       take the Nth match instead of requiring exactly one
+  where     keep matches satisfying predicates: [{"select":"th","equals":"UPC"}]
+  until     CSS boundary: each match also covers its following siblings up to it
+  fields    {name: node} - one record per match
+  read      text (default) | text-content | outer-html | attr:NAME | url:NAME
+  exclude   [CSS] subtrees left out of text, text-content and outer-html
+  equals    the value must equal this string
+  pattern   the value must match this regex; (?<value>...) keeps only that group
+  expect    predicates that must hold where this node is evaluated
+Predicate: {select, read, equals | pattern, min, max}; the count defaults to exactly 1.
+
+Options:
+  --base-url URL          base for url:NAME readings; a <base href> is honoured
+  --encoding LABEL        override the encoding the document declares
+  -o, --output FILE       write atomically; an existing file survives a refusal
+  -r, --raw               strings without JSON quoting, one per line
+  --timeout SECONDS       default 10
+  --max-nodes N           default 2000000
+  --max-input-bytes N     default 67108864
+  --max-output-bytes N    default 67108864
+
+Exit status: 0 success, 2 invalid arguments or contract, 3 refused (the document
+does not satisfy the contract), 4 limit exceeded, 5 input or output failure,
+6 internal error.

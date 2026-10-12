@@ -1,0 +1,16 @@
+{
+  "select": "article.product",
+  "match": "all",
+  "fields": {
+    "price": {
+      "expect": [
+        {
+          "select": ".price-box.promo",
+          "min": 0,
+          "max": 0
+        }
+      ],
+      "select": ".price"
+    }
+  }
+}

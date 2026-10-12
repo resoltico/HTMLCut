@@ -1,1 +1,0 @@
-{"fields":{"price":{"read":"literal","select":".price"},"rating":{"read":"literal","select":".rating"},"stock":{"read":"literal","select":".stock"},"title":{"read":"attr:title","select":"a.item"},"url":{"read":"attr:href","select":"a.item"}},"match":"all","max":30,"min":30,"select":"article.book","version":7}

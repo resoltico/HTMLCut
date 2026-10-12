@@ -1,0 +1,6 @@
+{
+ "error": "unresolvable_url",
+ "message": "$: relative URL 'catalogue/first-light_1/index.html' needs --base-url or a <base href>",
+ "path": "$",
+ "value": "catalogue/first-light_1/index.html"
+}
