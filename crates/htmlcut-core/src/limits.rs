@@ -5,6 +5,30 @@ use crate::{ErrorCode, ExtractionError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Operator policy, independent of contract data.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct Limits {
+    /// Maximum input bytes before decoding.
+    pub max_input_bytes: usize,
+    /// Maximum parsed tree nodes, admitted between chunks.
+    pub max_nodes: usize,
+    /// Maximum complete encoded JSON result bytes.
+    pub max_output_bytes: usize,
+    /// Cooperative time bound for each preparation or execution call.
+    pub time_limit: Option<std::time::Duration>,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_input_bytes: 64 * 1024 * 1024,
+            max_nodes: 2_000_000,
+            max_output_bytes: 64 * 1024 * 1024,
+            time_limit: Some(std::time::Duration::from_secs(10)),
+        }
+    }
+}
+
 /// Immutable policy for accepting and preparing a snapshot.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
