@@ -34,6 +34,61 @@ impl Value {
         Ok(output.bytes)
     }
 }
+
+pub(crate) struct OutputSize {
+    used: usize,
+    maximum: usize,
+}
+impl OutputSize {
+    pub(crate) fn new(maximum: usize) -> Self {
+        Self { used: 0, maximum }
+    }
+    pub(crate) fn syntax(&mut self, bytes: usize) -> Result<(), Error> {
+        if bytes > self.maximum.saturating_sub(self.used) {
+            return Err(Error::limit("output_bytes", self.maximum));
+        }
+        self.used += bytes;
+        Ok(())
+    }
+    pub(crate) fn value(
+        &mut self,
+        value: &impl Serialize,
+        clock: &crate::limits::Clock,
+    ) -> Result<(), Error> {
+        struct Count<'a> {
+            size: &'a mut OutputSize,
+            clock: &'a crate::limits::Clock,
+            error: Option<Error>,
+        }
+        impl Write for Count<'_> {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if let Err(e) = self
+                    .clock
+                    .tick()
+                    .and_then(|()| self.size.syntax(bytes.len()))
+                {
+                    self.error = Some(e);
+                    return Err(io::Error::other("encoding refused"));
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut counter = Count {
+            size: self,
+            clock,
+            error: None,
+        };
+        if serde_json::to_writer(&mut counter, value).is_err() {
+            return Err(counter
+                .error
+                .unwrap_or_else(|| Error::new(crate::Code::Internal, "Result encoding failed.")));
+        }
+        clock.check()
+    }
+}
 struct BoundedOutput {
     bytes: Vec<u8>,
     maximum: usize,
