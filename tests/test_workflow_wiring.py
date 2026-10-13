@@ -13,6 +13,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_fuzz_targets_match_the_smoke_and_documentation(self):
+        manifest = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text())
+        targets = {entry["name"] for entry in manifest["bin"]}
+        script = (ROOT / "scripts/focused-smoke.sh").read_text()
+        shell_targets = set(re.search(r"^for target in ([^;\n]+); do", script, re.M).group(1).split())
+        documented = set(re.findall(r"`([a-z][a-z0-9_]*)`", (ROOT / "fuzz/README.md").read_text()))
+        self.assertEqual(targets, shell_targets)
+        self.assertEqual(targets, documented)
+        self.assertNotIn("--features", script)
+        self.assertIn("document.outline", (ROOT / "fuzz/fuzz_targets/extract.rs").read_text())
+
     def test_cargo_configuration_keeps_each_checkout_build_isolated(self):
         for name in ["config", "config.toml"]:
             path = ROOT / ".cargo" / name
