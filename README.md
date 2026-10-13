@@ -10,10 +10,10 @@ Install rustup and a native linker as described in [platform support](docs/platf
 
 ```sh
 cargo build --release --locked -p htmlcut-cli
-cargo install --path crates/htmlcut-cli --locked --root dist/install
+cargo install --path crates/htmlcut-cli --locked
 ```
 
-The installed executable is under dist/install/bin; add that directory to your PATH. The current source version is 22.0.0. Build this source for this contract language.
+Cargo installs the executable in its standard bin directory; ensure that directory is on your PATH. The current source version is 22.0.0. Build this source for this contract language.
 
 ## Workflow
 

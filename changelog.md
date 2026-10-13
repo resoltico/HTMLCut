@@ -6,10 +6,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- **Breaking contract and CLI:** one recursive, versionless JSON contract with one/optional/all counts, nested records, label-based where predicates, sibling extents, value checks and named captures. Use outline/get/run with inline JSON or --from-file; the engine major version defines semantics. See [the language](docs/contract.md).
-- **Breaking readings:** text retains block lines, table cells and preformatted content; text-content preserves descendant text. URL readings accept any attribute and honor the first document base. Input follows WHATWG encoding detection and refuses malformed bytes with an encoding and byte offset.
+- **Breaking contract and CLI:** one recursive, versionless JSON contract with one/optional/all counts, nested records, label-based where predicates, sibling extents, value checks and named captures. Use outline/get/run with inline JSON or --from-file; the engine major version defines semantics. Records require at least one field; ineffective exclusions on attribute and URL readings are refused. Attribute predicates require the attribute even without a value check. Help and version have their conventional short forms, argument errors point to the guide, and inline contract-file paths point to --from-file. See [the language](docs/contract.md).
+- **Breaking readings:** text retains block lines, table cells and preformatted content; text-content preserves descendant text while skipping inert template contents. Template contents are outside selection and outline reports their element count without expanding them. URL readings accept any attribute and honor the first document base. Input follows WHATWG encoding detection and refuses malformed bytes with an encoding and byte offset.
 - **Breaking Rust API:** Contract, Document, Source, Limits, Value and Error expose the same engine. Input, incremental tree nodes, complete encoded output and cooperative time are operator policy. Fixed depth and selector/regex grammar admission protect execution; callers supply required physical containment.
-- **Breaking output and diagnostics:** a complete result atomically replaces -o output, including aliases of fully read inputs. Refusals carry contract paths, selectors, row indexes, counts/value previews and I/O details. Stdout transport failures can expose a prefix after publication begins; named files remain atomic.
+- **Breaking output and diagnostics:** a complete result atomically replaces -o output, including aliases of fully read inputs, preserving existing permission bits or applying the umask for a new file. Refusals carry contract paths, selectors, row indexes, counts/value previews and I/O details. Messages explain facts without Rust debug formatting, and missing-attribute expectations omit misleading counts. A closed stdout pipe is silent success; other transport failures can expose a prefix after publication begins. Named files remain atomic.
 
 ### Removed
 
@@ -17,7 +17,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
-- The library, CLI and each unpacked native package run one conformance corpus. Contract cases are frozen within a major release; checks reject changed or deleted existing cases. Both fuzz targets complete 10,000-run smokes.
+- The library, CLI and each unpacked native package run one conformance corpus. Contract cases are frozen within a major release; checks reject changed or deleted existing cases. Both fuzz targets complete 10,000-run smokes. Crate packages ship self-contained unit tests; discovered corpus cases run through library and binary integration tests. Sibling-index caches persist across scopes while relative caches remain scope-local. The gate checks Python and cargo-deny prerequisites before builds.
 
 ## [21.0.0] - 2026-10-12
 
