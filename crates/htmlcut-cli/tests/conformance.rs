@@ -488,3 +488,66 @@ fn named_output_obeys_umask_and_preserves_existing_permission_bits() {
     }
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
 }
+
+#[test]
+fn positional_predicates_reuse_sibling_indexes_within_the_deadline() {
+    // Upstream debug assertions independently recompute every nth index without
+    // caching. Measure the shipped profile while retaining those assertions in
+    // all correctness tests.
+    let performance_binary = std::env::var_os("HTMLCUT_TEST_BINARY").unwrap_or_else(|| {
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let build = Command::new("cargo")
+            .args(["build", "--release", "--locked", "-p", "htmlcut-cli"])
+            .current_dir(crate_dir)
+            .output()
+            .unwrap();
+        assert!(build.status.success(), "{build:?}");
+        let metadata = Command::new("cargo")
+            .args(["metadata", "--format-version", "1", "--no-deps", "--locked"])
+            .current_dir(crate_dir)
+            .output()
+            .unwrap();
+        assert!(metadata.status.success(), "{metadata:?}");
+        let metadata: Value = serde_json::from_slice(&metadata.stdout).unwrap();
+        Path::new(metadata["target_directory"].as_str().unwrap())
+            .join("release")
+            .join(format!("htmlcut{}", std::env::consts::EXE_SUFFIX))
+            .into_os_string()
+    });
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("siblings.html");
+    let mut html = String::from("<main>");
+    for n in 0..60_000 {
+        html.push_str(&format!("<p>{n}</p>"));
+    }
+    html.push_str("</main>");
+    std::fs::write(&file, html).unwrap();
+    let main = Command::new(&performance_binary)
+        .args(["get", "p:nth-last-child(3n)", "--all", "--timeout", "5"])
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert!(main.status.success(), "{main:?}");
+    let start = Instant::now();
+    let predicate = Command::new(&performance_binary)
+        .args([
+            "run",
+            r#"{"select":"p","match":"all","where":[{"select":":scope:nth-last-child(3n)"}]}"#,
+            "--timeout",
+            "5",
+        ])
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert!(predicate.status.success(), "{predicate:?}");
+    assert!(start.elapsed() < Duration::from_secs(5));
+    assert_eq!(predicate.stdout, main.stdout);
+    let values: Vec<String> = serde_json::from_slice(&predicate.stdout).unwrap();
+    assert_eq!(
+        values,
+        (0..60_000)
+            .filter(|n| (60_000 - n) % 3 == 0)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+    );
+}

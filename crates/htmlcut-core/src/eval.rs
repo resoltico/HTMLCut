@@ -31,6 +31,7 @@ impl Document {
             document: self,
             clock: Clock::new(&self.limits),
             output: OutputSize::new(self.limits.max_output_bytes),
+            caches: Default::default(),
         };
         engine.clock.check()?;
         let value = engine.node(&contract.node, &Scope::one(self.html.root_element()), &[])?;
@@ -43,11 +44,13 @@ pub(crate) fn candidates<'d>(
     select: Option<&Selector>,
     scope: &Scope<'d>,
     clock: &Clock,
+    shared: &mut selectors::matching::SelectorCaches,
 ) -> Result<Vec<ElementRef<'d>>, Error> {
     let Some(select) = select else {
         return Ok(vec![scope.anchor]);
     };
-    let mut caches = selectors::matching::SelectorCaches::default();
+    let mut local = selectors::matching::SelectorCaches::default();
+    let caches = select.caches_for_scope(shared, &mut local);
     let mut found = Vec::new();
     for root in &scope.extent {
         let mut skipped = 0;
@@ -61,7 +64,7 @@ pub(crate) fn candidates<'d>(
                 }
                 ego_tree::iter::Edge::Open(node) => {
                     if let Some(element) = ElementRef::wrap(node)
-                        && select.matches(element, scope.anchor, &mut caches)
+                        && select.matches(element, scope.anchor, caches)
                     {
                         found.push(element);
                     }
@@ -103,14 +106,20 @@ struct Engine<'d> {
     document: &'d Document,
     clock: Clock,
     output: OutputSize,
+    caches: selectors::matching::SelectorCaches,
 }
 impl<'d> Engine<'d> {
     fn holds(
-        &self,
+        &mut self,
         predicate: &Predicate,
         scope: &Scope<'d>,
     ) -> Result<Option<PredicateFailure>, Error> {
-        let elements = candidates(predicate.select.as_ref(), scope, &self.clock)?;
+        let elements = candidates(
+            predicate.select.as_ref(),
+            scope,
+            &self.clock,
+            &mut self.caches,
+        )?;
         let count = elements.len();
         let expected = range(predicate.min, Some(predicate.max));
         if count < predicate.min || count > predicate.max {
@@ -190,7 +199,7 @@ impl<'d> Engine<'d> {
             }
         }
         let mut found = Vec::new();
-        for element in candidates(node.select.as_ref(), scope, &self.clock)? {
+        for element in candidates(node.select.as_ref(), scope, &self.clock, &mut self.caches)? {
             self.clock.tick()?;
             let candidate_scope = Scope::one(element);
             let mut keep = true;
@@ -278,7 +287,9 @@ impl<'d> Engine<'d> {
                             | crate::contract::Reading::OuterHtml
                     ) {
                         for selector in exclude {
-                            for element in candidates(Some(selector), &extent, &self.clock)? {
+                            for element in
+                                candidates(Some(selector), &extent, &self.clock, &mut self.caches)?
+                            {
                                 excluded.insert(element.id());
                             }
                         }
@@ -315,17 +326,18 @@ impl<'d> Engine<'d> {
         }
     }
     fn extent(
-        &self,
+        &mut self,
         element: ElementRef<'d>,
         until: Option<&Selector>,
     ) -> Result<Scope<'d>, Error> {
         let mut scope = Scope::one(element);
         if let Some(until) = until {
             let mut next = element.next_sibling();
-            let mut caches = selectors::matching::SelectorCaches::default();
+            let mut local = selectors::matching::SelectorCaches::default();
+            let caches = until.caches_for_scope(&mut self.caches, &mut local);
             while let Some(node) = next {
                 self.clock.tick()?;
-                if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, &mut caches)) {
+                if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, caches)) {
                     break;
                 }
                 scope.extent.push(node);
@@ -537,6 +549,18 @@ mod tests {
             assert_eq!(error.limit.as_deref(), Some("output_bytes"));
             assert_eq!(error.bound, Some((size - 1).into()));
         }
+    }
+    #[test]
+    fn relative_selector_answers_remain_local_to_each_row() {
+        let contract = Contract::from_json(r#"{"select":"section","match":"all","min":0,"where":[{"select":":scope:has(> b)"}],"read":"attr:id"}"#).unwrap();
+        let document = Document::parse(Source::new(b"<section id=a><b>x</b></section><section id=b><i>x</i></section><section id=c><b>x</b></section>"), &Limits::default()).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::List(vec![Value::String("a".into()), Value::String("c".into())])
+            );
+        }
+        assert!(Contract::from_json(r#"{"select":"p:nth-child(2 of :scope)"}"#).is_err());
     }
     #[test]
     fn compiled_selectors_reuse_across_documents_without_scope_cache_leaks() {

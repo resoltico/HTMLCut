@@ -47,12 +47,13 @@ impl Document {
         let scope = Scope::one(self.html.root_element());
         let mut output = String::new();
         let mut lines = 0;
+        let mut caches = Default::default();
         let root = if let Some(text) = &options.select {
             let selector = Selector::compile(text, "").map_err(|mut error| {
                 error.path = None;
                 error
             })?;
-            let matches = candidates(Some(&selector), &scope, &clock)?;
+            let matches = candidates(Some(&selector), &scope, &clock, &mut caches)?;
             let displayed = if text.chars().any(char::is_control) {
                 serde_json::to_string(text).unwrap()
             } else {
