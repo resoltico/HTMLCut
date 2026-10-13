@@ -71,7 +71,17 @@ fn text_content(
         for edge in root.traverse() {
             clock.tick()?;
             match edge {
-                Edge::Open(node) if skipped > 0 || excluded.contains(&node.id()) => skipped += 1,
+                Edge::Open(node)
+                    if skipped > 0
+                        || excluded.contains(&node.id())
+                        || (node
+                            .value()
+                            .as_element()
+                            .is_some_and(|e| html(e) && e.name() == "template")
+                            && !(scope.extent.len() == 1 && node.id() == scope.anchor.id())) =>
+                {
+                    skipped += 1;
+                }
                 Edge::Open(node) => {
                     if let Node::Text(text) = node.value() {
                         result.push_str(text);

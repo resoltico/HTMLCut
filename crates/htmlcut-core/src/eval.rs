@@ -50,12 +50,24 @@ pub(crate) fn candidates<'d>(
     let mut caches = selectors::matching::SelectorCaches::default();
     let mut found = Vec::new();
     for root in &scope.extent {
-        for node in root.descendants() {
+        let mut skipped = 0;
+        for edge in root.traverse() {
             clock.tick()?;
-            if let Some(element) = ElementRef::wrap(node)
-                && select.matches(element, scope.anchor, &mut caches)
-            {
-                found.push(element);
+            match edge {
+                ego_tree::iter::Edge::Open(node)
+                    if skipped > 0 || matches!(node.value(), DomNode::Fragment) =>
+                {
+                    skipped += 1;
+                }
+                ego_tree::iter::Edge::Open(node) => {
+                    if let Some(element) = ElementRef::wrap(node)
+                        && select.matches(element, scope.anchor, &mut caches)
+                    {
+                        found.push(element);
+                    }
+                }
+                ego_tree::iter::Edge::Close(_) if skipped > 0 => skipped -= 1,
+                ego_tree::iter::Edge::Close(_) => (),
             }
         }
     }
@@ -410,6 +422,44 @@ mod tests {
         Document::parse(Source::new(html.as_bytes()), &Limits::default())
             .unwrap()
             .extract(&Contract::from_json(contract).unwrap())
+    }
+    #[test]
+    fn template_contents_stay_outside_every_selection_context() {
+        let html = "<main><p id=live>live</p><template id=t><p>inert</p><template><p>nested</p></template><h2>boundary</h2></template><p>end</p><h2>stop</h2></main>";
+        for selector in ["p", "main p"] {
+            let contract = serde_json::json!({"select":selector,"match":"all"}).to_string();
+            assert_eq!(
+                extract(html, &contract).unwrap(),
+                Value::List(vec![
+                    Value::String("live".into()),
+                    Value::String("end".into())
+                ])
+            );
+        }
+        assert_eq!(extract(html, r#"{"select":"main","where":[{"select":"p","min":2,"max":2}],"expect":[{"select":"p","min":2,"max":2}],"read":"text-content"}"#).unwrap(), Value::String("liveendstop".into()));
+        assert_eq!(
+            extract(html, r##"{"select":"#t","read":"text-content"}"##).unwrap(),
+            Value::String("inertboundary".into())
+        );
+        assert_eq!(
+            extract(
+                html,
+                r##"{"select":"#live","until":"h2","read":"text-content"}"##
+            )
+            .unwrap(),
+            Value::String("liveend".into())
+        );
+        let plain = extract(html, r#"{"select":"main","read":"outer-html"}"#).unwrap();
+        let excluded = extract(html, r#"{"select":"main","read":"outer-html","exclude":["template p","template template","template h2"]}"#).unwrap();
+        assert_eq!(plain, excluded);
+        assert_eq!(
+            extract(
+                html,
+                r#"{"select":"main:has(template p)","match":"optional"}"#
+            )
+            .unwrap(),
+            Value::Null
+        );
     }
     #[test]
     fn nested_all_rows_report_indexes_and_fields_fail_in_byte_order() {

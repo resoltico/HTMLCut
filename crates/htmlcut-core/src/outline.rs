@@ -76,12 +76,12 @@ impl Document {
         while let Some((element, level, count)) = pending.pop() {
             clock.tick()?;
             let children = element_children(element);
-            let stopped =
-                level >= options.depth || matches!(element.value().name(), "svg" | "math");
+            let stopped = level >= options.depth
+                || matches!(element.value().name(), "svg" | "math" | "template");
             if lines < options.max_lines {
                 let mut line = "  ".repeat(level);
                 line.push_str(&describe(element, count, options.attrs, &clock)?);
-                if stopped && !children.is_empty() {
+                if stopped {
                     let mut inside = 0;
                     for node in element.descendants() {
                         clock.tick()?;
