@@ -68,8 +68,10 @@ Evaluating a node in a scope:
 
 A predicate **holds** in a scope when the elements it selects there (step 2 with the
 predicate's `select`) number between its `min` and `max`, and, if it has `equals` or
-`pattern`, the reading of every selected element satisfies it. A missing attribute makes
-a predicate not hold; it is not an error.
+`pattern`, the reading of every selected element satisfies it. A predicate with an `attr:NAME` reading requires every selected element to have that
+attribute, even without `equals` or `pattern`. A missing attribute makes a predicate not
+hold; it is not a reading error. An expectation that fails for this reason carries no
+`found`, `expected` or `value` facts.
 
 Evaluation is depth-first, in document order, fields in byte order of name. The first
 failure is reported and discards the whole result.

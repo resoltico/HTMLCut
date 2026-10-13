@@ -341,6 +341,12 @@ impl Compiler {
             let fields = fields.as_object().ok_or_else(|| {
                 invalid(Some(&format!("{path}.fields")), "fields must be an object.")
             })?;
+            if fields.is_empty() {
+                return Err(invalid(
+                    Some(&format!("{path}.fields")),
+                    "A record must have at least one field.",
+                ));
+            }
             if fields.len() > MAX_RECORD_FIELDS {
                 return Err(invalid(
                     Some(&format!("{path}.fields")),
@@ -370,6 +376,12 @@ impl Compiler {
             Body::Record(compiled)
         } else {
             let read = reading(&map, path, false)?;
+            if map.contains_key("exclude") && matches!(read, Reading::Attr(_) | Reading::Url(_)) {
+                return Err(invalid(
+                    Some(&format!("{path}.exclude")),
+                    "exclude cannot be combined with an attribute or URL reading.",
+                ));
+            }
             let exclude = array(&map, "exclude", path)?
                 .iter()
                 .enumerate()
@@ -418,7 +430,7 @@ fn schema() -> Json {
         "properties":{"select":selector,"where":predicates,"expect":predicates,
             "until":selector,"match":{"enum":["one","optional","all"]},"min":count,"max":count,
             "nth":{"type":"integer","minimum":1,"maximum":MAX_DECLARED_COUNT},
-            "fields":{"type":"object","maxProperties":MAX_RECORD_FIELDS,"propertyNames":{"pattern":format!("^[A-Za-z0-9_-]{{1,{MAX_FIELD_NAME_CHARS}}}$")},"additionalProperties":{"$ref":"#/$defs/node"}},
+            "fields":{"type":"object","minProperties":1,"maxProperties":MAX_RECORD_FIELDS,"propertyNames":{"pattern":format!("^[A-Za-z0-9_-]{{1,{MAX_FIELD_NAME_CHARS}}}$")},"additionalProperties":{"$ref":"#/$defs/node"}},
             "read":{"type":"string","pattern":format!("^(text|text-content|outer-html|{attr}|url:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}})$")},
             "exclude":{"type":"array","maxItems":MAX_ENTRIES,"items":selector},"equals":{"type":"string"},"pattern":pattern},
         "dependentRequired":{"where":["select"],"until":["select"],"nth":["select"]},
@@ -565,6 +577,23 @@ mod tests {
             serde_json::json!({"read":format!("attr:{}", "é".repeat(257))}),
             "reading",
         );
+    }
+    #[test]
+    fn ineffective_members_are_refused_and_schema_requires_record_fields() {
+        let validator = jsonschema::validator_for(&Contract::schema()).unwrap();
+        let empty = serde_json::json!({"fields":{}});
+        assert!(!validator.is_valid(&empty));
+        assert_eq!(
+            compile(empty).err().unwrap().path.as_deref(),
+            Some("$.fields")
+        );
+        for read in ["attr:title", "url:href"] {
+            let error = compile(serde_json::json!({"read":read,"exclude":[]}))
+                .err()
+                .unwrap();
+            assert_eq!(error.path.as_deref(), Some("$.exclude"));
+        }
+        assert!(validator.is_valid(&serde_json::json!({"fields":{"title":"h1"}})));
     }
     #[test]
     fn closed_members_and_member_combinations_refuse_with_locations() {

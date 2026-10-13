@@ -92,7 +92,7 @@ fn location(mut error: Error, path: &str, rows: &[usize]) -> Error {
 enum PredicateFailure {
     Count(usize, String),
     Value(String),
-    MissingAttribute(usize, String),
+    MissingAttribute,
 }
 struct Engine<'d> {
     document: &'d Document,
@@ -127,7 +127,7 @@ impl<'d> Engine<'d> {
             ) {
                 Ok(value) => value,
                 Err(e) if e.error == ErrorCode::MissingAttribute => {
-                    return Ok(Some(PredicateFailure::MissingAttribute(count, expected)));
+                    return Ok(Some(PredicateFailure::MissingAttribute));
                 }
                 Err(e) => return Err(e),
             };
@@ -170,13 +170,8 @@ impl<'d> Engine<'d> {
                             predicate.path, e.select, e.value
                         );
                     }
-                    PredicateFailure::MissingAttribute(found, expected) => {
-                        e.message = format!(
-                            "{}: selector {:?} found {found}, within {expected}, but its required attribute is missing.",
-                            predicate.path, e.select
-                        );
-                        e.found = Some(found);
-                        e.expected = Some(expected);
+                    PredicateFailure::MissingAttribute => {
+                        e.message = format!("{}: a required attribute is missing.", predicate.path);
                     }
                 }
                 return Err(e);
