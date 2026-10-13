@@ -27,12 +27,19 @@ fn exit_for(code: &str) -> i32 {
 }
 #[test]
 fn every_case_runs_through_the_delivered_binary() {
+    let checked = run_cases(&corpus());
+    println!("HTMLCUT_CONFORMANCE_CASES={checked}");
+}
+fn run_cases(root: &Path) -> usize {
     let mut checked = 0;
+    let mut discovered = 0;
     for kind in ["contract", "outline"] {
-        let mut paths = std::fs::read_dir(corpus().join(kind))
+        let mut paths = std::fs::read_dir(root.join(kind))
             .unwrap()
             .map(|e| e.unwrap().path())
             .collect::<Vec<_>>();
+        paths.retain(|path| path.is_dir());
+        discovered += paths.len();
         paths.sort();
         for path in paths {
             let mut command = Command::new(binary());
@@ -123,7 +130,9 @@ fn every_case_runs_through_the_delivered_binary() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 62);
+    assert!(discovered > 0, "the conformance corpus is empty");
+    assert_eq!(checked, discovered);
+    checked
 }
 fn piped(args: &[&str], bytes: &[u8]) -> Output {
     let mut child = Command::new(binary())
@@ -550,4 +559,18 @@ fn positional_predicates_reuse_sibling_indexes_within_the_deadline() {
             .map(|n| n.to_string())
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn corpus_runner_refuses_empty_or_incomplete_corpora() {
+    let directory = tempfile::tempdir().unwrap();
+    for kind in ["contract", "outline"] {
+        std::fs::create_dir(directory.path().join(kind)).unwrap();
+    }
+    assert!(std::panic::catch_unwind(|| run_cases(directory.path())).is_err());
+    let case = directory.path().join("contract/incomplete");
+    std::fs::create_dir(&case).unwrap();
+    std::fs::write(case.join("page.html"), b"<h1>x</h1>").unwrap();
+    std::fs::write(case.join("contract.json"), b"\"h1\"").unwrap();
+    assert!(std::panic::catch_unwind(|| run_cases(directory.path())).is_err());
 }

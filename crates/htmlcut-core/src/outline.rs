@@ -279,37 +279,6 @@ mod tests {
     use super::*;
     use crate::{Limits, Source};
     #[test]
-    fn outline_conformance_is_byte_exact() {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/outline");
-        let mut count = 0;
-        for entry in std::fs::read_dir(root).unwrap() {
-            let path = entry.unwrap().path();
-            let bytes = std::fs::read(path.join("page.html")).unwrap();
-            let config: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(path.join("outline.json")).unwrap()).unwrap();
-            let mut options = OutlineOptions {
-                select: config["select"].as_str().map(String::from),
-                ..OutlineOptions::default()
-            };
-            if let Some(depth) = config["depth"].as_u64() {
-                options.depth = depth as usize;
-            }
-            if let Some(lines) = config["max_lines"].as_u64() {
-                options.max_lines = lines as usize;
-            }
-            options.attrs = config["attrs"].as_bool().unwrap_or(false);
-            let document = Document::parse(Source::new(&bytes), &Limits::default()).unwrap();
-            assert_eq!(
-                document.outline(&options).unwrap().as_bytes(),
-                std::fs::read(path.join("expected.txt")).unwrap(),
-                "{path:?}"
-            );
-            count += 1;
-        }
-        assert_eq!(count, 5);
-    }
-    #[test]
     fn shapes_order_classes_source_attributes_and_clipping_are_preserved() {
         let html = "<main><p id=a class='z A b c d' z='1' a='2' b='3' c='4' d='5' e='6' f='7'>quoted \"text\"</p><p class='z A b c d'><b>shape</b></p><p class='z A b c d'>same shape</p></main>";
         let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();

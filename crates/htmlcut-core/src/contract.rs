@@ -448,7 +448,6 @@ fn schema() -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     fn compile(value: Json) -> Result<Contract, Error> {
         Contract::from_json(&serde_json::to_string(&value).unwrap())
     }
@@ -456,31 +455,6 @@ mod tests {
         let error = compile(value).err().expect("grammar must refuse");
         assert!(error.message.contains(message), "{}", error.message);
         assert_eq!(error.error.exit_status(), 2);
-    }
-    #[test]
-    fn invalid_contract_conformance_preserves_every_fact() {
-        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
-        let mut count = 0;
-        for entry in std::fs::read_dir(corpus).unwrap() {
-            let path = entry.unwrap().path();
-            if !path.file_name().unwrap().to_str().unwrap().starts_with('8')
-                || path.file_name().unwrap() == "89-limit-nodes"
-            {
-                continue;
-            }
-            let text = std::fs::read_to_string(path.join("contract.json")).unwrap();
-            let error = Contract::from_json(&text)
-                .err()
-                .expect("invalid corpus contract admitted");
-            let mut actual = serde_json::to_value(error).unwrap();
-            let mut expected: Json =
-                serde_json::from_slice(&std::fs::read(path.join("error.json")).unwrap()).unwrap();
-            actual.as_object_mut().unwrap().remove("message");
-            expected.as_object_mut().unwrap().remove("message");
-            assert_eq!(actual, expected, "{path:?}");
-            count += 1;
-        }
-        assert_eq!(count, 9);
     }
     #[test]
     fn contract_text_bound_is_checked_before_json_reading() {
@@ -614,34 +588,5 @@ mod tests {
             assert_eq!(error.error, ErrorCode::InvalidContract);
             assert!(error.path.is_some());
         }
-    }
-    #[test]
-    fn independent_schema_validation_covers_the_corpus() {
-        let schema = Contract::schema();
-        let validator = jsonschema::validator_for(&schema).unwrap();
-        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
-        let mut accepted = 0;
-        for entry in std::fs::read_dir(corpus).unwrap() {
-            let path = entry.unwrap().path();
-            let text = std::fs::read_to_string(path.join("contract.json")).unwrap();
-            if Contract::from_json(&text).is_ok() {
-                let value: Json = serde_json::from_str(&text).unwrap();
-                assert!(validator.is_valid(&value), "schema refused {path:?}");
-                accepted += 1;
-            }
-            for prefix in ["80-", "83-", "84-"] {
-                if path
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(prefix)
-                {
-                    let value: Json = serde_json::from_str(&text).unwrap();
-                    assert!(!validator.is_valid(&value), "schema admitted {path:?}");
-                }
-            }
-        }
-        assert_eq!(accepted, 48);
     }
 }

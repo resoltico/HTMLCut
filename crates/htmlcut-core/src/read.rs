@@ -396,42 +396,6 @@ mod tests {
         }
     }
     #[test]
-    fn reading_conformance_matches_complete_values() {
-        let corpus =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
-        let mut count = 0;
-        for entry in std::fs::read_dir(corpus).unwrap() {
-            let path = entry.unwrap().path();
-            let prefix: usize = path.file_name().unwrap().to_str().unwrap()[..2]
-                .parse()
-                .unwrap();
-            if !matches!(prefix, 60..=67 | 69) {
-                continue;
-            }
-            let options: serde_json::Value = std::fs::read(path.join("options.json"))
-                .ok()
-                .map(|v| serde_json::from_slice(&v).unwrap())
-                .unwrap_or_default();
-            let bytes = std::fs::read(path.join("page.html")).unwrap();
-            let mut source = Source::new(&bytes);
-            source.base_url = options["base_url"].as_str();
-            let document = Document::parse(source, &Limits::default()).unwrap();
-            let contract =
-                Contract::from_json(&std::fs::read_to_string(path.join("contract.json")).unwrap())
-                    .unwrap();
-            let expected: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(path.join("expected.json")).unwrap())
-                    .unwrap();
-            assert_eq!(
-                serde_json::to_value(document.extract(&contract).unwrap()).unwrap(),
-                expected,
-                "{path:?}"
-            );
-            count += 1;
-        }
-        assert_eq!(count, 10);
-    }
-    #[test]
     fn single_unrendered_roots_return_their_text_content() {
         for (html, expected) in [
             ("<script id=x>  a\n b</script>", "  a\n b"),

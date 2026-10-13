@@ -392,57 +392,12 @@ impl<'d> Engine<'d> {
 mod tests {
     use super::*;
     use crate::{Limits, Source};
-    use std::path::Path;
-
-    #[test]
-    fn evaluation_conformance_checks_complete_values_and_exact_refusal_facts() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
-        let mut count = 0;
-        for entry in std::fs::read_dir(root).unwrap() {
-            let path = entry.unwrap().path();
-            let prefix: usize = path.file_name().unwrap().to_str().unwrap()[..2]
-                .parse()
-                .unwrap();
-            if !matches!(prefix, 1..=8 | 20..=32 | 40..=44 | 50..=54 | 68) {
-                continue;
-            }
-            let options: serde_json::Value = std::fs::read(path.join("options.json"))
-                .ok()
-                .map(|v| serde_json::from_slice(&v).unwrap())
-                .unwrap_or_default();
-            let bytes = std::fs::read(path.join("page.html")).unwrap();
-            let mut source = Source::new(&bytes);
-            source.base_url = options["base_url"].as_str();
-            let document = Document::parse(source, &Limits::default()).unwrap();
-            let contract =
-                Contract::from_json(&std::fs::read_to_string(path.join("contract.json")).unwrap())
-                    .unwrap();
-            match document.extract(&contract) {
-                Ok(value) => {
-                    let expected: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(path.join("expected.json")).unwrap())
-                            .unwrap();
-                    assert_eq!(serde_json::to_value(value).unwrap(), expected, "{path:?}");
-                }
-                Err(error) => {
-                    let mut expected: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(path.join("error.json")).unwrap())
-                            .unwrap();
-                    let mut actual = serde_json::to_value(error).unwrap();
-                    expected.as_object_mut().unwrap().remove("message");
-                    actual.as_object_mut().unwrap().remove("message");
-                    assert_eq!(actual, expected, "{path:?}");
-                }
-            }
-            count += 1;
-        }
-        assert_eq!(count, 32);
-    }
     fn extract(html: &str, contract: &str) -> Result<Value, Error> {
         Document::parse(Source::new(html.as_bytes()), &Limits::default())
             .unwrap()
             .extract(&Contract::from_json(contract).unwrap())
     }
+
     #[test]
     fn template_contents_stay_outside_every_selection_context() {
         let html = "<main><p id=live>live</p><template id=t><p>inert</p><template><p>nested</p></template><h2>boundary</h2></template><p>end</p><h2>stop</h2></main>";
