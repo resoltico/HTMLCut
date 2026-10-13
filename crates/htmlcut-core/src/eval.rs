@@ -401,6 +401,37 @@ mod tests {
     }
 
     #[test]
+    fn predicate_reading_preserves_a_cooperative_time_refusal() {
+        let document = Document::parse(Source::new(b"<p id=x>x</p>"), &Limits::default()).unwrap();
+        let contract = Contract::from_json(r#"{"expect":[{"read":"attr:id"}]}"#).unwrap();
+        let limits = Limits {
+            time_limit: Some(std::time::Duration::ZERO),
+            ..Limits::default()
+        };
+        let mut engine = Engine {
+            document: &document,
+            clock: Clock::new(&limits),
+            output: OutputSize::new(limits.max_output_bytes),
+            caches: Default::default(),
+        };
+        let scope = Scope::one(
+            document
+                .html
+                .select(&scraper::Selector::parse("p").unwrap())
+                .next()
+                .unwrap(),
+        );
+        // A direct predicate call isolates the reading boundary from the preceding extract/candidate checks.
+        let error = match engine.holds(&contract.node.expect[0], &scope) {
+            Err(error) => error,
+            Ok(_) => {
+                panic!("an expired reading must refuse instead of becoming a predicate mismatch")
+            }
+        };
+        assert_eq!(error.error, ErrorCode::LimitExceeded);
+        assert_eq!(error.limit.as_deref(), Some("time"));
+    }
+    #[test]
     fn template_contents_stay_outside_every_selection_context() {
         let html = "<main><p id=live>live</p><template id=t><p>inert</p><template><p>nested</p></template><h2>boundary</h2></template><p>end</p><h2>stop</h2></main>";
         for selector in ["p", "main p"] {

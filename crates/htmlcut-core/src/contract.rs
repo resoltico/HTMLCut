@@ -615,4 +615,111 @@ mod tests {
             assert!(error.path.is_some());
         }
     }
+
+    #[test]
+    fn compiled_regex_allowance_is_shared_by_value_and_predicate_patterns() {
+        // Bounded repeats use little contract text but consume compiled regex memory.
+        assert!(compile(serde_json::json!({"pattern":"a{100000}"})).is_ok());
+        assert!(
+            compile(serde_json::json!({
+                "select":"p", "pattern":"a{50000}",
+                "where":[{"pattern":"a{50000}"}]
+            }))
+            .is_ok()
+        );
+        let error = compile(serde_json::json!({
+            "select":"p", "pattern":"a{50000}",
+            "where":[{"pattern":"a{50000}"}],
+            "expect":[{"pattern":"a{50000}"}]
+        }))
+        .err()
+        .expect("three expensive patterns must exceed their shared allowance");
+        assert_eq!(error.error, ErrorCode::InvalidPattern);
+        assert!(error.path.as_deref().unwrap().ends_with(".pattern"));
+    }
+
+    #[test]
+    fn compiled_regex_allowance_includes_patterns_in_nested_fields() {
+        assert!(compile(serde_json::json!({
+            "select":"p", "expect":[{"pattern":"a{40000}"}],
+            "fields":{"first":{"pattern":"a{40000}"},"nested":{"fields":{"second":{"pattern":"a{40000}"}}}}
+        })).is_ok());
+        let error = compile(serde_json::json!({
+            "select":"p", "where":[{"pattern":"a{40000}"}],
+            "expect":[{"pattern":"a{40000}"}],
+            "fields":{"first":{"pattern":"a{40000}"},"nested":{"fields":{"second":{"pattern":"a{40000}"}}}}
+        })).err().expect("nested fields must share the same allowance as predicates");
+        assert_eq!(error.error, ErrorCode::InvalidPattern);
+    }
+
+    #[test]
+    fn attribute_reading_names_refuse_each_forbidden_delimiter() {
+        for prefix in ["attr:", "url:"] {
+            for name in [
+                "", "a b", "a\tb", "a\nb", "a\u{a0}b", "a\"b", "a'b", "a<b", "a>b", "a/b", "a=b",
+            ] {
+                let error = compile(serde_json::json!({"read":format!("{prefix}{name}")}))
+                    .err()
+                    .expect("invalid attribute name admitted");
+                assert_eq!(error.error, ErrorCode::InvalidContract);
+                assert_eq!(error.path.as_deref(), Some("$.read"));
+            }
+            for name in ["data-price", "xlink:href", "viewBox", "é"] {
+                assert!(compile(serde_json::json!({"read":format!("{prefix}{name}")})).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn predicate_ranges_admit_equal_bounds_and_refuse_inverted_bounds() {
+        for predicate in [
+            serde_json::json!({"min":0,"max":2}),
+            serde_json::json!({"min":2,"max":2}),
+        ] {
+            assert!(compile(serde_json::json!({"expect":[predicate]})).is_ok());
+        }
+        for member in ["where", "expect"] {
+            let mut value = serde_json::json!({"select":"p"});
+            value[member] = serde_json::json!([{"min":3,"max":2}]);
+            let error = compile(value)
+                .err()
+                .expect("inverted predicate range admitted");
+            assert_eq!(error.error, ErrorCode::InvalidContract);
+            assert_eq!(
+                error.path.as_deref(),
+                Some(format!("$.{member}[0]").as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn each_selection_member_requires_a_selector() {
+        for mut value in [
+            serde_json::json!({"where":[]}),
+            serde_json::json!({"until":"h2"}),
+            serde_json::json!({"nth":1}),
+        ] {
+            let error = compile(value.clone())
+                .err()
+                .expect("selection member without selection admitted");
+            assert_eq!(error.error, ErrorCode::InvalidContract);
+            assert_eq!(error.path.as_deref(), Some("$"));
+            value["select"] = serde_json::json!("p");
+            assert!(compile(value).is_ok());
+        }
+    }
+
+    #[test]
+    fn field_name_bound_admits_equality_and_refuses_longer_names() {
+        for length in [1, 64, 65, 66] {
+            let name = "a".repeat(length);
+            let value = serde_json::json!({"fields":{name: {}}});
+            assert_eq!(
+                compile(value).is_ok(),
+                length <= 64,
+                "field name length {length}"
+            );
+        }
+        assert!(compile(serde_json::json!({"fields":{"":{}}})).is_err());
+    }
 }

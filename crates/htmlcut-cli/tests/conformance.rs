@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::{
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    process::{Child, Command, Output, Stdio},
     time::{Duration, Instant},
 };
 fn binary() -> std::ffi::OsString {
@@ -144,6 +144,20 @@ fn piped(args: &[&str], bytes: &[u8]) -> Output {
         .unwrap();
     child.stdin.take().unwrap().write_all(bytes).unwrap();
     child.wait_with_output().unwrap()
+}
+fn bounded_output(mut child: Child, timeout: Duration) -> Output {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            return child.wait_with_output().unwrap();
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let output = child.wait_with_output().unwrap();
+            panic!("pipe test process exceeded its deadline: {output:?}");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 #[test]
 fn guide_and_workflow_commands_are_executed_verbatim() {
@@ -744,21 +758,37 @@ fn output_pipes_devices_and_descriptor_aliases_are_written_directly() {
         }
         if Instant::now() >= deadline {
             refusal.kill().unwrap();
+            refusal.wait().unwrap();
             panic!("refusal opened its output FIFO");
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    let reader_path = pipe.clone();
-    let reader = std::thread::spawn(move || std::fs::read(reader_path).unwrap());
-    let output = Command::new(binary())
-        .args(["get", "h1"])
-        .arg(&source)
-        .arg("-o")
+    let mut reader = Command::new("cat")
         .arg(&pipe)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
-    assert_eq!(reader.join().unwrap(), b"\"complete\"\n");
+    let publication = std::panic::catch_unwind(|| {
+        let producer = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&pipe)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output = bounded_output(producer, Duration::from_secs(10));
+        assert!(output.status.success(), "{output:?}");
+    });
+    if publication.is_err() {
+        let _ = reader.kill();
+    }
+    let received = bounded_output(reader, Duration::from_secs(10));
+    publication.unwrap();
+    assert!(received.status.success(), "{received:?}");
+    assert_eq!(received.stdout, b"\"complete\"\n");
     assert!(pipe.symlink_metadata().unwrap().file_type().is_fifo());
     let output = Command::new(binary())
         .args(["get", "h1"])
@@ -848,26 +878,43 @@ fn windows_named_pipe_receives_direct_output() {
         .spawn()
         .unwrap();
     let mut stream = BufReader::new(server.stdout.take().unwrap());
-    let mut ready = String::new();
-    stream.read_line(&mut ready).unwrap();
-    assert_eq!(ready.trim(), "READY");
-    let path = format!(r"\\.\pipe\{name}");
-    let output = Command::new(binary())
-        .args(["get", "h1"])
-        .arg(&source)
-        .arg("-o")
-        .arg(path)
-        .output()
-        .unwrap();
-    if !output.status.success() {
+    let (ready_sender, ready_receiver) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut ready = String::new();
+        let handshake = stream.read_line(&mut ready).map(|_| ready);
+        let _ = ready_sender.send(handshake);
+        let mut delivered = Vec::new();
+        stream.read_to_end(&mut delivered)?;
+        Ok(delivered)
+    });
+    let publication = std::panic::catch_unwind(|| {
+        let ready = ready_receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("named-pipe server did not announce readiness")
+            .unwrap();
+        assert_eq!(ready.trim(), "READY");
+        let path = format!(r"\\.\pipe\{name}");
+        let producer = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output = bounded_output(producer, Duration::from_secs(10));
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty());
+    });
+    if publication.is_err() {
         let _ = server.kill();
     }
-    assert!(output.status.success(), "{output:?}");
-    assert!(output.stdout.is_empty());
-    let mut delivered = Vec::new();
-    stream.read_to_end(&mut delivered).unwrap();
-    let completion = server.wait_with_output().unwrap();
+    let completion = bounded_output(server, Duration::from_secs(10));
+    let delivered = reader.join().unwrap();
+    publication.unwrap();
     assert!(completion.status.success(), "{completion:?}");
+    let delivered = delivered.unwrap();
     assert_eq!(delivered, b"\"pipe\"\n");
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }

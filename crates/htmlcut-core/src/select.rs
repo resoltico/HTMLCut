@@ -124,3 +124,73 @@ fn syntax_admitted(text: &str) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn syntax_nesting_counts_only_unquoted_unescaped_noncomment_delimiters() {
+        // Lexical admission precedes CSS parsing. A balanced 64-level boundary
+        // exercises the guard itself; parsed matching depth is a separate bound.
+        assert!(syntax_admitted(&format!(
+            "{}p{}",
+            ":is(".repeat(64),
+            ")".repeat(64)
+        )));
+        assert!(!syntax_admitted(&format!(
+            "{}p{}",
+            ":is(".repeat(65),
+            ")".repeat(65)
+        )));
+        for ignored in [
+            format!("[x='{}']", "([".repeat(100)),
+            format!("[x=\"{}\"]", "([".repeat(100)),
+            format!(".{}", r"\(\[".repeat(100)),
+            format!("/* {} */p", "([".repeat(100)),
+            format!("/* * / {} */p", "([".repeat(100)),
+            format!("[x='a\\\'{}']", "([".repeat(100)),
+            format!("[x=\"a\\\"{}\"]", "([".repeat(100)),
+        ] {
+            assert!(syntax_admitted(&ignored), "{ignored}");
+            let over = format!("{ignored}{}p{}", ":is(".repeat(65), ")".repeat(65));
+            assert!(
+                !syntax_admitted(&over),
+                "ignored text must not hide following nesting: {over}"
+            );
+        }
+        for close in [")", "]"] {
+            assert!(syntax_admitted(&format!(
+                "{}{close}{}",
+                "(".repeat(64),
+                ")".repeat(63)
+            )));
+        }
+        for selector in [":is(p)".repeat(65), "[x]".repeat(65)] {
+            assert!(
+                syntax_admitted(&selector),
+                "sequential scopes do not accumulate depth"
+            );
+        }
+        for prefix in ["/", "*"] {
+            assert!(!syntax_admitted(&format!(
+                "{prefix}{}p{}",
+                ":is(".repeat(65),
+                ")".repeat(65)
+            )));
+        }
+    }
+    #[test]
+    fn selector_parse_failures_describe_the_actual_syntax() {
+        for (selector, reason) in [
+            ("[", "unexpected end of selector"),
+            ("", "the selector is empty"),
+            (",", "the selector is empty"),
+            ("p >", "a combinator has no following selector"),
+        ] {
+            let error = Selector::compile(selector, "$").err().unwrap();
+            assert!(error.message.contains(reason), "{}", error.message);
+            assert_eq!(error.select.as_deref(), Some(selector));
+            assert_eq!(error.path.as_deref(), Some("$"));
+        }
+    }
+}

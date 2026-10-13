@@ -63,9 +63,6 @@ impl<'de> Visitor<'de> for Seed {
     fn visit_str<E: Error>(self, value: &str) -> Result<Value, E> {
         Ok(Value::String(value.into()))
     }
-    fn visit_string<E: Error>(self, value: String) -> Result<Value, E> {
-        Ok(Value::String(value))
-    }
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
         let mut values = Vec::new();
         while let Some(value) = seq.next_element_seed(self.child())? {
@@ -89,6 +86,38 @@ impl<'de> Visitor<'de> for Seed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scalars_and_containers_preserve_complete_json_values() {
+        for (bytes, expected) in [
+            ("null", serde_json::json!(null)),
+            ("true", serde_json::json!(true)),
+            ("false", serde_json::json!(false)),
+            ("-123", serde_json::json!(-123)),
+            ("18446744073709551615", serde_json::json!(u64::MAX)),
+            ("1.25", serde_json::json!(1.25)),
+            (r#""雪""#, serde_json::json!("雪")),
+            (r#""\u96ea\n\"""#, serde_json::json!("雪\n\"")),
+            (
+                r#"[null,true,-3,1.5,"x"]"#,
+                serde_json::json!([null, true, -3, 1.5, "x"]),
+            ),
+            (
+                r#"{"x":[1],"y":{"z":false}}"#,
+                serde_json::json!({"x":[1],"y":{"z":false}}),
+            ),
+        ] {
+            assert_eq!(read(bytes.as_bytes()).unwrap(), expected, "{bytes}");
+        }
+        for bytes in [
+            b"true false".as_slice(),
+            b"[1,]",
+            b"{\"x\":1,}",
+            b"NaN",
+            b"1e999",
+        ] {
+            assert!(read(bytes).is_err(), "{}", String::from_utf8_lossy(bytes));
+        }
+    }
     #[test]
     fn nesting_and_duplicate_key_boundaries_are_preserved() {
         let nested = format!("{}0{}", "[".repeat(64), "]".repeat(64));

@@ -7,3 +7,5 @@ Native packages are unpacked and run against [the conformance corpus](../conform
 Publishing GitHub Releases and crates.io packages, creating tags, merging and changing repository settings are separate operator actions. Publish htmlcut-core before htmlcut-cli if registry publication is authorized. The core package contains its own example and regression fixtures and depends on registry packages.
 
 The [frozen-corpus policy](design.md#stability) rejects changes to existing contract cases against the latest released tag of the current major. With no such tag there is no baseline; new cases can still be added. Outline format may change in a minor version.
+
+Before a release, run `cargo mutants --workspace` and list every surviving mutant with its reason in the release pull request. Investigate observable behavior changes and add regression tests or remove unreachable code before publication.

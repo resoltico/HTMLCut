@@ -59,17 +59,18 @@ impl Document {
             } else {
                 text.clone()
             };
-            append(
-                &mut output,
-                &format!(
-                    "{} match{} for {displayed}",
-                    matches.len(),
-                    if matches.len() == 1 { "" } else { "es" }
-                ),
-                &mut lines,
-                options,
-                self,
-            )?;
+            lines = 1;
+            if options.max_lines > 0 {
+                append(
+                    &mut output,
+                    &format!(
+                        "{} match{} for {displayed}",
+                        matches.len(),
+                        if matches.len() == 1 { "" } else { "es" }
+                    ),
+                    self.limits.max_output_bytes,
+                )?;
+            }
             matches.first().copied()
         } else {
             Some(scope.anchor)
@@ -97,10 +98,9 @@ impl Document {
                         line.push_str(&format!(" (+{inside} inside)"));
                     }
                 }
-                append(&mut output, &line, &mut lines, options, self)?;
-            } else {
-                lines += 1;
+                append(&mut output, &line, self.limits.max_output_bytes)?;
             }
+            lines += 1;
             if stopped {
                 continue;
             }
@@ -138,41 +138,21 @@ impl Document {
         }
         if lines > options.max_lines {
             let summary = format!(
-                "… {} more lines; narrow --select, lower --depth or raise --max-lines\n",
+                "… {} more lines; narrow --select, lower --depth or raise --max-lines",
                 lines - options.max_lines
             );
-            output.push_str(&summary);
-        }
-        if output.len() > self.limits.max_output_bytes {
-            return Err(Error::limit("output_bytes", self.limits.max_output_bytes));
+            append(&mut output, &summary, self.limits.max_output_bytes)?;
         }
         clock.check()?;
         Ok(output)
     }
 }
-fn append(
-    output: &mut String,
-    line: &str,
-    count: &mut usize,
-    options: &OutlineOptions,
-    document: &Document,
-) -> Result<(), Error> {
-    *count += 1;
-    if *count <= options.max_lines {
-        if line.len() + 1
-            > document
-                .limits
-                .max_output_bytes
-                .saturating_sub(output.len())
-        {
-            return Err(Error::limit(
-                "output_bytes",
-                document.limits.max_output_bytes,
-            ));
-        }
-        output.push_str(line);
-        output.push('\n');
+fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> {
+    if line.len() + 1 > maximum.saturating_sub(output.len()) {
+        return Err(Error::limit("output_bytes", maximum));
     }
+    output.push_str(line);
+    output.push('\n');
     Ok(())
 }
 fn element_children(element: ElementRef<'_>) -> Vec<ElementRef<'_>> {
@@ -278,6 +258,49 @@ fn describe(
 mod tests {
     use super::*;
     use crate::{Limits, Source};
+    #[test]
+    fn append_admits_complete_utf8_lines_and_preserves_buffer_on_refusal() {
+        let initial = "old\n";
+        let line = "é雪";
+        let expected = "old\né雪\n";
+        for maximum in [expected.len(), expected.len() + 1] {
+            let mut output = initial.to_owned();
+            append(&mut output, line, maximum).unwrap();
+            assert_eq!(output, expected);
+        }
+        for maximum in [expected.len() - 1, expected.len() - 2] {
+            let mut output = initial.to_owned();
+            let error = append(&mut output, line, maximum).unwrap_err();
+            assert_eq!(error.error, ErrorCode::LimitExceeded);
+            assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+            assert_eq!(error.bound, Some(maximum.into()));
+            assert_eq!(output, initial);
+        }
+    }
+    #[test]
+    fn hidden_selection_header_is_counted_even_without_a_root_match() {
+        let document = Document::parse(Source::new(b"<p>x</p>"), &Limits::default()).unwrap();
+        let mut options = OutlineOptions {
+            select: Some("main".into()),
+            max_lines: 0,
+            ..OutlineOptions::default()
+        };
+        assert_eq!(
+            document.outline(&options).unwrap(),
+            "… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"
+        );
+        options.max_lines = 1;
+        assert_eq!(document.outline(&options).unwrap(), "0 matches for main\n");
+        options.select = None;
+        options.depth = 0;
+        options.max_lines = 0;
+        assert_eq!(
+            document.outline(&options).unwrap(),
+            "… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"
+        );
+        options.max_lines = 1;
+        assert_eq!(document.outline(&options).unwrap(), "html (+3 inside)\n");
+    }
     #[test]
     fn shapes_order_classes_source_attributes_and_clipping_are_preserved() {
         let html = "<main><p id=a class='z A b c d' z='1' a='2' b='3' c='4' d='5' e='6' f='7'>quoted \"text\"</p><p class='z A b c d'><b>shape</b></p><p class='z A b c d'>same shape</p></main>";

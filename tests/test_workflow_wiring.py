@@ -13,6 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_fuzz_seeds_keep_exact_bytes_in_checkouts(self):
+        seeds = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "fuzz/seeds").rglob("*") if path.is_file())
+        self.assertTrue(seeds, "retained document seeds must be discovered")
+        values = subprocess.check_output(["git", "check-attr", "-z", "text", "diff", "--", *seeds], cwd=ROOT).decode().split("\0")[:-1]
+        self.assertEqual(len(values), 6 * len(seeds))
+        for path, attribute, value in zip(values[::3], values[1::3], values[2::3]):
+            self.assertEqual(value, "unset", f"{path}: {attribute} must preserve byte inputs")
+
     def test_fuzz_targets_match_the_smoke_and_documentation(self):
         manifest = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text())
         targets = {entry["name"] for entry in manifest["bin"]}

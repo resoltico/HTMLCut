@@ -190,7 +190,7 @@ main() {
     local package_hash_before binary_hash_before
     package_hash_before=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$package_path")
     binary_hash_before=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$binary_path")
-    if ! HTMLCUT_TEST_BINARY="$binary_native" cargo test --locked -p htmlcut-cli --test conformance --target "$target_triple" -- --nocapture --include-ignored >"$log_path" 2>&1; then
+    if ! HTMLCUT_TEST_BINARY="$binary_native" cargo test --locked -p htmlcut-cli --test conformance --test io_destination --test input_contract_boundaries --target "$target_triple" -- --nocapture --include-ignored >"$log_path" 2>&1; then
         tail -80 "$log_path" >&2
         return 1
     fi

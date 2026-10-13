@@ -13,3 +13,5 @@ The gate formats, lints with warnings denied, runs the library and CLI corpus an
 The two fuzz targets read contract bytes and document bytes paired with a contract. [focused-smoke.sh](scripts/focused-smoke.sh) generates seeds from conformance and retained document seeds and keeps mutable corpora and crash evidence outside the checkout. Each target must finish all 10,000 iterations.
 
 Conformance expectations are independent specification inputs. Report a questionable case and reasoning before editing it. Preserve the append-only contract corpus within a major version. Keep default values and limits authoritative in code and derive or check dependent help/schema documentation.
+
+Run `cargo mutants --workspace` before a release. Each copy builds in its own checkout; do not share `CARGO_TARGET_DIR` or Cargo build-directory overrides between copies. Report every survivor and the reason it changes nothing observable in the release pull request.
