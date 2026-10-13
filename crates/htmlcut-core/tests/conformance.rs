@@ -73,3 +73,62 @@ fn every_case_runs_through_the_finished_library() {
     }
     assert_eq!(checked, 62);
 }
+
+#[test]
+fn refusal_messages_explain_facts_without_debug_renderings() {
+    fn plain(error: &htmlcut_core::Error) {
+        for rendering in ["Some(", "None", "ParseError", "SourceLocation", " { "] {
+            assert!(!error.message.contains(rendering), "{}", error.message);
+        }
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(root).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.join("error.json").exists() {
+            continue;
+        }
+        let bytes = std::fs::read(path.join("page.html")).unwrap();
+        let options: Value = std::fs::read(path.join("options.json"))
+            .ok()
+            .map(|v| serde_json::from_slice(&v).unwrap())
+            .unwrap_or_default();
+        let mut source = Source::new(&bytes);
+        source.encoding = options["encoding"].as_str();
+        source.base_url = options["base_url"].as_str();
+        let mut limits = Limits::default();
+        if let Some(n) = options["max_nodes"].as_u64() {
+            limits.max_nodes = n as usize;
+        }
+        let result =
+            Contract::from_json(&std::fs::read_to_string(path.join("contract.json")).unwrap())
+                .and_then(|c| Document::parse(source, &limits)?.extract(&c));
+        plain(&result.unwrap_err());
+        checked += 1;
+    }
+    assert!(checked > 0);
+    for selector in ["[id=", "p:contains(x)", "div:has(p:has(a))", "p >"] {
+        let error = Contract::from_json(&serde_json::json!({"select":selector}).to_string())
+            .err()
+            .unwrap();
+        plain(&error);
+        assert!(error.message.contains("column"), "{}", error.message);
+    }
+    let error = Contract::from_json(r#"{"read":"html"}"#).err().unwrap();
+    for reading in [
+        "text",
+        "text-content",
+        "outer-html",
+        "attr:NAME",
+        "url:NAME",
+    ] {
+        assert!(error.message.contains(reading));
+    }
+    let document = Document::parse(Source::new(b"<p>x</p>"), &Limits::default()).unwrap();
+    let mut options = OutlineOptions::default();
+    options.select = Some("[id=".into());
+    let error = document.outline(&options).unwrap_err();
+    plain(&error);
+    assert_eq!(error.select.as_deref(), Some("[id="));
+    assert!(error.path.is_none());
+}

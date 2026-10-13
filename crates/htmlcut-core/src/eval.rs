@@ -75,6 +75,11 @@ pub(crate) fn candidates<'d>(
     Ok(found)
 }
 
+fn selected(select: Option<&str>) -> String {
+    select
+        .map(|text| format!("selector {}", serde_json::to_string(text).unwrap()))
+        .unwrap_or_else(|| "the match itself".into())
+}
 fn range(min: usize, max: Option<usize>) -> String {
     match max {
         Some(max) if max == min => min.to_string(),
@@ -157,8 +162,9 @@ impl<'d> Engine<'d> {
                 match failure {
                     PredicateFailure::Count(found, expected) => {
                         e.message = format!(
-                            "{}: selector {:?} found {found}; expected {expected}.",
-                            predicate.path, e.select
+                            "{}: {} found {found}; expected {expected}.",
+                            predicate.path,
+                            selected(e.select.as_deref())
                         );
                         e.found = Some(found);
                         e.expected = Some(expected);
@@ -166,12 +172,18 @@ impl<'d> Engine<'d> {
                     PredicateFailure::Value(value) => {
                         e = e.observed(&value);
                         e.message = format!(
-                            "{}: selector {:?} read {:?}, which fails the expectation.",
-                            predicate.path, e.select, e.value
+                            "{}: {} read {}, which fails the expectation.",
+                            predicate.path,
+                            selected(e.select.as_deref()),
+                            serde_json::to_string(e.value.as_deref().unwrap()).unwrap()
                         );
                     }
                     PredicateFailure::MissingAttribute => {
-                        e.message = format!("{}: a required attribute is missing.", predicate.path);
+                        e.message = format!(
+                            "{}: {} lacks a required attribute.",
+                            predicate.path,
+                            selected(e.select.as_deref())
+                        );
                     }
                 }
                 return Err(e);
@@ -208,8 +220,9 @@ impl<'d> Engine<'d> {
                 Error::new(
                     ErrorCode::CountMismatch,
                     format!(
-                        "{}: selector {selector:?} found {count}; expected {expected}.",
-                        node.path
+                        "{}: {} found {count}; expected {expected}.",
+                        node.path,
+                        selected(selector.as_deref())
                     ),
                 ),
                 &node.path,

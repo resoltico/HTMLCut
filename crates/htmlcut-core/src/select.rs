@@ -33,7 +33,33 @@ impl Selector {
         let mut input = cssparser::ParserInput::new(text);
         let mut parser = cssparser::Parser::new(&mut input);
         let list = SelectorList::parse(&scraper::selector::Parser, &mut parser, ParseRelative::No)
-            .map_err(|e| failure(format!("Invalid CSS selector {text:?}: {e:?}.")))?;
+            .map_err(|e| {
+                use cssparser::{BasicParseErrorKind, ParseErrorKind};
+                use selectors::parser::SelectorParseErrorKind;
+                let reason = match e.kind {
+                    ParseErrorKind::Basic(BasicParseErrorKind::EndOfInput) => {
+                        "unexpected end of selector".into()
+                    }
+                    ParseErrorKind::Custom(
+                        SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+                    ) => format!(
+                        "unsupported pseudo-class or pseudo-element {}",
+                        serde_json::to_string(name.as_ref()).unwrap()
+                    ),
+                    ParseErrorKind::Custom(SelectorParseErrorKind::EmptySelector) => {
+                        "the selector is empty".into()
+                    }
+                    ParseErrorKind::Custom(SelectorParseErrorKind::DanglingCombinator) => {
+                        "a combinator has no following selector".into()
+                    }
+                    _ => "selector syntax error".into(),
+                };
+                failure(format!(
+                    "Invalid CSS selector {} at column {}: {reason}.",
+                    serde_json::to_string(text).unwrap(),
+                    e.location.column
+                ))
+            })?;
         depth::admit(&list)
             .map_err(|()| failure("The selector exceeds the matching-depth bound of 64.".into()))?;
         Ok(Self {

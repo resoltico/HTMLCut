@@ -48,7 +48,10 @@ impl Document {
         let mut output = String::new();
         let mut lines = 0;
         let root = if let Some(text) = &options.select {
-            let selector = Selector::compile(text, "$outline.select")?;
+            let selector = Selector::compile(text, "").map_err(|mut error| {
+                error.path = None;
+                error
+            })?;
             let matches = candidates(Some(&selector), &scope, &clock)?;
             let displayed = if text.chars().any(char::is_control) {
                 serde_json::to_string(text).unwrap()

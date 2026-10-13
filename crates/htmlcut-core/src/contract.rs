@@ -205,7 +205,9 @@ fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Readi
         }
         _ => Err(invalid(
             Some(&format!("{path}.read")),
-            &format!("Unknown or invalid reading {text:?}."),
+            &format!(
+                "Unknown or invalid reading {text:?}. Readings are text, text-content, outer-html, attr:NAME and url:NAME."
+            ),
         )),
     }
 }
