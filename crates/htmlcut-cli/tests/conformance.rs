@@ -555,3 +555,37 @@ fn corpus_runner_refuses_empty_or_incomplete_corpora() {
     std::fs::write(case.join("contract.json"), b"\"h1\"").unwrap();
     assert!(std::panic::catch_unwind(|| run_cases(directory.path())).is_err());
 }
+
+#[test]
+fn html5ever_0_39_meta_charset_panic_fails_closed() {
+    let directory = tempfile::tempdir().unwrap();
+    let page = directory.path().join("page.html");
+    let destination = directory.path().join("result.json");
+    std::fs::write(
+        &page,
+        b"<meta http-equiv=content-type content='text/html; charset'><p>ok</p>",
+    )
+    .unwrap();
+    std::fs::write(&destination, b"previous complete result").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "p"])
+        .arg(&page)
+        .arg("-o")
+        .arg(&destination)
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(6),
+        "html5ever no longer panics on this input. Replace this test with one expecting \"ok\", add the input to the fuzz seeds and remove the known issue from changelog.md."
+    );
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"], "internal");
+    assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+    assert_eq!(
+        std::fs::read(&destination).unwrap(),
+        b"previous complete result"
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+}
