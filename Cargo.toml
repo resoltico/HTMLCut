@@ -27,7 +27,7 @@ encoding_rs = "0.8.42"
 scraper = { version = "0.27.0", default-features = false, features = ["deterministic"] }
 cssparser = "0.37.0"
 selectors = "0.38.0"
-html5ever = "0.39.0"
+html5ever = "0.40.1"
 tempfile = "3.27.0"
 htmlcut-core = { path = "crates/htmlcut-core", version = "22.0.0" }
 libfuzzer-sys = "0.4.13"
