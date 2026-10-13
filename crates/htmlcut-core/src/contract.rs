@@ -206,7 +206,12 @@ fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Readi
         _ => Err(invalid(
             Some(&format!("{path}.read")),
             &format!(
-                "Unknown or invalid reading {text:?}. Readings are text, text-content, outer-html, attr:NAME and url:NAME."
+                "Unknown or invalid reading {text:?}. {}",
+                if predicate {
+                    "A predicate reads text, text-content or attr:NAME."
+                } else {
+                    "Readings are text, text-content, outer-html, attr:NAME and url:NAME."
+                }
             ),
         )),
     }
@@ -570,6 +575,27 @@ mod tests {
             assert_eq!(error.path.as_deref(), Some("$.exclude"));
         }
         assert!(validator.is_valid(&serde_json::json!({"fields":{"title":"h1"}})));
+    }
+    #[test]
+    fn refused_readings_describe_their_position() {
+        for read in ["url:href", "outer-html"] {
+            let error = compile(serde_json::json!({"select":"a","where":[{"read":read}]}))
+                .err()
+                .unwrap();
+            assert_eq!(error.path.as_deref(), Some("$.where[0].read"));
+            assert!(
+                error
+                    .message
+                    .ends_with("A predicate reads text, text-content or attr:NAME.")
+            );
+            assert!(!error.message.contains("Readings are"));
+        }
+        let error = compile(serde_json::json!({"read":"bogus"})).err().unwrap();
+        assert!(
+            error
+                .message
+                .ends_with("Readings are text, text-content, outer-html, attr:NAME and url:NAME.")
+        );
     }
     #[test]
     fn closed_members_and_member_combinations_refuse_with_locations() {

@@ -229,6 +229,12 @@ fn prescan(bytes: &[u8]) -> Option<&'static Encoding> {
     prescan_meta(bytes).or_else(|| xml_encoding(bytes))
 }
 
+enum PrescanCharset {
+    Unset,
+    Encoding(&'static Encoding),
+    Failed,
+}
+
 fn prescan_meta(bytes: &[u8]) -> Option<&'static Encoding> {
     let mut position = 0;
     while position < bytes.len() {
@@ -244,28 +250,30 @@ fn prescan_meta(bytes: &[u8]) -> Option<&'static Encoding> {
             let mut seen = std::collections::HashSet::new();
             let mut got_pragma = false;
             let mut need_pragma = None;
-            let mut charset = None;
+            let mut charset = PrescanCharset::Unset;
             for (name, value) in attrs {
                 if !seen.insert(name.clone()) {
                     continue;
                 }
                 match name.as_slice() {
                     b"http-equiv" => got_pragma = value == b"content-type",
-                    b"content" if charset.is_none() => {
+                    b"content" if matches!(charset, PrescanCharset::Unset) => {
                         if let Some(found) = content_encoding(&value) {
-                            charset = Some(found);
+                            charset = PrescanCharset::Encoding(found);
                             need_pragma = Some(true);
                         }
                     }
                     b"charset" => {
-                        charset = Encoding::for_label(&value);
+                        charset = Encoding::for_label(&value)
+                            .map(PrescanCharset::Encoding)
+                            .unwrap_or(PrescanCharset::Failed);
                         need_pragma = Some(false);
                     }
                     _ => (),
                 }
             }
             if (need_pragma == Some(false) || (need_pragma == Some(true) && got_pragma))
-                && let Some(encoding) = charset
+                && let PrescanCharset::Encoding(encoding) = charset
             {
                 return Some(if encoding == UTF_16LE || encoding == UTF_16BE {
                     UTF_8
@@ -507,6 +515,10 @@ mod tests {
     #[test]
     fn standard_prescan_handles_pragmas_substitutions_boundaries_and_false_declarations() {
         for (bytes, expected) in [
+            (b"<meta charset='' http-equiv='content-type' content='text/html; charset=koi8-r'>".as_slice(), None),
+            (b"<meta charset=bogus http-equiv='content-type' content='text/html; charset=koi8-r'>".as_slice(), None),
+            (b"<meta content='text/html; charset=koi8-r' http-equiv='content-type' charset=bogus>".as_slice(), None),
+
             (
                 b"<META HTTP-EQUIV='Content-Type' content='text/html; charset=Shift_JIS'>"
                     .as_slice(),
