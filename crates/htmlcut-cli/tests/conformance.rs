@@ -499,30 +499,11 @@ fn named_output_obeys_umask_and_preserves_existing_permission_bits() {
 }
 
 #[test]
+#[ignore = "needs the shipped binary; run by the package smoke"]
 fn positional_predicates_reuse_sibling_indexes_within_the_deadline() {
-    // Upstream debug assertions independently recompute every nth index without
-    // caching. Measure the shipped profile while retaining those assertions in
-    // all correctness tests.
-    let performance_binary = std::env::var_os("HTMLCUT_TEST_BINARY").unwrap_or_else(|| {
-        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let build = Command::new("cargo")
-            .args(["build", "--release", "--locked", "-p", "htmlcut-cli"])
-            .current_dir(crate_dir)
-            .output()
-            .unwrap();
-        assert!(build.status.success(), "{build:?}");
-        let metadata = Command::new("cargo")
-            .args(["metadata", "--format-version", "1", "--no-deps", "--locked"])
-            .current_dir(crate_dir)
-            .output()
-            .unwrap();
-        assert!(metadata.status.success(), "{metadata:?}");
-        let metadata: Value = serde_json::from_slice(&metadata.stdout).unwrap();
-        Path::new(metadata["target_directory"].as_str().unwrap())
-            .join("release")
-            .join(format!("htmlcut{}", std::env::consts::EXE_SUFFIX))
-            .into_os_string()
-    });
+    let performance_binary = std::env::var_os("HTMLCUT_TEST_BINARY").expect(
+        "HTMLCUT_TEST_BINARY must name the shipped binary for the package performance test",
+    );
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("siblings.html");
     let mut html = String::from("<main>");
