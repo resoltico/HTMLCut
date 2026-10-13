@@ -23,5 +23,8 @@ htmlcut-core.workspace = true
 tempfile.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+winapi-util.workspace = true
+
 [lints]
 workspace = true

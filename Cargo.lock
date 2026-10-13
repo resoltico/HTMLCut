@@ -442,6 +442,7 @@ dependencies = [
  "htmlcut-core",
  "serde_json",
  "tempfile",
+ "winapi-util",
 ]
 
 [[package]]
@@ -1466,6 +1467,15 @@ dependencies = [
  "phf_codegen",
  "string_cache",
  "string_cache_codegen",
+]
+
+[[package]]
+name = "winapi-util"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]

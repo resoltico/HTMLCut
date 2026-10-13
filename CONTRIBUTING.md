@@ -14,4 +14,4 @@ The two fuzz targets read contract bytes and document bytes paired with a contra
 
 Conformance expectations are independent specification inputs. Report a questionable case and reasoning before editing it. Preserve the append-only contract corpus within a major version. Keep default values and limits authoritative in code and derive or check dependent help/schema documentation.
 
-Run `cargo mutants --workspace` before a release. Each copy builds in its own checkout; do not share `CARGO_TARGET_DIR` or Cargo build-directory overrides between copies. Report every survivor and the reason it changes nothing observable in the release pull request.
+Install the release audit tool with `cargo install cargo-mutants --version 27.1.0 --locked`, then run `cargo mutants --workspace` before a release. Each copy builds in its own checkout; do not share `CARGO_TARGET_DIR` or Cargo build-directory overrides between copies. Report every survivor and the reason it changes nothing observable in the release pull request.

@@ -854,69 +854,89 @@ fn windows_null_device_is_written_without_creating_a_file() {
 
 #[cfg(windows)]
 #[test]
-fn windows_named_pipe_receives_direct_output() {
+fn windows_named_pipe_output_is_delivered_and_reader_disconnect_is_silent() {
     use std::io::{BufRead, BufReader, Read};
-    let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("page.html");
-    std::fs::write(&source, b"<h1>pipe</h1>").unwrap();
-    let name = format!(
-        "htmlcut-{}",
-        directory.path().file_name().unwrap().to_string_lossy()
-    );
-    let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In); try { [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $p.WaitForConnection(); $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()); [Console]::Out.Flush() } finally { $p.Dispose() }"#;
-    let mut server = Command::new("powershell.exe")
-        .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            script,
-        ])
-        .env("HTMLCUT_PIPE_NAME", &name)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut stream = BufReader::new(server.stdout.take().unwrap());
-    let (ready_sender, ready_receiver) = std::sync::mpsc::channel();
-    let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
-        let mut ready = String::new();
-        let handshake = stream.read_line(&mut ready).map(|_| ready);
-        let _ = ready_sender.send(handshake);
-        let mut delivered = Vec::new();
-        stream.read_to_end(&mut delivered)?;
-        Ok(delivered)
-    });
-    let publication = std::panic::catch_unwind(|| {
-        let ready = ready_receiver
-            .recv_timeout(Duration::from_secs(10))
-            .expect("named-pipe server did not announce readiness")
-            .unwrap();
-        assert_eq!(ready.trim(), "READY");
-        let path = format!(r"\\.\pipe\{name}");
-        let producer = Command::new(binary())
-            .args(["get", "h1"])
-            .arg(&source)
-            .arg("-o")
-            .arg(path)
+    for disconnect in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("page.html");
+        if disconnect {
+            // This exceeds the configured pipe buffer, so closing after one byte
+            // interrupts publication rather than merely racing its completion.
+            std::fs::write(&source, format!("<h1>{}</h1>", "x".repeat(1024 * 1024))).unwrap();
+        } else {
+            std::fs::write(&source, b"<h1>pipe</h1>").unwrap();
+        }
+        let name = format!(
+            "htmlcut-{}",
+            directory.path().file_name().unwrap().to_string_lossy()
+        );
+        let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::None,4096,4096); try { [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $p.WaitForConnection(); if ($env:HTMLCUT_PIPE_DISCONNECT -eq '1') { [Console]::Out.Write([char]$p.ReadByte()) } else { $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()) }; [Console]::Out.Flush() } finally { $p.Dispose() }"#;
+        let mut server = Command::new("powershell.exe")
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ])
+            .env("HTMLCUT_PIPE_NAME", &name)
+            .env(
+                "HTMLCUT_PIPE_DISCONNECT",
+                if disconnect { "1" } else { "0" },
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let output = bounded_output(producer, Duration::from_secs(10));
-        assert!(output.status.success(), "{output:?}");
-        assert!(output.stdout.is_empty());
-    });
-    if publication.is_err() {
-        let _ = server.kill();
+        let mut stream = BufReader::new(server.stdout.take().unwrap());
+        let (ready_sender, ready_receiver) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+            let mut ready = String::new();
+            let handshake = stream.read_line(&mut ready).map(|_| ready);
+            let _ = ready_sender.send(handshake);
+            let mut delivered = Vec::new();
+            stream.read_to_end(&mut delivered)?;
+            Ok(delivered)
+        });
+        let publication = std::panic::catch_unwind(|| {
+            let ready = ready_receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("named-pipe server did not announce readiness")
+                .unwrap();
+            assert_eq!(ready.trim(), "READY");
+            let path = format!(r"\\.\pipe\{name}");
+            let producer = Command::new(binary())
+                .args(["get", "h1"])
+                .arg(&source)
+                .arg("-o")
+                .arg(path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let output = bounded_output(producer, Duration::from_secs(10));
+            assert!(output.status.success(), "{output:?}");
+            assert!(output.stdout.is_empty());
+            assert!(output.stderr.is_empty(), "{output:?}");
+        });
+        if publication.is_err() {
+            let _ = server.kill();
+        }
+        let completion = bounded_output(server, Duration::from_secs(10));
+        let delivered = reader.join().unwrap();
+        publication.unwrap();
+        assert!(completion.status.success(), "{completion:?}");
+        let delivered = delivered.unwrap();
+        assert_eq!(
+            delivered,
+            if disconnect {
+                &b"\""[..]
+            } else {
+                &b"\"pipe\"\n"[..]
+            }
+        );
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
-    let completion = bounded_output(server, Duration::from_secs(10));
-    let delivered = reader.join().unwrap();
-    publication.unwrap();
-    assert!(completion.status.success(), "{completion:?}");
-    let delivered = delivered.unwrap();
-    assert_eq!(delivered, b"\"pipe\"\n");
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
 #[test]

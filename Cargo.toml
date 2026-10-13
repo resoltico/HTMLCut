@@ -21,6 +21,7 @@ authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
+winapi-util = "0.1.11"
 clap = { version = "4.6.7", features = ["derive"] }
 ego-tree = "0.11.0"
 encoding_rs = "0.8.42"

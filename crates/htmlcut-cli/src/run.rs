@@ -296,22 +296,28 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
     };
     let (resolved, permissions) = match OpenOptions::new().write(true).open(path) {
         Ok(mut file) => {
-            let metadata = match file.metadata() {
-                Ok(metadata) => Some(metadata),
-                // Windows device and pipe handles may not support filesystem metadata.
-                #[cfg(windows)]
-                Err(_) => None,
-                #[cfg(not(windows))]
-                Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),
-            };
-            if metadata.as_ref().is_some_and(|m| m.is_dir()) {
+            // Windows metadata attributes do not distinguish disk files from
+            // connected pipes. Inspect the existing handle before any path reopen.
+            #[cfg(windows)]
+            let requires_filesystem_metadata = winapi_util::file::typ(&file)
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+                .is_disk();
+            #[cfg(not(windows))]
+            let requires_filesystem_metadata = true;
+            if !requires_filesystem_metadata {
+                return write_output(&mut file, bytes, path);
+            }
+            let metadata = file
+                .metadata()
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            if metadata.is_dir() {
                 return Err(io_error(
                     ErrorCode::OutputUnwritable,
                     path,
                     io::Error::new(io::ErrorKind::IsADirectory, "destination is a directory"),
                 ));
             }
-            if !metadata.as_ref().is_some_and(|m| m.is_file()) {
+            if !metadata.is_file() {
                 return write_output(&mut file, bytes, path);
             }
             let resolved = resolve_output_links(path)
@@ -321,7 +327,7 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
             }
             let resolved = std::fs::canonicalize(resolved)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            (resolved, metadata.map(|m| m.permissions()))
+            (resolved, Some(metadata.permissions()))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             let resolved = resolve_output_links(path)
@@ -430,16 +436,30 @@ fn await_watchdog() -> ! {
 mod tests {
     use super::*;
     #[test]
-    fn link_resolution_propagates_a_non_directory_parent_failure() {
+    fn output_under_a_regular_file_refuses_and_preserves_the_parent() {
         let directory = tempfile::tempdir().unwrap();
         let file = directory.path().join("file");
         std::fs::write(&file, b"unchanged").unwrap();
         let child = file.join("child");
         let expected = std::fs::symlink_metadata(&child).unwrap_err();
-        let error = resolve_output_links(&child).unwrap_err();
-        assert_eq!(error.kind(), expected.kind());
-        assert_eq!(error.raw_os_error(), expected.raw_os_error());
+        if expected.kind() == io::ErrorKind::NotFound {
+            // Windows reports PATH_NOT_FOUND here. Resolution does not promise
+            // that a candidate's parent is a directory; publication checks that.
+            assert_eq!(resolve_output_links(&child).unwrap(), child);
+        } else {
+            let error = resolve_output_links(&child).unwrap_err();
+            assert_eq!(error.kind(), expected.kind());
+            assert_eq!(error.raw_os_error(), expected.raw_os_error());
+        }
+        let error = publish(b"new", Some(&child)).unwrap_err();
+        assert_eq!(error.error, ErrorCode::OutputUnwritable);
+        assert_eq!(
+            error.file.as_deref(),
+            Some(child.to_string_lossy().as_ref())
+        );
+        assert!(error.detail.is_some());
         assert_eq!(std::fs::read(file).unwrap(), b"unchanged");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
     #[test]
     fn output_ignores_only_broken_pipe_from_writing_or_flushing() {

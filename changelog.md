@@ -7,6 +7,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Changed
 
 - The minimum supported Rust version is 1.88.0, down from 1.98.1 in 21.0.0; development remains pinned to 1.99.0.
+- Contributor build output stays in the checkout's `target/`. Development builds disable incremental compilation and retain line tables for workspace crates while dropping dependency debug information.
 - Known issue: a `meta` element with `http-equiv="content-type"` whose `content` value ends in the word `charset` ends every command with exit 6, `internal`. The cause is html5ever 0.39.0; it is corrected in html5ever 0.40.1, which no scraper release uses yet. The library parser can unwind a panic on this input.
 - **Breaking contract and CLI:** one recursive, versionless JSON contract with one/optional/all counts, nested records, label-based where predicates, sibling extents, value checks and named captures. Use outline/get/run with inline JSON or --from-file; the engine major version defines semantics. Records require at least one field; ineffective exclusions on attribute and URL readings are refused. Attribute predicates require the attribute even without a value check. Help and version have their conventional short forms, argument errors point to the guide, and inline contract-file paths point to --from-file. See [the language](docs/contract.md).
 - **Breaking readings:** text retains block lines, table cells and preformatted content; text-content preserves descendant text while skipping inert template contents. Template contents are outside selection and outline reports their element count without expanding them. URL readings accept any attribute and honor the first document base. Input follows WHATWG encoding detection and refuses malformed bytes with an encoding and byte offset.
@@ -20,6 +21,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Internal
 
 - The library, CLI and each unpacked native package run one conformance corpus. Contract cases are frozen within a major release; checks reject changed or deleted existing cases. Both fuzz targets complete 10,000-run smokes. Crate packages ship self-contained unit tests; discovered corpus cases run through library and binary integration tests. Sibling-index caches persist across scopes while relative caches remain scope-local. The gate checks Python and cargo-deny prerequisites before builds.
+- Native package smokes run positional performance checks against the shipped executable. Release preparation includes a full workspace mutation review with every survivor explained.
 
 ## [21.0.0] - 2026-10-12
 
