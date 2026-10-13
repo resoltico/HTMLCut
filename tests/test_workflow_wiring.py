@@ -7,11 +7,20 @@ import os
 import subprocess
 import tempfile
 import unittest
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_cargo_configuration_keeps_each_checkout_build_isolated(self):
+        for name in ["config", "config.toml"]:
+            path = ROOT / ".cargo" / name
+            if path.exists():
+                config = tomllib.loads(path.read_text())
+                self.assertFalse({"target-dir", "build-dir"} & config.get("build", {}).keys(),
+                                 f"{path}: build routing belongs in personal environment settings")
+
     def test_ci_exports_complete_matrix_as_one_action_output(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
         step = text.split("      - id: matrix\n", 1)[1].split("\n  linux-maintainer:", 1)[0]

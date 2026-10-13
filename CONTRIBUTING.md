@@ -1,6 +1,6 @@
 # Contributing
 
-Start at the repository root with rustup and a native linker; [platform support](docs/platform-support.md) lists prerequisites. [rust-toolchain.toml](rust-toolchain.toml) pins development, while [Cargo.toml](Cargo.toml) declares the minimum tested compiler. Cargo.lock pins dependency resolution.
+Start at the repository root with rustup and a native linker; [platform support](docs/platform-support.md) lists prerequisites. [rust-toolchain.toml](rust-toolchain.toml) pins development, while [Cargo.toml](Cargo.toml) declares the minimum tested compiler. Cargo.lock pins dependency resolution. Build output stays in `target/`; `cargo clean` removes it, and a different location is set with `CARGO_TARGET_DIR`, not in repository configuration.
 
 Install the versions of cargo-deny, cargo-about and cargo-fuzz declared in [contributor-rust-tools.sh](scripts/contributor-rust-tools.sh) using Cargo's install command with --version and --locked. Install the script's pinned nightly for fuzz instrumentation. Python 3.11 or newer is required for release maintenance tests.
 

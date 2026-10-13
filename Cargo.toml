@@ -50,3 +50,10 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+[profile.dev]
+incremental = false
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
