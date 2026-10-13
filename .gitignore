@@ -1,13 +1,7 @@
 /dist/
 /target/
-/tmp/
 /fuzz/artifacts/
-/fuzz/coverage/
-/fuzz/target/
 
-*.db
-*.sqlite
-*.sqlite3
 *.log
 
 .vscode/

@@ -11,9 +11,6 @@ authors.workspace = true
 repository.workspace = true
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots."
 
-[features]
-default = []
-
 [dependencies]
 cssparser.workspace = true
 selectors.workspace = true
