@@ -35,7 +35,7 @@ contents stay outside selection; reading a template itself returns its contents.
 Options:
   --base-url URL          base for url:NAME readings; a <base href> is honoured
   --encoding LABEL        override the encoding the document declares
-  -o, --output FILE       write atomically; preserve existing permissions or use umask
+  -o, --output FILE       write atomically; - is stdout; follows symlinks
   -r, --raw               strings without JSON quoting, one per line
   --timeout SECONDS       default 10
   --max-nodes N           default 2000000

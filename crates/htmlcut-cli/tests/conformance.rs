@@ -589,3 +589,338 @@ fn html5ever_0_39_meta_charset_panic_fails_closed() {
     );
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }
+
+#[test]
+fn output_dash_is_stdout_and_directories_refuse() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "-"])
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"\"complete\"\n");
+    assert!(!directory.path().join("-").exists());
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(directory.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+        "output_unwritable"
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn output_links_follow_targets_and_permission_checks_preserve_objects() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let target = directory.path().join("target");
+    let link = directory.path().join("link");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    std::fs::write(&target, b"old").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o6754)).unwrap();
+    symlink("target", &link).unwrap();
+    let publish = |selector: &str, path: &Path| {
+        Command::new(binary())
+            .args(["get", selector])
+            .arg(&source)
+            .arg("-o")
+            .arg(path)
+            .output()
+            .unwrap()
+    };
+    let output = publish("h1", &link);
+    assert!(output.status.success(), "{output:?}");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\"complete\"\n");
+    assert_eq!(
+        target.metadata().unwrap().permissions().mode() & 0o7777,
+        0o754
+    );
+    let absent = directory.path().join("absent");
+    let dangling = directory.path().join("dangling");
+    let chain = directory.path().join("chain");
+    symlink("absent", &dangling).unwrap();
+    symlink("dangling", &chain).unwrap();
+    assert!(publish("h1", &chain).status.success());
+    assert!(
+        dangling
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(std::fs::read(&absent).unwrap(), b"\"complete\"\n");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let bytes = std::fs::read(&target).unwrap();
+    let output = publish("h1", &link);
+    assert_eq!(output.status.code(), Some(5));
+    assert_eq!(std::fs::read(&target).unwrap(), bytes);
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    for path in [&link, &dangling, &chain] {
+        assert_eq!(publish("missing", path).status.code(), Some(3));
+        assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+    let cycle_a = directory.path().join("cycle-a");
+    let cycle_b = directory.path().join("cycle-b");
+    symlink("cycle-b", &cycle_a).unwrap();
+    symlink("cycle-a", &cycle_b).unwrap();
+    assert_eq!(publish("h1", &cycle_a).status.code(), Some(5));
+    let missing_directory = directory.path().join("missing-directory/");
+    assert_eq!(publish("h1", &missing_directory).status.code(), Some(5));
+    assert!(!missing_directory.exists());
+    let trailing_link = directory.path().join("trailing-link");
+    symlink("missing-directory/", &trailing_link).unwrap();
+    assert_eq!(publish("h1", &trailing_link).status.code(), Some(5));
+    assert!(!missing_directory.exists());
+    let real = directory.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::create_dir(real.join("child")).unwrap();
+    let parent_link = directory.path().join("parent-link");
+    symlink("real/child", &parent_link).unwrap();
+    let parent_target = directory.path().join("parent-target");
+    symlink("parent-link/../new", &parent_target).unwrap();
+    assert!(publish("h1", &parent_target).status.success());
+    assert!(real.join("new").exists());
+    assert!(!directory.path().join("new").exists());
+    let hard_link = directory.path().join("hard-link");
+    std::fs::hard_link(&absent, &hard_link).unwrap();
+    std::fs::write(&source, b"<h1>changed</h1>").unwrap();
+    assert!(publish("h1", &absent).status.success());
+    assert_eq!(std::fs::read(&hard_link).unwrap(), b"\"complete\"\n");
+    assert_eq!(std::fs::read(&absent).unwrap(), b"\"changed\"\n");
+    assert!(
+        !std::fs::read_dir(directory.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".tmp"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn output_pipes_devices_and_descriptor_aliases_are_written_directly() {
+    use std::io::Read;
+    use std::os::unix::fs::{FileTypeExt, symlink};
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let pipe = directory.path().join("output.pipe");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap()
+            .success()
+    );
+    // Refusal must not even open the FIFO: there is no reader to unblock it.
+    let mut refusal = Command::new(binary())
+        .args(["get", "missing"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&pipe)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(status) = refusal.try_wait().unwrap() {
+            assert_eq!(status.code(), Some(3));
+            break;
+        }
+        if Instant::now() >= deadline {
+            refusal.kill().unwrap();
+            panic!("refusal opened its output FIFO");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let reader_path = pipe.clone();
+    let reader = std::thread::spawn(move || std::fs::read(reader_path).unwrap());
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&pipe)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(reader.join().unwrap(), b"\"complete\"\n");
+    assert!(pipe.symlink_metadata().unwrap().file_type().is_fifo());
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "/dev/null"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(
+        Path::new("/dev/null")
+            .metadata()
+            .unwrap()
+            .file_type()
+            .is_char_device()
+    );
+    let alias = directory.path().join("stdout-link");
+    symlink("/dev/stdout", &alias).unwrap();
+    for path in [Path::new("/dev/stdout"), alias.as_path()] {
+        let target = directory.path().join("redirected");
+        let writer = std::fs::File::create(&target).unwrap();
+        let mut observer = writer.try_clone().unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(path)
+            .stdout(Stdio::from(writer))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        // The original descriptor must see the data, not just a replaced name.
+        use std::io::{Seek, SeekFrom};
+        observer.seek(SeekFrom::Start(0)).unwrap();
+        let mut data = Vec::new();
+        // The write-only observer has no read permission; compare its size and the name.
+        assert_eq!(observer.metadata().unwrap().len(), 11);
+        std::fs::File::open(&target)
+            .unwrap()
+            .read_to_end(&mut data)
+            .unwrap();
+        assert_eq!(data, b"\"complete\"\n");
+    }
+    assert!(alias.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_null_device_is_written_without_creating_a_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "NUL"])
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty());
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_named_pipe_receives_direct_output() {
+    use std::io::{BufRead, BufReader, Read};
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>pipe</h1>").unwrap();
+    let name = format!(
+        "htmlcut-{}",
+        directory.path().file_name().unwrap().to_string_lossy()
+    );
+    let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In); try { [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $p.WaitForConnection(); $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()); [Console]::Out.Flush() } finally { $p.Dispose() }"#;
+    let mut server = Command::new("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+        ])
+        .env("HTMLCUT_PIPE_NAME", &name)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stream = BufReader::new(server.stdout.take().unwrap());
+    let mut ready = String::new();
+    stream.read_line(&mut ready).unwrap();
+    assert_eq!(ready.trim(), "READY");
+    let path = format!(r"\\.\pipe\{name}");
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(path)
+        .output()
+        .unwrap();
+    if !output.status.success() {
+        let _ = server.kill();
+    }
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty());
+    let mut delivered = Vec::new();
+    stream.read_to_end(&mut delivered).unwrap();
+    let completion = server.wait_with_output().unwrap();
+    assert!(completion.status.success(), "{completion:?}");
+    assert_eq!(delivered, b"\"pipe\"\n");
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn opening_a_regular_file_for_write_does_not_change_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("probe");
+    std::fs::write(&file, b"preserved").unwrap();
+    let before = file.metadata().unwrap();
+    drop(std::fs::OpenOptions::new().write(true).open(&file).unwrap());
+    let after = file.metadata().unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"preserved");
+    assert_eq!(before.len(), after.len());
+    assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+    assert_eq!(
+        before.permissions().readonly(),
+        after.permissions().readonly()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(
+            (before.mode(), before.ctime(), before.ctime_nsec()),
+            (after.mode(), after.ctime(), after.ctime_nsec())
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_dangling_link_resolution_creates_the_target() {
+    use std::os::windows::fs::symlink_file;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let link = directory.path().join("link");
+    let target = directory.path().join("absent.json");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    symlink_file("absent.json", &link)
+        .expect("native Windows symlink QA requires symlink creation privileges");
+    assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("absent.json"));
+    assert_eq!(
+        std::fs::canonicalize(&link).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&link)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\"complete\"\n");
+}
