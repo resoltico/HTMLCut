@@ -1,0 +1,58 @@
+{
+  "fields": {
+    "not": {
+      "select": "section:not(.featured)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "not-list": {
+      "select": "main > :not(section, #nothing)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "is": {
+      "select": ":is(aside, ul) > *",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "where": {
+      "select": ":where(section, aside)[id$=\"1\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "has-child": {
+      "select": "section:has(> a)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "has-descendant": {
+      "select": "main :has(.on)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "has-sibling": {
+      "select": "h2:has(+ p.lead)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "has-list": {
+      "select": "section:has(input, span)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "scope": {
+      "select": ":scope > body > main",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    }
+  }
+}

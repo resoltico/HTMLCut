@@ -1,0 +1,52 @@
+{
+  "fields": {
+    "element-name-any-case": {
+      "select": "SECTION.card",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "attribute-name-any-case": {
+      "select": "section[DATA-KIND]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "class-exact-case": {
+      "select": ".Card",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "class-other-case": {
+      "select": ".card",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "id-exact-case": {
+      "select": "#s1",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "id-other-case": {
+      "select": "#S1",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "attribute-value-exact-case": {
+      "select": "[data-kind=\"Alpha-One\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "type-value-any-case": {
+      "select": "input[type=\"checkbox\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    }
+  }
+}

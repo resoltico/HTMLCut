@@ -1,0 +1,1 @@
+{"empty":["p3"],"first-child":["i1"],"first-of-type":["p1","p3"],"last-child":["i3"],"last-of-type":["p2","p3"],"nth-child":["i1","i3"],"nth-keywords":["i1","i2","i3"],"nth-last-child":["i2"],"nth-last-of-type":["s3"],"nth-of-type":["s2"],"only-child":["p4"],"only-of-type":["sp"],"root":["m"]}
