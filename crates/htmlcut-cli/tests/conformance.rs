@@ -924,3 +924,28 @@ fn windows_dangling_link_resolution_creates_the_target() {
     assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
     assert_eq!(std::fs::read(&target).unwrap(), b"\"complete\"\n");
 }
+
+#[test]
+fn documented_unavailable_selectors_refuse_as_selectors() {
+    for selector in [
+        "p::before",
+        "input:checked",
+        "input:disabled",
+        "a:link",
+        "p:lang(en)",
+        "p:nth-child(2 of .x)",
+        "p:contains(x)",
+        "div:has(p:has(a))",
+    ] {
+        let output = Command::new(binary())
+            .args(["get", selector, "missing-input.html"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{selector}: {output:?}");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+            "invalid_selector"
+        );
+        assert!(output.stdout.is_empty());
+    }
+}

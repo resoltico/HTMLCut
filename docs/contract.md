@@ -74,6 +74,10 @@ attribute, even without `equals` or `pattern`. A missing attribute makes a predi
 hold; it is not a reading error. An expectation that fails for this reason carries no
 `found`, `expected` or `value` facts.
 
+Template contents are never candidates for `select`, `where`, `expect`, `exclude` or
+`until`. Reading a selected template itself preserves its contents; `outer-html`
+serialization includes template contents, which exclusions cannot select.
+
 Evaluation is depth-first, in document order, fields in byte order of name. The first
 failure is reported and discards the whole result.
 
@@ -130,7 +134,52 @@ the default style sheet. It is deterministic and does not consult CSS.
    dropped.
 10. Lines are joined by U+000A, without an added framing LF; a preserved final blank line can contribute a separator.
 
-### Results
+### Selectors and patterns
+
+**Accepted selectors.** These examples pin the supported forms in the conformance corpus:
+
+- Type, universal, id and class selectors: `main p`, `#u1 > *`, `#s1`, `.Card`,
+  `section.card.featured#s1`.
+- Attribute presence, equality, whitespace-word, language-prefix, prefix, suffix and
+  substring operators, plus the ASCII-insensitive i flag:
+  `[disabled]`, `[lang="fr"]`, `[data-kind~="two"]`, `section[lang|="en"]`,
+  `a[href^="https:"]`, `a[href$=".pdf"]`, `[data-kind*="a-o"]`,
+  `[data-kind="ALPHA-ONE" i]`, `[name=agree]`.
+- Descendant, child, next-sibling and later-sibling combinators and selector lists:
+  `main p`, `main > section > p`, `h2 + p`, `h2 ~ a`, `h2, aside p`.
+- Logical pseudo-classes :not(), :is() and :where(): `section:not(.featured)`,
+  `main > :not(section, #nothing)`, `:is(aside, ul) > *`,
+  `:where(section, aside)[id$="1"]`.
+- Relative :has(), without nesting another :has(): `section:has(> a)`,
+  `main :has(.on)`, `h2:has(+ p.lead)`, `section:has(input, span)`.
+- Positional pseudo-classes with an+b, even and odd: `li:nth-child(2n+1)`,
+  `li:nth-last-child(2)`, `section:nth-of-type(2)`, `section:nth-last-of-type(1)`,
+  `li:nth-child(even), li:nth-child(odd)`.
+- First, last and only child/of-type forms: `li:first-child`, `li:last-child`,
+  `aside > :only-child`, `section > p:first-of-type`, `section > p:last-of-type`,
+  `section > span:only-of-type`.
+- Tree and scope pseudo-classes: `p:empty`, `:root > body > main`,
+  `:scope > body > main`.
+
+**Case.** Element and attribute names match in any ASCII case. Ids and classes match
+exactly. Attribute values match exactly except values HTML defines as insensitive,
+such as `type`.
+
+**Not available.** Pseudo-elements; state and linguistic pseudo-classes such as
+`:checked`, `:disabled`, `:link` and `:lang()`; `:nth-child(… of S)`; `:contains()`;
+and a nested `:has()`. They are refused as `invalid_selector`. Use attributes such as
+`[checked]`, `[disabled]` and `a[href]`, and predicates for text. A later minor version
+may accept more forms; refusals are not frozen by conformance cases.
+
+**Template.** A template has no document children and matches `:empty`.
+
+**Patterns.** Rust's `regex` syntax, with Unicode-aware search matching. `\d`, `\w`
+and `\s` match Unicode classes; use `[0-9]` for ASCII digits. `^` and `$` match the
+start and end of the value. `(?m)` enables line anchors, `(?s)` lets `.` match LF, and
+`(?i)` ignores case. Both `(?<value>…)` and `(?P<value>…)` name the narrowing group.
+Look-around and backreferences are not available.
+
+## Results
 
 Values are JSON strings. Records are JSON objects with members in byte order of name.
 Encoding is compact UTF-8 JSON without escaping of non-ASCII characters, followed by one
@@ -139,7 +188,3 @@ LF on the command line.
 Count bounds are the defence against cleanly truncated documents: HTML permits omitted closing tags. Use declared row counts and page expectations, as in [the guarded rows case](../conformance/contract/08-rows-with-page-expectations/contract.json).
 
 The compiled regex allowance is 8 MiB across the contract, partitioned between patterns and their DFA caches. The schema derives structural bounds from the same constants; CSS/regex syntax and byte bounds remain engine checks.
-
-Template contents are never candidates for `select`, `where`, `expect`, `exclude` or
-`until`. Reading a selected template itself preserves its contents; `outer-html`
-serialization includes template contents, which exclusions cannot select.
