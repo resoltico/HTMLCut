@@ -12,7 +12,6 @@ mod depth;
 pub(crate) struct Selector {
     pub(crate) text: String,
     list: SelectorList<scraper::selector::Simple>,
-    scope_dependent_nth: bool,
 }
 impl Selector {
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
@@ -61,27 +60,11 @@ impl Selector {
                     e.location.column
                 ))
             })?;
-        let scope_dependent_nth = depth::admit(&list)
-            .map_err(|()| failure("The selector exceeds the matching-depth bound of 64.".into()))?;
+        depth::admit(&list).map_err(|message| failure(message.into()))?;
         Ok(Self {
             text: text.into(),
             list,
-            scope_dependent_nth,
         })
-    }
-    pub(crate) fn caches_for_scope<'a>(
-        &self,
-        shared: &'a mut matching::SelectorCaches,
-        local: &'a mut matching::SelectorCaches,
-    ) -> &'a mut matching::SelectorCaches {
-        if self.scope_dependent_nth {
-            // An `of S` index can depend on :scope in S; never share it.
-            local
-        } else {
-            shared.relative_selector = Default::default();
-            shared.relative_selector_filter_map = Default::default();
-            shared
-        }
     }
     pub(crate) fn matches(
         &self,

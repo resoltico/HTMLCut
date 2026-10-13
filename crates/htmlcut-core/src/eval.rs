@@ -49,8 +49,9 @@ pub(crate) fn candidates<'d>(
     let Some(select) = select else {
         return Ok(vec![scope.anchor]);
     };
-    let mut local = selectors::matching::SelectorCaches::default();
-    let caches = select.caches_for_scope(shared, &mut local);
+    shared.relative_selector = Default::default();
+    shared.relative_selector_filter_map = Default::default();
+    let caches = shared;
     let mut found = Vec::new();
     for root in &scope.extent {
         let mut skipped = 0;
@@ -333,8 +334,9 @@ impl<'d> Engine<'d> {
         let mut scope = Scope::one(element);
         if let Some(until) = until {
             let mut next = element.next_sibling();
-            let mut local = selectors::matching::SelectorCaches::default();
-            let caches = until.caches_for_scope(&mut self.caches, &mut local);
+            self.caches.relative_selector = Default::default();
+            self.caches.relative_selector_filter_map = Default::default();
+            let caches = &mut self.caches;
             while let Some(node) = next {
                 self.clock.tick()?;
                 if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, caches)) {

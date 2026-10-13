@@ -65,7 +65,7 @@ impl Contract {
                 &format!("The contract exceeds the {MAX_CONTRACT_BYTES}-byte grammar bound."),
             ));
         }
-        let value = crate::json::read(text.as_bytes(), MAX_CONTRACT_BYTES).map_err(|e| {
+        let value = crate::json::read(text.as_bytes()).map_err(|e| {
             invalid(
                 None,
                 &format!("The contract is not valid closed JSON: {e}."),

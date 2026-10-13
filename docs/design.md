@@ -231,5 +231,5 @@ Outline identifiers use CSS escaping and quoted previews use JSON escaping. Head
 The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument parsing, input, watchdog and publication. The library starts no threads and performs no filesystem or stream I/O.
 
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
-Relative-selector caches are reset for each scope. Selectors with an `of S` argument,
-if accepted by an upstream parser, use wholly per-scope caches.
+Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
+starts accepting that syntax.
