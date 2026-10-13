@@ -8,7 +8,7 @@ Install the versions of cargo-deny, cargo-about and cargo-fuzz declared in [cont
 ./check.sh
 ```
 
-The gate formats, lints with warnings denied, runs the library and CLI corpus and resource tests, builds rustdoc with warnings denied, runs release-maintenance tests and checks dependency policy. CI also tests the minimum compiler and all native targets. See [the frozen contract](docs/design.md#11-stability).
+The gate formats, lints with warnings denied, runs the library and CLI corpus and resource tests, builds rustdoc with warnings denied, runs release-maintenance tests and checks dependency policy. CI also tests the minimum compiler and all native targets. See [the frozen contract](docs/design.md#stability).
 
 The two fuzz targets read contract bytes and document bytes paired with a contract. [focused-smoke.sh](scripts/focused-smoke.sh) generates seeds from conformance and retained document seeds and keeps mutable corpora and crash evidence outside the checkout. Each target must finish all 10,000 iterations.
 

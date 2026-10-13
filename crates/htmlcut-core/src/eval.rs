@@ -31,6 +31,7 @@ impl Document {
             document: self,
             clock: Clock::new(&self.limits),
             output: OutputSize::new(self.limits.max_output_bytes),
+            caches: Default::default(),
         };
         engine.clock.check()?;
         let value = engine.node(&contract.node, &Scope::one(self.html.root_element()), &[])?;
@@ -43,19 +44,33 @@ pub(crate) fn candidates<'d>(
     select: Option<&Selector>,
     scope: &Scope<'d>,
     clock: &Clock,
+    shared: &mut selectors::matching::SelectorCaches,
 ) -> Result<Vec<ElementRef<'d>>, Error> {
     let Some(select) = select else {
         return Ok(vec![scope.anchor]);
     };
-    let mut caches = selectors::matching::SelectorCaches::default();
+    let mut local = selectors::matching::SelectorCaches::default();
+    let caches = select.caches_for_scope(shared, &mut local);
     let mut found = Vec::new();
     for root in &scope.extent {
-        for node in root.descendants() {
+        let mut skipped = 0;
+        for edge in root.traverse() {
             clock.tick()?;
-            if let Some(element) = ElementRef::wrap(node)
-                && select.matches(element, scope.anchor, &mut caches)
-            {
-                found.push(element);
+            match edge {
+                ego_tree::iter::Edge::Open(node)
+                    if skipped > 0 || matches!(node.value(), DomNode::Fragment) =>
+                {
+                    skipped += 1;
+                }
+                ego_tree::iter::Edge::Open(node) => {
+                    if let Some(element) = ElementRef::wrap(node)
+                        && select.matches(element, scope.anchor, caches)
+                    {
+                        found.push(element);
+                    }
+                }
+                ego_tree::iter::Edge::Close(_) if skipped > 0 => skipped -= 1,
+                ego_tree::iter::Edge::Close(_) => (),
             }
         }
     }
@@ -63,6 +78,11 @@ pub(crate) fn candidates<'d>(
     Ok(found)
 }
 
+fn selected(select: Option<&str>) -> String {
+    select
+        .map(|text| format!("selector {}", serde_json::to_string(text).unwrap()))
+        .unwrap_or_else(|| "the match itself".into())
+}
 fn range(min: usize, max: Option<usize>) -> String {
     match max {
         Some(max) if max == min => min.to_string(),
@@ -80,20 +100,26 @@ fn location(mut error: Error, path: &str, rows: &[usize]) -> Error {
 enum PredicateFailure {
     Count(usize, String),
     Value(String),
-    MissingAttribute(usize, String),
+    MissingAttribute,
 }
 struct Engine<'d> {
     document: &'d Document,
     clock: Clock,
     output: OutputSize,
+    caches: selectors::matching::SelectorCaches,
 }
 impl<'d> Engine<'d> {
     fn holds(
-        &self,
+        &mut self,
         predicate: &Predicate,
         scope: &Scope<'d>,
     ) -> Result<Option<PredicateFailure>, Error> {
-        let elements = candidates(predicate.select.as_ref(), scope, &self.clock)?;
+        let elements = candidates(
+            predicate.select.as_ref(),
+            scope,
+            &self.clock,
+            &mut self.caches,
+        )?;
         let count = elements.len();
         let expected = range(predicate.min, Some(predicate.max));
         if count < predicate.min || count > predicate.max {
@@ -115,7 +141,7 @@ impl<'d> Engine<'d> {
             ) {
                 Ok(value) => value,
                 Err(e) if e.error == ErrorCode::MissingAttribute => {
-                    return Ok(Some(PredicateFailure::MissingAttribute(count, expected)));
+                    return Ok(Some(PredicateFailure::MissingAttribute));
                 }
                 Err(e) => return Err(e),
             };
@@ -145,8 +171,9 @@ impl<'d> Engine<'d> {
                 match failure {
                     PredicateFailure::Count(found, expected) => {
                         e.message = format!(
-                            "{}: selector {:?} found {found}; expected {expected}.",
-                            predicate.path, e.select
+                            "{}: {} found {found}; expected {expected}.",
+                            predicate.path,
+                            selected(e.select.as_deref())
                         );
                         e.found = Some(found);
                         e.expected = Some(expected);
@@ -154,24 +181,25 @@ impl<'d> Engine<'d> {
                     PredicateFailure::Value(value) => {
                         e = e.observed(&value);
                         e.message = format!(
-                            "{}: selector {:?} read {:?}, which fails the expectation.",
-                            predicate.path, e.select, e.value
+                            "{}: {} read {}, which fails the expectation.",
+                            predicate.path,
+                            selected(e.select.as_deref()),
+                            serde_json::to_string(e.value.as_deref().unwrap()).unwrap()
                         );
                     }
-                    PredicateFailure::MissingAttribute(found, expected) => {
+                    PredicateFailure::MissingAttribute => {
                         e.message = format!(
-                            "{}: selector {:?} found {found}, within {expected}, but its required attribute is missing.",
-                            predicate.path, e.select
+                            "{}: {} lacks a required attribute.",
+                            predicate.path,
+                            selected(e.select.as_deref())
                         );
-                        e.found = Some(found);
-                        e.expected = Some(expected);
                     }
                 }
                 return Err(e);
             }
         }
         let mut found = Vec::new();
-        for element in candidates(node.select.as_ref(), scope, &self.clock)? {
+        for element in candidates(node.select.as_ref(), scope, &self.clock, &mut self.caches)? {
             self.clock.tick()?;
             let candidate_scope = Scope::one(element);
             let mut keep = true;
@@ -201,8 +229,9 @@ impl<'d> Engine<'d> {
                 Error::new(
                     ErrorCode::CountMismatch,
                     format!(
-                        "{}: selector {selector:?} found {count}; expected {expected}.",
-                        node.path
+                        "{}: {} found {count}; expected {expected}.",
+                        node.path,
+                        selected(selector.as_deref())
                     ),
                 ),
                 &node.path,
@@ -258,7 +287,9 @@ impl<'d> Engine<'d> {
                             | crate::contract::Reading::OuterHtml
                     ) {
                         for selector in exclude {
-                            for element in candidates(Some(selector), &extent, &self.clock)? {
+                            for element in
+                                candidates(Some(selector), &extent, &self.clock, &mut self.caches)?
+                            {
                                 excluded.insert(element.id());
                             }
                         }
@@ -295,17 +326,18 @@ impl<'d> Engine<'d> {
         }
     }
     fn extent(
-        &self,
+        &mut self,
         element: ElementRef<'d>,
         until: Option<&Selector>,
     ) -> Result<Scope<'d>, Error> {
         let mut scope = Scope::one(element);
         if let Some(until) = until {
             let mut next = element.next_sibling();
-            let mut caches = selectors::matching::SelectorCaches::default();
+            let mut local = selectors::matching::SelectorCaches::default();
+            let caches = until.caches_for_scope(&mut self.caches, &mut local);
             while let Some(node) = next {
                 self.clock.tick()?;
-                if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, &mut caches)) {
+                if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, caches)) {
                     break;
                 }
                 scope.extent.push(node);
@@ -360,56 +392,49 @@ impl<'d> Engine<'d> {
 mod tests {
     use super::*;
     use crate::{Limits, Source};
-    use std::path::Path;
-
-    #[test]
-    fn evaluation_conformance_checks_complete_values_and_exact_refusal_facts() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
-        let mut count = 0;
-        for entry in std::fs::read_dir(root).unwrap() {
-            let path = entry.unwrap().path();
-            let prefix: usize = path.file_name().unwrap().to_str().unwrap()[..2]
-                .parse()
-                .unwrap();
-            if !matches!(prefix, 1..=8 | 20..=32 | 40..=44 | 50..=54 | 68) {
-                continue;
-            }
-            let options: serde_json::Value = std::fs::read(path.join("options.json"))
-                .ok()
-                .map(|v| serde_json::from_slice(&v).unwrap())
-                .unwrap_or_default();
-            let bytes = std::fs::read(path.join("page.html")).unwrap();
-            let mut source = Source::new(&bytes);
-            source.base_url = options["base_url"].as_str();
-            let document = Document::parse(source, &Limits::default()).unwrap();
-            let contract =
-                Contract::from_json(&std::fs::read_to_string(path.join("contract.json")).unwrap())
-                    .unwrap();
-            match document.extract(&contract) {
-                Ok(value) => {
-                    let expected: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(path.join("expected.json")).unwrap())
-                            .unwrap();
-                    assert_eq!(serde_json::to_value(value).unwrap(), expected, "{path:?}");
-                }
-                Err(error) => {
-                    let mut expected: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(path.join("error.json")).unwrap())
-                            .unwrap();
-                    let mut actual = serde_json::to_value(error).unwrap();
-                    expected.as_object_mut().unwrap().remove("message");
-                    actual.as_object_mut().unwrap().remove("message");
-                    assert_eq!(actual, expected, "{path:?}");
-                }
-            }
-            count += 1;
-        }
-        assert_eq!(count, 32);
-    }
     fn extract(html: &str, contract: &str) -> Result<Value, Error> {
         Document::parse(Source::new(html.as_bytes()), &Limits::default())
             .unwrap()
             .extract(&Contract::from_json(contract).unwrap())
+    }
+
+    #[test]
+    fn template_contents_stay_outside_every_selection_context() {
+        let html = "<main><p id=live>live</p><template id=t><p>inert</p><template><p>nested</p></template><h2>boundary</h2></template><p>end</p><h2>stop</h2></main>";
+        for selector in ["p", "main p"] {
+            let contract = serde_json::json!({"select":selector,"match":"all"}).to_string();
+            assert_eq!(
+                extract(html, &contract).unwrap(),
+                Value::List(vec![
+                    Value::String("live".into()),
+                    Value::String("end".into())
+                ])
+            );
+        }
+        assert_eq!(extract(html, r#"{"select":"main","where":[{"select":"p","min":2,"max":2}],"expect":[{"select":"p","min":2,"max":2}],"read":"text-content"}"#).unwrap(), Value::String("liveendstop".into()));
+        assert_eq!(
+            extract(html, r##"{"select":"#t","read":"text-content"}"##).unwrap(),
+            Value::String("inertboundary".into())
+        );
+        assert_eq!(
+            extract(
+                html,
+                r##"{"select":"#live","until":"h2","read":"text-content"}"##
+            )
+            .unwrap(),
+            Value::String("liveend".into())
+        );
+        let plain = extract(html, r#"{"select":"main","read":"outer-html"}"#).unwrap();
+        let excluded = extract(html, r#"{"select":"main","read":"outer-html","exclude":["template p","template template","template h2"]}"#).unwrap();
+        assert_eq!(plain, excluded);
+        assert_eq!(
+            extract(
+                html,
+                r#"{"select":"main:has(template p)","match":"optional"}"#
+            )
+            .unwrap(),
+            Value::Null
+        );
     }
     #[test]
     fn nested_all_rows_report_indexes_and_fields_fail_in_byte_order() {
@@ -479,6 +504,18 @@ mod tests {
             assert_eq!(error.limit.as_deref(), Some("output_bytes"));
             assert_eq!(error.bound, Some((size - 1).into()));
         }
+    }
+    #[test]
+    fn relative_selector_answers_remain_local_to_each_row() {
+        let contract = Contract::from_json(r#"{"select":"section","match":"all","min":0,"where":[{"select":":scope:has(> b)"}],"read":"attr:id"}"#).unwrap();
+        let document = Document::parse(Source::new(b"<section id=a><b>x</b></section><section id=b><i>x</i></section><section id=c><b>x</b></section>"), &Limits::default()).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::List(vec![Value::String("a".into()), Value::String("c".into())])
+            );
+        }
+        assert!(Contract::from_json(r#"{"select":"p:nth-child(2 of :scope)"}"#).is_err());
     }
     #[test]
     fn compiled_selectors_reuse_across_documents_without_scope_cache_leaks() {

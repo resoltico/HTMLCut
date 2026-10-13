@@ -1,10 +1,10 @@
 # Extraction contracts
 
-## 2. Contract language
+## Contract language
 
 A contract is one JSON document: a **node**. Members are a closed set. Unknown members,
 duplicate member names, wrong types and JSON `null` in place of an omitted member are
-refused with `invalid_contract`. There is no version member; see section 11.
+refused with `invalid_contract`. There is no version member; see [Stability](design.md#stability).
 
 A node written as a JSON string `S` means `{"select": S}`.
 
@@ -16,9 +16,9 @@ A node written as a JSON string `S` means `{"select": S}`.
 | `min`, `max` | integers ≥ 0 | Bounds for `"all"`; default `min` 1 and no `max`. Only with `"all"`. |
 | `nth` | integer ≥ 1 | Takes the nth match; at least that many must exist. Only with `"one"`, requires `select`. |
 | `until` | CSS selector | Extends each match over its following siblings up to that boundary. Requires `select`. |
-| `fields` | object: name → node | Makes the node a record. Names are 1–64 characters of `A-Z a-z 0-9 _ -`. |
+| `fields` | object: name → node | Makes the node a record with 1–64 fields. Names are 1–64 characters of `A-Z a-z 0-9 _ -`. |
 | `read` | reading | Value nodes only; default `"text"`. |
-| `exclude` | array of CSS selectors | Subtrees left out of `text`, `text-content` and `outer-html`. Value nodes only. |
+| `exclude` | array of CSS selectors | Subtrees left out of `text`, `text-content` and `outer-html`. Value nodes only, and refused beside `attr:` or `url:` readings. |
 | `equals` | string | The value must equal it. Value nodes only; exclusive with `pattern`. |
 | `pattern` | regular expression | The value must match (search). A group named `value` narrows the value to that group. |
 | `expect` | array of predicates | Must hold in the scope where this node is evaluated. |
@@ -35,7 +35,7 @@ text 256 KiB; 512 nodes; records nested 8 deep; 64 fields per record; 32 entries
 matching-depth admission (64); pattern 8 KiB with the existing compiled-size limit;
 `min`, `max` and `nth` at most 1,000,000.
 
-### 2.1 Evaluation
+### Evaluation
 
 A **scope** is an anchor element plus an **extent**: an ordered run of sibling nodes that
 starts with the anchor. The root scope's anchor is the document element and its extent
@@ -46,7 +46,8 @@ Evaluating a node in a scope:
 1. **Expect.** Each `expect` predicate, in order, must hold in the scope. Otherwise
    refuse with `expectation_failed`.
 2. **Select.** With `select`: every element that is an extent member or a descendant of
-   one, and that matches the selector, in document order. The selector is matched against
+   one, and that matches the selector, in document order. Template contents are outside
+   the document and never selection candidates. The selector is matched against
    the whole document, so it may name ancestors outside the scope; `:scope` matches the
    anchor. Without `select`: the anchor alone.
 3. **Filter.** With `where`: keep a candidate only if every predicate holds in the scope
@@ -68,8 +69,10 @@ Evaluating a node in a scope:
 
 A predicate **holds** in a scope when the elements it selects there (step 2 with the
 predicate's `select`) number between its `min` and `max`, and, if it has `equals` or
-`pattern`, the reading of every selected element satisfies it. A missing attribute makes
-a predicate not hold; it is not an error.
+`pattern`, the reading of every selected element satisfies it. A predicate with an `attr:NAME` reading requires every selected element to have that
+attribute, even without `equals` or `pattern`. A missing attribute makes a predicate not
+hold; it is not a reading error. An expectation that fails for this reason carries no
+`found`, `expected` or `value` facts.
 
 Evaluation is depth-first, in document order, fields in byte order of name. The first
 failure is reported and discards the whole result.
@@ -83,7 +86,7 @@ Consequences worth stating:
   `{"select": ":scope", "until": "…"}`.
 - Inside an extent, `:scope ~ *` selects the members after the anchor.
 
-### 2.2 Readings
+### Readings
 
 `attr:NAME` and `url:NAME` read the anchor of the extent. NAME is compared exactly with
 the parsed attribute name, is 1–256 characters, and contains no white space or any of
@@ -96,7 +99,8 @@ base refuses with `unresolvable_url`. Resolution and serialization follow the WH
 standard as implemented by the `url` crate.
 
 `text-content` is the concatenation of all descendant text of the extent members, as DOM
-`textContent`, without comments and without excluded subtrees.
+`textContent`, without comments and without excluded subtrees. Descendant template contents are
+skipped unless the sole extent member is that template; nested templates remain skipped.
 
 `outer-html` is the html5ever serialization of each extent member in order, without
 excluded subtrees.
@@ -126,7 +130,7 @@ the default style sheet. It is deterministic and does not consult CSS.
    dropped.
 10. Lines are joined by U+000A, without an added framing LF; a preserved final blank line can contribute a separator.
 
-### 2.3 Results
+### Results
 
 Values are JSON strings. Records are JSON objects with members in byte order of name.
 Encoding is compact UTF-8 JSON without escaping of non-ASCII characters, followed by one
@@ -135,3 +139,7 @@ LF on the command line.
 Count bounds are the defence against cleanly truncated documents: HTML permits omitted closing tags. Use declared row counts and page expectations, as in [the guarded rows case](../conformance/contract/08-rows-with-page-expectations/contract.json).
 
 The compiled regex allowance is 8 MiB across the contract, partitioned between patterns and their DFA caches. The schema derives structural bounds from the same constants; CSS/regex syntax and byte bounds remain engine checks.
+
+Template contents are never candidates for `select`, `where`, `expect`, `exclude` or
+`until`. Reading a selected template itself preserves its contents; `outer-html`
+serialization includes template contents, which exclusions cannot select.

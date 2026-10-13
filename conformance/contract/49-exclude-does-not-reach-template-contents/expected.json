@@ -1,0 +1,1 @@
+"<body>\n\n<template id=\"row-prototype\"><li class=\"row\"><a href=\"\">{{title}}</a></li></template>\n\n</body>"

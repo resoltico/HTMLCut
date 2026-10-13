@@ -1,0 +1,9 @@
+{
+  "fields": {
+    "text": "template#row-prototype",
+    "text_content": {
+      "select": "template#row-prototype",
+      "read": "text-content"
+    }
+  }
+}

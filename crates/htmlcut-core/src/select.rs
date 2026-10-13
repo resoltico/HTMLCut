@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Admitted upstream selectors with scope-local shared matching caches.
+//! Admitted upstream selectors and scope-aware matching caches.
 use crate::limits::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};
 use crate::{Error, ErrorCode};
 use selectors::{
@@ -12,6 +12,7 @@ mod depth;
 pub(crate) struct Selector {
     pub(crate) text: String,
     list: SelectorList<scraper::selector::Simple>,
+    scope_dependent_nth: bool,
 }
 impl Selector {
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
@@ -33,13 +34,54 @@ impl Selector {
         let mut input = cssparser::ParserInput::new(text);
         let mut parser = cssparser::Parser::new(&mut input);
         let list = SelectorList::parse(&scraper::selector::Parser, &mut parser, ParseRelative::No)
-            .map_err(|e| failure(format!("Invalid CSS selector {text:?}: {e:?}.")))?;
-        depth::admit(&list)
+            .map_err(|e| {
+                use cssparser::{BasicParseErrorKind, ParseErrorKind};
+                use selectors::parser::SelectorParseErrorKind;
+                let reason = match e.kind {
+                    ParseErrorKind::Basic(BasicParseErrorKind::EndOfInput) => {
+                        "unexpected end of selector".into()
+                    }
+                    ParseErrorKind::Custom(
+                        SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+                    ) => format!(
+                        "unsupported pseudo-class or pseudo-element {}",
+                        serde_json::to_string(name.as_ref()).unwrap()
+                    ),
+                    ParseErrorKind::Custom(SelectorParseErrorKind::EmptySelector) => {
+                        "the selector is empty".into()
+                    }
+                    ParseErrorKind::Custom(SelectorParseErrorKind::DanglingCombinator) => {
+                        "a combinator has no following selector".into()
+                    }
+                    _ => "selector syntax error".into(),
+                };
+                failure(format!(
+                    "Invalid CSS selector {} at column {}: {reason}.",
+                    serde_json::to_string(text).unwrap(),
+                    e.location.column
+                ))
+            })?;
+        let scope_dependent_nth = depth::admit(&list)
             .map_err(|()| failure("The selector exceeds the matching-depth bound of 64.".into()))?;
         Ok(Self {
             text: text.into(),
             list,
+            scope_dependent_nth,
         })
+    }
+    pub(crate) fn caches_for_scope<'a>(
+        &self,
+        shared: &'a mut matching::SelectorCaches,
+        local: &'a mut matching::SelectorCaches,
+    ) -> &'a mut matching::SelectorCaches {
+        if self.scope_dependent_nth {
+            // An `of S` index can depend on :scope in S; never share it.
+            local
+        } else {
+            shared.relative_selector = Default::default();
+            shared.relative_selector_filter_map = Default::default();
+            shared
+        }
     }
     pub(crate) fn matches(
         &self,

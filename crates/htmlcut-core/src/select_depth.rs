@@ -4,7 +4,8 @@ use crate::limits::MAX_SELECTOR_MATCHING_DEPTH;
 use scraper::selector::Simple;
 use selectors::parser::{Component, SelectorList};
 
-pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ()> {
+pub(super) fn admit(list: &SelectorList<Simple>) -> Result<bool, ()> {
+    let mut scope_dependent_nth = false;
     // Components are in right-to-left matching order. A nested branch inherits
     // only its containing compound's active depth, not later leftward compounds.
     // Borrowed work items avoid recursion in this admission walk itself.
@@ -32,6 +33,7 @@ pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ()> {
                     pending.push((branch, depth));
                 }
                 Component::NthOf(branches) => {
+                    scope_dependent_nth = true;
                     pending.extend(branches.selectors().iter().map(|s| (s, depth)));
                 }
                 Component::LocalName(_)
@@ -60,7 +62,7 @@ pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), ()> {
             }
         }
     }
-    Ok(())
+    Ok(scope_dependent_nth)
 }
 
 fn check(depth: usize) -> Result<(), ()> {

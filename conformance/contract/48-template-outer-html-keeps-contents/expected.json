@@ -1,0 +1,1 @@
+"<template id=\"row-prototype\"><li class=\"row\"><a href=\"\">{{title}}</a></li></template>"

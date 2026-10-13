@@ -8,7 +8,8 @@ Usage:
   htmlcut schema
 
 FILE defaults to standard input. Results are compact JSON on stdout. A refusal
-prints one JSON line on stderr and nothing on stdout.
+prints one JSON line on stderr and nothing on stdout. A closed stdout pipe is
+silent success; other delivery failures can expose a prefix. Use -o for atomic output.
 
 Workflow:
   htmlcut outline page.html --select 'article.product'
@@ -21,23 +22,27 @@ Contract node (a bare selector string means {"select": that string}):
   nth       take the Nth match instead of requiring exactly one
   where     keep matches satisfying predicates: [{"select":"th","equals":"UPC"}]
   until     CSS boundary: each match also covers its following siblings up to it
-  fields    {name: node} - one record per match
+  fields    {name: node} - one record per match, with 1 to 64 fields
   read      text (default) | text-content | outer-html | attr:NAME | url:NAME
   exclude   [CSS] subtrees left out of text, text-content and outer-html
   equals    the value must equal this string
   pattern   the value must match this regex; (?<value>...) keeps only that group
   expect    predicates that must hold where this node is evaluated
 Predicate: {select, read, equals | pattern, min, max}; the count defaults to exactly 1.
+An attr:NAME predicate requires the attribute even without a value test. Template
+contents stay outside selection; reading a template itself returns its contents.
 
 Options:
   --base-url URL          base for url:NAME readings; a <base href> is honoured
   --encoding LABEL        override the encoding the document declares
-  -o, --output FILE       write atomically; an existing file survives a refusal
+  -o, --output FILE       write atomically; preserve existing permissions or use umask
   -r, --raw               strings without JSON quoting, one per line
   --timeout SECONDS       default 10
   --max-nodes N           default 2000000
   --max-input-bytes N     default 67108864
   --max-output-bytes N    default 67108864
+  --help, -h, help        print this guide
+  --version, -V          print the engine version
 
 Exit status: 0 success, 2 invalid arguments or contract, 3 refused (the document
 does not satisfy the contract), 4 limit exceeded, 5 input or output failure,

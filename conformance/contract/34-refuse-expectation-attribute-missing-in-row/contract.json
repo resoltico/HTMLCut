@@ -1,0 +1,14 @@
+{
+  "select": "li",
+  "match": "all",
+  "fields": {
+    "name": {
+      "expect": [
+        {
+          "read": "attr:data-sku",
+          "pattern": "."
+        }
+      ]
+    }
+  }
+}

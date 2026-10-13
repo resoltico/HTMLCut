@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
+exclude = ["tests/**"]
 name = "htmlcut-cli"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +9,7 @@ description.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+readme = "../../README.md"
 autolib = false
 publish = true
 

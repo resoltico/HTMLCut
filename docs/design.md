@@ -1,6 +1,6 @@
 # Design and guarantees
 
-## 1. Purpose
+## Purpose
 
 HTMLCut returns exactly the data an extraction contract declares from one HTML document,
 or refuses with a diagnosis that is sufficient to repair the contract.
@@ -23,10 +23,9 @@ Markdown or other document conversion; type conversion and transformation pipeli
 joins across documents; a server or protocol mode; operating-system sandboxing. Each is
 served better by an existing tool that composes with HTMLCut through files and pipes.
 
-## 3. Outline
+## Outline
 
-`outline` prints a bounded skeleton for a reader. It is the discovery step and replaces
-`inspect`.
+`outline` prints a bounded skeleton for a reader to inspect the document structure.
 
 - Without `--select` the root is the document element. With it, the first line is
   `N matches for SELECTOR` (`1 match for …`), and the first match is outlined. Zero
@@ -42,12 +41,12 @@ served better by an existing tool that composes with HTMLCut through files and p
   first member stands, with `×N`; only the first member is expanded.
 - `own text` is the element's direct text, collapsed, trimmed and clipped to 60
   characters with `…`; it is omitted when empty and for `script` and `style`.
-- An element at `--depth` (default 6), and any `svg` or `math` element, is not expanded;
+- An element at `--depth` (default 6), and any `svg`, `math` or `template` element, is not expanded;
   it carries `(+K inside)`, K being its descendant element count.
 - Lines beyond `--max-lines` (default 80) are replaced by one final line:
   `… K more lines; narrow --select, lower --depth or raise --max-lines`.
 
-## 4. Document preparation
+## Document preparation
 
 **Input.** A path or standard input, read completely before any work. Any readable file
 kind is accepted, including pipes and process substitution. More than `max_input_bytes`
@@ -66,7 +65,7 @@ tree nodes refuses with `limit_exceeded`. After parsing, a tree deeper than 1,02
 refuses with `limit_exceeded` (`limit` `depth`); the depth bound is fixed because
 upstream matching recurses on depth and browsers themselves cap nesting at 512.
 
-## 5. Limits and time
+## Limits and time
 
 Limits are operator policy. They are never part of a contract.
 
@@ -87,9 +86,9 @@ input is not timed.
 
 Operator policy consists of the four bounds above and the fixed tree-depth admission.
 
-## 6. Errors
+## Errors
 
-A contract, preparation or limit refusal is one JSON object on standard error, on one line, and nothing on standard output. A transport failure after stdout publication begins can expose a prefix; the command still reports output_unwritable and exits 5. Named file output is atomic. It always has `error` and `message`. Other members appear when known:
+A contract, preparation or limit refusal is one JSON object on standard error, on one line, and nothing on standard output. A transport failure after stdout publication begins can expose a prefix. A closed downstream pipe ends silently with exit 0; other output failures report `output_unwritable` and exit 5. Named file output is atomic. It always has `error` and `message`. Other members appear when known:
 
 | Member | Meaning |
 |---|---|
@@ -109,17 +108,19 @@ of the frozen surface. The facts each code carries are fixed:
 |---|---|
 | `count_mismatch` | `path`, `select`, `row`, `found`, `expected` |
 | `value_mismatch` | `path`, `row`, `value` |
-| `expectation_failed` | `path`, `select`, `row`, and either `found` with `expected` or `value` |
+| `expectation_failed` | `path`, `select`, `row`, and either `found` with `expected`, `value`, or none of those when an attribute is missing |
 | `missing_attribute` | `path`, `row` |
 | `unresolvable_url` | `path`, `row`, `value` |
 | `limit_exceeded` | `limit` (`input_bytes`, `nodes`, `depth`, `output_bytes`, `time`), `bound` |
 | `undecodable_input` | `encoding` (the WHATWG name in lower case), `offset` |
 | `invalid_contract`, `invalid_pattern` | `path` when the failure has a location |
-| `invalid_selector` | `path`, `select` |
+| `invalid_selector` | `select`, and `path` only for a contract location |
 | `input_unreadable`, `output_unwritable` | `file`, `detail` |
 
 `row` is present only inside an `all` match, and `select` only where the contract gives
-one.
+one. Selector messages quote selectors as JSON and give a column and a reason on syntax
+errors. Without a selector, messages name "the match itself". Messages contain no Rust
+debug renderings.
 
 | Exit | Codes |
 |---|---|
@@ -132,7 +133,41 @@ one.
 Exit 3 means the document does not satisfy the contract: re-author. Exit 2 means the
 request itself is wrong: fix it without looking at the document.
 
-## 8. Library
+## Command line
+
+The four commands are:
+
+- `outline [FILE]` prints a bounded structure, optionally narrowed by `--select`.
+- `get CSS [FILE]` runs a value contract, with `--all` and `--read` when requested.
+- `run CONTRACT-JSON [FILE]` runs an inline contract; `run --from-file PATH [FILE]`
+  reads the contract from a UTF-8 file.
+- `schema` prints the contract schema without document input.
+
+`FILE` defaults to standard input; `-` explicitly selects standard input. Readable paths
+include pipes and process substitution. Implicit input from a terminal is refused before
+reading; pass a path, pipe a document, or explicitly use `-`. Input waiting is untimed.
+
+Results are complete compact UTF-8 JSON followed by one LF. `--raw` / `-r` prints a
+string without JSON quoting followed by LF, an array of strings one per line, or no bytes
+for `null`. A record root is refused before document input is read.
+
+`--output FILE` / `-o FILE` stages a complete result in the destination directory and
+atomically replaces the destination. A refusal leaves an existing file unchanged and
+cleans staging files. On Unix, a new destination uses mode `0666` reduced by the process
+umask; replacement preserves the existing permission bits. Publication does not promise
+fsync durability, and permissions on platforms without Unix mode bits are unchanged.
+
+Standard output can expose a prefix if transport fails. If its reader closes the pipe,
+HTMLCut exits 0 without a diagnostic. Other output failures retain exit 5. Use `-o` for
+atomic publication.
+
+`--help`, `-h` and `help` print the [guide](../crates/htmlcut-cli/src/guide.txt).
+`--version` and `-V` print the engine version. A bare invocation remains an argument
+error. Argument errors carry the parser's message and end with
+`Run htmlcut --help for the guide.` Invalid inline JSON that names an existing file
+points to `--from-file`.
+
+## Library
 
 `htmlcut-core` exposes the same engine. Public enums and option structs are
 `#[non_exhaustive]` so that additions are not breaking.
@@ -153,16 +188,16 @@ impl Contract {
     pub fn schema() -> serde_json::Value;
 }
 pub enum Value { Null, String(String), List(Vec<Value>), Record(BTreeMap<String, Value>) }
-pub struct Error { /* code, message and the facts of section 6 */ }
+pub struct Error { /* code, message and the documented error facts */ }
 ```
 
 A `Document` keeps its limits; each `extract` and `outline` call gets a fresh time limit.
 The library does not start threads, read files or write output.
 
-## 11. Stability
+## Stability
 
 The following are frozen within a major version: contract members and their meaning; the
-readings; the commands, options and exit classes of section 7; error codes and fact
+readings; the commands and options under [Command line](#command-line) and exit classes under [Errors](#errors); error codes and fact
 names. Additions are allowed: new optional members, readings, options, codes and facts.
 
 A contract carries no version. The engine's major version is the semantics version, and
@@ -186,3 +221,7 @@ Outline identifiers use CSS escaping and quoted previews use JSON escaping. Head
 ## Implementation
 
 The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument parsing, input, watchdog and publication. The library starts no threads and performs no filesystem or stream I/O.
+
+Sibling indexes are cached for one extraction or outline call over the immutable tree.
+Relative-selector caches are reset for each scope. Selectors with an `of S` argument,
+if accepted by an upstream parser, use wholly per-scope caches.

@@ -1,0 +1,8 @@
+1 match for body
+body
+  h1 "Items"
+  ul#list
+    li.row ×2
+      a [href] "One"
+  template#row-prototype (+2 inside)
+  p#note "Two items."

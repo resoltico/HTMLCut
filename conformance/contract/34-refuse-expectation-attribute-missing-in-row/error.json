@@ -1,0 +1,8 @@
+{
+ "error": "expectation_failed",
+ "message": "$.fields.name.expect[0]: expectation not met",
+ "path": "$.fields.name.expect[0]",
+ "row": [
+  2
+ ]
+}

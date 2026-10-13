@@ -419,120 +419,32 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
-
-    fn corpus() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract")
-    }
-    fn source_options<'a>(bytes: &'a [u8], options: &'a serde_json::Value) -> Source<'a> {
-        Source {
-            bytes,
-            encoding: options["encoding"].as_str(),
-            base_url: options["base_url"].as_str(),
-        }
-    }
-    fn without_message(mut value: serde_json::Value) -> serde_json::Value {
-        value.as_object_mut().unwrap().remove("message");
-        value
-    }
-
     #[test]
-    fn preparation_conformance_preserves_complete_decoded_values_and_refusal_facts() {
-        for entry in std::fs::read_dir(corpus()).unwrap() {
-            let path = entry.unwrap().path();
-            let name = path.file_name().unwrap().to_str().unwrap();
-            if !(name.starts_with("7") || name.starts_with("89")) {
-                continue;
-            }
-            let bytes = std::fs::read(path.join("page.html")).unwrap();
-            let options = std::fs::read(path.join("options.json"))
-                .ok()
-                .map(|v| serde_json::from_slice::<serde_json::Value>(&v).unwrap())
-                .unwrap_or_default();
-            let mut limits = Limits::default();
-            if let Some(nodes) = options["max_nodes"].as_u64() {
-                limits.max_nodes = nodes as usize;
-            }
-            match Document::parse(source_options(&bytes, &options), &limits) {
-                Ok(document) => {
-                    assert!(
-                        path.join("expected.json").exists(),
-                        "{name} unexpectedly admitted"
-                    );
-                    // These cases isolate decoding and tree admission.
-                    let title = document
-                        .html
-                        .select(&scraper::Selector::parse("title").unwrap())
-                        .next()
-                        .unwrap()
-                        .text()
-                        .collect::<String>();
-                    let expected: String =
-                        serde_json::from_slice(&std::fs::read(path.join("expected.json")).unwrap())
-                            .unwrap();
-                    assert_eq!(title, expected, "{name}");
-                }
-                Err(error) => {
-                    let expected: serde_json::Value =
-                        serde_json::from_slice(&std::fs::read(path.join("error.json")).unwrap())
-                            .unwrap();
-                    assert_eq!(
-                        without_message(serde_json::to_value(error).unwrap()),
-                        without_message(expected),
-                        "{name}"
-                    );
-                }
+    fn chunk_boundaries_preserve_authored_document_trees() {
+        let documents = [
+            "<!doctype html><title>é🦀</title><p>a &amp; b<!--comment--></p>".into(),
+            "<table><p>fostered</p><tr><td>a<td>b</table><p><b>misnested<i>x</b>y".into(),
+            "<template><p>inert</p><template><b>nested</b></template></template>".into(),
+            "<svg><foreignObject><p>HTML</p></foreignObject><text>SVG</text></svg>".into(),
+            "<script>if (a < b) x++;</script><noscript><b>x</b></noscript><textarea>a\nb</textarea>".into(),
+            format!("<main>{}é🦀 &amp; end</main>", "x".repeat(CHUNK_BYTES - 8)),
+        ];
+        let limits = Limits {
+            time_limit: None,
+            ..Limits::default()
+        };
+        for document in documents {
+            let one = Html::parse_document(&document);
+            for chunk in [1, 7, CHUNK_BYTES] {
+                let many = parse_admitted(&document, &limits, chunk, &Clock::new(&limits)).unwrap();
+                assert_eq!(
+                    one.tree.nodes().len(),
+                    many.tree.nodes().len(),
+                    "chunk {chunk}"
+                );
+                assert_eq!(one.html(), many.html(), "chunk {chunk}");
             }
         }
-    }
-    #[test]
-    fn chunk_boundaries_preserve_every_decodable_conformance_tree() {
-        let mut compared = 0;
-        let mut rejected = 0;
-        for kind in ["contract", "outline"] {
-            let root = corpus().parent().unwrap().join(kind);
-            for entry in std::fs::read_dir(root).unwrap() {
-                let path = entry.unwrap().path();
-                let bytes = std::fs::read(path.join("page.html")).unwrap();
-                let options = std::fs::read(path.join("options.json"))
-                    .ok()
-                    .map(|v| serde_json::from_slice::<serde_json::Value>(&v).unwrap())
-                    .unwrap_or_default();
-                let limits = Limits {
-                    max_nodes: usize::MAX,
-                    time_limit: None,
-                    ..Limits::default()
-                };
-                let decoded = match decode(source_options(&bytes, &options), &Clock::new(&limits)) {
-                    Ok(decoded) => decoded,
-                    Err(error) => {
-                        assert!(
-                            path.file_name().unwrap() == "73-refuse-undecodable"
-                                || path.file_name().unwrap() == "74-refuse-unknown-encoding"
-                        );
-                        assert!(matches!(
-                            error.error,
-                            ErrorCode::UndecodableInput | ErrorCode::InvalidEncoding
-                        ));
-                        rejected += 1;
-                        continue;
-                    }
-                };
-                let one = Html::parse_document(&decoded);
-                for chunk in [1, 7, CHUNK_BYTES] {
-                    let many =
-                        parse_admitted(&decoded, &limits, chunk, &Clock::new(&limits)).unwrap();
-                    assert_eq!(
-                        one.tree.nodes().len(),
-                        many.tree.nodes().len(),
-                        "{path:?}, chunk {chunk}"
-                    );
-                    assert_eq!(one.html(), many.html(), "{path:?}, chunk {chunk}");
-                }
-                compared += 1;
-            }
-        }
-        assert_eq!((compared, rejected), (60, 2));
     }
     #[test]
     fn twenty_million_elements_stop_at_incremental_default_node_admission() {
