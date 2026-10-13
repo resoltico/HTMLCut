@@ -1,0 +1,10 @@
+{
+  "select": "body",
+  "read": "outer-html",
+  "exclude": [
+    "h1",
+    "ul",
+    "p",
+    "li.row"
+  ]
+}

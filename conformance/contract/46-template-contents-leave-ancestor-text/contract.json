@@ -1,0 +1,14 @@
+{
+  "fields": {
+    "text": "#w",
+    "text_content": {
+      "select": "#w",
+      "read": "text-content"
+    },
+    "inert": {
+      "select": "i",
+      "match": "all",
+      "min": 0
+    }
+  }
+}

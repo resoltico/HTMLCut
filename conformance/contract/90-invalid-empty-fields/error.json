@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$.fields: an object with 1 to 64 members",
+ "path": "$.fields"
+}

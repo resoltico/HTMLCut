@@ -1,0 +1,5 @@
+{
+ "error": "invalid_contract",
+ "message": "$: exclude applies to text, text-content and outer-html",
+ "path": "$.exclude"
+}

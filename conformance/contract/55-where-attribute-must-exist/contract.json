@@ -1,0 +1,10 @@
+{
+  "select": "li",
+  "match": "all",
+  "where": [
+    {
+      "read": "attr:data-sku"
+    }
+  ],
+  "read": "attr:id"
+}
