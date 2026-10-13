@@ -33,18 +33,18 @@ fn entry() -> Result<(), Error> {
         .iter()
         .skip(1)
         .take_while(|arg| *arg != "--")
-        .any(|arg| arg == "--help")
+        .any(|arg| arg == "--help" || arg == "-h")
+        || (args.len() == 2 && args[1] == "help")
     {
         return run::publish(include_bytes!("guide.txt"), None);
     }
-    if args.len() == 2 && args[1] == "--version" {
+    if args.len() == 2 && (args[1] == "--version" || args[1] == "-V") {
         return run::publish(
             concat!("htmlcut ", env!("CARGO_PKG_VERSION"), "\n").as_bytes(),
             None,
         );
     }
-    let args = cli::Cli::try_parse_from(args)
-        .map_err(|error| Error::new(ErrorCode::InvalidArguments, error.to_string()))?;
+    let args = cli::Cli::try_parse_from(args).map_err(cli::parser_error)?;
     run::execute(args.command)
 }
 

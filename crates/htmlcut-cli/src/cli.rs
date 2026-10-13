@@ -100,5 +100,15 @@ fn timeout(value: &str) -> Result<Duration, String> {
 }
 pub(crate) fn argument_error(message: &str) -> Error {
     let error = Cli::command().error(clap::error::ErrorKind::ArgumentConflict, message);
-    Error::new(ErrorCode::InvalidArguments, error.to_string())
+    parser_error(error)
+}
+
+pub(crate) fn parser_error(error: clap::Error) -> Error {
+    Error::new(
+        ErrorCode::InvalidArguments,
+        format!(
+            "{} Run htmlcut --help for the guide.",
+            error.to_string().trim_end()
+        ),
+    )
 }

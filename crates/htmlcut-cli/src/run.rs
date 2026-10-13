@@ -61,12 +61,18 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                     .to_owned();
                 (program, args.operands.get(1).map(std::path::PathBuf::from))
             };
-            extract(
-                Contract::from_json(&program)?,
-                file.as_deref(),
-                args.raw,
-                &args.common,
-            )
+            let contract = Contract::from_json(&program).map_err(|mut error| {
+                if args.from_file.is_none()
+                    && serde_json::from_str::<serde_json::Value>(&program).is_err()
+                    && Path::new(&program).is_file()
+                {
+                    error
+                        .message
+                        .push_str(" Read a contract file with --from-file.");
+                }
+                error
+            })?;
+            extract(contract, file.as_deref(), args.raw, &args.common)
         }
         Command::Outline(args) => {
             let bytes = input(args.file.as_deref(), args.common.max_input_bytes)?;
@@ -197,22 +203,49 @@ fn io_error(code: ErrorCode, path: &Path, detail: io::Error) -> Error {
 }
 pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Error> {
     match destination {
-        None => io::stdout()
-            .lock()
-            .write_all(bytes)
-            .and_then(|()| io::stdout().flush())
-            .map_err(|e| io_error(ErrorCode::OutputUnwritable, Path::new("-"), e)),
+        None => {
+            let mut stdout = io::stdout().lock();
+            match stdout.write_all(bytes).and_then(|()| stdout.flush()) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+                Err(error) => Err(io_error(ErrorCode::OutputUnwritable, Path::new("-"), error)),
+            }
+        }
         Some(path) => {
             let parent = path
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| Path::new("."));
-            let mut temporary = tempfile::NamedTempFile::new_in(parent)
+            #[cfg(unix)]
+            let mut builder = tempfile::Builder::new();
+            #[cfg(not(unix))]
+            let builder = tempfile::Builder::new();
+            #[cfg(unix)]
+            let existing_permissions = {
+                use std::os::unix::fs::PermissionsExt;
+                match std::fs::metadata(path) {
+                    Ok(metadata) => Some(metadata.permissions()),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        builder.permissions(std::fs::Permissions::from_mode(0o666));
+                        None
+                    }
+                    Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),
+                }
+            };
+            let mut temporary = builder
+                .tempfile_in(parent)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             temporary
                 .write_all(bytes)
                 .and_then(|()| temporary.flush())
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            #[cfg(unix)]
+            if let Some(permissions) = existing_permissions {
+                temporary
+                    .as_file()
+                    .set_permissions(permissions)
+                    .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            }
             temporary
                 .persist(path)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e.error))?;

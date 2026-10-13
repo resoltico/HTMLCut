@@ -182,7 +182,12 @@ fn raw_strings_lists_null_and_record_rejection_have_the_declared_shape() {
         assert!(output.stderr.is_empty());
     }
     let output = Command::new(binary())
-        .args(["run", r#"{"fields":{}}"#, "missing-input.html", "--raw"])
+        .args([
+            "run",
+            r#"{"fields":{"title":"h1"}}"#,
+            "missing-input.html",
+            "--raw",
+        ])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
@@ -358,4 +363,128 @@ fn an_implicit_terminal_is_refused_before_reading() {
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
+fn first_contact_reaches_the_guide_and_contract_files_get_a_hint() {
+    for argument in ["-h", "help"] {
+        let output = Command::new(binary()).arg(argument).output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, include_bytes!("../src/guide.txt"));
+        assert!(output.stderr.is_empty());
+    }
+    let output = Command::new(binary()).arg("-V").output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        output.stdout,
+        concat!("htmlcut ", env!("CARGO_PKG_VERSION"), "\n").as_bytes()
+    );
+    for arguments in [vec![], vec!["--unknown-option"]] {
+        let output = Command::new(binary()).args(arguments).output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "invalid_arguments");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .ends_with("Run htmlcut --help for the guide.")
+        );
+        assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("contract.json");
+    std::fs::write(&file, b"\"h1\"").unwrap();
+    let output = Command::new(binary())
+        .arg("run")
+        .arg(file)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"], "invalid_contract");
+    assert!(error["message"].as_str().unwrap().contains("--from-file"));
+}
+
+#[test]
+fn a_consumer_closing_stdout_is_silent_success() {
+    use std::io::Read;
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("large.html");
+    std::fs::write(&file, format!("<body>{}</body>", "x".repeat(2_000_000))).unwrap();
+    let mut child = Command::new(binary())
+        .args(["get", "body", "--raw"])
+        .arg(file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut pipe = child.stdout.take().unwrap();
+    let mut byte = [0];
+    pipe.read_exact(&mut byte).unwrap();
+    assert_eq!(byte, [b'x']);
+    drop(pipe);
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn named_output_obeys_umask_and_preserves_existing_permission_bits() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    for mask in ["022", "077"] {
+        let target = directory.path().join(mask);
+        let output = Command::new("bash")
+            .args([
+                "-c",
+                "umask \"$1\"; exec \"$2\" get h1 \"$3\" -o \"$4\"",
+                "htmlcut-permissions",
+                mask,
+            ])
+            .arg(binary())
+            .arg(&source)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let expected = 0o666 & !u32::from_str_radix(mask, 8).unwrap();
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o7777,
+            expected
+        );
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o7777,
+            0o640
+        );
+        let bytes = std::fs::read(&target).unwrap();
+        let output = Command::new(binary())
+            .args(["get", "missing"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(3));
+        assert_eq!(std::fs::read(&target).unwrap(), bytes);
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o7777,
+            0o640
+        );
+    }
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
 }
