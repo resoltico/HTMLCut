@@ -10,11 +10,21 @@ use windows_sys::Win32::{
     Security::Authorization::*,
     Security::*,
     Storage::FileSystem::*,
+    System::SystemServices::{
+        ACCESS_FILTER_SECURITY_INFORMATION, PROCESS_TRUST_LABEL_SECURITY_INFORMATION,
+        SYSTEM_MANDATORY_LABEL_ACE_TYPE,
+    },
 };
 const INFO: u32 = OWNER_SECURITY_INFORMATION
     | GROUP_SECURITY_INFORMATION
     | DACL_SECURITY_INFORMATION
     | LABEL_SECURITY_INFORMATION;
+// These SACL components can affect access; audit-only SACLs are not queried.
+const INSPECT_INFO: u32 = INFO
+    | ATTRIBUTE_SECURITY_INFORMATION
+    | SCOPE_SECURITY_INFORMATION
+    | PROCESS_TRUST_LABEL_SECURITY_INFORMATION as u32
+    | ACCESS_FILTER_SECURITY_INFORMATION as u32;
 struct Descriptor(PSECURITY_DESCRIPTOR);
 impl Drop for Descriptor {
     fn drop(&mut self) {
@@ -30,15 +40,55 @@ impl Descriptor {
             GetSecurityInfo(
                 file.as_raw_handle() as HANDLE,
                 SE_FILE_OBJECT,
-                INFO,
+                INSPECT_INFO,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 &mut ptr,
             )
+        })
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "Cannot inspect Windows access-bearing policy with this handle/kernel: {error}; unsupported security queries refuse publication"
+                ),
+            )
         })?;
-        Ok(Self(ptr))
+        let descriptor = Self(ptr);
+        descriptor.require_supported_access_sacl()?;
+        Ok(descriptor)
+    }
+    fn require_supported_access_sacl(&self) -> io::Result<()> {
+        let mut acl = std::ptr::null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        // SAFETY: this descriptor is API-validated and owned; output locals live
+        // across the call, and the returned ACL borrows the descriptor.
+        boolean(unsafe {
+            GetSecurityDescriptorSacl(self.0, &mut present, &mut acl, &mut defaulted)
+        })?;
+        if present == 0 || acl.is_null() {
+            return Ok(());
+        }
+        // SAFETY: nonnull ACL is supplied by the successful security API call.
+        for index in 0..u32::from(unsafe { (*acl).AceCount }) {
+            let mut ace = std::ptr::null_mut();
+            // SAFETY: index is inside the native ACL count; pointer borrows it.
+            boolean(unsafe { GetAce(acl, index, &mut ace) })?;
+            // SAFETY: successful GetAce returns a valid ACE beginning with this header.
+            let kind = unsafe { (*(ace as *const ACE_HEADER)).AceType };
+            if u32::from(kind) != SYSTEM_MANDATORY_LABEL_ACE_TYPE {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!(
+                        "access-bearing SACL ACE type {kind} cannot be faithfully reproduced; resource, central, trust and filter policies require refusal"
+                    ),
+                ));
+            }
+        }
+        Ok(())
     }
     fn parse(sddl: &str) -> io::Result<Self> {
         let text = sddl.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
@@ -308,6 +358,64 @@ pub(crate) fn remove_stage(file: &File) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn access_policy_inspection_needs_no_audit_privilege() {
+        let mut required = 0;
+        // SAFETY: only a mask is computed; the output local is valid.
+        unsafe { QuerySecurityAccessMask(INSPECT_INFO, &mut required) };
+        assert_eq!(required, READ_CONTROL);
+    }
+
+    #[test]
+    fn resource_policy_refuses_instead_of_silently_losing_claims() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("classified.json");
+        let mut file = stage_options().open(&path).unwrap();
+        use std::io::Write;
+        file.write_all(b"original").unwrap();
+        // Independent native resource-claim fixture, using the documented RA
+        // format rather than the publication setter under test.
+        let descriptor =
+            Descriptor::parse("S:(RA;CI;;;;S-1-1-0;(\"Project\",TS,0,\"Windows\",\"SQL\"))")
+                .unwrap();
+        assert_eq!(
+            descriptor
+                .require_supported_access_sacl()
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Unsupported
+        );
+        let mut acl = std::ptr::null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        // SAFETY: the valid fixture descriptor/ACL and file handle remain live.
+        unsafe {
+            boolean(GetSecurityDescriptorSacl(
+                descriptor.0,
+                &mut present,
+                &mut acl,
+                &mut defaulted,
+            ))
+            .unwrap();
+            assert!(present != 0 && !acl.is_null());
+            status(SetSecurityInfo(
+                file.as_raw_handle() as HANDLE,
+                SE_FILE_OBJECT,
+                ATTRIBUTE_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                acl,
+            ))
+            .unwrap();
+        }
+        assert_eq!(
+            Policy::read(&file).unwrap_err().kind(),
+            io::ErrorKind::Unsupported
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"original");
+    }
 
     #[test]
     fn descriptor_roundtrip_preserves_complete_sid_and_acl() {
