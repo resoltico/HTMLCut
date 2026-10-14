@@ -337,7 +337,7 @@ function ParentRule([int]$Rights) {
     $acl.AddAccessRule($rule)
     Set-Acl -LiteralPath $Parent -AclObject $acl
 }
-function Cli([string]$Path) {
+function InvokeDeliveredBinary([string]$Path) {
     $info=[System.Diagnostics.ProcessStartInfo]::new()
     $info.FileName=$Binary;$info.Arguments=('get h1 "{0}" -o "{1}"' -f $Page,$Path)
     $info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
@@ -379,7 +379,7 @@ try {
     $existingPolicy=[ParentAccessControl]::Policy($existing);$defaultPolicy=[ParentAccessControl]::Policy($osControl)
     New-Item -ItemType Junction -Path $Alias -Target $Parent | Out-Null
     $results.zero_access_alias_identity=[ParentAccessControl]::ParentIdentity($Alias)
-    foreach($path in @($existing,$absent,(Join-Path $Alias 'existing.json'))) {$results.positive+=Cli $path}
+    foreach($path in @($existing,$absent,(Join-Path $Alias 'existing.json'))) {$results.positive+=InvokeDeliveredBinary $path}
     $results.existing_policy_before=$existingPolicy;$results.existing_policy_after=[ParentAccessControl]::Policy($existing)
     $results.default_policy=$defaultPolicy
     if(Test-Path -LiteralPath $absent) {$results.absent_policy=[ParentAccessControl]::Policy($absent)}
@@ -392,7 +392,7 @@ try {
         try {[System.IO.File]::WriteAllText($osDenied,'must-refuse');throw "Native create unexpectedly allowed under deny $rights"} catch [System.UnauthorizedAccessException] {}
         foreach($name in @('existing.json',('denied-'+$rights+'.json'))) {
             $path=Join-Path $Parent $name
-            $entry=Cli $path;$entry.native_create_refused=$true;$entry.denied_parent_right=$rights;$results.negative+=$entry
+            $entry=InvokeDeliveredBinary $path;$entry.native_create_refused=$true;$entry.denied_parent_right=$rights;$results.negative+=$entry
         }
     }
 } catch {$failure=$_.Exception.Message}
