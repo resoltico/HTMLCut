@@ -732,9 +732,11 @@ mod tests {
         }
         fn report(file: &File) -> String {
             format!(
-                "full={:?}; label={:?}",
+                "full={:?}; label={:?}; combined={:?}; dacl={:?}",
                 snapshot(file, SACL_SECURITY_INFORMATION),
-                snapshot(file, LABEL_SECURITY_INFORMATION)
+                snapshot(file, LABEL_SECURITY_INFORMATION),
+                snapshot(file, INFO),
+                snapshot(file, DACL_SECURITY_INFORMATION)
             )
         }
         let directory = tempfile::tempdir().unwrap();
@@ -839,6 +841,105 @@ mod tests {
                     "null-SACL diagnostic name={name} mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
                     report(&file)
                 );
+            }
+            for (name, dacl) in [
+                ("combined-normal-dacl", "D:(A;;FA;;;OW)"),
+                ("combined-private-dacl", "D:P(A;;0x1f0196;;;OW)"),
+                ("kernel-and-dacl-controls", "D:(A;;FA;;;OW)"),
+            ] {
+                let file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .access_mode(
+                        FILE_GENERIC_READ
+                            | FILE_GENERIC_WRITE
+                            | WRITE_DAC
+                            | WRITE_OWNER
+                            | ACCESS_SYSTEM_SECURITY,
+                    )
+                    .open(directory.path().join(name))?;
+                let desired = Descriptor::parse(&format!("{dacl}S:AINO_ACCESS_CONTROL"))?;
+                let mut acl = std::ptr::null_mut();
+                let mut present = 0;
+                let mut defaulted = 0;
+                // SAFETY: ACL is borrowed from this live owned descriptor.
+                boolean(unsafe {
+                    GetSecurityDescriptorDacl(desired.0, &mut present, &mut acl, &mut defaulted)
+                })?;
+                if name != "kernel-and-dacl-controls" {
+                    let mask = DACL_SECURITY_INFORMATION
+                        | SACL_SECURITY_INFORMATION
+                        | UNPROTECTED_DACL_SECURITY_INFORMATION
+                        | UNPROTECTED_SACL_SECURITY_INFORMATION;
+                    let before = report(&file);
+                    // SAFETY: owned empty handle and descriptor ACL remain live.
+                    let result = status(unsafe {
+                        SetSecurityInfo(
+                            file.as_raw_handle() as HANDLE,
+                            SE_FILE_OBJECT,
+                            mask,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            acl,
+                            std::ptr::null_mut(),
+                        )
+                    });
+                    eprintln!(
+                        "null-SACL diagnostic name={name} mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
+                        report(&file)
+                    );
+                } else {
+                    for mask in [
+                        SACL_SECURITY_INFORMATION | UNPROTECTED_SACL_SECURITY_INFORMATION,
+                        SACL_SECURITY_INFORMATION,
+                    ] {
+                        let before = report(&file);
+                        // SAFETY: valid complete descriptor and test-owned handle.
+                        let result = boolean(unsafe {
+                            SetKernelObjectSecurity(file.as_raw_handle() as HANDLE, mask, desired.0)
+                        });
+                        eprintln!(
+                            "null-SACL diagnostic name=kernel-literal-auto-inherited mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
+                            report(&file)
+                        );
+                    }
+                    let seed = SACL_SECURITY_INFORMATION | PROTECTED_SACL_SECURITY_INFORMATION;
+                    // SAFETY: seed protected NULL on this fresh owned object.
+                    let seeded = status(unsafe {
+                        SetSecurityInfo(
+                            file.as_raw_handle() as HANDLE,
+                            SE_FILE_OBJECT,
+                            seed,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        )
+                    });
+                    eprintln!(
+                        "null-SACL diagnostic name=dacl-unprotect-null-seed mask={seed:#x} status={seeded:?} after=[{}]",
+                        report(&file)
+                    );
+                    let before = report(&file);
+                    let mask = DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION;
+                    // SAFETY: only DACL is assigned; source ACL remains live.
+                    let result = status(unsafe {
+                        SetSecurityInfo(
+                            file.as_raw_handle() as HANDLE,
+                            SE_FILE_OBJECT,
+                            mask,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            acl,
+                            std::ptr::null_mut(),
+                        )
+                    });
+                    eprintln!(
+                        "null-SACL diagnostic name=dacl-only-unprotect mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
+                        report(&file)
+                    );
+                }
             }
             let parent = directory.path().join("null-parent");
             std::fs::create_dir(&parent)?;

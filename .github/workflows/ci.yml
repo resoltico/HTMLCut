@@ -23,3 +23,13 @@ jobs:
           cargo test --locked -p htmlcut-cli --bin htmlcut --target x86_64-pc-windows-msvc "$test" -- --exact --list > discovery.txt
           python3 -c 'from pathlib import Path; rows=[line for line in Path("discovery.txt").read_text().splitlines() if line.endswith(": test")]; assert rows == ["authorization::windows::tests::private_creation_preserves_label_and_null_sacl_controls: test"], rows'
           cargo test --locked -p htmlcut-cli --bin htmlcut --target x86_64-pc-windows-msvc "$test" -- --exact --nocapture
+      - name: Exercise native boundaries with the DACL-only fixture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked -p htmlcut-cli --target x86_64-pc-windows-msvc
+          result="$RUNNER_TEMP/native-diagnostic.json"
+          python3 scripts/native-acceptance.py --binary target/x86_64-pc-windows-msvc/debug/htmlcut.exe --results "$result" || status=$?
+          python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print(json.dumps(r,indent=2))' "$result"
+          exit "${status:-0}"
