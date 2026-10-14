@@ -351,6 +351,9 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
     if let Some(DescriptorTarget::Current(fd)) = descriptor_target(&resolved) {
         let mut stream = duplicate_output_descriptor(fd)
             .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        // Manual link resolution identifies the stream but cannot admit a path
+        // beyond the kernel's traversal limit. Lookup without reopening it.
+        std::fs::metadata(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
         return write_output(&mut stream, bytes, path);
     }
     let (resolved, permissions) = match OpenOptions::new().write(true).open(path) {

@@ -40,6 +40,84 @@ fn complete(mut command: Command) -> Output {
     }
 }
 
+#[test]
+fn descriptor_link_chains_obey_kernel_admission_without_changing_stream_state() {
+    let directory = tempfile::tempdir().unwrap();
+    let binary = std::env::var_os("HTMLCUT_TEST_BINARY")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_htmlcut").into());
+    let output = Command::new("python3").args(["-c", r#"
+import errno, json, pathlib, subprocess, sys
+binary, workspace = sys.argv[1:]
+root = pathlib.Path(workspace)
+source = root / 'page.html'
+source.write_bytes(b'<h1>complete</h1>')
+aliases = ['/dev/stdout', '/dev/fd/1']
+if sys.platform.startswith('linux'):
+    aliases += ['/proc/self/fd/1', '/proc/thread-self/fd/1']
+oracle = '''import json, os, sys
+path = sys.argv[1]
+answers = []
+for operation in [lambda: os.stat(path), lambda: os.close(os.open(path, os.O_WRONLY))]:
+    try:
+        operation()
+        answers.append(None)
+    except OSError as error:
+        answers.append(error.errno)
+sys.stderr.write(json.dumps(answers))
+'''
+for index, alias in enumerate(aliases):
+    links = root / str(index)
+    links.mkdir()
+    destination = pathlib.Path(alias)
+    accepted = 0
+    refused = 0
+    for count in range(1, 65):
+        link = links / str(count)
+        link.symlink_to(destination)
+        destination = link
+        target = root / 'output'
+        target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+        with target.open('r+b', buffering=0) as stream:
+            stream.seek(7)
+            control = subprocess.run([sys.executable, '-c', oracle, str(destination)],
+                stdout=stream, stderr=subprocess.PIPE, timeout=10)
+            assert control.returncode == 0, control
+            outcomes = json.loads(control.stderr)
+            assert outcomes[0] == outcomes[1], (alias, count, outcomes)
+            assert stream.tell() == 7 and target.read_bytes() == b'prefix|XXXXXXXXXXXXXXXX'
+        if outcomes[0] is not None:
+            assert outcomes[0] == errno.ELOOP, (alias, count, outcomes)
+        # Exercise the shortest accepted chain and both sides of the actual
+        # kernel boundary; no namespace's magic links are guessed or counted.
+        if count == 1 or outcomes[0] is not None:
+            for append in [False, True]:
+                target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+                with target.open('ab' if append else 'r+b', buffering=0) as stream:
+                    stream.seek(7)
+                    result = subprocess.run([binary, 'get', 'h1', str(source), '-o', str(destination)],
+                        stdout=stream, stderr=subprocess.PIPE, timeout=10)
+                    if outcomes[0] is None:
+                        assert result.returncode == 0 and not result.stderr, result
+                        expected = b'prefix|XXXXXXXXXXXXXXXX"complete"\n' if append else b'prefix|"complete"\nXXXXX'
+                        assert target.read_bytes() == expected
+                        assert stream.tell() == (34 if append else 18)
+                        accepted += 1
+                    else:
+                        assert result.returncode == 5, (alias, count, result)
+                        error = json.loads(result.stderr)
+                        assert error['error'] == 'output_unwritable'
+                        assert error['file'] == str(destination)
+                        assert error['detail']
+                        assert target.read_bytes() == b'prefix|XXXXXXXXXXXXXXXX'
+                        assert stream.tell() == 7
+                        refused += 1
+            if refused:
+                break
+    assert accepted == 2 and refused == 2, (alias, accepted, refused)
+"#]).arg(binary).arg(directory.path()).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn output_accepts_the_os_symlink_limit_and_refuses_one_more_link() {
