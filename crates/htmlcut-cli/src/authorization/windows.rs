@@ -406,11 +406,17 @@ pub(crate) fn identity_path(path: &Path) -> io::Result<Identity> {
     identity(&file)
 }
 
-pub(crate) fn create_private_file(path: &Path) -> io::Result<File> {
+pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<File> {
     use std::os::windows::{ffi::OsStrExt, io::FromRawHandle};
     // Owner rights grant only write/metadata/delete access, never data-read access.
     // The retained writer handle then installs and verifies an empty protected DACL.
-    let descriptor = Descriptor::parse("D:P(A;;0x1f0196;;;OW)")?;
+    // Establish the pinned mandatory policy at object creation, while the
+    // discretionary descriptor grants only writer/metadata/delete access.
+    // Later preparation verifies every owner/group/label fact exactly; no
+    // protected-SACL control is dropped to avoid an assignment-right failure.
+    let wanted = Descriptor::parse(&policy.0)?;
+    let label = wanted.text_with(LABEL_SECURITY_INFORMATION)?;
+    let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
@@ -439,7 +445,11 @@ pub(crate) fn create_private_file(path: &Path) -> io::Result<File> {
         )
     };
     if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
+        let error = io::Error::last_os_error();
+        return Err(io::Error::new(
+            error.kind(),
+            format!("Cannot create private file with pinned mandatory policy {label:?}: {error}"),
+        ));
     }
     // SAFETY: successful CreateFile returns one uniquely owned handle, now transferred to File.
     let file = unsafe { File::from_raw_handle(handle) };
@@ -581,7 +591,7 @@ mod tests {
             .open(directory.path().join("probe"))
             .unwrap();
         let policy = Policy::read(&probe).unwrap();
-        let stage = create_private_file(&directory.path().join("stage")).unwrap();
+        let stage = create_private_file(&directory.path().join("stage"), &policy).unwrap();
         restrict(&stage).unwrap();
         let before = Descriptor::read(&stage)
             .unwrap()
@@ -606,6 +616,44 @@ mod tests {
             .apply(&stage, &directory.path().join("stage"))
             .unwrap();
         assert_eq!(Policy::read(&stage).unwrap(), policy);
+    }
+
+    #[test]
+    fn private_creation_preserves_protected_label_and_null_sacl_controls() {
+        for label in ["S:PAI(ML;;NW;;;LW)", "S:PAINO_ACCESS_CONTROL"] {
+            let directory = tempfile::tempdir().unwrap();
+            let probe = stage_options()
+                .open(directory.path().join("source-policy"))
+                .unwrap();
+            let source = Descriptor::read(&probe).unwrap();
+            let discretionary = source
+                .text_with(
+                    OWNER_SECURITY_INFORMATION
+                        | GROUP_SECURITY_INFORMATION
+                        | DACL_SECURITY_INFORMATION,
+                )
+                .unwrap();
+            let policy = Policy(format!("{discretionary}{label}"));
+            let stage_path = directory.path().join("stage");
+            let stage = create_private_file(&stage_path, &policy).unwrap();
+            // Independent literal control admission is checked on the actual
+            // created object, before any post-creation descriptor mutation.
+            assert_eq!(
+                Descriptor::read(&stage)
+                    .unwrap()
+                    .text_with(LABEL_SECURITY_INFORMATION)
+                    .unwrap(),
+                label
+            );
+            assert_eq!(
+                std::fs::read(&stage_path).unwrap_err().kind(),
+                io::ErrorKind::PermissionDenied
+            );
+            restrict(&stage).unwrap();
+            policy.preflight(&stage).unwrap();
+            assert_eq!(Policy::read(&stage).unwrap(), policy);
+            assert_eq!(stage.metadata().unwrap().len(), 0);
+        }
     }
 
     #[test]
@@ -675,7 +723,7 @@ mod tests {
             }
             let policy = Policy::read(&source).unwrap();
             let stage_path = directory.path().join("stage");
-            let mut stage = create_private_file(&stage_path).unwrap();
+            let mut stage = create_private_file(&stage_path, &policy).unwrap();
             restrict(&stage).unwrap();
             policy.prepare(&stage).unwrap();
             assert_eq!(
@@ -749,7 +797,7 @@ mod tests {
         let stage_parent = directory.path().join("stage-parent");
         std::fs::create_dir(&stage_parent).unwrap();
         let stage_path = stage_parent.join("stage");
-        let stage = create_private_file(&stage_path).unwrap();
+        let stage = create_private_file(&stage_path, &policy).unwrap();
         restrict(&stage).unwrap();
         policy.prepare(&stage).unwrap();
         // Reproduction is challenged on an empty non-secret probe. A differing

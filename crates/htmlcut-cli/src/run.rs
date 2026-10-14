@@ -551,8 +551,12 @@ fn publish_timed(
         // Native inheritance reconstruction may then add permissions. Verify
         // reproduction on a distinct empty inode before any result bytes;
         // readers retained from this probe can never observe the real result.
-        let probe = create_stage(stage_parent, watchdog, StageKind::ReproductionPolicyProbe)
-            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        let probe = create_stage(
+            stage_parent,
+            watchdog,
+            StageKind::ReproductionPolicyProbe(policy),
+        )
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
         policy.preflight(probe.as_file()).map_err(|error| {
             io_error(
                 ErrorCode::OutputUnwritable,
@@ -566,7 +570,7 @@ fn publish_timed(
         #[cfg(test)]
         checkpoint("policy-probe", probe.path());
     }
-    let mut temporary = create_stage(stage_parent, watchdog, StageKind::Result)
+    let mut temporary = create_stage(stage_parent, watchdog, StageKind::Result(policy))
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     policy.prepare(temporary.as_file()).map_err(|e| {
         io_error(
@@ -758,18 +762,25 @@ impl Drop for OwnedStage {
     }
 }
 #[derive(Clone, Copy)]
-enum StageKind {
+enum StageKind<'a> {
     InheritedPolicyProbe,
     #[cfg(windows)]
-    ReproductionPolicyProbe,
-    Result,
+    ReproductionPolicyProbe(&'a Policy),
+    Result(&'a Policy),
 }
 fn create_stage(
     parent: &Path,
     watchdog: Option<&Watchdog>,
-    kind: StageKind,
+    kind: StageKind<'_>,
 ) -> io::Result<OwnedStage> {
-    let private = !matches!(kind, StageKind::InheritedPolicyProbe);
+    let (private, policy) = match kind {
+        StageKind::InheritedPolicyProbe => (false, None),
+        #[cfg(windows)]
+        StageKind::ReproductionPolicyProbe(policy) => (true, Some(policy)),
+        StageKind::Result(policy) => (true, Some(policy)),
+    };
+    #[cfg(not(windows))]
+    let _ = policy;
     let mut ownership = None;
     let mut builder = tempfile::Builder::new();
     builder.disable_cleanup(true);
@@ -789,7 +800,7 @@ fn create_stage(
             watchdog.check();
         }
         #[cfg(test)]
-        if matches!(kind, StageKind::Result) {
+        if matches!(kind, StageKind::Result(_)) {
             checkpoint("reserved", candidate);
         }
         #[cfg(unix)]
@@ -803,10 +814,9 @@ fn create_stage(
                 .open(candidate)
         }?;
         #[cfg(windows)]
-        let file = if private {
-            crate::authorization::create_private_file(candidate)
-        } else {
-            crate::authorization::stage_options().open(candidate)
+        let file = match policy {
+            Some(policy) => crate::authorization::create_private_file(candidate, policy),
+            None => crate::authorization::stage_options().open(candidate),
         }?;
         let id = identity(&file).map_err(|error| {
             #[cfg(windows)]
@@ -832,7 +842,7 @@ fn create_stage(
         record.created_identity.set(id).unwrap();
         ownership = Some(Arc::clone(&record));
         #[cfg(test)]
-        if matches!(kind, StageKind::Result) {
+        if matches!(kind, StageKind::Result(_)) {
             checkpoint("created", candidate);
         }
         if let Some(watchdog) = watchdog {
