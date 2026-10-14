@@ -4,6 +4,7 @@
   "until": "b.k",
   "fields": {
     "key": {
+      "select": ":scope",
       "pattern": "^(?<value>.+):$"
     },
     "line": {

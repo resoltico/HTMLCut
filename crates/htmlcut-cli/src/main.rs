@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+#[allow(unsafe_code)]
+mod authorization;
 mod cli;
 mod run;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use htmlcut_core::{Error, ErrorCode};
-use std::{io::Write, process::ExitCode};
+use std::process::ExitCode;
 
 fn main() -> ExitCode {
     std::panic::set_hook(Box::new(|_| {}));
@@ -12,7 +14,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            let _ = std::io::stderr().lock().write_all(&error.to_json_line());
+            run::report(&error);
             ExitCode::from(error.error.exit_status() as u8)
         }
     }
@@ -36,6 +38,14 @@ fn entry() -> Result<(), Error> {
         .any(|arg| arg == "--help" || arg == "-h")
         || (args.len() == 2 && args[1] == "help")
     {
+        if let Some(name) = args.get(1).and_then(|a| a.to_str()) {
+            let mut command = cli::Cli::command();
+            if let Some(subcommand) = command.find_subcommand_mut(name) {
+                let mut help = subcommand.render_long_help().to_string();
+                help.push_str("\n\nFILE is a local snapshot; '-' is standard input. See htmlcut --help for workflow examples.\n");
+                return run::publish(help.as_bytes(), None);
+            }
+        }
         return run::publish(include_bytes!("guide.txt"), None);
     }
     if args.len() == 2 && (args[1] == "--version" || args[1] == "-V") {

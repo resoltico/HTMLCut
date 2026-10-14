@@ -59,32 +59,60 @@ Encoding standard through `encoding_rs`. An unknown caller label is `invalid_enc
 input is never replaced: it refuses with `undecodable_input`, naming the encoding and the
 byte offset of the malformed sequence.
 
-**Parsing.** html5ever through scraper's tree sink with default options, fed in chunks of
-at most 64 KiB split at character boundaries. After each chunk, more than `max_nodes`
-tree nodes refuses with `limit_exceeded`. After parsing, a tree deeper than 1,024 levels
-refuses with `limit_exceeded` (`limit` `depth`); the depth bound is fixed because
-upstream matching recurses on depth and browsers themselves cap nesting at 512.
+**Parsing.** A private HTMLCut builder admits retained DOM allocation and every
+append, insertion, detach and reparent operation before freezing an opaque document.
+Maintained html5ever 0.40.1 parses bounded feeds of at most 1,024 UTF-8 bytes. A refusal
+latch stops owned DOM allocation/mutation; unique handles retain immutable parser name,
+namespace, template and MathML integration facts until the current feed stops. Refusal
+uses ordinary errors, including under `panic=abort`, and does not finalize a partial tree.
+Depth is parent-edge distance from every retained arena root at depth zero, counting all
+node kinds, including detached/template forests. Transient construction depth over 1,024
+refuses, even if the final repaired tree would be shallower. Selector identity uses stable
+frozen node storage; matching caches belong to each extraction call.
 
 ## Limits and time
 
-Limits are operator policy. They are never part of a contract.
+Limits are operator policy, outside the contract.
 
 | Limit | Default | Bounds |
 |---|---|---|
-| `max_input_bytes` | 64 MiB | bytes read |
-| `max_nodes` | 2,000,000 | tree nodes during parsing, hence memory |
-| `max_output_bytes` | 64 MiB | encoded result, counted as it is built |
-| `time_limit` | 10 s | decoding, parsing, evaluation and encoding |
-| depth | 1,024, fixed | tree depth |
+| `max_input_bytes` | 64 MiB | supplied bytes before decoding |
+| `max_nodes` | 2,000,000 | retained owned DOM nodes before allocation |
+| `max_reading_bytes` | 64 MiB | each complete transformed UTF-8 source reading |
+| `max_output_bytes` | 64 MiB | complete canonical JSON, charged during production |
+| `time_limit` | 10 s | cooperative preparation or execution call |
+| depth | 1,024, fixed | transient retained tree depth |
 
-The library checks the time limit cooperatively: between parse chunks and at least every
-1,024 iterations of its own selection, reading and outline loops. The command line adds
-a watchdog thread that covers upstream code the library cannot interrupt. Publication is
-a single transition: the main thread claims it before writing, the watchdog claims it to
-report `limit_exceeded` and exit 4, and only one claim succeeds. Waiting for standard
-input is not timed.
+Patterns/captures and predicates may require complete source scalars; their per-reading
+admission is separate from final output. A long source with a tiny capture remains valid
+within `reading_bytes`. Discarded normalization whitespace and excluded subtrees do not
+consume reading/output admission. Keys, delimiters, Unicode and JSON escaping count
+exactly. Caller-constructed `Value.to_json` enforces its supplied output bound independently.
 
-Operator policy consists of the four bounds above and the fixed tree-depth admission.
+Library time checks run between bounded parser feeds and at least every 1,024 owned
+iterations. Upstream tokenizer, attribute, parser stack, URL and regex operations may
+continue within a feed/call; tokens spanning feeds can retain buffers under input admission.
+These logical limits do not promise a physical heap cap or interruption of every upstream
+instruction. Callers supply physical process/memory containment when required.
+
+The CLI starts one monotonic deadline after valid argument parsing, before contract and
+snapshot acquisition. It stays active through stream write/flush or regular-file staging
+and metadata. Zero timeout wins before input consumption. An atomic winner selects expiry,
+commit-in-progress, success or error. A file commit claim succeeds only before expiry; after
+that indivisible rename starts, its actual outcome governs, with no contradictory time
+refusal. Atomic filesystem commit cannot promise an exact wall-clock bound or rollback.
+
+One reporting owner delivers best-effort diagnostics on a separate thread, with a central
+50 ms grace. Blocked/closed/nonblocking stderr cannot change the exit class or defeat
+termination; its diagnostic can be absent/partial. Ordinary errors claim terminal error
+before reporting. Help/version are untimed metadata output and may block. Schema output
+uses its own default 10 s invocation deadline and ordinary publication.
+
+Staging ownership is reserved before exclusive creation, confirmed before result bytes,
+and checked on creation return. Timeout cleanup runs separately from hard termination;
+only confirmed owned stages are removed. Normal local paths clean up; extraordinary stuck
+filesystem syscalls may exceed the cleanup grace and leave a candidate/stage, named in
+available diagnostics. Unconfirmed creation collisions are never deleted.
 
 ## Errors
 
@@ -110,7 +138,7 @@ of the frozen surface. The facts each code carries are fixed:
 | `value_mismatch` | `path`, `row`, `value` |
 | `expectation_failed` | `path`, `select`, `row`, and either `found` with `expected`, `value`, or none of those when an attribute is missing |
 | `missing_attribute` | `path`, `row` |
-| `unresolvable_url` | `path`, `row`, `value` |
+| `unresolvable_url`, `unrepresentable_output` | `path`, `row`, `value` |
 | `limit_exceeded` | `limit` (`input_bytes`, `nodes`, `depth`, `output_bytes`, `time`), `bound` |
 | `undecodable_input` | `encoding` (the WHATWG name in lower case), `offset` |
 | `invalid_contract`, `invalid_pattern` | `path` when the failure has a location |
@@ -125,12 +153,12 @@ debug renderings.
 | Exit | Codes |
 |---|---|
 | 2 | `invalid_arguments`, `invalid_contract`, `invalid_selector`, `invalid_pattern`, `invalid_encoding`, `invalid_base_url` |
-| 3 | `count_mismatch`, `value_mismatch`, `expectation_failed`, `missing_attribute`, `unresolvable_url` |
+| 3 | `count_mismatch`, `value_mismatch`, `expectation_failed`, `missing_attribute`, `unresolvable_url`, `unrepresentable_output` |
 | 4 | `limit_exceeded` |
 | 5 | `input_unreadable`, `undecodable_input`, `output_unwritable` |
 | 6 | `internal` |
 
-Exit 3 means the document does not satisfy the contract: re-author. Exit 2 means the
+Exit 3 means a contract or output-representation refusal: re-author or use JSON. Exit 2 means the
 request itself is wrong: fix it without looking at the document.
 
 ## Command line
@@ -140,16 +168,16 @@ The four commands are:
 - `outline [FILE]` prints a bounded structure, optionally narrowed by `--select`.
 - `get CSS [FILE]` runs a value contract, with `--all` and `--read` when requested.
 - `run CONTRACT-JSON [FILE]` runs an inline contract; `run --from-file PATH [FILE]`
-  reads the contract from a UTF-8 file.
-- `schema` prints the contract schema without document input.
+  reads the contract from a UTF-8 file. `--from-file -` consumes contract stdin only with a distinct explicit HTML source; implicit/dash and recognizable FD0 aliases (including symlinks) refuse before either read. Harder aliases are not universally detectable; `./-` is a literal filename.
+- `schema [-o DEST] [--timeout SECONDS]` prints the contract schema without document input.
 
 `FILE` defaults to standard input; `-` explicitly selects standard input. Readable paths
 include pipes and process substitution. Implicit input from a terminal is refused before
-reading; pass a path, pipe a document, or explicitly use `-`. Input waiting is untimed.
+reading; pass a path, pipe a document, or explicitly use `-`. Input waiting is covered by the invocation deadline.
 
 Results are complete compact UTF-8 JSON followed by one LF. `--raw` / `-r` prints a
-string without JSON quoting followed by LF, an array of strings one per line, or no bytes
-for `null`. A record root is refused before document input is read.
+string without JSON quoting followed by LF, an array of LF-free strings one per line, or no bytes
+for `null`. A record root is refused before document input is read. A multiline raw scalar remains valid; an LF-containing raw list refuses before publication with `unrepresentable_output`, a root path and offending row.
 
 `--output DEST` / `-o DEST` follows symbolic links to the destination a write would
 reach. `-` is standard output. A regular file must be writable by the caller without
@@ -161,7 +189,7 @@ preserving its cursor, append flag and access mode. Foreign process descriptor p
 are opened as path streams; they do not duplicate a local descriptor.
 
 A refusal or limit before publication leaves destinations untouched, including a FIFO
-without a reader, and leaves no staging file. On Unix, a new file uses mode `0666`
+without a reader, and leaves no staging file. Existing files preserve handle-derived owner/group, rwx, discretionary ACLs and applicable access labels; privileged executable bits/capabilities and unrelated content xattrs are not copied. Unix result files start at mode zero in a verified directory with access/default ACLs removed. Windows result files are created atomically with a protected DACL granting the owner only writer/metadata/delete rights, without data-read access; the retained writer handle installs an empty protected DACL before bytes. Thus a pathname reader cannot acquire a data handle before restriction. An empty non-secret policy probe captures inherited/umask authorization for absent destinations. Ownership and applicable mandatory labels are established and verified under restrictive staging before any result byte. A private deny-read ACL protects Darwin metadata inspection; final ACLs precede mode grants. Only complete content receives final discretionary policy; inspection/reproduction failure refuses before rename. Target identity/policy, original path resolution and stage identity are rechecked immediately before commit. Cleanup also checks created-object identity and leaves detected foreign replacements untouched. The guarantee assumes stage and target identities/policies stay unchanged through commit: portable replacement and unlink cannot eliminate every hostile mutation after revalidation. On Unix, a new file uses mode `0666`
 reduced by umask; replacement preserves read, write and execute bits, discarding
 set-user-ID, set-group-ID and sticky bits. Replacement creates a new file owned by the
 caller; other hard links retain the old content. Namespace changes by other processes
@@ -235,3 +263,8 @@ The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, 
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
 Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
 starts accepting that syntax.
+
+
+Windows mandatory labels are queried/set separately from audit-only SACL backup. SACL
+protection reproduction can require additional native rights; inability to reproduce it
+refuses before replacement. See Microsoft's [security information rights](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-information).

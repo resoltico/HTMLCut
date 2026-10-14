@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Byte decoding and incremental upstream tree admission.
+use crate::dom::{Html, TreeBuilder};
 use crate::{Error, ErrorCode, Limits, limits::Clock};
 use encoding_rs::{
     DecoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
@@ -8,11 +9,11 @@ use html5ever::{
     driver,
     tendril::{StrTendril, TendrilSink},
 };
-use scraper::{Html, HtmlTreeSink};
 use url::Url;
 
-const CHUNK_BYTES: usize = 65_536;
-const MAX_DEPTH: usize = 1_024;
+const CHUNK_BYTES: usize = 1_024;
+#[cfg(test)]
+use crate::limits::MAX_DOM_DEPTH as MAX_DEPTH;
 
 /// Caller-owned document bytes and optional decoding/base metadata.
 #[derive(Clone, Copy, Debug)]
@@ -40,6 +41,7 @@ impl<'a> Source<'a> {
 #[derive(Debug)]
 pub struct Document {
     pub(crate) html: Html,
+    pub(crate) positions: std::collections::HashMap<ego_tree::NodeId, (usize, usize)>,
     pub(crate) limits: Limits,
     pub(crate) base_url: Option<Url>,
 }
@@ -70,14 +72,16 @@ impl Document {
             clock.tick()?;
             match edge {
                 ego_tree::iter::Edge::Open(node) => {
-                    if fragment_depth > 0 || matches!(node.value(), scraper::Node::Fragment) {
+                    if fragment_depth > 0 || matches!(node.value(), crate::dom::Node::Fragment) {
                         fragment_depth += 1;
-                    } else if let Some(e) = scraper::ElementRef::wrap(node)
+                    } else if let Some(e) = crate::dom::ElementRef::wrap(node)
                         && e.value().name.ns == html5ever::ns!(html)
                         && e.value().name() == "base"
                         && let Some(href) = e.value().attr("href")
                     {
-                        document_base = resolve(href, fallback.as_ref());
+                        document_base = resolve(href, fallback.as_ref())
+                            .ok()
+                            .filter(|u| !matches!(u.scheme(), "data" | "javascript"));
                         break;
                     }
                 }
@@ -86,8 +90,23 @@ impl Document {
             }
         }
         let base_url = document_base.or(fallback);
+        let mut positions = std::collections::HashMap::new();
+        let mut index = 0;
+        for edge in html.tree.root().traverse() {
+            clock.tick()?;
+            match edge {
+                ego_tree::iter::Edge::Open(n) => {
+                    positions.insert(n.id(), (index, index));
+                    index += 1;
+                }
+                ego_tree::iter::Edge::Close(n) => {
+                    positions.get_mut(&n.id()).unwrap().1 = index;
+                }
+            }
+        }
         clock.check()?;
         Ok(Self {
+            positions,
             html,
             limits: limits.clone(),
             base_url,
@@ -95,27 +114,34 @@ impl Document {
     }
 }
 
-pub(crate) fn resolve(value: &str, base: Option<&Url>) -> Option<Url> {
+pub(crate) fn resolve(value: &str, base: Option<&Url>) -> Result<Url, url::ParseError> {
     let value = value.trim_matches(|c: char| c.is_ascii_whitespace());
     match base {
-        Some(base) => base.join(value).ok(),
-        None => Url::parse(value).ok(),
+        Some(base) => base.join(value),
+        None => Url::parse(value),
     }
 }
 
 fn parse_admitted(text: &str, limits: &Limits, chunk: usize, clock: &Clock) -> Result<Html, Error> {
+    if limits.max_nodes == 0 {
+        return Err(Error::limit("nodes", 0));
+    }
     let mut parser =
-        driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        driver::parse_document(TreeBuilder::new(limits, clock.clone()), Default::default());
     feed(&mut parser, text, limits, chunk, clock)?;
     clock.check()?;
-    let html = parser.finish();
-    admit_tree(html, limits, clock)
+    if let Some(error) = parser.tokenizer.sink.sink.refusal() {
+        return Err(error);
+    }
+    let html = parser.finish()?;
+    clock.check()?;
+    Ok(html)
 }
 
 fn feed(
-    parser: &mut html5ever::Parser<HtmlTreeSink>,
+    parser: &mut html5ever::Parser<TreeBuilder>,
     text: &str,
-    limits: &Limits,
+    _limits: &Limits,
     chunk: usize,
     clock: &Clock,
 ) -> Result<(), Error> {
@@ -133,36 +159,11 @@ fn feed(
         }
         parser.process(StrTendril::from_slice(&remaining[..end]));
         remaining = &remaining[end..];
-        let nodes = parser.tokenizer.sink.sink.0.borrow().tree.nodes().len();
-        if nodes > limits.max_nodes {
-            return Err(Error::limit("nodes", limits.max_nodes));
+        if let Some(error) = parser.tokenizer.sink.sink.refusal() {
+            return Err(error);
         }
     }
     Ok(())
-}
-
-fn admit_tree(html: Html, limits: &Limits, clock: &Clock) -> Result<Html, Error> {
-    if html.tree.nodes().len() > limits.max_nodes {
-        return Err(Error::limit("nodes", limits.max_nodes));
-    }
-    // Arena roots include retained detached nodes; all roots get the same admission.
-    for root in html.tree.nodes().filter(|node| node.parent().is_none()) {
-        let mut depth = 0;
-        for edge in root.traverse() {
-            clock.tick()?;
-            match edge {
-                ego_tree::iter::Edge::Open(_) => {
-                    if depth > MAX_DEPTH {
-                        return Err(Error::limit("depth", MAX_DEPTH));
-                    }
-                    depth += 1;
-                }
-                ego_tree::iter::Edge::Close(_) => depth -= 1,
-            }
-        }
-    }
-    clock.check()?;
-    Ok(html)
 }
 
 fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
@@ -462,8 +463,10 @@ mod tests {
             ..Limits::default()
         };
         assert!(input.len() <= limits.max_input_bytes);
-        let mut parser =
-            driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        let mut parser = driver::parse_document(
+            TreeBuilder::new(&limits, Clock::new(&limits)),
+            Default::default(),
+        );
         let error = feed(
             &mut parser,
             &input,
@@ -474,8 +477,8 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
         assert_eq!(error.bound, Some(limits.max_nodes.into()));
-        let observed = parser.tokenizer.sink.sink.0.borrow().tree.nodes().len();
-        assert!(observed > limits.max_nodes);
+        let observed = parser.tokenizer.sink.sink.node_count();
+        assert_eq!(observed, limits.max_nodes);
         assert!(
             observed < limits.max_nodes + CHUNK_BYTES / 3 + 4,
             "observed {observed}"
@@ -574,12 +577,12 @@ mod tests {
         );
         let template = document
             .html
-            .select(&scraper::Selector::parse("template").unwrap())
+            .select(&crate::select::Selector::parse("template").unwrap())
             .next()
             .unwrap();
         assert!(matches!(
             template.first_child().unwrap().value(),
-            scraper::Node::Fragment
+            crate::dom::Node::Fragment
         ));
         assert_eq!(template.text().collect::<String>(), "hidden");
         let mut source = Source::new(
@@ -698,7 +701,7 @@ mod tests {
             (b"<meta http-equiv=content-type content='charset='>", None),
             (b"<meta http-equiv=content-type content=\"charset='windows-1252\">", None),
         ] {
-            // Test decoding admission separately from the html5ever charset panic.
+            // Decoding admission is independent of parser construction.
             assert_eq!(prescan(bytes), expected, "{bytes:?}");
         }
     }
@@ -755,8 +758,10 @@ mod tests {
                 time_limit: None,
                 ..Limits::default()
             };
-            let mut parser =
-                driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+            let mut parser = driver::parse_document(
+                TreeBuilder::new(&limits, Clock::new(&limits)),
+                Default::default(),
+            );
             let result = feed(
                 &mut parser,
                 input,
@@ -764,7 +769,7 @@ mod tests {
                 input.len(),
                 &Clock::new(&limits),
             );
-            assert_eq!(parser.tokenizer.sink.sink.0.borrow().tree.nodes().len(), 5);
+            assert_eq!(parser.tokenizer.sink.sink.node_count(), maximum);
             if maximum == 5 {
                 result.unwrap();
             } else {
@@ -805,8 +810,10 @@ mod tests {
             time_limit: None,
             ..Limits::default()
         };
-        let mut parser =
-            driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        let mut parser = driver::parse_document(
+            TreeBuilder::new(&limits, Clock::new(&limits)),
+            Default::default(),
+        );
         // A four-byte chunk ends inside é. Admission must see only <p>,
         // rather than consuming text past the chunk ceiling before refusing.
         let error = feed(
@@ -819,11 +826,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
         assert_eq!(error.bound, Some(4.into()));
-        let html = parser.tokenizer.sink.sink.0.borrow();
-        assert_eq!(
-            html.html(),
-            "<html><head></head><body><p></p></body></html>"
-        );
+        assert_eq!(parser.tokenizer.sink.sink.node_count(), 4);
     }
 
     #[test]

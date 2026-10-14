@@ -27,7 +27,7 @@ htmlcut run '{"expect":[{"select":"h1","equals":"All products"}],"select":"artic
 
 Save the same JSON as a contract and use run --from-file. FILE defaults to standard input, and readable paths include pipes and process substitution. Run htmlcut --help for the complete [guide](crates/htmlcut-cli/src/guide.txt).
 
-Results are compact UTF-8 JSON. Raw output prints strings with LF. A writable regular output file is replaced atomically only after a complete result; symlinks are followed, `-` is stdout, and pipes/devices are written directly. A refusal preserves the destination. Diagnostics name the contract location, selector, enclosing row indexes, observed count or value, and relevant resource or I/O facts.
+Results are compact UTF-8 JSON. Raw scalars print strings with LF; raw lists require LF-free items and otherwise refuse with a JSON repair hint. A writable regular output file is replaced atomically only after a complete result; symlinks are followed, `-` is stdout, and pipes/devices are written directly. A refusal before publication preserves the destination. Existing-file replacement preserves inspected authorization, with identity/policy revalidation and the concurrent-mutation limits in the guarantees. The invocation deadline covers acquisition and stream delivery, with an atomic regular-file commit boundary. Diagnostics name the contract location, selector, enclosing row indexes, observed count or value, and relevant resource or I/O facts.
 
 Counts defend against missing, duplicated or cleanly truncated rows. Callers still validate that a snapshot represents the intended business entity; a structurally identical wrong page can satisfy a contract.
 

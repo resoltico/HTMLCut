@@ -2,7 +2,7 @@
 //! Retained authored snapshots protect original-tree repair and lexical row values.
 use htmlcut_core::{Contract, Document, Limits, Source, Value};
 #[test]
-fn authored_snapshots_match_upstream_repair_and_keep_complete_rows() {
+fn authored_snapshots_keep_literal_repaired_trees_and_complete_rows() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pages");
     let contract = Contract::from_json(r#"{"select":":scope","read":"outer-html"}"#).unwrap();
     for name in [
@@ -14,10 +14,11 @@ fn authored_snapshots_match_upstream_repair_and_keep_complete_rows() {
     ] {
         let bytes = std::fs::read(root.join(name)).unwrap();
         let document = Document::parse(Source::new(&bytes), &Limits::default()).unwrap();
-        let source = std::str::from_utf8(&bytes).unwrap();
+        let expected =
+            std::fs::read_to_string(root.join(name.replace(".html", ".expected.txt"))).unwrap();
         assert_eq!(
             document.extract(&contract).unwrap(),
-            Value::String(scraper::Html::parse_document(source).root_element().html()),
+            Value::String(expected),
             "{name}"
         );
     }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Scope-relative recursive contract evaluation, with complete-result admission.
+use crate::dom::{ElementRef, Node as DomNode};
 use crate::{
     Contract, Document, Error, ErrorCode, Value,
     contract::{Body, Cardinality, Check, Node, Predicate},
@@ -8,19 +9,42 @@ use crate::{
     value::OutputSize,
 };
 use ego_tree::{NodeId, NodeRef};
-use scraper::{ElementRef, Node as DomNode};
 use std::collections::{BTreeMap, HashSet};
 
+#[derive(Clone, Copy)]
 pub(crate) struct Scope<'d> {
     pub(crate) anchor: ElementRef<'d>,
-    pub(crate) extent: Vec<NodeRef<'d, DomNode>>,
+    end: Option<NodeRef<'d, DomNode>>,
 }
 impl<'d> Scope<'d> {
     pub(crate) fn one(anchor: ElementRef<'d>) -> Self {
         Self {
             anchor,
-            extent: vec![*anchor],
+            end: anchor.next_sibling(),
         }
+    }
+    pub(crate) fn roots(&self) -> impl Iterator<Item = NodeRef<'d, DomNode>> {
+        let end = self.end.map(|n| n.id());
+        std::iter::successors(Some(*self.anchor), move |n| {
+            n.next_sibling().filter(|n| Some(n.id()) != end)
+        })
+    }
+    pub(crate) fn single(&self) -> bool {
+        self.anchor.next_sibling().map(|n| n.id()) == self.end.map(|n| n.id())
+    }
+    fn contains(&self, node: NodeRef<'d, DomNode>, document: &Document) -> bool {
+        let (start, _) = document.positions[&self.anchor.id()];
+        let end = self
+            .end
+            .map(|n| document.positions[&n.id()].0)
+            .unwrap_or_else(|| {
+                self.anchor
+                    .parent()
+                    .map(|p| document.positions[&p.id()].1)
+                    .unwrap_or(document.positions[&self.anchor.id()].1)
+            });
+        let position = document.positions[&node.id()].0;
+        position >= start && position < end
     }
 }
 
@@ -49,11 +73,15 @@ pub(crate) fn candidates<'d>(
     let Some(select) = select else {
         return Ok(vec![scope.anchor]);
     };
+    if select.only_scope() {
+        clock.check()?;
+        return Ok(vec![scope.anchor]);
+    }
     shared.relative_selector = Default::default();
     shared.relative_selector_filter_map = Default::default();
     let caches = shared;
     let mut found = Vec::new();
-    for root in &scope.extent {
+    for root in scope.roots() {
         let mut skipped = 0;
         for edge in root.traverse() {
             clock.tick()?;
@@ -77,6 +105,25 @@ pub(crate) fn candidates<'d>(
     }
     clock.check()?;
     Ok(found)
+}
+
+fn needs_range(node: &Node) -> bool {
+    let members = |select: Option<&Selector>| select.is_some_and(|s| !s.only_scope());
+    if members(node.select.as_ref())
+        || node
+            .expect
+            .iter()
+            .any(|predicate| members(predicate.select.as_ref()))
+    {
+        return true;
+    }
+    match &node.body {
+        Body::Value { read, .. } => !matches!(
+            read,
+            crate::contract::Reading::Attr(_) | crate::contract::Reading::Url(_)
+        ),
+        Body::Record(fields) => fields.values().any(needs_range),
+    }
 }
 
 fn selected(select: Option<&str>) -> String {
@@ -139,6 +186,7 @@ impl<'d> Engine<'d> {
                 &predicate.read,
                 &HashSet::new(),
                 &self.clock,
+                None,
             ) {
                 Ok(value) => value,
                 Err(e) if e.error == ErrorCode::MissingAttribute => {
@@ -259,7 +307,20 @@ impl<'d> Engine<'d> {
             if all {
                 here.push(index + 1);
             }
-            let extent = self.extent(element, node.until.as_ref())?;
+            let structural = match &node.body {
+                Body::Value { read, .. } => !matches!(
+                    read,
+                    crate::contract::Reading::Attr(_) | crate::contract::Reading::Url(_)
+                ),
+                Body::Record(fields) => fields.values().any(needs_range),
+            };
+            let extent = if node.select.is_none() {
+                *scope
+            } else if structural {
+                self.extent(element, node.until.as_ref(), scope)?
+            } else {
+                Scope::one(element)
+            };
             let value = match &node.body {
                 Body::Record(fields) => {
                     self.output.syntax(1)?;
@@ -295,18 +356,27 @@ impl<'d> Engine<'d> {
                             }
                         }
                     }
-                    let value =
-                        crate::read::read(self.document, &extent, read, &excluded, &self.clock)
-                            .map_err(|e| {
-                                if matches!(
-                                    e.error,
-                                    ErrorCode::MissingAttribute | ErrorCode::UnresolvableUrl
-                                ) {
-                                    location(e, &node.path, &here)
-                                } else {
-                                    e
-                                }
-                            })?;
+                    let value = crate::read::read(
+                        self.document,
+                        &extent,
+                        read,
+                        &excluded,
+                        &self.clock,
+                        check
+                            .pattern
+                            .is_none()
+                            .then_some((self.output.remaining(), self.output.maximum())),
+                    )
+                    .map_err(|e| {
+                        if matches!(
+                            e.error,
+                            ErrorCode::MissingAttribute | ErrorCode::UnresolvableUrl
+                        ) {
+                            location(e, &node.path, &here)
+                        } else {
+                            e
+                        }
+                    })?;
                     let value = self.value(check, value, &node.path, &here)?;
                     self.output.value(&value, &self.clock)?;
                     Value::String(value)
@@ -330,6 +400,7 @@ impl<'d> Engine<'d> {
         &mut self,
         element: ElementRef<'d>,
         until: Option<&Selector>,
+        inherited: &Scope<'d>,
     ) -> Result<Scope<'d>, Error> {
         let mut scope = Scope::one(element);
         if let Some(until) = until {
@@ -339,10 +410,13 @@ impl<'d> Engine<'d> {
             let caches = &mut self.caches;
             while let Some(node) = next {
                 self.clock.tick()?;
+                if !inherited.contains(node, self.document) {
+                    break;
+                }
                 if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, caches)) {
                     break;
                 }
-                scope.extent.push(node);
+                scope.end = node.next_sibling();
                 next = node.next_sibling();
             }
         }
@@ -417,7 +491,7 @@ mod tests {
         let scope = Scope::one(
             document
                 .html
-                .select(&scraper::Selector::parse("p").unwrap())
+                .select(&crate::select::Selector::parse("p").unwrap())
                 .next()
                 .unwrap(),
         );

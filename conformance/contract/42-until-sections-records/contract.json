@@ -6,7 +6,7 @@
     "anchor": {
       "read": "attr:id"
     },
-    "heading": {},
+    "heading": {"select": ":scope"},
     "blocks": {
       "select": ":scope ~ *",
       "match": "all"

@@ -24,7 +24,7 @@ pub(crate) enum Command {
     #[command(disable_help_flag = true)]
     Run(Run),
     #[command(disable_help_flag = true)]
-    Schema,
+    Schema(Schema),
 }
 #[derive(Args)]
 pub(crate) struct Common {
@@ -36,11 +36,13 @@ pub(crate) struct Common {
     pub(crate) output: Option<PathBuf>,
     #[arg(long,default_value="10",value_parser=timeout)]
     pub(crate) timeout: Duration,
-    #[arg(long, default_value = "2000000")]
+    #[arg(long, default_value_t = Limits::default().max_nodes)]
     pub(crate) max_nodes: usize,
-    #[arg(long, default_value = "67108864")]
+    #[arg(long, default_value_t = Limits::default().max_input_bytes)]
     pub(crate) max_input_bytes: usize,
-    #[arg(long, default_value = "67108864")]
+    #[arg(long, default_value_t = Limits::default().max_reading_bytes)]
+    pub(crate) max_reading_bytes: usize,
+    #[arg(long, default_value_t = Limits::default().max_output_bytes)]
     pub(crate) max_output_bytes: usize,
 }
 impl Common {
@@ -49,9 +51,17 @@ impl Common {
         limits.max_input_bytes = self.max_input_bytes;
         limits.max_nodes = self.max_nodes;
         limits.max_output_bytes = self.max_output_bytes;
+        limits.max_reading_bytes = self.max_reading_bytes;
         limits.time_limit = Some(self.timeout);
         limits
     }
+}
+#[derive(Args)]
+pub(crate) struct Schema {
+    #[arg(short = 'o', long)]
+    pub(crate) output: Option<PathBuf>,
+    #[arg(long,default_value="10",value_parser=timeout)]
+    pub(crate) timeout: Duration,
 }
 #[derive(Args)]
 pub(crate) struct Outline {

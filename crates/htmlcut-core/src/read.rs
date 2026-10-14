@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0 AND ISC
 //! Deterministic structural text and original-tree readings.
+use crate::dom::Node;
 use crate::{Document, Error, ErrorCode, contract::Reading, eval::Scope, limits::Clock};
 use ego_tree::{NodeId, NodeRef, iter::Edge};
 use html5ever::serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize};
-use scraper::Node;
 use std::{collections::HashSet, io};
 
 pub(crate) fn read(
@@ -12,8 +12,10 @@ pub(crate) fn read(
     reading: &Reading,
     excluded: &HashSet<NodeId>,
     clock: &Clock,
+    output: Option<(usize, usize)>,
 ) -> Result<String, Error> {
     clock.check()?;
+    let mut sink = ReadingSink::new(document.limits.max_reading_bytes, output, clock)?;
     let result = match reading {
         Reading::Attr(name) | Reading::Url(name) => {
             let value = attribute(scope.anchor.value(), name).ok_or_else(|| {
@@ -25,37 +27,56 @@ pub(crate) fn read(
                     ),
                 )
             })?;
-            if matches!(reading, Reading::Url(_)) {
+            let result: String = if matches!(reading, Reading::Url(_)) {
                 crate::document::resolve(value, document.base_url.as_ref())
                     .map(|u| u.into())
-                    .ok_or_else(|| {
+                    .map_err(|cause| {
                         Error::new(
                             ErrorCode::UnresolvableUrl,
                             format!(
-                                "URL {:?} cannot be resolved without a usable document base URL.",
-                                value.chars().take(120).collect::<String>()
+                                "URL {:?} cannot be resolved: {}.",
+                                value.chars().take(120).collect::<String>(),
+                                match cause {
+                                    url::ParseError::RelativeUrlWithoutBase =>
+                                        "relative URL requires a usable document base URL"
+                                            .to_owned(),
+                                    url::ParseError::RelativeUrlWithCannotBeABaseBase => "relative URL cannot use an opaque document base; supply a usable base URL".to_owned(),
+                                    cause => format!("malformed URL ({cause})"),
+                                }
                             ),
                         )
                         .observed(value)
                     })?
             } else {
-                value.into()
-            }
+                sink.push(value)?;
+                return Ok(sink.value);
+            };
+            sink.push(&result)?;
+            sink.value
         }
-        Reading::TextContent => text_content(scope, excluded, clock)?,
-        Reading::Text => text(scope, excluded, clock)?,
-        Reading::OuterHtml => outer_html(scope, excluded, clock)?,
+        Reading::TextContent => {
+            text_content(scope, excluded, clock, &mut sink)?;
+            sink.value
+        }
+        Reading::Text => {
+            text(scope, excluded, clock, &mut sink)?;
+            sink.value
+        }
+        Reading::OuterHtml => {
+            outer_html(scope, excluded, clock, &mut sink)?;
+            sink.value
+        }
     };
     clock.check()?;
     Ok(result)
 }
-fn attribute<'a>(element: &'a scraper::node::Element, name: &str) -> Option<&'a str> {
+fn attribute<'a>(element: &'a crate::dom::Element, name: &str) -> Option<&'a str> {
     element.attrs.iter().find_map(|(key, value)| {
         let matches = match &key.prefix {
             Some(prefix) => name
-                .strip_prefix(prefix.as_ref())
-                .is_some_and(|tail| tail.strip_prefix(':') == Some(key.local.as_ref())),
-            None => name == key.local.as_ref(),
+                .strip_prefix(&**prefix)
+                .is_some_and(|tail| tail.strip_prefix(':') == Some(&*key.local)),
+            None => name == &*key.local,
         };
         matches.then_some(value.as_ref())
     })
@@ -64,9 +85,9 @@ fn text_content(
     scope: &Scope<'_>,
     excluded: &HashSet<NodeId>,
     clock: &Clock,
-) -> Result<String, Error> {
-    let mut result = String::new();
-    for root in &scope.extent {
+    result: &mut ReadingSink,
+) -> Result<(), Error> {
+    for root in scope.roots() {
         let mut skipped = 0;
         for edge in root.traverse() {
             clock.tick()?;
@@ -78,13 +99,13 @@ fn text_content(
                             .value()
                             .as_element()
                             .is_some_and(|e| html(e) && e.name() == "template")
-                            && !(scope.extent.len() == 1 && node.id() == scope.anchor.id())) =>
+                            && !(scope.single() && node.id() == scope.anchor.id())) =>
                 {
                     skipped += 1;
                 }
                 Edge::Open(node) => {
                     if let Node::Text(text) = node.value() {
-                        result.push_str(text);
+                        result.push(text)?;
                     }
                 }
                 Edge::Close(_) if skipped > 0 => skipped -= 1,
@@ -92,7 +113,7 @@ fn text_content(
             }
         }
     }
-    Ok(result)
+    Ok(())
 }
 
 const BLOCKS: &[&str] = &[
@@ -148,86 +169,216 @@ const BLOCKS: &[&str] = &[
     "ul",
     "xmp",
 ];
-fn html(element: &scraper::node::Element) -> bool {
+fn html(element: &crate::dom::Element) -> bool {
     element.name.ns == html5ever::ns!(html)
 }
-fn preformatted(element: &scraper::node::Element) -> bool {
+fn preformatted(element: &crate::dom::Element) -> bool {
     html(element)
         && matches!(
             element.name(),
             "pre" | "listing" | "plaintext" | "xmp" | "textarea"
         )
 }
-struct Lines {
-    lines: Vec<String>,
-    cells: Vec<String>,
+// Borrowed DOM spans avoid allocating discarded whitespace or an oversized source scalar.
+struct Lines<'d, 's, 'c> {
+    cells: Vec<Vec<&'d str>>,
     verbatim: bool,
+    has_line: bool,
+    sink: &'s mut ReadingSink<'c>,
 }
-impl Lines {
-    fn new() -> Self {
+impl<'d, 's, 'c> Lines<'d, 's, 'c> {
+    fn new(sink: &'s mut ReadingSink<'c>) -> Self {
         Self {
-            lines: Vec::new(),
-            cells: vec![String::new()],
+            cells: vec![Vec::new()],
             verbatim: false,
+            has_line: false,
+            sink,
         }
     }
     fn end(&mut self, keep_blank: bool, clock: &Clock) -> Result<(), Error> {
-        let mut cells = std::mem::replace(&mut self.cells, vec![String::new()]);
-        if !self.verbatim {
-            for cell in &mut cells {
-                *cell = collapsed(cell, clock)?;
+        let cells = std::mem::replace(&mut self.cells, vec![Vec::new()]);
+        let mut content = false;
+        for cell in &cells {
+            for span in cell {
+                for c in span.chars() {
+                    clock.tick()?;
+                    if self.verbatim || !c.is_whitespace() {
+                        content = true;
+                        break;
+                    }
+                }
+                if content {
+                    break;
+                }
+            }
+            if content {
+                break;
             }
         }
-        let line = cells.join("\t");
-        if cells.iter().any(|c| !c.is_empty()) || keep_blank {
-            self.lines.push(line);
+        if content || keep_blank {
+            if self.has_line {
+                self.sink.push("\n")?;
+            }
+            self.has_line = true;
+            for (i, cell) in cells.iter().enumerate() {
+                if i > 0 {
+                    self.sink.push("\t")?;
+                }
+                let mut emitted = false;
+                let mut space = false;
+                for span in cell {
+                    for c in span.chars() {
+                        clock.tick()?;
+                        if !self.verbatim && c.is_whitespace() {
+                            space = emitted;
+                        } else {
+                            if space {
+                                self.sink.push(" ")?;
+                            }
+                            let mut bytes = [0; 4];
+                            self.sink.push(c.encode_utf8(&mut bytes))?;
+                            emitted = true;
+                            space = false;
+                        }
+                    }
+                }
+            }
         }
         self.verbatim = false;
         Ok(())
     }
-    fn add(&mut self, text: &str, verbatim: bool, clock: &Clock) -> Result<(), Error> {
+    fn add(&mut self, text: &'d str, verbatim: bool, clock: &Clock) -> Result<(), Error> {
         if !verbatim {
-            self.cells.last_mut().unwrap().push_str(text);
+            self.cells.last_mut().unwrap().push(text);
             return Ok(());
         }
-        for c in text.chars() {
+        let mut start = 0;
+        for (index, c) in text.char_indices() {
             clock.tick()?;
             self.verbatim = true;
             if c == '\n' {
+                self.cells.last_mut().unwrap().push(&text[start..index]);
                 self.end(true, clock)?;
-            } else {
-                self.cells.last_mut().unwrap().push(c);
+                start = index + 1;
             }
+        }
+        if start < text.len() {
+            self.verbatim = true;
+            self.cells.last_mut().unwrap().push(&text[start..]);
         }
         Ok(())
     }
 }
-pub(crate) fn collapsed(text: &str, clock: &Clock) -> Result<String, Error> {
-    let mut result = String::new();
-    let mut space = false;
-    for c in text.chars() {
-        clock.tick()?;
-        if c.is_whitespace() {
-            space = !result.is_empty();
-        } else {
-            if space {
-                result.push(' ');
+
+struct ReadingSink<'c> {
+    clock: &'c Clock,
+    value: String,
+    pending_utf8: [u8; 4],
+    pending_length: usize,
+    reading_maximum: usize,
+    encoded: usize,
+    output: Option<(usize, usize)>,
+}
+impl<'c> ReadingSink<'c> {
+    fn new(
+        reading_maximum: usize,
+        output: Option<(usize, usize)>,
+        clock: &'c Clock,
+    ) -> Result<Self, Error> {
+        let sink = Self {
+            clock,
+            value: String::new(),
+            pending_utf8: [0; 4],
+            pending_length: 0,
+            reading_maximum,
+            encoded: 2,
+            output,
+        };
+        if let Some((remaining, maximum)) = output
+            && remaining < 2
+        {
+            return Err(Error::limit("output_bytes", maximum));
+        }
+        Ok(sink)
+    }
+    fn push(&mut self, text: &str) -> Result<(), Error> {
+        for c in text.chars() {
+            self.clock.tick()?;
+            if c.len_utf8() > self.reading_maximum.saturating_sub(self.value.len()) {
+                return Err(Error::limit("reading_bytes", self.reading_maximum));
             }
-            result.push(c);
-            space = false;
+            let bytes = match c {
+                '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
+                c if c < '\u{20}' => 6,
+                c => c.len_utf8(),
+            };
+            if let Some((remaining, maximum)) = self.output
+                && bytes > remaining.saturating_sub(self.encoded)
+            {
+                return Err(Error::limit("output_bytes", maximum));
+            }
+            self.encoded += bytes;
+            self.value.push(c);
+        }
+        Ok(())
+    }
+}
+impl io::Write for ReadingSink<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let mut position = 0;
+        while self.pending_length > 0 && position < bytes.len() {
+            self.pending_utf8[self.pending_length] = bytes[position];
+            self.pending_length += 1;
+            position += 1;
+            match std::str::from_utf8(&self.pending_utf8[..self.pending_length]) {
+                Ok(text) => {
+                    let mut buffer = [0; 4];
+                    let c = text.chars().next().unwrap();
+                    self.push(c.encode_utf8(&mut buffer))
+                        .map_err(io::Error::other)?;
+                    self.pending_length = 0;
+                }
+                Err(error) if error.error_len().is_none() && self.pending_length < 4 => (),
+                Err(error) => return Err(io::Error::other(error)),
+            }
+        }
+        let rest = &bytes[position..];
+        match std::str::from_utf8(rest) {
+            Ok(text) => self.push(text).map_err(io::Error::other)?,
+            Err(error) => {
+                self.push(std::str::from_utf8(&rest[..error.valid_up_to()]).unwrap())
+                    .map_err(io::Error::other)?;
+                if error.error_len().is_some() {
+                    return Err(io::Error::other(error));
+                }
+                let tail = &rest[error.valid_up_to()..];
+                self.pending_utf8[..tail.len()].copy_from_slice(tail);
+                self.pending_length = tail.len();
+            }
+        }
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        if self.pending_length == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::other("incomplete serialized UTF-8 scalar"))
         }
     }
-    Ok(result)
 }
-fn text(scope: &Scope<'_>, excluded: &HashSet<NodeId>, clock: &Clock) -> Result<String, Error> {
-    if scope.extent.len() == 1
-        && matches!(scope.anchor.value().name(), "script" | "style" | "template")
-    {
-        return text_content(scope, excluded, clock);
+
+fn text(
+    scope: &Scope<'_>,
+    excluded: &HashSet<NodeId>,
+    clock: &Clock,
+    sink: &mut ReadingSink,
+) -> Result<(), Error> {
+    if scope.single() && matches!(scope.anchor.value().name(), "script" | "style" | "template") {
+        return text_content(scope, excluded, clock, sink);
     }
-    let sole = (scope.extent.len() == 1).then_some(scope.anchor.id());
-    let mut lines = Lines::new();
-    for root in &scope.extent {
+    let sole = (scope.single()).then_some(scope.anchor.id());
+    let mut lines = Lines::new(sink);
+    for root in scope.roots() {
         let mut skipped = 0;
         let mut verbatim = 0;
         let mut ancestor = root.parent();
@@ -274,7 +425,7 @@ fn text(scope: &Scope<'_>, excluded: &HashSet<NodeId>, clock: &Clock) -> Result<
                                         .is_some_and(|e| html(e) && matches!(e.name(), "td" | "th"))
                                         && !excluded.contains(&sibling.id())
                                     {
-                                        lines.cells.push(String::new());
+                                        lines.cells.push(Vec::new());
                                         break;
                                     }
                                     previous = sibling.prev_sibling();
@@ -302,7 +453,7 @@ fn text(scope: &Scope<'_>, excluded: &HashSet<NodeId>, clock: &Clock) -> Result<
         }
     }
     lines.end(false, clock)?;
-    Ok(lines.lines.join("\n"))
+    Ok(())
 }
 
 struct Filtered<'a, 'd> {
@@ -343,11 +494,11 @@ fn outer_html(
     scope: &Scope<'_>,
     excluded: &HashSet<NodeId>,
     clock: &Clock,
-) -> Result<String, Error> {
-    let mut output = Vec::new();
-    for &root in &scope.extent {
+    output: &mut ReadingSink,
+) -> Result<(), Error> {
+    for root in scope.roots() {
         serialize(
-            &mut output,
+            &mut *output,
             &Filtered {
                 root,
                 excluded,
@@ -367,12 +518,16 @@ fn outer_html(
                 })
         })?;
     }
-    String::from_utf8(output).map_err(|_| {
-        Error::new(
-            ErrorCode::Internal,
-            "HTML serialization produced invalid UTF-8.",
-        )
-    })
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn read_html(root: crate::dom::ElementRef<'_>, clock: &Clock) -> Result<String, Error> {
+    {
+        let mut sink = ReadingSink::new(usize::MAX, None, clock)?;
+        outer_html(&Scope::one(root), &HashSet::new(), clock, &mut sink)?;
+        Ok(sink.value)
+    }
 }
 
 #[cfg(test)]
@@ -568,12 +723,12 @@ mod tests {
         // HTML retains these non-cell elements in the row, unlike foster-parented span/div nodes.
         let row = document
             .html
-            .select(&scraper::Selector::parse("tr").unwrap())
+            .select(&crate::select::Selector::parse("tr").unwrap())
             .nth(1)
             .unwrap();
         let names: Vec<_> = row
             .children()
-            .filter_map(scraper::ElementRef::wrap)
+            .filter_map(crate::dom::ElementRef::wrap)
             .map(|e| e.value().name())
             .collect();
         assert_eq!(names, ["script", "template", "td", "th"]);
@@ -592,7 +747,7 @@ mod tests {
                 .html
                 .tree
                 .nodes()
-                .filter(|n| matches!(n.value(), Node::Doctype(_)))
+                .filter(|n| matches!(n.value(), Node::Doctype))
                 .collect();
             assert_eq!(doctypes.len(), 1);
             assert!(doctypes[0].parent().unwrap().value().is_document());

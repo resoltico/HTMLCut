@@ -5,6 +5,7 @@ import re
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import tomllib
@@ -71,7 +72,8 @@ class WorkflowWiringTest(unittest.TestCase):
     def test_required_smoke_failure_propagates_and_retains_log(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
         job = text.split("\n  focused-smoke:\n", 1)[1].split("\n  minimum-rust:\n", 1)[0]
-        command = job.split("      - name: Execute both bounded smokes\n", 1)[1].split("      - name:", 1)[0].split("        run: ", 1)[1].strip()
+        command = job.split("      - name: Execute both bounded fuzz preflights\n", 1)[1].split("      - name:", 1)[0].split("        run: ", 1)[1].strip()
+        self.assertIn('--runs 250 --require-mutations', command)
         self.assertIn('if: always()', job)
         self.assertIn('path: ${{ runner.temp }}/focused-smoke/', job)
         aggregate = text.split("\n  check:\n", 1)[1]
@@ -80,6 +82,7 @@ class WorkflowWiringTest(unittest.TestCase):
             root = Path(directory)
             bin_dir = root / 'bin'
             bin_dir.mkdir()
+            (bin_dir / "python3").symlink_to(sys.executable)
             cargo = bin_dir / 'cargo'
             cargo.write_text('#!/usr/bin/env bash\nprintf "intentional smoke failure\\n" >&2\nexit 23\n')
             cargo.chmod(0o755)
@@ -87,10 +90,12 @@ class WorkflowWiringTest(unittest.TestCase):
                                     env={**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
                                          'RUNNER_TEMP': str(root)}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 23)
-            evidence = root / 'focused-smoke/contract_bytes'
-            self.assertIn('intentional smoke failure', (evidence / 'run.log').read_text())
-            self.assertTrue(any((evidence / 'corpus').iterdir()))
-            self.assertTrue((evidence / 'crashes').is_dir())
+            evidence, = (root / 'focused-smoke').glob('run.*')
+            self.assertIn('intentional smoke failure', (evidence / 'build.log').read_text())
+            self.assertTrue(any((evidence / 'contract_bytes/corpus').iterdir()))
+            self.assertTrue((evidence / 'contract_bytes/crashes').is_dir())
+            self.assertEqual(json.loads((evidence / 'build.resources.json').read_text())['returncode'], 23)
+            self.assertIn('retention-days: 3', job)
 
     def test_every_checkout_discards_credentials(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
@@ -128,6 +133,7 @@ class ContributorToolCacheTest(unittest.TestCase):
             root = Path(directory)
             bin_dir = root / "bin"
             bin_dir.mkdir()
+            (bin_dir / "python3").symlink_to(sys.executable)
             cargo = bin_dir / "cargo"
             cargo.write_text("""#!/usr/bin/env bash
 set -euo pipefail
@@ -145,15 +151,15 @@ chmod +x "$2/bin/cargo-about"
                 env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                      "INSTALL_ROOT": str(install_root), "ARGUMENT_LOG": str(log)}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            pinned = subprocess.check_output(["bash", "-c", 'source scripts/contributor-rust-tools.sh; echo "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN"'], cwd=ROOT, text=True).strip()
+            pinned = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
             self.assertEqual(log.read_text().splitlines(), ["+" + pinned, "install", "cargo-about", "--version", "0.9.2", "--locked", "--root", str(install_root), "--features", "cli"])
             log.unlink()
             self.assertEqual(subprocess.run(["bash", "-c", command], cwd=ROOT,
-                env={**os.environ, "INSTALL_ROOT": str(install_root)}, capture_output=True).returncode, 0)
+                env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"], "INSTALL_ROOT": str(install_root)}, capture_output=True).returncode, 0)
             self.assertFalse(log.exists(), "Valid cached executable must not reinstall")
             (install_root / "bin/cargo-about").write_text('#!/usr/bin/env bash\nprintf "cargo-about 0.1.0\\n"\n')
             rejected = subprocess.run(["bash", "-c", command], cwd=ROOT,
-                env={**os.environ, "INSTALL_ROOT": str(install_root)}, capture_output=True, text=True)
+                env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"], "INSTALL_ROOT": str(install_root)}, capture_output=True, text=True)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("version mismatch", rejected.stderr)
 

@@ -11,7 +11,9 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 mod contract;
+mod css;
 mod document;
+mod dom;
 mod error;
 mod eval;
 mod json;

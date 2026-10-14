@@ -11,9 +11,13 @@ mod depth;
 
 pub(crate) struct Selector {
     pub(crate) text: String,
-    list: SelectorList<scraper::selector::Simple>,
+    list: SelectorList<crate::css::Simple>,
 }
 impl Selector {
+    #[cfg(test)]
+    pub(crate) fn parse(text: &str) -> Result<Self, Error> {
+        Self::compile(text, "$")
+    }
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
         let failure = |message: String| {
             let mut e = Error::new(ErrorCode::InvalidSelector, message).at(path);
@@ -32,7 +36,7 @@ impl Selector {
         }
         let mut input = cssparser::ParserInput::new(text);
         let mut parser = cssparser::Parser::new(&mut input);
-        let list = SelectorList::parse(&scraper::selector::Parser, &mut parser, ParseRelative::No)
+        let list = SelectorList::parse(&crate::css::Parser, &mut parser, ParseRelative::No)
             .map_err(|e| {
                 use cssparser::{BasicParseErrorKind, ParseErrorKind};
                 use selectors::parser::SelectorParseErrorKind;
@@ -66,10 +70,19 @@ impl Selector {
             list,
         })
     }
+    pub(crate) fn only_scope(&self) -> bool {
+        let list = self.list.slice();
+        if list.len() != 1 {
+            return false;
+        }
+        let mut components = list[0].iter_raw_match_order();
+        matches!(components.next(), Some(selectors::parser::Component::Scope))
+            && components.next().is_none()
+    }
     pub(crate) fn matches(
         &self,
-        element: scraper::ElementRef<'_>,
-        scope: scraper::ElementRef<'_>,
+        element: crate::dom::ElementRef<'_>,
+        scope: crate::dom::ElementRef<'_>,
         caches: &mut matching::SelectorCaches,
     ) -> bool {
         let mut context = matching::MatchingContext::new(

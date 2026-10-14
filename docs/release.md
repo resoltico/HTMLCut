@@ -8,4 +8,4 @@ Publishing GitHub Releases and crates.io packages, creating tags, merging and ch
 
 The [frozen-corpus policy](design.md#stability) rejects changes to existing contract cases against the latest released tag of the current major. With no such tag there is no baseline; new cases can still be added. Outline format may change in a minor version.
 
-Before a release, run `cargo mutants --workspace` and list every surviving mutant with its reason in the release pull request. Investigate observable behavior changes and add regression tests or remove unreachable code before publication.
+Before a release, run the [resource-bounded mutation audit](../CONTRIBUTING.md) for the full workspace and list every survivor and timeout with its reason in the release pull request. A focused selection, resource refusal or interrupted audit does not complete this review. Investigate observable behavior changes and add regression tests or remove unreachable code before publication.

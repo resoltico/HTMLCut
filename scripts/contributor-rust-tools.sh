@@ -9,6 +9,7 @@ htmlcut_contributor_cargo_tool_inventory() {
 cargo-deny 0.20.2 cargo-deny
 cargo-about 0.9.2 cargo-about
 cargo-fuzz 0.13.2 cargo-fuzz
+cargo-mutants 27.1.0 cargo-mutants
 TOOLS
 }
 

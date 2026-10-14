@@ -14,7 +14,7 @@ description = "Fail-closed extraction contracts for caller-owned HTML snapshots.
 [dependencies]
 cssparser.workspace = true
 selectors.workspace = true
-scraper.workspace = true
+precomputed-hash.workspace = true
 ego-tree.workspace = true
 encoding_rs.workspace = true
 regex.workspace = true
