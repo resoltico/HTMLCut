@@ -34,6 +34,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
   linux-maintainer:
     name: Linux full maintainer gate
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -49,6 +50,7 @@ jobs:
 
   focused-smoke:
     name: Linux contract and extraction fuzz preflight
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -79,6 +81,7 @@ jobs:
 
   minimum-rust:
     name: Minimum supported Rust
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
