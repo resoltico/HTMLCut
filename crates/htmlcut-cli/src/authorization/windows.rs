@@ -261,26 +261,25 @@ impl Descriptor {
             boolean(unsafe {
                 GetSecurityDescriptorSacl(self.0, &mut present, &mut acl, &mut defaulted)
             })?;
-            // Assigning a null SACL implicitly protects it unless unprotection
-            // is explicit, even when protection matched before assignment.
-            // The private factory obtains the required SACL-only handle right
-            // for this case under the caller's assigned security privilege.
-            let label_info = LABEL_SECURITY_INFORMATION
-                | if present != 0 && acl.is_null() && control & SE_SACL_PROTECTED == 0 {
-                    UNPROTECTED_SACL_SECURITY_INFORMATION
-                } else {
-                    label_protection
-                };
-            // Mandatory labels use the maintained file setter. Its SACL
+            // LABEL assignment did not preserve unprotected null controls on
+            // native Windows. Assign that empty SACL component explicitly;
+            // no ACE payload is queried or copied. The private factory obtains
+            // its SACL-only handle right under the assigned privilege scope.
+            let sacl_info = if present != 0 && acl.is_null() && control & SE_SACL_PROTECTED == 0 {
+                SACL_SECURITY_INFORMATION | UNPROTECTED_SACL_SECURITY_INFORMATION
+            } else {
+                LABEL_SECURITY_INFORMATION | label_protection
+            };
+            // Mandatory policy uses the maintained file setter. Its SACL
             // inheritance processing is required for labels authored through
             // that API; the full-descriptor setter loses those controls.
-            // SAFETY: live file handle and descriptor-owned ACL; no audit SACL
-            // or backup policy is requested.
+            // SAFETY: live file handle and descriptor-owned ACL; no audit ACE
+            // payload or backup policy is queried or copied.
             status(unsafe {
                 SetSecurityInfo(
                     file.as_raw_handle() as HANDLE,
                     SE_FILE_OBJECT,
-                    label_info,
+                    sacl_info,
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
@@ -291,7 +290,7 @@ impl Descriptor {
                 io::Error::new(
                     error.kind(),
                     format!(
-                        "Windows mandatory-label assignment failed (mask {label_info:#x}, SACL present {present}, control {control:#x}): {error}; wanted {}, before {}",
+                        "Windows mandatory-policy assignment failed (mask {sacl_info:#x}, SACL present {present}, control {control:#x}): {error}; wanted {}, before {}",
                         self.describe(LABEL_SECURITY_INFORMATION), before.describe(LABEL_SECURITY_INFORMATION)
                     ),
                 )
@@ -500,11 +499,12 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
         // SAFETY: successful CreateFile returns one uniquely owned file handle.
         let file = unsafe { File::from_raw_handle(handle) };
         let initialize = || {
+            let created = Descriptor::read(&file)?.text_with(LABEL_SECURITY_INFORMATION)?;
             wanted.apply(&file, LABEL_SECURITY_INFORMATION)?;
             let observed = Descriptor::read(&file)?.text_with(LABEL_SECURITY_INFORMATION)?;
             if observed != label {
                 return Err(io::Error::other(format!(
-                    "Private file mandatory policy differs before result bytes: wanted {label:?}, observed {observed:?}"
+                    "Private file mandatory policy differs before result bytes: wanted {label:?}, created {created:?}, observed {observed:?}"
                 )));
             }
             Ok(())
