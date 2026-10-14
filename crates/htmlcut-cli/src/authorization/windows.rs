@@ -438,17 +438,11 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
     boolean(unsafe {
         GetSecurityDescriptorSacl(wanted.0, &mut present, &mut sacl, &mut defaulted)
     })?;
-    // An explicit null SACL at CreateFile requires security privilege even
-    // without protection or mandatory ACEs. For this unprotected empty policy,
-    // inherit during empty private creation, then reproduce the exact null
-    // representation/controls through the LABEL initializer before any bytes.
-    // Protected and non-null mandatory policy still enters atomic creation.
-    let creation_label = if present != 0 && sacl.is_null() && control & SE_SACL_PROTECTED == 0 {
-        ""
-    } else {
-        &label
-    };
-    let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){creation_label}"))?;
+    // Explicit null SACL creation requires security privilege even without
+    // protection. Omitting it and assigning LABEL later changes protection,
+    // so preserve the complete representation at atomic private creation.
+    let explicit_null_sacl = present != 0 && sacl.is_null();
+    let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
@@ -519,9 +513,9 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
         }
         Ok(file)
     };
-    if control & SE_SACL_PROTECTED != 0 {
+    if control & SE_SACL_PROTECTED != 0 || explicit_null_sacl {
         // Enable only an assigned capability on a duplicate effective token,
-        // solely for this thread's protected-policy creation/initialization.
+        // solely for this thread's protected/null-policy creation/initialization.
         security_privilege::with_security_privilege(create)
     } else {
         create()
