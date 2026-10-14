@@ -29,7 +29,7 @@ Save the same JSON as a contract and use run --from-file. FILE defaults to stand
 
 Results are compact UTF-8 JSON. Raw scalars print strings with LF; raw lists require LF-free items and otherwise refuse with a JSON repair hint. A writable regular output file is replaced atomically only after a complete result; symlinks are followed, `-` is stdout, and pipes/devices are written directly. A refusal before publication preserves the destination. Existing-file replacement preserves inspected authorization, with identity/policy revalidation and the concurrent-mutation limits in the guarantees. The invocation deadline covers acquisition and stream delivery, with an atomic regular-file commit boundary. Diagnostics name the contract location, selector, enclosing row indexes, observed count or value, and relevant resource or I/O facts.
 
-On Windows, preserving a protected or present-null SACL requires caller-assigned `SeSecurityPrivilege`. Activation uses a duplicate token on the current thread; missing assignment refuses before result bytes. See the [authorization boundaries and native controls](docs/audit-acceptance.md).
+On Windows, preserving a protected SACL requires caller-assigned `SeSecurityPrivilege`. Activation uses a duplicate token on the current thread; missing assignment refuses before result bytes. Unprotected present-null SACLs refuse before creation because this publication path cannot faithfully establish their inheritance. See the [authorization boundaries and native controls](docs/audit-acceptance.md).
 
 Counts defend against missing, duplicated or cleanly truncated rows. Callers still validate that a snapshot represents the intended business entity; a structurally identical wrong page can satisfy a contract.
 

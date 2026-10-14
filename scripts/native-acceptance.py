@@ -330,6 +330,11 @@ $context=[ordered]@{sid=$sid.Value;backup_before=[ParentAccessControl]::DisableE
 New-Item -ItemType Directory -Path $Parent | Out-Null
 $saved=Get-Acl -LiteralPath $Parent
 [System.IO.File]::WriteAllBytes($PolicyBackup,$saved.GetSecurityDescriptorBinaryForm())
+function RestoreParentDacl() {
+    $acl=[System.Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup),[System.Security.AccessControl.AccessControlSections]::Access)
+    ([System.IO.DirectoryInfo]::new($Parent)).SetAccessControl($acl)
+}
 function ParentRule([int]$Rights) {
     $acl=[System.Security.AccessControl.DirectorySecurity]::new()
     $acl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup),[System.Security.AccessControl.AccessControlSections]::Access)
@@ -365,6 +370,11 @@ $failure=$null;$cleanup=@()
 try {
     $existing=Join-Path $Parent 'existing.json';$absent=Join-Path $Parent 'absent.json';$osControl=Join-Path $Parent 'os-control.json'
     [System.IO.File]::WriteAllText($existing,'old')
+    $results.existing_policy_before_priming=[ParentAccessControl]::Policy($existing)
+    # Initialize this owned child's native inherited DACL before the baseline.
+    # The actual listing-denial update must still leave that policy unchanged.
+    RestoreParentDacl
+    $results.existing_policy_after_priming=[ParentAccessControl]::Policy($existing)
     $results.existing_policy_before_setup=[ParentAccessControl]::Policy($existing)
     ParentRule 1 # ListDirectory only; no child inheritance.
     $results.existing_policy_after_setup=[ParentAccessControl]::Policy($existing)
@@ -401,11 +411,7 @@ try {
 } catch {$failure=$_.Exception.Message}
 finally {
     if(!$script:unreapedChild) {
-        try {
-            $restoreAcl=[System.Security.AccessControl.DirectorySecurity]::new()
-            $restoreAcl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup),[System.Security.AccessControl.AccessControlSections]::Access)
-            ([System.IO.DirectoryInfo]::new($Parent)).SetAccessControl($restoreAcl)
-        } catch {$cleanup+="Parent ACL restoration: $($_.Exception.Message)"}
+        try {RestoreParentDacl} catch {$cleanup+="Parent ACL restoration: $($_.Exception.Message)"}
         try {if(Test-Path -LiteralPath $Alias) {[System.IO.Directory]::Delete($Alias)}} catch {$cleanup+="Junction cleanup: $($_.Exception.Message)"}
     }
 }

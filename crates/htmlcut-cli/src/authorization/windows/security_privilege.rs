@@ -130,7 +130,7 @@ fn adjust_security(token: &Token, attributes: u32) -> io::Result<()> {
     if error == ERROR_NOT_ALL_ASSIGNED {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "The caller has no assigned SeSecurityPrivilege; protected or present-null SACL creation requires that capability",
+            "The caller has no assigned SeSecurityPrivilege; protected SACL creation requires that capability",
         ));
     }
     if error != 0 {
