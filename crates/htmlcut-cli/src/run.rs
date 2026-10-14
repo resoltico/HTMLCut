@@ -525,7 +525,7 @@ fn publish_timed(
     // An absent destination follows ordinary inherited/umask policy, captured on an
     // empty policy probe. It never contains extraction bytes.
     let new_policy = if pinned.is_none() {
-        let probe = create_stage(parent, watchdog, false)
+        let probe = create_stage(parent, watchdog, StageKind::InheritedPolicyProbe)
             .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
         Some(
             Policy::read(probe.as_file())
@@ -541,12 +541,33 @@ fn publish_timed(
     let stage_parent = directory.path();
     #[cfg(windows)]
     let stage_parent = parent;
-    let mut temporary = create_stage(stage_parent, watchdog, true)
-        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     let policy = pinned
         .as_ref()
         .map(|(_, _, policy)| policy)
         .unwrap_or_else(|| new_policy.as_ref().unwrap());
+    #[cfg(windows)]
+    {
+        // A retained auto-inherited ACL can predate a move between parents.
+        // Native inheritance reconstruction may then add permissions. Verify
+        // reproduction on a distinct empty inode before any result bytes;
+        // readers retained from this probe can never observe the real result.
+        let probe = create_stage(stage_parent, watchdog, StageKind::ReproductionPolicyProbe)
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        policy.preflight(probe.as_file()).map_err(|error| {
+            io_error(
+                ErrorCode::OutputUnwritable,
+                path,
+                io::Error::new(
+                    error.kind(),
+                    format!("Cannot reproduce output authorization on empty policy probe: {error}"),
+                ),
+            )
+        })?;
+        #[cfg(test)]
+        checkpoint("policy-probe", probe.path());
+    }
+    let mut temporary = create_stage(stage_parent, watchdog, StageKind::Result)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     policy.prepare(temporary.as_file()).map_err(|e| {
         io_error(
             ErrorCode::OutputUnwritable,
@@ -736,11 +757,19 @@ impl Drop for OwnedStage {
         self.ownership.cleanup();
     }
 }
+#[derive(Clone, Copy)]
+enum StageKind {
+    InheritedPolicyProbe,
+    #[cfg(windows)]
+    ReproductionPolicyProbe,
+    Result,
+}
 fn create_stage(
     parent: &Path,
     watchdog: Option<&Watchdog>,
-    private: bool,
+    kind: StageKind,
 ) -> io::Result<OwnedStage> {
+    let private = !matches!(kind, StageKind::InheritedPolicyProbe);
     let mut ownership = None;
     let mut builder = tempfile::Builder::new();
     builder.disable_cleanup(true);
@@ -760,7 +789,9 @@ fn create_stage(
             watchdog.check();
         }
         #[cfg(test)]
-        checkpoint("reserved", candidate);
+        if matches!(kind, StageKind::Result) {
+            checkpoint("reserved", candidate);
+        }
         #[cfg(unix)]
         let file = {
             use std::os::unix::fs::OpenOptionsExt;
@@ -801,7 +832,9 @@ fn create_stage(
         record.created_identity.set(id).unwrap();
         ownership = Some(Arc::clone(&record));
         #[cfg(test)]
-        checkpoint("created", candidate);
+        if matches!(kind, StageKind::Result) {
+            checkpoint("created", candidate);
+        }
         if let Some(watchdog) = watchdog {
             watchdog.check();
         }
@@ -928,7 +961,18 @@ pub(crate) fn checkpoint(phase: &str, path: &Path) {
             path.as_os_str().as_encoded_bytes(),
         )
         .unwrap();
-        if phase == "commit" {
+        if phase == "policy-probe" {
+            let release =
+                std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").unwrap());
+            let started = Instant::now();
+            while !release.exists() && started.elapsed() < Duration::from_secs(2) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(
+                release.exists(),
+                "policy probe reader did not release publication"
+            );
+        } else if phase == "commit" {
             std::thread::sleep(Duration::from_millis(800));
         } else {
             loop {
@@ -1082,7 +1126,14 @@ mod tests {
         let Some(destination) = std::env::var_os("HTMLCUT_PUBLICATION_DESTINATION") else {
             return;
         };
-        let watchdog = Watchdog::new(Duration::from_millis(500));
+        let duration = if std::env::var("HTMLCUT_PUBLICATION_PHASE")
+            .is_ok_and(|phase| phase == "policy-probe")
+        {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_millis(500)
+        };
+        let watchdog = Watchdog::new(duration);
         let result = publish_timed(
             b"complete-private-result",
             Some(Path::new(&destination)),
@@ -1093,6 +1144,72 @@ mod tests {
             report(&error);
             std::process::exit(error.error.exit_status());
         }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn reader_retained_from_actual_policy_probe_never_observes_result_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("result.json");
+        let ready = root.path().join("ready");
+        let release = root.path().join("release");
+        std::fs::write(&destination, b"old").unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "run::tests::publication_phase_child",
+                "--nocapture",
+            ])
+            .env("HTMLCUT_PUBLICATION_PHASE", "policy-probe")
+            .env("HTMLCUT_PUBLICATION_DESTINATION", &destination)
+            .env("HTMLCUT_PUBLICATION_READY", &ready)
+            .env("HTMLCUT_PUBLICATION_RELEASE", &release)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if !ready.exists() {
+            let _ = child.kill();
+            let result = child.wait_with_output().unwrap();
+            panic!("production policy probe was not reached: {result:?}");
+        }
+        let probe = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
+        let mut reader = File::open(&probe).unwrap();
+        let probe_id = identity(&reader).unwrap();
+        assert_eq!(reader.metadata().unwrap().len(), 0);
+        std::fs::write(&release, b"continue").unwrap();
+        while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            panic!("released policy probe exceeded external test deadline");
+        }
+        let result = child.wait_with_output().unwrap();
+        assert!(
+            result.status.success() && result.stderr.is_empty(),
+            "{result:?}"
+        );
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            b"complete-private-result"
+        );
+        assert_ne!(
+            identity(&File::open(&destination).unwrap()).unwrap(),
+            probe_id
+        );
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        assert!(
+            bytes.is_empty(),
+            "actual empty policy probe was reused for result bytes"
+        );
+        assert_eq!(reader.metadata().unwrap().len(), 0);
+        assert!(!probe.exists(), "actual owned policy probe was not removed");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 3);
     }
     #[test]
     fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
@@ -1180,7 +1297,7 @@ mod tests {
         };
         unconfirmed.cleanup();
         assert_eq!(std::fs::read(&path).unwrap(), b"foreign");
-        let stage = create_stage(root.path(), None, false).unwrap();
+        let stage = create_stage(root.path(), None, StageKind::InheritedPolicyProbe).unwrap();
         let displaced = root.path().join("displaced");
         std::fs::rename(stage.path(), &displaced).unwrap();
         std::fs::write(stage.path(), b"foreign replacement").unwrap();

@@ -136,6 +136,10 @@ impl Descriptor {
         unsafe { LocalFree(ptr.cast()) };
         result
     }
+    fn describe(&self, information: u32) -> String {
+        self.text_with(information)
+            .unwrap_or_else(|error| format!("unavailable ({error})"))
+    }
     fn apply(&self, file: &File, information: u32) -> io::Result<()> {
         let before = Self::read(file)?;
         let mut information = information;
@@ -169,7 +173,12 @@ impl Descriptor {
         } else {
             0
         };
-        let exact_information = information & !LABEL_SECURITY_INFORMATION;
+        let inherited_dacl =
+            information & DACL_SECURITY_INFORMATION != 0 && control & SE_DACL_AUTO_INHERITED != 0;
+        let mut exact_information = information & !LABEL_SECURITY_INFORMATION;
+        if inherited_dacl {
+            exact_information &= !DACL_SECURITY_INFORMATION;
+        }
         let exact_info = exact_information
             | if exact_information & DACL_SECURITY_INFORMATION != 0 {
                 protection
@@ -191,8 +200,45 @@ impl Descriptor {
                 io::Error::new(
                     error.kind(),
                     format!(
-                        "Windows owner/group/DACL assignment failed (mask {exact_info:#x}): {error}; wanted {:?}, before {:?}",
-                        self.text_with(exact_information), before.text_with(exact_information)
+                        "Windows owner/group/DACL assignment failed (mask {exact_info:#x}): {error}; wanted {}, before {}",
+                        self.describe(exact_information), before.describe(exact_information)
+                    ),
+                )
+            })?;
+        }
+        if inherited_dacl {
+            let mut acl = std::ptr::null_mut();
+            let mut present = 0;
+            let mut defaulted = 0;
+            // SAFETY: this descriptor owns the returned ACL and remains live.
+            boolean(unsafe {
+                GetSecurityDescriptorDacl(self.0, &mut present, &mut acl, &mut defaulted)
+            })?;
+            let dacl_info = DACL_SECURITY_INFORMATION | protection;
+            // An auto-inherited source already uses native parent inheritance.
+            // Its native file setter preserves that control model; the full-SD
+            // setter clears AUTO_INHERITED while clearing stage protection.
+            // Same-parent reconstruction must still pass complete exact
+            // readback: a changed parent cannot justify extra or missing ACEs.
+            // SAFETY: live file handle and descriptor-owned ACL; owner/group
+            // and SACL components are not requested by this call.
+            status(unsafe {
+                SetSecurityInfo(
+                    file.as_raw_handle() as HANDLE,
+                    SE_FILE_OBJECT,
+                    dacl_info,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    acl,
+                    std::ptr::null_mut(),
+                )
+            })
+            .map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Windows auto-inherited DACL assignment failed (mask {dacl_info:#x}, DACL present {present}, control {control:#x}): {error}; wanted {}, before {}",
+                        self.describe(DACL_SECURITY_INFORMATION), before.describe(DACL_SECURITY_INFORMATION)
                     ),
                 )
             })?;
@@ -226,8 +272,8 @@ impl Descriptor {
                 io::Error::new(
                     error.kind(),
                     format!(
-                        "Windows mandatory-label assignment failed (mask {label_info:#x}, SACL present {present}, control {control:#x}): {error}; wanted {:?}, before {:?}",
-                        self.text_with(LABEL_SECURITY_INFORMATION), before.text_with(LABEL_SECURITY_INFORMATION)
+                        "Windows mandatory-label assignment failed (mask {label_info:#x}, SACL present {present}, control {control:#x}): {error}; wanted {}, before {}",
+                        self.describe(LABEL_SECURITY_INFORMATION), before.describe(LABEL_SECURITY_INFORMATION)
                     ),
                 )
             })?;
@@ -274,6 +320,17 @@ impl Policy {
         Descriptor::parse(&self.0)?.apply(file, INFO)?;
         #[cfg(test)]
         crate::run::checkpoint("metadata", stage);
+        self.verify(file)
+    }
+    /// The caller supplies a distinct empty probe in the intended result parent.
+    /// Its ACL may acquire new parent grants before a reconstruction mismatch is
+    /// detected, so this object must never contain result bytes.
+    pub(crate) fn preflight(&self, file: &File) -> io::Result<()> {
+        self.prepare(file)?;
+        Descriptor::parse(&self.0)?.apply(file, INFO)?;
+        self.verify(file)
+    }
+    fn verify(&self, file: &File) -> io::Result<()> {
         let observed = Self::read(file)?;
         if observed != *self {
             return Err(io::Error::other(format!(
@@ -407,6 +464,31 @@ pub(crate) fn remove_stage(file: &File) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn author_dacl(file: &File, text: &str, protection: u32) -> io::Result<()> {
+        let descriptor = Descriptor::parse(text)?;
+        let mut acl = std::ptr::null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        // SAFETY: valid fixture descriptor/ACL and opened handle remain live.
+        unsafe {
+            boolean(GetSecurityDescriptorDacl(
+                descriptor.0,
+                &mut present,
+                &mut acl,
+                &mut defaulted,
+            ))?;
+            status(SetSecurityInfo(
+                file.as_raw_handle() as HANDLE,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | protection,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                acl,
+                std::ptr::null_mut(),
+            ))
+        }
+    }
 
     #[test]
     fn access_policy_inspection_needs_no_audit_privilege() {
@@ -556,31 +638,12 @@ mod tests {
             let source_path = directory.path().join(name);
             let mut source = stage_options().open(&source_path).unwrap();
             source.write_all(b"original").unwrap();
-            let descriptor = Descriptor::parse(dacl).unwrap();
             let mut acl = std::ptr::null_mut();
             let mut present = 0;
             let mut defaulted = 0;
             // Independent file-policy authoring uses the standard native API,
             // not the reproduction mechanism exercised below.
-            unsafe {
-                boolean(GetSecurityDescriptorDacl(
-                    descriptor.0,
-                    &mut present,
-                    &mut acl,
-                    &mut defaulted,
-                ))
-                .unwrap();
-                status(SetSecurityInfo(
-                    source.as_raw_handle() as HANDLE,
-                    SE_FILE_OBJECT,
-                    DACL_SECURITY_INFORMATION | protection,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    acl,
-                    std::ptr::null_mut(),
-                ))
-                .unwrap();
-            }
+            author_dacl(&source, dacl, protection).unwrap();
             if let Some(label) = label {
                 let descriptor = Descriptor::parse(label).unwrap();
                 // SAFETY: both the fixture descriptor/ACL and source handle are live.
@@ -632,5 +695,70 @@ mod tests {
                 assert_eq!(std::fs::read(&stage_path).unwrap(), b"complete");
             }
         }
+    }
+
+    #[test]
+    fn inherited_policy_reconstruction_refuses_a_different_parent_policy() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let source_parent = directory.path().join("source-parent");
+        std::fs::create_dir(&source_parent).unwrap();
+        let source_path = source_parent.join("source");
+        let mut source = stage_options().open(&source_path).unwrap();
+        source.write_all(b"original").unwrap();
+        let parent = OpenOptions::new()
+            .read(true)
+            .access_mode(READ_CONTROL | WRITE_DAC)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(&source_parent)
+            .unwrap();
+        // Author a genuine inherited data-read denial, while keeping the
+        // parent and retained source metadata/writer handle usable.
+        author_dacl(
+            &parent,
+            "D:P(D;OIIO;0x1;;;WD)(A;OICI;FA;;;OW)",
+            PROTECTED_DACL_SECURITY_INFORMATION,
+        )
+        .unwrap();
+        author_dacl(&source, "D:", UNPROTECTED_DACL_SECURITY_INFORMATION).unwrap();
+        let inherited = Descriptor::read(&source).unwrap();
+        let mut source_acl = std::ptr::null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        // SAFETY: the native descriptor owns this ACL and its ACE headers.
+        unsafe {
+            boolean(GetSecurityDescriptorDacl(
+                inherited.0,
+                &mut present,
+                &mut source_acl,
+                &mut defaulted,
+            ))
+            .unwrap();
+            assert!(present != 0 && !source_acl.is_null() && (*source_acl).AceCount > 0);
+            for index in 0..u32::from((*source_acl).AceCount) {
+                let mut ace = std::ptr::null_mut();
+                boolean(GetAce(source_acl, index, &mut ace)).unwrap();
+                assert!(u32::from((*(ace as *const ACE_HEADER)).AceFlags) & INHERITED_ACE != 0);
+            }
+        }
+        assert_eq!(
+            std::fs::read(&source_path).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        let policy = Policy::read(&source).unwrap();
+        let stage_parent = directory.path().join("stage-parent");
+        std::fs::create_dir(&stage_parent).unwrap();
+        let stage_path = stage_parent.join("stage");
+        let stage = create_private_file(&stage_path).unwrap();
+        restrict(&stage).unwrap();
+        policy.prepare(&stage).unwrap();
+        // Reproduction is challenged on an empty non-secret probe. A differing
+        // parent can introduce real read grants, so no result may be placed in
+        // this object even though exact readback detects the mismatch.
+        let error = policy.preflight(&stage).unwrap_err();
+        assert!(error.to_string().contains("staged authorization differs"));
+        assert_eq!(stage.metadata().unwrap().len(), 0);
+        assert_eq!(std::fs::read(&stage_path).unwrap(), b"");
+        assert_eq!(source.metadata().unwrap().len(), b"original".len() as u64);
     }
 }
