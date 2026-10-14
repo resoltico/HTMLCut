@@ -25,6 +25,7 @@ const INSPECT_INFO: u32 = INFO
     | SCOPE_SECURITY_INFORMATION
     | PROCESS_TRUST_LABEL_SECURITY_INFORMATION as u32
     | ACCESS_FILTER_SECURITY_INFORMATION as u32;
+mod security_privilege;
 struct Descriptor(PSECURITY_DESCRIPTOR);
 impl Drop for Descriptor {
     fn drop(&mut self) {
@@ -417,6 +418,10 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
     let wanted = Descriptor::parse(&policy.0)?;
     let label = wanted.text_with(LABEL_SECURITY_INFORMATION)?;
     let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
+    let mut control = 0;
+    let mut revision = 0;
+    // SAFETY: live native descriptor and valid output locals.
+    boolean(unsafe { GetSecurityDescriptorControl(wanted.0, &mut control, &mut revision) })?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
@@ -427,33 +432,45 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
-    // SAFETY: terminated pathname and valid descriptor live across CreateFile; CREATE_NEW never opens a collision.
-    let handle = unsafe {
-        CreateFileW(
-            path.as_ptr(),
-            FILE_READ_ATTRIBUTES
-                | FILE_GENERIC_WRITE
-                | READ_CONTROL
-                | WRITE_DAC
-                | WRITE_OWNER
-                | DELETE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            &attributes,
-            CREATE_NEW,
-            FILE_ATTRIBUTE_NORMAL,
-            std::ptr::null_mut(),
-        )
+    let create = || {
+        // SAFETY: terminated pathname and descriptor live across CreateFile;
+        // CREATE_NEW never opens a collision. No publication callbacks occur.
+        let handle = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                FILE_READ_ATTRIBUTES
+                    | FILE_GENERIC_WRITE
+                    | READ_CONTROL
+                    | WRITE_DAC
+                    | WRITE_OWNER
+                    | DELETE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                &attributes,
+                CREATE_NEW,
+                FILE_ATTRIBUTE_NORMAL,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            // Capture before restoring the thread token can replace LastError.
+            let error = io::Error::last_os_error();
+            return Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "Cannot create private file with pinned mandatory policy {label:?}: {error}"
+                ),
+            ));
+        }
+        // SAFETY: successful CreateFile returns one uniquely owned file handle.
+        Ok(unsafe { File::from_raw_handle(handle) })
     };
-    if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-        let error = io::Error::last_os_error();
-        return Err(io::Error::new(
-            error.kind(),
-            format!("Cannot create private file with pinned mandatory policy {label:?}: {error}"),
-        ));
+    if control & SE_SACL_PROTECTED != 0 {
+        // Enable only an assigned capability on a duplicate effective token,
+        // solely for this thread's atomic protected-policy creation.
+        security_privilege::with_security_privilege(create)
+    } else {
+        create()
     }
-    // SAFETY: successful CreateFile returns one uniquely owned handle, now transferred to File.
-    let file = unsafe { File::from_raw_handle(handle) };
-    Ok(file)
 }
 
 pub(crate) fn remove_stage(file: &File) -> io::Result<()> {
