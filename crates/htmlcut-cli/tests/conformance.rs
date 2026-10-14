@@ -1137,7 +1137,7 @@ fn windows_named_pipe_output_is_delivered_and_reader_disconnect_is_silent() {
             "htmlcut-{}",
             directory.path().file_name().unwrap().to_string_lossy()
         );
-        let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::Asynchronous,4096,4096); try { $connection=$p.WaitForConnectionAsync(); [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); $connection.GetAwaiter().GetResult(); if ($env:HTMLCUT_PIPE_DISCONNECT -eq '1') { [Console]::Out.Write([char]$p.ReadByte()) } else { $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()) }; [Console]::Out.Flush() } finally { $p.Dispose() }"#;
+        let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::Asynchronous,4096,4096); try { $connection=$p.WaitForConnectionAsync(); [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); [void]$connection.GetAwaiter().GetResult(); if ($env:HTMLCUT_PIPE_DISCONNECT -eq '1') { [Console]::Out.Write([char]$p.ReadByte()) } else { $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()) }; [Console]::Out.Flush() } finally { $p.Dispose() }"#;
         let mut server = Command::new("powershell.exe")
             .args([
                 "-NoLogo",
