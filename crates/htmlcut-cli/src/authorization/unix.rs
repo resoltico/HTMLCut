@@ -29,6 +29,24 @@ pub(crate) fn identity_path(path: &Path) -> io::Result<Identity> {
         inode: m.ino(),
     })
 }
+pub(crate) fn open_parent(path: &Path) -> io::Result<File> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(target_os = "macos")]
+        let flags = libc::O_SEARCH;
+        #[cfg(target_os = "linux")]
+        let flags = libc::O_PATH | libc::O_DIRECTORY;
+        // Pin identity and provide renameat's dirfd without requiring listing.
+        // Parent aliases follow kernel resolution, as ordinary publication does.
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(flags)
+            .open(path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    File::open(path)
+}
 pub(crate) fn open_private_directory(path: &Path) -> io::Result<File> {
     #[cfg(target_os = "macos")]
     {

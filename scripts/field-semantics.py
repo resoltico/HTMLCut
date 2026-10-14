@@ -114,6 +114,19 @@ case("utf8-malformed", "Malformed UTF-8 fails instead of replacement", b"<p>bad\
 case("encoding-meta-cp1252", "HTML encoding declaration supports legacy downloaded documents", b"<meta charset=windows-1252><p>caf\xe9 \x80</p>","p","café €")
 case("encoding-explicit-override", "Caller label overrides HTML declaration", b"<meta charset=utf-8><p>caf\xe9</p>","p","café",options=["--encoding","windows-1252"])
 case("encoding-bom-priority", "UTF-8 BOM overrides caller label", b"\xef\xbb\xbf<p>caf\xc3\xa9</p>","p","café",options=["--encoding","windows-1252"])
+case("url-document-query-encoding", "Document encoding applies to queries while paths and fragments use UTF-8",
+     b"<meta charset=windows-1252><a href='/caf\xe9?q=\xe9#\xe9'>x</a>",
+     dict(select="a",read="url:href"), "https://origin.test/caf%C3%A9?q=%E9#%C3%A9",
+     options=["--base-url","https://origin.test/page"])
+case("url-base-query-encoding", "The first document base uses the effective document encoding",
+     b"<meta charset=windows-1252><base href='https://origin.test/page?q=\xe9'><a href='#x'>x</a>",
+     dict(select="a",read="url:href"), "https://origin.test/page?q=%E9#x")
+case("url-query-unmappable", "Unmappable characters use the URL standard's percent-escaped numeric reference",
+     "<meta charset=windows-1252><a href='https://origin.test/?q=&#20013;'>x</a>",
+     dict(select="a",read="url:href"), "https://origin.test/?q=%26%2320013%3B")
+case("url-query-stateful", "Stateful encoding continues across removed controls and an unmappable character",
+     "<meta charset=iso-2022-jp><a href='https://origin.test/?q=&#165;\n&#128512;&#165;'>x</a>",
+     dict(select="a",read="url:href"), r"https://origin.test/?q=%1B(J\%26%23128512%3B\%1B(B")
 case("encoding-invalid-caller", "Unknown caller encoding is an invalid request", "<p>x</p>","p",error="invalid_encoding",options=["--encoding","bogus"])
 case("markup-malformed-accepted", "HTML parser repairs omitted list end tags predictably", "<ul><li>one<li>two</ul>",dict(select="li",match="all"),["one","two"])
 case("stress-many-records", "Bounded 5000-row extraction with exact count", "<main>"+"<p>x</p>"*5000+"</main>",dict(select="p",match="all",min=5000,max=5000),["x"]*5000)
@@ -148,7 +161,7 @@ def main():
         fixture = fixtures / (c["id"] + ".html")
         fixture.write_bytes(data)
         contract_file = fixtures / (c["id"] + ".json")
-        contract_file.write_text(json.dumps(c["contract"], ensure_ascii=False, separators=(",", ":"))+"\n")
+        contract_file.write_text(json.dumps(c["contract"], ensure_ascii=False, separators=(",", ":"))+"\n", encoding="utf-8")
         cmd = [str(binary), "run", "--from-file", str(contract_file), str(fixture), *c["options"]]
         begin = time.monotonic()
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
@@ -192,7 +205,7 @@ def main():
     if not outcomes: raise RuntimeError("no cases were discovered")
     if args.results.exists(): raise RuntimeError("candidate result already exists")
     args.results.parent.mkdir(parents=True,exist_ok=True)
-    args.results.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n")
+    args.results.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n", encoding="utf-8")
     print(json.dumps({k:result[k] for k in ("binary","version","total","passed")}))
     for o in outcomes:
         if not o["passed"]:

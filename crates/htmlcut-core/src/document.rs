@@ -3,12 +3,13 @@
 use crate::dom::{Html, TreeBuilder};
 use crate::{Error, ErrorCode, Limits, limits::Clock};
 use encoding_rs::{
-    DecoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
+    DecoderResult, EncoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
 };
 use html5ever::{
     driver,
     tendril::{StrTendril, TendrilSink},
 };
+use std::borrow::Cow;
 use url::Url;
 
 const CHUNK_BYTES: usize = 1_024;
@@ -44,6 +45,7 @@ pub struct Document {
     pub(crate) positions: std::collections::HashMap<ego_tree::NodeId, (usize, usize)>,
     pub(crate) limits: Limits,
     pub(crate) base_url: Option<Url>,
+    pub(crate) query_encoding: &'static Encoding,
 }
 impl Document {
     /// Decodes without replacement, parses incrementally and admits node/depth limits.
@@ -63,7 +65,7 @@ impl Document {
                 })
             })
             .transpose()?;
-        let decoded = decode(source, &clock)?;
+        let (decoded, query_encoding) = decode(source, &clock)?;
         let html = parse_admitted(&decoded, limits, CHUNK_BYTES, &clock)?;
         // The first base with href governs, even when its URL is unusable.
         let mut document_base = None;
@@ -79,7 +81,7 @@ impl Document {
                         && e.value().name() == "base"
                         && let Some(href) = e.value().attr("href")
                     {
-                        document_base = resolve(href, fallback.as_ref())
+                        document_base = resolve(href, fallback.as_ref(), query_encoding)
                             .ok()
                             .filter(|u| !matches!(u.scheme(), "data" | "javascript"));
                         break;
@@ -110,15 +112,61 @@ impl Document {
             html,
             limits: limits.clone(),
             base_url,
+            query_encoding,
         })
     }
 }
 
-pub(crate) fn resolve(value: &str, base: Option<&Url>) -> Result<Url, url::ParseError> {
+pub(crate) fn resolve(
+    value: &str,
+    base: Option<&Url>,
+    query_encoding: &'static Encoding,
+) -> Result<Url, url::ParseError> {
     let value = value.trim_matches(|c: char| c.is_ascii_whitespace());
-    match base {
-        Some(base) => base.join(value),
-        None => Url::parse(value),
+    let options = Url::options().base_url(base);
+    if query_encoding == UTF_8 {
+        return options.parse(value);
+    }
+    // URL preprocessing removes ASCII tabs/newlines. Do this before the hook:
+    // url's query iterator otherwise invokes it on separate slices, which would
+    // restart a stateful ISO-2022-JP encoder in the middle of the same query.
+    let value = if value.contains(['\t', '\r', '\n']) {
+        Cow::Owned(
+            value
+                .chars()
+                .filter(|c| !matches!(c, '\t' | '\r' | '\n'))
+                .collect::<String>(),
+        )
+    } else {
+        Cow::Borrowed(value)
+    };
+    let encode: &dyn Fn(&str) -> Cow<'_, [u8]> =
+        &|query| Cow::Owned(encode_url_query(query, query_encoding));
+    options.encoding_override(Some(encode)).parse(&value)
+}
+
+// https://url.spec.whatwg.org/#string-percent-encode-after-encoding
+// Keep one encoder across errors; HTML replacement encoding would leave '&'
+// and ';' literal instead of the URL algorithm's percent-escaped NCR fallback.
+fn encode_url_query(mut input: &str, encoding: &'static Encoding) -> Vec<u8> {
+    let mut encoder = encoding.new_encoder();
+    let mut output = Vec::with_capacity(input.len());
+    let mut buffer = [0; 1024];
+    loop {
+        let (result, read, written) =
+            encoder.encode_from_utf8_without_replacement(input, &mut buffer, true);
+        output.extend_from_slice(&buffer[..written]);
+        input = &input[read..];
+        match result {
+            EncoderResult::InputEmpty => return output,
+            EncoderResult::OutputFull => (),
+            EncoderResult::Unmappable(character) => {
+                // The URL crate's query percent-encode set leaves '%' intact.
+                // These ASCII bytes are emitted outside the encoder, preserving
+                // its state exactly as encode-or-fail requires.
+                output.extend_from_slice(format!("%26%23{}%3B", u32::from(character)).as_bytes());
+            }
+        }
     }
 }
 
@@ -166,7 +214,7 @@ fn feed(
     Ok(())
 }
 
-fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
+fn decode(source: Source<'_>, clock: &Clock) -> Result<(String, &'static Encoding), Error> {
     let (encoding, skip) = if let Some(bom) = Encoding::for_bom(source.bytes) {
         bom
     } else if let Some(label) = source.encoding {
@@ -202,7 +250,7 @@ fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
         let (result, read) = decoder.decode_to_string_without_replacement(input, &mut output, last);
         consumed += read;
         match result {
-            DecoderResult::InputEmpty if last => return Ok(output),
+            DecoderResult::InputEmpty if last => return Ok((output, encoding.output_encoding())),
             DecoderResult::InputEmpty | DecoderResult::OutputFull => (),
             DecoderResult::Malformed(length, after) => {
                 let offset = skip + consumed - usize::from(length) - usize::from(after);
@@ -428,6 +476,24 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn strict_decode_retains_only_a_usable_query_output_encoding() {
+        for label in ["utf-16le", "utf-16be", "iso-2022-kr"] {
+            let mut source = Source::new(b"");
+            source.encoding = Some(label);
+            let clock = Clock::new(&Limits::default());
+            let (text, encoding) = decode(source, &clock).unwrap();
+            assert!(text.is_empty());
+            assert_eq!(encoding, UTF_8, "{label}");
+        }
+        let mut source = Source::new(b"");
+        source.encoding = Some("windows-1252");
+        assert_eq!(
+            decode(source, &Clock::new(&Limits::default())).unwrap().1,
+            WINDOWS_1252
+        );
+    }
+
     #[test]
     fn chunk_boundaries_preserve_authored_document_trees() {
         let documents = [

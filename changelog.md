@@ -15,6 +15,7 @@ Notable changes to this project are documented in this file. The format is based
 
 - Fields without `select` inherit their enclosing sibling range; explicit `:scope` without `until` reads only the anchor. Child ranges cannot consume neighboring parent records, and anchor-only readings avoid scanning irrelevant tails. Raw multiline scalars remain valid; LF-containing raw lists now refuse with `unrepresentable_output` (exit 3) and direct callers to JSON.
 - Invocation deadlines now cover contract/snapshot acquisition and stream delivery through flush, and named staging through the atomic commit claim. Error reporting is best effort within a 50 ms grace; blocked stderr cannot defeat termination. An indivisible commit retains its actual outcome, and extraordinary blocked filesystem calls can leave reported staging residue.
+- Named publication needs parent write/search permission, without requiring directory listing. Parent pinning retains handle identity and kernel alias resolution; Linux named publication requires kernel 3.6+ for `fstat` on an `O_PATH` directory handle.
 - Command help follows each command's grammar. `schema` supports output and timeout; `run --from-file -` accepts contract stdin with a distinct explicit HTML source and rejects recognizable competing FD0 aliases. URL filenames point to the verified external acquisition recipe.
 - Fuzz/mutation runs retain bounded evidence separately from disposable builds, prevent build configuration redirecting products into owner caches, and clean owned products on success, failure and cancellation. Short test runs are explicit; sampled disk watchdogs are not filesystem quotas.
 
@@ -22,6 +23,7 @@ Notable changes to this project are documented in this file. The format is based
 
 - Valid content-type metadata ending in `charset` parses normally through maintained html5ever 0.40.1 and the private admitted DOM; public-library quota refusals remain ordinary errors under `panic=abort`.
 - Forbidden `data:`/`javascript:` document bases retain the valid caller fallback, while malformed attribute URLs report their actual cause. Foreign SVG selector names are documented with their parsed case.
+- URL queries in document bases and attributes honor the effective document encoding, including percent-escaped numeric references for unmappable characters and stateful encodings. Paths, fragments and caller fallback URLs retain their standard UTF-8 handling.
 - Schema rejects attribute/URL exclusions and trailing-newline field/reading spellings. It visibly retains compiler authority for exact integer tokens (`1`, versus refused `1.0`/`1e0`/`-0`), duplicates and compiled/global limits.
 
 ### Removed

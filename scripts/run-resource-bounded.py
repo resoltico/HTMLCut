@@ -155,7 +155,7 @@ def main():
                   "log_bytes": log_bytes, "log_limit_bytes": args.log_limit_mib * 1024 * 1024,
                   "disk_accounting_errors": accounting_errors,
                   "disk_enforcement": "sampled watchdog; not a filesystem quota"}
-        with report_path.open("x") as report:
+        with report_path.open("x", encoding="utf-8") as report:
             json.dump(result, report, indent=2)
             report.write("\n")
         print(json.dumps(result), file=sys.stderr)

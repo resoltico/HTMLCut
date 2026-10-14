@@ -43,7 +43,11 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                 "run requires CONTRACT-JSON or --from-file PATH",
             ));
         }
-        if args.from_file.as_deref() == Some(Path::new("-")) {
+        if args
+            .from_file
+            .as_deref()
+            .is_some_and(|path| path.as_os_str() == "-")
+        {
             let file = args.operands.first().map(std::path::PathBuf::from);
             if file.as_deref().is_none_or(obvious_stdin_alias) {
                 return Err(cli::argument_error(
@@ -87,7 +91,10 @@ fn execute_work(command: Command, watchdog: &Watchdog) -> Result<(), Error> {
             )
         }
         Command::Run(args) => {
-            if args.from_file.as_deref() == Some(Path::new("-"))
+            if args
+                .from_file
+                .as_deref()
+                .is_some_and(|path| path.as_os_str() == "-")
                 && args
                     .operands
                     .first()
@@ -510,9 +517,6 @@ fn publish_timed(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    #[cfg(unix)]
-    let parent_handle = File::open(parent);
-    #[cfg(windows)]
     let parent_handle = crate::authorization::open_parent(parent);
     let parent_handle =
         parent_handle.map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
@@ -571,9 +575,6 @@ fn publish_timed(
     #[cfg(test)]
     checkpoint("policy", temporary.path());
     // Recheck target identity, handle-derived policy and containing directory before the commit claim.
-    #[cfg(unix)]
-    let current_parent = File::open(parent);
-    #[cfg(windows)]
     let current_parent = crate::authorization::open_parent(parent);
     let current_parent =
         current_parent.map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;

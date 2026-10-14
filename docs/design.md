@@ -110,7 +110,13 @@ uses its own default 10 s invocation deadline and ordinary publication.
 
 Staging ownership is reserved before exclusive creation, confirmed before result bytes,
 and checked on creation return. Timeout cleanup runs separately from hard termination;
-only confirmed owned stages are removed. Darwin directory handles request search access,
+only confirmed owned stages are removed.
+
+Containing-parent handles require search/path capability rather than directory listing:
+Darwin uses `O_SEARCH`, and Linux uses `O_PATH` with `fstat` support (kernel 3.6+).
+Write/search permission remains necessary for actual creation and `renameat`; parent
+aliases follow kernel resolution and their identities are revalidated before commit.
+Darwin staging-directory handles request search access,
 so inherited listing denials do not prevent ACL preparation or cleanup. A creation that
 succeeds but cannot return a confirmable handle/identity (including inherited denial of
 search access) may leave an empty unconfirmed directory; diagnostics name it. Extraordinary

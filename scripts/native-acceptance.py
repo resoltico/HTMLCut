@@ -125,6 +125,73 @@ def main():
         check('blocked-input-and-stderr', bounded_input_and_reporting)
 
         if os.name == 'posix':
+            def search_without_listing():
+                if os.geteuid() == 0:
+                    raise FileNotFoundError('directory permission controls need an unprivileged identity')
+                parent = root / 'search-only-publication'
+                parent.mkdir()
+                existing = parent / 'existing.json'
+                absent = parent / 'absent.json'
+                control = parent / 'os-control.json'
+                existing.write_bytes(b'old')
+                existing.chmod(0o640)
+                alias = root / 'search-only-parent-alias'
+                alias.symlink_to(parent, target_is_directory=True)
+
+                def policy(path):
+                    stat = path.stat()
+                    return [stat.st_uid, stat.st_gid, stat.st_mode & 0o777]
+
+                def must_deny(operation):
+                    try:
+                        operation()
+                    except PermissionError:
+                        return
+                    raise AssertionError('native permission negative control did not refuse')
+
+                try:
+                    prior = policy(existing)
+                    parent.chmod(0o311)
+                    must_deny(lambda: list(parent.iterdir()))
+                    # Native open/create/replace controls use only write+search.
+                    descriptor = os.open(existing, os.O_WRONLY)
+                    os.close(descriptor)
+                    stage = parent / 'os-stage.json'
+                    stage.write_bytes(b'os-control')
+                    descriptor = os.open(control, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+                    os.close(descriptor)
+                    os.replace(stage, control)
+                    assert control.read_bytes() == b'os-control'
+                    default_policy = policy(control)
+                    for path, expected_policy in [(existing, prior), (alias / absent.name, default_policy)]:
+                        result = run(['get', 'h1', page, '-o', path])
+                        assert result.returncode == 0 and not result.stdout and not result.stderr, result
+                        assert path.read_bytes() == b'"complete"\n'
+                        assert policy(path) == expected_policy, (policy(path), expected_policy)
+                    for mode, operation in [
+                        (0o511, lambda: (parent / 'must-refuse.json').write_bytes(b'control')),
+                        (0o600, lambda: existing.read_bytes()),
+                    ]:
+                        parent.chmod(mode)
+                        must_deny(operation)
+                        for path in [existing, parent / 'must-refuse.json']:
+                            result = run(['get', 'h1', page, '-o', path])
+                            assert result.returncode == 5 and not result.stdout, result
+                            assert json.loads(result.stderr)['error'] == 'output_unwritable', result
+                        parent.chmod(0o700)
+                        assert existing.read_bytes() == b'"complete"\n'
+                        assert not (parent / 'must-refuse.json').exists()
+                    parent.chmod(0o700)
+                    assert {p.name for p in parent.iterdir()} == {'existing.json', 'absent.json', 'os-control.json'}
+                    return {'mode': '0311', 'existing_policy': prior, 'absent_policy': default_policy,
+                            'native_create_open_replace': True, 'parent_alias_followed': True,
+                            'missing_write_search_refusals': 4, 'staging_residue': []}
+                finally:
+                    parent.chmod(0o700)
+                    shutil.rmtree(parent)
+                    alias.unlink()
+            check('publication-without-directory-listing', search_without_listing)
+
             def fd_conflicts_and_fifos():
                 aliases = ['/dev/stdin', '/dev/fd/0']
                 alias = root / 'stdin-alias'
@@ -584,7 +651,7 @@ if($Operation -eq 'setup') {
     report = dict(binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), host=platform.platform(), machine=platform.machine(), cases=results)
     report['counts'] = {status: sum(c['status'] == status for c in results) for status in ['pass', 'fail', 'unavailable']}
     args.results.parent.mkdir(parents=True, exist_ok=True)
-    args.results.write_text(json.dumps(report, indent=2) + '\n')
+    args.results.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report['counts']))
     return 0 if results and all(c['status'] == 'pass' for c in results) else 1
 

@@ -100,7 +100,12 @@ the parsed attribute name, is 1–256 characters, and contains no white space or
 as the HTML standard defines the document base URL: the first `base` element with an
 `href`, resolved against `--base-url`, else `--base-url`. Invalid, `data:` and `javascript:` document bases retain the fallback, and later bases do not override the first. Direct absolute attribute schemes remain available. A relative value with no usable
 base refuses with `unresolvable_url`. Resolution and serialization follow the WHATWG URL
-standard as implemented by the `url` crate.
+standard as implemented by the `url` crate. Document bases and attribute queries use
+the effective document encoding; UTF-16 and replacement encodings use UTF-8 for output.
+Unmappable query characters become percent-escaped numeric character references.
+Paths, fragments, caller fallback URLs and schemes that require UTF-8 retain their
+standard handling. Encoding precedence remains BOM, caller label, document declaration,
+then UTF-8.
 
 `text-content` is the concatenation of all descendant text of the extent members, as DOM
 `textContent`, without comments and without excluded subtrees. Descendant template contents are

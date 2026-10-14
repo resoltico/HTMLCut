@@ -116,7 +116,7 @@ import sys
 import re
 root=Path(sys.argv[1]); runs=int(sys.argv[2])
 for target in ['contract_bytes','extract']:
-    text=(root/target/'run.log').read_text()
+    text=(root/target/'run.log').read_text(encoding='utf-8')
     completed=re.search(r'Done (\d+) runs', text)
     if completed is None or int(completed[1]) < runs:
         raise SystemExit(f'{target} did not complete all {runs} iterations')

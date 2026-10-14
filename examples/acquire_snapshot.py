@@ -19,7 +19,7 @@ def acquire_and_extract(binary, url, contract, output):
             return 1,report
         # Last response Content-Type is authoritative after redirects; BOM priority
         # and document parsing remain HTMLCut's job. Caller policy requires HTML.
-        content_types=re.findall(r'^Content-Type:\s*(.*)$',headers.read_text(),flags=re.I|re.M)
+        content_types=re.findall(r'^Content-Type:\s*(.*)$',headers.read_text(encoding='latin-1'),flags=re.I|re.M)
         content_type=content_types[-1].strip() if content_types else ''
         if not 200 <= int(transfer.get('response_code',transfer.get('http_code',0))) < 300:
             report['acquisition_error']='Expected a successful 2xx HTTP response'; return 1,report
@@ -37,7 +37,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('binary',type=Path);parser.add_argument('url');parser.add_argument('contract',type=Path);parser.add_argument('output',type=Path);parser.add_argument('--report',type=Path)
     args=parser.parse_args()
     status,report=acquire_and_extract(Path(shutil.which(str(args.binary)) or args.binary).resolve(),args.url,args.contract.resolve(),args.output.resolve())
-    if args.report:args.report.write_text(json.dumps(report,indent=2)+'\n')
+    if args.report:args.report.write_text(json.dumps(report,indent=2)+'\n', encoding='utf-8')
     print(json.dumps({k:v for k,v in report.items() if k not in ['transfer','command']}))
     return status
 

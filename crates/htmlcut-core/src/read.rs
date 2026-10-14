@@ -28,7 +28,7 @@ pub(crate) fn read(
                 )
             })?;
             let result: String = if matches!(reading, Reading::Url(_)) {
-                crate::document::resolve(value, document.base_url.as_ref())
+                crate::document::resolve(value, document.base_url.as_ref(), document.query_encoding)
                     .map(|u| u.into())
                     .map_err(|cause| {
                         Error::new(
@@ -673,6 +673,170 @@ mod tests {
             Value::String("https://example.test/app/img.png".into())
         );
     }
+    #[test]
+    fn document_url_query_uses_effective_encoding_for_base_and_attributes_only() {
+        use crate::{Contract, Value};
+        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        for (bytes, encoding, fallback, expected) in [
+            (
+                b"<meta charset=windows-1252><base href='?q=\xe9'><a href='#id'>x".to_vec(),
+                None,
+                "https://origin.test/page",
+                "https://origin.test/page?q=%E9#id",
+            ),
+            (
+                b"<a href='?q=\xe9'>x".to_vec(),
+                Some("windows-1252"),
+                "https://origin.test/page",
+                "https://origin.test/page?q=%E9",
+            ),
+            (
+                "<meta charset=windows-1252><a href='?q=é'>x"
+                    .as_bytes()
+                    .to_vec(),
+                Some("utf-8"),
+                "https://origin.test/page",
+                "https://origin.test/page?q=%C3%A9",
+            ),
+            (
+                "\u{feff}<meta charset=windows-1252><a href='?q=é'>x"
+                    .as_bytes()
+                    .to_vec(),
+                Some("windows-1252"),
+                "https://origin.test/page",
+                "https://origin.test/page?q=%C3%A9",
+            ),
+            (
+                b"<meta charset=windows-1252><a href='#id'>x".to_vec(),
+                None,
+                "https://origin.test/page?q=é",
+                "https://origin.test/page?q=%C3%A9#id",
+            ),
+            (
+                b"<meta charset=windows-1252><a href='/\xe9?q=\xe9#\xe9'>x".to_vec(),
+                None,
+                "https://origin.test/page",
+                "https://origin.test/%C3%A9?q=%E9#%C3%A9",
+            ),
+            (
+                b"<meta charset=windows-1252><a href='wss://origin.test/\xe9?q=\xe9#\xe9'>x"
+                    .to_vec(),
+                None,
+                "https://origin.test/page",
+                "wss://origin.test/%C3%A9?q=%C3%A9#%C3%A9",
+            ),
+        ] {
+            let mut source = Source::new(&bytes);
+            source.encoding = encoding;
+            source.base_url = Some(fallback);
+            let document = Document::parse(source, &Limits::default()).unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::String(expected.into()),
+                "encoding {encoding:?}"
+            );
+        }
+        for little_endian in [true, false] {
+            let text = "<meta charset=windows-1252><a href='?q=é'>x";
+            let mut bytes = if little_endian {
+                vec![0xff, 0xfe]
+            } else {
+                vec![0xfe, 0xff]
+            };
+            for unit in text.encode_utf16() {
+                bytes.extend(if little_endian {
+                    unit.to_le_bytes()
+                } else {
+                    unit.to_be_bytes()
+                });
+            }
+            let mut source = Source::new(&bytes);
+            source.encoding = Some("windows-1252");
+            source.base_url = Some("https://origin.test/page");
+            let document = Document::parse(source, &Limits::default()).unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::String("https://origin.test/page?q=%C3%A9".into())
+            );
+        }
+    }
+
+    #[test]
+    fn document_url_query_escapes_only_actual_encoding_errors() {
+        use crate::{Contract, Value};
+        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        for (label, href, expected) in [
+            (
+                "windows-1252",
+                "?q=&#20013;",
+                "https://origin.test/page?q=%26%2320013%3B",
+            ),
+            (
+                "windows-1252",
+                "?q=&#20013;&#128512;&amp;x=%26%2320013%3B",
+                "https://origin.test/page?q=%26%2320013%3B%26%23128512%3B&x=%26%2320013%3B",
+            ),
+            (
+                "windows-1252",
+                "?q=&amp;#20013;",
+                "https://origin.test/page?q=&#20013;",
+            ),
+            (
+                "shift_jis",
+                "?q=&#8801;&#8253;",
+                "https://origin.test/page?q=%81%DF%26%238253%3B",
+            ),
+            (
+                "iso-2022-jp",
+                "?q=&#165;&#128512;&#165;",
+                r"https://origin.test/page?q=%1B(J\%26%23128512%3B\%1B(B",
+            ),
+            (
+                "iso-2022-jp",
+                "?q=&#12354;&#128512;&#12354;",
+                "https://origin.test/page?q=%1B$B$%22%1B(B%26%23128512%3B%1B$B$%22%1B(B",
+            ),
+        ] {
+            let html = format!("<meta charset={label}><a href='{href}'>x");
+            let mut source = Source::new(html.as_bytes());
+            source.base_url = Some("https://origin.test/page");
+            let document = Document::parse(source, &Limits::default()).unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::String(expected.into()),
+                "{label}: {href}"
+            );
+        }
+    }
+
+    #[test]
+    fn document_url_query_state_survives_removed_controls_and_encoder_output_buffers() {
+        use crate::{Contract, Value};
+        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        for control in ["&#9;", "&#10;", "&#13;"] {
+            let html = format!("<meta charset=iso-2022-jp><a href='?q=&#165;{control}&#165;'>x");
+            let mut source = Source::new(html.as_bytes());
+            source.base_url = Some("https://origin.test/page");
+            let document = Document::parse(source, &Limits::default()).unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::String(r"https://origin.test/page?q=%1B(J\\%1B(B".into())
+            );
+        }
+        let html = format!(
+            "<meta charset=iso-2022-jp><a href='?q={}'>x",
+            "&#165;".repeat(1025)
+        );
+        let mut source = Source::new(html.as_bytes());
+        source.base_url = Some("https://origin.test/page");
+        let document = Document::parse(source, &Limits::default()).unwrap();
+        let expected = format!("https://origin.test/page?q=%1B(J{}%1B(B", "\\".repeat(1025));
+        assert_eq!(
+            document.extract(&contract).unwrap(),
+            Value::String(expected)
+        );
+    }
+
     #[test]
     fn filtered_serialization_keeps_the_original_tree_and_source_attribute_order() {
         let html = "<main id=x><p z='2' a='1'>a &amp; b</p><!--keep--><b class=omit>gone</b><noscript><i>x</i></noscript></main>";

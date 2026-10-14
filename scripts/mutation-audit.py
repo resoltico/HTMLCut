@@ -76,7 +76,7 @@ def main():
     report = {"scope": "focused" if args.file or args.regex or args.in_diff else "full workspace",
               "full_review_complete": False, "jobs": args.jobs,
               "disk_limit_mib": args.disk_limit_mib, "command": command}
-    (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
+    (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     def interrupt(*_):
         raise KeyboardInterrupt
 
@@ -97,7 +97,7 @@ def main():
         shutil.rmtree(scratch)
     if status == 0:
         try:
-            outcomes = json.loads((output / "mutants.out/outcomes.json").read_text())
+            outcomes = json.loads((output / "mutants.out/outcomes.json").read_text(encoding="utf-8"))
             mutants = [item for item in outcomes["outcomes"] if isinstance(item["scenario"], dict)]
             baseline = [item for item in outcomes["outcomes"] if item["scenario"] == "Baseline"]
             if outcomes["total_mutants"] < 1 or len(mutants) != outcomes["total_mutants"]:
@@ -111,7 +111,7 @@ def main():
     report["returncode"] = status
     # An exit code does not establish review: survivors/timeouts need examination.
     report["review_required"] = True
-    (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
+    (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print("Mutation evidence: " + str(output), file=sys.stderr)
     return status
 
