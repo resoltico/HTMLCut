@@ -70,16 +70,32 @@ impl Descriptor {
                 &mut size,
             )
         })?;
-        // SAFETY: API reports size including terminating NUL and allocates that many UTF-16 units.
-        let result = String::from_utf16(unsafe {
-            std::slice::from_raw_parts(ptr, size.saturating_sub(1) as usize)
-        })
-        .map_err(io::Error::other);
+        // The API reports allocation size, not string length. Locate the NUL
+        // within that allocation rather than dropping its last code unit.
+        // SAFETY: successful conversion allocates size UTF-16 units at ptr.
+        let buffer = unsafe { std::slice::from_raw_parts(ptr, size as usize) };
+        let result = buffer
+            .iter()
+            .position(|&unit| unit == 0)
+            .ok_or_else(|| io::Error::other("security descriptor string is not terminated"))
+            .and_then(|length| String::from_utf16(&buffer[..length]).map_err(io::Error::other));
         // SAFETY: the pointer is the allocation returned by the conversion and is freed once.
         unsafe { LocalFree(ptr.cast()) };
         result
     }
     fn apply(&self, file: &File, information: u32) -> io::Result<()> {
+        // Setting LABEL with a null SACL changes absence into a present null
+        // SACL. Preserve an already identical mandatory policy without that
+        // mutation. A differing policy still requires application and exact
+        // readback by the caller; inability to reproduce it is a refusal.
+        let information = if information & LABEL_SECURITY_INFORMATION != 0
+            && self.text_with(LABEL_SECURITY_INFORMATION)?
+                == Self::read(file)?.text_with(LABEL_SECURITY_INFORMATION)?
+        {
+            information & !LABEL_SECURITY_INFORMATION
+        } else {
+            information
+        };
         let mut owner = std::ptr::null_mut();
         let mut group = std::ptr::null_mut();
         let mut dacl = std::ptr::null_mut();
@@ -320,4 +336,54 @@ pub(crate) fn remove_stage(file: &File) -> io::Result<()> {
             std::mem::size_of::<FILE_DISPOSITION_INFO_EX>() as u32,
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn descriptor_roundtrip_preserves_complete_sid_and_acl() {
+        let text = "O:S-1-5-21-1000861503-3182281758-1041194900-513G:S-1-5-21-1000861503-3182281758-1041194900-513D:P(A;;FA;;;SY)";
+        let descriptor = Descriptor::parse(text).unwrap();
+        assert_eq!(descriptor.text().unwrap(), text);
+        assert_eq!(
+            descriptor.text_with(GROUP_SECURITY_INFORMATION).unwrap(),
+            "G:S-1-5-21-1000861503-3182281758-1041194900-513"
+        );
+    }
+
+    #[test]
+    fn private_stage_preserves_already_identical_mandatory_policy() {
+        let directory = tempfile::tempdir().unwrap();
+        let probe = stage_options()
+            .open(directory.path().join("probe"))
+            .unwrap();
+        let policy = Policy::read(&probe).unwrap();
+        let stage = create_private_file(&directory.path().join("stage")).unwrap();
+        restrict(&stage).unwrap();
+        let before = Descriptor::read(&stage)
+            .unwrap()
+            .text_with(LABEL_SECURITY_INFORMATION)
+            .unwrap();
+        assert_eq!(
+            before,
+            Descriptor::parse(&policy.0)
+                .unwrap()
+                .text_with(LABEL_SECURITY_INFORMATION)
+                .unwrap()
+        );
+        policy.prepare(&stage).unwrap();
+        assert_eq!(
+            before,
+            Descriptor::read(&stage)
+                .unwrap()
+                .text_with(LABEL_SECURITY_INFORMATION)
+                .unwrap()
+        );
+        policy
+            .apply(&stage, &directory.path().join("stage"))
+            .unwrap();
+        assert_eq!(Policy::read(&stage).unwrap(), policy);
+    }
 }
