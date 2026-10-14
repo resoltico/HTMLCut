@@ -180,11 +180,14 @@ impl Policy {
         let information =
             OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
         wanted.apply(file, information)?;
-        if wanted.text_with(information)? != Descriptor::read(file)?.text_with(information)? {
-            return Err(io::Error::other(
-                "mandatory staging policy/ownership differs before result bytes",
-            ));
+        let expected = wanted.text_with(information)?;
+        let observed = Descriptor::read(file)?.text_with(information)?;
+        if expected != observed {
+            return Err(io::Error::other(format!(
+                "mandatory staging policy/ownership differs before result bytes: expected {expected:?}, observed {observed:?}"
+            )));
         }
+
         Ok(())
     }
     pub(crate) fn apply(&self, file: &File, #[cfg(test)] stage: &Path) -> io::Result<()> {
