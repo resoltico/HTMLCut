@@ -396,6 +396,7 @@ pub(crate) fn identity(file: &File) -> io::Result<Identity> {
 pub(crate) fn open_parent(path: &Path) -> io::Result<File> {
     OpenOptions::new()
         .read(true)
+        .access_mode(0)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
         .open(path)
 }
@@ -426,11 +427,28 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
     // private object and verify exactly before returning it to the writer.
     let wanted = Descriptor::parse(&policy.0)?;
     let label = wanted.text_with(LABEL_SECURITY_INFORMATION)?;
-    let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
     let mut control = 0;
     let mut revision = 0;
     // SAFETY: live native descriptor and valid output locals.
     boolean(unsafe { GetSecurityDescriptorControl(wanted.0, &mut control, &mut revision) })?;
+    let mut sacl = std::ptr::null_mut();
+    let mut present = 0;
+    let mut defaulted = 0;
+    // SAFETY: the descriptor remains live; all outputs are valid locals.
+    boolean(unsafe {
+        GetSecurityDescriptorSacl(wanted.0, &mut present, &mut sacl, &mut defaulted)
+    })?;
+    // An explicit null SACL at CreateFile requires security privilege even
+    // without protection or mandatory ACEs. For this unprotected empty policy,
+    // inherit during empty private creation, then reproduce the exact null
+    // representation/controls through the LABEL initializer before any bytes.
+    // Protected and non-null mandatory policy still enters atomic creation.
+    let creation_label = if present != 0 && sacl.is_null() && control & SE_SACL_PROTECTED == 0 {
+        ""
+    } else {
+        &label
+    };
+    let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){creation_label}"))?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
@@ -673,8 +691,12 @@ mod tests {
     }
 
     #[test]
-    fn private_creation_preserves_protected_label_and_null_sacl_controls() {
-        for label in ["S:PAI(ML;;NW;;;LW)", "S:PAINO_ACCESS_CONTROL"] {
+    fn private_creation_preserves_label_and_null_sacl_controls() {
+        for label in [
+            "S:PAI(ML;;NW;;;LW)",
+            "S:PAINO_ACCESS_CONTROL",
+            "S:AINO_ACCESS_CONTROL",
+        ] {
             let directory = tempfile::tempdir().unwrap();
             let probe = stage_options()
                 .open(directory.path().join("source-policy"))

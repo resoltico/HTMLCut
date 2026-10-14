@@ -114,6 +114,8 @@ only confirmed owned stages are removed.
 
 Containing-parent handles require search/path capability rather than directory listing:
 Darwin uses `O_SEARCH`, and Linux uses `O_PATH` with `fstat` support (kernel 3.6+).
+Windows uses a zero-access metadata handle with directory semantics, following
+parent aliases and retaining handle identity revalidation.
 Linux requests this flag through native `open`: musl includes `O_PATH` in
 `O_ACCMODE`, which Rust's custom-flags interface masks out.
 Write/search permission remains necessary for actual creation and `renameat`; parent

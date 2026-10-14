@@ -326,7 +326,7 @@ public static class ParentAccessControl {
 }
 '@
 $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
-$context=[ordered]@{sid=$sid.Value;backup_before=[ParentAccessControl]::DisableExisting('SeBackupPrivilege');restore_before=[ParentAccessControl]::DisableExisting('SeRestorePrivilege');backup_enabled=$false;restore_enabled=$false}
+$context=[ordered]@{sid=$sid.Value;backup_before=[ParentAccessControl]::DisableExisting('SeBackupPrivilege');restore_before=[ParentAccessControl]::DisableExisting('SeRestorePrivilege');security_before=[ParentAccessControl]::DisableExisting('SeSecurityPrivilege');backup_enabled=$false;restore_enabled=$false;security_enabled=$false}
 New-Item -ItemType Directory -Path $Parent | Out-Null
 $saved=Get-Acl -LiteralPath $Parent
 [System.IO.File]::WriteAllBytes($PolicyBackup,$saved.GetSecurityDescriptorBinaryForm())
@@ -344,7 +344,7 @@ function InvokeDeliveredBinary([string]$Path) {
     $child=[System.Diagnostics.Process]::Start($info)
     $failure=$null;$outcome=$null;$cleanup=@()
     try {
-        $privileges=[ordered]@{backup_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeBackupPrivilege');restore_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeRestorePrivilege');traverse_bypass_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeChangeNotifyPrivilege')}
+        $privileges=[ordered]@{backup_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeBackupPrivilege');restore_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeRestorePrivilege');security_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeSecurityPrivilege');traverse_bypass_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeChangeNotifyPrivilege')}
         if(!$child.WaitForExit(4000)) {throw 'Delivered binary exceeded external test deadline'}
         $outcome=[ordered]@{path=$Path;exit=$child.ExitCode;stdout=$child.StandardOutput.ReadToEnd();stderr=$child.StandardError.ReadToEnd();privileges=$privileges}
     } catch {$failure=$_.Exception.Message}
@@ -436,12 +436,14 @@ $results | ConvertTo-Json -Depth 8 -Compress
                     assert details['generic_parent_read_error'] == 5, details
                     assert details['zero_access_parent_identity'] == details['zero_access_alias_identity'], details
                     assert all(not item['privileges']['backup_enabled'] and not item['privileges']['restore_enabled']
+                               and not item['privileges']['security_enabled']
                                for item in details['positive'] + details['negative']), details
                     assert all(not item['privileges']['traverse_bypass_enabled']
                                for item in details['negative'] if item['denied_parent_right'] == 32), details
                     assert len(details['positive']) == 3 and all(
                         item['exit'] == 0 and not item['stdout'] and not item['stderr']
                         for item in details['positive']), details
+                    assert details['existing_policy_before'].endswith('S:AINO_ACCESS_CONTROL'), details
                     assert details['existing_policy_after'] == details['existing_policy_before'], details
                     assert details['absent_policy'] == details['default_policy'], details
                     assert details['existing_bytes'] == details['absent_bytes'] == '"complete"\n', details
