@@ -332,10 +332,10 @@ $saved=Get-Acl -LiteralPath $Parent
 [System.IO.File]::WriteAllBytes($PolicyBackup,$saved.GetSecurityDescriptorBinaryForm())
 function ParentRule([int]$Rights) {
     $acl=[System.Security.AccessControl.DirectorySecurity]::new()
-    $acl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup))
+    $acl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup),[System.Security.AccessControl.AccessControlSections]::Access)
     $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]$Rights,[System.Security.AccessControl.InheritanceFlags]::None,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Deny)
     $acl.AddAccessRule($rule)
-    Set-Acl -LiteralPath $Parent -AclObject $acl
+    ([System.IO.DirectoryInfo]::new($Parent)).SetAccessControl($acl)
 }
 function InvokeDeliveredBinary([string]$Path) {
     $info=[System.Diagnostics.ProcessStartInfo]::new()
@@ -365,7 +365,10 @@ $failure=$null;$cleanup=@()
 try {
     $existing=Join-Path $Parent 'existing.json';$absent=Join-Path $Parent 'absent.json';$osControl=Join-Path $Parent 'os-control.json'
     [System.IO.File]::WriteAllText($existing,'old')
+    $results.existing_policy_before_setup=[ParentAccessControl]::Policy($existing)
     ParentRule 1 # ListDirectory only; no child inheritance.
+    $results.existing_policy_after_setup=[ParentAccessControl]::Policy($existing)
+    if($results.existing_policy_after_setup-ne$results.existing_policy_before_setup) {throw 'Parent-only DACL fixture altered existing child policy'}
     try {[System.IO.Directory]::GetFileSystemEntries($Parent) | Out-Null;throw 'Directory enumeration unexpectedly succeeded'} catch [System.UnauthorizedAccessException] {}
     [System.IO.File]::WriteAllText($osControl,'old')
     $replacement=Join-Path $Parent 'os-stage.json'
@@ -398,7 +401,11 @@ try {
 } catch {$failure=$_.Exception.Message}
 finally {
     if(!$script:unreapedChild) {
-        try {Set-Acl -LiteralPath $Parent -AclObject $saved} catch {$cleanup+="Parent ACL restoration: $($_.Exception.Message)"}
+        try {
+            $restoreAcl=[System.Security.AccessControl.DirectorySecurity]::new()
+            $restoreAcl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup),[System.Security.AccessControl.AccessControlSections]::Access)
+            ([System.IO.DirectoryInfo]::new($Parent)).SetAccessControl($restoreAcl)
+        } catch {$cleanup+="Parent ACL restoration: $($_.Exception.Message)"}
         try {if(Test-Path -LiteralPath $Alias) {[System.IO.Directory]::Delete($Alias)}} catch {$cleanup+="Junction cleanup: $($_.Exception.Message)"}
     }
 }
@@ -443,7 +450,8 @@ $results | ConvertTo-Json -Depth 8 -Compress
                     assert len(details['positive']) == 3 and all(
                         item['exit'] == 0 and not item['stdout'] and not item['stderr']
                         for item in details['positive']), details
-                    assert details['existing_policy_before'].endswith('S:AINO_ACCESS_CONTROL'), details
+                    assert details['existing_policy_after_setup'] == details['existing_policy_before_setup'], details
+                    assert details['existing_policy_before'] == details['existing_policy_before_setup'], details
                     assert details['existing_policy_after'] == details['existing_policy_before'], details
                     assert details['absent_policy'] == details['default_policy'], details
                     assert details['existing_bytes'] == details['absent_bytes'] == '"complete"\n', details
@@ -480,8 +488,8 @@ $results | ConvertTo-Json -Depth 8 -Compress
                         restore.write_text(
                             "param([string]$Parent,[string]$Backup);$ErrorActionPreference='Stop';"
                             "$a=[System.Security.AccessControl.DirectorySecurity]::new();"
-                            "$a.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($Backup));"
-                            "Set-Acl -LiteralPath $Parent -AclObject $a")
+                            "$a.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($Backup),[System.Security.AccessControl.AccessControlSections]::Access);"
+                            "([System.IO.DirectoryInfo]::new($Parent)).SetAccessControl($a)")
                         try:
                             restored = subprocess.run(
                                 ['powershell.exe', '-NoProfile', '-File', str(restore), str(parent), str(policy_backup)],

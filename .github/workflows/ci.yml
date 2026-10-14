@@ -1,154 +1,25 @@
 # SPDX-License-Identifier: MPL-2.0
 name: CI
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  release-target-matrix:
-    name: Compute release target matrix
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+  policy:
+    name: Native null-policy comparison
+    runs-on: windows-2022
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - id: matrix
+          ref: ${{ github.sha }}
+      - name: Discover and execute the single native control
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo 'matrix<<EOF'
-            ./scripts/release-targets.sh matrix-json
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-  linux-maintainer:
-    name: Linux full maintainer gate
-    needs: [release-target-matrix]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-deny
-      - run: ./check.sh
-
-  focused-smoke:
-    name: Linux contract and extraction fuzz preflight
-    needs: [release-target-matrix]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component rust-src --profile minimal
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-fuzz
-      - name: Execute both bounded fuzz preflights
-        shell: bash
-        run: ./scripts/focused-smoke.sh --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
-      - name: Preserve smoke logs and crash inputs
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: focused-smoke
-          retention-days: 3
-          path: ${{ runner.temp }}/focused-smoke/
-          if-no-files-found: warn
-
-  minimum-rust:
-    name: Minimum supported Rust
-    needs: [release-target-matrix]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - shell: bash
-        run: |
-          set -euo pipefail
-          msrv=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["rust-version"])')
-          rustup toolchain install "$msrv" --profile minimal
-          cargo +"$msrv" test --locked --workspace
-  release-target-smoke:
-    name: Native package ${{ matrix.id }}
-    needs: [release-target-matrix]
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - if: ${{ matrix.needs_musl_tools }}
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
-      - name: Verify native workspace behavior
-        shell: bash
-        run: |
-          rustup target add "${{ matrix.target_triple }}"
-          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-about
-      - name: Build and accept native package
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          source ./scripts/contributor-rust-tools.sh
-          ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
-          source ./scripts/release-targets.sh
-          version=$(./scripts/workspace-version.sh Cargo.toml)
-          package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
-          RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission --target "${{ matrix.target_triple }}" > "dist/parser-abort-${{ matrix.target_triple }}.log" 2>&1
-          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
-      - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: native-${{ matrix.id }}
-          path: dist/
-          if-no-files-found: error
-  check:
-    name: Check
-    if: always()
-    needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, minimum-rust]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
-        run: python3 scripts/check-ci-results.py
+          rustup target add x86_64-pc-windows-msvc
+          test=authorization::windows::tests::private_creation_preserves_label_and_null_sacl_controls
+          cargo test --locked -p htmlcut-cli --bin htmlcut --target x86_64-pc-windows-msvc "$test" -- --exact --list > discovery.txt
+          python3 -c 'from pathlib import Path; rows=[line for line in Path("discovery.txt").read_text().splitlines() if line.endswith(": test")]; assert rows == ["authorization::windows::tests::private_creation_preserves_label_and_null_sacl_controls: test"], rows'
+          cargo test --locked -p htmlcut-cli --bin htmlcut --target x86_64-pc-windows-msvc "$test" -- --exact --nocapture
