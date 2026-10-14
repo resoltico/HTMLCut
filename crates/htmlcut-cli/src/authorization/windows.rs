@@ -699,8 +699,220 @@ mod tests {
         assert_eq!(Policy::read(&stage).unwrap(), policy);
     }
 
+    // Finite native diagnostics for the exact null-SACL control failure. These
+    // inspect only fresh owned objects and never relax the literal oracle below.
+    fn null_sacl_native_diagnostics() {
+        use std::os::windows::ffi::OsStrExt;
+        fn snapshot(file: &File, information: u32) -> io::Result<String> {
+            let mut ptr = std::ptr::null_mut();
+            // SAFETY: retained test handle and descriptor output are valid.
+            status(unsafe {
+                GetSecurityInfo(
+                    file.as_raw_handle() as HANDLE,
+                    SE_FILE_OBJECT,
+                    information,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &mut ptr,
+                )
+            })?;
+            let descriptor = Descriptor(ptr);
+            let mut control = 0;
+            let mut revision = 0;
+            // SAFETY: descriptor and output locals remain live.
+            boolean(unsafe {
+                GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision)
+            })?;
+            Ok(format!(
+                "control={control:#x}, text={:?}",
+                descriptor.text_with(information)?
+            ))
+        }
+        fn report(file: &File) -> String {
+            format!(
+                "full={:?}; label={:?}",
+                snapshot(file, SACL_SECURITY_INFORMATION),
+                snapshot(file, LABEL_SECURITY_INFORMATION)
+            )
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let outcome = security_privilege::with_security_privilege(|| {
+            for (name, mask, named, kernel) in [
+                (
+                    "handle-sacl-unprotect",
+                    SACL_SECURITY_INFORMATION | UNPROTECTED_SACL_SECURITY_INFORMATION,
+                    false,
+                    false,
+                ),
+                (
+                    "handle-unprotect-only",
+                    UNPROTECTED_SACL_SECURITY_INFORMATION,
+                    false,
+                    false,
+                ),
+                (
+                    "named-sacl-unprotect",
+                    SACL_SECURITY_INFORMATION | UNPROTECTED_SACL_SECURITY_INFORMATION,
+                    true,
+                    false,
+                ),
+                (
+                    "named-unprotect-only",
+                    UNPROTECTED_SACL_SECURITY_INFORMATION,
+                    true,
+                    false,
+                ),
+                (
+                    "kernel-unprotect-only",
+                    UNPROTECTED_SACL_SECURITY_INFORMATION,
+                    false,
+                    true,
+                ),
+            ] {
+                let path = directory.path().join(name);
+                let file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .access_mode(
+                        FILE_GENERIC_READ
+                            | FILE_GENERIC_WRITE
+                            | WRITE_DAC
+                            | WRITE_OWNER
+                            | ACCESS_SYSTEM_SECURITY,
+                    )
+                    .open(&path)?;
+                let protected_null = Descriptor::parse("S:PNO_ACCESS_CONTROL")?;
+                // SAFETY: test-owned handle has SYS access and this descriptor
+                // remains live; establish protected NULL before testing removal.
+                let initialized = boolean(unsafe {
+                    SetKernelObjectSecurity(
+                        file.as_raw_handle() as HANDLE,
+                        SACL_SECURITY_INFORMATION | PROTECTED_SACL_SECURITY_INFORMATION,
+                        protected_null.0,
+                    )
+                });
+                eprintln!(
+                    "null-SACL diagnostic name={name} protected-null-initialization={initialized:?}"
+                );
+                let before = report(&file);
+                let mut wide = path
+                    .as_os_str()
+                    .encode_wide()
+                    .chain(Some(0))
+                    .collect::<Vec<_>>();
+                let descriptor = Descriptor::parse("S:NO_ACCESS_CONTROL")?;
+                // SAFETY: every pathname, descriptor and owned file remains live;
+                // optional ACL pointers are null for this isolated native probe.
+                let result = unsafe {
+                    if kernel {
+                        boolean(SetKernelObjectSecurity(
+                            file.as_raw_handle() as HANDLE,
+                            mask,
+                            descriptor.0,
+                        ))
+                    } else if named {
+                        status(SetNamedSecurityInfoW(
+                            wide.as_mut_ptr(),
+                            SE_FILE_OBJECT,
+                            mask,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        ))
+                    } else {
+                        status(SetSecurityInfo(
+                            file.as_raw_handle() as HANDLE,
+                            SE_FILE_OBJECT,
+                            mask,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        ))
+                    }
+                };
+                eprintln!(
+                    "null-SACL diagnostic name={name} mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
+                    report(&file)
+                );
+            }
+            let parent = directory.path().join("null-parent");
+            std::fs::create_dir(&parent)?;
+            let parent_file = OpenOptions::new()
+                .read(true)
+                .access_mode(READ_CONTROL | ACCESS_SYSTEM_SECURITY)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(&parent)?;
+            let before = report(&parent_file);
+            let mut wide = parent
+                .as_os_str()
+                .encode_wide()
+                .chain(Some(0))
+                .collect::<Vec<_>>();
+            let mask = SACL_SECURITY_INFORMATION | UNPROTECTED_SACL_SECURITY_INFORMATION;
+            // SAFETY: mutable terminated pathname names only this owned parent;
+            // null SACL is the explicit native authoring control under test.
+            let result = status(unsafe {
+                SetNamedSecurityInfoW(
+                    wide.as_mut_ptr(),
+                    SE_FILE_OBJECT,
+                    mask,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            });
+            eprintln!(
+                "null-SACL diagnostic name=author-parent-null mask={mask:#x} status={result:?} before=[{before}] after=[{}]",
+                report(&parent_file)
+            );
+            let child_path = parent.join("inherited-child");
+            let child_descriptor = Descriptor::parse("D:P(A;;FA;;;OW)")?;
+            let child_attributes = SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: child_descriptor.0,
+                bInheritHandle: 0,
+            };
+            let child_path = child_path
+                .as_os_str()
+                .encode_wide()
+                .chain(Some(0))
+                .collect::<Vec<_>>();
+            // SAFETY: descriptor and terminated owned pathname remain live.
+            let child_handle = unsafe {
+                CreateFileW(
+                    child_path.as_ptr(),
+                    FILE_GENERIC_READ | FILE_GENERIC_WRITE | READ_CONTROL | ACCESS_SYSTEM_SECURITY,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    &child_attributes,
+                    CREATE_NEW,
+                    FILE_ATTRIBUTE_NORMAL,
+                    std::ptr::null_mut(),
+                )
+            };
+            if child_handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+                return Err(io::Error::last_os_error());
+            }
+            use std::os::windows::io::FromRawHandle;
+            // SAFETY: native creation returned one owned handle.
+            let child = unsafe { File::from_raw_handle(child_handle) };
+            eprintln!(
+                "null-SACL diagnostic name=dacl-only-child-of-authored-null-parent after=[{}]",
+                report(&child)
+            );
+            Ok(())
+        });
+        eprintln!("null-SACL diagnostic completion={outcome:?}");
+    }
+
     #[test]
     fn private_creation_preserves_label_and_null_sacl_controls() {
+        null_sacl_native_diagnostics();
         for label in [
             "S:PAI(ML;;NW;;;LW)",
             "S:PAINO_ACCESS_CONTROL",
