@@ -118,11 +118,11 @@ jobs:
         run: |
           rustup target add "${{ matrix.target_triple }}"
           source ./scripts/contributor-rust-tools.sh
+          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
           ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
           source ./scripts/release-targets.sh
           version=$(./scripts/workspace-version.sh Cargo.toml)
           package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
-          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
           RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission --target "${{ matrix.target_triple }}" > "dist/parser-abort-${{ matrix.target_triple }}.log" 2>&1
           ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
       - if: always()

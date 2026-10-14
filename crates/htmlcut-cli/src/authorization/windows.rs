@@ -213,10 +213,12 @@ impl Policy {
         Descriptor::parse(&self.0)?.apply(file, INFO)?;
         #[cfg(test)]
         crate::run::checkpoint("metadata", stage);
-        if Self::read(file)? != *self {
-            return Err(io::Error::other(
-                "staged authorization differs from pinned policy",
-            ));
+        let observed = Self::read(file)?;
+        if observed != *self {
+            return Err(io::Error::other(format!(
+                "staged authorization differs from pinned policy: expected {:?}, observed {:?}",
+                self.0, observed.0
+            )));
         }
         Ok(())
     }
