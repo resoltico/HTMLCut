@@ -155,8 +155,10 @@ for `null`. A record root is refused before document input is read.
 reach. `-` is standard output. A regular file must be writable by the caller without
 truncation; only then does a complete staged result atomically replace it. An absent
 path is created atomically. A directory is refused. Pipes, devices and descriptor aliases
-(such as `/dev/stdout` and `/dev/fd/N`) are opened and written directly, without
-replacement or an atomicity guarantee.
+(such as `/dev/stdout` and `/dev/fd/N`) are written directly, without replacement or
+an atomicity guarantee. Local descriptor aliases duplicate the inherited descriptor,
+preserving its cursor, append flag and access mode. Foreign process descriptor paths
+are opened as path streams; they do not duplicate a local descriptor.
 
 A refusal or limit before publication leaves destinations untouched, including a FIFO
 without a reader, and leaves no staging file. On Unix, a new file uses mode `0666`

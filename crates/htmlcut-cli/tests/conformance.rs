@@ -437,21 +437,36 @@ fn a_consumer_closing_stdout_is_silent_success() {
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("large.html");
     std::fs::write(&file, format!("<body>{}</body>", "x".repeat(2_000_000))).unwrap();
-    let mut child = Command::new(binary())
-        .args(["get", "body", "--raw"])
-        .arg(file)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut pipe = child.stdout.take().unwrap();
-    let mut byte = [0];
-    pipe.read_exact(&mut byte).unwrap();
-    assert_eq!(byte, [b'x']);
-    drop(pipe);
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success(), "{output:?}");
-    assert!(output.stderr.is_empty(), "{output:?}");
+    let destinations = [
+        None,
+        Some("-"),
+        #[cfg(unix)]
+        Some("/dev/stdout"),
+        #[cfg(unix)]
+        Some("/dev/fd/1"),
+        #[cfg(target_os = "linux")]
+        Some("/proc/self/fd/1"),
+    ];
+    for destination in destinations {
+        let mut command = Command::new(binary());
+        command.args(["get", "body", "--raw"]).arg(&file);
+        if let Some(path) = destination {
+            command.args(["-o", path]);
+        }
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut pipe = child.stdout.take().unwrap();
+        let mut byte = [0];
+        pipe.read_exact(&mut byte).unwrap();
+        assert_eq!(byte, [b'x']);
+        drop(pipe);
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{destination:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
 }
 
 #[cfg(unix)]
@@ -832,6 +847,176 @@ fn output_pipes_devices_and_descriptor_aliases_are_written_directly() {
         assert_eq!(data, b"\"complete\"\n");
     }
     assert!(alias.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[cfg(unix)]
+#[test]
+fn descriptor_aliases_preserve_inherited_cursors_append_and_access_modes() {
+    use std::io::{Seek, SeekFrom};
+    use std::os::unix::fs::symlink;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let paths = [
+        "/dev/stdout",
+        "/dev/fd/1",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1",
+        #[cfg(target_os = "linux")]
+        "/proc/thread-self/fd/1",
+    ];
+    let mut aliases = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+    for (index, target) in paths.iter().enumerate() {
+        let alias = directory.path().join(format!("stream-link-{index}"));
+        symlink(target, &alias).unwrap();
+        aliases.push(alias);
+    }
+    let parent_alias = directory.path().join("descriptor-parent");
+    symlink("/dev/fd", &parent_alias).unwrap();
+    aliases.push(parent_alias.join("1"));
+    // Both controls use the same inherited descriptor as the named aliases.
+    let destinations = std::iter::once(None)
+        .chain(std::iter::once(Some(PathBuf::from("-"))))
+        .chain(aliases.into_iter().map(Some));
+    for destination in destinations {
+        for append in [false, true] {
+            let target = directory.path().join("redirected");
+            std::fs::write(&target, b"prefix|XXXXXXXXXXXXXXXX").unwrap();
+            let mut writer = std::fs::OpenOptions::new()
+                .write(true)
+                .append(append)
+                .open(&target)
+                .unwrap();
+            writer.seek(SeekFrom::Start(7)).unwrap();
+            let mut observer = writer.try_clone().unwrap();
+            let mut command = Command::new(binary());
+            command.args(["get", "h1"]).arg(&source);
+            if let Some(path) = &destination {
+                command.arg("-o").arg(path);
+            }
+            let output = command.stdout(Stdio::from(writer)).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{destination:?} {append}: {output:?}"
+            );
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let expected: &[u8] = if append {
+                b"prefix|XXXXXXXXXXXXXXXX\"complete\"\n"
+            } else {
+                b"prefix|\"complete\"\nXXXXX"
+            };
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                expected,
+                "{destination:?} {append}"
+            );
+            assert_eq!(
+                observer.stream_position().unwrap(),
+                if append { 34 } else { 18 }
+            );
+        }
+    }
+    for (path, stream) in [
+        ("/dev/stdin", 0),
+        ("/dev/fd/0", 0),
+        ("/dev/stderr", 2),
+        ("/dev/fd/2", 2),
+    ] {
+        let target = directory.path().join("other-stream");
+        std::fs::write(&target, b"prefix|").unwrap();
+        let mut writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .unwrap();
+        writer.seek(SeekFrom::Start(7)).unwrap();
+        let mut command = Command::new(binary());
+        command.args(["get", "h1"]).arg(&source).args(["-o", path]);
+        if stream == 0 {
+            command.stdin(Stdio::from(writer));
+        } else {
+            command.stderr(Stdio::from(writer));
+        }
+        assert!(command.output().unwrap().status.success());
+        assert_eq!(std::fs::read(&target).unwrap(), b"prefix|\"complete\"\n");
+    }
+    // A writable pathname must not grant extra access to a read-only inherited FD.
+    for path in ["/dev/stdin", "/dev/fd/0"] {
+        let target = directory.path().join("readonly-stream");
+        std::fs::write(&target, b"preserve").unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .args(["-o", path])
+            .stdin(Stdio::from(std::fs::File::open(&target).unwrap()))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "output_unwritable");
+        assert_eq!(error["file"], path);
+        assert!(
+            error["detail"]
+                .as_str()
+                .is_some_and(|detail| !detail.is_empty())
+        );
+        assert!(output.stdout.is_empty());
+        assert_eq!(std::fs::read(&target).unwrap(), b"preserve");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn numeric_descriptor_aliases_use_the_inherited_descriptor_and_refuse_closed_handles() {
+    let directory = tempfile::tempdir().unwrap();
+    let output = Command::new("python3").args(["-c", r#"
+import os, pathlib, subprocess, sys
+binary, directory = sys.argv[1:]
+root = pathlib.Path(directory)
+source = root / 'page.html'
+source.write_bytes(b'<h1>complete</h1>')
+for append in (False, True):
+    target = root / 'output'
+    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+    with target.open('ab' if append else 'r+b', buffering=0) as stream:
+        stream.seek(7)
+        fd = stream.fileno()
+        assert fd > 2
+        aliases = [f'/dev/fd/{fd}']
+        if sys.platform.startswith('linux'):
+            aliases += [f'/proc/self/fd/{fd}', f'/proc/thread-self/fd/{fd}']
+        for alias in aliases:
+            target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+            stream.seek(7)
+            result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+                pass_fds=(fd,), capture_output=True, timeout=10)
+            assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
+            expected = b'prefix|XXXXXXXXXXXXXXXX"complete"\n' if append else b'prefix|"complete"\nXXXXX'
+            assert target.read_bytes() == expected, (alias, append, target.read_bytes())
+            assert stream.tell() == (34 if append else 18)
+        closed_alias = f'/dev/fd/{fd}'
+    result = subprocess.run([binary, 'get', 'h1', str(source), '-o', closed_alias],
+        capture_output=True, timeout=10)
+    assert result.returncode == 5 and not result.stdout, result
+    assert b'output_unwritable' in result.stderr and b'Bad file descriptor' in result.stderr, result
+
+if sys.platform.startswith('linux'):
+    for alias in ['/proc/self/fd/01', '/dev/fd/0001', '/dev/fd/99999999999999999999']:
+        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+            capture_output=True, timeout=10)
+        assert result.returncode == 5 and not result.stdout, (alias, result)
+    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+    with target.open('r+b', buffering=0) as stream:
+        stream.seek(7)
+        identity = os.fstat(stream.fileno()).st_ino
+        alias = f'/proc/{os.getpid()}/fd/{stream.fileno()}'
+        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+            capture_output=True, timeout=10)
+        assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
+        assert target.stat().st_ino == identity
+        assert target.read_bytes() == b'"complete"\nXXXXXXXXXXXX'
+        assert stream.tell() == 7
+"#]).arg(binary()).arg(directory.path()).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
 }
 
 #[cfg(windows)]

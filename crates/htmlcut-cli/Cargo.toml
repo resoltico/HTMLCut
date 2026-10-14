@@ -26,5 +26,8 @@ serde_json.workspace = true
 [target.'cfg(windows)'.dependencies]
 winapi-util.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+filedescriptor.workspace = true
+
 [lints]
 workspace = true

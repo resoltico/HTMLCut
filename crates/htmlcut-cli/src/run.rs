@@ -209,7 +209,13 @@ fn write_output(writer: &mut impl Write, bytes: &[u8], path: &Path) -> Result<()
     }
 }
 
-// Descriptor names identify an already-open stream, not a pathname to replace.
+#[cfg(unix)]
+enum DescriptorTarget {
+    Current(std::os::fd::RawFd),
+    Path,
+}
+
+// Foreign process descriptor names are path streams, never atomic file destinations.
 fn descriptor_alias(path: &Path) -> bool {
     #[cfg(not(unix))]
     {
@@ -218,34 +224,69 @@ fn descriptor_alias(path: &Path) -> bool {
     }
     #[cfg(unix)]
     {
-        let Some(parent) = path.parent() else {
-            return false;
-        };
-        let Ok(parent) = std::fs::canonicalize(if parent.as_os_str().is_empty() {
-            Path::new(".")
-        } else {
-            parent
-        }) else {
-            return false;
-        };
-        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
-            return false;
-        };
-        if parent == Path::new("/dev") && matches!(name, "stdin" | "stdout" | "stderr") {
-            return true;
-        }
-        if !name.bytes().all(|c| c.is_ascii_digit()) {
-            return false;
-        }
-        if parent == Path::new("/dev/fd") {
-            return true;
-        }
-        let parts = parent.iter().filter_map(|p| p.to_str()).collect::<Vec<_>>();
-        matches!(
-            parts.as_slice(),
-            ["/", "proc", _, "fd"] | ["/", "proc", _, "task", _, "fd"]
-        )
+        descriptor_target(path).is_some()
     }
+}
+
+#[cfg(unix)]
+fn descriptor_target(path: &Path) -> Option<DescriptorTarget> {
+    let parent = path.parent()?;
+    let Ok(parent) = std::fs::canonicalize(if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    }) else {
+        return None;
+    };
+    let name = path.file_name().and_then(|s| s.to_str())?;
+    if parent == Path::new("/dev") && matches!(name, "stdin" | "stdout" | "stderr") {
+        return Some(DescriptorTarget::Current(match name {
+            "stdin" => 0,
+            "stdout" => 1,
+            _ => 2,
+        }));
+    }
+    if !name.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let current_namespace = parent == Path::new("/dev/fd")
+        || ["/proc/self/fd", "/proc/thread-self/fd"]
+            .iter()
+            .any(|namespace| {
+                std::fs::canonicalize(namespace).is_ok_and(|current| parent == current)
+            });
+    if current_namespace {
+        return Some(
+            name.parse::<std::os::fd::RawFd>()
+                .ok()
+                .filter(|fd| fd.to_string() == name)
+                .map_or(DescriptorTarget::Path, DescriptorTarget::Current),
+        );
+    }
+    let parts = parent.iter().filter_map(|p| p.to_str()).collect::<Vec<_>>();
+    matches!(
+        parts.as_slice(),
+        ["/", "proc", _, "fd"] | ["/", "proc", _, "task", _, "fd"]
+    )
+    .then_some(DescriptorTarget::Path)
+}
+
+#[cfg(unix)]
+fn duplicate_output_descriptor(
+    fd: std::os::fd::RawFd,
+) -> io::Result<filedescriptor::FileDescriptor> {
+    struct DescriptorNumber(std::os::fd::RawFd);
+    impl filedescriptor::AsRawFileDescriptor for DescriptorNumber {
+        fn as_raw_file_descriptor(&self) -> filedescriptor::RawFileDescriptor {
+            self.0
+        }
+    }
+    filedescriptor::FileDescriptor::dup(&DescriptorNumber(fd)).map_err(|error| match error {
+        filedescriptor::Error::Dup { source, .. }
+        | filedescriptor::Error::Fcntl(source)
+        | filedescriptor::Error::Cloexec(source) => source,
+        other => io::Error::other(other),
+    })
 }
 
 fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
@@ -294,6 +335,15 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
     let Some(path) = destination.filter(|path| *path != Path::new("-")) else {
         return write_output(&mut io::stdout().lock(), bytes, Path::new("-"));
     };
+    #[cfg(unix)]
+    let resolved =
+        resolve_output_links(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(unix)]
+    if let Some(DescriptorTarget::Current(fd)) = descriptor_target(&resolved) {
+        let mut stream = duplicate_output_descriptor(fd)
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        return write_output(&mut stream, bytes, path);
+    }
     let (resolved, permissions) = match OpenOptions::new().write(true).open(path) {
         Ok(mut file) => {
             // Windows metadata attributes do not distinguish disk files from
@@ -320,6 +370,7 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
             if !metadata.is_file() {
                 return write_output(&mut file, bytes, path);
             }
+            #[cfg(not(unix))]
             let resolved = resolve_output_links(path)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             if descriptor_alias(&resolved) {
@@ -330,8 +381,12 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
             (resolved, Some(metadata.permissions()))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            #[cfg(not(unix))]
             let resolved = resolve_output_links(path)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            if descriptor_alias(&resolved) {
+                return Err(io_error(ErrorCode::OutputUnwritable, path, error));
+            }
             (resolved, None)
         }
         Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),

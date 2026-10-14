@@ -64,8 +64,7 @@ impl ErrorCode {
 }
 
 /// One failure, with only the facts known at the point of refusal.
-#[derive(Clone, Debug, Serialize, thiserror::Error)]
-#[error("{message}")]
+#[derive(Clone, Debug, Serialize)]
 #[non_exhaustive]
 pub struct Error {
     /// Stable failure code.
@@ -76,6 +75,14 @@ pub struct Error {
     #[serde(flatten)]
     pub facts: Box<ErrorFacts>,
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Error {}
 
 /// Optional facts carried by a refusal.
 #[derive(Clone, Debug, Default, Serialize)]
@@ -170,6 +177,20 @@ impl std::ops::DerefMut for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn error_trait_displays_the_message_without_structured_facts() {
+        let error = Error::new(ErrorCode::ValueMismatch, "Wrong value.")
+            .at("$.fields.name")
+            .observed("unexpected");
+        let diagnostic: &dyn std::error::Error = &error;
+        assert_eq!(diagnostic.to_string(), "Wrong value.");
+        assert!(diagnostic.source().is_none());
+        assert!(
+            String::from_utf8(error.to_json_line())
+                .unwrap()
+                .contains("$.fields.name")
+        );
+    }
     #[test]
     fn every_code_has_its_declared_exit_class() {
         for (codes, expected) in [
