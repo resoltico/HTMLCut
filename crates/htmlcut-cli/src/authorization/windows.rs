@@ -99,44 +99,10 @@ impl Descriptor {
         } else {
             information
         };
-        let mut owner = std::ptr::null_mut();
-        let mut group = std::ptr::null_mut();
-        let mut dacl = std::ptr::null_mut();
-        let mut sacl = std::ptr::null_mut();
-        let mut present = 0;
-        let mut defaulted = 0;
         let mut control = 0;
         let mut revision = 0;
-        // SAFETY: descriptor is live; all output pointers are valid locals. Returned SID/ACL pointers borrow it.
-        unsafe {
-            boolean(GetSecurityDescriptorOwner(
-                self.0,
-                &mut owner,
-                &mut defaulted,
-            ))?;
-            boolean(GetSecurityDescriptorGroup(
-                self.0,
-                &mut group,
-                &mut defaulted,
-            ))?;
-            boolean(GetSecurityDescriptorDacl(
-                self.0,
-                &mut present,
-                &mut dacl,
-                &mut defaulted,
-            ))?;
-            boolean(GetSecurityDescriptorSacl(
-                self.0,
-                &mut present,
-                &mut sacl,
-                &mut defaulted,
-            ))?;
-            boolean(GetSecurityDescriptorControl(
-                self.0,
-                &mut control,
-                &mut revision,
-            ))?;
-        }
+        // SAFETY: this owned descriptor and both output locals remain live.
+        boolean(unsafe { GetSecurityDescriptorControl(self.0, &mut control, &mut revision) })?;
         let protection = if control & SE_DACL_PROTECTED != 0 {
             PROTECTED_DACL_SECURITY_INFORMATION
         } else {
@@ -160,18 +126,14 @@ impl Descriptor {
             } else {
                 0
             };
-        // SAFETY: all SID/ACL pointers originate in the live descriptor; handle is still owned by File.
-        status(unsafe {
-            SetSecurityInfo(
-                file.as_raw_handle() as HANDLE,
-                SE_FILE_OBJECT,
-                info,
-                owner,
-                group,
-                dacl,
-                sacl,
-            )
-        })
+        // SetSecurityInfo(SE_FILE_OBJECT) regenerates inherited ACEs when
+        // clearing protection, changing an existing explicit ACL. This setter
+        // supplies the complete pinned descriptor through the retained regular
+        // file handle. Exact readback and native parent-propagation controls are
+        // required: no policy differences are normalized away.
+        // SAFETY: the descriptor and owned writable file handle are live; only
+        // selected owner/group/DACL/mandatory-label components are requested.
+        boolean(unsafe { SetKernelObjectSecurity(file.as_raw_handle() as HANDLE, info, self.0) })
     }
 }
 fn status(code: u32) -> io::Result<()> {

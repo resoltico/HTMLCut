@@ -270,6 +270,132 @@ def main():
             raise FileNotFoundError('no native authorization adapter for this host')
         check('native-authorization-and-inheritance', authorization)
 
+        if os.name == 'nt':
+            def parent_acl_propagation():
+                # Keep the script outside the directory whose child access is changed.
+                script = root / 'parent-acl-propagation.ps1'
+                script.write_text(r'''
+param([string]$Operation,[string]$Parent,[string]$Control,[string]$Published,[int]$Protected)
+$ErrorActionPreference='Stop'
+$everyone=[System.Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+$deny=[System.Security.AccessControl.FileSystemAccessRule]::new(
+    $everyone,[System.Security.AccessControl.FileSystemRights]::ReadData,
+    [System.Security.AccessControl.InheritanceFlags]::ObjectInherit,
+    [System.Security.AccessControl.PropagationFlags]::InheritOnly,
+    [System.Security.AccessControl.AccessControlType]::Deny)
+function Facts([string]$Path) {
+    $acl=Get-Acl -LiteralPath $Path
+    $raw=[System.Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(),0)
+    $aces=@(foreach($ace in $raw.DiscretionaryAcl) {
+        $bytes=[byte[]]::new($ace.BinaryLength)
+        $ace.GetBinaryForm($bytes,0)
+        [ordered]@{type=[int]$ace.AceType;flags=[int]$ace.AceFlags;
+            mask=$ace.AccessMask;sid=$ace.SecurityIdentifier.Value;
+            binary=[Convert]::ToBase64String($bytes)}
+    })
+    [ordered]@{owner=$raw.Owner.Value;group=$raw.Group.Value;
+        protected=$acl.AreAccessRulesProtected;
+        dacl_present=([int]$raw.ControlFlags -band 4) -ne 0;
+        dacl_null=($null -eq $raw.DiscretionaryAcl);aces=$aces}
+}
+switch($Operation) {
+    'setup' {
+        foreach($path in @($Control,$Published)) {
+            [System.IO.File]::WriteAllText($path,'original')
+            $acl=Get-Acl -LiteralPath $path
+            $acl.SetAccessRuleProtection(($Protected -eq 1),$true)
+            if($Protected -eq 0) {
+                # Explicit allows precede inherited denies. Use an inherited-only
+                # fixture so the parent's deny is an actual ReadData refusal.
+                foreach($rule in @($acl.GetAccessRules($true,$false,[System.Security.Principal.SecurityIdentifier]))) {
+                    $acl.RemoveAccessRuleSpecific($rule)
+                }
+            }
+            Set-Acl -LiteralPath $path -AclObject $acl
+        }
+    }
+    'deny' {
+        $acl=Get-Acl -LiteralPath $Parent
+        $acl.AddAccessRule($deny)
+        Set-Acl -LiteralPath $Parent -AclObject $acl
+    }
+    'remove-deny' {
+        $acl=Get-Acl -LiteralPath $Parent
+        $acl.RemoveAccessRuleSpecific($deny)
+        Set-Acl -LiteralPath $Parent -AclObject $acl
+    }
+    'facts' {
+        [ordered]@{control=(Facts $Control);published=(Facts $Published)} | ConvertTo-Json -Depth 8 -Compress
+    }
+    default {throw "Unknown parent ACL operation: $Operation"}
+}
+''')
+                outcomes = []
+                for protected in [False, True]:
+                    parent = root / ('protected-parent' if protected else 'unprotected-parent')
+                    parent.mkdir()
+                    control = parent / 'control.json'
+                    published = parent / 'published.json'
+
+                    def powershell(operation):
+                        result = subprocess.run(
+                            ['powershell.exe', '-NoProfile', '-File', str(script), operation,
+                             str(parent), str(control), str(published), str(int(protected))],
+                            capture_output=True, text=True, timeout=4)
+                        assert result.returncode == 0, (operation, result.stdout, result.stderr)
+                        return json.loads(result.stdout) if operation == 'facts' else None
+
+                    def readable(path):
+                        try:
+                            path.read_bytes()
+                        except PermissionError:
+                            return False
+                        return True
+
+                    try:
+                        powershell('setup')
+                        before = powershell('facts')
+                        assert before['control'] == before['published'], before
+                        assert before['control']['protected'] == protected, before
+                        assert before['control']['dacl_present'] and not before['control']['dacl_null'], before
+                        assert before['control']['aces'], 'native control must have a nonempty DACL'
+                        if not protected:
+                            assert all(ace['flags'] & 0x10 for ace in before['control']['aces']), before
+                        assert readable(control) and readable(published), 'initial native reads must succeed'
+                        result = run(['get', 'h1', page, '-o', published])
+                        assert result.returncode == 0 and not result.stdout and not result.stderr, result
+                        assert control.read_bytes() == b'original' and published.read_bytes() == b'"complete"\n'
+                        after = powershell('facts')
+                        assert after == before, {'before': before, 'after': after}
+                        powershell('deny')
+                        with_deny = powershell('facts')
+                        assert with_deny['control'] == with_deny['published'], with_deny
+                        inherited_read_deny = any(
+                            ace['type'] == 1 and ace['flags'] & 0x10 and ace['mask'] & 1
+                            and ace['sid'] == 'S-1-1-0'
+                            for ace in with_deny['control']['aces'])
+                        assert inherited_read_deny == (not protected), with_deny
+                        denied = [readable(control), readable(published)]
+                        assert denied == [protected, protected], {'protected': protected, 'reads': denied}
+                        powershell('remove-deny')
+                        restored = [readable(control), readable(published)]
+                        assert restored == [True, True], restored
+                        final = powershell('facts')
+                        assert final == before, {'before': before, 'final': final}
+                        outcomes.append({'protected': protected, 'before': before,
+                                         'after_publication': after, 'reads_with_parent_deny': denied,
+                                         'with_parent_deny': with_deny,
+                                         'reads_after_removal': restored})
+                    finally:
+                        # The rule never denies parent/script access or child deletion.
+                        # Always restore it before removing this test's own files.
+                        try:
+                            powershell('remove-deny')
+                        finally:
+                            shutil.rmtree(parent)
+                return {'protected_and_unprotected_controls': outcomes}
+            check('native-windows-parent-acl-propagation', parent_acl_propagation)
+
         def acquisition_boundary():
             if not shutil.which('curl'):raise FileNotFoundError('native acquisition acceptance requires curl')
             example=Path(__file__).resolve().parents[1]/'examples/acquire_snapshot.py'
