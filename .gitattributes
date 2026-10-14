@@ -1,8 +1,8 @@
 * text=auto eol=lf
 *.sh text eol=lf
 
-# Corpora are exact byte inputs, including malformed encodings .
-fuzz/corpus/** -text -diff
+# Fuzz seeds are exact byte inputs, including malformed encodings.
+fuzz/seeds/** -text -diff
 
 # Conformance pages and expectations are byte-exact.
 conformance/** -text -diff

@@ -88,7 +88,7 @@ Operator policy consists of the four bounds above and the fixed tree-depth admis
 
 ## Errors
 
-A contract, preparation or limit refusal is one JSON object on standard error, on one line, and nothing on standard output. A transport failure after stdout publication begins can expose a prefix. A closed downstream pipe ends silently with exit 0; other output failures report `output_unwritable` and exit 5. Named file output is atomic. It always has `error` and `message`. Other members appear when known:
+A contract, preparation or limit refusal is one JSON object on standard error, on one line, and nothing on standard output. A transport failure after stdout publication begins can expose a prefix. A closed downstream pipe ends silently with exit 0; other output failures report `output_unwritable` and exit 5. Regular-file output is atomic; stream and device output is direct. It always has `error` and `message`. Other members appear when known:
 
 | Member | Meaning |
 |---|---|
@@ -151,15 +151,25 @@ Results are complete compact UTF-8 JSON followed by one LF. `--raw` / `-r` print
 string without JSON quoting followed by LF, an array of strings one per line, or no bytes
 for `null`. A record root is refused before document input is read.
 
-`--output FILE` / `-o FILE` stages a complete result in the destination directory and
-atomically replaces the destination. A refusal leaves an existing file unchanged and
-cleans staging files. On Unix, a new destination uses mode `0666` reduced by the process
-umask; replacement preserves the existing permission bits. Publication does not promise
-fsync durability, and permissions on platforms without Unix mode bits are unchanged.
+`--output DEST` / `-o DEST` follows symbolic links to the destination a write would
+reach. `-` is standard output. A regular file must be writable by the caller without
+truncation; only then does a complete staged result atomically replace it. An absent
+path is created atomically. A directory is refused. Pipes, devices and descriptor aliases
+(such as `/dev/stdout` and `/dev/fd/N`) are written directly, without replacement or
+an atomicity guarantee. Local descriptor aliases duplicate the inherited descriptor,
+preserving its cursor, append flag and access mode. Foreign process descriptor paths
+are opened as path streams; they do not duplicate a local descriptor.
 
-Standard output can expose a prefix if transport fails. If its reader closes the pipe,
-HTMLCut exits 0 without a diagnostic. Other output failures retain exit 5. Use `-o` for
-atomic publication.
+A refusal or limit before publication leaves destinations untouched, including a FIFO
+without a reader, and leaves no staging file. On Unix, a new file uses mode `0666`
+reduced by umask; replacement preserves read, write and execute bits, discarding
+set-user-ID, set-group-ID and sticky bits. Replacement creates a new file owned by the
+caller; other hard links retain the old content. Namespace changes by other processes
+between the permission check and rename are not isolated.
+
+Standard output and direct stream output can expose a prefix on transport failure. A
+reader closing the pipe is silent success, exit 0; other failures are
+`output_unwritable`, exit 5. File publication does not promise fsync durability.
 
 `--help`, `-h` and `help` print the [guide](../crates/htmlcut-cli/src/guide.txt).
 `--version` and `-V` print the engine version. A bare invocation remains an argument
@@ -223,5 +233,5 @@ Outline identifiers use CSS escaping and quoted previews use JSON escaping. Head
 The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument parsing, input, watchdog and publication. The library starts no threads and performs no filesystem or stream I/O.
 
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
-Relative-selector caches are reset for each scope. Selectors with an `of S` argument,
-if accepted by an upstream parser, use wholly per-scope caches.
+Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
+starts accepting that syntax.

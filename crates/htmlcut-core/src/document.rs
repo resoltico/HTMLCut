@@ -229,6 +229,12 @@ fn prescan(bytes: &[u8]) -> Option<&'static Encoding> {
     prescan_meta(bytes).or_else(|| xml_encoding(bytes))
 }
 
+enum PrescanCharset {
+    Unset,
+    Encoding(&'static Encoding),
+    Failed,
+}
+
 fn prescan_meta(bytes: &[u8]) -> Option<&'static Encoding> {
     let mut position = 0;
     while position < bytes.len() {
@@ -244,28 +250,30 @@ fn prescan_meta(bytes: &[u8]) -> Option<&'static Encoding> {
             let mut seen = std::collections::HashSet::new();
             let mut got_pragma = false;
             let mut need_pragma = None;
-            let mut charset = None;
+            let mut charset = PrescanCharset::Unset;
             for (name, value) in attrs {
                 if !seen.insert(name.clone()) {
                     continue;
                 }
                 match name.as_slice() {
                     b"http-equiv" => got_pragma = value == b"content-type",
-                    b"content" if charset.is_none() => {
+                    b"content" if matches!(charset, PrescanCharset::Unset) => {
                         if let Some(found) = content_encoding(&value) {
-                            charset = Some(found);
+                            charset = PrescanCharset::Encoding(found);
                             need_pragma = Some(true);
                         }
                     }
                     b"charset" => {
-                        charset = Encoding::for_label(&value);
+                        charset = Encoding::for_label(&value)
+                            .map(PrescanCharset::Encoding)
+                            .unwrap_or(PrescanCharset::Failed);
                         need_pragma = Some(false);
                     }
                     _ => (),
                 }
             }
             if (need_pragma == Some(false) || (need_pragma == Some(true) && got_pragma))
-                && let Some(encoding) = charset
+                && let PrescanCharset::Encoding(encoding) = charset
             {
                 return Some(if encoding == UTF_16LE || encoding == UTF_16BE {
                     UTF_8
@@ -507,6 +515,10 @@ mod tests {
     #[test]
     fn standard_prescan_handles_pragmas_substitutions_boundaries_and_false_declarations() {
         for (bytes, expected) in [
+            (b"<meta charset='' http-equiv='content-type' content='text/html; charset=koi8-r'>".as_slice(), None),
+            (b"<meta charset=bogus http-equiv='content-type' content='text/html; charset=koi8-r'>".as_slice(), None),
+            (b"<meta content='text/html; charset=koi8-r' http-equiv='content-type' charset=bogus>".as_slice(), None),
+
             (
                 b"<META HTTP-EQUIV='Content-Type' content='text/html; charset=Shift_JIS'>"
                     .as_slice(),
@@ -582,5 +594,252 @@ mod tests {
                 .as_str(),
             "https://example.test/cdn/"
         );
+    }
+
+    #[test]
+    fn prescan_distinguishes_real_declarations_from_tag_and_comment_contents() {
+        for (bytes, expected) in [
+            (
+                b"<!-- --x> --> <meta charset=windows-1252>".as_slice(),
+                Some(WINDOWS_1252),
+            ),
+            (b"<!--<meta charset=windows-1252>-->", None),
+            (b"<!--<meta charset=windows-1252>", None),
+            (b"<!-- -->", None),
+            (b"<!-->", None),
+            (b"<!--><meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<!---><meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta", None),
+            (b"<META", None),
+            (b"<meta/charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta! charset=windows-1252>", None),
+            (b"<metadata charset=windows-1252>", None),
+            (
+                b"<x a=\"<meta charset=windows-1252>\"><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (
+                b"</x a=\"<meta charset=windows-1252>\"><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (b"<!fake <meta charset=windows-1252>>", None),
+            (b"<?fake?><meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<1 a='>' <meta charset=windows-1252>>", Some(WINDOWS_1252)),
+            (
+                b"<?x a='>' <meta charset=windows-1252>>",
+                Some(WINDOWS_1252),
+            ),
+            (
+                b"</1 a='>' <meta charset=windows-1252>>",
+                Some(WINDOWS_1252),
+            ),
+            (
+                b"<!x a='>' <meta charset=windows-1252>>",
+                Some(WINDOWS_1252),
+            ),
+            (b"x<meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"xx<meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<x='>'<meta charset=windows-1252>>", Some(WINDOWS_1252)),
+            (
+                b"<?<meta charset=windows-1252>><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (
+                b"<!<meta charset=windows-1252>><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (
+                b"</1<meta charset=windows-1252>><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (b"</1fake><meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<x><meta charset=windows-1252>", Some(WINDOWS_1252)),
+            (
+                b"<x a = ' <meta charset=windows-1252> '><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (
+                b"<x a=<meta charset=windows-1252>><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (b"<meta / / charset \t=\n windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta =charset=windows-1252>", None),
+            (b"<meta a='' charset=\"windows-1252\">", Some(WINDOWS_1252)),
+            (b"<meta a='x'charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta a=\"x\"charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta x/charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta charset=windows-1252 ignored>", Some(WINDOWS_1252)),
+            (b"<meta a='unterminated", None),
+            (b"<meta charset", None),
+            (b"<meta charset=", None),
+            (b"<meta a>", None),
+            (b"<x", None),
+            (b"</x", None),
+            (b"<!x", None),
+            (b"<?x", None),
+        ] {
+            assert_eq!(prescan(bytes), expected, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn content_charset_extraction_obeys_pragma_order_and_label_boundaries() {
+        for (bytes, expected) in [
+            (b"<meta http-equiv=content-type content='charset=windows-1252' content='charset=utf-8'>".as_slice(), Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type content='charset=utf-8' charset=windows-1252>", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type charset=windows-1252 content='charset=utf-8'>", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=other content='charset=windows-1252'>", None),
+            (b"<meta http-equiv=content-type content='charset ignored; charset = windows-1252;'>", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type content=\"charset = 'windows-1252'\">", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type content='charset = \"windows-1252\"'>", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type content='charset=unknown; charset=windows-1252'>", None),
+            (b"<meta http-equiv=content-type content='charset=windows-1252 other'>", Some(WINDOWS_1252)),
+            (b"<meta http-equiv=content-type content='charset'>", None),
+            (b"<meta http-equiv=content-type content='charset='>", None),
+            (b"<meta http-equiv=content-type content=\"charset='windows-1252\">", None),
+        ] {
+            // Test decoding admission separately from the html5ever charset panic.
+            assert_eq!(prescan(bytes), expected, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn xml_encoding_is_a_fallback_with_strict_declaration_and_label_syntax() {
+        for (bytes, expected) in [
+            (
+                b"<?xml encoding \t= \r'windows-1252'?>".as_slice(),
+                Some(WINDOWS_1252),
+            ),
+            (b"<?xml encoding=\"windows-1252\"?>", Some(WINDOWS_1252)),
+            (b"<?xml encoding=windows-1252?>", None),
+            (b"<?xml encoding='windows-1252 '?>", None),
+            (b"<?XML encoding='windows-1252'?>", None),
+            (b"<?xml encoding:'windows-1252'?>", None),
+            (b"<?xml encoding='unknown'?>", None),
+            (b"<?xml?>", None),
+            (b"<?xml encoding='windows-1252", None),
+            (b"<?xml encoding='windows-1252>", None),
+            (b"<?xml encoding='utf-16le'?>", Some(UTF_8)),
+            (b"<?xml encoding='utf-16be'?>", Some(UTF_8)),
+            (
+                b"<?xml encoding='windows-1252'?><meta charset=utf-8>",
+                Some(UTF_8),
+            ),
+            (b"<\0?\0x\0", Some(UTF_16LE)),
+            (b"\0<\0?\0x", Some(UTF_16BE)),
+        ] {
+            assert_eq!(prescan(bytes), expected, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn closed_body_elements_do_not_make_template_base_urls_active() {
+        let mut source = Source::new(b"<body><p>before</p><template><base href='https://wrong.test/'></template><base href='../cdn/'><a href='item'>x</a>");
+        source.base_url = Some("https://example.test/app/page");
+        let document = Document::parse(source, &Limits::default()).unwrap();
+        let contract = crate::Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        assert_eq!(
+            document.extract(&contract).unwrap(),
+            crate::Value::String("https://example.test/cdn/item".into())
+        );
+    }
+
+    #[test]
+    fn chunk_node_admission_accepts_equality_and_refuses_larger_trees() {
+        // Document, html, head, body and p are five arena nodes. One chunk
+        // crosses both refused bounds before the incremental guard runs.
+        let input = "<html><head></head><body><p></p></body></html>";
+        for maximum in [5, 4, 3] {
+            let limits = Limits {
+                max_nodes: maximum,
+                time_limit: None,
+                ..Limits::default()
+            };
+            let mut parser =
+                driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+            let result = feed(
+                &mut parser,
+                input,
+                &limits,
+                input.len(),
+                &Clock::new(&limits),
+            );
+            assert_eq!(parser.tokenizer.sink.sink.0.borrow().tree.nodes().len(), 5);
+            if maximum == 5 {
+                result.unwrap();
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.error, ErrorCode::LimitExceeded);
+                assert_eq!(error.limit.as_deref(), Some("nodes"));
+                assert_eq!(error.bound, Some(maximum.into()));
+            }
+        }
+    }
+
+    #[test]
+    fn finishing_node_admission_counts_implicit_nodes_without_input_chunks() {
+        // Finishing an empty stream creates html, head and body in addition
+        // to the document node; feed performs no incremental node check.
+        for maximum in [4, 3, 2] {
+            let limits = Limits {
+                max_nodes: maximum,
+                time_limit: None,
+                ..Limits::default()
+            };
+            let result = parse_admitted("", &limits, CHUNK_BYTES, &Clock::new(&limits));
+            if maximum == 4 {
+                assert_eq!(result.unwrap().tree.nodes().len(), 4);
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.error, ErrorCode::LimitExceeded);
+                assert_eq!(error.limit.as_deref(), Some("nodes"));
+                assert_eq!(error.bound, Some(maximum.into()));
+            }
+        }
+    }
+
+    #[test]
+    fn chunk_refusal_keeps_unicode_text_beyond_the_chunk_boundary_unfed() {
+        let limits = Limits {
+            max_nodes: 4,
+            time_limit: None,
+            ..Limits::default()
+        };
+        let mut parser =
+            driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        // A four-byte chunk ends inside é. Admission must see only <p>,
+        // rather than consuming text past the chunk ceiling before refusing.
+        let error = feed(
+            &mut parser,
+            "<p>é</p><p>later</p>",
+            &limits,
+            4,
+            &Clock::new(&limits),
+        )
+        .unwrap_err();
+        assert_eq!(error.limit.as_deref(), Some("nodes"));
+        assert_eq!(error.bound, Some(4.into()));
+        let html = parser.tokenizer.sink.sink.0.borrow();
+        assert_eq!(
+            html.html(),
+            "<html><head></head><body><p></p></body></html>"
+        );
+    }
+
+    #[test]
+    fn malformed_gb18030_offsets_exclude_reprocessed_trailing_bytes() {
+        // These incomplete four-byte sequences designate their first byte
+        // as malformed after consuming one or two bytes for reprocessing.
+        for bytes in [
+            &[b'x', 0x81, b'0', b' '][..],
+            &[b'x', 0x81, b'0', 0x81, b' '][..],
+        ] {
+            let mut source = Source::new(bytes);
+            source.encoding = Some("gb18030");
+            let error = Document::parse(source, &Limits::default()).unwrap_err();
+            assert_eq!(error.error, ErrorCode::UndecodableInput);
+            assert_eq!(error.encoding.as_deref(), Some("gb18030"));
+            assert_eq!(error.offset, Some(1));
+        }
     }
 }

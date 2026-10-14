@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::{
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    process::{Child, Command, Output, Stdio},
     time::{Duration, Instant},
 };
 fn binary() -> std::ffi::OsString {
@@ -144,6 +144,20 @@ fn piped(args: &[&str], bytes: &[u8]) -> Output {
         .unwrap();
     child.stdin.take().unwrap().write_all(bytes).unwrap();
     child.wait_with_output().unwrap()
+}
+fn bounded_output(mut child: Child, timeout: Duration) -> Output {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            return child.wait_with_output().unwrap();
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let output = child.wait_with_output().unwrap();
+            panic!("pipe test process exceeded its deadline: {output:?}");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 #[test]
 fn guide_and_workflow_commands_are_executed_verbatim() {
@@ -423,21 +437,36 @@ fn a_consumer_closing_stdout_is_silent_success() {
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("large.html");
     std::fs::write(&file, format!("<body>{}</body>", "x".repeat(2_000_000))).unwrap();
-    let mut child = Command::new(binary())
-        .args(["get", "body", "--raw"])
-        .arg(file)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut pipe = child.stdout.take().unwrap();
-    let mut byte = [0];
-    pipe.read_exact(&mut byte).unwrap();
-    assert_eq!(byte, [b'x']);
-    drop(pipe);
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success(), "{output:?}");
-    assert!(output.stderr.is_empty(), "{output:?}");
+    let destinations = [
+        None,
+        Some("-"),
+        #[cfg(unix)]
+        Some("/dev/stdout"),
+        #[cfg(unix)]
+        Some("/dev/fd/1"),
+        #[cfg(target_os = "linux")]
+        Some("/proc/self/fd/1"),
+    ];
+    for destination in destinations {
+        let mut command = Command::new(binary());
+        command.args(["get", "body", "--raw"]).arg(&file);
+        if let Some(path) = destination {
+            command.args(["-o", path]);
+        }
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut pipe = child.stdout.take().unwrap();
+        let mut byte = [0];
+        pipe.read_exact(&mut byte).unwrap();
+        assert_eq!(byte, [b'x']);
+        drop(pipe);
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{destination:?}: {output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+    }
 }
 
 #[cfg(unix)]
@@ -499,30 +528,11 @@ fn named_output_obeys_umask_and_preserves_existing_permission_bits() {
 }
 
 #[test]
+#[ignore = "needs the shipped binary; run by the package smoke"]
 fn positional_predicates_reuse_sibling_indexes_within_the_deadline() {
-    // Upstream debug assertions independently recompute every nth index without
-    // caching. Measure the shipped profile while retaining those assertions in
-    // all correctness tests.
-    let performance_binary = std::env::var_os("HTMLCUT_TEST_BINARY").unwrap_or_else(|| {
-        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let build = Command::new("cargo")
-            .args(["build", "--release", "--locked", "-p", "htmlcut-cli"])
-            .current_dir(crate_dir)
-            .output()
-            .unwrap();
-        assert!(build.status.success(), "{build:?}");
-        let metadata = Command::new("cargo")
-            .args(["metadata", "--format-version", "1", "--no-deps", "--locked"])
-            .current_dir(crate_dir)
-            .output()
-            .unwrap();
-        assert!(metadata.status.success(), "{metadata:?}");
-        let metadata: Value = serde_json::from_slice(&metadata.stdout).unwrap();
-        Path::new(metadata["target_directory"].as_str().unwrap())
-            .join("release")
-            .join(format!("htmlcut{}", std::env::consts::EXE_SUFFIX))
-            .into_os_string()
-    });
+    let performance_binary = std::env::var_os("HTMLCUT_TEST_BINARY").expect(
+        "HTMLCUT_TEST_BINARY must name the shipped binary for the package performance test",
+    );
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("siblings.html");
     let mut html = String::from("<main>");
@@ -573,4 +583,703 @@ fn corpus_runner_refuses_empty_or_incomplete_corpora() {
     std::fs::write(case.join("page.html"), b"<h1>x</h1>").unwrap();
     std::fs::write(case.join("contract.json"), b"\"h1\"").unwrap();
     assert!(std::panic::catch_unwind(|| run_cases(directory.path())).is_err());
+}
+
+#[test]
+fn html5ever_0_39_meta_charset_panic_fails_closed() {
+    let directory = tempfile::tempdir().unwrap();
+    let page = directory.path().join("page.html");
+    let destination = directory.path().join("result.json");
+    std::fs::write(
+        &page,
+        b"<meta http-equiv=content-type content='text/html; charset'><p>ok</p>",
+    )
+    .unwrap();
+    std::fs::write(&destination, b"previous complete result").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "p"])
+        .arg(&page)
+        .arg("-o")
+        .arg(&destination)
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(6),
+        "html5ever no longer panics on this input. Replace this test with one expecting \"ok\", add the input to the fuzz seeds and remove the known issue from changelog.md."
+    );
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"], "internal");
+    assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+    assert_eq!(
+        std::fs::read(&destination).unwrap(),
+        b"previous complete result"
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+}
+
+#[test]
+fn output_dash_is_stdout_and_directories_refuse() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "-"])
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"\"complete\"\n");
+    assert!(!directory.path().join("-").exists());
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(directory.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+        "output_unwritable"
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn output_links_follow_targets_and_permission_checks_preserve_objects() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let target = directory.path().join("target");
+    let link = directory.path().join("link");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    std::fs::write(&target, b"old").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o6754)).unwrap();
+    symlink("target", &link).unwrap();
+    let publish = |selector: &str, path: &Path| {
+        Command::new(binary())
+            .args(["get", selector])
+            .arg(&source)
+            .arg("-o")
+            .arg(path)
+            .output()
+            .unwrap()
+    };
+    let output = publish("h1", &link);
+    assert!(output.status.success(), "{output:?}");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\"complete\"\n");
+    assert_eq!(
+        target.metadata().unwrap().permissions().mode() & 0o7777,
+        0o754
+    );
+    let absent = directory.path().join("absent");
+    let dangling = directory.path().join("dangling");
+    let chain = directory.path().join("chain");
+    symlink("absent", &dangling).unwrap();
+    symlink("dangling", &chain).unwrap();
+    assert!(publish("h1", &chain).status.success());
+    assert!(
+        dangling
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(std::fs::read(&absent).unwrap(), b"\"complete\"\n");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let bytes = std::fs::read(&target).unwrap();
+    let output = publish("h1", &link);
+    assert_eq!(output.status.code(), Some(5));
+    assert_eq!(std::fs::read(&target).unwrap(), bytes);
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    for path in [&link, &dangling, &chain] {
+        assert_eq!(publish("missing", path).status.code(), Some(3));
+        assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+    let cycle_a = directory.path().join("cycle-a");
+    let cycle_b = directory.path().join("cycle-b");
+    symlink("cycle-b", &cycle_a).unwrap();
+    symlink("cycle-a", &cycle_b).unwrap();
+    assert_eq!(publish("h1", &cycle_a).status.code(), Some(5));
+    let missing_directory = directory.path().join("missing-directory/");
+    assert_eq!(publish("h1", &missing_directory).status.code(), Some(5));
+    assert!(!missing_directory.exists());
+    let trailing_link = directory.path().join("trailing-link");
+    symlink("missing-directory/", &trailing_link).unwrap();
+    assert_eq!(publish("h1", &trailing_link).status.code(), Some(5));
+    assert!(!missing_directory.exists());
+    let real = directory.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::create_dir(real.join("child")).unwrap();
+    let parent_link = directory.path().join("parent-link");
+    symlink("real/child", &parent_link).unwrap();
+    let parent_target = directory.path().join("parent-target");
+    symlink("parent-link/../new", &parent_target).unwrap();
+    assert!(publish("h1", &parent_target).status.success());
+    assert!(real.join("new").exists());
+    assert!(!directory.path().join("new").exists());
+    let hard_link = directory.path().join("hard-link");
+    std::fs::hard_link(&absent, &hard_link).unwrap();
+    std::fs::write(&source, b"<h1>changed</h1>").unwrap();
+    assert!(publish("h1", &absent).status.success());
+    assert_eq!(std::fs::read(&hard_link).unwrap(), b"\"complete\"\n");
+    assert_eq!(std::fs::read(&absent).unwrap(), b"\"changed\"\n");
+    assert!(
+        !std::fs::read_dir(directory.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".tmp"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn output_pipes_devices_and_descriptor_aliases_are_written_directly() {
+    use std::io::Read;
+    use std::os::unix::fs::{FileTypeExt, symlink};
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let pipe = directory.path().join("output.pipe");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap()
+            .success()
+    );
+    // Refusal must not even open the FIFO: there is no reader to unblock it.
+    let mut refusal = Command::new(binary())
+        .args(["get", "missing"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&pipe)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(status) = refusal.try_wait().unwrap() {
+            assert_eq!(status.code(), Some(3));
+            break;
+        }
+        if Instant::now() >= deadline {
+            refusal.kill().unwrap();
+            refusal.wait().unwrap();
+            panic!("refusal opened its output FIFO");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let mut reader = Command::new("cat")
+        .arg(&pipe)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let publication = std::panic::catch_unwind(|| {
+        let producer = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&pipe)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output = bounded_output(producer, Duration::from_secs(10));
+        assert!(output.status.success(), "{output:?}");
+    });
+    if publication.is_err() {
+        let _ = reader.kill();
+    }
+    let received = bounded_output(reader, Duration::from_secs(10));
+    publication.unwrap();
+    assert!(received.status.success(), "{received:?}");
+    assert_eq!(received.stdout, b"\"complete\"\n");
+    assert!(pipe.symlink_metadata().unwrap().file_type().is_fifo());
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "/dev/null"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(
+        Path::new("/dev/null")
+            .metadata()
+            .unwrap()
+            .file_type()
+            .is_char_device()
+    );
+    let alias = directory.path().join("stdout-link");
+    symlink("/dev/stdout", &alias).unwrap();
+    for path in [Path::new("/dev/stdout"), alias.as_path()] {
+        let target = directory.path().join("redirected");
+        let writer = std::fs::File::create(&target).unwrap();
+        let mut observer = writer.try_clone().unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg("-o")
+            .arg(path)
+            .stdout(Stdio::from(writer))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        // The original descriptor must see the data, not just a replaced name.
+        use std::io::{Seek, SeekFrom};
+        observer.seek(SeekFrom::Start(0)).unwrap();
+        let mut data = Vec::new();
+        // The write-only observer has no read permission; compare its size and the name.
+        assert_eq!(observer.metadata().unwrap().len(), 11);
+        std::fs::File::open(&target)
+            .unwrap()
+            .read_to_end(&mut data)
+            .unwrap();
+        assert_eq!(data, b"\"complete\"\n");
+    }
+    assert!(alias.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[cfg(unix)]
+#[test]
+fn descriptor_aliases_preserve_inherited_cursors_append_and_access_modes() {
+    use std::io::{Seek, SeekFrom};
+    use std::os::unix::fs::symlink;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let paths = [
+        "/dev/stdout",
+        "/dev/fd/1",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1",
+        #[cfg(target_os = "linux")]
+        "/proc/thread-self/fd/1",
+    ];
+    let mut aliases = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+    for (index, target) in paths.iter().enumerate() {
+        let alias = directory.path().join(format!("stream-link-{index}"));
+        symlink(target, &alias).unwrap();
+        aliases.push(alias);
+    }
+    let parent_alias = directory.path().join("descriptor-parent");
+    symlink("/dev/fd", &parent_alias).unwrap();
+    aliases.push(parent_alias.join("1"));
+    // Both controls use the same inherited descriptor as the named aliases.
+    let destinations = std::iter::once(None)
+        .chain(std::iter::once(Some(PathBuf::from("-"))))
+        .chain(aliases.into_iter().map(Some));
+    for destination in destinations {
+        for append in [false, true] {
+            let target = directory.path().join("redirected");
+            std::fs::write(&target, b"prefix|XXXXXXXXXXXXXXXX").unwrap();
+            let mut writer = std::fs::OpenOptions::new()
+                .write(true)
+                .append(append)
+                .open(&target)
+                .unwrap();
+            writer.seek(SeekFrom::Start(7)).unwrap();
+            let mut observer = writer.try_clone().unwrap();
+            let mut command = Command::new(binary());
+            command.args(["get", "h1"]).arg(&source);
+            if let Some(path) = &destination {
+                command.arg("-o").arg(path);
+            }
+            let output = command.stdout(Stdio::from(writer)).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{destination:?} {append}: {output:?}"
+            );
+            assert!(output.stderr.is_empty(), "{output:?}");
+            let expected: &[u8] = if append {
+                b"prefix|XXXXXXXXXXXXXXXX\"complete\"\n"
+            } else {
+                b"prefix|\"complete\"\nXXXXX"
+            };
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                expected,
+                "{destination:?} {append}"
+            );
+            assert_eq!(
+                observer.stream_position().unwrap(),
+                if append { 34 } else { 18 }
+            );
+        }
+    }
+    for (path, stream) in [
+        ("/dev/stdin", 0),
+        ("/dev/fd/0", 0),
+        ("/dev/stderr", 2),
+        ("/dev/fd/2", 2),
+    ] {
+        let target = directory.path().join("other-stream");
+        std::fs::write(&target, b"prefix|").unwrap();
+        let mut writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .unwrap();
+        writer.seek(SeekFrom::Start(7)).unwrap();
+        let mut command = Command::new(binary());
+        command.args(["get", "h1"]).arg(&source).args(["-o", path]);
+        if stream == 0 {
+            command.stdin(Stdio::from(writer));
+        } else {
+            command.stderr(Stdio::from(writer));
+        }
+        assert!(command.output().unwrap().status.success());
+        assert_eq!(std::fs::read(&target).unwrap(), b"prefix|\"complete\"\n");
+    }
+    // A writable pathname must not grant extra access to a read-only inherited FD.
+    for path in ["/dev/stdin", "/dev/fd/0"] {
+        let target = directory.path().join("readonly-stream");
+        std::fs::write(&target, b"preserve").unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .args(["-o", path])
+            .stdin(Stdio::from(std::fs::File::open(&target).unwrap()))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "output_unwritable");
+        assert_eq!(error["file"], path);
+        assert!(
+            error["detail"]
+                .as_str()
+                .is_some_and(|detail| !detail.is_empty())
+        );
+        assert!(output.stdout.is_empty());
+        assert_eq!(std::fs::read(&target).unwrap(), b"preserve");
+    }
+    let invalid_paths = [
+        "/dev/stdout/",
+        "/dev/stdout/.",
+        "/dev/fd/1/",
+        "/dev/fd/1/.",
+        "/dev/stdout/./.",
+        "/dev/fd/1/.///",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1/",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1/.",
+    ];
+    for (index, spelling) in invalid_paths.iter().enumerate() {
+        let link = directory
+            .path()
+            .join(format!("directory-stream-link-{index}"));
+        symlink(spelling, &link).unwrap();
+        for path in [Path::new(spelling), link.as_path()] {
+            let target = directory.path().join("directory-stream");
+            std::fs::write(&target, b"prefix|preserve").unwrap();
+            let mut writer = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&target)
+                .unwrap();
+            writer.seek(SeekFrom::Start(7)).unwrap();
+            let mut observer = writer.try_clone().unwrap();
+            let output = Command::new(binary())
+                .args(["get", "h1"])
+                .arg(&source)
+                .arg("-o")
+                .arg(path)
+                .stdout(Stdio::from(writer))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(5), "{path:?}: {output:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"], "output_unwritable");
+            assert_eq!(error["file"], path.to_string_lossy().as_ref());
+            assert!(output.stdout.is_empty());
+            assert_eq!(std::fs::read(&target).unwrap(), b"prefix|preserve");
+            assert_eq!(observer.stream_position().unwrap(), 7);
+        }
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+}
+
+#[test]
+fn dash_is_a_stream_marker_only_when_it_is_the_entire_path() {
+    use std::io::Seek;
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir(directory.path().join("-")).unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    for spelling in ["-/", "-/.", "-/./.", "./-"] {
+        let reader = std::fs::File::open(&source).unwrap();
+        let mut observer = reader.try_clone().unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1", "--", spelling])
+            .current_dir(directory.path())
+            .stdin(Stdio::from(reader))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "input_unreadable");
+        assert_eq!(error["file"], spelling);
+        assert!(output.stdout.is_empty());
+        assert_eq!(observer.stream_position().unwrap(), 0);
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg(format!("--output={spelling}"))
+            .current_dir(directory.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "output_unwritable");
+        assert_eq!(error["file"], spelling);
+        assert!(output.stdout.is_empty());
+        assert!(directory.path().join("-").is_dir());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn numeric_descriptor_aliases_use_the_inherited_descriptor_and_refuse_closed_handles() {
+    let directory = tempfile::tempdir().unwrap();
+    let output = Command::new("python3").args(["-c", r#"
+import os, pathlib, subprocess, sys
+binary, directory = sys.argv[1:]
+root = pathlib.Path(directory)
+source = root / 'page.html'
+source.write_bytes(b'<h1>complete</h1>')
+for append in (False, True):
+    target = root / 'output'
+    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+    with target.open('ab' if append else 'r+b', buffering=0) as stream:
+        stream.seek(7)
+        fd = stream.fileno()
+        assert fd > 2
+        aliases = [f'/dev/fd/{fd}']
+        if sys.platform.startswith('linux'):
+            aliases += [f'/proc/self/fd/{fd}', f'/proc/thread-self/fd/{fd}']
+        for alias in aliases:
+            target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+            stream.seek(7)
+            result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+                pass_fds=(fd,), capture_output=True, timeout=10)
+            assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
+            expected = b'prefix|XXXXXXXXXXXXXXXX"complete"\n' if append else b'prefix|"complete"\nXXXXX'
+            assert target.read_bytes() == expected, (alias, append, target.read_bytes())
+            assert stream.tell() == (34 if append else 18)
+        closed_alias = f'/dev/fd/{fd}'
+    result = subprocess.run([binary, 'get', 'h1', str(source), '-o', closed_alias],
+        capture_output=True, timeout=10)
+    assert result.returncode == 5 and not result.stdout, result
+    assert b'output_unwritable' in result.stderr and b'Bad file descriptor' in result.stderr, result
+
+if sys.platform.startswith('linux'):
+    for alias in ['/proc/self/fd/01', '/dev/fd/0001', '/dev/fd/99999999999999999999']:
+        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+            capture_output=True, timeout=10)
+        assert result.returncode == 5 and not result.stdout, (alias, result)
+    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
+    with target.open('r+b', buffering=0) as stream:
+        stream.seek(7)
+        identity = os.fstat(stream.fileno()).st_ino
+        alias = f'/proc/{os.getpid()}/fd/{stream.fileno()}'
+        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
+            capture_output=True, timeout=10)
+        assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
+        assert target.stat().st_ino == identity
+        assert target.read_bytes() == b'"complete"\nXXXXXXXXXXXX'
+        assert stream.tell() == 7
+"#]).arg(binary()).arg(directory.path()).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_null_device_is_written_without_creating_a_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .args(["-o", "NUL"])
+        .current_dir(directory.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stdout.is_empty());
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_named_pipe_output_is_delivered_and_reader_disconnect_is_silent() {
+    use std::io::{BufRead, BufReader, Read};
+    for disconnect in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("page.html");
+        if disconnect {
+            // This exceeds the configured pipe buffer, so closing after one byte
+            // interrupts publication rather than merely racing its completion.
+            std::fs::write(&source, format!("<h1>{}</h1>", "x".repeat(1024 * 1024))).unwrap();
+        } else {
+            std::fs::write(&source, b"<h1>pipe</h1>").unwrap();
+        }
+        let name = format!(
+            "htmlcut-{}",
+            directory.path().file_name().unwrap().to_string_lossy()
+        );
+        let script = r#"$ErrorActionPreference='Stop'; $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:HTMLCUT_PIPE_NAME,[System.IO.Pipes.PipeDirection]::In,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::Asynchronous,4096,4096); try { $connection=$p.WaitForConnectionAsync(); [Console]::Out.WriteLine('READY'); [Console]::Out.Flush(); [void]$connection.GetAwaiter().GetResult(); if ($env:HTMLCUT_PIPE_DISCONNECT -eq '1') { [Console]::Out.Write([char]$p.ReadByte()) } else { $r=[System.IO.StreamReader]::new($p); [Console]::Out.Write($r.ReadToEnd()) }; [Console]::Out.Flush() } finally { $p.Dispose() }"#;
+        let mut server = Command::new("powershell.exe")
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ])
+            .env("HTMLCUT_PIPE_NAME", &name)
+            .env(
+                "HTMLCUT_PIPE_DISCONNECT",
+                if disconnect { "1" } else { "0" },
+            )
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stream = BufReader::new(server.stdout.take().unwrap());
+        let (ready_sender, ready_receiver) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+            let mut ready = String::new();
+            let handshake = stream.read_line(&mut ready).map(|_| ready);
+            let _ = ready_sender.send(handshake);
+            let mut delivered = Vec::new();
+            stream.read_to_end(&mut delivered)?;
+            Ok(delivered)
+        });
+        let publication = std::panic::catch_unwind(|| {
+            let ready = ready_receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("named-pipe server did not announce readiness")
+                .unwrap();
+            assert_eq!(ready.trim(), "READY");
+            let path = format!(r"\\.\pipe\{name}");
+            let producer = Command::new(binary())
+                .args(["get", "h1"])
+                .arg(&source)
+                .arg("-o")
+                .arg(path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let output = bounded_output(producer, Duration::from_secs(10));
+            assert!(output.status.success(), "{output:?}");
+            assert!(output.stdout.is_empty());
+            assert!(output.stderr.is_empty(), "{output:?}");
+        });
+        if publication.is_err() {
+            let _ = server.kill();
+        }
+        let completion = bounded_output(server, Duration::from_secs(10));
+        let delivered = reader.join().unwrap();
+        publication.unwrap();
+        assert!(completion.status.success(), "{completion:?}");
+        let delivered = delivered.unwrap();
+        assert_eq!(
+            delivered,
+            if disconnect {
+                &b"\""[..]
+            } else {
+                &b"\"pipe\"\n"[..]
+            }
+        );
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn opening_a_regular_file_for_write_does_not_change_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("probe");
+    std::fs::write(&file, b"preserved").unwrap();
+    let before = file.metadata().unwrap();
+    drop(std::fs::OpenOptions::new().write(true).open(&file).unwrap());
+    let after = file.metadata().unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"preserved");
+    assert_eq!(before.len(), after.len());
+    assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+    assert_eq!(
+        before.permissions().readonly(),
+        after.permissions().readonly()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(
+            (before.mode(), before.ctime(), before.ctime_nsec()),
+            (after.mode(), after.ctime(), after.ctime_nsec())
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_dangling_link_resolution_creates_the_target() {
+    use std::os::windows::fs::symlink_file;
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("page.html");
+    let link = directory.path().join("link");
+    let target = directory.path().join("absent.json");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    symlink_file("absent.json", &link)
+        .expect("native Windows symlink QA requires symlink creation privileges");
+    assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("absent.json"));
+    assert_eq!(
+        std::fs::canonicalize(&link).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    let output = Command::new(binary())
+        .args(["get", "h1"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&link)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\"complete\"\n");
+}
+
+#[test]
+fn documented_unavailable_selectors_refuse_as_selectors() {
+    for selector in [
+        "p::before",
+        "input:checked",
+        "input:disabled",
+        "a:link",
+        "p:lang(en)",
+        "p:nth-child(2 of .x)",
+        "p:contains(x)",
+        "div:has(p:has(a))",
+    ] {
+        let output = Command::new(binary())
+            .args(["get", selector, "missing-input.html"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{selector}: {output:?}");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+            "invalid_selector"
+        );
+        assert!(output.stdout.is_empty());
+    }
 }

@@ -45,7 +45,7 @@ allow = []
 allow-workspace = false
 deny = []
 skip = [
-    { crate = "syn@2.0.119", reason = "Current upstream proc-macro dependencies still require syn 2 while current serde, ref-cast, and thiserror use syn 3; keep this exact exception until those remaining upstream dependencies converge on syn 3." },
+    { crate = "syn@2.0.119", reason = "Current upstream proc-macro dependencies still require syn 2 while current serde and ref-cast use syn 3; keep this exact exception until those remaining upstream dependencies converge on syn 3." },
 ]
 skip-tree = []
 

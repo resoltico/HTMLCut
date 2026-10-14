@@ -4,7 +4,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source ./scripts/contributor-rust-tools.sh
-output=${1:-$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-fuzz.XXXXXX")}
+temporary_output=0
+if [[ $# -eq 0 ]]; then
+    output=$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-fuzz.XXXXXX")
+    temporary_output=1
+else
+    output=$1
+fi
+cleanup() {
+    local status=$?
+    if [[ $temporary_output -eq 1 ]]; then
+        if [[ $status -eq 0 ]]; then
+            rm -rf -- "$output"
+        else
+            printf 'Fuzz evidence retained at %s\n' "$output" >&2
+        fi
+    fi
+}
+trap cleanup EXIT
 mkdir -p "$output"
 output=$(cd "$output" && pwd -P)
 case "$output/" in "$(pwd -P)/"*) echo "Fuzz output must be outside the checkout" >&2; exit 2 ;; esac
@@ -21,12 +38,12 @@ for case in sorted(Path('conformance/contract').iterdir()):
     (output/'contract_bytes'/'corpus'/case.name).write_bytes(contract)
     (output/'extract'/'corpus'/case.name).write_bytes(len(contract).to_bytes(2,'little')+contract+page)
 contract=b'{"select":":scope"}'
-for seed in Path('fuzz/corpus/parse_document_bytes').iterdir():
+for seed in Path('fuzz/seeds/documents').iterdir():
     if seed.is_file():
         (output/'extract'/'corpus'/('document-'+seed.name)).write_bytes(len(contract).to_bytes(2,'little')+contract+seed.read_bytes())
 PY
 for target in contract_bytes extract; do
-    cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" fuzz run --features fuzzing \
+    cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" fuzz run \
         "$target" "$output/$target/corpus" -- \
         -runs=10000 -max_len=4096 -timeout=10 -rss_limit_mb=2048 -seed=1008 \
         "-artifact_prefix=$output/$target/crashes/" 2>&1 | tee "$output/$target/run.log"

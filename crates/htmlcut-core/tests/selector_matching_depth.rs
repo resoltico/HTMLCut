@@ -335,3 +335,17 @@ fn parsed_components_ignore_punctuation_inside_attribute_values() {
         false,
     );
 }
+
+#[test]
+fn syntax_nesting_is_refused_before_parsing_on_a_consumer_stack() {
+    for nesting in [65, 1638] {
+        let selector = format!("{}p{}", ":is(".repeat(nesting), ")".repeat(nesting));
+        assert!(selector.len() <= 8192);
+        check_process(
+            &format!("syntax nesting {nesting}"),
+            "<p>X</p>".into(),
+            selector,
+            true,
+        );
+    }
+}

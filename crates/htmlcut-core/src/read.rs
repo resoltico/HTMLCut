@@ -320,7 +320,6 @@ impl Serialize for Filtered<'_, '_> {
                     skipped += 1
                 }
                 Edge::Open(node) => match node.value() {
-                    Node::Doctype(value) => serializer.write_doctype(value.name())?,
                     Node::Comment(value) => serializer.write_comment(value)?,
                     Node::Text(value) => serializer.write_text(value)?,
                     Node::Element(value) => serializer.start_elem(
@@ -354,10 +353,7 @@ fn outer_html(
                 excluded,
                 clock,
             },
-            SerializeOpts {
-                traversal_scope: TraversalScope::IncludeNode,
-                ..Default::default()
-            },
+            SerializeOpts::default(),
         )
         .map_err(|e| {
             e.get_ref()
@@ -532,6 +528,90 @@ mod tests {
         assert_eq!(document.extract(&c).unwrap(), Value::String("<main id=\"x\"><p z=\"2\" a=\"1\">a &amp; b</p><!--keep--><noscript><i>x</i></noscript></main>".into()));
         assert_eq!(document.html.html(), source_html);
         assert_eq!(document.extract(&c).unwrap(), document.extract(&c).unwrap());
+    }
+    #[test]
+    fn foreign_block_and_cell_names_do_not_gain_html_layout() {
+        assert_eq!(
+            text_of(
+                "<svg id=x><address>a</address><address>b</address><td>c</td><td>d</td></svg>",
+                "#x"
+            ),
+            "abcd"
+        );
+        assert_eq!(
+            text_of(
+                "<math id=x><address>a</address><address>b</address><td>c</td><td>d</td></math>",
+                "#x"
+            ),
+            "abcd"
+        );
+    }
+    #[test]
+    fn comments_and_excluded_cells_do_not_create_a_leading_column() {
+        let html = "<table id=x><tr><!--before--><td class=omit>x</td><!--between--><td>a</td><th>b</th></tr></table>";
+        assert_eq!(
+            value(html, serde_json::json!({"select":"#x","exclude":[".omit"]})),
+            Value::String("a\tb".into())
+        );
+        assert_eq!(
+            text_of(
+                "<table id=x><tr><!--before--><td>a</td><th>b</th></tr></table>",
+                "#x"
+            ),
+            "a\tb"
+        );
+    }
+    #[test]
+    fn unrendered_element_siblings_do_not_create_a_table_column() {
+        let html = "<table id=x><tr><td>first</td></tr><tr><script>ignored</script><template><td>inert</td></template><td>a</td><th>b</th></tr></table>";
+        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        // HTML retains these non-cell elements in the row, unlike foster-parented span/div nodes.
+        let row = document
+            .html
+            .select(&scraper::Selector::parse("tr").unwrap())
+            .nth(1)
+            .unwrap();
+        let names: Vec<_> = row
+            .children()
+            .filter_map(scraper::ElementRef::wrap)
+            .map(|e| e.value().name())
+            .collect();
+        assert_eq!(names, ["script", "template", "td", "th"]);
+        assert_eq!(text_of(html, "#x"), "first\na\tb");
+    }
+    #[test]
+    fn doctypes_cannot_enter_element_or_following_sibling_readings() {
+        for html in [
+            "<!doctype html><html><head></head><body><main>a<!doctype html>b<h2>x</h2>c<!doctype html>d<h2>stop</h2></main></body></html>",
+            "<!doctype html><html><head></head><body><main>ab<h2>x</h2>cd<h2>stop</h2></main></body></html><!doctype html>",
+        ] {
+            let document =
+                Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+            // The parser's document doctype precedes the root element; interior and trailing doctypes are discarded.
+            let doctypes: Vec<_> = document
+                .html
+                .tree
+                .nodes()
+                .filter(|n| matches!(n.value(), Node::Doctype(_)))
+                .collect();
+            assert_eq!(doctypes.len(), 1);
+            assert!(doctypes[0].parent().unwrap().value().is_document());
+            assert_eq!(value(html, serde_json::json!({"select":"html","read":"outer-html"})), Value::String("<html><head></head><body><main>ab<h2>x</h2>cd<h2>stop</h2></main></body></html>".into()));
+            assert_eq!(
+                value(
+                    html,
+                    serde_json::json!({"select":"h2","nth":1,"until":"h2","read":"outer-html"})
+                ),
+                Value::String("<h2>x</h2>cd".into())
+            );
+        }
+        assert_eq!(
+            value(
+                "<!doctype html><template id=x><!doctype html><b>x</b></template>",
+                serde_json::json!({"select":"#x","read":"outer-html"})
+            ),
+            Value::String("<template id=\"x\"><b>x</b></template>".into())
+        );
     }
     #[test]
     fn output_policy_applies_to_the_final_capture_without_an_intermediate_value_limit() {

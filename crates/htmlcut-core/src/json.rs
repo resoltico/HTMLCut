@@ -4,56 +4,40 @@ use crate::limits::MAX_JSON_DEPTH;
 use serde::Deserializer;
 use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
-use std::{cell::Cell, fmt};
-pub(crate) fn read(bytes: &[u8], maximum: usize) -> Result<Value, serde_json::Error> {
-    let budget = Cell::new(maximum);
+use std::fmt;
+pub(crate) fn read(bytes: &[u8]) -> Result<Value, serde_json::Error> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
-    Seed {
-        depth: 0,
-        budget: &budget,
-    }
-    .deserialize(&mut deserializer)
-    .and_then(|value| {
-        deserializer.end()?;
-        Ok(value)
-    })
+    Seed { depth: 0 }
+        .deserialize(&mut deserializer)
+        .and_then(|value| {
+            deserializer.end()?;
+            Ok(value)
+        })
 }
 
-struct Seed<'a> {
+struct Seed {
     depth: usize,
-    budget: &'a Cell<usize>,
 }
 
-impl Seed<'_> {
-    fn charge<E: Error>(&self, count: usize) -> Result<(), E> {
-        let remaining = self
-            .budget
-            .get()
-            .checked_sub(count)
-            .ok_or_else(|| E::custom("Closed JSON exceeds its size budget."))?;
-        self.budget.set(remaining);
-        Ok(())
-    }
-    fn child(&self) -> Seed<'_> {
+impl Seed {
+    fn child(&self) -> Seed {
         Seed {
             depth: self.depth + 1,
-            budget: self.budget,
         }
     }
 }
 
-impl<'de> DeserializeSeed<'de> for Seed<'_> {
+impl<'de> DeserializeSeed<'de> for Seed {
     type Value = Value;
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
         if self.depth > MAX_JSON_DEPTH {
             return Err(D::Error::custom("Closed JSON exceeds its nesting budget."));
         }
-        self.charge::<D::Error>(1)?;
         deserializer.deserialize_any(self)
     }
 }
 
-impl<'de> Visitor<'de> for Seed<'_> {
+impl<'de> Visitor<'de> for Seed {
     type Value = Value;
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("bounded JSON without duplicate object keys")
@@ -77,12 +61,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
             .ok_or_else(|| E::custom("Nonfinite JSON number."))
     }
     fn visit_str<E: Error>(self, value: &str) -> Result<Value, E> {
-        self.charge::<E>(value.len())?;
         Ok(Value::String(value.into()))
-    }
-    fn visit_string<E: Error>(self, value: String) -> Result<Value, E> {
-        self.charge::<E>(value.len())?;
-        Ok(Value::String(value))
     }
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
         let mut values = Vec::new();
@@ -94,7 +73,6 @@ impl<'de> Visitor<'de> for Seed<'_> {
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
         let mut values = Map::new();
         while let Some(key) = map.next_key::<String>()? {
-            self.charge::<A::Error>(key.len())?;
             if values.contains_key(&key) {
                 return Err(A::Error::custom("Duplicate JSON object key."));
             }
@@ -102,5 +80,61 @@ impl<'de> Visitor<'de> for Seed<'_> {
             values.insert(key, value);
         }
         Ok(Value::Object(values))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn scalars_and_containers_preserve_complete_json_values() {
+        for (bytes, expected) in [
+            ("null", serde_json::json!(null)),
+            ("true", serde_json::json!(true)),
+            ("false", serde_json::json!(false)),
+            ("-123", serde_json::json!(-123)),
+            ("18446744073709551615", serde_json::json!(u64::MAX)),
+            ("1.25", serde_json::json!(1.25)),
+            (r#""雪""#, serde_json::json!("雪")),
+            (r#""\u96ea\n\"""#, serde_json::json!("雪\n\"")),
+            (
+                r#"[null,true,-3,1.5,"x"]"#,
+                serde_json::json!([null, true, -3, 1.5, "x"]),
+            ),
+            (
+                r#"{"x":[1],"y":{"z":false}}"#,
+                serde_json::json!({"x":[1],"y":{"z":false}}),
+            ),
+        ] {
+            assert_eq!(read(bytes.as_bytes()).unwrap(), expected, "{bytes}");
+        }
+        for bytes in [
+            b"true false".as_slice(),
+            b"[1,]",
+            b"{\"x\":1,}",
+            b"NaN",
+            b"1e999",
+        ] {
+            assert!(read(bytes).is_err(), "{}", String::from_utf8_lossy(bytes));
+        }
+    }
+    #[test]
+    fn nesting_and_duplicate_key_boundaries_are_preserved() {
+        let nested = format!("{}0{}", "[".repeat(64), "]".repeat(64));
+        assert!(read(nested.as_bytes()).is_ok());
+        let deeper = format!("[{nested}]");
+        assert!(
+            read(deeper.as_bytes())
+                .unwrap_err()
+                .to_string()
+                .contains("nesting")
+        );
+        assert!(
+            read(br#"{"x":1,"x":2}"#)
+                .unwrap_err()
+                .to_string()
+                .contains("Duplicate")
+        );
+        assert!(read(b"1e999").is_err());
     }
 }

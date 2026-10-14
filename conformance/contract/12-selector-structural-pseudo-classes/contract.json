@@ -1,0 +1,82 @@
+{
+  "fields": {
+    "first-child": {
+      "select": "li:first-child",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "last-child": {
+      "select": "li:last-child",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "only-child": {
+      "select": "aside > :only-child",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "first-of-type": {
+      "select": "section > p:first-of-type",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "last-of-type": {
+      "select": "section > p:last-of-type",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "only-of-type": {
+      "select": "section > span:only-of-type",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "nth-child": {
+      "select": "li:nth-child(2n+1)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "nth-last-child": {
+      "select": "li:nth-last-child(2)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "nth-of-type": {
+      "select": "section:nth-of-type(2)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "nth-last-of-type": {
+      "select": "section:nth-last-of-type(1)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "nth-keywords": {
+      "select": "li:nth-child(even), li:nth-child(odd)",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "empty": {
+      "select": "p:empty",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "root": {
+      "select": ":root > body > main",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    }
+  }
+}

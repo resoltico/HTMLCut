@@ -49,8 +49,9 @@ pub(crate) fn candidates<'d>(
     let Some(select) = select else {
         return Ok(vec![scope.anchor]);
     };
-    let mut local = selectors::matching::SelectorCaches::default();
-    let caches = select.caches_for_scope(shared, &mut local);
+    shared.relative_selector = Default::default();
+    shared.relative_selector_filter_map = Default::default();
+    let caches = shared;
     let mut found = Vec::new();
     for root in &scope.extent {
         let mut skipped = 0;
@@ -333,8 +334,9 @@ impl<'d> Engine<'d> {
         let mut scope = Scope::one(element);
         if let Some(until) = until {
             let mut next = element.next_sibling();
-            let mut local = selectors::matching::SelectorCaches::default();
-            let caches = until.caches_for_scope(&mut self.caches, &mut local);
+            self.caches.relative_selector = Default::default();
+            self.caches.relative_selector_filter_map = Default::default();
+            let caches = &mut self.caches;
             while let Some(node) = next {
                 self.clock.tick()?;
                 if ElementRef::wrap(node).is_some_and(|e| until.matches(e, element, caches)) {
@@ -398,6 +400,37 @@ mod tests {
             .extract(&Contract::from_json(contract).unwrap())
     }
 
+    #[test]
+    fn predicate_reading_preserves_a_cooperative_time_refusal() {
+        let document = Document::parse(Source::new(b"<p id=x>x</p>"), &Limits::default()).unwrap();
+        let contract = Contract::from_json(r#"{"expect":[{"read":"attr:id"}]}"#).unwrap();
+        let limits = Limits {
+            time_limit: Some(std::time::Duration::ZERO),
+            ..Limits::default()
+        };
+        let mut engine = Engine {
+            document: &document,
+            clock: Clock::new(&limits),
+            output: OutputSize::new(limits.max_output_bytes),
+            caches: Default::default(),
+        };
+        let scope = Scope::one(
+            document
+                .html
+                .select(&scraper::Selector::parse("p").unwrap())
+                .next()
+                .unwrap(),
+        );
+        // A direct predicate call isolates the reading boundary from the preceding extract/candidate checks.
+        let error = match engine.holds(&contract.node.expect[0], &scope) {
+            Err(error) => error,
+            Ok(_) => {
+                panic!("an expired reading must refuse instead of becoming a predicate mismatch")
+            }
+        };
+        assert_eq!(error.error, ErrorCode::LimitExceeded);
+        assert_eq!(error.limit.as_deref(), Some("time"));
+    }
     #[test]
     fn template_contents_stay_outside_every_selection_context() {
         let html = "<main><p id=live>live</p><template id=t><p>inert</p><template><p>nested</p></template><h2>boundary</h2></template><p>end</p><h2>stop</h2></main>";

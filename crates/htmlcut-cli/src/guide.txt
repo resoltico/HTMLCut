@@ -31,18 +31,20 @@ Contract node (a bare selector string means {"select": that string}):
 Predicate: {select, read, equals | pattern, min, max}; the count defaults to exactly 1.
 An attr:NAME predicate requires the attribute even without a value test. Template
 contents stay outside selection; reading a template itself returns its contents.
+Selectors: CSS structural selectors, :not/:is/:where/:has, :nth-*; no :checked, :link
+or :lang (use attributes). Patterns: Rust regex, Unicode, no look-around.
 
 Options:
   --base-url URL          base for url:NAME readings; a <base href> is honoured
   --encoding LABEL        override the encoding the document declares
-  -o, --output FILE       write atomically; preserve existing permissions or use umask
+  -o, --output FILE       write atomically; - is stdout; follows symlinks
   -r, --raw               strings without JSON quoting, one per line
   --timeout SECONDS       default 10
   --max-nodes N           default 2000000
   --max-input-bytes N     default 67108864
   --max-output-bytes N    default 67108864
   --help, -h, help        print this guide
-  --version, -V          print the engine version
+  --version, -V           print the engine version
 
 Exit status: 0 success, 2 invalid arguments or contract, 3 refused (the document
 does not satisfy the contract), 4 limit exceeded, 5 input or output failure,

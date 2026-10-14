@@ -3,7 +3,7 @@
 use crate::cli::{self, Command, Common};
 use htmlcut_core::{Contract, Document, Error, ErrorCode, OutlineOptions, Source, Value};
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{self, IsTerminal, Read, Write},
     path::Path,
     sync::{
@@ -162,7 +162,9 @@ fn input(path: Option<&Path>, maximum: usize) -> Result<Vec<u8>, Error> {
     }
     match path {
         None => read(&mut io::stdin().lock(), maximum, Path::new("-"), false),
-        Some(path) if path == Path::new("-") => read(&mut io::stdin().lock(), maximum, path, false),
+        Some(path) if path.as_os_str() == "-" => {
+            read(&mut io::stdin().lock(), maximum, path, false)
+        }
         Some(path) => read_file(path, maximum, false),
     }
 }
@@ -201,57 +203,242 @@ fn io_error(code: ErrorCode, path: &Path, detail: io::Error) -> Error {
     error.detail = Some(detail);
     error
 }
-pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Error> {
-    match destination {
-        None => {
-            let mut stdout = io::stdout().lock();
-            match stdout.write_all(bytes).and_then(|()| stdout.flush()) {
-                Ok(()) => Ok(()),
-                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
-                Err(error) => Err(io_error(ErrorCode::OutputUnwritable, Path::new("-"), error)),
-            }
-        }
-        Some(path) => {
-            let parent = path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| Path::new("."));
-            #[cfg(unix)]
-            let mut builder = tempfile::Builder::new();
-            #[cfg(not(unix))]
-            let builder = tempfile::Builder::new();
-            #[cfg(unix)]
-            let existing_permissions = {
-                use std::os::unix::fs::PermissionsExt;
-                match std::fs::metadata(path) {
-                    Ok(metadata) => Some(metadata.permissions()),
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                        builder.permissions(std::fs::Permissions::from_mode(0o666));
-                        None
-                    }
-                    Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),
-                }
-            };
-            let mut temporary = builder
-                .tempfile_in(parent)
-                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            temporary
-                .write_all(bytes)
-                .and_then(|()| temporary.flush())
-                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            #[cfg(unix)]
-            if let Some(permissions) = existing_permissions {
-                temporary
-                    .as_file()
-                    .set_permissions(permissions)
-                    .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            }
-            temporary
-                .persist(path)
-                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e.error))?;
-            Ok(())
+fn write_output(writer: &mut impl Write, bytes: &[u8], path: &Path) -> Result<(), Error> {
+    match writer.write_all(bytes).and_then(|()| writer.flush()) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(io_error(ErrorCode::OutputUnwritable, path, error)),
+    }
+}
+
+#[cfg(unix)]
+enum DescriptorTarget {
+    Current(std::os::fd::RawFd),
+    Path,
+}
+
+// Foreign process descriptor names are path streams, never atomic file destinations.
+fn descriptor_alias(path: &Path) -> bool {
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+    #[cfg(unix)]
+    {
+        descriptor_target(path).is_some()
+    }
+}
+
+#[cfg(unix)]
+fn descriptor_target(path: &Path) -> Option<DescriptorTarget> {
+    use std::os::unix::ffi::OsStrExt;
+    // Path components discard terminal separators and dots, but the OS must
+    // still require a directory at these names rather than duplicate a stream.
+    let spelling = path.as_os_str().as_bytes();
+    if spelling.ends_with(b"/") || spelling.ends_with(b"/.") {
+        return None;
+    }
+    let parent = path.parent()?;
+    let Ok(parent) = std::fs::canonicalize(if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    }) else {
+        return None;
+    };
+    let name = path.file_name().and_then(|s| s.to_str())?;
+    if parent == Path::new("/dev") && matches!(name, "stdin" | "stdout" | "stderr") {
+        return Some(DescriptorTarget::Current(match name {
+            "stdin" => 0,
+            "stdout" => 1,
+            _ => 2,
+        }));
+    }
+    if !name.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let current_namespace = parent == Path::new("/dev/fd")
+        || ["/proc/self/fd", "/proc/thread-self/fd"]
+            .iter()
+            .any(|namespace| {
+                std::fs::canonicalize(namespace).is_ok_and(|current| parent == current)
+            });
+    if current_namespace {
+        return Some(
+            name.parse::<std::os::fd::RawFd>()
+                .ok()
+                .filter(|fd| fd.to_string() == name)
+                .map_or(DescriptorTarget::Path, DescriptorTarget::Current),
+        );
+    }
+    let parts = parent.iter().filter_map(|p| p.to_str()).collect::<Vec<_>>();
+    matches!(
+        parts.as_slice(),
+        ["/", "proc", _, "fd"] | ["/", "proc", _, "task", _, "fd"]
+    )
+    .then_some(DescriptorTarget::Path)
+}
+
+#[cfg(unix)]
+fn duplicate_output_descriptor(
+    fd: std::os::fd::RawFd,
+) -> io::Result<filedescriptor::FileDescriptor> {
+    struct DescriptorNumber(std::os::fd::RawFd);
+    impl filedescriptor::AsRawFileDescriptor for DescriptorNumber {
+        fn as_raw_file_descriptor(&self) -> filedescriptor::RawFileDescriptor {
+            self.0
         }
     }
+    filedescriptor::FileDescriptor::dup(&DescriptorNumber(fd)).map_err(|error| match error {
+        filedescriptor::Error::Dup { source, .. }
+        | filedescriptor::Error::Fcntl(source)
+        | filedescriptor::Error::Cloexec(source) => source,
+        other => io::Error::other(other),
+    })
+}
+
+fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
+    let mut current = path.to_path_buf();
+    let mut visited = std::collections::HashSet::new();
+    loop {
+        if descriptor_alias(&current) {
+            return Ok(current);
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                // Resolve the parent with the OS rather than collapsing `..` across
+                // symlinks. The identity stays stable even if relative links grow the path.
+                let parent = current
+                    .parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                let identity = (
+                    std::fs::canonicalize(parent)?,
+                    current.file_name().map(|name| name.to_owned()),
+                );
+                if !visited.insert(identity) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "symbolic link cycle",
+                    ));
+                }
+                let target = std::fs::read_link(&current)?;
+                current = if target.is_absolute() {
+                    target
+                } else {
+                    current
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(target)
+                };
+            }
+            Ok(_) => return Ok(current),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(current),
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Error> {
+    let Some(path) = destination.filter(|path| path.as_os_str() != "-") else {
+        return write_output(&mut io::stdout().lock(), bytes, Path::new("-"));
+    };
+    #[cfg(unix)]
+    let resolved =
+        resolve_output_links(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(unix)]
+    if let Some(DescriptorTarget::Current(fd)) = descriptor_target(&resolved) {
+        let mut stream = duplicate_output_descriptor(fd)
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        // Manual link resolution identifies the stream but cannot admit a path
+        // beyond the kernel's traversal limit. Lookup without reopening it.
+        std::fs::metadata(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        return write_output(&mut stream, bytes, path);
+    }
+    let (resolved, permissions) = match OpenOptions::new().write(true).open(path) {
+        Ok(mut file) => {
+            // Windows metadata attributes do not distinguish disk files from
+            // connected pipes. Inspect the existing handle before any path reopen.
+            #[cfg(windows)]
+            let requires_filesystem_metadata = winapi_util::file::typ(&file)
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+                .is_disk();
+            #[cfg(not(windows))]
+            let requires_filesystem_metadata = true;
+            if !requires_filesystem_metadata {
+                return write_output(&mut file, bytes, path);
+            }
+            let metadata = file
+                .metadata()
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            if metadata.is_dir() {
+                return Err(io_error(
+                    ErrorCode::OutputUnwritable,
+                    path,
+                    io::Error::new(io::ErrorKind::IsADirectory, "destination is a directory"),
+                ));
+            }
+            if !metadata.is_file() {
+                return write_output(&mut file, bytes, path);
+            }
+            #[cfg(not(unix))]
+            let resolved = resolve_output_links(path)
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            if descriptor_alias(&resolved) {
+                return write_output(&mut file, bytes, path);
+            }
+            let resolved = std::fs::canonicalize(resolved)
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            (resolved, Some(metadata.permissions()))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            #[cfg(not(unix))]
+            let resolved = resolve_output_links(path)
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            if descriptor_alias(&resolved) {
+                return Err(io_error(ErrorCode::OutputUnwritable, path, error));
+            }
+            (resolved, None)
+        }
+        Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),
+    };
+    let parent = resolved
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    #[cfg(unix)]
+    let mut builder = tempfile::Builder::new();
+    #[cfg(not(unix))]
+    let builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if permissions.is_none() {
+            builder.permissions(std::fs::Permissions::from_mode(0o666));
+        }
+    }
+    let mut temporary = builder
+        .tempfile_in(parent)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    temporary
+        .write_all(bytes)
+        .and_then(|()| temporary.flush())
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(unix)]
+    if let Some(permissions) = permissions {
+        use std::os::unix::fs::PermissionsExt;
+        temporary
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(permissions.mode() & 0o777))
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    }
+    #[cfg(not(unix))]
+    let _ = permissions;
+    temporary
+        .persist(resolved)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e.error))?;
+    Ok(())
 }
 
 struct Watchdog {
@@ -315,6 +502,173 @@ fn await_watchdog() -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn output_under_a_regular_file_refuses_and_preserves_the_parent() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("file");
+        std::fs::write(&file, b"unchanged").unwrap();
+        let child = file.join("child");
+        let expected = std::fs::symlink_metadata(&child).unwrap_err();
+        if expected.kind() == io::ErrorKind::NotFound {
+            // Windows reports PATH_NOT_FOUND here. Resolution does not promise
+            // that a candidate's parent is a directory; publication checks that.
+            assert_eq!(resolve_output_links(&child).unwrap(), child);
+        } else {
+            let error = resolve_output_links(&child).unwrap_err();
+            assert_eq!(error.kind(), expected.kind());
+            assert_eq!(error.raw_os_error(), expected.raw_os_error());
+        }
+        let error = publish(b"new", Some(&child)).unwrap_err();
+        assert_eq!(error.error, ErrorCode::OutputUnwritable);
+        assert_eq!(
+            error.file.as_deref(),
+            Some(child.to_string_lossy().as_ref())
+        );
+        assert!(error.detail.is_some());
+        assert_eq!(std::fs::read(file).unwrap(), b"unchanged");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+    #[test]
+    fn output_ignores_only_broken_pipe_from_writing_or_flushing() {
+        struct FailingWriter {
+            kind: io::ErrorKind,
+            on_flush: bool,
+        }
+        impl Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.on_flush {
+                    Ok(bytes.len())
+                } else {
+                    Err(io::Error::new(self.kind, "destination failure"))
+                }
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                if self.on_flush {
+                    Err(io::Error::new(self.kind, "destination failure"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        for on_flush in [false, true] {
+            let path = Path::new("output.json");
+            let mut writer = FailingWriter {
+                kind: io::ErrorKind::BrokenPipe,
+                on_flush,
+            };
+            write_output(&mut writer, b"complete", path).unwrap();
+            writer.kind = io::ErrorKind::PermissionDenied;
+            let error = write_output(&mut writer, b"complete", path).unwrap_err();
+            assert_eq!(error.error, ErrorCode::OutputUnwritable);
+            assert_eq!(error.file.as_deref(), Some("output.json"));
+            assert_eq!(error.detail.as_deref(), Some("destination failure"));
+        }
+    }
+
+    #[test]
+    fn ordinary_output_names_are_not_descriptor_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["stdout", "stdin", "stderr", "1", "123"] {
+            let path = directory.path().join(name);
+            std::fs::write(&path, b"ordinary file").unwrap();
+            assert!(!descriptor_alias(&path), "{path:?}");
+        }
+        let ordinary_fd_directory = directory.path().join("fd");
+        std::fs::create_dir(&ordinary_fd_directory).unwrap();
+        assert!(!descriptor_alias(&ordinary_fd_directory.join("1")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn descriptor_names_require_the_stream_namespace_and_numeric_fd_names() {
+        for path in ["/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/fd/1"] {
+            assert!(descriptor_alias(Path::new(path)), "{path}");
+        }
+        for path in ["/dev/null", "/dev/1", "/dev/fd/not-a-descriptor"] {
+            assert!(!descriptor_alias(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn panic_unwinding_cancels_the_watchdog_before_delayed_error_handling() {
+        const CHILD: &str = "HTMLCUT_WATCHDOG_PANIC_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            std::panic::set_hook(Box::new(|_| {}));
+            let error = crate::guarded(|| {
+                let _watchdog = Watchdog::new(Duration::from_millis(250));
+                panic!("extraction interrupted before completion");
+            })
+            .unwrap_err();
+            // The real timer must remain cancelled while error handling continues.
+            std::thread::sleep(Duration::from_millis(750));
+            io::stderr()
+                .lock()
+                .write_all(&error.to_json_line())
+                .unwrap();
+            std::process::exit(error.error.exit_status());
+        }
+
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "run::tests::panic_unwinding_cancels_the_watchdog_before_delayed_error_handling",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if child.try_wait().unwrap().is_some() {
+                break;
+            }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                let output = child.wait_with_output().unwrap();
+                panic!("panic unwinding did not finish: {output:?}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(output.status.code(), Some(6), "{output:?}");
+        assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+        let diagnostic: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(diagnostic["error"], "internal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_link_resolution_checks_the_target_after_forty_links() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target");
+        let mut link = target.clone();
+        for index in 0..40 {
+            let next = directory.path().join(format!("link-{index}"));
+            symlink(link.file_name().unwrap(), &next).unwrap();
+            link = next;
+        }
+        assert_eq!(resolve_output_links(&link).unwrap(), target);
+        std::fs::write(&target, b"existing").unwrap();
+        assert_eq!(resolve_output_links(&link).unwrap(), target);
+        assert_eq!(std::fs::read(target).unwrap(), b"existing");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_link_cycles_with_growing_relative_paths_are_refused() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("child")).unwrap();
+        let link = directory.path().join("cycle");
+        symlink("child/../cycle", &link).unwrap();
+        let error = resolve_output_links(&link).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.to_string(), "symbolic link cycle");
+    }
+
     #[test]
     fn only_one_publication_or_timeout_claim_wins() {
         for _ in 0..100 {

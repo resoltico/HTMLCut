@@ -11,9 +11,6 @@ authors.workspace = true
 repository.workspace = true
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots."
 
-[features]
-default = []
-
 [dependencies]
 cssparser.workspace = true
 selectors.workspace = true
@@ -24,7 +21,6 @@ regex.workspace = true
 html5ever.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]

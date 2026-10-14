@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #![no_main]
-use htmlcut_core::{Contract, Document, Limits, Source};
+use htmlcut_core::{Contract, Document, Limits, OutlineOptions, Source};
 use libfuzzer_sys::fuzz_target;
 fuzz_target!(|bytes: &[u8]| {
     if bytes.len() < 2 {
@@ -21,5 +21,6 @@ fuzz_target!(|bytes: &[u8]| {
     limits.time_limit = Some(std::time::Duration::from_millis(50));
     if let Ok(document) = Document::parse(Source::new(document), &limits) {
         let _ = document.extract(&contract);
+        let _ = document.outline(&OutlineOptions::default());
     }
 });

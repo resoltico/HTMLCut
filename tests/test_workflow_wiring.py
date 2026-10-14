@@ -7,11 +7,39 @@ import os
 import subprocess
 import tempfile
 import unittest
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_fuzz_seeds_keep_exact_bytes_in_checkouts(self):
+        seeds = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "fuzz/seeds").rglob("*") if path.is_file())
+        self.assertTrue(seeds, "retained document seeds must be discovered")
+        values = subprocess.check_output(["git", "check-attr", "-z", "text", "diff", "--", *seeds], cwd=ROOT).decode().split("\0")[:-1]
+        self.assertEqual(len(values), 6 * len(seeds))
+        for path, attribute, value in zip(values[::3], values[1::3], values[2::3]):
+            self.assertEqual(value, "unset", f"{path}: {attribute} must preserve byte inputs")
+
+    def test_fuzz_targets_match_the_smoke_and_documentation(self):
+        manifest = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text())
+        targets = {entry["name"] for entry in manifest["bin"]}
+        script = (ROOT / "scripts/focused-smoke.sh").read_text()
+        shell_targets = set(re.search(r"^for target in ([^;\n]+); do", script, re.M).group(1).split())
+        documented = set(re.findall(r"`([a-z][a-z0-9_]*)`", (ROOT / "fuzz/README.md").read_text()))
+        self.assertEqual(targets, shell_targets)
+        self.assertEqual(targets, documented)
+        self.assertNotIn("--features", script)
+        self.assertIn("document.outline", (ROOT / "fuzz/fuzz_targets/extract.rs").read_text())
+
+    def test_cargo_configuration_keeps_each_checkout_build_isolated(self):
+        for name in ["config", "config.toml"]:
+            path = ROOT / ".cargo" / name
+            if path.exists():
+                config = tomllib.loads(path.read_text())
+                self.assertFalse({"target-dir", "build-dir"} & config.get("build", {}).keys(),
+                                 f"{path}: build routing belongs in personal environment settings")
+
     def test_ci_exports_complete_matrix_as_one_action_output(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
         step = text.split("      - id: matrix\n", 1)[1].split("\n  linux-maintainer:", 1)[0]

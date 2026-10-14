@@ -70,3 +70,40 @@ pub(crate) const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_JSON_DEPTH: usize = 64;
 pub(crate) const MAX_RECORD_FIELDS: usize = 64;
 pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn expired_clocks_refuse_at_checks_and_within_the_iteration_cadence() {
+        let limits = Limits {
+            time_limit: Some(std::time::Duration::ZERO),
+            ..Limits::default()
+        };
+        let clock = Clock::new(&limits);
+        let error = clock.check().unwrap_err();
+        assert_eq!(error.limit.as_deref(), Some("time"));
+        assert_eq!(error.bound, Some(0.0.into()));
+        let clock = Clock::new(&limits);
+        assert!((0..1024).any(|_| clock.tick().is_err()));
+        // Reading the clock once is insufficient: expiration may happen after
+        // arbitrarily much admitted work, so the cadence must recur.
+        let mut clock = Clock::new(&Limits {
+            time_limit: None,
+            ..Limits::default()
+        });
+        for _ in 0..1024 {
+            clock.tick().unwrap();
+        }
+        clock.limit = Some(std::time::Duration::ZERO);
+        assert!((0..1024).any(|_| clock.tick().is_err()));
+        let unlimited = Clock::new(&Limits {
+            time_limit: None,
+            ..Limits::default()
+        });
+        for _ in 0..2048 {
+            unlimited.tick().unwrap();
+        }
+        unlimited.check().unwrap();
+    }
+}

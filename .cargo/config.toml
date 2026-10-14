@@ -1,4 +1,0 @@
-# SPDX-License-Identifier: MPL-2.0
-[build]
-target-dir = "../.htmlcut-artifacts/target"
-build-dir = "../.htmlcut-artifacts/build"
