@@ -42,7 +42,12 @@ fn entry() -> Result<(), Error> {
             let mut command = cli::Cli::command();
             if let Some(subcommand) = command.find_subcommand_mut(name) {
                 let mut help = subcommand.render_long_help().to_string();
-                help.push_str("\n\nFILE is a local snapshot; '-' is standard input. See htmlcut --help for workflow examples.\n");
+                if name == "schema" {
+                    help.push_str("\n\nSchema is written to stdout by default; -o PATH writes to a file and -o - selects stdout.");
+                } else {
+                    help.push_str("\n\nFILE is a local snapshot; '-' is standard input.");
+                }
+                help.push_str(" See htmlcut --help for workflow examples.\n");
                 return run::publish(help.as_bytes(), None);
             }
         }

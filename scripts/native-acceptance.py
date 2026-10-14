@@ -73,6 +73,10 @@ def main():
                 if command == 'schema':
                     assert b'--output' in result.stdout and b'--timeout' in result.stdout
                     assert b'--max-nodes' not in result.stdout and b'--raw' not in result.stdout
+                    assert b'-o - selects stdout' in result.stdout
+                    assert b'FILE is a local snapshot' not in result.stdout
+                else:
+                    assert b"FILE is a local snapshot; '-' is standard input." in result.stdout
             result = run(['schema', '-o', destination])
             assert result.returncode == 0 and not result.stdout and json.loads(destination.read_bytes())['$defs'], result
             return {'raw_refusal': error}
@@ -221,6 +225,205 @@ def main():
             check('fd0-aliases-and-unconnected-fifos', fd_conflicts_and_fifos)
 
         if os.name == 'nt':
+            def publication_without_parent_listing():
+                # All operations run in one owned helper process. Its children
+                # inherit disabled bypass privileges; Python/product contexts
+                # are never changed. The script stays outside the denied parent.
+                script = root / 'parent-listing-control.ps1'
+                parent = root / 'delivery-parent'
+                alias = root / 'delivery-alias'
+                policy_backup = root / 'delivery-parent-policy.bin'
+                script.write_text(r'''
+param([string]$Binary,[string]$Page,[string]$Parent,[string]$Alias,[string]$PolicyBackup)
+$ErrorActionPreference='Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class ParentAccessControl {
+    [StructLayout(LayoutKind.Sequential)] struct Luid { public uint Low; public int High; }
+    [StructLayout(LayoutKind.Sequential)] struct LuidAttributes { public Luid Luid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)] struct Privileges { public uint Count; public LuidAttributes Entry; }
+    [StructLayout(LayoutKind.Sequential)] struct FileTime { public uint Low; public uint High; }
+    [StructLayout(LayoutKind.Sequential)] struct FileInfo { public uint Attributes; public FileTime Creation,Access,Write; public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr pointer);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool MoveFileExW(string source,string target,uint flags);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateFileW(string path,uint access,uint share,IntPtr attributes,uint creation,uint flags,IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(IntPtr file,out FileInfo information);
+    [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool LookupPrivilegeValueW(string system,string name,out Luid luid);
+    [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,IntPtr buffer,uint length,out uint required);
+    [DllImport("advapi32.dll", SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr token,bool all,ref Privileges state,uint length,IntPtr previous,IntPtr required);
+    [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(IntPtr handle,int type,uint information,IntPtr owner,IntPtr group,IntPtr dacl,IntPtr sacl,out IntPtr descriptor);
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool ConvertSecurityDescriptorToStringSecurityDescriptorW(IntPtr descriptor,uint revision,uint information,out IntPtr text,IntPtr size);
+    static void Require(bool success) { if(!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+    public static int DisableExisting(string name) {
+        IntPtr token=IntPtr.Zero,buffer=IntPtr.Zero;
+        try {
+            Require(OpenProcessToken(GetCurrentProcess(),0x28,out token));
+            Luid luid; Require(LookupPrivilegeValueW(null,name,out luid));
+            uint required; GetTokenInformation(token,3,IntPtr.Zero,0,out required);
+            buffer=Marshal.AllocHGlobal((int)required);
+            Require(GetTokenInformation(token,3,buffer,required,out required));
+            uint count=(uint)Marshal.ReadInt32(buffer); int prior=-1;
+            for(int index=0;index<count;index++) {
+                LuidAttributes entry=(LuidAttributes)Marshal.PtrToStructure(IntPtr.Add(buffer,4+index*Marshal.SizeOf(typeof(LuidAttributes))),typeof(LuidAttributes));
+                if(entry.Luid.Low==luid.Low&&entry.Luid.High==luid.High) prior=(int)entry.Attributes;
+            }
+            if(prior<0) return -1; // Already absent; never assign a privilege.
+            Privileges state=new Privileges(); state.Count=1; state.Entry.Luid=luid; state.Entry.Attributes=0;
+            Require(AdjustTokenPrivileges(token,false,ref state,0,IntPtr.Zero,IntPtr.Zero));
+            int error=Marshal.GetLastWin32Error(); if(error!=0) throw new Win32Exception(error);
+            Require(GetTokenInformation(token,3,buffer,required,out required));
+            count=(uint)Marshal.ReadInt32(buffer);
+            for(int index=0;index<count;index++) {
+                LuidAttributes entry=(LuidAttributes)Marshal.PtrToStructure(IntPtr.Add(buffer,4+index*Marshal.SizeOf(typeof(LuidAttributes))),typeof(LuidAttributes));
+                if(entry.Luid.Low==luid.Low&&entry.Luid.High==luid.High&&(entry.Attributes&2)!=0) throw new InvalidOperationException("Bypass privilege remained enabled");
+            }
+            return prior;
+        } finally { if(buffer!=IntPtr.Zero) Marshal.FreeHGlobal(buffer); if(token!=IntPtr.Zero) CloseHandle(token); }
+    }
+    public static bool PrivilegeEnabled(IntPtr process,string name) {
+        IntPtr token=IntPtr.Zero,buffer=IntPtr.Zero;
+        try {
+            Require(OpenProcessToken(process,8,out token));
+            Luid luid;Require(LookupPrivilegeValueW(null,name,out luid));
+            uint required;GetTokenInformation(token,3,IntPtr.Zero,0,out required);
+            buffer=Marshal.AllocHGlobal((int)required);Require(GetTokenInformation(token,3,buffer,required,out required));
+            uint count=(uint)Marshal.ReadInt32(buffer);
+            for(int index=0;index<count;index++) {
+                LuidAttributes entry=(LuidAttributes)Marshal.PtrToStructure(IntPtr.Add(buffer,4+index*Marshal.SizeOf(typeof(LuidAttributes))),typeof(LuidAttributes));
+                if(entry.Luid.Low==luid.Low&&entry.Luid.High==luid.High) return (entry.Attributes&2)!=0;
+            }
+            return false;
+        } finally {if(buffer!=IntPtr.Zero) Marshal.FreeHGlobal(buffer);if(token!=IntPtr.Zero) CloseHandle(token);}
+    }
+    public static void Replace(string source,string target) { Require(MoveFileExW(source,target,1)); }
+    public static int GenericParentReadError(string path) {
+        IntPtr file=CreateFileW(path,0x80000000,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero);
+        if(file==new IntPtr(-1)) return Marshal.GetLastWin32Error();
+        CloseHandle(file);return 0;
+    }
+    public static string ParentIdentity(string path) {
+        IntPtr file=CreateFileW(path,0,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero);
+        if(file==new IntPtr(-1)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        try {FileInfo info;Require(GetFileInformationByHandle(file,out info));return info.Volume+":"+info.IndexHigh+":"+info.IndexLow;}
+        finally {CloseHandle(file);}
+    }
+    public static string Policy(string path) {
+        IntPtr file=IntPtr.Zero,descriptor=IntPtr.Zero,text=IntPtr.Zero;
+        try {
+            file=CreateFileW(path,0x20000,7,IntPtr.Zero,3,0,IntPtr.Zero);
+            if(file==new IntPtr(-1)) {file=IntPtr.Zero;throw new Win32Exception(Marshal.GetLastWin32Error());}
+            uint status=GetSecurityInfo(file,1,0x17,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,out descriptor);
+            if(status!=0) throw new Win32Exception((int)status);
+            Require(ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor,1,0x17,out text,IntPtr.Zero));
+            return Marshal.PtrToStringUni(text);
+        } finally { if(text!=IntPtr.Zero) LocalFree(text); if(descriptor!=IntPtr.Zero) LocalFree(descriptor); if(file!=IntPtr.Zero) CloseHandle(file); }
+    }
+}
+'@
+$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
+$context=[ordered]@{sid=$sid.Value;backup_before=[ParentAccessControl]::DisableExisting('SeBackupPrivilege');restore_before=[ParentAccessControl]::DisableExisting('SeRestorePrivilege');backup_enabled=$false;restore_enabled=$false}
+New-Item -ItemType Directory -Path $Parent | Out-Null
+$saved=Get-Acl -LiteralPath $Parent
+[System.IO.File]::WriteAllBytes($PolicyBackup,$saved.GetSecurityDescriptorBinaryForm())
+function ParentRule([int]$Rights) {
+    $acl=[System.Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($PolicyBackup))
+    $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]$Rights,[System.Security.AccessControl.InheritanceFlags]::None,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Deny)
+    $acl.AddAccessRule($rule)
+    Set-Acl -LiteralPath $Parent -AclObject $acl
+}
+function Cli([string]$Path) {
+    $info=[System.Diagnostics.ProcessStartInfo]::new()
+    $info.FileName=$Binary;$info.Arguments=('get h1 "{0}" -o "{1}"' -f $Page,$Path)
+    $info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+    $child=[System.Diagnostics.Process]::Start($info)
+    try {
+        $privileges=[ordered]@{backup_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeBackupPrivilege');restore_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeRestorePrivilege');traverse_bypass_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeChangeNotifyPrivilege')}
+        if(!$child.WaitForExit(4000)) {$child.Kill();throw 'Delivered binary exceeded external test deadline'}
+        [ordered]@{path=$Path;exit=$child.ExitCode;stdout=$child.StandardOutput.ReadToEnd();stderr=$child.StandardError.ReadToEnd();privileges=$privileges}
+    } finally {$child.Dispose()}
+}
+$results=[ordered]@{context=$context;positive=@();negative=@()}
+try {
+    $existing=Join-Path $Parent 'existing.json';$absent=Join-Path $Parent 'absent.json';$osControl=Join-Path $Parent 'os-control.json'
+    [System.IO.File]::WriteAllText($existing,'old')
+    ParentRule 1 # ListDirectory only; no child inheritance.
+    try {[System.IO.Directory]::GetFileSystemEntries($Parent) | Out-Null;throw 'Directory enumeration unexpectedly succeeded'} catch [System.UnauthorizedAccessException] {}
+    [System.IO.File]::WriteAllText($osControl,'old')
+    $replacement=Join-Path $Parent 'os-stage.json'
+    [System.IO.File]::WriteAllText($replacement,'os-complete')
+    [ParentAccessControl]::Replace($replacement,$osControl)
+    if([System.IO.File]::ReadAllText($osControl)-ne'os-complete') {throw 'Native atomic replacement failed'}
+    $writer=[System.IO.File]::Open($osControl,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Write);$writer.Dispose()
+    $results.native_create_write_open_replace=$true;$results.enumeration_denied=$true
+    $results.generic_parent_read_error=[ParentAccessControl]::GenericParentReadError($Parent)
+    $results.zero_access_parent_identity=[ParentAccessControl]::ParentIdentity($Parent)
+    $existingPolicy=[ParentAccessControl]::Policy($existing);$defaultPolicy=[ParentAccessControl]::Policy($osControl)
+    New-Item -ItemType Junction -Path $Alias -Target $Parent | Out-Null
+    $results.zero_access_alias_identity=[ParentAccessControl]::ParentIdentity($Alias)
+    foreach($path in @($existing,$absent,(Join-Path $Alias 'existing.json'))) {$results.positive+=Cli $path}
+    $results.existing_policy_before=$existingPolicy;$results.existing_policy_after=[ParentAccessControl]::Policy($existing)
+    $results.default_policy=$defaultPolicy
+    if(Test-Path -LiteralPath $absent) {$results.absent_policy=[ParentAccessControl]::Policy($absent)}
+    $results.existing_bytes=[System.IO.File]::ReadAllText($existing)
+    if(Test-Path -LiteralPath $absent) {$results.absent_bytes=[System.IO.File]::ReadAllText($absent)}
+    foreach($rights in @(2,32)) {
+        if($rights-eq32) {$results.traverse_before=[ParentAccessControl]::DisableExisting('SeChangeNotifyPrivilege');$results.traverse_bypass_enabled=$false}
+        ParentRule $rights
+        $osDenied=Join-Path $Parent ('os-denied-'+$rights+'.json')
+        try {[System.IO.File]::WriteAllText($osDenied,'must-refuse');throw "Native create unexpectedly allowed under deny $rights"} catch [System.UnauthorizedAccessException] {}
+        foreach($name in @('existing.json',('denied-'+$rights+'.json'))) {
+            $path=Join-Path $Parent $name
+            $entry=Cli $path;$entry.native_create_refused=$true;$entry.denied_parent_right=$rights;$results.negative+=$entry
+        }
+    }
+} finally {
+    Set-Acl -LiteralPath $Parent -AclObject $saved
+    if(Test-Path -LiteralPath $Alias) {Remove-Item -LiteralPath $Alias -Force}
+}
+$results.existing_bytes_after_negatives=[System.IO.File]::ReadAllText((Join-Path $Parent 'existing.json'))
+$results.inventory=@([System.IO.Directory]::GetFileSystemEntries($Parent) | ForEach-Object {[System.IO.Path]::GetFileName($_)} | Sort-Object)
+$results | ConvertTo-Json -Depth 8 -Compress
+''')
+                try:
+                    result = subprocess.run(
+                        ['powershell.exe', '-NoProfile', '-File', str(script), str(binary), str(page),
+                         str(parent), str(alias), str(policy_backup)],
+                        capture_output=True, text=True, timeout=25)
+                    assert result.returncode == 0, (result.stdout, result.stderr)
+                    details = json.loads(result.stdout)
+                    assert details['enumeration_denied'] and details['native_create_write_open_replace'], details
+                    assert details['generic_parent_read_error'] == 5, details
+                    assert details['zero_access_parent_identity'] == details['zero_access_alias_identity'], details
+                    assert all(not item['privileges']['backup_enabled'] and not item['privileges']['restore_enabled']
+                               for item in details['positive'] + details['negative']), details
+                    assert all(not item['privileges']['traverse_bypass_enabled']
+                               for item in details['negative'] if item['denied_parent_right'] == 32), details
+                    assert len(details['positive']) == 3 and all(
+                        item['exit'] == 0 and not item['stdout'] and not item['stderr']
+                        for item in details['positive']), details
+                    assert details['existing_policy_after'] == details['existing_policy_before'], details
+                    assert details['absent_policy'] == details['default_policy'], details
+                    assert details['existing_bytes'] == details['absent_bytes'] == '"complete"\n', details
+                    assert len(details['negative']) == 4 and all(
+                        item['exit'] == 5 and not item['stdout']
+                        and json.loads(item['stderr'])['error'] == 'output_unwritable'
+                        for item in details['negative']), details
+                    assert details['existing_bytes_after_negatives'] == '"complete"\n', details
+                    assert details['inventory'] == ['absent.json', 'existing.json', 'os-control.json'], details
+                    return details
+                finally:
+                    if alias.exists():
+                        os.rmdir(alias)
+                    if parent.exists():
+                        shutil.rmtree(parent)
+            check('publication-without-directory-listing', publication_without_parent_listing)
+
             def named_pipe_lifetime():
                 outcomes=[]
                 for reading in [True,False]:
