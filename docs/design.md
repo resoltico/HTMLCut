@@ -110,9 +110,12 @@ uses its own default 10 s invocation deadline and ordinary publication.
 
 Staging ownership is reserved before exclusive creation, confirmed before result bytes,
 and checked on creation return. Timeout cleanup runs separately from hard termination;
-only confirmed owned stages are removed. Normal local paths clean up; extraordinary stuck
-filesystem syscalls may exceed the cleanup grace and leave a candidate/stage, named in
-available diagnostics. Unconfirmed creation collisions are never deleted.
+only confirmed owned stages are removed. Darwin directory handles request search access,
+so inherited listing denials do not prevent ACL preparation or cleanup. A creation that
+succeeds but cannot return a confirmable handle/identity (including inherited denial of
+search access) may leave an empty unconfirmed directory; diagnostics name it. Extraordinary
+stuck filesystem syscalls may exceed the cleanup grace and leave a candidate/stage, named
+in available diagnostics. Unconfirmed creation collisions are never deleted.
 
 ## Errors
 

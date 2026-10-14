@@ -776,7 +776,17 @@ fn create_stage(
         } else {
             crate::authorization::stage_options().open(candidate)
         }?;
-        let id = identity(&file)?;
+        let id = identity(&file).map_err(|error| {
+            #[cfg(windows)]
+            let _ = crate::authorization::remove_stage(&file);
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "Cannot confirm created staging identity at {}: {error}; unconfirmed Unix objects are left untouched",
+                    candidate.display()
+                ),
+            )
+        })?;
         #[cfg(windows)]
         {
             match file.try_clone() {
@@ -847,8 +857,18 @@ fn create_private_directory(
             watchdog.check();
         }
         std::fs::create_dir(candidate)?;
-        let handle = File::open(candidate)?;
-        ownership.created_identity.set(identity(&handle)?).unwrap();
+        let handle = crate::authorization::open_private_directory(candidate).map_err(|error| {
+            io::Error::new(error.kind(), format!(
+                "Cannot open created staging directory {}: {error}; unconfirmed directory may remain and is not removed by pathname",
+                candidate.display()
+            ))
+        })?;
+        ownership.created_identity.set(identity(&handle).map_err(|error| {
+            io::Error::new(error.kind(), format!(
+                "Cannot confirm created staging directory {}: {error}; unconfirmed directory may remain",
+                candidate.display()
+            ))
+        })?).unwrap();
         let owned = PrivateDirectory {
             handle,
             ownership: Arc::clone(&ownership),

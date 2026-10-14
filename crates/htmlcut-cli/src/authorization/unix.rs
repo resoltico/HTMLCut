@@ -29,6 +29,20 @@ pub(crate) fn identity_path(path: &Path) -> io::Result<Identity> {
         inode: m.ino(),
     })
 }
+pub(crate) fn open_private_directory(path: &Path) -> io::Result<File> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Inherited denial of directory listing must not prevent the owner
+        // from obtaining the handle needed to remove that inherited ACL.
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_SEARCH | libc::O_NOFOLLOW)
+            .open(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    File::open(path)
+}
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Policy {
     owner: u32,

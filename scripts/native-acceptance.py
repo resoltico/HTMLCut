@@ -204,7 +204,24 @@ def main():
                         raise AssertionError('published result loosened native ACL')
                     acl = subprocess.check_output(['ls', '-le', str(destination)], text=True)
                     assert 'deny read' in acl, acl
-                    return {'acl': acl, 'actual_denied_reads': 2}
+                    subprocess.run(['chmod', '+a', 'everyone deny read,directory_inherit,only_inherit', str(root)], check=True, capture_output=True)
+                    control = root / 'inherited-directory-control'
+                    control.mkdir()
+                    try:
+                        try:
+                            list(control.iterdir())
+                        except PermissionError:
+                            pass
+                        else:
+                            raise AssertionError('inherited directory ACL must deny listing')
+                    finally:
+                        subprocess.run(['chmod', '-N', str(control)], check=True, capture_output=True)
+                        control.rmdir()
+                    before = set(root.iterdir())
+                    result = run(['get', 'h1', page, '-o', destination])
+                    assert result.returncode == 0 and not result.stdout and not result.stderr, result
+                    assert set(root.iterdir()) == before, 'inherited denial stranded a staging directory'
+                    return {'acl': acl, 'actual_denied_reads': 2, 'inherited_directory_denial_cleaned': True}
                 finally:
                     subprocess.run(['chmod', '-N', str(destination)], check=True, capture_output=True)
                     subprocess.run(['chmod', '-N', str(root)], check=True, capture_output=True)

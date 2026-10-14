@@ -19,8 +19,14 @@ import time
 
 def disk_bytes(root):
     """Conservatively count file/directory allocation without following links."""
+    def walk_error(error):
+        # Build tools may remove a directory between enumeration and descent.
+        # Inaccessible directories cannot be safely omitted from accounting.
+        if not isinstance(error, FileNotFoundError):
+            raise error
+
     total = 0
-    for directory, subdirectories, files in os.walk(root, followlinks=False):
+    for directory, subdirectories, files in os.walk(root, followlinks=False, onerror=walk_error):
         paths = [Path(directory)] + [Path(directory) / name for name in files]
         paths += [Path(directory) / name for name in subdirectories if (Path(directory) / name).is_symlink()]
         for path in paths:
@@ -49,7 +55,8 @@ def main():
     parser.add_argument("--disk-limit-mib", type=int, required=True)
     parser.add_argument("--timeout", type=float, required=True)
     parser.add_argument("--log-limit-mib", type=int, default=8)
-    parser.add_argument("--poll-seconds", type=float, default=1)
+    parser.add_argument("--poll-seconds", type=float, default=1,
+                        help="sampling interval, capped at one second and the remaining deadline")
     parser.add_argument("--label", required=True)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -97,42 +104,56 @@ def main():
         reader.start()
         peak = 0
         refusal = None
-        while True:
-            try:
-                usage = disk_bytes(root)
-            except OSError as error:
-                refusal = "disk-accounting-failed: " + str(error)
-                break
-            peak = max(peak, usage)
-            if cancelled.is_set():
-                refusal = "interrupted"
-            elif usage > args.disk_limit_mib * 1024 * 1024:
-                refusal = "disk-budget-exceeded"
-            elif log_exceeded.is_set():
-                refusal = "log-budget-exceeded"
-            elif time.monotonic() - started > args.timeout:
-                refusal = "wall-time-exceeded"
-            if refusal or process.poll() is not None:
-                break
-            time.sleep(args.poll_seconds)
-        # Kill descendants even if their parent has exited; they may hold stdout
-        # open or continue writing after an apparently successful command.
-        stop_process_tree(process)
-        returncode = process.wait()
-        reader.join(timeout=5)
+        accounting_errors = []
+        try:
+            while True:
+                try:
+                    usage = disk_bytes(root)
+                except OSError as error:
+                    accounting_errors.append({"phase": "monitor", "error": str(error)})
+                    refusal = "disk-accounting-failed: " + str(error)
+                    break
+                peak = max(peak, usage)
+                remaining = args.timeout - (time.monotonic() - started)
+                if cancelled.is_set():
+                    refusal = "interrupted"
+                elif usage > args.disk_limit_mib * 1024 * 1024:
+                    refusal = "disk-budget-exceeded"
+                elif log_exceeded.is_set():
+                    refusal = "log-budget-exceeded"
+                elif remaining <= 0:
+                    refusal = "wall-time-exceeded"
+                if refusal or process.poll() is not None:
+                    break
+                # Large finite values must not overflow sleep or postpone the
+                # deadline or defer the next scan by more than one second.
+                time.sleep(min(args.poll_seconds, remaining, 1.0))
+        except Exception as error:
+            refusal = "monitor-failed: " + type(error).__name__ + ": " + str(error)
+        finally:
+            # Kill descendants even if their parent has exited; they may hold
+            # stdout open or continue writing after apparent success.
+            stop_process_tree(process)
+            returncode = process.wait()
+            reader.join(timeout=5)
         if reader.is_alive():
             refusal = refusal or "output-reader-did-not-stop"
         if log_exceeded.is_set():
             refusal = refusal or "log-budget-exceeded"
         if reader_failed:
             refusal = "output-reader-failed: " + reader_failed[0]
-        peak = max(peak, disk_bytes(root))
+        try:
+            peak = max(peak, disk_bytes(root))
+        except Exception as error:
+            accounting_errors.append({"phase": "final", "error": str(error)})
+            refusal = refusal or "disk-accounting-failed: " + str(error)
         if peak > args.disk_limit_mib * 1024 * 1024:
             refusal = refusal or "disk-budget-exceeded"
         result = {"command": command, "returncode": returncode, "refusal": refusal,
                   "elapsed_seconds": round(time.monotonic() - started, 3),
                   "peak_sampled_disk_bytes": peak, "disk_limit_bytes": args.disk_limit_mib * 1024 * 1024,
                   "log_bytes": log_bytes, "log_limit_bytes": args.log_limit_mib * 1024 * 1024,
+                  "disk_accounting_errors": accounting_errors,
                   "disk_enforcement": "sampled watchdog; not a filesystem quota"}
         with report_path.open("x") as report:
             json.dump(result, report, indent=2)

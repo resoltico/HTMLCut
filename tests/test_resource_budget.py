@@ -14,14 +14,19 @@ RUNNER = ROOT / "scripts/run-resource-bounded.py"
 
 
 class ResourceBudgetTests(unittest.TestCase):
-    def run_child(self, code, timeout=2, disk_limit=1):
+    def run_child(self, code, timeout=2, disk_limit=1, poll="0.02", fault=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             marker = root / "owner-evidence"
             marker.write_text("preserve")
-            result = subprocess.run([sys.executable, str(RUNNER), "--root", directory,
+            invocation = [sys.executable, str(RUNNER)]
+            if fault:
+                wrapper = ("import runpy,sys\nnamespace=runpy.run_path(sys.argv[1])\n"
+                           "sys.argv=sys.argv[1:]\n" + fault + "\nsys.exit(namespace['main']())\n")
+                invocation = [sys.executable, "-c", wrapper, str(RUNNER)]
+            result = subprocess.run([*invocation, "--root", directory,
                 "--disk-limit-mib", str(disk_limit), "--log-limit-mib", "1", "--timeout", str(timeout),
-                "--poll-seconds", "0.02", "--label", "test", "--", sys.executable, "-c", code,
+                "--poll-seconds", str(poll), "--label", "test", "--", sys.executable, "-c", code,
                 directory], capture_output=True, text=True, timeout=8)
             report = json.loads((root / "test.resources.json").read_text())
             log = (root / "test.log").read_bytes()
@@ -36,6 +41,94 @@ class ResourceBudgetTests(unittest.TestCase):
                     result=subprocess.run(command,capture_output=True,timeout=3)
                     self.assertEqual(result.returncode,2)
                     self.assertFalse(list(Path(directory).iterdir()))
+
+    def test_huge_finite_poll_cannot_overflow_or_leave_child_running(self):
+        result, report, _ = self.run_child("import time; time.sleep(5)", timeout=0.1, poll="1e308")
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertNotEqual(report["returncode"], 0, "sleeping child was not terminated")
+        self.assertLess(report["elapsed_seconds"], 2)
+
+    def test_huge_finite_intervals_allow_successful_child(self):
+        result, report, log = self.run_child("print('short child')", timeout=1e308, poll="1e308")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(report["refusal"])
+        self.assertEqual(log, b"short child\n")
+        self.assertLess(report["elapsed_seconds"], 3)
+
+    def test_poll_interval_respects_remaining_deadline(self):
+        result, report, _ = self.run_child("import time; time.sleep(5)", timeout=0.1, poll="10")
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertLess(report["elapsed_seconds"], 2)
+
+    def test_monitor_exception_still_terminates_real_child_and_reports(self):
+        fault = """
+def fail_sample(root):
+    raise RuntimeError('sample probe')
+namespace['main'].__globals__['disk_bytes'] = fail_sample
+"""
+        result, report, _ = self.run_child("import time; time.sleep(5)", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIn("monitor-failed: RuntimeError: sample probe", report["refusal"])
+        self.assertNotEqual(report["returncode"], 0, "sleeping child was not terminated")
+        self.assertLess(report["elapsed_seconds"], 2)
+
+    def test_walk_permission_error_refuses_instead_of_skipping_subtree(self):
+        fault = """
+def inaccessible(path):
+    raise PermissionError('enumeration probe')
+namespace['main'].__globals__['os'].scandir = inaccessible
+"""
+        result, report, _ = self.run_child("import time; time.sleep(5)", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIn("disk-accounting-failed: enumeration probe", report["refusal"])
+        self.assertEqual([error["phase"] for error in report["disk_accounting_errors"]], ["monitor", "final"])
+        self.assertNotEqual(report["returncode"], 0, "sleeping child was not terminated")
+
+    @unittest.skipIf(os.name == "nt" or getattr(os, "geteuid", lambda: 1)() == 0,
+                     "requires ordinary POSIX directory access permissions")
+    def test_actual_inaccessible_directory_causes_disk_refusal(self):
+        result, report, _ = self.run_child(
+            "import pathlib,sys,time; denied=pathlib.Path(sys.argv[1])/'denied'; "
+            "denied.mkdir(); denied.chmod(0); time.sleep(5)")
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertTrue(report["refusal"].startswith("disk-accounting-failed:"), report)
+        self.assertEqual([error["phase"] for error in report["disk_accounting_errors"]], ["monitor", "final"])
+        self.assertNotEqual(report["returncode"], 0, "sleeping child was not terminated")
+
+    def final_sample_failure(self, code, timeout=2):
+        fault = """
+functions = namespace['main'].__globals__
+original_stop = functions['stop_process_tree']
+original_sample = functions['disk_bytes']
+cleaned = False
+def stop_child(process):
+    global cleaned
+    original_stop(process)
+    cleaned = True
+def sample(root):
+    if cleaned:
+        raise PermissionError('final sample probe')
+    return original_sample(root)
+functions['stop_process_tree'] = stop_child
+functions['disk_bytes'] = sample
+"""
+        return self.run_child(code, timeout=timeout, fault=fault)
+
+    def test_final_sample_failure_retains_successful_child_log_and_report(self):
+        result, report, log = self.final_sample_failure("print('retained child evidence')")
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["returncode"], 0)
+        self.assertIn("disk-accounting-failed: final sample probe", report["refusal"])
+        self.assertEqual(log, b"retained child evidence\n")
+        self.assertEqual(report["disk_accounting_errors"], [{"phase": "final", "error": "final sample probe"}])
+
+    def test_final_sample_failure_preserves_original_timeout_refusal(self):
+        result, report, _ = self.final_sample_failure("import time; time.sleep(5)", timeout=0.1)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertEqual(report["disk_accounting_errors"], [{"phase": "final", "error": "final sample probe"}])
 
     def test_success_records_actual_exit_and_output(self):
         result, report, log = self.run_child("print('native-child')")
