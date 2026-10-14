@@ -167,12 +167,21 @@ impl Descriptor {
         } else {
             UNPROTECTED_DACL_SECURITY_INFORMATION
         };
-        // SACL protection can affect mandatory-label inheritance. Request it only
-        // when present; insufficient caller rights refuse rather than silently dropping it.
-        let label_protection = if control & SE_SACL_PROTECTED != 0 {
+        let mut before_control = 0;
+        // SAFETY: this owned readback descriptor and output locals remain live.
+        boolean(unsafe {
+            GetSecurityDescriptorControl(before.0, &mut before_control, &mut revision)
+        })?;
+        // Preserve already identical protection without requesting an assignment
+        // right again. Differing protection still requires its native right;
+        // complete label/control readback is never normalized.
+        let label_protection = if control & SE_SACL_PROTECTED == before_control & SE_SACL_PROTECTED
+        {
+            0
+        } else if control & SE_SACL_PROTECTED != 0 {
             PROTECTED_SACL_SECURITY_INFORMATION
         } else {
-            0
+            UNPROTECTED_SACL_SECURITY_INFORMATION
         };
         let inherited_dacl =
             information & DACL_SECURITY_INFORMATION != 0 && control & SE_DACL_AUTO_INHERITED != 0;
@@ -411,10 +420,10 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
     use std::os::windows::{ffi::OsStrExt, io::FromRawHandle};
     // Owner rights grant only write/metadata/delete access, never data-read access.
     // The retained writer handle then installs and verifies an empty protected DACL.
-    // Establish the pinned mandatory policy at object creation, while the
-    // discretionary descriptor grants only writer/metadata/delete access.
-    // Later preparation verifies every owner/group/label fact exactly; no
-    // protected-SACL control is dropped to avoid an assignment-right failure.
+    // Establish mandatory policy while the discretionary descriptor grants
+    // only writer/metadata/delete access. Creation can omit AUTO_INHERITED on
+    // a null SACL; initialize that remaining native control on the still-empty
+    // private object and verify exactly before returning it to the writer.
     let wanted = Descriptor::parse(&policy.0)?;
     let label = wanted.text_with(LABEL_SECURITY_INFORMATION)?;
     let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
@@ -427,7 +436,7 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
         lpSecurityDescriptor: descriptor.0,
         bInheritHandle: 0,
     };
-    let path = path
+    let wide_path = path
         .as_os_str()
         .encode_wide()
         .chain(Some(0))
@@ -437,7 +446,7 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
         // CREATE_NEW never opens a collision. No publication callbacks occur.
         let handle = unsafe {
             CreateFileW(
-                path.as_ptr(),
+                wide_path.as_ptr(),
                 FILE_READ_ATTRIBUTES
                     | FILE_GENERIC_WRITE
                     | READ_CONTROL
@@ -462,11 +471,39 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
             ));
         }
         // SAFETY: successful CreateFile returns one uniquely owned file handle.
-        Ok(unsafe { File::from_raw_handle(handle) })
+        let file = unsafe { File::from_raw_handle(handle) };
+        let initialize = || {
+            wanted.apply(&file, LABEL_SECURITY_INFORMATION)?;
+            let observed = Descriptor::read(&file)?.text_with(LABEL_SECURITY_INFORMATION)?;
+            if observed != label {
+                return Err(io::Error::other(format!(
+                    "Private file mandatory policy differs before result bytes: wanted {label:?}, observed {observed:?}"
+                )));
+            }
+            Ok(())
+        };
+        if let Err(error) = initialize() {
+            // Delete only the object owned by this returned DELETE-capable
+            // handle, even if its pathname has been replaced in the meantime.
+            let cleanup = match remove_stage(&file) {
+                Ok(()) => "succeeded".to_owned(),
+                Err(cleanup_error) => {
+                    format!("failed: {cleanup_error}; owned empty file may remain")
+                }
+            };
+            return Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "Cannot initialize private mandatory policy at {}: {error}; owned empty-file cleanup {cleanup}",
+                    path.display()
+                ),
+            ));
+        }
+        Ok(file)
     };
     if control & SE_SACL_PROTECTED != 0 {
         // Enable only an assigned capability on a duplicate effective token,
-        // solely for this thread's atomic protected-policy creation.
+        // solely for this thread's protected-policy creation/initialization.
         security_privilege::with_security_privilege(create)
     } else {
         create()
@@ -654,7 +691,7 @@ mod tests {
             let stage_path = directory.path().join("stage");
             let stage = create_private_file(&stage_path, &policy).unwrap();
             // Independent literal control admission is checked on the actual
-            // created object, before any post-creation descriptor mutation.
+            // fully initialized private object, before any result byte.
             assert_eq!(
                 Descriptor::read(&stage)
                     .unwrap()
