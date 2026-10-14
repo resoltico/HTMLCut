@@ -305,7 +305,7 @@ pub(crate) fn create_private_file(path: &Path) -> io::Result<File> {
     // Owner rights grant only write/metadata/delete access, never data-read access.
     // The retained writer handle then installs and verifies an empty protected DACL.
     let descriptor = Descriptor::parse("D:P(A;;0x1f0196;;;OW)")?;
-    let mut attributes = SECURITY_ATTRIBUTES {
+    let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
         bInheritHandle: 0,
@@ -326,7 +326,7 @@ pub(crate) fn create_private_file(path: &Path) -> io::Result<File> {
                 | WRITE_OWNER
                 | DELETE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            &mut attributes,
+            &attributes,
             CREATE_NEW,
             FILE_ATTRIBUTE_NORMAL,
             std::ptr::null_mut(),

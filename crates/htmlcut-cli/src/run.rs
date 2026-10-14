@@ -689,10 +689,10 @@ impl StageOwnership {
             .get()
             .is_some_and(|id| identity_path(&self.path).is_ok_and(|current| current == *id));
         #[cfg(windows)]
-        if let Some(file) = self.deletion_handle.lock().unwrap().take() {
-            if owned {
-                let _ = crate::authorization::remove_stage(&file);
-            }
+        if let Some(file) = self.deletion_handle.lock().unwrap().take()
+            && owned
+        {
+            let _ = crate::authorization::remove_stage(&file);
         }
         #[cfg(unix)]
         if owned {
