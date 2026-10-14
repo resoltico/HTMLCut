@@ -962,6 +962,88 @@ fn descriptor_aliases_preserve_inherited_cursors_append_and_access_modes() {
         assert!(output.stdout.is_empty());
         assert_eq!(std::fs::read(&target).unwrap(), b"preserve");
     }
+    let invalid_paths = [
+        "/dev/stdout/",
+        "/dev/stdout/.",
+        "/dev/fd/1/",
+        "/dev/fd/1/.",
+        "/dev/stdout/./.",
+        "/dev/fd/1/.///",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1/",
+        #[cfg(target_os = "linux")]
+        "/proc/self/fd/1/.",
+    ];
+    for (index, spelling) in invalid_paths.iter().enumerate() {
+        let link = directory
+            .path()
+            .join(format!("directory-stream-link-{index}"));
+        symlink(spelling, &link).unwrap();
+        for path in [Path::new(spelling), link.as_path()] {
+            let target = directory.path().join("directory-stream");
+            std::fs::write(&target, b"prefix|preserve").unwrap();
+            let mut writer = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&target)
+                .unwrap();
+            writer.seek(SeekFrom::Start(7)).unwrap();
+            let mut observer = writer.try_clone().unwrap();
+            let output = Command::new(binary())
+                .args(["get", "h1"])
+                .arg(&source)
+                .arg("-o")
+                .arg(path)
+                .stdout(Stdio::from(writer))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(5), "{path:?}: {output:?}");
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"], "output_unwritable");
+            assert_eq!(error["file"], path.to_string_lossy().as_ref());
+            assert!(output.stdout.is_empty());
+            assert_eq!(std::fs::read(&target).unwrap(), b"prefix|preserve");
+            assert_eq!(observer.stream_position().unwrap(), 7);
+        }
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+}
+
+#[test]
+fn dash_is_a_stream_marker_only_when_it_is_the_entire_path() {
+    use std::io::Seek;
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir(directory.path().join("-")).unwrap();
+    let source = directory.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    for spelling in ["-/", "-/.", "-/./.", "./-"] {
+        let reader = std::fs::File::open(&source).unwrap();
+        let mut observer = reader.try_clone().unwrap();
+        let output = Command::new(binary())
+            .args(["get", "h1", "--", spelling])
+            .current_dir(directory.path())
+            .stdin(Stdio::from(reader))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "input_unreadable");
+        assert_eq!(error["file"], spelling);
+        assert!(output.stdout.is_empty());
+        assert_eq!(observer.stream_position().unwrap(), 0);
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .arg(format!("--output={spelling}"))
+            .current_dir(directory.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "output_unwritable");
+        assert_eq!(error["file"], spelling);
+        assert!(output.stdout.is_empty());
+        assert!(directory.path().join("-").is_dir());
+    }
 }
 
 #[cfg(unix)]

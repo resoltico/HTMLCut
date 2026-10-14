@@ -162,7 +162,9 @@ fn input(path: Option<&Path>, maximum: usize) -> Result<Vec<u8>, Error> {
     }
     match path {
         None => read(&mut io::stdin().lock(), maximum, Path::new("-"), false),
-        Some(path) if path == Path::new("-") => read(&mut io::stdin().lock(), maximum, path, false),
+        Some(path) if path.as_os_str() == "-" => {
+            read(&mut io::stdin().lock(), maximum, path, false)
+        }
         Some(path) => read_file(path, maximum, false),
     }
 }
@@ -230,6 +232,13 @@ fn descriptor_alias(path: &Path) -> bool {
 
 #[cfg(unix)]
 fn descriptor_target(path: &Path) -> Option<DescriptorTarget> {
+    use std::os::unix::ffi::OsStrExt;
+    // Path components discard terminal separators and dots, but the OS must
+    // still require a directory at these names rather than duplicate a stream.
+    let spelling = path.as_os_str().as_bytes();
+    if spelling.ends_with(b"/") || spelling.ends_with(b"/.") {
+        return None;
+    }
     let parent = path.parent()?;
     let Ok(parent) = std::fs::canonicalize(if parent.as_os_str().is_empty() {
         Path::new(".")
@@ -332,7 +341,7 @@ fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
 }
 
 pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Error> {
-    let Some(path) = destination.filter(|path| *path != Path::new("-")) else {
+    let Some(path) = destination.filter(|path| path.as_os_str() != "-") else {
         return write_output(&mut io::stdout().lock(), bytes, Path::new("-"));
     };
     #[cfg(unix)]
