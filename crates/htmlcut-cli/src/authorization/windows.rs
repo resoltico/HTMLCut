@@ -59,7 +59,6 @@ impl Descriptor {
     }
     fn text_with(&self, information: u32) -> io::Result<String> {
         let mut ptr = std::ptr::null_mut();
-        let mut size = 0;
         // SAFETY: valid descriptor and writable output buffers owned in this scope.
         boolean(unsafe {
             ConvertSecurityDescriptorToStringSecurityDescriptorW(
@@ -67,18 +66,22 @@ impl Descriptor {
                 1,
                 information,
                 &mut ptr,
-                &mut size,
+                std::ptr::null_mut(),
             )
         })?;
-        // The API reports allocation size, not string length. Locate the NUL
-        // within that allocation rather than dropping its last code unit.
-        // SAFETY: successful conversion allocates size UTF-16 units at ptr.
-        let buffer = unsafe { std::slice::from_raw_parts(ptr, size as usize) };
-        let result = buffer
-            .iter()
-            .position(|&unit| unit == 0)
-            .ok_or_else(|| io::Error::other("security descriptor string is not terminated"))
-            .and_then(|length| String::from_utf16(&buffer[..length]).map_err(io::Error::other));
+        if ptr.is_null() {
+            return Err(io::Error::other("security descriptor string is absent"));
+        }
+        // Use the documented NUL-terminated string contract; the optional size
+        // is not a string length and has differed for partial component reads.
+        let mut length = 0;
+        // SAFETY: successful conversion returns a valid NUL-terminated allocation.
+        while unsafe { *ptr.add(length) } != 0 {
+            length += 1;
+        }
+        // SAFETY: the scan established exactly the initialized string units.
+        let result = String::from_utf16(unsafe { std::slice::from_raw_parts(ptr, length) })
+            .map_err(io::Error::other);
         // SAFETY: the pointer is the allocation returned by the conversion and is freed once.
         unsafe { LocalFree(ptr.cast()) };
         result
@@ -350,6 +353,21 @@ mod tests {
         assert_eq!(
             descriptor.text_with(GROUP_SECURITY_INFORMATION).unwrap(),
             "G:S-1-5-21-1000861503-3182281758-1041194900-513"
+        );
+        assert_eq!(
+            descriptor
+                .text_with(
+                    OWNER_SECURITY_INFORMATION
+                        | GROUP_SECURITY_INFORMATION
+                        | LABEL_SECURITY_INFORMATION
+                )
+                .unwrap(),
+            "O:S-1-5-21-1000861503-3182281758-1041194900-513G:S-1-5-21-1000861503-3182281758-1041194900-513"
+        );
+        let labelled = Descriptor::parse("S:(ML;;NW;;;LW)").unwrap();
+        assert_eq!(
+            labelled.text_with(LABEL_SECURITY_INFORMATION).unwrap(),
+            "S:(ML;;NW;;;LW)"
         );
     }
 
