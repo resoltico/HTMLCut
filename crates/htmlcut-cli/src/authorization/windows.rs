@@ -11,8 +11,8 @@ use windows_sys::Win32::{
     Security::*,
     Storage::FileSystem::*,
     System::SystemServices::{
-        ACCESS_FILTER_SECURITY_INFORMATION, PROCESS_TRUST_LABEL_SECURITY_INFORMATION,
-        SYSTEM_MANDATORY_LABEL_ACE_TYPE,
+        ACCESS_FILTER_SECURITY_INFORMATION, ACCESS_SYSTEM_SECURITY,
+        PROCESS_TRUST_LABEL_SECURITY_INFORMATION, SYSTEM_MANDATORY_LABEL_ACE_TYPE,
     },
 };
 const INFO: u32 = OWNER_SECURITY_INFORMATION
@@ -261,7 +261,16 @@ impl Descriptor {
             boolean(unsafe {
                 GetSecurityDescriptorSacl(self.0, &mut present, &mut acl, &mut defaulted)
             })?;
-            let label_info = LABEL_SECURITY_INFORMATION | label_protection;
+            // Assigning a null SACL implicitly protects it unless unprotection
+            // is explicit, even when protection matched before assignment.
+            // The private factory obtains the required SACL-only handle right
+            // for this case under the caller's assigned security privilege.
+            let label_info = LABEL_SECURITY_INFORMATION
+                | if present != 0 && acl.is_null() && control & SE_SACL_PROTECTED == 0 {
+                    UNPROTECTED_SACL_SECURITY_INFORMATION
+                } else {
+                    label_protection
+                };
             // Mandatory labels use the maintained file setter. Its SACL
             // inheritance processing is required for labels authored through
             // that API; the full-descriptor setter loses those controls.
@@ -442,6 +451,7 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
     // protection. Omitting it and assigning LABEL later changes protection,
     // so preserve the complete representation at atomic private creation.
     let explicit_null_sacl = present != 0 && sacl.is_null();
+    let unprotected_null_sacl = explicit_null_sacl && control & SE_SACL_PROTECTED == 0;
     let descriptor = Descriptor::parse(&format!("D:P(A;;0x1f0196;;;OW){label}"))?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -464,7 +474,12 @@ pub(crate) fn create_private_file(path: &Path, policy: &Policy) -> io::Result<Fi
                     | READ_CONTROL
                     | WRITE_DAC
                     | WRITE_OWNER
-                    | DELETE,
+                    | DELETE
+                    | if unprotected_null_sacl {
+                        ACCESS_SYSTEM_SECURITY
+                    } else {
+                        0
+                    },
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 &attributes,
                 CREATE_NEW,
