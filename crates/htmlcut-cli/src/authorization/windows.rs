@@ -137,18 +137,22 @@ impl Descriptor {
         result
     }
     fn apply(&self, file: &File, information: u32) -> io::Result<()> {
-        // Setting LABEL with a null SACL changes absence into a present null
-        // SACL. Preserve an already identical mandatory policy without that
-        // mutation. A differing policy still requires application and exact
-        // readback by the caller; inability to reproduce it is a refusal.
-        let information = if information & LABEL_SECURITY_INFORMATION != 0
-            && self.text_with(LABEL_SECURITY_INFORMATION)?
-                == Self::read(file)?.text_with(LABEL_SECURITY_INFORMATION)?
-        {
-            information & !LABEL_SECURITY_INFORMATION
-        } else {
-            information
-        };
+        let before = Self::read(file)?;
+        let mut information = information;
+        // Do not request an assignment right or change descriptor controls for
+        // a component whose complete native representation already matches.
+        for component in [
+            OWNER_SECURITY_INFORMATION,
+            GROUP_SECURITY_INFORMATION,
+            DACL_SECURITY_INFORMATION,
+            LABEL_SECURITY_INFORMATION,
+        ] {
+            if information & component != 0
+                && self.text_with(component)? == before.text_with(component)?
+            {
+                information &= !component;
+            }
+        }
         let mut control = 0;
         let mut revision = 0;
         // SAFETY: this owned descriptor and both output locals remain live.
@@ -165,14 +169,10 @@ impl Descriptor {
         } else {
             0
         };
-        let info = information
-            | if information & DACL_SECURITY_INFORMATION != 0 {
+        let exact_information = information & !LABEL_SECURITY_INFORMATION;
+        let exact_info = exact_information
+            | if exact_information & DACL_SECURITY_INFORMATION != 0 {
                 protection
-            } else {
-                0
-            }
-            | if information & LABEL_SECURITY_INFORMATION != 0 {
-                label_protection
             } else {
                 0
             };
@@ -182,8 +182,57 @@ impl Descriptor {
         // file handle. Exact readback and native parent-propagation controls are
         // required: no policy differences are normalized away.
         // SAFETY: the descriptor and owned writable file handle are live; only
-        // selected owner/group/DACL/mandatory-label components are requested.
-        boolean(unsafe { SetKernelObjectSecurity(file.as_raw_handle() as HANDLE, info, self.0) })
+        // selected owner/group/DACL components are requested.
+        if exact_information != 0 {
+            boolean(unsafe {
+                SetKernelObjectSecurity(file.as_raw_handle() as HANDLE, exact_info, self.0)
+            })
+            .map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Windows owner/group/DACL assignment failed (mask {exact_info:#x}): {error}; wanted {:?}, before {:?}",
+                        self.text_with(exact_information), before.text_with(exact_information)
+                    ),
+                )
+            })?;
+        }
+        if information & LABEL_SECURITY_INFORMATION != 0 {
+            let mut acl = std::ptr::null_mut();
+            let mut present = 0;
+            let mut defaulted = 0;
+            // SAFETY: the ACL borrows this live native descriptor.
+            boolean(unsafe {
+                GetSecurityDescriptorSacl(self.0, &mut present, &mut acl, &mut defaulted)
+            })?;
+            let label_info = LABEL_SECURITY_INFORMATION | label_protection;
+            // Mandatory labels use the maintained file setter. Its SACL
+            // inheritance processing is required for labels authored through
+            // that API; the full-descriptor setter loses those controls.
+            // SAFETY: live file handle and descriptor-owned ACL; no audit SACL
+            // or backup policy is requested.
+            status(unsafe {
+                SetSecurityInfo(
+                    file.as_raw_handle() as HANDLE,
+                    SE_FILE_OBJECT,
+                    label_info,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    acl,
+                )
+            })
+            .map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "Windows mandatory-label assignment failed (mask {label_info:#x}, SACL present {present}, control {control:#x}): {error}; wanted {:?}, before {:?}",
+                        self.text_with(LABEL_SECURITY_INFORMATION), before.text_with(LABEL_SECURITY_INFORMATION)
+                    ),
+                )
+            })?;
+        }
+        Ok(())
     }
 }
 fn status(code: u32) -> io::Result<()> {
@@ -475,5 +524,113 @@ mod tests {
             .apply(&stage, &directory.path().join("stage"))
             .unwrap();
         assert_eq!(Policy::read(&stage).unwrap(), policy);
+    }
+
+    #[test]
+    fn private_stage_reproduces_native_authored_labels_without_data_read_grants() {
+        use std::io::Write;
+        for (name, dacl, protection, label, denies_data_read) in [
+            (
+                "inherited",
+                "D:(A;;FA;;;OW)",
+                UNPROTECTED_DACL_SECURITY_INFORMATION,
+                None,
+                false,
+            ),
+            (
+                "low-denied-read",
+                "D:P(D;;0x1;;;WD)(A;;FA;;;OW)",
+                PROTECTED_DACL_SECURITY_INFORMATION,
+                Some("S:(ML;;NW;;;LW)"),
+                true,
+            ),
+            (
+                "medium-no-read-up",
+                "D:(A;;FA;;;OW)",
+                UNPROTECTED_DACL_SECURITY_INFORMATION,
+                Some("S:(ML;;NR;;;ME)"),
+                false,
+            ),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let source_path = directory.path().join(name);
+            let mut source = stage_options().open(&source_path).unwrap();
+            source.write_all(b"original").unwrap();
+            let descriptor = Descriptor::parse(dacl).unwrap();
+            let mut acl = std::ptr::null_mut();
+            let mut present = 0;
+            let mut defaulted = 0;
+            // Independent file-policy authoring uses the standard native API,
+            // not the reproduction mechanism exercised below.
+            unsafe {
+                boolean(GetSecurityDescriptorDacl(
+                    descriptor.0,
+                    &mut present,
+                    &mut acl,
+                    &mut defaulted,
+                ))
+                .unwrap();
+                status(SetSecurityInfo(
+                    source.as_raw_handle() as HANDLE,
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | protection,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    acl,
+                    std::ptr::null_mut(),
+                ))
+                .unwrap();
+            }
+            if let Some(label) = label {
+                let descriptor = Descriptor::parse(label).unwrap();
+                // SAFETY: both the fixture descriptor/ACL and source handle are live.
+                unsafe {
+                    boolean(GetSecurityDescriptorSacl(
+                        descriptor.0,
+                        &mut present,
+                        &mut acl,
+                        &mut defaulted,
+                    ))
+                    .unwrap();
+                    status(SetSecurityInfo(
+                        source.as_raw_handle() as HANDLE,
+                        SE_FILE_OBJECT,
+                        LABEL_SECURITY_INFORMATION,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        acl,
+                    ))
+                    .unwrap();
+                }
+            }
+            if denies_data_read {
+                assert_eq!(
+                    std::fs::read(&source_path).unwrap_err().kind(),
+                    io::ErrorKind::PermissionDenied
+                );
+            }
+            let policy = Policy::read(&source).unwrap();
+            let stage_path = directory.path().join("stage");
+            let mut stage = create_private_file(&stage_path).unwrap();
+            restrict(&stage).unwrap();
+            policy.prepare(&stage).unwrap();
+            assert_eq!(
+                std::fs::read(&stage_path).unwrap_err().kind(),
+                io::ErrorKind::PermissionDenied,
+                "preparation must not grant pathname data reads for {name}"
+            );
+            stage.write_all(b"complete").unwrap();
+            policy.apply(&stage, &stage_path).unwrap();
+            assert_eq!(Policy::read(&stage).unwrap(), policy, "{name}");
+            if denies_data_read {
+                assert_eq!(
+                    std::fs::read(&stage_path).unwrap_err().kind(),
+                    io::ErrorKind::PermissionDenied
+                );
+            } else {
+                assert_eq!(std::fs::read(&stage_path).unwrap(), b"complete");
+            }
+        }
     }
 }

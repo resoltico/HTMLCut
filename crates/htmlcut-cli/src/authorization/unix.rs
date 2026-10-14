@@ -30,18 +30,38 @@ pub(crate) fn identity_path(path: &Path) -> io::Result<Identity> {
     })
 }
 pub(crate) fn open_parent(path: &Path) -> io::Result<File> {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::FromRawFd;
+        let path = CString::new(path.as_os_str().as_bytes())?;
+        // musl includes O_PATH in O_ACCMODE, which OpenOptions::custom_flags
+        // masks out. Request the directory capability directly, without listing.
+        loop {
+            // SAFETY: NUL-terminated pathname; no creation flags or mode argument.
+            let descriptor = unsafe {
+                libc::open(
+                    path.as_ptr(),
+                    libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+                )
+            };
+            if descriptor >= 0 {
+                // SAFETY: exclusive ownership of the newly opened descriptor.
+                return Ok(unsafe { File::from_raw_fd(descriptor) });
+            }
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        #[cfg(target_os = "macos")]
-        let flags = libc::O_SEARCH;
-        #[cfg(target_os = "linux")]
-        let flags = libc::O_PATH | libc::O_DIRECTORY;
         // Pin identity and provide renameat's dirfd without requiring listing.
         // Parent aliases follow kernel resolution, as ordinary publication does.
         std::fs::OpenOptions::new()
             .read(true)
-            .custom_flags(flags)
+            .custom_flags(libc::O_SEARCH)
             .open(path)
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]

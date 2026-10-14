@@ -114,6 +114,8 @@ only confirmed owned stages are removed.
 
 Containing-parent handles require search/path capability rather than directory listing:
 Darwin uses `O_SEARCH`, and Linux uses `O_PATH` with `fstat` support (kernel 3.6+).
+Linux requests this flag through native `open`: musl includes `O_PATH` in
+`O_ACCMODE`, which Rust's custom-flags interface masks out.
 Write/search permission remains necessary for actual creation and `renameat`; parent
 aliases follow kernel resolution and their identities are revalidated before commit.
 Darwin staging-directory handles request search access,
