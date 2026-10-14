@@ -342,13 +342,26 @@ function Cli([string]$Path) {
     $info.FileName=$Binary;$info.Arguments=('get h1 "{0}" -o "{1}"' -f $Page,$Path)
     $info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
     $child=[System.Diagnostics.Process]::Start($info)
+    $failure=$null;$outcome=$null;$cleanup=@()
     try {
         $privileges=[ordered]@{backup_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeBackupPrivilege');restore_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeRestorePrivilege');traverse_bypass_enabled=[ParentAccessControl]::PrivilegeEnabled($child.Handle,'SeChangeNotifyPrivilege')}
-        if(!$child.WaitForExit(4000)) {$child.Kill();throw 'Delivered binary exceeded external test deadline'}
-        [ordered]@{path=$Path;exit=$child.ExitCode;stdout=$child.StandardOutput.ReadToEnd();stderr=$child.StandardError.ReadToEnd();privileges=$privileges}
-    } finally {$child.Dispose()}
+        if(!$child.WaitForExit(4000)) {throw 'Delivered binary exceeded external test deadline'}
+        $outcome=[ordered]@{path=$Path;exit=$child.ExitCode;stdout=$child.StandardOutput.ReadToEnd();stderr=$child.StandardError.ReadToEnd();privileges=$privileges}
+    } catch {$failure=$_.Exception.Message}
+    finally {
+        try {if(!$child.HasExited) {$child.Kill()}} catch {$cleanup+=$_.Exception.Message}
+        try {
+            if(!$child.WaitForExit(4000)) {$script:unreapedChild=$true;throw 'Owned CLI child did not exit after termination'}
+        } catch {$script:unreapedChild=$true;$cleanup+=$_.Exception.Message}
+        try {$child.Dispose()} catch {$cleanup+=$_.Exception.Message}
+    }
+    if($failure) {throw "CLI helper failure: $failure; owned child cleanup: $($cleanup -join '; ')"}
+    if($cleanup.Count) {throw "Owned CLI child cleanup failed: $($cleanup -join '; ')"}
+    $outcome
 }
 $results=[ordered]@{context=$context;positive=@();negative=@()}
+$script:unreapedChild=$false
+$failure=$null;$cleanup=@()
 try {
     $existing=Join-Path $Parent 'existing.json';$absent=Join-Path $Parent 'absent.json';$osControl=Join-Path $Parent 'os-control.json'
     [System.IO.File]::WriteAllText($existing,'old')
@@ -382,21 +395,43 @@ try {
             $entry=Cli $path;$entry.native_create_refused=$true;$entry.denied_parent_right=$rights;$results.negative+=$entry
         }
     }
-} finally {
-    Set-Acl -LiteralPath $Parent -AclObject $saved
-    if(Test-Path -LiteralPath $Alias) {Remove-Item -LiteralPath $Alias -Force}
+} catch {$failure=$_.Exception.Message}
+finally {
+    if(!$script:unreapedChild) {
+        try {Set-Acl -LiteralPath $Parent -AclObject $saved} catch {$cleanup+="Parent ACL restoration: $($_.Exception.Message)"}
+        try {if(Test-Path -LiteralPath $Alias) {[System.IO.Directory]::Delete($Alias)}} catch {$cleanup+="Junction cleanup: $($_.Exception.Message)"}
+    }
+}
+if($script:unreapedChild) {
+    $results.helper_failure=$failure;$results.cleanup_failures=$cleanup
+    $results | ConvertTo-Json -Depth 8 -Compress
+    # Keep this exact owned parent alive so the Python supervisor can terminate
+    # its process tree before independent ACL restoration; never orphan a child.
+    Start-Sleep -Seconds 30
+    exit 1
+}
+if($failure -or $cleanup.Count) {
+    $results.helper_failure=$failure;$results.cleanup_failures=$cleanup
+    $results | ConvertTo-Json -Depth 8 -Compress
+    exit 1
 }
 $results.existing_bytes_after_negatives=[System.IO.File]::ReadAllText((Join-Path $Parent 'existing.json'))
 $results.inventory=@([System.IO.Directory]::GetFileSystemEntries($Parent) | ForEach-Object {[System.IO.Path]::GetFileName($_)} | Sort-Object)
 $results | ConvertTo-Json -Depth 8 -Compress
 ''')
+                helper = None
+                primary_failure = None
+                details = None
+                stdout = stderr = ''
+                cleanup_failures = []
                 try:
-                    result = subprocess.run(
+                    helper = subprocess.Popen(
                         ['powershell.exe', '-NoProfile', '-File', str(script), str(binary), str(page),
                          str(parent), str(alias), str(policy_backup)],
-                        capture_output=True, text=True, timeout=25)
-                    assert result.returncode == 0, (result.stdout, result.stderr)
-                    details = json.loads(result.stdout)
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    stdout, stderr = helper.communicate(timeout=25)
+                    assert helper.returncode == 0, (stdout, stderr)
+                    details = json.loads(stdout)
                     assert details['enumeration_denied'] and details['native_create_write_open_replace'], details
                     assert details['generic_parent_read_error'] == 5, details
                     assert details['zero_access_parent_identity'] == details['zero_access_alias_identity'], details
@@ -416,12 +451,53 @@ $results | ConvertTo-Json -Depth 8 -Compress
                         for item in details['negative']), details
                     assert details['existing_bytes_after_negatives'] == '"complete"\n', details
                     assert details['inventory'] == ['absent.json', 'existing.json', 'os-control.json'], details
-                    return details
+                except Exception as error:
+                    primary_failure = error
                 finally:
-                    if alias.exists():
-                        os.rmdir(alias)
-                    if parent.exists():
-                        shutil.rmtree(parent)
+                    # Stop the exact owned process tree before restoring ACLs;
+                    # forced termination cannot run the helper's finally block.
+                    if helper is not None and helper.poll() is None:
+                        try:
+                            stopped = subprocess.run(
+                                ['taskkill.exe', '/PID', str(helper.pid), '/T', '/F'],
+                                capture_output=True, text=True, timeout=5)
+                            if stopped.returncode != 0:
+                                cleanup_failures.append(f'owned helper tree termination: {stopped.stdout} {stopped.stderr}')
+                        except Exception as error:
+                            cleanup_failures.append(f'owned helper tree termination: {error}')
+                        try:
+                            if helper.poll() is None:
+                                helper.kill()
+                            stdout, stderr = helper.communicate(timeout=5)
+                        except Exception as error:
+                            cleanup_failures.append(f'owned helper reap: {error}')
+                    elif helper is not None:
+                        helper.wait()
+                    if policy_backup.exists() and parent.exists():
+                        restore = root / 'restore-delivery-parent.ps1'
+                        restore.write_text(
+                            "param([string]$Parent,[string]$Backup);$ErrorActionPreference='Stop';"
+                            "$a=[System.Security.AccessControl.DirectorySecurity]::new();"
+                            "$a.SetSecurityDescriptorBinaryForm([System.IO.File]::ReadAllBytes($Backup));"
+                            "Set-Acl -LiteralPath $Parent -AclObject $a")
+                        try:
+                            restored = subprocess.run(
+                                ['powershell.exe', '-NoProfile', '-File', str(restore), str(parent), str(policy_backup)],
+                                capture_output=True, text=True, timeout=5)
+                            if restored.returncode != 0:
+                                cleanup_failures.append(f'independent parent ACL restoration: {restored.stdout} {restored.stderr}')
+                        except Exception as error:
+                            cleanup_failures.append(f'independent parent ACL restoration: {error}')
+                    for path, cleanup in [(alias, os.rmdir), (parent, shutil.rmtree)]:
+                        try:
+                            if path.exists():
+                                cleanup(path)
+                        except Exception as error:
+                            cleanup_failures.append(f'owned path cleanup {path}: {error}')
+                if primary_failure is not None or cleanup_failures:
+                    raise AssertionError({'primary_failure': str(primary_failure) if primary_failure else None,
+                                          'stdout': stdout, 'stderr': stderr, 'cleanup_failures': cleanup_failures}) from primary_failure
+                return details
             check('publication-without-directory-listing', publication_without_parent_listing)
 
             def named_pipe_lifetime():
