@@ -410,4 +410,72 @@ mod tests {
         prior.restore().unwrap();
         assert_eq!(context(), before);
     }
+
+    #[test]
+    fn native_invalid_token_query_error_is_not_success() {
+        use windows_sys::Win32::Foundation::ERROR_INVALID_HANDLE;
+        let mut statistics = std::mem::MaybeUninit::<TOKEN_STATISTICS>::uninit();
+        let mut returned = 0;
+        // SAFETY: NULL is deliberately invalid; output storage is valid and never read on failure.
+        let success = unsafe {
+            GetTokenInformation(
+                std::ptr::null_mut(),
+                TokenStatistics,
+                statistics.as_mut_ptr().cast(),
+                std::mem::size_of::<TOKEN_STATISTICS>() as u32,
+                &mut returned,
+            )
+        };
+        let error = unsafe { GetLastError() };
+        assert_eq!(success, 0);
+        assert_eq!(error, ERROR_INVALID_HANDLE);
+        unsafe { SetLastError(error) };
+        assert_eq!(
+            checked(success).unwrap_err().raw_os_error(),
+            Some(ERROR_INVALID_HANDLE as i32)
+        );
+    }
+
+    #[test]
+    fn ordinary_private_creation_needs_no_assigned_security_privilege() {
+        let before = context();
+        let directory = tempfile::tempdir().unwrap();
+        let probe = super::super::stage_options()
+            .open(directory.path().join("source"))
+            .unwrap();
+        let policy = super::super::Policy::read(&probe).unwrap();
+        let descriptor = super::super::Descriptor::parse(&policy.0).unwrap();
+        let mut control = 0;
+        let mut revision = 0;
+        // SAFETY: native descriptor and output locals remain live.
+        checked(unsafe { GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) })
+            .unwrap();
+        assert_eq!(
+            control & SE_SACL_PROTECTED,
+            0,
+            "ordinary source must not require protected creation"
+        );
+        let (source, had_thread) = effective_token().unwrap();
+        let token = duplicate(&source, SecurityImpersonation).unwrap();
+        adjust_security(&token, SE_PRIVILEGE_REMOVED).unwrap();
+        let mut prior = Scope::install(token, had_thread.then_some(source)).unwrap();
+        let restricted = context();
+        let path = directory.path().join("ordinary-stage");
+        let file = super::super::create_private_file(&path, &policy).unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 0);
+        assert_eq!(context(), restricted);
+        super::super::restrict(&file).unwrap();
+        let protected_path = directory.path().join("protected-stage");
+        let protected = super::super::Policy("D:P(A;;FA;;;OW)S:PAI(ML;;NW;;;LW)".into());
+        let error = super::super::create_private_file(&protected_path, &protected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("no assigned SeSecurityPrivilege")
+        );
+        assert!(!protected_path.exists());
+        assert_eq!(context(), restricted);
+        prior.restore().unwrap();
+        assert_eq!(context(), before);
+    }
 }

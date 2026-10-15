@@ -6,6 +6,8 @@ macOS unit tests also use Apple's `/usr/bin/leaks` to check native ACL allocatio
 
 Linux authorization tests require mounted `/proc`, temporary storage supporting POSIX ACL extended attributes, and an account without DAC permission bypass. Run them as a regular user so the directory-listing denial control is effective. These tests use native APIs and need no ACL command-line tools.
 
+Windows native QA requires a test account with assigned `SeSecurityPrivilege`, token identities permitting owner and group assignments distinct from the file's defaults, and native file/directory symbolic-link creation. The [Windows symlink requirements](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw) describe the privilege and Developer Mode options. Missing capabilities fail the relevant controls. These are contributor QA prerequisites; [named publication](docs/publication.md) describes the CLI's caller-authority contract.
+
 Install `cargo-deny` at the version declared in [the tool inventory](scripts/contributor-rust-tools.sh), then run the contributor gate:
 
 ```bash
