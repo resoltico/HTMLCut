@@ -56,6 +56,14 @@ def child_exited(process):
     return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
 
 
+def shell_exit_status(returncode):
+    # Windows child statuses are DWORDs. MSYS shells retain only eight bits,
+    # so a nonzero multiple of 256 must not become a successful wrapper exit.
+    if returncode > 255:
+        return 1
+    return returncode if returncode >= 0 else 128 - returncode
+
+
 def stop_process_tree(process):
     if os.name == "nt":
         result = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
@@ -245,7 +253,7 @@ def main():
             json.dump(result, report, indent=2)
             report.write("\n")
         print(json.dumps(result), file=sys.stderr)
-        return 125 if refusal else returncode if returncode >= 0 else 128 - returncode
+        return 125 if refusal else shell_exit_status(returncode)
 
 
 if __name__ == "__main__":

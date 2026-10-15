@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 import subprocess
 import os
+import runpy
 import time
 import sys
 import tempfile
@@ -15,6 +16,35 @@ RUNNER = ROOT / "scripts/run-resource-bounded.py"
 
 
 class ResourceBudgetTests(unittest.TestCase):
+    def test_shell_status_preserves_failures_outside_eight_bit_transport(self):
+        status = runpy.run_path(str(RUNNER))["shell_exit_status"]
+        for raw, expected in [(0, 0), (2, 2), (3, 3), (17, 17), (125, 125),
+                              (255, 255), (256, 1), (512, 1), (0xC0000005, 1), (-9, 137)]:
+            with self.subTest(raw=raw):
+                self.assertEqual(status(raw), expected)
+
+    @unittest.skipUnless(os.name == "nt", "native Windows DWORD status through Git Bash")
+    def test_native_windows_wide_child_status_remains_failure_through_bash(self):
+        bash = runpy.run_path(str(ROOT / "scripts/native-shell.py"))["bash_program"]()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [Path(sys.executable).as_posix(), RUNNER.as_posix(),
+                       "--root", root.as_posix(), "--disk-limit-mib", "1",
+                       "--log-limit-mib", "1", "--timeout", "2",
+                       "--poll-seconds", ".02", "--label", "wide", "--",
+                       Path(sys.executable).as_posix(), "-c",
+                       "import ctypes; ctypes.windll.kernel32.ExitProcess(256)"]
+            script = (shlex.join(command) + "; status=$?; "
+                      "printf 'watchdog_status=%s\\n' \"$status\"; exit \"$status\"")
+            result = subprocess.run([bash, "-c", script], capture_output=True,
+                                    text=True, timeout=10)
+            report = json.loads((root / "wide.resources.json").read_text())
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, "watchdog_status=1\n")
+            self.assertEqual(report["returncode"], 256, report)
+            self.assertIsNone(report["refusal"], report)
+            self.assertEqual(report["cleanup_errors"], [], report)
+
     def run_child(self, code, timeout=2, disk_limit=1, poll="0.02", fault=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

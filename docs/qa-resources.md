@@ -4,6 +4,8 @@ Mutation and fuzz checks use [the resource watchdog](../scripts/run-resource-bou
 
 Disk accounting is sampled, so writes can exceed the threshold between samples. A filesystem quota is required for a hard disk limit. Tool installation, Cargo's download cache and installed toolchains are separate prerequisites and remain outside the run's disk accounting and cleanup.
 
+Resource reports retain the raw child exit status. Windows statuses above 255 become wrapper status 1, so an eight-bit shell cannot turn a nonzero status such as 256 into success. Ordinary statuses and POSIX signal-derived statuses retain their existing transport values.
+
 ## Contributor tools and caches
 
 The pinned [tool installer](../scripts/contributor-rust-tools.sh) separately guards each cold tool compilation: 4 GiB sampled temporary products, 900 seconds and a 4 MiB combined log. These are conservative bootstrap allowances, not measured minima or hard quotas. Smaller limits have not been established for every tool/host; exceeding a limit fails installation rather than accepting an unchecked tool. Compiler products use a fresh owned root, overriding inherited Cargo target/build directories for that command only. The watchdog emits a structured resource report, including observed peak disk and elapsed time, before success removes the temporary root; failure removes compiler products after confirmed child cleanup and reports the retained bounded log/resource evidence path. Unconfirmed cleanup retains the products rather than deleting paths a child might still write. CI uploads failed-install logs/reports for three days, outside the tool cache. An external hard kill can prevent cleanup.

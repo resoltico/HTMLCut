@@ -2,6 +2,8 @@
 
 Release publication requires an existing annotated stable tag and green main CI for that exact source commit. The [release workflow](../.github/workflows/release.yml) validates the tag against the workspace version and main ancestry, then binds checkout, native packages, source archives and verification to one immutable source commit. The [target policy](../scripts/release-targets.sh) supplies the complete asset matrix.
 
+Run the release checksum, publication and download-verification shell scripts with Bash 4 or newer. On macOS, select a suitable installed Bash explicitly.
+
 Native packages are unpacked and run against [the conformance corpus](../conformance/README.md). Apple signatures, complete dependency attribution, checksums and provenance are verified before publication. After publication, the workflow downloads package bytes anonymously, verifies them and runs the native corpus again.
 
 The workflow publishes GitHub Releases. Creating tags, merging, changing repository settings and publishing crates.io packages are separate operator actions. Publish htmlcut-core before htmlcut-cli for registry releases. The core package includes its examples and uses registry dependencies; regression fixtures remain in the repository test suite.
