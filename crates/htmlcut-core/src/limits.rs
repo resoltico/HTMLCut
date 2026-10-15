@@ -41,6 +41,10 @@ impl Clock {
             iterations: std::cell::Cell::new(0),
         }
     }
+    #[cfg(test)]
+    pub(crate) fn work_ticks(&self) -> usize {
+        self.iterations.get()
+    }
     pub(crate) fn check(&self) -> Result<(), crate::Error> {
         if let Some(limit) = self.limit
             && self.started.elapsed() >= limit

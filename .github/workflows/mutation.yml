@@ -84,7 +84,7 @@ jobs:
       - uses: ./.github/actions/cargo-tool
         with:
           tool: cargo-mutants
-      - name: Execute complete CLI selection; survivors and timeouts require review
+      - name: Execute active native CLI selection; survivors and timeouts require review
         shell: bash
         env:
           RUST_TEST_THREADS: '1'
@@ -92,9 +92,14 @@ jobs:
         run: |
           set -euo pipefail
           workers=$(python3 -c 'import os; print(min(4, os.cpu_count() or 1))')
+          case "$RUNNER_OS" in
+            Linux) exclusions=(--exclude-file 'crates/htmlcut-cli/src/authorization/windows.rs' --exclude-file 'crates/htmlcut-cli/src/authorization/windows/**') ;;
+            Windows) exclusions=(--exclude-file 'crates/htmlcut-cli/src/authorization/unix.rs') ;;
+            *) echo "Unsupported native mutation platform: $RUNNER_OS" >&2; exit 2 ;;
+          esac
           python3 scripts/mutation-audit.py --jobs "$workers" --disk-limit-mib 4096 \
             --timeout 10800 --file 'crates/htmlcut-cli/src/**' \
-            --output "$RUNNER_TEMP/mutation-outcomes"
+            "${exclusions[@]}" --output "$RUNNER_TEMP/mutation-outcomes"
       - name: Preserve outcomes without compiler products
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -106,4 +111,5 @@ jobs:
             ${{ runner.temp }}/mutation-outcomes/audit.json
             ${{ runner.temp }}/mutation-outcomes/mutation.log
             ${{ runner.temp }}/mutation-outcomes/mutation.resources.json
+            ${{ runner.temp }}/mutation-outcomes/tool-version/
             ${{ runner.temp }}/mutation-outcomes/mutants.out/

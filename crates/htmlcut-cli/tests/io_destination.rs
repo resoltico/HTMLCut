@@ -10,10 +10,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+fn binary() -> std::ffi::OsString {
+    std::env::var_os("HTMLCUT_TEST_BINARY").unwrap_or_else(|| env!("CARGO_BIN_EXE_htmlcut").into())
+}
+
 fn command(source: &Path, destination: &Path) -> Command {
-    let binary = std::env::var_os("HTMLCUT_TEST_BINARY")
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_htmlcut").into());
-    let mut command = Command::new(binary);
+    let mut command = Command::new(binary());
     command
         .args(["get", "h1"])
         .arg(source)
@@ -43,8 +45,6 @@ fn complete(mut command: Command) -> Output {
 #[test]
 fn descriptor_link_chains_obey_kernel_admission_without_changing_stream_state() {
     let directory = tempfile::tempdir().unwrap();
-    let binary = std::env::var_os("HTMLCUT_TEST_BINARY")
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_htmlcut").into());
     let output = Command::new("python3").args(["-c", r#"
 import errno, json, pathlib, subprocess, sys
 binary, workspace = sys.argv[1:]
@@ -114,7 +114,50 @@ for index, alias in enumerate(aliases):
             if refused:
                 break
     assert accepted == 2 and refused == 2, (alias, accepted, refused)
-"#]).arg(binary).arg(directory.path()).output().unwrap();
+"#]).arg(binary()).arg(directory.path()).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
+fn descriptor_directory_suffixes_remain_input_errors_with_contract_stdin() {
+    let output = Command::new("python3")
+        .args([
+            "-c",
+            r#"
+import errno, json, subprocess, sys
+binary = sys.argv[1]
+paths = ['/dev/fd/0/', '/dev/fd/0/.']
+if sys.platform.startswith('linux'):
+    paths += ['/proc/self/fd/0/', '/proc/self/fd/0/.',
+              '/proc/thread-self/fd/0/', '/proc/thread-self/fd/0/.']
+oracle = '''import json, os, sys
+try:
+    os.close(os.open(sys.argv[1], os.O_RDONLY))
+    result = None
+except OSError as error:
+    result = error.errno
+print(json.dumps(result))
+'''
+for path in paths:
+    # Separate pipe inputs carry the same complete valid contract and EOF.
+    # Directory spellings must reach native input admission, not be treated as
+    # a second spelling for the contract stream before that contract is read.
+    control = subprocess.run([sys.executable, '-c', oracle, path],
+        input=b'{"select":"h1"}', capture_output=True, timeout=10)
+    assert control.returncode == 0, control
+    native_errno = json.loads(control.stdout)
+    assert native_errno in [errno.ENOTDIR, errno.ENOENT], (path, native_errno)
+    result = subprocess.run([binary, 'run', '--from-file', '-', path],
+        input=b'{"select":"h1"}', capture_output=True, timeout=10)
+    assert result.returncode == 5 and not result.stdout, (path, result)
+    error = json.loads(result.stderr)
+    assert error['error'] == 'input_unreadable' and error['file'] == path, error
+    assert f'(os error {native_errno})' in error['detail'], (path, error, native_errno)
+"#,
+        ])
+        .arg(binary())
+        .output()
+        .unwrap();
     assert!(output.status.success(), "{output:?}");
 }
 

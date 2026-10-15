@@ -196,15 +196,7 @@ fn feed(
     let mut remaining = text;
     while !remaining.is_empty() {
         clock.check()?;
-        let mut end = chunk.min(remaining.len());
-        // A split is never larger than the configured chunk, except test chunks
-        // too small to contain one Unicode scalar.
-        while end > 0 && !remaining.is_char_boundary(end) {
-            end -= 1;
-        }
-        if end == 0 {
-            end = remaining.chars().next().unwrap().len_utf8();
-        }
+        let end = utf8_feed_end(remaining, chunk);
         parser.process(StrTendril::from_slice(&remaining[..end]));
         remaining = &remaining[end..];
         if let Some(error) = parser.tokenizer.sink.sink.refusal() {
@@ -212,6 +204,19 @@ fn feed(
         }
     }
     Ok(())
+}
+
+fn utf8_feed_end(text: &str, maximum: usize) -> usize {
+    let mut end = maximum.min(text.len());
+    // The caller has nonempty text. A split stays within the byte ceiling,
+    // except test feeds too small to contain their first Unicode scalar.
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        end = text.chars().next().unwrap().len_utf8();
+    }
+    end
 }
 
 fn decode(source: Source<'_>, clock: &Clock) -> Result<(String, &'static Encoding), Error> {
@@ -476,6 +481,29 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn utf8_feeds_respect_the_byte_ceiling_without_losing_text() {
+        for scalar in ["é", "€", "🦀"] {
+            let text = format!("{}{scalar}tail", "x".repeat(1023));
+            // Each scalar straddles the documented 1024-byte feed ceiling.
+            // Completing it forwards would admit 1025, 1026 or 1027 bytes.
+            assert_eq!(utf8_feed_end(&text, CHUNK_BYTES), 1023);
+            let mut remaining = text.as_str();
+            let mut reconstructed = String::new();
+            while !remaining.is_empty() {
+                let end = utf8_feed_end(remaining, CHUNK_BYTES);
+                assert!(end > 0 && end <= 1024);
+                reconstructed.push_str(&remaining[..end]);
+                remaining = &remaining[end..];
+            }
+            assert_eq!(reconstructed, text);
+        }
+        // Existing parser tests deliberately use feeds smaller than a scalar.
+        for (text, expected) in [("éx", 2), ("€x", 3), ("🦀x", 4)] {
+            assert_eq!(utf8_feed_end(text, 1), expected);
+        }
+    }
+
     #[test]
     fn strict_decode_retains_only_a_usable_query_output_encoding() {
         for label in ["utf-16le", "utf-16be", "iso-2022-kr"] {

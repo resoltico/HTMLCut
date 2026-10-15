@@ -165,19 +165,65 @@ def interrupt_process(process):
     return errors
 
 
+def guarded_phase(command, root, label, *, disk_limit_mib, timeout, log_limit_mib, env):
+    """Own one bounded QA child through interruption and cleanup evidence."""
+    process = None
+    resources = None
+    status = 125
+    details = {"command": command, "log_path": str(root / (label + ".log")),
+               "resource_report": str(root / (label + ".resources.json"))}
+    errors = []
+    try:
+        process = subprocess.Popen([sys.executable, str(ROOT / "scripts/run-resource-bounded.py"),
+            "--root", str(root), "--disk-limit-mib", str(disk_limit_mib),
+            "--log-limit-mib", str(log_limit_mib),
+            "--timeout", str(timeout), "--poll-seconds", "0.2", "--label", label, "--", *command], env=env)
+        details["resource_wrapper_pid"] = process.pid
+        status = process.wait()
+    except KeyboardInterrupt:
+        if process:
+            errors.extend(interrupt_process(process))
+        status = 130
+    except (OSError, subprocess.SubprocessError) as error:
+        details["execution_error"] = str(error)
+    finally:
+        if process is not None and process.poll() is None:
+            errors.append("resource wrapper is still running")
+        try:
+            resources = json.loads(Path(details["resource_report"]).read_text(encoding="utf-8"))
+            if (not isinstance(resources, dict) or not isinstance(resources.get("cleanup_errors"), list)
+                    or any(not isinstance(error, str) for error in resources["cleanup_errors"])):
+                raise ValueError("missing cleanup confirmation")
+            errors.extend(resources["cleanup_errors"])
+            if type(resources.get("returncode")) is not int:
+                errors.append("process exit was not confirmed")
+        except (OSError, ValueError, TypeError) as error:
+            errors.append("resource cleanup evidence unavailable: " + str(error))
+    details.update(resource_wrapper_returncode=process.poll() if process is not None else None,
+                   tool_returncode=resources.get("returncode") if isinstance(resources, dict) else None,
+                   refusal=resources.get("refusal") if isinstance(resources, dict) else None,
+                   cleanup_errors=errors, returncode=130 if status == 130 else 125 if errors else status)
+    return details, resources
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--output", type=Path, required=True, help="new directory outside the workspace")
     parser.add_argument("--dir", type=Path, default=ROOT, help="crate directory; containing workspace is audited")
     parser.add_argument("--jobs", type=int, default=min(2, os.cpu_count() or 1), help="parallel workers, at most available CPUs")
-    parser.add_argument("--disk-limit-mib", type=int, default=4096, help="sampled owned disk refusal threshold, not a filesystem quota")
-    parser.add_argument("--timeout", type=int, default=1800, help="total wall time, including baseline")
+    parser.add_argument("--disk-limit-mib", type=int, default=4096, help="campaign sampled disk threshold, not a quota; pinned-tool probe separately allows 4 MiB")
+    parser.add_argument("--timeout", type=int, default=1800, help="campaign wall time including baseline; pinned-tool probe separately allows ten seconds")
     parser.add_argument("--file", action="append", default=[], help="focus on matching files")
+    parser.add_argument("--exclude-file", action="append", default=[], help="exclude matching files from the mutation plan")
     parser.add_argument("--regex", help="focus on matching mutant names")
     parser.add_argument("--in-diff", type=Path, help="focus on a diff, copied into owned evidence before execution")
     args = parser.parse_args()
     if sys.version_info < (3, 11):
-        parser.error("requires Python 3.11 or newer")
+        parser.error("requires Python 3.11+ (3.13+ for bounded QA on macOS)")
+    try:
+        runpy.run_path(str(ROOT / "scripts/run-resource-bounded.py"))["check_process_ownership"]()
+    except ValueError as error:
+        parser.error(str(error))
     if not 1 <= args.jobs <= (os.cpu_count() or 1) or min(args.disk_limit_mib, args.timeout) <= 0:
         parser.error("positive resource limits and jobs no greater than available CPUs are required")
     overrides = [key for key in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_BUILD_DIR") if os.environ.get(key)]
@@ -198,31 +244,29 @@ def main():
             raise ValueError("output must be a new directory outside the actual workspace")
         if not output.parent.is_dir():
             raise ValueError("output parent must be an existing directory")
-        if shutil.disk_usage(output.parent).free < args.disk_limit_mib * 1024 * 1024:
+        if shutil.disk_usage(output.parent).free < max(args.disk_limit_mib, 4) * 1024 * 1024:
             raise ValueError("insufficient free space for the selected disk budget")
         before = source_identity(workspace)
         inventory_env = {**os.environ, "PATH": str(Path(sys.executable).resolve().parent) + os.pathsep + os.environ.get("PATH", "")}
         version = subprocess.run([bash_program(), "-c",
             'set -euo pipefail; source ./scripts/contributor-rust-tools.sh; htmlcut_contributor_cargo_tool_inventory | awk \'$1 == "cargo-mutants" {print $2}\''],
             cwd=ROOT, env=inventory_env, check=True, capture_output=True, text=True, timeout=10).stdout.strip()
-        actual = subprocess.run(["cargo", "mutants", "--version"], capture_output=True, text=True, timeout=10)
-        if actual.returncode != 0 or actual.stdout.strip() != "cargo-mutants " + version:
-            raise ValueError("install the pinned tool: cargo install cargo-mutants --version " + version + " --locked")
     except subprocess.CalledProcessError as error:
         parser.error(error.stderr.strip() if isinstance(error.stderr, str) and error.stderr.strip() else str(error))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         parser.error(str(error))
-    report = {"scope": "focused" if args.file or args.regex or diff else "full workspace", "workspace": str(workspace),
+    report = {"scope": "focused" if args.file or args.exclude_file or args.regex or diff else "full workspace", "workspace": str(workspace),
               "execution_complete": False, "full_review_complete": False, "review_required": True,
               "jobs": args.jobs, "disk_limit_mib": args.disk_limit_mib, "host": platform.platform(),
-              "source_before": before}
+              "source_before": before, "exclude_files": args.exclude_file}
     output.mkdir()
     scratch = output / "scratch"
     scratch.mkdir()
     status = 125
-    process = None
     resources = None
     cleanup_errors = []
+    report.update(resource_wrapper_returncode=None, tool_returncode=None, tool_version_expected="cargo-mutants " + version)
+    (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     try:
         command = ["cargo", "mutants", "--dir", str(workspace), "--workspace", "--all-features",
                    "--test-workspace", "true", "--no-config", "--copy-target", "false", "--copy-vcs", "false",
@@ -232,6 +276,8 @@ def main():
                    "--build-timeout", "300", "--timeout", "60", "--output", str(output)]
         for pattern in args.file:
             command.extend(["--file", pattern])
+        for pattern in args.exclude_file:
+            command.extend(["--exclude", pattern])
         if args.regex:
             command.extend(["--re", args.regex])
         if diff:
@@ -242,6 +288,7 @@ def main():
         report["command"] = command
         env = {**os.environ, "TMPDIR": str(scratch), "TMP": str(scratch), "TEMP": str(scratch),
                "CARGO_INCREMENTAL": "0", "CARGO_PROFILE_DEV_DEBUG": "0", "CARGO_PROFILE_TEST_DEBUG": "0", "CARGO_TERM_COLOR": "never"}
+        env.setdefault("RUST_TEST_THREADS", "1")
         report["execution_environment"] = {key: env.get(key) for key in (
             "RUST_TEST_THREADS", "CARGO_BUILD_TARGET", "RUSTUP_TOOLCHAIN",
             "CARGO_INCREMENTAL", "CARGO_PROFILE_DEV_DEBUG", "CARGO_PROFILE_TEST_DEBUG")}
@@ -251,30 +298,41 @@ def main():
             raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, interrupt)
-        process = subprocess.Popen([sys.executable, str(ROOT / "scripts/run-resource-bounded.py"),
-            "--root", str(output), "--disk-limit-mib", str(args.disk_limit_mib),
-            "--timeout", str(args.timeout), "--poll-seconds", "0.2", "--label", "mutation", "--", *command], env=env)
-        report["resource_wrapper_pid"] = process.pid
-        status = process.wait()
+        probe_root = output / "tool-version"
+        probe_root.mkdir()
+        probe_env = {**env, "TMPDIR": str(probe_root), "TMP": str(probe_root), "TEMP": str(probe_root)}
+        probe, _ = guarded_phase(["cargo", "mutants", "--version"], probe_root, "version", disk_limit_mib=4, timeout=10, log_limit_mib=1, env=probe_env)
+        report["tool_version"] = probe
+        probe["expected"] = "cargo-mutants " + version
+        cleanup_errors.extend("tool version: " + error for error in probe["cleanup_errors"])
+        if probe["cleanup_errors"]:
+            report["retained_phase_roots"] = [str(probe_root)]
+        if probe["returncode"] == 130:
+            status = 130
+        elif probe["returncode"] != 0 or probe["tool_returncode"] != 0 or probe["refusal"] is not None:
+            report["tool_version_error"] = ("Pinned tool probe failed (exit " + str(probe["tool_returncode"])
+                + ", refusal " + str(probe["refusal"]) + "); inspect " + probe["log_path"])
+        else:
+            actual = Path(probe["log_path"]).read_text(encoding="utf-8").strip()
+            probe["actual_preview"] = actual[:512]
+            if actual != probe["expected"]:
+                report["tool_version_error"] = ("Expected " + probe["expected"] + "; observed " + json.dumps(actual[:512])
+                    + "; install the pinned tool: cargo install cargo-mutants --version "
+                    + version + " --locked; bounded probe log: " + probe["log_path"])
+            else:
+                phase, resources = guarded_phase(command, output, "mutation", disk_limit_mib=args.disk_limit_mib, timeout=args.timeout, log_limit_mib=8, env=env)
+                report.update({key: phase.get(key) for key in ("resource_wrapper_pid", "resource_wrapper_returncode", "tool_returncode")})
+                if "execution_error" in phase:
+                    report["execution_error"] = phase["execution_error"]
+                cleanup_errors.extend(phase["cleanup_errors"])
+                if phase["cleanup_errors"]:
+                    report.setdefault("retained_phase_roots", []).append(str(output))
+                status = phase["returncode"]
     except KeyboardInterrupt:
-        if process:
-            cleanup_errors.extend(interrupt_process(process))
         status = 130
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         report["execution_error"] = str(error)
     finally:
-        if process is not None:
-            if process.poll() is None:
-                cleanup_errors.append("resource wrapper is still running")
-            try:
-                resources = json.loads((output / "mutation.resources.json").read_text(encoding="utf-8"))
-                if not isinstance(resources, dict) or not isinstance(resources.get("cleanup_errors"), list):
-                    raise ValueError("missing cleanup confirmation")
-                cleanup_errors.extend(resources["cleanup_errors"])
-                if type(resources.get("returncode")) is not int:
-                    cleanup_errors.append("mutation process exit was not confirmed")
-            except (OSError, ValueError, TypeError) as error:
-                cleanup_errors.append("resource cleanup evidence unavailable: " + str(error))
         if not cleanup_errors:
             try:
                 shutil.rmtree(scratch)
@@ -283,13 +341,11 @@ def main():
         if cleanup_errors:
             report["cleanup_errors"] = cleanup_errors
             report["retained_scratch"] = str(scratch)
-    report["resource_wrapper_returncode"] = process.poll() if process is not None else None
-    report["tool_returncode"] = resources.get("returncode") if isinstance(resources, dict) else None
     if cleanup_errors and status != 130:
         status = 125
-    if status in (0, 2, 3):
+    if resources is not None and status in (0, 2, 3):
         try:
-            if resources is None or resources.get("refusal") is not None or resources["returncode"] != status:
+            if resources.get("refusal") is not None or resources["returncode"] != status:
                 raise ValueError("resource wrapper and mutation status disagree")
             report.update(complete_outcomes(output, status, version))
             report["execution_complete"] = True
@@ -311,6 +367,8 @@ def main():
         report["execution_complete"] = False
     report["returncode"] = status
     (output / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if report.get("tool_version_error"):
+        print(report["tool_version_error"], file=sys.stderr)
     print("Mutation evidence: " + str(output), file=sys.stderr)
     return status
 

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 """Real child writers prove QA resource refusals and retained evidence."""
 import json
+import shlex
 from pathlib import Path
 import subprocess
 import os
+import runpy
 import time
 import sys
 import tempfile
@@ -14,6 +16,35 @@ RUNNER = ROOT / "scripts/run-resource-bounded.py"
 
 
 class ResourceBudgetTests(unittest.TestCase):
+    def test_shell_status_preserves_failures_outside_eight_bit_transport(self):
+        status = runpy.run_path(str(RUNNER))["shell_exit_status"]
+        for raw, expected in [(0, 0), (2, 2), (3, 3), (17, 17), (125, 125),
+                              (255, 255), (256, 1), (512, 1), (0xC0000005, 1), (-9, 137)]:
+            with self.subTest(raw=raw):
+                self.assertEqual(status(raw), expected)
+
+    @unittest.skipUnless(os.name == "nt", "native Windows DWORD status through Git Bash")
+    def test_native_windows_wide_child_status_remains_failure_through_bash(self):
+        bash = runpy.run_path(str(ROOT / "scripts/native-shell.py"))["bash_program"]()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [Path(sys.executable).as_posix(), RUNNER.as_posix(),
+                       "--root", root.as_posix(), "--disk-limit-mib", "1",
+                       "--log-limit-mib", "1", "--timeout", "2",
+                       "--poll-seconds", ".02", "--label", "wide", "--",
+                       Path(sys.executable).as_posix(), "-c",
+                       "import ctypes; ctypes.windll.kernel32.ExitProcess(256)"]
+            script = (shlex.join(command) + "; status=$?; "
+                      "printf 'watchdog_status=%s\\n' \"$status\"; exit \"$status\"")
+            result = subprocess.run([bash, "-c", script], capture_output=True,
+                                    text=True, timeout=10)
+            report = json.loads((root / "wide.resources.json").read_text())
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, "watchdog_status=1\n")
+            self.assertEqual(report["returncode"], 256, report)
+            self.assertIsNone(report["refusal"], report)
+            self.assertEqual(report["cleanup_errors"], [], report)
+
     def run_child(self, code, timeout=2, disk_limit=1, poll="0.02", fault=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -304,3 +335,107 @@ namespace['main'].__globals__['subprocess'].Popen = start
             self.assertEqual(result.returncode, 2)
             self.assertEqual(report.read_text(), "immutable")
             self.assertFalse((Path(directory) / "test.log").exists())
+
+    @unittest.skipIf(os.name == "nt", "POSIX nonreaping child ownership")
+    def test_native_exit_and_cooperation_keep_leader_waitable_until_group_signal(self):
+        fault = """
+functions = namespace['main'].__globals__
+original_start = functions['subprocess'].Popen
+original_group = functions['os'].killpg
+owned = None
+group_attempted = False
+def forbidden_poll():
+    raise AssertionError('Popen.poll would release the child identity')
+def start(*args, **kwargs):
+    global owned
+    child = original_start(*args, **kwargs)
+    if owned is None:
+        owned = child
+        original_wait = child.wait
+        child.poll = forbidden_poll
+        def wait(*args, **kwargs):
+            if not group_attempted:
+                raise AssertionError('wait before group cleanup releases ownership')
+            return original_wait(*args, **kwargs)
+        child.wait = wait
+    return child
+def group(pid, sig):
+    global group_attempted
+    assert pid == owned.pid
+    observed = functions['os'].waitid(functions['os'].P_PID, pid, functions['os'].WEXITED | functions['os'].WNOHANG | functions['os'].WNOWAIT)
+    assert observed is not None and observed.si_pid == pid, 'exited leader must remain waitable at group signal'
+    group_attempted = True
+    return original_group(pid, sig)
+functions['subprocess'].Popen = start
+functions['os'].killpg = group
+"""
+        for code, timeout, expected in [("print('completed')", 2, 0),
+                                         ("import time; time.sleep(5)", .1, 125)]:
+            with self.subTest(timeout=timeout):
+                result, report, _ = self.run_child(code, timeout=timeout, fault=fault)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertEqual(report['cleanup_errors'], [], report)
+
+    @unittest.skipIf(os.name == "nt", "POSIX lost-child identity refusal")
+    def test_reaped_identity_cannot_signal_or_wait_for_a_reused_numeric_id(self):
+        fault = """
+functions = namespace['main'].__globals__
+original_exited = functions['child_exited']
+original_start = functions['subprocess'].Popen
+def forbidden(*args, **kwargs):
+    raise AssertionError('identity lost: numeric PID/group must not be touched')
+def start(*args, **kwargs):
+    child = original_start(*args, **kwargs)
+    child.kill = forbidden
+    child.wait = forbidden
+    child.poll = forbidden
+    return child
+def lose_identity(process):
+    if not original_exited(process):
+        return False
+    functions['os'].waitpid(process.pid, 0)
+    raise ChildProcessError('externally reaped ownership probe')
+functions['subprocess'].Popen = start
+functions['child_exited'] = lose_identity
+functions['os'].killpg = forbidden
+functions['os'].kill = forbidden
+"""
+        result, report, log = self.run_child("print('completed')", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIsNone(report['returncode'], report)
+        self.assertIn('externally reaped ownership probe', report['refusal'])
+        self.assertTrue(report['cleanup_errors'])
+        self.assertEqual(log, b'completed\n')
+
+    @unittest.skipIf(os.name == "nt", "POSIX ownership prerequisites")
+    def test_unavailable_waitid_and_nondefault_sigchld_refuse_before_launch(self):
+        for fault in ["del namespace['main'].__globals__['os'].WNOWAIT",
+                      "namespace['main'].__globals__['signal'].signal(__import__('signal').SIGCHLD, __import__('signal').SIG_IGN)",
+                      "namespace['main'].__globals__['signal'].signal(__import__('signal').SIGCHLD, lambda *_: None)"]:
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                wrapper = "import runpy,sys\nnamespace=runpy.run_path(sys.argv[1])\nsys.argv=sys.argv[1:]\n" + fault + "\nsys.exit(namespace['main']())\n"
+                result = subprocess.run([sys.executable, '-c', wrapper, str(RUNNER), '--root', directory,
+                    '--disk-limit-mib', '1', '--timeout', '1', '--label', 'test', '--',
+                    sys.executable, '-c', "raise AssertionError('must not launch')"], capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertTrue('waitid/WNOWAIT' in result.stderr or 'SIGCHLD' in result.stderr)
+                self.assertFalse(list(Path(directory).iterdir()))
+
+    @unittest.skipIf(os.name == "nt", "POSIX shell prerequisite integration")
+    def test_shell_entrypoints_refuse_missing_ownership_capability_before_cargo(self):
+        for entrypoint in ["check.sh", "scripts/focused-smoke.sh"]:
+            with self.subTest(entrypoint=entrypoint), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                probe = root / "python-probe.py"
+                probe.write_text("import os,runpy,sys\nif sys.argv[1:2] == ['-c']:\n exec(sys.argv[2])\nelse:\n del os.WNOWAIT\n if sys.argv[1:2] == ['-']:\n  exec(sys.stdin.read())\n else:\n  sys.argv=sys.argv[1:]\n  runpy.run_path(sys.argv[0],run_name='__main__')\n")
+                python = root / "python3"
+                python.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " " + shlex.quote(str(probe)) + ' "$@"\n')
+                marker = root / "cargo-started"
+                for tool in [python, root / "cargo", root / "cargo-deny"]:
+                    if tool != python:
+                        tool.write_text("#!/bin/sh\necho launched > " + shlex.quote(str(marker)) + "\nexit 99\n")
+                    tool.chmod(0o755)
+                result = subprocess.run(["bash", str(ROOT / entrypoint)], env={**os.environ, "PATH": str(root) + os.pathsep + os.environ.get("PATH", "")}, capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("waitid/WNOWAIT", result.stderr)
+                self.assertFalse(marker.exists(), "Cargo started before ownership prerequisite refusal")

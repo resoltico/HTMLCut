@@ -6,7 +6,8 @@ outline. It also parses with node admission budgets from zero through 32, indepe
 of contract validity, and limits transformed readings to exercise ordinary refusals.
 These cooperative operator limits do not impose a physical memory cap.
 
-Run from the repository root with Bash, Python 3.11 or newer, `cargo-fuzz` and the pinned
+Run from the repository root with Bash, Python 3.11 or newer (3.13 or newer on macOS),
+`cargo-fuzz` and the pinned
 nightly with `rust-src`. Install the versions declared in
 [contributor-rust-tools.sh](../scripts/contributor-rust-tools.sh).
 
@@ -28,7 +29,8 @@ refusal fails the check. A failed target cancels its sibling rather than waiting
 that target's deadline; both logs and resource reports remain available.
 
 Seed source sizes and the complete framed extraction input are checked before the
-instrumented build, with bounded reads even if a source grows. Each initial corpus is
+instrumented build, with bounded reads even if a source grows. Named seed inputs must be ordinary regular
+files; FIFOs and devices refuse the whole run before the instrumented build. Each initial corpus is
 limited to 10,000 files, matching the runner's maximum requested execution count;
 exceeding this bound refuses the whole run rather than dropping seeds. This also bounds
 seed preparation, which precedes the watchdog, to at most 39.1 MiB of logical input per
@@ -55,9 +57,15 @@ preserves existing contents. Without an explicit output directory, success remov
 generated results; failure retains them and prints their path. The isolated instrumented
 build directory is removed on success and failure when its watchdog confirms process
 cleanup, after copying its logs and resource reports to the results directory. A missing,
-malformed or nonempty `cleanup_errors` report after a process starts leaves that build
+malformed report, unconfirmed child exit or nonempty `cleanup_errors` after a process starts leaves that build
 or result directory intact and prints its path; possibly active writers must be stopped
 before removing it. Cleanup uncertainty fails the run and never becomes a passing smoke.
+A single Python controller owns each watchdog process object and cancels only its
+unreaped child leaders; it never signals saved numeric PIDs. The entry point refuses
+ignored or custom `SIGCHLD` dispositions before creating output. Controller teardown
+allows 15 seconds for watchdog cleanup, then at most two seconds for forced leader
+termination; unconfirmed roots remain intact.
+
 Preinstalled toolchains and Cargo download caches are
 outside this cleanup. CI retains results for three days.
 

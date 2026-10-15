@@ -96,6 +96,8 @@ impl Document {
                     .map_err(|mut error| {
                         if error.limit.as_deref() == Some("output_bytes") {
                             error.bound = Some(self.limits.max_output_bytes.into());
+                            error.message =
+                                Error::limit("output_bytes", self.limits.max_output_bytes).message;
                         }
                         error
                     })?,
@@ -344,6 +346,72 @@ fn describe(
 mod tests {
     use super::*;
     use crate::{Limits, Source};
+    #[test]
+    fn description_refusals_report_the_global_output_policy_consistently() {
+        let limits = Limits {
+            max_output_bytes: 20,
+            ..Limits::default()
+        };
+        let document = Document::parse(
+            Source::new(b"<main id=identifier-longer-than-the-remaining-line></main>"),
+            &limits,
+        )
+        .unwrap();
+        let options = OutlineOptions {
+            select: Some("main".into()),
+            ..OutlineOptions::default()
+        };
+        let error = document.outline(&options).unwrap_err();
+        assert_eq!(error.error, ErrorCode::LimitExceeded);
+        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+        assert_eq!(error.bound, Some(20.into()));
+        assert_eq!(error.message, "The output_bytes limit of 20 was exceeded.");
+    }
+
+    #[test]
+    fn qualified_attribute_names_preserve_prefixes_at_exact_outline_byte_boundaries() {
+        let html =
+            b"<svg xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href=target xml:lang=en></svg>";
+        let expected = "1 match for svg\nsvg [xmlns:xlink xlink:href xml:lang]\n";
+        let options = OutlineOptions {
+            select: Some("svg".into()),
+            ..OutlineOptions::default()
+        };
+        for maximum in [expected.len() - 1, expected.len(), expected.len() + 1] {
+            let limits = Limits {
+                max_output_bytes: maximum,
+                ..Limits::default()
+            };
+            let document = Document::parse(Source::new(html), &limits).unwrap();
+            if maximum >= expected.len() {
+                assert_eq!(document.outline(&options).unwrap(), expected);
+            } else {
+                let error = document.outline(&options).unwrap_err();
+                assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+                assert_eq!(error.bound, Some(maximum.into()));
+                assert_eq!(
+                    error.message,
+                    format!("The output_bytes limit of {maximum} was exceeded.")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn description_admission_refuses_an_oversized_source_attribute_name() {
+        let html = format!("<main {}='value'></main>", "attribute".repeat(8192));
+        let limits = Limits::default();
+        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
+        let element = document
+            .html
+            .select(&Selector::parse("main").unwrap())
+            .next()
+            .unwrap();
+        let error = describe(element, 1, false, &Clock::new(&limits), 8).unwrap_err();
+        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+        assert_eq!(error.bound, Some(8.into()));
+    }
+
     #[test]
     fn previews_stream_normalized_parts_without_allocating_source_values() {
         let limits = Limits::default();

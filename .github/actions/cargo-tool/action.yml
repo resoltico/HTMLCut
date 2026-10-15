@@ -64,3 +64,5 @@ runs:
         path: |
           ${{ runner.temp }}/htmlcut-cargo-install.*/*.log
           ${{ runner.temp }}/htmlcut-cargo-install.*/*.resources.json
+          ${{ runner.temp }}/htmlcut-cargo-install.*/version/*.log
+          ${{ runner.temp }}/htmlcut-cargo-install.*/version/*.resources.json

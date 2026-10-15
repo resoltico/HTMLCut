@@ -38,6 +38,32 @@ def disk_bytes(root):
     return total
 
 
+def check_process_ownership():
+    """Require an unreaped POSIX child identity until group termination."""
+    if os.name == "nt":
+        return
+    if any(not hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOHANG", "WNOWAIT")):
+        raise ValueError("bounded POSIX QA requires waitid/WNOWAIT; use Python 3.13+ on macOS or a supported Python 3.11+ on Linux")
+    if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+        raise ValueError("bounded POSIX QA requires default SIGCHLD handling; ignored/custom handlers may reap the owned child")
+
+
+def child_exited(process):
+    if os.name == "nt":
+        return process.poll() is not None
+    # WNOWAIT keeps an exited leader waitable, reserving its PID/PGID until
+    # cleanup. ECHILD means ownership was lost: never signal a possibly reused ID.
+    return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+
+
+def shell_exit_status(returncode):
+    # Windows child statuses are DWORDs. MSYS shells retain only eight bits,
+    # so a nonzero multiple of 256 must not become a successful wrapper exit.
+    if returncode > 255:
+        return 1
+    return returncode if returncode >= 0 else 128 - returncode
+
+
 def stop_process_tree(process):
     if os.name == "nt":
         result = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
@@ -47,25 +73,26 @@ def stop_process_tree(process):
             raise OSError(f"taskkill failed with exit {result.returncode}")
     else:
         cooperation_timed_out = False
-        # cargo-mutants owns separate build/test groups. Give its interrupt
-        # handler a bounded chance to stop those before killing the outer group.
-        if process.poll() is None:
+        if not child_exited(process):
+            # Popen.send_signal/poll/wait can reap. Signal the reserved PID
+            # directly and use only nonreaping observations before killpg.
             try:
-                process.send_signal(signal.SIGINT)
+                os.kill(process.pid, signal.SIGINT)
             except ProcessLookupError:
                 pass
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                cooperation_timed_out = True
+            deadline = time.monotonic() + 1
+            while not child_exited(process):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    cooperation_timed_out = True
+                    break
+                time.sleep(min(remaining, 0.01))
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
         except PermissionError:
-            # Darwin can return EPERM for an exited group. Do not ignore an
-            # actual live-group denial or an unavailable/uncertain inspection.
-            if sys.platform != "darwin" or process.poll() is None:
+            if sys.platform != "darwin" or not child_exited(process):
                 raise
             listing = subprocess.check_output(["ps", "-axo", "pgid=,stat="],
                                               text=True, timeout=2)
@@ -93,6 +120,10 @@ def main():
         parser.error("command and positive resource limits are required")
     if not args.label.replace("-", "").replace("_", "").isalnum():
         parser.error("label must contain only letters, numbers, hyphens or underscores")
+    try:
+        check_process_ownership()
+    except ValueError as error:
+        parser.error(str(error))
     root = args.root.resolve(strict=True)
     if not root.is_dir():
         parser.error("root must be an existing task-owned directory")
@@ -135,6 +166,7 @@ def main():
         refusal = None
         accounting_errors = []
         cleanup_errors = []
+        child_identity_lost = False
         try:
             while True:
                 try:
@@ -155,34 +187,44 @@ def main():
                     refusal = "log-budget-exceeded"
                 elif remaining <= 0:
                     refusal = "wall-time-exceeded"
-                if refusal or process.poll() is not None:
+                if refusal or child_exited(process):
                     break
                 # Large finite values must not overflow sleep or postpone the
                 # deadline or defer the next scan by more than one second.
                 time.sleep(min(args.poll_seconds, remaining, 1.0))
         except Exception as error:
+            child_identity_lost = isinstance(error, ChildProcessError)
             refusal = "monitor-failed: " + type(error).__name__ + ": " + str(error)
         finally:
-            # Kill descendants even if their parent has exited; they may hold
-            # stdout open or continue writing after apparent success.
-            try:
-                stop_process_tree(process)
-            except Exception as error:
-                cleanup_errors.append(type(error).__name__ + ": " + str(error))
-                # Still reap the leader where possible; this does not prove
-                # descendant cleanup when group termination failed.
+            # Keep the POSIX leader unreaped until its last group signal.
+            if not child_identity_lost:
                 try:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
-                except OSError as kill_error:
-                    cleanup_errors.append("leader kill: " + str(kill_error))
-            try:
-                returncode = process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
+                    stop_process_tree(process)
+                except Exception as error:
+                    child_identity_lost = isinstance(error, ChildProcessError)
+                    cleanup_errors.append(type(error).__name__ + ": " + str(error))
+                    if not child_identity_lost:
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            pass
+                        except OSError as kill_error:
+                            cleanup_errors.append("leader kill: " + str(kill_error))
+            if child_identity_lost:
+                cleanup_errors.append("child identity lost; no further PID/group signals or waits attempted")
+                # Disarm Popen's destructor polling too. The report retains an
+                # unknown returncode, not this internal already-finished marker.
+                process.returncode = 0
                 returncode = None
-                cleanup_errors.append("leader did not exit within cleanup grace")
+            else:
+                try:
+                    returncode = process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    returncode = None
+                    cleanup_errors.append("leader did not exit within cleanup grace")
             reader.join(timeout=5)
+        if child_identity_lost:
+            returncode = None
         if cleanup_errors:
             refusal = refusal or "process-cleanup-failed"
         if reader.is_alive():
@@ -211,7 +253,7 @@ def main():
             json.dump(result, report, indent=2)
             report.write("\n")
         print(json.dumps(result), file=sys.stderr)
-        return 125 if refusal else returncode if returncode >= 0 else 128 - returncode
+        return 125 if refusal else shell_exit_status(returncode)
 
 
 if __name__ == "__main__":

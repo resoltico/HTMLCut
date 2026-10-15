@@ -103,7 +103,7 @@ class OutcomeTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
-    def run_main(self, directory, status=0, resources=True, cleanup_errors=None, source_changed=False, output_inside=False, extra=(), interrupted=False):
+    def run_main(self, directory, status=0, resources=True, cleanup_errors=None, source_changed=False, output_inside=False, extra=(), interrupted=False, empty_plan=False, probe_status=0, probe_version=VERSION, probe_resources=True, probe_cleanup_errors=None, probe_interrupted=False):
         base = Path(directory)
         source = base / 'workspace'
         source.mkdir()
@@ -121,23 +121,35 @@ class RunnerTests(unittest.TestCase):
             if command[0] == audit.bash_program():
                 return subprocess.CompletedProcess(command, 0, VERSION + '\n', '')
             if command[:3] == ['cargo', 'mutants', '--version']:
-                return subprocess.CompletedProcess(command, 0, 'cargo-mutants ' + VERSION + '\n', '')
+                raise AssertionError('pin query must use the bounded owned phase')
             raise AssertionError(command)
 
+        phases_started = []
         def process(command, **kwargs):
-            evidence(output, ('CaughtMutant', 'Timeout' if status == 3 else 'MissedMutant' if status == 2 else 'CaughtMutant'))
-            if resources:
-                (output / 'mutation.resources.json').write_text(json.dumps({'returncode': 70 if interrupted else status, 'refusal': 'interrupted' if interrupted else None, 'cleanup_errors': cleanup_errors or []}))
+            label=command[command.index('--label')+1]
+            phases_started.append(label)
+            probe=label=='version'
+            phase_root=Path(command[command.index('--root')+1])
+            phase_status=probe_status if probe else status
+            phase_interrupted=probe_interrupted if probe else interrupted
+            if probe:
+                (phase_root/'version.log').write_text('cargo-mutants '+probe_version+'\n')
+            else:
+                evidence(output, ('CaughtMutant', 'Timeout' if status == 3 else 'MissedMutant' if status == 2 else 'CaughtMutant'))
+                if empty_plan:
+                    (output/'mutants.out/mutants.json').write_text('[]')
+            if probe_resources if probe else resources:
+                (phase_root/(label+'.resources.json')).write_text(json.dumps({'returncode':70 if phase_interrupted else phase_status,'refusal':'interrupted' if phase_interrupted else 'wall-time-exceeded' if phase_status==125 else None,'cleanup_errors':(probe_cleanup_errors if probe else cleanup_errors) or []}))
             class Process:
-                pid = 123
-                waited = False
-                def wait(self, timeout=None):
-                    if interrupted and not self.waited:
-                        self.waited = True
+                pid=123
+                waited=False
+                def wait(self,timeout=None):
+                    if phase_interrupted and not self.waited:
+                        self.waited=True
                         raise KeyboardInterrupt
-                    return status
+                    return phase_status
                 def poll(self):
-                    return status
+                    return phase_status
             return Process()
 
         argv = ['mutation-audit.py', '--dir', str(crate), '--output', str(output), '--jobs', '4', '--disk-limit-mib', '1', *extra]
@@ -155,7 +167,79 @@ class RunnerTests(unittest.TestCase):
                 launched.assert_not_called()
                 return None, output
             actual = audit.main()
+            if probe_status != 0 or probe_version != VERSION or not probe_resources or probe_cleanup_errors or probe_interrupted:
+                self.assertEqual(phases_started,['version'],'invalid pin phase must not launch a campaign')
         return actual, output
+
+    def test_exclusions_alone_are_focused_and_forward_exact_patterns(self):
+        patterns = ['crates/htmlcut-cli/src/authorization/windows.rs', 'crates/htmlcut-cli/src/authorization/windows/**']
+        with tempfile.TemporaryDirectory() as directory:
+            actual, output = self.run_main(directory, extra=tuple(part for pattern in patterns for part in ('--exclude-file', pattern)))
+            result = json.loads((output / 'audit.json').read_text())
+            self.assertEqual(actual, 0)
+            self.assertEqual(result['scope'], 'focused')
+            self.assertEqual(result['exclude_files'], patterns)
+            command = result['command']
+            self.assertEqual([command[index+1] for index,value in enumerate(command) if value == '--exclude'], patterns)
+            self.assertNotIn('--exclude-file', command)
+            self.assertIn('--workspace', command)
+            self.assertIn('--all-features', command)
+            self.assertEqual(command[command.index('--test-workspace')+1], 'true')
+
+    def test_exclusion_only_empty_plan_cannot_claim_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            actual, output = self.run_main(directory, extra=('--exclude-file', '**'), empty_plan=True)
+            result = json.loads((output / 'audit.json').read_text())
+            self.assertEqual(actual, 125)
+            self.assertEqual(result['scope'], 'focused')
+            self.assertEqual(result['exclude_files'], ['**'])
+            self.assertFalse(result['execution_complete'])
+            self.assertEqual(result['tool_returncode'], 0)
+            self.assertIn('empty mutation plan', result['evidence_error'])
+
+    def test_test_threads_default_to_one_and_respect_explicit_setting(self):
+        for configured, expected in [(None, '1'), ('3', '3')]:
+            environment = {key:value for key,value in os.environ.items() if key != 'RUST_TEST_THREADS'}
+            if configured is not None:
+                environment['RUST_TEST_THREADS'] = configured
+            with self.subTest(configured=configured), patch.dict(os.environ,environment,clear=True), tempfile.TemporaryDirectory() as directory:
+                actual, output = self.run_main(directory)
+                result=json.loads((output/'audit.json').read_text())
+                self.assertEqual(actual,0)
+                self.assertNotIn('--cargo-test-arg=--fail-fast',result['command'])
+                self.assertEqual(result['execution_environment']['RUST_TEST_THREADS'],expected)
+                self.assertIn('--workspace',result['command'])
+                self.assertEqual(result['command'][result['command'].index('--test-workspace')+1],'true')
+
+    def test_invalid_or_refused_pin_probe_is_retained_without_mutation_completion(self):
+        for options in [dict(probe_version='0.0.0'),dict(probe_status=2),dict(probe_status=125),dict(probe_resources=False),dict(probe_cleanup_errors=['pin child unconfirmed']),dict(probe_cleanup_errors=[1])]:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                actual,output=self.run_main(directory,**options)
+                report=json.loads((output/'audit.json').read_text())
+                self.assertEqual(actual,125)
+                self.assertFalse(report['execution_complete'])
+                self.assertTrue(report['source_stable'])
+                self.assertIsNone(report['tool_returncode'])
+                self.assertFalse((output/'mutants.out').exists())
+                self.assertEqual(report['tool_version']['command'],['cargo','mutants','--version'])
+                self.assertTrue((output/'tool-version/version.log').is_file())
+                if 'probe_version' in options:
+                    self.assertIn('install the pinned tool',report['tool_version_error'])
+                if options.get('probe_status')==2:
+                    self.assertEqual(report['tool_version']['tool_returncode'],2)
+                if options.get('probe_resources') is False or options.get('probe_cleanup_errors'):
+                    self.assertTrue((output/'scratch').is_dir())
+                    self.assertIn(str((output/'tool-version').resolve()),report['retained_phase_roots'])
+
+    def test_interrupted_pin_probe_records_own_status_and_skips_campaign(self):
+        with tempfile.TemporaryDirectory() as directory:
+            actual,output=self.run_main(directory,probe_status=125,probe_interrupted=True)
+            report=json.loads((output/'audit.json').read_text())
+            self.assertEqual(actual,130)
+            self.assertEqual(report['tool_version']['resource_wrapper_returncode'],125)
+            self.assertEqual(report['tool_version']['tool_returncode'],70)
+            self.assertIsNone(report['tool_returncode'])
+            self.assertFalse(report['execution_complete'])
 
     def test_git_bash_absolute_path_precedes_windows_launcher(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -192,6 +276,9 @@ class RunnerTests(unittest.TestCase):
                 self.assertFalse(result['full_review_complete'])
                 self.assertTrue(result['review_required'])
                 self.assertEqual(result['jobs'], 4)
+                self.assertEqual(result['scope'], 'full workspace')
+                self.assertEqual(result['exclude_files'], [])
+                self.assertNotIn('--exclude', result['command'])
                 self.assertFalse((output / 'scratch').exists())
 
     def test_interrupted_runner_preserves_distinct_helper_and_tool_status(self):
