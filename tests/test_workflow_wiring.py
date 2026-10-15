@@ -15,6 +15,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_native_ci_checks_windows_fuzz_tree_stop_and_bounds_package_retention(self):
+        text = (ROOT / ".github/workflows/ci.yml").read_text()
+        native = text.split("\n  release-target-smoke:\n", 1)[1].split("\n  check:\n", 1)[0]
+        control = native.split("      - name: Verify native Windows fuzz cancellation\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: runner.os == 'Windows'", control)
+        self.assertIn("python3 -m unittest discover -s tests -p test_fuzz_process_cleanup.py -v", control)
+        self.assertTrue((ROOT / 'tests/test_fuzz_process_cleanup.py').is_file())
+        upload = native.split("uses: actions/upload-artifact@", 1)[1]
+        self.assertIn('name: native-${{ matrix.id }}', upload)
+        self.assertIn('retention-days: 7', upload)
+        self.assertIn('path: dist/', upload)
+        self.assertIn('if-no-files-found: error', upload)
+
     def test_fuzz_seeds_keep_exact_bytes_in_checkouts(self):
         seeds = sorted(str(path.relative_to(ROOT)) for path in (ROOT / "fuzz/seeds").rglob("*") if path.is_file())
         self.assertTrue(seeds, "retained document seeds must be discovered")

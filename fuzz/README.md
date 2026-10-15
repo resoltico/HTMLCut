@@ -60,11 +60,17 @@ cleanup, after copying its logs and resource reports to the results directory. A
 malformed report, unconfirmed child exit or nonempty `cleanup_errors` after a process starts leaves that build
 or result directory intact and prints its path; possibly active writers must be stopped
 before removing it. Cleanup uncertainty fails the run and never becomes a passing smoke.
-A single Python controller owns each watchdog process object and cancels only its
-unreaped child leaders; it never signals saved numeric PIDs. The entry point refuses
+A single Python controller owns each watchdog process object. On POSIX it cancels
+only its unreaped child leaders without signaling saved numeric PIDs. On Windows it
+keeps the process handle while invoking `taskkill /T /F` for a live watchdog tree;
+terminating only that leader would bypass its child cleanup. Forced Windows tree
+stops remain explicitly uncertain and retain their roots, since the killed watchdog
+cannot confirm its own resource report. Descendants orphaned by an already exited
+Windows watchdog are not guaranteed to be stopped. The entry point refuses
 ignored or custom `SIGCHLD` dispositions before creating output. Controller teardown
 allows 15 seconds for watchdog cleanup, then at most two seconds for forced leader
-termination; unconfirmed roots remain intact.
+termination; Windows also allows up to five seconds per live watchdog for `taskkill`.
+Unconfirmed roots remain intact.
 
 Preinstalled toolchains and Cargo download caches are
 outside this cleanup. CI retains results for three days.
