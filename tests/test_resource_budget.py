@@ -2,6 +2,8 @@
 """Real child writers prove QA resource refusals and retained evidence."""
 import json
 import shlex
+import shutil
+import signal
 from pathlib import Path
 import subprocess
 import os
@@ -372,48 +374,201 @@ namespace['main'].__globals__['subprocess'].Popen = start
         self.separately_grouped_child_cleanup(overflow=True)
 
     def separately_grouped_child_cleanup(self, overflow=False):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            marker = root / "separate-child-wrote"
-            ready = root / "ready"
-            child = "import pathlib,time; time.sleep(1.5); pathlib.Path(" + repr(str(marker)) + ").write_text('leaked')"
+        root = Path(tempfile.mkdtemp(prefix="htmlcut-resource-group."))
+        marker, gate = root / "separate-child-wrote", root / "write-after-cleanup"
+        writer_ready, ready = root / "writer-ready", root / "handler-ready"
+        # The observer owns this unreaped group leader independently of the
+        # tool's handler. Its identity cannot be reused during failure cleanup.
+        child = ("import pathlib,time,sys\n"
+                 "ready=pathlib.Path(" + repr(str(writer_ready)) + ")\n"
+                 "ready.with_suffix('.pending').write_text('ready'); ready.with_suffix('.pending').replace(ready)\n"
+                 "gate=pathlib.Path(" + repr(str(gate)) + ")\n"
+                 "deadline=time.monotonic()+10\n"
+                 "while not gate.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                 "if gate.exists(): pathlib.Path(" + repr(str(marker)) + ").write_text('leaked')\n")
+        writer = subprocess.Popen([sys.executable, "-c", child], start_new_session=True,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        watchdog = None
+        passed = False
+        cleanup_errors = []
+        try:
+            deadline = time.monotonic() + 3
+            while not writer_ready.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(writer_ready.exists(), "separate writer did not become ready")
+            self.assertEqual(os.getpgid(writer.pid), writer.pid)
             parent = (
-                "import os,signal,subprocess,sys,time,pathlib\n"
-                "child=subprocess.Popen([sys.executable,'-c'," + repr(child) + "],start_new_session=True)\n"
+                "import os,signal,sys,time,pathlib\n"
+                "assert os.getpgrp() != " + str(writer.pid) + "\n"
                 "def stop(*_):\n"
                 + (" sys.stdout.write('c'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
-                " os.killpg(child.pid,signal.SIGKILL)\n"
-                " child.wait()\n"
+                " os.killpg(" + str(writer.pid) + ",signal.SIGKILL)\n"
                 " sys.exit(0)\n"
                 "signal.signal(signal.SIGINT,stop)\n"
-                "pathlib.Path(" + repr(str(ready)) + ").write_text('ready')\n"
+                "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
+                "ready.with_suffix('.pending').write_text('ready'); ready.with_suffix('.pending').replace(ready)\n"
                 + ("sys.stdout.write('x'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
                 "time.sleep(5)\n"
             )
-            result = subprocess.run([sys.executable, str(RUNNER), "--root", directory,
-                "--disk-limit-mib", "4", "--log-limit-mib", "1", "--timeout", "0.5", "--poll-seconds", "0.02",
+            # Wall time is a fallback only; the tested trigger follows ready
+            # or the handler's output. Other tests cover deadline expiry.
+            watchdog = subprocess.Popen([sys.executable, str(RUNNER), "--root", str(root),
+                "--disk-limit-mib", "4", "--log-limit-mib", "1", "--timeout", "5", "--poll-seconds", "0.02",
                 "--label", "test", "--", sys.executable, "-c", parent],
-                capture_output=True, timeout=8)
-            self.assertTrue(ready.exists(), result.stderr)
-            self.assertEqual(result.returncode, 125, result.stderr)
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 3
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(ready.exists(), "tool cleanup handler did not become ready")
+            if not overflow:
+                watchdog.send_signal(signal.SIGINT)
+            _, stderr = watchdog.communicate(timeout=8)
+            self.assertEqual(watchdog.returncode, 125, stderr)
             report = json.loads((root / "test.resources.json").read_text())
-            self.assertEqual(report["refusal"], "log-budget-exceeded" if overflow else "wall-time-exceeded")
+            self.assertEqual(report["refusal"], "log-budget-exceeded" if overflow else "interrupted")
             self.assertEqual(report["cleanup_errors"], [])
-            time.sleep(1.5)
+            deadline = time.monotonic() + 2
+            while os.waitid(os.P_PID, writer.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            stopped = os.waitid(os.P_PID, writer.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            self.assertIsNotNone(stopped, "separate writer did not stop")
+            self.assertEqual(stopped.si_code, os.CLD_KILLED, stopped)
+            self.assertEqual(stopped.si_status, signal.SIGKILL, stopped)
+            gate.write_text("write only after confirmed writer termination")
             self.assertFalse(marker.exists(), "separately grouped child survived cancellation")
+            passed = True
+        finally:
+            watchdog_alive = False
+            if watchdog is not None:
+                try:
+                    watchdog_alive = watchdog.poll() is None
+                except OSError as error:
+                    cleanup_errors.append(str(error))
+            if watchdog_alive:
+                try:
+                    watchdog.terminate()
+                    watchdog.communicate(timeout=3)
+                except (OSError, subprocess.SubprocessError) as error:
+                    cleanup_errors.append(str(error))
+                    try:
+                        watchdog.kill()
+                        watchdog.communicate(timeout=2)
+                    except (OSError, subprocess.SubprocessError) as fallback_error:
+                        cleanup_errors.append(str(fallback_error))
+            try:
+                if os.waitid(os.P_PID, writer.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+                    try:
+                        os.killpg(writer.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError:
+                        # Darwin can deny a group already reduced to its exited
+                        # leader; this literal writer has no descendants.
+                        if os.waitid(os.P_PID, writer.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+                            raise
+                writer.wait(timeout=2)
+            except (OSError, subprocess.SubprocessError) as error:
+                cleanup_errors.append(str(error))
+            report_path = root / "test.resources.json"
+            try:
+                report = json.loads(report_path.read_text())
+                if report['cleanup_errors'] or type(report['returncode']) is not int:
+                    cleanup_errors.append('tool process cleanup unconfirmed')
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                cleanup_errors.append(str(error))
+            if passed and not cleanup_errors:
+                shutil.rmtree(root)
+            else:
+                print(f"Separate-group fixture evidence retained at {root}: {cleanup_errors}", file=sys.stderr)
+            if cleanup_errors:
+                self.fail(f"Separate-group fixture cleanup unconfirmed at {root}: {cleanup_errors}")
 
     @unittest.skipIf(os.name == "nt", "POSIX process-group orphan cleanup")
-    def test_successful_parent_cannot_leave_background_writer(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / "orphan-wrote"
-            child = "import pathlib,time; time.sleep(0.4); pathlib.Path(" + repr(str(marker)) + ").write_text('leaked')"
-            parent = "import subprocess,sys; subprocess.Popen([sys.executable, '-c', " + repr(child) + "])"
-            result = subprocess.run([sys.executable, str(RUNNER), "--root", directory,
-                "--disk-limit-mib", "1", "--timeout", "2", "--poll-seconds", "0.02", "--label", "test", "--",
-                sys.executable, "-c", parent], capture_output=True, timeout=5)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            time.sleep(0.5)
-            self.assertFalse(marker.exists(), "background writer survived command completion")
+    def test_exited_parent_group_cleanup_stops_a_gated_background_writer(self):
+        root = Path(tempfile.mkdtemp(prefix="htmlcut-exited-group."))
+        marker, gate, ready, expired = (root / name for name in ["orphan-wrote", "write-after-cleanup", "writer-ready", "writer-expired"])
+        child = ("import os,pathlib,time\n"
+                 "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
+                 "ready.with_suffix('.pending').write_text(str(os.getpgrp())); ready.with_suffix('.pending').replace(ready)\n"
+                 "gate=pathlib.Path(" + repr(str(gate)) + ")\n"
+                 "deadline=time.monotonic()+10\n"
+                 "while not gate.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                 "if gate.exists(): pathlib.Path(" + repr(str(marker)) + ").write_text('leaked')\n"
+                 "else: pathlib.Path(" + repr(str(expired)) + ").write_text('natural expiry')\n")
+        parent_code = ("import pathlib,subprocess,sys,time\n"
+                       "subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n"
+                       "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
+                       "deadline=time.monotonic()+3\n"
+                       "while not ready.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                       "assert ready.exists(), 'background writer did not become ready'\n")
+        parent = subprocess.Popen([sys.executable, "-c", parent_code], start_new_session=True,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        passed = False
+        cleanup_errors = []
+
+        def live_group_members():
+            listing = subprocess.check_output(["ps", "-axo", "pgid=,pid=,stat="], text=True, timeout=2)
+            members = []
+            for line in listing.splitlines():
+                if not line.strip():
+                    continue
+                group, pid, state = line.split()
+                if int(group) == parent.pid and not state.startswith("Z"):
+                    members.append((int(pid), state))
+            return members
+
+        try:
+            deadline = time.monotonic() + 4
+            while os.waitid(os.P_PID, parent.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            exited = os.waitid(os.P_PID, parent.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            self.assertIsNotNone(exited, "parent did not exit after writer readiness")
+            self.assertEqual((exited.si_code, exited.si_status), (os.CLD_EXITED, 0))
+            self.assertEqual(int(ready.read_text()), parent.pid)
+            # The exited leader remains waitable, reserving this group identity
+            # through both the actual helper and the independent final signal.
+            runpy.run_path(str(RUNNER))["stop_process_tree"](parent)
+            deadline = time.monotonic() + 2
+            members = live_group_members()
+            while members and time.monotonic() < deadline:
+                time.sleep(.01)
+                members = live_group_members()
+            self.assertEqual(members, [], "owned group still has live members")
+            self.assertFalse(expired.exists(), "writer expired before group cleanup could be proved")
+            gate.write_text("write only after confirmed group termination")
+            self.assertFalse(marker.exists(), "background writer survived group cleanup")
+            passed = True
+        finally:
+            try:
+                # Do not use the possibly faulted helper for fixture cleanup.
+                os.killpg(parent.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError as error:
+                try:
+                    if live_group_members():
+                        cleanup_errors.append(str(error))
+                except (OSError, ValueError, subprocess.SubprocessError) as inspect_error:
+                    cleanup_errors.append(str(inspect_error))
+            except OSError as error:
+                cleanup_errors.append(str(error))
+            try:
+                deadline = time.monotonic() + 2
+                members = live_group_members()
+                while members and time.monotonic() < deadline:
+                    time.sleep(.01)
+                    members = live_group_members()
+                if members:
+                    cleanup_errors.append(f'live owned group members: {members}')
+                parent.wait(timeout=2)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                cleanup_errors.append(str(error))
+            if passed and not cleanup_errors:
+                shutil.rmtree(root)
+            else:
+                print(f"Exited-group fixture evidence retained at {root}: {cleanup_errors}", file=sys.stderr)
+            if cleanup_errors:
+                self.fail(f"Exited-group fixture cleanup unconfirmed at {root}: {cleanup_errors}")
 
     def test_existing_report_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
