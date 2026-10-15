@@ -50,7 +50,7 @@ class ResourceBudgetTests(unittest.TestCase):
         self.assertLess(report["elapsed_seconds"], 2)
 
     def test_huge_finite_intervals_allow_successful_child(self):
-        result, report, log = self.run_child("print('short child')", timeout=1e308, poll="1e308")
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'short child\\n')", timeout=1e308, poll="1e308")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(report["refusal"])
         self.assertEqual(log, b"short child\n")
@@ -117,7 +117,7 @@ functions['disk_bytes'] = sample
         return self.run_child(code, timeout=timeout, fault=fault)
 
     def test_final_sample_failure_retains_successful_child_log_and_report(self):
-        result, report, log = self.final_sample_failure("print('retained child evidence')")
+        result, report, log = self.final_sample_failure("import sys; sys.stdout.buffer.write(b'retained child evidence\\n')")
         self.assertEqual(result.returncode, 125, result.stderr)
         self.assertEqual(report["returncode"], 0)
         self.assertIn("disk-accounting-failed: final sample probe", report["refusal"])
@@ -131,11 +131,17 @@ functions['disk_bytes'] = sample
         self.assertEqual(report["disk_accounting_errors"], [{"phase": "final", "error": "final sample probe"}])
 
     def test_success_records_actual_exit_and_output(self):
-        result, report, log = self.run_child("print('native-child')")
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'native-child\\n')")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(report["refusal"])
         self.assertEqual(log, b"native-child\n")
         self.assertGreater(report["peak_sampled_disk_bytes"], 0)
+
+    def test_child_crlf_bytes_are_preserved_without_normalization(self):
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'line\\r\\n')")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(report["refusal"])
+        self.assertEqual(log, b"line\r\n")
 
     def test_disk_writer_is_refused(self):
         result, report, _ = self.run_child(
