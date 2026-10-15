@@ -2,6 +2,7 @@
 """Workflow handoff must preserve source, inventory and credential boundaries."""
 from pathlib import Path
 import re
+import runpy
 import json
 import os
 import subprocess
@@ -26,13 +27,15 @@ class WorkflowWiringTest(unittest.TestCase):
         manifest = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text())
         targets = {entry["name"] for entry in manifest["bin"]}
         script = (ROOT / "scripts/focused-smoke.sh").read_text()
-        shell_targets = set(re.search(r"^for target in ([^;\n]+); do", script, re.M).group(1).split())
+        coordinator = ROOT / "scripts/focused-smoke.py"
+        shell_targets = set(runpy.run_path(str(coordinator))["fuzz_targets"]())
+        self.assertIn('exec python3 scripts/focused-smoke.py "$@"', script)
         # Target declarations describe what each harness feeds. Other code
         # identifiers in the resource documentation are not target names.
         documented = set(re.findall(r"`([a-z][a-z0-9_]*)`\s+feeds\b", (ROOT / "fuzz/README.md").read_text()))
         self.assertEqual(targets, shell_targets)
         self.assertEqual(targets, documented)
-        self.assertNotIn("--features", script)
+        self.assertNotIn("--features", coordinator.read_text())
         self.assertIn("document.outline", (ROOT / "fuzz/fuzz_targets/extract.rs").read_text())
 
     def test_cargo_configuration_keeps_each_checkout_build_isolated(self):
@@ -161,8 +164,32 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("CARGO_BUILD_TARGET: ${{ matrix.target_triple }}", text)
         self.assertIn("RUST_TEST_THREADS: '1'", text)
         self.assertIn("if: always()", text)
+        native = text.split("      - name: Execute active native CLI selection; survivors and timeouts require review\n", 1)[1].split("      - name: Preserve outcomes", 1)[0]
+        native_body = native.split("        run: |\n", 1)[1]
+        native_command = "\n".join(line[10:] for line in native_body.splitlines())
+        for runner_os, patterns in [
+            ("Linux", ["crates/htmlcut-cli/src/authorization/windows.rs", "crates/htmlcut-cli/src/authorization/windows/**"]),
+            ("Windows", ["crates/htmlcut-cli/src/authorization/unix.rs"]),
+            ("macOS", None),
+        ]:
+            with self.subTest(runner_os=runner_os), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                python = root / "python3"
+                python.write_text("#!"+sys.executable+"\nimport json,os,sys\nfrom pathlib import Path\nif sys.argv[1:2]==['-c']:\n exec(sys.argv[2])\nelse:\n Path(os.environ['ARGUMENT_LOG']).write_text(json.dumps(sys.argv[1:]))\n")
+                python.chmod(0o755)
+                log = root / "arguments.json"
+                result = subprocess.run(["bash", "-euc", native_command], cwd=ROOT, env={**os.environ,"PATH":str(root)+os.pathsep+os.environ["PATH"],"RUNNER_OS":runner_os,"RUNNER_TEMP":str(root),"ARGUMENT_LOG":str(log)},capture_output=True,text=True)
+                if patterns is None:
+                    self.assertEqual(result.returncode,2,result.stderr)
+                    self.assertFalse(log.exists())
+                else:
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    arguments=json.loads(log.read_text())
+                    self.assertEqual([arguments[index+1] for index,value in enumerate(arguments) if value=='--exclude-file'],patterns)
+                    self.assertEqual(arguments[arguments.index('--file')+1],'crates/htmlcut-cli/src/**')
         upload = text.split("path: |", 1)[1]
         self.assertIn("mutation-outcomes/mutants.out/", upload)
+        self.assertIn("mutation-outcomes/tool-version/", upload)
         self.assertNotIn("scratch", upload)
         step = text.split("      - name: Select complementary native platforms\n", 1)[1].split("\n  collect:", 1)[0]
         body = step.split("        run: |\n", 1)[1]
@@ -176,6 +203,196 @@ class WorkflowWiringTest(unittest.TestCase):
 
 
 class ContributorToolCacheTest(unittest.TestCase):
+    def test_cleanup_failure_refuses_without_errexit_and_preserves_primary_failures(self):
+        shell = "/bin/bash" if Path("/bin/bash").is_file() else "bash"
+        for cached, install_status, query_status, expected in [
+            (False, 0, 0, 125),
+            (True, 0, 0, 125),
+            (False, 17, 0, 17),
+            (True, 0, 9, 9),
+        ]:
+            for flags in ["-uc", "-euc"]:
+                with self.subTest(cached=cached, install_status=install_status,
+                                  query_status=query_status, flags=flags), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    tools = root / "bin"
+                    tools.mkdir()
+                    (tools / "python3").symlink_to(sys.executable)
+                    marker = root / "cargo-started"
+                    removal = tools / "rm"
+                    removal.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" >> "$REMOVE_LOG"\nexit 19\n')
+                    removal.chmod(0o755)
+                    version_program = '#!/usr/bin/env bash\nprintf "cargo-mutants 27.1.0\\n"\nexit "${QUERY_STATUS:-0}"\n'
+                    cargo = tools / "cargo"
+                    cargo.write_text("""#!/usr/bin/env bash
+set -eu
+printf 'started' > "$INSTALL_MARKER"
+while [[ "$1" != --root ]]; do shift; done
+mkdir -p "$2/bin" "$CARGO_TARGET_DIR" "$CARGO_BUILD_BUILD_DIR"
+printf 'compiler product' > "$CARGO_TARGET_DIR/product"
+printf '%s' "$VERSION_PROGRAM" > "$2/bin/cargo-mutants"
+chmod +x "$2/bin/cargo-mutants"
+exit "$INSTALL_STATUS"
+""")
+                    cargo.chmod(0o755)
+                    scratch = root / "scratch"
+                    scratch.mkdir()
+                    destination = root / "tool"
+                    if cached:
+                        (destination / "bin").mkdir(parents=True)
+                        executable = destination / "bin/cargo-mutants"
+                        executable.write_text(version_program)
+                        executable.chmod(0o755)
+                    owner = root / "owner"
+                    owner.mkdir()
+                    sentinel = owner / "preserve"
+                    sentinel.write_bytes(b"owner cache")
+                    environment = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+                                   "RUNNER_TEMP": str(scratch), "REMOVE_LOG": str(root / "removals"),
+                                   "INSTALL_MARKER": str(marker), "VERSION_PROGRAM": version_program,
+                                   "INSTALL_STATUS": str(install_status), "QUERY_STATUS": str(query_status),
+                                   "CARGO_TARGET_DIR": str(owner), "CARGO_BUILD_BUILD_DIR": str(owner)}
+                    result = subprocess.run([shell, flags,
+                        'source scripts/contributor-rust-tools.sh; htmlcut_install_contributor_cargo_tool cargo-mutants "$1"',
+                        "installer", str(destination)], cwd=ROOT, env=environment,
+                        capture_output=True, text=True, timeout=6)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    retained, = scratch.iterdir()
+                    self.assertIn(str(retained), result.stderr)
+                    self.assertIn("cleanup", result.stderr)
+                    self.assertTrue((root / "removals").is_file())
+                    self.assertEqual(marker.exists(), not cached)
+                    self.assertEqual((destination / "bin/cargo-mutants").read_text(), version_program)
+                    report = retained / ("version/cargo-mutants-version.resources.json" if cached
+                                         else "cargo-mutants-install.resources.json")
+                    resources = json.loads(report.read_text())
+                    self.assertEqual(resources["cleanup_errors"], [])
+                    self.assertEqual(resources["returncode"], query_status if cached else install_status)
+                    self.assertEqual(sentinel.read_bytes(), b"owner cache")
+                    self.assertEqual(list(owner.iterdir()), [sentinel])
+
+    def test_mutants_protocol_and_postinstall_verification_preserve_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tools = root / "bin"
+            tools.mkdir()
+            (tools / "python3").symlink_to(sys.executable)
+            cargo = tools / "cargo"
+            cargo.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" > "$INSTALL_ARGUMENTS"
+while [[ "$1" != --root ]]; do shift; done
+mkdir -p "$2/bin"
+cat > "$2/bin/cargo-mutants" <<'TOOL'
+#!/usr/bin/env bash
+if [[ "$#" != 2 || "$1" != mutants || "$2" != --version ]]; then
+    printf 'unexpected direct executable arguments\\n' >&2
+    exit 41
+fi
+printf '%s\\n' "${TOOL_VERSION:-cargo-mutants 27.1.0}"
+exit "${QUERY_STATUS:-0}"
+TOOL
+chmod +x "$2/bin/cargo-mutants"
+""")
+            cargo.chmod(0o755)
+            scratch = root / "scratch"
+            scratch.mkdir()
+            arguments = root / "arguments"
+            env = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+                   "RUNNER_TEMP": str(scratch), "INSTALL_ARGUMENTS": str(arguments)}
+
+            def install(path, **overrides):
+                return subprocess.run(["bash", "-euc",
+                    'source scripts/contributor-rust-tools.sh; htmlcut_install_contributor_cargo_tool cargo-mutants "$1"',
+                    "installer", str(path)], cwd=ROOT, env={**env, **overrides}, capture_output=True, text=True)
+
+            destination = root / "installed"
+            first = install(destination)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            cold_phases = [json.loads(line) for line in (first.stdout + first.stderr).splitlines() if line.startswith('{')]
+            self.assertEqual(len(cold_phases), 2, first.stdout + first.stderr)
+            self.assertIn('install', cold_phases[0]['command'])
+            self.assertEqual(cold_phases[1]['command'][1:], ['mutants', '--version'])
+            self.assertIn("cargo-mutants", arguments.read_text().splitlines())
+            self.assertEqual(list(scratch.iterdir()), [])
+            arguments.unlink()
+            cached = install(destination)
+            self.assertEqual(cached.returncode, 0, cached.stderr)
+            cached_phases = [json.loads(line) for line in (cached.stdout + cached.stderr).splitlines() if line.startswith('{')]
+            self.assertEqual(len(cached_phases), 1, cached.stdout + cached.stderr)
+            self.assertEqual(cached_phases[0]['command'][1:], ['mutants', '--version'])
+            self.assertFalse(arguments.exists(), "A verified cached tool must not reinstall")
+            mismatch = install(destination, TOOL_VERSION="cargo-mutants 0.0.0")
+            self.assertEqual(mismatch.returncode, 1, mismatch.stderr)
+            self.assertIn("version mismatch", mismatch.stderr)
+            self.assertFalse(arguments.exists())
+            for name, overrides, status, text in [
+                ("wrong-version", {"TOOL_VERSION": "cargo-mutants 0.0.0"}, 1, "cargo-mutants 0.0.0"),
+                ("failed-query", {"QUERY_STATUS": "9"}, 9, "cargo-mutants 27.1.0"),
+            ]:
+                before = set(scratch.iterdir())
+                failed = install(root / name, **overrides)
+                self.assertEqual(failed.returncode, status, failed.stderr)
+                evidence, = set(scratch.iterdir()) - before
+                self.assertIn(str(evidence), failed.stderr)
+                self.assertEqual((evidence / "version/cargo-mutants-version.log").read_text().strip(), text)
+                resources = json.loads((evidence / "cargo-mutants-install.resources.json").read_text())
+                self.assertEqual(resources["returncode"], 0)
+                self.assertEqual(resources["cleanup_errors"], [])
+                version = json.loads((evidence / "version/cargo-mutants-version.resources.json").read_text())
+                self.assertEqual(version["returncode"], 9 if name == "failed-query" else 0)
+                self.assertEqual(version["cleanup_errors"], [])
+                self.assertTrue((evidence / "cargo-mutants-install.log").is_file())
+                self.assertFalse((evidence / "target").exists())
+                self.assertFalse((evidence / "build").exists())
+
+    def test_cached_version_hang_and_flood_are_bounded_without_reinstall_or_cache_cleanup(self):
+        original = (ROOT / "scripts/contributor-rust-tools.sh").read_text()
+        self.assertIn("--disk-limit-mib 4 --timeout 10 --log-limit-mib 1", original)
+        self.assertIn("--poll-seconds 0.05", original)
+        for mode in ["hang", "flood"]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                tools = root / "bin"
+                tools.mkdir()
+                (tools / "python3").symlink_to(sys.executable)
+                marker = root / "cargo-started"
+                cargo = tools / "cargo"
+                cargo.write_text("#!/usr/bin/env bash\nprintf unexpected > \"$INSTALL_MARKER\"\nexit 97\n")
+                cargo.chmod(0o755)
+                scratch = root / "scratch"
+                scratch.mkdir()
+                cache = root / "cached/bin"
+                cache.mkdir(parents=True)
+                executable = cache / "cargo-mutants"
+                body = "import time; time.sleep(10)" if mode == "hang" else "import sys,time; sys.stdout.buffer.write(b'x'*(2*1024*1024)); sys.stdout.flush(); time.sleep(10)"
+                executable.write_text("#!" + sys.executable + "\n" + body + "\n")
+                executable.chmod(0o755)
+                before = executable.read_bytes()
+                owner = root / "owner-target"
+                owner.mkdir()
+                sentinel = owner / "preserve"
+                sentinel.write_bytes(b"owner cache")
+                helper = root / "helper.sh"
+                # The production 10s/1MiB probe is checked above. Shorten time
+                # only; the smallest supported log budget is one MiB.
+                helper.write_text(original.replace("--timeout 10 --log-limit-mib 1", "--timeout " + ("0.15" if mode == "hang" else "2") + " --log-limit-mib 1"))
+                result = subprocess.run(["bash", "-euc", 'source "$1"; htmlcut_install_contributor_cargo_tool cargo-mutants "$2"', "installer", str(helper), str(cache.parent)], cwd=ROOT,
+                    env={**os.environ,"PATH":str(tools)+os.pathsep+os.environ["PATH"],"RUNNER_TEMP":str(scratch),"INSTALL_MARKER":str(marker),"CARGO_TARGET_DIR":str(owner),"CARGO_BUILD_BUILD_DIR":str(owner)},capture_output=True,text=True,timeout=8)
+                self.assertEqual(result.returncode,125,result.stderr)
+                evidence, = scratch.iterdir()
+                report = json.loads((evidence / "version/cargo-mutants-version.resources.json").read_text())
+                self.assertEqual(report["refusal"], "wall-time-exceeded" if mode == "hang" else "log-budget-exceeded")
+                self.assertEqual(report["cleanup_errors"], [])
+                self.assertLess(report["elapsed_seconds"], 4)
+                self.assertLessEqual((evidence / "version/cargo-mutants-version.log").stat().st_size,1024*1024)
+                self.assertFalse((evidence / "cargo-mutants-install.resources.json").exists())
+                self.assertFalse(marker.exists(), "Cached version refusal must never reinstall")
+                self.assertEqual(executable.read_bytes(),before)
+                self.assertEqual(sentinel.read_bytes(),b"owner cache")
+                self.assertEqual(list(owner.iterdir()),[sentinel])
+                self.assertIn(str(evidence),result.stderr)
+
     def test_failed_install_bounds_owned_products_and_preserves_owner_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -203,7 +420,7 @@ exit 17
             helper.write_text((ROOT / "scripts/contributor-rust-tools.sh").read_text().replace(
                 "--disk-limit-mib 4096", "--disk-limit-mib 1"))
             environment_log = root / "environment"
-            command = ["bash", "-c", 'source "$1"; htmlcut_install_contributor_cargo_tool cargo-about "$2"',
+            command = ["bash", "-euc", 'source "$1"; htmlcut_install_contributor_cargo_tool cargo-about "$2"',
                        "installer", str(helper), str(root / "installed")]
             environment = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                            "RUNNER_TEMP": str(owned), "ENVIRONMENT_LOG": str(environment_log),
@@ -298,18 +515,18 @@ chmod +x "$2/bin/cargo-about"
             install_root = root / "tool"
             log = root / "arguments"
             command = 'source scripts/contributor-rust-tools.sh; htmlcut_install_contributor_cargo_tool cargo-about "$INSTALL_ROOT"'
-            result = subprocess.run(["bash", "-c", command], cwd=ROOT,
+            result = subprocess.run(["bash", "-euc", command], cwd=ROOT,
                 env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                      "INSTALL_ROOT": str(install_root), "ARGUMENT_LOG": str(log)}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             pinned = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
             self.assertEqual(log.read_text().splitlines(), ["+" + pinned, "install", "cargo-about", "--version", "0.9.2", "--locked", "--root", str(install_root), "--features", "cli"])
             log.unlink()
-            self.assertEqual(subprocess.run(["bash", "-c", command], cwd=ROOT,
+            self.assertEqual(subprocess.run(["bash", "-euc", command], cwd=ROOT,
                 env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"], "INSTALL_ROOT": str(install_root)}, capture_output=True).returncode, 0)
             self.assertFalse(log.exists(), "Valid cached executable must not reinstall")
             (install_root / "bin/cargo-about").write_text('#!/usr/bin/env bash\nprintf "cargo-about 0.1.0\\n"\n')
-            rejected = subprocess.run(["bash", "-c", command], cwd=ROOT,
+            rejected = subprocess.run(["bash", "-euc", command], cwd=ROOT,
                 env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"], "INSTALL_ROOT": str(install_root)}, capture_output=True, text=True)
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("version mismatch", rejected.stderr)
@@ -324,8 +541,13 @@ chmod +x "$2/bin/cargo-about"
         self.assertIn('htmlcut_contributor_cargo_tool_fingerprint "$TOOL"', action)
         self.assertIn("if: failure()", action)
         self.assertIn("retention-days: 3", action)
-        self.assertIn("${{ runner.temp }}/htmlcut-cargo-install.*/*.log", action)
-        self.assertIn("${{ runner.temp }}/htmlcut-cargo-install.*/*.resources.json", action)
+        patterns = [line[10:] for line in action.split("path: |\n", 1)[1].splitlines() if line.strip()]
+        self.assertEqual(set(patterns), {
+            "${{ runner.temp }}/htmlcut-cargo-install.*/*.log",
+            "${{ runner.temp }}/htmlcut-cargo-install.*/*.resources.json",
+            "${{ runner.temp }}/htmlcut-cargo-install.*/version/*.log",
+            "${{ runner.temp }}/htmlcut-cargo-install.*/version/*.resources.json",
+        })
         self.assertNotIn("htmlcut-cargo-install.*/target", action)
         self.assertNotIn(".htmlcut-artifacts", action)
         self.assertNotIn("dist/", action)

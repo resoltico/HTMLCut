@@ -533,6 +533,91 @@ pub(crate) fn read_html(root: crate::dom::ElementRef<'_>, clock: &Clock) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn text_after_a_trailing_verbatim_line_feed_returns_to_normal_collapsing() {
+        assert_eq!(
+            text_of("<p id=x><textarea>a\n</textarea>  b  c </p>", "#x"),
+            "a\nb c"
+        );
+    }
+
+    #[test]
+    fn canonical_control_escape_admission_precedes_appending_the_reading() {
+        let limits = Limits::default();
+        let clock = Clock::new(&limits);
+        for maximum in [7, 8, 9] {
+            let mut sink = ReadingSink::new(1, Some((maximum, maximum)), &clock).unwrap();
+            let result = sink.push("\u{1}");
+            if maximum >= 8 {
+                result.unwrap();
+                assert_eq!(sink.value, "\u{1}");
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+                assert_eq!(error.bound, Some(7.into()));
+                assert!(
+                    sink.value.is_empty(),
+                    "refused source must not enter the retained reading"
+                );
+            }
+        }
+        let contract = Contract::from_json(r#"{"select":"p","read":"text-content"}"#).unwrap();
+        let document = Document::parse(Source::new(b"<p>&#1;</p>"), &limits).unwrap();
+        assert_eq!(
+            document.extract(&contract).unwrap().to_json(8).unwrap(),
+            b"\"\\u0001\""
+        );
+    }
+
+    #[test]
+    fn outer_html_reassembles_the_native_serializers_split_c2_scalars() {
+        let document = Document::parse(
+            Source::new("<p title='¡\u{85}&nbsp;'>¡\u{85}&nbsp;é雪😀</p>".as_bytes()),
+            &Limits::default(),
+        )
+        .unwrap();
+        let contract = Contract::from_json(r#"{"select":"p","read":"outer-html"}"#).unwrap();
+        assert_eq!(
+            document.extract(&contract).unwrap(),
+            Value::String("<p title=\"¡\u{85}&nbsp;\">¡\u{85}&nbsp;é雪😀</p>".into())
+        );
+    }
+
+    #[test]
+    fn serialized_utf8_writer_preserves_fragmented_scalars_and_rejects_malformed_continuations() {
+        use std::io::Write;
+        let limits = Limits::default();
+        let clock = Clock::new(&limits);
+        for scalar in ["¡", "雪", "😀"] {
+            for split in 1..scalar.len() {
+                let mut sink = ReadingSink::new(scalar.len(), None, &clock).unwrap();
+                sink.write_all(&scalar.as_bytes()[..split]).unwrap();
+                assert!(
+                    sink.flush().is_err(),
+                    "incomplete {scalar:?} split at {split}"
+                );
+                sink.write_all(&scalar.as_bytes()[split..]).unwrap();
+                sink.flush().unwrap();
+                assert_eq!(sink.value, scalar);
+            }
+            let mut sink = ReadingSink::new(scalar.len(), None, &clock).unwrap();
+            for byte in scalar.as_bytes() {
+                sink.write_all(&[*byte]).unwrap();
+            }
+            sink.flush().unwrap();
+            assert_eq!(sink.value, scalar);
+        }
+        for (prefix, invalid) in [
+            (&[0xc2][..], b"x".as_slice()),
+            (&[0xf0, 0x9f][..], &[0xff][..]),
+        ] {
+            let mut sink = ReadingSink::new(8, None, &clock).unwrap();
+            sink.write_all(prefix).unwrap();
+            assert!(sink.write(invalid).is_err());
+            assert!(sink.value.is_empty());
+        }
+    }
+
     use crate::{Contract, Limits, Source, Value};
     fn value(html: &str, contract: serde_json::Value) -> Value {
         let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();

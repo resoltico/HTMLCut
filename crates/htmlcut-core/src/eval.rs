@@ -475,6 +475,114 @@ mod tests {
     }
 
     #[test]
+    fn a_selector_list_starting_with_scope_keeps_its_other_members() {
+        assert_eq!(
+            extract(
+                "<html id=h><body><p id=p>x</p></body></html>",
+                r#"{"select":":scope, p","match":"all","read":"attr:id"}"#
+            )
+            .unwrap(),
+            Value::List(vec![Value::String("h".into()), Value::String("p".into())])
+        );
+    }
+
+    #[test]
+    fn template_anchor_in_a_range_is_not_a_single_template_reading() {
+        let html = "<main><template><p>inert</p></template><p>live</p><h2>stop</h2></main>";
+        for read in ["text", "text-content"] {
+            let contract =
+                serde_json::json!({"select":"template","until":"h2","read":read}).to_string();
+            assert_eq!(
+                extract(html, &contract).unwrap(),
+                Value::String("live".into()),
+                "{read}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_ranged_field_preserves_its_independent_extent_requirement() {
+        let html = "<main><h2 id=anchor>Title</h2><p id=body>Body</p><h2>Stop</h2></main>";
+        for (field, expected) in [
+            (serde_json::json!({"select":"p","read":"attr:id"}), "body"),
+            (
+                serde_json::json!({"read":"attr:id","expect":[{"select":"p","min":1,"max":1}]}),
+                "anchor",
+            ),
+            (serde_json::json!({"read":"text-content"}), "TitleBody"),
+        ] {
+            let contract =
+                serde_json::json!({"select":"#anchor","until":"h2","fields":{"field":field}})
+                    .to_string();
+            assert_eq!(
+                extract(html, &contract).unwrap(),
+                Value::Record(BTreeMap::from([(
+                    "field".into(),
+                    Value::String(expected.into())
+                )]))
+            );
+        }
+    }
+
+    #[test]
+    fn anchor_only_records_do_not_visit_irrelevant_sibling_tails() {
+        for field in [
+            serde_json::json!({"read":"attr:id"}),
+            serde_json::json!({"select":":scope","read":"attr:id"}),
+        ] {
+            let mut work = Vec::new();
+            for tail in [0, 2048] {
+                let html = format!(
+                    "<main><h2 id=anchor>Title</h2>{}<h2 class=stop>Stop</h2></main>",
+                    "<p>irrelevant</p>".repeat(tail)
+                );
+                let document =
+                    Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+                let anchor = document
+                    .html
+                    .select(&Selector::parse("#anchor").unwrap())
+                    .next()
+                    .unwrap();
+                let scope = Scope { anchor, end: None };
+                let contract = Contract::from_json(
+                    &serde_json::json!({"select":":scope","until":".stop","fields":{"id":field}})
+                        .to_string(),
+                )
+                .unwrap();
+                let limits = Limits {
+                    time_limit: None,
+                    ..Limits::default()
+                };
+                let mut engine = Engine {
+                    document: &document,
+                    clock: Clock::new(&limits),
+                    output: OutputSize::new(limits.max_output_bytes),
+                    caches: Default::default(),
+                };
+                assert_eq!(
+                    engine.node(&contract.node, &scope, &[]).unwrap(),
+                    Value::Record(BTreeMap::from([(
+                        "id".into(),
+                        Value::String("anchor".into())
+                    )]))
+                );
+                work.push(engine.clock.work_ticks());
+                // Positive control: a genuinely requested extent does visit the tail.
+                let before = engine.clock.work_ticks();
+                let extent = engine
+                    .extent(anchor, Some(&Selector::parse(".stop").unwrap()), &scope)
+                    .unwrap();
+                assert_eq!(extent.roots().count(), tail + 1);
+                assert!(engine.clock.work_ticks() - before > tail);
+            }
+            assert_eq!(
+                work[0], work[1],
+                "irrelevant tail must not add work for {field}"
+            );
+        }
+    }
+
+    #[test]
     fn predicate_reading_preserves_a_cooperative_time_refusal() {
         let document = Document::parse(Source::new(b"<p id=x>x</p>"), &Limits::default()).unwrap();
         let contract = Contract::from_json(r#"{"expect":[{"read":"attr:id"}]}"#).unwrap();

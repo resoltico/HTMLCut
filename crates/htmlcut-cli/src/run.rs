@@ -927,6 +927,23 @@ fn create_private_directory(
     drop(path);
     Ok(owned)
 }
+fn cleanup_owned_stages(records: &[Arc<StageOwnership>], deadline: Instant) {
+    loop {
+        for owned in records.iter().rev() {
+            owned.cleanup();
+        }
+        let pending = records.iter().any(|owned| {
+            owned.created_identity.get().is_none()
+                && !owned.creation_finished.load(Ordering::SeqCst)
+        });
+        #[cfg(test)]
+        tests::complete_test_creation_after_pending_snapshot(records);
+        if !pending || Instant::now() >= deadline {
+            break;
+        }
+        std::thread::yield_now();
+    }
+}
 fn expire(duration: Duration, staging: &Arc<std::sync::Mutex<Vec<Arc<StageOwnership>>>>) -> ! {
     let diagnostic = staging
         .try_lock()
@@ -937,19 +954,7 @@ fn expire(duration: Duration, staging: &Arc<std::sync::Mutex<Vec<Arc<StageOwners
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
         let records = cleanup.lock().unwrap().clone();
-        loop {
-            for owned in records.iter().rev() {
-                owned.cleanup();
-            }
-            let pending = records.iter().any(|owned| {
-                owned.created_identity.get().is_none()
-                    && !owned.creation_finished.load(Ordering::SeqCst)
-            });
-            if !pending || started.elapsed() >= REPORT_GRACE {
-                break;
-            }
-            std::thread::yield_now();
-        }
+        cleanup_owned_stages(&records, started + REPORT_GRACE);
         let _ = sender.send(());
     });
     let mut error = Error::limit("time", duration.as_secs_f64());
@@ -966,12 +971,14 @@ fn expire(duration: Duration, staging: &Arc<std::sync::Mutex<Vec<Arc<StageOwners
 #[cfg(test)]
 pub(crate) fn checkpoint(phase: &str, path: &Path) {
     if std::env::var("HTMLCUT_PUBLICATION_PHASE").is_ok_and(|selected| selected == phase) {
-        std::fs::write(
-            std::env::var_os("HTMLCUT_PUBLICATION_READY").unwrap(),
-            path.as_os_str().as_encoded_bytes(),
-        )
-        .unwrap();
-        if phase == "policy-probe" {
+        let ready =
+            std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_READY").unwrap());
+        let mut pending_name = ready.file_name().unwrap().to_os_string();
+        pending_name.push(".pending");
+        let pending = ready.with_file_name(pending_name);
+        std::fs::write(&pending, path.as_os_str().as_encoded_bytes()).unwrap();
+        std::fs::rename(&pending, &ready).unwrap();
+        if phase == "policy-probe" || std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").is_some() {
             let release =
                 std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").unwrap());
             let started = Instant::now();
@@ -1131,6 +1138,460 @@ fn stdin_alias(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const PENDING_CREATION_CHILD: &str = "HTMLCUT_PENDING_CREATION_CHILD";
+
+    struct TestChild<'a> {
+        child: Option<std::process::Child>,
+        fixture: Option<&'a mut tempfile::TempDir>,
+    }
+    impl TestChild<'_> {
+        fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+            self.child.as_mut().unwrap().try_wait()
+        }
+    }
+    impl Drop for TestChild<'_> {
+        fn drop(&mut self) {
+            let Some(mut child) = self.child.take() else {
+                return;
+            };
+            let pid = child.id();
+            let kill_error = child.kill().err();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        // These selected test children are leaves. Reaping
+                        // closes all writers before their fixture can drop.
+                        let output = child.wait_with_output();
+                        eprintln!("Test child {pid} stopped and reaped: {output:?}");
+                        return;
+                    }
+                    Ok(None) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(1))
+                    }
+                    _ => break,
+                }
+            }
+            let retained = self.fixture.as_mut().map(|fixture| {
+                fixture.disable_cleanup(true);
+                fixture.path().to_path_buf()
+            });
+            eprintln!(
+                "Test child {pid} cleanup unconfirmed; kill error {kill_error:?}; retained fixture {retained:?}"
+            );
+        }
+    }
+    fn wait_for_test_child(
+        mut child: TestChild<'_>,
+        description: &str,
+        deadline: Instant,
+    ) -> std::process::Output {
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return child.child.take().unwrap().wait_with_output().unwrap(),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(1))
+                }
+                outcome => panic!("{description} did not terminate: {outcome:?}"),
+            }
+        }
+    }
+
+    pub(super) fn complete_test_creation_after_pending_snapshot(records: &[Arc<StageOwnership>]) {
+        if std::env::var_os(PENDING_CREATION_CHILD).is_none() {
+            return;
+        }
+        let owned = records.last().unwrap();
+        if owned.created_identity.get().is_some() {
+            return;
+        }
+        let _handoff = CreationHandoff(owned);
+        #[cfg(unix)]
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&owned.path)
+            .unwrap();
+        #[cfg(windows)]
+        let file = crate::authorization::stage_options()
+            .open(&owned.path)
+            .unwrap();
+        owned
+            .created_identity
+            .set(identity(&file).unwrap())
+            .unwrap();
+        #[cfg(windows)]
+        {
+            *owned.deletion_handle.lock().unwrap() = Some(file.try_clone().unwrap());
+        }
+        assert_eq!(file.metadata().unwrap().len(), 0);
+        std::fs::write(owned.path.with_file_name("handoff-confirmed"), b"confirmed").unwrap();
+    }
+
+    #[test]
+    fn expiry_retries_cleanup_when_reserved_creation_finishes_during_grace() {
+        if let Some(root) = std::env::var_os(PENDING_CREATION_CHILD) {
+            let owned = Arc::new(StageOwnership {
+                path: Path::new(&root).join("pending-stage"),
+                created_identity: std::sync::OnceLock::new(),
+                creation_finished: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(unix)]
+                directory: false,
+                #[cfg(windows)]
+                deletion_handle: std::sync::Mutex::new(None),
+            });
+            // The first cleanup pass sees an unconfirmed reservation. The
+            // test-only handoff completes after its pending snapshot, forcing
+            // a second real cleanup pass within the ordinary local grace.
+            let records = vec![owned];
+            // Exercise retry logic synchronously with a generous test deadline,
+            // independent of the hard-exit worker's 50ms scheduling window.
+            cleanup_owned_stages(&records, Instant::now() + Duration::from_secs(2));
+            assert!(
+                !records[0].path.exists(),
+                "the retry did not clean the completed handoff"
+            );
+            // Real expiry still establishes the process exit and diagnostic.
+            expire(
+                Duration::from_millis(1),
+                &Arc::new(std::sync::Mutex::new(records)),
+            );
+        }
+        let mut root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("destination"), b"old").unwrap();
+        std::fs::write(root.path().join("foreign"), b"foreign").unwrap();
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "run::tests::expiry_retries_cleanup_when_reserved_creation_finishes_during_grace",
+                "--nocapture",
+            ])
+            .env(PENDING_CREATION_CHILD, root.path())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let child = TestChild {
+            child: Some(child),
+            fixture: Some(&mut root),
+        };
+        let output = wait_for_test_child(
+            child,
+            "reserved creation expiry",
+            Instant::now() + Duration::from_secs(3),
+        );
+        assert_eq!(output.status.code(), Some(4), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "limit_exceeded");
+        assert_eq!(
+            std::fs::read(root.path().join("handoff-confirmed")).unwrap(),
+            b"confirmed"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("destination")).unwrap(),
+            b"old"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("foreign")).unwrap(),
+            b"foreign"
+        );
+        assert!(
+            !root.path().join("pending-stage").exists(),
+            "confirmed empty stage survived expiry"
+        );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn delayed_timer_preserves_error_priority_and_refuses_late_success() {
+        const CHILD: &str = "HTMLCUT_DELAYED_TIMER_CHILD";
+        if let Ok(operation) = std::env::var(CHILD) {
+            // The timer thread can be descheduled past its deadline. Construct
+            // that reachable state directly, so priority does not depend on a
+            // scheduler race; invoke the real methods in an expendable child.
+            let watchdog = Watchdog {
+                state: Arc::new(AtomicU8::new(ACTIVE)),
+                started: Instant::now() - Duration::from_secs(1),
+                duration: Duration::from_millis(10),
+                staging: Arc::new(std::sync::Mutex::new(Vec::new())),
+            };
+            match operation.as_str() {
+                "check" => watchdog.check(),
+                "success" => watchdog.finish(Ok(())).unwrap(),
+                "error" => {
+                    let error = watchdog
+                        .finish(Err(Error::new(
+                            ErrorCode::OutputUnwritable,
+                            "native publication failed before the timer claimed expiry",
+                        )))
+                        .unwrap_err();
+                    report(&error);
+                    std::process::exit(error.error.exit_status());
+                }
+                _ => panic!("unknown delayed timer operation"),
+            }
+            std::process::exit(0);
+        }
+        for (operation, expected_status, expected_error) in [
+            ("check", 4, "limit_exceeded"),
+            ("success", 4, "limit_exceeded"),
+            ("error", 5, "output_unwritable"),
+        ] {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "run::tests::delayed_timer_preserves_error_priority_and_refuses_late_success",
+                    "--nocapture",
+                ])
+                .env(CHILD, operation)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let child = TestChild {
+                child: Some(child),
+                fixture: None,
+            };
+            let output = wait_for_test_child(
+                child,
+                "delayed timer",
+                Instant::now() + Duration::from_secs(3),
+            );
+            assert_eq!(output.status.code(), Some(expected_status), "{output:?}");
+            let diagnostic: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(diagnostic["error"], expected_error);
+            assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+        }
+    }
+
+    #[test]
+    fn competing_stdin_arguments_keep_priority_over_a_zero_deadline() {
+        const CHILD: &str = "HTMLCUT_ZERO_DEADLINE_ALIAS_CHILD";
+        if let Ok(source) = std::env::var(CHILD) {
+            use clap::Parser;
+            let source = if source == "current-process-stdin" {
+                format!("/proc/{}/fd/0", std::process::id())
+            } else {
+                source
+            };
+            let mut arguments = ["htmlcut", "run", "--from-file", "-", "--timeout", "0"]
+                .map(str::to_owned)
+                .to_vec();
+            arguments.push(source);
+            let command = cli::Cli::try_parse_from(arguments).unwrap().command;
+            let error = execute(command).unwrap_err();
+            report(&error);
+            std::process::exit(error.error.exit_status());
+        }
+        let sources = vec!["-"];
+        #[cfg(unix)]
+        let sources = {
+            let mut sources = sources;
+            sources.extend(["/dev/stdin", "/dev/fd/0"]);
+            #[cfg(target_os = "linux")]
+            sources.extend([
+                "/proc/self/fd/0",
+                "/proc/thread-self/fd/0",
+                "current-process-stdin",
+            ]);
+            sources
+        };
+        for source in sources {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "run::tests::competing_stdin_arguments_keep_priority_over_a_zero_deadline",
+                    "--nocapture",
+                ])
+                .env(CHILD, source)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let child = TestChild {
+                child: Some(child),
+                fixture: None,
+            };
+            let output = wait_for_test_child(
+                child,
+                "zero-deadline stdin argument refusal",
+                Instant::now() + Duration::from_secs(3),
+            );
+            assert_eq!(output.status.code(), Some(2), "{source}: {output:?}");
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"], "invalid_arguments");
+        }
+    }
+
+    #[test]
+    fn publication_revalidation_child() {
+        let Some(destination) = std::env::var_os("HTMLCUT_REVALIDATION_DESTINATION") else {
+            return;
+        };
+        if let Err(error) = publish(b"complete-private-result", Some(Path::new(&destination))) {
+            report(&error);
+            std::process::exit(error.error.exit_status());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_unwritable_output_reports_the_native_admission_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("existing");
+        std::fs::write(&target, b"preserve").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let native = OpenOptions::new().write(true).open(&target).unwrap_err();
+        assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
+        let error = publish(b"replacement", Some(&target)).unwrap_err();
+        assert_eq!(error.error, ErrorCode::OutputUnwritable);
+        assert_eq!(error.detail.as_deref(), Some(native.to_string().as_str()));
+        assert_eq!(std::fs::read(&target).unwrap(), b"preserve");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn changed_targets_and_aliases_refuse_before_commit_without_erasing_foreign_work() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        for change in [
+            "identity",
+            "policy",
+            "appeared-readonly",
+            "alias-name",
+            "alias-parent",
+        ] {
+            let mut root = tempfile::tempdir().unwrap();
+            let parent = root.path().join("parent");
+            std::fs::create_dir(&parent).unwrap();
+            let target = parent.join("target");
+            if change != "appeared-readonly" {
+                std::fs::write(&target, b"old").unwrap();
+                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+            }
+            let alternate = if change == "alias-parent" {
+                let alternate_parent = root.path().join("alternate-parent");
+                std::fs::create_dir(&alternate_parent).unwrap();
+                alternate_parent.join("target")
+            } else {
+                parent.join("alternate")
+            };
+            let alias = root.path().join("output-alias");
+            let destination = match change {
+                "alias-name" => {
+                    std::fs::write(&alternate, b"foreign").unwrap();
+                    symlink(&target, &alias).unwrap();
+                    alias.clone()
+                }
+                "alias-parent" => {
+                    std::fs::write(&alternate, b"foreign").unwrap();
+                    symlink(&parent, &alias).unwrap();
+                    alias.join("target")
+                }
+                _ => target.clone(),
+            };
+            let ready = root.path().join("ready");
+            let release = root.path().join("release");
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "run::tests::publication_revalidation_child",
+                    "--nocapture",
+                ])
+                .env("HTMLCUT_REVALIDATION_DESTINATION", &destination)
+                .env("HTMLCUT_PUBLICATION_PHASE", "policy")
+                .env("HTMLCUT_PUBLICATION_READY", &ready)
+                .env("HTMLCUT_PUBLICATION_RELEASE", &release)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut child = TestChild {
+                child: Some(child),
+                fixture: Some(&mut root),
+            };
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !ready.exists()
+                && matches!(child.try_wait(), Ok(None))
+                && Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if !ready.exists() {
+                panic!("{change} did not reach completed policy");
+            }
+            let stage = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
+            assert_eq!(std::fs::read(&stage).unwrap(), b"complete-private-result");
+            match change {
+                "identity" => {
+                    std::fs::rename(&target, &alternate).unwrap();
+                    std::fs::write(&target, b"foreign").unwrap();
+                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))
+                        .unwrap();
+                }
+                "policy" => {
+                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))
+                        .unwrap();
+                    assert!(OpenOptions::new().write(true).open(&target).is_ok());
+                }
+                "appeared-readonly" => {
+                    std::fs::write(&target, b"foreign").unwrap();
+                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o444))
+                        .unwrap();
+                    assert_eq!(
+                        OpenOptions::new()
+                            .write(true)
+                            .open(&target)
+                            .unwrap_err()
+                            .kind(),
+                        io::ErrorKind::PermissionDenied
+                    );
+                }
+                "alias-name" => {
+                    std::fs::remove_file(&alias).unwrap();
+                    symlink(&alternate, &alias).unwrap();
+                }
+                "alias-parent" => {
+                    std::fs::remove_file(&alias).unwrap();
+                    symlink(alternate.parent().unwrap(), &alias).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            std::fs::write(&release, b"continue").unwrap();
+            let output = wait_for_test_child(child, "publication revalidation", deadline);
+            assert_eq!(output.status.code(), Some(5), "{change}: {output:?}");
+            let diagnostic: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(diagnostic["error"], "output_unwritable");
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                if matches!(change, "identity" | "appeared-readonly") {
+                    b"foreign".as_slice()
+                } else {
+                    b"old".as_slice()
+                }
+            );
+            if change.starts_with("alias-") {
+                assert_eq!(std::fs::read(&alternate).unwrap(), b"foreign");
+            } else if change == "identity" {
+                assert_eq!(std::fs::read(&alternate).unwrap(), b"old");
+            }
+            if change == "policy" {
+                assert_eq!(
+                    target.metadata().unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+            }
+            assert!(!stage.exists(), "{change} stranded its owned result stage");
+            assert!(
+                !stage.parent().unwrap().exists(),
+                "{change} stranded its owned private directory"
+            );
+        }
+    }
+
     #[test]
     fn publication_phase_child() {
         let Some(destination) = std::env::var_os("HTMLCUT_PUBLICATION_DESTINATION") else {
@@ -1158,12 +1619,12 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn reader_retained_from_actual_policy_probe_never_observes_result_bytes() {
-        let root = tempfile::tempdir().unwrap();
+        let mut root = tempfile::tempdir().unwrap();
         let destination = root.path().join("result.json");
         let ready = root.path().join("ready");
         let release = root.path().join("release");
         std::fs::write(&destination, b"old").unwrap();
-        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 "run::tests::publication_phase_child",
@@ -1177,28 +1638,27 @@ mod tests {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .unwrap();
+        let child = TestChild {
+            child: Some(child),
+            fixture: Some(&mut root),
+        };
         let started = Instant::now();
         while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
             std::thread::sleep(Duration::from_millis(1));
         }
         if !ready.exists() {
-            let _ = child.kill();
-            let result = child.wait_with_output().unwrap();
-            panic!("production policy probe was not reached: {result:?}");
+            panic!("production policy probe was not reached");
         }
         let probe = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
         let mut reader = File::open(&probe).unwrap();
         let probe_id = identity(&reader).unwrap();
         assert_eq!(reader.metadata().unwrap().len(), 0);
         std::fs::write(&release, b"continue").unwrap();
-        while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(3) {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        if child.try_wait().unwrap().is_none() {
-            child.kill().unwrap();
-            panic!("released policy probe exceeded external test deadline");
-        }
-        let result = child.wait_with_output().unwrap();
+        let result = wait_for_test_child(
+            child,
+            "released policy probe",
+            started + Duration::from_secs(3),
+        );
         assert!(
             result.status.success() && result.stderr.is_empty(),
             "{result:?}"
@@ -1233,11 +1693,11 @@ mod tests {
             "precommit",
             "commit",
         ] {
-            let root = tempfile::tempdir().unwrap();
+            let mut root = tempfile::tempdir().unwrap();
             let destination = root.path().join("result.json");
             let ready = root.path().join("ready");
             std::fs::write(&destination, b"old").unwrap();
-            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
                     "run::tests::publication_phase_child",
@@ -1250,6 +1710,10 @@ mod tests {
                 .stderr(std::process::Stdio::piped())
                 .spawn()
                 .unwrap();
+            let child = TestChild {
+                child: Some(child),
+                fixture: Some(&mut root),
+            };
             let started = Instant::now();
             while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
                 std::thread::sleep(Duration::from_millis(1));
@@ -1262,15 +1726,11 @@ mod tests {
                     "{phase} stage is readable before completed policy"
                 );
             }
-            while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(3)
-            {
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            if child.try_wait().unwrap().is_none() {
-                child.kill().unwrap();
-                panic!("checkpoint {phase} exceeded external test deadline");
-            }
-            let result = child.wait_with_output().unwrap();
+            let result = wait_for_test_child(
+                child,
+                "publication checkpoint",
+                started + Duration::from_secs(3),
+            );
             if phase == "commit" {
                 assert!(result.status.success(), "{result:?}");
                 assert_eq!(

@@ -1,6 +1,8 @@
 # Contributing
 
-Start at the repository root with rustup, a native linker, Bash and Python 3.11 or newer; [platform support](docs/platform-support.md) lists native prerequisites. [rust-toolchain.toml](rust-toolchain.toml) pins development, [Cargo.toml](Cargo.toml) declares the minimum tested compiler, and [Cargo.lock](Cargo.lock) pins dependency resolution.
+Start at the repository root with rustup, a native linker, Bash and Python 3.11 or newer (3.13 or newer for bounded QA on macOS); [platform support](docs/platform-support.md) lists native prerequisites. [rust-toolchain.toml](rust-toolchain.toml) pins development, [Cargo.toml](Cargo.toml) declares the minimum tested compiler, and [Cargo.lock](Cargo.lock) pins dependency resolution.
+
+macOS unit tests also use Apple's `/usr/bin/leaks` to check native ACL allocation release. The test first requires detection of intentionally retained allocations, then requires zero leaks from ordinary drops. Detector output and stack-logging files stay in bounded owned temporary directories; missing or unusable detection fails the check.
 
 Install `cargo-deny` at the version declared in [the tool inventory](scripts/contributor-rust-tools.sh), then run the contributor gate:
 

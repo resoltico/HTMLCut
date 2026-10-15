@@ -448,3 +448,187 @@ impl TreeSink for TreeBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Contract, Document, Limits, Source, Value};
+
+    fn reading(html: &str, select: &str, read: &str) -> Value {
+        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let contract =
+            Contract::from_json(&serde_json::json!({"select": select, "read": read}).to_string())
+                .unwrap();
+        document.extract(&contract).unwrap()
+    }
+
+    #[test]
+    fn callback_refusal_stops_allocation_but_retains_parser_handle_facts() {
+        use super::{Clock, TreeBuilder};
+        use html5ever::{
+            QualName, local_name, ns,
+            tree_builder::{ElementFlags, TreeSink},
+        };
+        let limits = Limits {
+            max_nodes: 4096,
+            time_limit: Some(std::time::Duration::ZERO),
+            ..Limits::default()
+        };
+        let sink = TreeBuilder::new(&limits, Clock::new(&limits));
+        for _ in 0..1024 {
+            sink.create_comment("before-refusal".into());
+        }
+        assert_eq!(sink.refusal().unwrap().limit.as_deref(), Some("time"));
+        let admitted = sink.node_count();
+        assert!(admitted <= 1024);
+        let first = sink.create_element(
+            QualName::new(None, ns!(html), local_name!("div")),
+            vec![],
+            ElementFlags::default(),
+        );
+        let second = sink.create_element(
+            QualName::new(None, ns!(html), local_name!("span")),
+            vec![],
+            ElementFlags::default(),
+        );
+        assert!(sink.same_node(&first, &first.clone()));
+        assert!(!sink.same_node(&first, &second));
+        assert_eq!(sink.elem_name(&first).local, local_name!("div"));
+        assert_eq!(sink.elem_name(&second).local, local_name!("span"));
+        let template = sink.create_element(
+            QualName::new(None, ns!(html), local_name!("template")),
+            vec![],
+            ElementFlags::default(),
+        );
+        let contents = sink.get_template_contents(&template);
+        assert!(!sink.same_node(&template, &contents));
+        let mut flags = ElementFlags::default();
+        flags.mathml_annotation_xml_integration_point = true;
+        let mathml = sink.create_element(
+            QualName::new(None, ns!(mathml), local_name!("annotation-xml")),
+            vec![],
+            flags,
+        );
+        assert!(sink.is_mathml_annotation_xml_integration_point(&mathml));
+        assert!(!sink.is_mathml_annotation_xml_integration_point(&first));
+        for _ in 0..128 {
+            sink.create_comment("after-refusal".into());
+        }
+        assert_eq!(sink.node_count(), admitted);
+        assert_eq!(sink.finish().unwrap_err().limit.as_deref(), Some("time"));
+    }
+
+    #[test]
+    fn text_leaf_depth_is_admitted_at_the_boundary_and_refused_beyond_it() {
+        for (nested_divs, expected) in [(1021, None), (1022, Some("depth"))] {
+            let html = format!(
+                "<html><head></head><body>{}leaf{}",
+                "<div>".repeat(nested_divs),
+                "</div>".repeat(nested_divs)
+            );
+            let result = Document::parse(Source::new(html.as_bytes()), &Limits::default());
+            match expected {
+                None => assert!(result.is_ok()),
+                Some(limit) => assert_eq!(result.err().unwrap().limit.as_deref(), Some(limit)),
+            }
+        }
+    }
+
+    #[test]
+    fn attaching_or_reparenting_existing_subtrees_checks_every_descendant_depth() {
+        use super::{Clock, TreeBuilder};
+        use html5ever::{
+            QualName, local_name, ns,
+            tree_builder::{ElementFlags, NodeOrText, TreeSink},
+        };
+        for (parent_depth, reparent) in [(1023, false), (1024, true)] {
+            let limits = Limits {
+                max_nodes: 4096,
+                time_limit: None,
+                ..Limits::default()
+            };
+            let sink = TreeBuilder::new(&limits, Clock::new(&limits));
+            let element = || {
+                sink.create_element(
+                    QualName::new(None, ns!(html), local_name!("div")),
+                    vec![],
+                    ElementFlags::default(),
+                )
+            };
+            let mut parent = sink.get_document();
+            for _ in 0..parent_depth {
+                let child = element();
+                sink.append(&parent, NodeOrText::AppendNode(child.clone()));
+                parent = child;
+            }
+            let branch = element();
+            let leaf = element();
+            sink.append(&branch, NodeOrText::AppendNode(leaf));
+            if reparent {
+                sink.reparent_children(&branch, &parent);
+            } else {
+                sink.append(&parent, NodeOrText::AppendNode(branch));
+            }
+            let Err(error) = sink.finish() else {
+                panic!("an existing descendant beyond depth1024 must refuse");
+            };
+            assert_eq!(error.limit.as_deref(), Some("depth"));
+            assert_eq!(error.bound, Some(1024.into()));
+        }
+    }
+
+    #[test]
+    fn malformed_formatting_reconstructs_literal_tree_instead_of_reusing_live_nodes() {
+        assert_eq!(
+            reading("<p><b>bold<i>both</b>italic</i>end", "p", "outer-html"),
+            Value::String("<p><b>bold<i>both</i></b><i>italic</i>end</p>".into())
+        );
+    }
+
+    #[test]
+    fn adoption_agency_reparents_existing_block_children_into_reconstructed_formatting() {
+        assert_eq!(
+            reading("<b>one<p>two</b>three", "body", "outer-html"),
+            Value::String("<body><b>one</b><p><b>two</b>three</p></body>".into())
+        );
+    }
+
+    #[test]
+    fn table_foster_text_precedes_table_and_keeps_authored_order() {
+        assert_eq!(
+            reading("<table>a<tr><td>b</td></tr>c</table>", "body", "outer-html"),
+            Value::String(
+                "<body>ac<table><tbody><tr><td>b</td></tr></tbody></table></body>".into()
+            )
+        );
+    }
+
+    #[test]
+    fn repeated_root_tags_add_only_missing_attributes() {
+        let html = "<html id=first><body><html id=second class=added><body data-body=yes>";
+        assert_eq!(
+            reading(html, "html", "attr:id"),
+            Value::String("first".into())
+        );
+        assert_eq!(
+            reading(html, "html", "attr:class"),
+            Value::String("added".into())
+        );
+        assert_eq!(
+            reading(html, "body", "attr:data-body"),
+            Value::String("yes".into())
+        );
+    }
+
+    #[test]
+    fn ordinary_attributes_do_not_alias_foreign_namespace_attributes() {
+        let html = "<svg><a id=foreign xlink:href=foreign></a><a id=plain href=plain></a></svg>";
+        assert_eq!(
+            reading(html, "a[href]", "attr:id"),
+            Value::String("plain".into())
+        );
+        assert_eq!(
+            reading(html, "a[*|href=foreign]", "attr:id"),
+            Value::String("foreign".into())
+        );
+    }
+}

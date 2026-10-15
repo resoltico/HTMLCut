@@ -152,3 +152,86 @@ impl Element for ElementRef<'_> {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Contract, Document, Limits, Source, Value};
+
+    #[test]
+    fn public_structural_matching_uses_element_siblings_and_real_text_emptiness() {
+        let html = b"<html id=h><main><p id=a></p>text<!--c--><span id=s>x</span><p id=b><i></i></p><p id=c> </p><p id=d><!--only--></p></main>";
+        let document = Document::parse(Source::new(html), &Limits::default()).unwrap();
+        for (selector, expected) in [
+            ("main > p:nth-of-type(2)", vec!["b"]),
+            ("main > p:nth-last-of-type(2)", vec!["c"]),
+            ("main > p + span", vec!["s"]),
+            ("main > span ~ p", vec!["b", "c", "d"]),
+            ("main > :first-child", vec!["a"]),
+            ("main > :last-child", vec!["d"]),
+            ("main > p:empty", vec!["a", "d"]),
+            (":root", vec!["h"]),
+            ("|p", vec![]),
+        ] {
+            let contract = Contract::from_json(
+                &serde_json::json!({"select":selector, "match":"all", "min":0, "read":"attr:id"})
+                    .to_string(),
+            )
+            .unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::List(
+                    expected
+                        .into_iter()
+                        .map(|id| Value::String(id.into()))
+                        .collect()
+                ),
+                "{selector}"
+            );
+        }
+    }
+    #[test]
+    fn repeated_relative_selector_lookups_do_not_publish_an_empty_bloom_filter() {
+        let document = Document::parse(
+            Source::new(b"<main id=matched><span class=first></span><b class=second></b></main>"),
+            &Limits::default(),
+        )
+        .unwrap();
+        let contract =
+            Contract::from_json(r#"{"select":"main:has(.first):has(.second)","read":"attr:id"}"#)
+                .unwrap();
+        assert_eq!(
+            document.extract(&contract).unwrap(),
+            Value::String("matched".into())
+        );
+    }
+
+    #[test]
+    fn html_and_foreign_element_case_rules_stay_distinct() {
+        let html = b"<svg><linearGradient id=g></linearGradient></svg><input id=h type=TEXT><svg><a id=s type=TEXT></a></svg>";
+        let document = Document::parse(Source::new(html), &Limits::default()).unwrap();
+        for (selector, expected) in [
+            ("INPUT", vec!["h"]),
+            ("linearGradient", vec!["g"]),
+            ("lineargradient", vec![]),
+            ("[type=text]", vec!["h"]),
+            ("[type=text i]", vec!["h", "s"]),
+            ("[type=text s]", vec![]),
+        ] {
+            let contract = Contract::from_json(
+                &serde_json::json!({"select":selector,"match":"all","min":0,"read":"attr:id"})
+                    .to_string(),
+            )
+            .unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::List(
+                    expected
+                        .into_iter()
+                        .map(|id| Value::String(id.into()))
+                        .collect()
+                ),
+                "{selector}"
+            );
+        }
+    }
+}

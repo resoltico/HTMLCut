@@ -479,3 +479,311 @@ pub(crate) fn private_directory(file: &File) -> io::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    const ATTRIBUTE: &str = "user.htmlcut.authorization-control";
+
+    #[test]
+    fn native_syscall_errors_and_missing_attributes_are_distinct() {
+        // SAFETY: invalid fd is rejected by the kernel; no memory is accessed.
+        // A real rejected native call supplies errno; successful syscalls return zero.
+        let result = unsafe { libc::fchmod(-1, 0) };
+        assert_eq!(result, -1);
+        assert_eq!(
+            syscall(result).unwrap_err().raw_os_error(),
+            Some(libc::EBADF)
+        );
+        syscall(0).unwrap();
+        #[cfg(target_os = "macos")]
+        let absent = libc::ENOATTR;
+        #[cfg(not(target_os = "macos"))]
+        let absent = libc::ENODATA;
+        assert!(missing(&io::Error::from_raw_os_error(absent)));
+        for error in [libc::EACCES, libc::EBADF, libc::ENOTSUP] {
+            assert!(!missing(&io::Error::from_raw_os_error(error)));
+        }
+    }
+
+    #[test]
+    fn native_attributes_preserve_empty_and_nonempty_bytes_and_removal() {
+        let file = tempfile::tempfile().unwrap();
+        assert_eq!(read_attribute(&file, ATTRIBUTE).unwrap(), None);
+        for value in [b"".as_slice(), b"\0\x01authorization\xff".as_slice()] {
+            write_attribute(&file, ATTRIBUTE, Some(value)).unwrap();
+            assert_eq!(
+                read_attribute(&file, ATTRIBUTE).unwrap(),
+                Some(value.to_vec())
+            );
+        }
+        write_attribute(&file, ATTRIBUTE, None).unwrap();
+        assert_eq!(read_attribute(&file, ATTRIBUTE).unwrap(), None);
+        write_attribute(&file, ATTRIBUTE, None).unwrap();
+        // An invalid attribute name is an error, never an absent attribute or a successful write.
+        assert!(read_attribute(&file, "").is_err());
+        assert!(write_attribute(&file, "", Some(b"value")).is_err());
+        assert!(write_attribute(&file, "", None).is_err());
+    }
+
+    #[test]
+    fn restriction_removes_native_grants_before_bytes() {
+        let file = tempfile::tempfile().unwrap();
+        file.set_permissions(std::fs::Permissions::from_mode(0o666))
+            .unwrap();
+        #[cfg(target_os = "macos")]
+        Acl::deny_data_read().unwrap().apply(&file).unwrap();
+        restrict(&file).unwrap();
+        assert_eq!(file.metadata().unwrap().mode() & 0o777, 0);
+        assert_eq!(file.metadata().unwrap().len(), 0);
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            Acl::read(&file).unwrap().text().unwrap(),
+            Acl::empty().unwrap().text().unwrap()
+        );
+    }
+
+    #[test]
+    fn preparation_establishes_attributes_privately_before_final_policy() {
+        let destination = tempfile::NamedTempFile::new().unwrap();
+        destination
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o640))
+            .unwrap();
+        let mut policy = Policy::read(destination.as_file()).unwrap();
+        // A writable user attribute exercises the same native copy/check path without
+        // claiming this host grants authority to synthesize a mandatory security label.
+        policy
+            .attributes
+            .push((ATTRIBUTE, Some(b"pinned-label".to_vec())));
+        let stage = tempfile::NamedTempFile::new().unwrap();
+        write_attribute(stage.as_file(), ATTRIBUTE, Some(b"other-label")).unwrap();
+        policy.prepare(stage.as_file()).unwrap();
+        assert_eq!(stage.as_file().metadata().unwrap().mode() & 0o777, 0);
+        assert_eq!(stage.as_file().metadata().unwrap().len(), 0);
+        stage
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))
+            .unwrap();
+        assert_eq!(
+            read_attribute(stage.as_file(), ATTRIBUTE).unwrap(),
+            Some(b"pinned-label".to_vec())
+        );
+        policy.attributes.retain(|(name, _)| *name != ATTRIBUTE);
+        policy.apply(stage.as_file(), stage.path()).unwrap();
+        assert_eq!(stage.as_file().metadata().unwrap().mode() & 0o777, 0o640);
+        assert_eq!(Policy::read(stage.as_file()).unwrap(), policy);
+    }
+
+    #[test]
+    fn preparing_different_ownership_changes_owner_or_refuses() {
+        let stage = tempfile::NamedTempFile::new().unwrap();
+        let mut policy = Policy::read(stage.as_file()).unwrap();
+        let original_owner = policy.owner;
+        policy.owner = original_owner.checked_add(1).unwrap();
+        match policy.prepare(stage.as_file()) {
+            Ok(()) => assert_eq!(stage.as_file().metadata().unwrap().uid(), policy.owner),
+            Err(_) => assert_eq!(stage.as_file().metadata().unwrap().uid(), original_owner),
+        }
+        assert_eq!(stage.as_file().metadata().unwrap().len(), 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn private_directory_handle_refuses_a_symlink() {
+        let directory = tempfile::tempdir().unwrap();
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(directory.path(), &alias).unwrap();
+        assert!(open_private_directory(&alias).is_err());
+        assert_eq!(libc::O_SEARCH & libc::O_NOFOLLOW, 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_acl_read_preserves_present_acl_despite_stale_missing_errno() {
+        let file = tempfile::tempfile().unwrap();
+        let expected = Acl::deny_data_read().unwrap();
+        expected.apply(&file).unwrap();
+        let text = expected.text().unwrap();
+        assert_ne!(text, Acl::empty().unwrap().text().unwrap());
+        // A successful native call need not clear errno. A present ACL must win
+        // over a stale missing-attribute error from an earlier unrelated call.
+        // SAFETY: Darwin returns this thread's live errno pointer.
+        unsafe {
+            *libc::__error() = libc::ENOATTR;
+        }
+        assert_eq!(Acl::read(&file).unwrap().text().unwrap(), text);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_acl_allocations_are_released() {
+        const MODE: &str = "HTMLCUT_TEST_NATIVE_ACL_ALLOCATION";
+        if let Ok(mode) = std::env::var(MODE) {
+            assert!(matches!(mode.as_str(), "drop" | "retain"));
+            for _ in 0..16 {
+                let acl = Acl::empty().unwrap();
+                if mode == "retain" {
+                    std::mem::forget(acl);
+                }
+            }
+            return;
+        }
+
+        fn inspect(mode: &str) -> (std::process::ExitStatus, String) {
+            use std::{
+                io::{Read, Seek, SeekFrom},
+                os::unix::process::CommandExt,
+                process::{Command, Stdio},
+                time::{Duration, Instant},
+            };
+            let diagnostics = tempfile::tempdir().unwrap();
+            let mut output = tempfile::NamedTempFile::new_in(diagnostics.path()).unwrap();
+            let test = format!(
+                "{}::native_acl_allocations_are_released",
+                module_path!().split_once("::").unwrap().1
+            );
+            let mut child = Command::new("/usr/bin/leaks")
+                .args(["--atExit", "--"])
+                .arg(std::env::current_exe().unwrap())
+                .args(["--exact", &test, "--nocapture"])
+                .env(MODE, mode)
+                .env("LC_ALL", "C")
+                // malloc(3) documents this directory override; leaks(1) documents
+                // lite mode. Do not inherit full on-disk allocation history.
+                .env("TMPDIR", diagnostics.path())
+                .env("MallocStackLoggingDirectory", diagnostics.path())
+                .env("MallocStackLogging", "lite")
+                .env_remove("MallocStackLoggingNoCompact")
+                .stdout(Stdio::from(output.as_file().try_clone().unwrap()))
+                .stderr(Stdio::from(output.as_file().try_clone().unwrap()))
+                .process_group(0)
+                .spawn()
+                .expect("macOS authorization tests require /usr/bin/leaks");
+            // Reserve two seconds of the ten-second bound for failed-run cleanup.
+            let deadline = Instant::now() + Duration::from_secs(8);
+            let result = (|| -> io::Result<std::process::ExitStatus> {
+                loop {
+                    if output.as_file().metadata()?.len() > 1024 * 1024 {
+                        return Err(io::Error::other(
+                            "native leak detector output exceeded 1 MiB",
+                        ));
+                    }
+                    if let Some(status) = child.try_wait()? {
+                        return Ok(status);
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(io::Error::other(
+                            "native leak detector exceeded eight seconds",
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            })();
+            let mut reaped = true;
+            let mut group_stop_error = None;
+            if result.is_err() {
+                // SAFETY: the unreaped child owns this fresh process group; kill
+                // both the detector and its test process before reaping the child.
+                if unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) } != 0 {
+                    group_stop_error = Some(io::Error::last_os_error());
+                }
+                let _ = child.kill();
+                let cleanup_deadline = Instant::now() + Duration::from_secs(2);
+                reaped = loop {
+                    if matches!(child.try_wait(), Ok(Some(_))) {
+                        break true;
+                    }
+                    if Instant::now() >= cleanup_deadline {
+                        break false;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                };
+            }
+            if !reaped || group_stop_error.is_some() {
+                let retained_log = output.keep().map(|(_, path)| path);
+                let retained = diagnostics.keep();
+                panic!(
+                    "native leak detector cleanup unconfirmed (leader reaped: {reaped}, group stop: {group_stop_error:?}); diagnostics retained at {}, log {retained_log:?}: {result:?}",
+                    retained.display()
+                );
+            }
+            output.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
+            let mut text = String::new();
+            output
+                .as_file_mut()
+                .take(1024 * 1024 + 1)
+                .read_to_string(&mut text)
+                .unwrap();
+            assert!(
+                text.len() <= 1024 * 1024,
+                "native leak detector output exceeded 1 MiB"
+            );
+            let status = result
+                .unwrap_or_else(|error| panic!("native leak detector failed: {error}: {text}"));
+            assert!(
+                text.contains("test result: ok. 1 passed; 0 failed; 0 ignored;"),
+                "allocation child did not execute exactly one passing test: {text}"
+            );
+            (status, text)
+        }
+
+        // Prove the native detector recognizes intentionally retained allocations
+        // before accepting zero leaks from the same child with ordinary drops.
+        let (retained, report) = inspect("retain");
+        assert_eq!(
+            retained.code(),
+            Some(1),
+            "positive leak control failed: {report}"
+        );
+        assert!(
+            report.contains("acl_init"),
+            "positive control did not identify native ACL allocations: {report}"
+        );
+        assert!(
+            report.lines().any(|line| {
+                let Some((_, summary)) = line
+                    .strip_prefix("Process ")
+                    .and_then(|line| line.split_once(": "))
+                else {
+                    return false;
+                };
+                let fields: Vec<_> = summary.split_whitespace().collect();
+                fields.len() == 7
+                    && fields[1..3] == ["leaks", "for"]
+                    && fields[4..] == ["total", "leaked", "bytes."]
+                    && fields[0].parse::<u64>().is_ok_and(|count| count > 0)
+                    && fields[3].parse::<u64>().is_ok_and(|bytes| bytes > 0)
+            }),
+            "positive leak control has no nonzero leak summary: {report}"
+        );
+        let (released, report) = inspect("drop");
+        assert!(
+            released.success(),
+            "native ACL allocations leaked: {report}"
+        );
+        assert!(
+            report.contains(": 0 leaks for 0 total leaked bytes."),
+            "native detector did not confirm zero leaks: {report}"
+        );
+    }
+
+    #[test]
+    fn private_directory_removes_grants_and_preserves_setgid() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = open_private_directory(directory.path()).unwrap();
+        file.set_permissions(std::fs::Permissions::from_mode(0o2777))
+            .unwrap();
+        #[cfg(target_os = "macos")]
+        Acl::deny_data_read().unwrap().apply(&file).unwrap();
+        private_directory(&file).unwrap();
+        assert_eq!(file.metadata().unwrap().mode() & 0o2777, 0o2700);
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            Acl::read(&file).unwrap().text().unwrap(),
+            Acl::empty().unwrap().text().unwrap()
+        );
+    }
+}

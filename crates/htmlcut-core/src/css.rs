@@ -132,3 +132,54 @@ impl ToCss for PseudoElement {
         dest.write_str("")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Contract, Document, ErrorCode, Limits, Source, Value};
+
+    #[test]
+    fn static_selector_contract_refuses_state_and_generated_content_with_original_facts() {
+        for selector in [
+            "p:hover",
+            "p:active",
+            "input:focus",
+            "input:checked",
+            "input:disabled",
+            "a:link",
+            "a:visited",
+            "p:lang(en)",
+            "p::before",
+            "p::after",
+            "p[data-note='original spelling']:hover",
+        ] {
+            let input = serde_json::json!({"select": selector}).to_string();
+            let error = Contract::from_json(&input).err().unwrap();
+            assert_eq!(error.error, ErrorCode::InvalidSelector, "{selector}");
+            assert_eq!(error.path.as_deref(), Some("$.select"));
+            assert_eq!(error.select.as_deref(), Some(selector));
+            assert!(error.message.contains("unsupported pseudo"), "{error:?}");
+        }
+
+        // The documented attribute alternatives inspect snapshot state without
+        // inventing a live browser state or pseudo-element selection surface.
+        let document = Document::parse(
+            Source::new(
+                b"<a href='/'>Follow</a><input checked value='Check'><input disabled value='Off'>",
+            ),
+            &Limits::default(),
+        )
+        .unwrap();
+        for (selector, read, expected) in [
+            ("a[href]", "text", "Follow"),
+            ("[checked]", "attr:value", "Check"),
+            ("[disabled]", "attr:value", "Off"),
+        ] {
+            let input = serde_json::json!({"select": selector, "read": read}).to_string();
+            let contract = Contract::from_json(&input).unwrap();
+            assert_eq!(
+                document.extract(&contract).unwrap(),
+                Value::String(expected.into())
+            );
+        }
+    }
+}
