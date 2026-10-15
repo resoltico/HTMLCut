@@ -27,7 +27,9 @@ class WorkflowWiringTest(unittest.TestCase):
         targets = {entry["name"] for entry in manifest["bin"]}
         script = (ROOT / "scripts/focused-smoke.sh").read_text()
         shell_targets = set(re.search(r"^for target in ([^;\n]+); do", script, re.M).group(1).split())
-        documented = set(re.findall(r"`([a-z][a-z0-9_]*)`", (ROOT / "fuzz/README.md").read_text()))
+        # Target declarations describe what each harness feeds. Other code
+        # identifiers in the resource documentation are not target names.
+        documented = set(re.findall(r"`([a-z][a-z0-9_]*)`\s+feeds\b", (ROOT / "fuzz/README.md").read_text()))
         self.assertEqual(targets, shell_targets)
         self.assertEqual(targets, documented)
         self.assertNotIn("--features", script)
@@ -126,8 +128,157 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertIn("dist/native-conformance-*", body)
         self.assertIn("dist/native-conformance-*", text)
 
+    def test_release_retains_complete_native_evidence_before_and_after_publication(self):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        for job, next_job in [("build-standalone", "release"), ("published-native", None)]:
+            body = text.split(f"\n  {job}:\n", 1)[1]
+            if next_job:
+                body = body.split(f"\n  {next_job}:\n", 1)[0]
+            upload = body.split("uses: actions/upload-artifact@", 1)[1]
+            for family in ["conformance", "semantics", "acceptance"]:
+                self.assertIn(f"dist/native-{family}-*", upload,
+                              f"{job} must retain {family} proof for the actual binary")
+
+    def test_release_linux_acceptance_installs_acl_tools_in_both_native_lanes(self):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        for job, next_job in [("build-standalone", "release"), ("published-native", None)]:
+            body = text.split(f"\n  {job}:\n", 1)[1]
+            if next_job:
+                body = body.split(f"\n  {next_job}:\n", 1)[0]
+            package_line, = [line for line in body.splitlines() if "apt-get install" in line]
+            self.assertIn("acl", package_line.split(),
+                          f"{job}: native authorization requires setfacl/getfacl")
+
+    def test_platform_mutation_collection_is_explicit_and_keeps_raw_failures(self):
+        text = (ROOT / ".github/workflows/mutation.yml").read_text()
+        self.assertIn("workflow_dispatch:", text)
+        self.assertNotIn("pull_request:", text)
+        self.assertNotIn("schedule:", text)
+        self.assertNotIn("continue-on-error:", text)
+        self.assertLess(text.index("Validate exact source before checkout"), text.index("uses: actions/checkout@"))
+        self.assertIn('git merge-base --is-ancestor "$SOURCE_SHA" origin/main', text)
+        self.assertIn("--file 'crates/htmlcut-cli/src/**'", text)
+        self.assertIn("CARGO_BUILD_TARGET: ${{ matrix.target_triple }}", text)
+        self.assertIn("RUST_TEST_THREADS: '1'", text)
+        self.assertIn("if: always()", text)
+        upload = text.split("path: |", 1)[1]
+        self.assertIn("mutation-outcomes/mutants.out/", upload)
+        self.assertNotIn("scratch", upload)
+        step = text.split("      - name: Select complementary native platforms\n", 1)[1].split("\n  collect:", 1)[0]
+        body = step.split("        run: |\n", 1)[1]
+        command = "\n".join(line[10:] for line in body.splitlines())
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            subprocess.run(["bash", "-c", command], cwd=ROOT,
+                           env={**os.environ, "GITHUB_OUTPUT": str(output)}, check=True)
+            rows = json.loads("\n".join(output.read_text().splitlines()[1:-1]))["include"]
+        self.assertEqual({row["id"] for row in rows}, {"linux-x64-musl", "windows-x64"})
+
 
 class ContributorToolCacheTest(unittest.TestCase):
+    def test_failed_install_bounds_owned_products_and_preserves_owner_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "python3").symlink_to(sys.executable)
+            cargo = bin_dir / "cargo"
+            cargo.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$CARGO_TARGET_DIR" "$CARGO_BUILD_BUILD_DIR" > "$ENVIRONMENT_LOG"
+mkdir -p "$CARGO_TARGET_DIR" "$CARGO_BUILD_BUILD_DIR"
+python3 -c 'import os; from pathlib import Path; Path(os.environ["CARGO_TARGET_DIR"], "product").write_bytes(b"x" * (2 * 1024 * 1024))'
+exit 17
+""")
+            cargo.chmod(0o755)
+            owned = root / "owned"
+            owned.mkdir()
+            owner = root / "owner"
+            owner.mkdir()
+            sentinel = owner / "keep"
+            sentinel.write_bytes(b"owner cache")
+            helper = root / "tools.sh"
+            # Exercise the real installer/watchdog with a tiny limit; no
+            # multi-GiB write or actual tool compilation is needed for refusal.
+            helper.write_text((ROOT / "scripts/contributor-rust-tools.sh").read_text().replace(
+                "--disk-limit-mib 4096", "--disk-limit-mib 1"))
+            environment_log = root / "environment"
+            command = ["bash", "-c", 'source "$1"; htmlcut_install_contributor_cargo_tool cargo-about "$2"',
+                       "installer", str(helper), str(root / "installed")]
+            environment = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                           "RUNNER_TEMP": str(owned), "ENVIRONMENT_LOG": str(environment_log),
+                           "CARGO_TARGET_DIR": str(owner), "CARGO_BUILD_BUILD_DIR": str(owner)}
+            result = subprocess.run(command, cwd=ROOT, env=environment,
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 125, result.stderr)
+            target, build = map(Path, environment_log.read_text().splitlines())
+            self.assertEqual(target.parent, build.parent)
+            self.assertEqual(target.parent.parent, owned)
+            self.assertFalse(target.exists())
+            self.assertFalse(build.exists())
+            report = json.loads((target.parent / "cargo-about-install.resources.json").read_text())
+            self.assertEqual(report["refusal"], "disk-budget-exceeded")
+            self.assertEqual(report["returncode"], 17)
+            self.assertIn("bounded log and resource evidence", result.stderr)
+            self.assertEqual(sentinel.read_bytes(), b"owner cache")
+            self.assertEqual(list(owner.iterdir()), [sentinel])
+
+            # A reported cleanup failure must retain compiler products. The
+            # actual child is already reaped; inject only the report uncertainty.
+            python = bin_dir / "python3"
+            python.unlink()
+            python.write_text(f"#!{sys.executable}\n" + """import json, os, pathlib, subprocess, sys
+if len(sys.argv) > 1 and sys.argv[1].endswith('run-resource-bounded.py'):
+    result = subprocess.run([sys.executable, *sys.argv[1:]])
+    root = pathlib.Path(sys.argv[sys.argv.index('--root') + 1])
+    report = root / 'cargo-about-install.resources.json'
+    value = json.loads(report.read_text())
+    value['cleanup_errors'] = ['injected unconfirmed cleanup']
+    report.write_text(json.dumps(value))
+    sys.exit(result.returncode)
+os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+""")
+            python.chmod(0o755)
+            uncertain = subprocess.run(command, cwd=ROOT, env=environment, capture_output=True, text=True)
+            self.assertEqual(uncertain.returncode, 125, uncertain.stderr)
+            target, build = map(Path, environment_log.read_text().splitlines())
+            self.assertTrue((target / "product").exists())
+            self.assertTrue(build.exists())
+            self.assertIn("child cleanup was not confirmed", uncertain.stderr)
+            self.assertEqual(sentinel.read_bytes(), b"owner cache")
+
+    def test_fingerprint_tracks_selected_tool_installer_and_compiler_only(self):
+        original = (ROOT / "scripts/contributor-rust-tools.sh").read_text()
+        compiler = (ROOT / "rust-toolchain.toml").read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "tools.sh"
+            pin = root / "rust-toolchain.toml"
+
+            def fingerprint(source=original, toolchain=compiler, tool="cargo-about"):
+                script.write_text(source)
+                pin.write_text(toolchain)
+                return subprocess.run(
+                    ["bash", "-c", 'source "$1"; htmlcut_contributor_cargo_tool_fingerprint "$2"',
+                     "fingerprint", str(script), tool], cwd=root,
+                    capture_output=True, text=True)
+
+            baseline = fingerprint()
+            self.assertEqual(baseline.returncode, 0, baseline.stderr)
+            self.assertRegex(baseline.stdout, r"^[0-9a-f]{64}\n$")
+            self.assertEqual(fingerprint(original.replace("cargo-fuzz 0.13.2", "cargo-fuzz 0.13.3")).stdout,
+                             baseline.stdout)
+            for changed in [
+                fingerprint(original.replace("cargo-about 0.9.2", "cargo-about 0.9.3")),
+                fingerprint(original.replace('features=(--features cli)', 'features=(--features cli --offline)')),
+                fingerprint(toolchain=compiler + "\n# changed compiler inputs\n"),
+            ]:
+                self.assertEqual(changed.returncode, 0, changed.stderr)
+                self.assertNotEqual(changed.stdout, baseline.stdout)
+            rejected = fingerprint(tool="unknown-tool")
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("Unknown contributor Cargo tool", rejected.stderr)
+
     def test_install_uses_pinned_compiler_locked_version_and_required_feature(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -170,7 +321,12 @@ chmod +x "$2/bin/cargo-about"
         self.assertIn("actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9", action)
         self.assertNotIn("restore-keys:", action)
         self.assertIn("$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}", action)
-        self.assertIn('"scripts/contributor-rust-tools.sh", "rust-toolchain.toml"', action)
+        self.assertIn('htmlcut_contributor_cargo_tool_fingerprint "$TOOL"', action)
+        self.assertIn("if: failure()", action)
+        self.assertIn("retention-days: 3", action)
+        self.assertIn("${{ runner.temp }}/htmlcut-cargo-install.*/*.log", action)
+        self.assertIn("${{ runner.temp }}/htmlcut-cargo-install.*/*.resources.json", action)
+        self.assertNotIn("htmlcut-cargo-install.*/target", action)
         self.assertNotIn(".htmlcut-artifacts", action)
         self.assertNotIn("dist/", action)
         ci = (ROOT / ".github/workflows/ci.yml").read_text()

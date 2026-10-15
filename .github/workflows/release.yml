@@ -171,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes musl-tools
+          sudo apt-get install --yes musl-tools acl
 
       - name: Install Rust toolchain
         shell: bash
@@ -229,7 +229,8 @@ jobs:
           path: |
             dist/${{ steps.artifact.outputs.package }}
             dist/native-conformance-*
-            dist/native-conformance-*
+            dist/native-semantics-*
+            dist/native-acceptance-*
           if-no-files-found: error
           retention-days: 7
 
@@ -332,7 +333,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes musl-tools
+          sudo apt-get install --yes musl-tools acl
 
       - name: Install Rust toolchain for native I/O tests
         shell: bash
@@ -384,6 +385,7 @@ jobs:
           path: |
             dist/htmlcut-*
             dist/native-conformance-*
-            dist/native-conformance-*
+            dist/native-semantics-*
+            dist/native-acceptance-*
           if-no-files-found: error
           retention-days: 7

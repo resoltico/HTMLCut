@@ -23,11 +23,11 @@ runs:
         root="$temporary/htmlcut-cargo-tools/$TOOL"
         cache_path="$root"
         if command -v cygpath >/dev/null 2>&1; then cache_path="$(cygpath -w "$root")"; fi
-        inventory_hash=$(python3 -c 'import hashlib; from pathlib import Path; h=hashlib.sha256(); [h.update(Path(p).read_bytes()) for p in ["scripts/contributor-rust-tools.sh", "rust-toolchain.toml"]]; print(h.hexdigest())')
+        tool_fingerprint=$(htmlcut_contributor_cargo_tool_fingerprint "$TOOL")
         {
           echo "root=$root"
           echo "cache_path=$cache_path"
-          echo "key=cargo-tool-$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}-$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN-$TOOL-$inventory_hash"
+          echo "key=cargo-tool-$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}-$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN-$TOOL-$tool_fingerprint"
         } >> "$GITHUB_OUTPUT"
     - name: Restore and retain trusted main tool cache
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -46,6 +46,7 @@ runs:
       env:
         TOOL: ${{ inputs.tool }}
         INSTALL_ROOT: ${{ steps.inventory.outputs.root }}
+        TMPDIR: ${{ runner.temp }}
       run: |
         set -euo pipefail
         source ./scripts/contributor-rust-tools.sh
@@ -53,3 +54,13 @@ runs:
         binary_path="$INSTALL_ROOT/bin"
         if command -v cygpath >/dev/null 2>&1; then binary_path="$(cygpath -w "$binary_path")"; fi
         echo "$binary_path" >> "$GITHUB_PATH"
+    - name: Preserve failed bounded tool installation evidence
+      if: failure()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: tool-install-${{ runner.os }}-${{ runner.arch }}-${{ inputs.tool }}
+        retention-days: 3
+        if-no-files-found: warn
+        path: |
+          ${{ runner.temp }}/htmlcut-cargo-install.*/*.log
+          ${{ runner.temp }}/htmlcut-cargo-install.*/*.resources.json

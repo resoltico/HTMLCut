@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import runpy
 from pathlib import Path
 import subprocess
 import tempfile
@@ -73,14 +74,7 @@ def runtime_notice(root, target):
     return "\n\n".join(sections).rstrip() + "\n"
 
 
-def bash_program():
-    for key in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
-        if root := os.environ.get(key):
-            candidate = Path(root) / "Git/bin/bash.exe"
-            if candidate.is_file():
-                return str(candidate)
-    return "bash"
-
+bash_program = runpy.run_path(str(Path(__file__).with_name('native-shell.py')))['bash_program']
 
 def shell_inventory(root):
     # Python on Windows starts native programs directly. Prefer Git Bash over the WSL launcher;

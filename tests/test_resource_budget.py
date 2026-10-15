@@ -50,7 +50,7 @@ class ResourceBudgetTests(unittest.TestCase):
         self.assertLess(report["elapsed_seconds"], 2)
 
     def test_huge_finite_intervals_allow_successful_child(self):
-        result, report, log = self.run_child("print('short child')", timeout=1e308, poll="1e308")
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'short child\\n')", timeout=1e308, poll="1e308")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(report["refusal"])
         self.assertEqual(log, b"short child\n")
@@ -117,7 +117,7 @@ functions['disk_bytes'] = sample
         return self.run_child(code, timeout=timeout, fault=fault)
 
     def test_final_sample_failure_retains_successful_child_log_and_report(self):
-        result, report, log = self.final_sample_failure("print('retained child evidence')")
+        result, report, log = self.final_sample_failure("import sys; sys.stdout.buffer.write(b'retained child evidence\\n')")
         self.assertEqual(result.returncode, 125, result.stderr)
         self.assertEqual(report["returncode"], 0)
         self.assertIn("disk-accounting-failed: final sample probe", report["refusal"])
@@ -131,11 +131,17 @@ functions['disk_bytes'] = sample
         self.assertEqual(report["disk_accounting_errors"], [{"phase": "final", "error": "final sample probe"}])
 
     def test_success_records_actual_exit_and_output(self):
-        result, report, log = self.run_child("print('native-child')")
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'native-child\\n')")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(report["refusal"])
         self.assertEqual(log, b"native-child\n")
         self.assertGreater(report["peak_sampled_disk_bytes"], 0)
+
+    def test_child_crlf_bytes_are_preserved_without_normalization(self):
+        result, report, log = self.run_child("import sys; sys.stdout.buffer.write(b'line\\r\\n')")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(report["refusal"])
+        self.assertEqual(log, b"line\r\n")
 
     def test_disk_writer_is_refused(self):
         result, report, _ = self.run_child(
@@ -161,6 +167,119 @@ functions['disk_bytes'] = sample
         self.assertEqual(result.returncode, 7, result.stderr)
         self.assertEqual(report["returncode"], 7)
         self.assertIsNone(report["refusal"])
+
+    def test_group_cleanup_failure_preserves_original_refusal_and_reaps_leader(self):
+        fault = """
+def fail_cleanup(process):
+    raise PermissionError('group cleanup probe')
+namespace['main'].__globals__['stop_process_tree'] = fail_cleanup
+"""
+        result, report, _ = self.run_child("import time; time.sleep(5)", timeout=0.1, fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertEqual(report["cleanup_errors"], ["PermissionError: group cleanup probe"])
+        self.assertIsNotNone(report["returncode"])
+        self.assertNotEqual(report["returncode"], 0)
+
+    @unittest.skipIf(os.name == "nt", "POSIX cooperative interrupt grace")
+    def test_forced_stop_cannot_claim_separate_descendant_cleanup(self):
+        result, report, _ = self.run_child(
+            "import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(5)", timeout=0.2)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertIn("escaped descendant cleanup is unconfirmed", report["cleanup_errors"][0])
+        self.assertIsNotNone(report["returncode"])
+        self.assertLess(report["elapsed_seconds"], 4)
+
+    def test_late_reader_failure_does_not_replace_original_timeout(self):
+        fault = """
+original_start = namespace['main'].__globals__['subprocess'].Popen
+class BrokenReader:
+    def __init__(self, original):
+        self.original = original
+    def read1(self, size):
+        __import__('time').sleep(0.3)
+        raise OSError('late reader probe')
+def start(*a, **kw):
+    child = original_start(*a, **kw)
+    child.stdout = BrokenReader(child.stdout)
+    return child
+namespace['main'].__globals__['subprocess'].Popen = start
+"""
+        result, report, _ = self.run_child("import time; time.sleep(5)", timeout=0.1, fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertEqual(report["reader_errors"], ["late reader probe"])
+
+    @unittest.skipUnless(sys.platform == "darwin", "Darwin exited-group EPERM inspection")
+    def test_exited_group_eperm_requires_empty_native_process_snapshot(self):
+        fault = """
+def denied_group(*_):
+    raise PermissionError('exited group probe')
+namespace['main'].__globals__['os'].killpg = denied_group
+"""
+        result, report, log = self.run_child("print('completed')", fault=fault)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["cleanup_errors"], [])
+        self.assertEqual(log, b"completed\n")
+
+    @unittest.skipUnless(sys.platform == "darwin", "Darwin live-group EPERM rejection")
+    def test_live_group_eperm_is_not_ignored(self):
+        fault = """
+def denied_group(*_):
+    raise PermissionError('live group probe')
+namespace['main'].__globals__['os'].killpg = denied_group
+namespace['main'].__globals__['subprocess'].check_output = lambda *a, **kw: str(__import__('os').getpid()) + ' R\\n'
+original_start = namespace['main'].__globals__['subprocess'].Popen
+def start(*a, **kw):
+    child = original_start(*a, **kw)
+    namespace['main'].__globals__['subprocess'].check_output = lambda *a, **kw: str(child.pid) + ' R\\n'
+    return child
+namespace['main'].__globals__['subprocess'].Popen = start
+"""
+        result, report, _ = self.run_child("print('completed')", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["refusal"], "process-cleanup-failed")
+        self.assertTrue(report["cleanup_errors"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX separately grouped child cleanup")
+    def test_cooperative_interrupt_cleans_separate_child_group(self):
+        self.separately_grouped_child_cleanup()
+
+    @unittest.skipIf(os.name == "nt", "POSIX separately grouped child cleanup")
+    def test_log_cap_does_not_block_separate_child_group_cleanup(self):
+        self.separately_grouped_child_cleanup(overflow=True)
+
+    def separately_grouped_child_cleanup(self, overflow=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "separate-child-wrote"
+            ready = root / "ready"
+            child = "import pathlib,time; time.sleep(1.5); pathlib.Path(" + repr(str(marker)) + ").write_text('leaked')"
+            parent = (
+                "import os,signal,subprocess,sys,time,pathlib\n"
+                "child=subprocess.Popen([sys.executable,'-c'," + repr(child) + "],start_new_session=True)\n"
+                "def stop(*_):\n"
+                + (" sys.stdout.write('c'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
+                " os.killpg(child.pid,signal.SIGKILL)\n"
+                " child.wait()\n"
+                " sys.exit(0)\n"
+                "signal.signal(signal.SIGINT,stop)\n"
+                "pathlib.Path(" + repr(str(ready)) + ").write_text('ready')\n"
+                + ("sys.stdout.write('x'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
+                "time.sleep(5)\n"
+            )
+            result = subprocess.run([sys.executable, str(RUNNER), "--root", directory,
+                "--disk-limit-mib", "4", "--log-limit-mib", "1", "--timeout", "0.5", "--poll-seconds", "0.02",
+                "--label", "test", "--", sys.executable, "-c", parent],
+                capture_output=True, timeout=8)
+            self.assertTrue(ready.exists(), result.stderr)
+            self.assertEqual(result.returncode, 125, result.stderr)
+            report = json.loads((root / "test.resources.json").read_text())
+            self.assertEqual(report["refusal"], "log-budget-exceeded" if overflow else "wall-time-exceeded")
+            self.assertEqual(report["cleanup_errors"], [])
+            time.sleep(1.5)
+            self.assertFalse(marker.exists(), "separately grouped child survived cancellation")
 
     @unittest.skipIf(os.name == "nt", "POSIX process-group orphan cleanup")
     def test_successful_parent_cannot_leave_background_writer(self):
