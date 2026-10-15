@@ -15,6 +15,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkflowWiringTest(unittest.TestCase):
+    def test_resource_fixture_failures_are_retained_in_maintainer_and_native_jobs(self):
+        text = (ROOT / ".github/workflows/ci.yml").read_text()
+        for name, following in [("linux-maintainer", "focused-smoke"), ("release-target-smoke", "check")]:
+            job = text.split(f"\n  {name}:\n", 1)[1].split(f"\n  {following}:\n", 1)[0]
+            upload = job.split("      - name: Preserve failed resource fixtures\n", 1)[1].split("      - ", 1)[0]
+            self.assertIn("if: failure()", upload)
+            self.assertIn("retention-days: 3", upload)
+            paths = [line.strip() for line in upload.splitlines() if "${{ runner.temp }}/" in line]
+            self.assertEqual(set(paths), {
+                '${{ runner.temp }}/htmlcut-resource-group.*/**',
+                '${{ runner.temp }}/htmlcut-exited-group.*/**',
+                '${{ runner.temp }}/htmlcut-fuzz-process-control.*/**',
+            })
+
     def test_native_ci_checks_windows_fuzz_tree_stop_and_bounds_package_retention(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text()
         native = text.split("\n  release-target-smoke:\n", 1)[1].split("\n  check:\n", 1)[0]

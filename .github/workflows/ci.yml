@@ -47,6 +47,17 @@ jobs:
         with:
           tool: cargo-deny
       - run: ./check.sh
+      - name: Preserve failed resource fixtures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: resource-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/htmlcut-resource-group.*/**
+            ${{ runner.temp }}/htmlcut-exited-group.*/**
+            ${{ runner.temp }}/htmlcut-fuzz-process-control.*/**
 
   focused-smoke:
     name: Linux contract and extraction fuzz preflight
@@ -137,6 +148,17 @@ jobs:
           package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
           RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission --target "${{ matrix.target_triple }}" > "dist/parser-abort-${{ matrix.target_triple }}.log" 2>&1
           ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
+      - name: Preserve failed resource fixtures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: resource-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/htmlcut-resource-group.*/**
+            ${{ runner.temp }}/htmlcut-exited-group.*/**
+            ${{ runner.temp }}/htmlcut-fuzz-process-control.*/**
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
