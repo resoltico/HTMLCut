@@ -290,10 +290,24 @@ namespace['main'].__globals__['stop_process_tree'] = fail_cleanup
 
     @unittest.skipIf(os.name == "nt", "POSIX cooperative interrupt grace")
     def test_forced_stop_cannot_claim_separate_descendant_cleanup(self):
+        # The deadline includes interpreter startup. Install the fixture's
+        # SIG_IGN before exec, not after an assumed-fast Python import. This
+        # fresh watchdog wrapper has no reader thread until Popen returns.
+        inherited_ignore = """
+import signal
+native_start = namespace['main'].__globals__['subprocess'].Popen
+def start_inherited_ignore(*args, **kwargs):
+    kwargs['preexec_fn'] = lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
+    return native_start(*args, **kwargs)
+namespace['main'].__globals__['subprocess'].Popen = start_inherited_ignore
+"""
         result, report, _ = self.run_child(
-            "import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(5)", timeout=0.2)
+            "import signal,time; assert signal.getsignal(signal.SIGINT) == signal.SIG_IGN; "
+            "time.sleep(0.5); signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(5)",
+            timeout=0.2, fault=inherited_ignore)
         self.assertEqual(result.returncode, 125, result.stderr)
         self.assertEqual(report["refusal"], "wall-time-exceeded")
+        self.assertTrue(report["cleanup_errors"], report)
         self.assertIn("escaped descendant cleanup is unconfirmed", report["cleanup_errors"][0])
         self.assertIsNotNone(report["returncode"])
         self.assertLess(report["elapsed_seconds"], 4)
