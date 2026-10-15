@@ -5,6 +5,16 @@ inputs:
   tool:
     description: Tool name from the authoritative contributor inventory
     required: true
+outputs:
+  cache-key:
+    description: Exact selected tool cache key
+    value: ${{ steps.inventory.outputs.key }}
+  cache-path:
+    description: Selected tool installation root in native path syntax
+    value: ${{ steps.inventory.outputs.cache_path }}
+  cache-hit:
+    description: Whether the exact tool cache was restored
+    value: ${{ steps.trusted-cache.outputs.cache-hit || steps.restore-cache.outputs.cache-hit }}
 runs:
   using: composite
   steps:
@@ -30,12 +40,14 @@ runs:
           echo "key=cargo-tool-$RUNNER_OS_ID-$RUNNER_ARCH_ID-${ImageOS:-unknown}-${ImageVersion:-unknown}-$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN-$TOOL-$tool_fingerprint"
         } >> "$GITHUB_OUTPUT"
     - name: Restore and retain trusted main tool cache
+      id: trusted-cache
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.inventory.outputs.cache_path }}
         key: ${{ steps.inventory.outputs.key }}
     - name: Restore tool cache without saving
+      id: restore-cache
       if: github.event_name != 'push' || github.ref != 'refs/heads/main'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:

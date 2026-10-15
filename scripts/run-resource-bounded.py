@@ -17,12 +17,27 @@ import threading
 import time
 
 
+def vanished_entry(error):
+    if isinstance(error, FileNotFoundError):
+        return True
+    # Windows can report access denied between a removal's disposition and
+    # close. Only a fresh missing-name result distinguishes that from denial.
+    if getattr(error, "winerror", None) == 5 and error.filename:
+        try:
+            os.lstat(error.filename)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            pass
+    return False
+
+
 def disk_bytes(root):
     """Conservatively count file/directory allocation without following links."""
     def walk_error(error):
         # Build tools may remove a directory between enumeration and descent.
         # Inaccessible directories cannot be safely omitted from accounting.
-        if not isinstance(error, FileNotFoundError):
+        if not vanished_entry(error):
             raise error
 
     total = 0
@@ -32,8 +47,10 @@ def disk_bytes(root):
         for path in paths:
             try:
                 stat = path.lstat()
-            except FileNotFoundError:
-                continue
+            except OSError as error:
+                if vanished_entry(error):
+                    continue
+                raise
             total += max(stat.st_size, getattr(stat, "st_blocks", 0) * 512)
     return total
 

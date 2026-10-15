@@ -202,6 +202,76 @@ class WorkflowWiringTest(unittest.TestCase):
         self.assertEqual({row["id"] for row in rows}, {"linux-x64-musl", "windows-x64"})
 
 
+    def test_manual_mutation_cache_saves_only_the_verified_current_main_snapshot(self):
+        workflow = (ROOT / ".github/workflows/mutation.yml").read_text()
+        action = (ROOT / ".github/actions/cargo-tool/action.yml").read_text()
+        eligibility = workflow.split("      - name: Check current main cache eligibility\n", 1)[1].split("      - name: Retain verified current main mutation tool\n", 1)[0]
+        command = "\n".join(line[10:] for line in eligibility.split("        run: |\n", 1)[1].splitlines())
+        save = workflow.split("      - name: Retain verified current main mutation tool\n", 1)[1].split("      - name: Execute active native CLI selection", 1)[0]
+        self.assertIn("if: steps.cache-source.outputs.eligible == 'true' && steps.mutation-tool.outputs.cache-hit != 'true'", save)
+        self.assertIn("uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9", save)
+        self.assertIn("path: ${{ steps.mutation-tool.outputs.cache-path }}", save)
+        self.assertIn("key: ${{ steps.mutation-tool.outputs.cache-key }}", save)
+        self.assertNotIn("always()", save)
+        self.assertNotIn("failure()", save)
+        self.assertNotIn("restore-keys:", save)
+        self.assertLess(workflow.index("id: mutation-tool"), workflow.index("id: cache-source"))
+        self.assertLess(workflow.index("Retain verified current main mutation tool"), workflow.index("Execute active native CLI selection"))
+        for value in ["steps.inventory.outputs.key", "steps.inventory.outputs.cache_path",
+                      "steps.trusted-cache.outputs.cache-hit || steps.restore-cache.outputs.cache-hit"]:
+            self.assertIn("value: ${{ " + value + " }}", action)
+        for name, expression in [("EVENT_NAME", "github.event_name"), ("WORKFLOW_REF", "github.ref"),
+                                 ("WORKFLOW_SHA", "github.sha"),
+                                 ("SOURCE_SHA", "needs.platform-matrix.outputs.source_sha")]:
+            self.assertIn(name + ": ${{ " + expression + " }}", eligibility)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            environment = {**os.environ, "GIT_AUTHOR_NAME": "Cache control", "GIT_AUTHOR_EMAIL": "cache@example.test",
+                           "GIT_COMMITTER_NAME": "Cache control", "GIT_COMMITTER_EMAIL": "cache@example.test"}
+
+            def git(*arguments):
+                return subprocess.check_output(["git", *arguments], cwd=root, env=environment,
+                                               stderr=subprocess.PIPE, text=True).strip()
+
+            git("init", "-q")
+            commits = []
+            for index in range(3):
+                (root / "source").write_text(str(index))
+                git("add", "source")
+                git("commit", "-qm", "Source snapshot")
+                commits.append(git("rev-parse", "HEAD"))
+            previous, current, advanced = commits
+            defaults = {"EVENT_NAME": "workflow_dispatch", "WORKFLOW_REF": "refs/heads/main",
+                        "WORKFLOW_SHA": current, "SOURCE_SHA": current}
+            cases = [
+                ("current-main", {}, current, current, True),
+                ("push", {"EVENT_NAME": "push"}, current, current, False),
+                ("pull-request", {"EVENT_NAME": "pull_request"}, current, current, False),
+                ("branch-dispatch", {"WORKFLOW_REF": "refs/heads/topic"}, current, current, False),
+                ("tag-dispatch", {"WORKFLOW_REF": "refs/tags/v22.0.0"}, current, current, False),
+                ("historical-source", {"SOURCE_SHA": previous}, previous, current, False),
+                ("wrong-workflow-source", {"WORKFLOW_SHA": previous}, current, current, False),
+                ("wrong-checkout", {}, previous, current, False),
+                ("main-advanced", {}, current, advanced, False),
+                ("missing-main-ref", {}, current, None, False),
+            ]
+            for name, values, head, remote, expected in cases:
+                with self.subTest(case=name):
+                    git("checkout", "--detach", "-q", head)
+                    if remote is None:
+                        git("update-ref", "-d", "refs/remotes/origin/main")
+                    else:
+                        git("update-ref", "refs/remotes/origin/main", remote)
+                    output = root / "output"
+                    output.unlink(missing_ok=True)
+                    result = subprocess.run(["bash", "-c", command], cwd=root,
+                                            env={**environment, **defaults, **values, "GITHUB_OUTPUT": str(output)},
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(output.read_text(), f"eligible={str(expected).lower()}\n")
+
+
 class ContributorToolCacheTest(unittest.TestCase):
     def test_cleanup_failure_refuses_without_errexit_and_preserves_primary_failures(self):
         shell = "/bin/bash" if Path("/bin/bash").is_file() else "bash"

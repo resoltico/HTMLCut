@@ -82,8 +82,32 @@ jobs:
           rustup target add --toolchain "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN" "${{ matrix.target_triple }}"
           cargo fetch --locked
       - uses: ./.github/actions/cargo-tool
+        id: mutation-tool
         with:
           tool: cargo-mutants
+      - name: Check current main cache eligibility
+        id: cache-source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.ref }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.platform-matrix.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          eligible=false
+          if [[ "$EVENT_NAME" == workflow_dispatch && "$WORKFLOW_REF" == refs/heads/main &&
+                "$SOURCE_SHA" == "$WORKFLOW_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" &&
+                "$(git rev-parse refs/remotes/origin/main)" == "$SOURCE_SHA" ]]; then
+            eligible=true
+          fi
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+      - name: Retain verified current main mutation tool
+        if: steps.cache-source.outputs.eligible == 'true' && steps.mutation-tool.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.mutation-tool.outputs.cache-path }}
+          key: ${{ steps.mutation-tool.outputs.cache-key }}
       - name: Execute active native CLI selection; survivors and timeouts require review
         shell: bash
         env:
