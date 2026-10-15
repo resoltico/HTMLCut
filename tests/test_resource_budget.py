@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Real child writers prove QA resource refusals and retained evidence."""
 import json
+import io
 import shlex
 import shutil
 import signal
@@ -18,7 +19,71 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "scripts/run-resource-bounded.py"
 
 
+def retain_fixture_diagnostics(root, cleanup_errors):
+    """Retain bounded failure facts even when the console log filled first."""
+    facts = {"cleanup_errors": cleanup_errors}
+    for name, limit in [("test.resources.json", 65536), ("handler-error.txt", 4096)]:
+        try:
+            with (root / name).open("rb") as source:
+                value = source.read(limit + 1)
+            facts[name] = value[:limit].decode("utf-8", errors="replace")
+            if len(value) > limit:
+                facts[name + "_truncated"] = True
+        except OSError as error:
+            facts[name] = str(error)
+    try:
+        with (root / "test.log").open("rb") as source:
+            source.seek(0, 2)
+            facts["log_bytes"] = source.tell()
+            source.seek(max(0, source.tell() - 4096))
+            facts["log_tail"] = source.read(4096).decode("utf-8", errors="replace")
+    except OSError as error:
+        facts["log_error"] = str(error)
+    try:
+        report = json.loads(facts["test.resources.json"])
+        if not isinstance(report, dict):
+            raise ValueError("resource report is not an object")
+        child_status, refusal = report.get("returncode"), report.get("refusal")
+    except (ValueError, TypeError):
+        child_status, refusal = "unavailable", "unavailable"
+    try:
+        (root / "fixture-diagnostic.json").write_text(json.dumps(facts, indent=2) + "\n")
+    except OSError as error:
+        print(f"Cannot retain fixture diagnostics at {root}: {error}", file=sys.stderr)
+    preview = lambda value: str(value)[:512]
+    summary = (f"Resource fixture evidence retained at {root}: "
+               f"child={preview(child_status)}; refusal={preview(refusal)}; "
+               f"cleanup={preview(cleanup_errors)}; handler={preview(facts['handler-error.txt'])}")
+    print(summary.encode("utf-8", errors="replace")[:4095].decode("utf-8", errors="ignore"), file=sys.stderr)
+
+
 class ResourceBudgetTests(unittest.TestCase):
+    def test_failure_diagnostics_keep_status_and_bound_late_error_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = {"returncode": 7, "refusal": "log-budget-exceeded"}
+            (root / "test.resources.json").write_text(json.dumps(report))
+            (root / "handler-error.txt").write_text("handler failure: " + "e" * 6000)
+            (root / "test.log").write_bytes(b"x" * (2 * 1024 * 1024))
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as console:
+                retain_fixture_diagnostics(root, [])
+            facts = json.loads((root / "fixture-diagnostic.json").read_text())
+            self.assertEqual(json.loads(facts["test.resources.json"]), report)
+            self.assertTrue(facts["handler-error.txt_truncated"])
+            self.assertEqual(len(facts["handler-error.txt"]), 4096)
+            self.assertEqual(facts["log_tail"], "x" * 4096)
+            self.assertIn("child=7; refusal=log-budget-exceeded", console.getvalue())
+            self.assertIn("handler failure:", console.getvalue())
+            self.assertLess(len(console.getvalue()), 1500)
+            self.assertLess((root / "fixture-diagnostic.json").stat().st_size, 80000)
+            (root / "test.resources.json").write_text(json.dumps({
+                "returncode": "u" * 15000, "refusal": "r" * 15000}))
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as console:
+                retain_fixture_diagnostics(root, ["c" * 12000])
+            self.assertLessEqual(len(console.getvalue().encode("utf-8")), 4096)
+            for value in ["u", "r", "c"]:
+                self.assertNotIn(value * 513, console.getvalue())
+
     def test_windows_access_denied_accepts_only_a_now_missing_namespace_entry(self):
         functions = runpy.run_path(str(RUNNER))
         with tempfile.TemporaryDirectory() as directory:
@@ -374,7 +439,7 @@ namespace['main'].__globals__['subprocess'].Popen = start
         self.separately_grouped_child_cleanup(overflow=True)
 
     def separately_grouped_child_cleanup(self, overflow=False):
-        root = Path(tempfile.mkdtemp(prefix="htmlcut-resource-group."))
+        root = Path(tempfile.mkdtemp(prefix="htmlcut-resource-group.", dir=os.environ.get("RUNNER_TEMP") or None))
         marker, gate = root / "separate-child-wrote", root / "write-after-cleanup"
         writer_ready, ready = root / "writer-ready", root / "handler-ready"
         # The observer owns this unreaped group leader independently of the
@@ -400,14 +465,26 @@ namespace['main'].__globals__['subprocess'].Popen = start
             parent = (
                 "import os,signal,sys,time,pathlib\n"
                 "assert os.getpgrp() != " + str(writer.pid) + "\n"
+                "def write_all(value):\n"
+                " data=memoryview(value*(2*1024*1024))\n"
+                " while data:\n"
+                "  count=os.write(1,data)\n"
+                "  if count <= 0: raise OSError('stdout made no progress')\n"
+                "  data=data[count:]\n"
                 "def stop(*_):\n"
-                + (" sys.stdout.write('c'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
-                " os.killpg(" + str(writer.pid) + ",signal.SIGKILL)\n"
+                " try:\n"
+                "  try:\n"
+                + ("   write_all(b'c')\n" if overflow else "   pass\n") +
+                "  finally:\n"
+                "   os.killpg(" + str(writer.pid) + ",signal.SIGKILL)\n"
+                " except BaseException as error:\n"
+                "  pathlib.Path(" + repr(str(root / 'handler-error.txt')) + ").write_bytes((type(error).__name__+': '+str(error)).encode('utf-8',errors='replace')[:4096])\n"
+                "  raise\n"
                 " sys.exit(0)\n"
                 "signal.signal(signal.SIGINT,stop)\n"
                 "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
                 "ready.with_suffix('.pending').write_text('ready'); ready.with_suffix('.pending').replace(ready)\n"
-                + ("sys.stdout.write('x'*(2*1024*1024)); sys.stdout.flush()\n" if overflow else "") +
+                + ("write_all(b'x')\n" if overflow else "") +
                 "time.sleep(5)\n"
             )
             # Wall time is a fallback only; the tested trigger follows ready
@@ -427,6 +504,9 @@ namespace['main'].__globals__['subprocess'].Popen = start
             report = json.loads((root / "test.resources.json").read_text())
             self.assertEqual(report["refusal"], "log-budget-exceeded" if overflow else "interrupted")
             self.assertEqual(report["cleanup_errors"], [])
+            self.assertEqual(report["returncode"], 0, report)
+            if overflow:
+                self.assertEqual((root / "test.log").stat().st_size, 1024 * 1024)
             deadline = time.monotonic() + 2
             while os.waitid(os.P_PID, writer.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None and time.monotonic() < deadline:
                 time.sleep(.01)
@@ -479,13 +559,13 @@ namespace['main'].__globals__['subprocess'].Popen = start
             if passed and not cleanup_errors:
                 shutil.rmtree(root)
             else:
-                print(f"Separate-group fixture evidence retained at {root}: {cleanup_errors}", file=sys.stderr)
+                retain_fixture_diagnostics(root, cleanup_errors)
             if cleanup_errors:
                 self.fail(f"Separate-group fixture cleanup unconfirmed at {root}: {cleanup_errors}")
 
     @unittest.skipIf(os.name == "nt", "POSIX process-group orphan cleanup")
     def test_exited_parent_group_cleanup_stops_a_gated_background_writer(self):
-        root = Path(tempfile.mkdtemp(prefix="htmlcut-exited-group."))
+        root = Path(tempfile.mkdtemp(prefix="htmlcut-exited-group.", dir=os.environ.get("RUNNER_TEMP") or None))
         marker, gate, ready, expired = (root / name for name in ["orphan-wrote", "write-after-cleanup", "writer-ready", "writer-expired"])
         child = ("import os,pathlib,time\n"
                  "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
@@ -566,7 +646,7 @@ namespace['main'].__globals__['subprocess'].Popen = start
             if passed and not cleanup_errors:
                 shutil.rmtree(root)
             else:
-                print(f"Exited-group fixture evidence retained at {root}: {cleanup_errors}", file=sys.stderr)
+                retain_fixture_diagnostics(root, cleanup_errors)
             if cleanup_errors:
                 self.fail(f"Exited-group fixture cleanup unconfirmed at {root}: {cleanup_errors}")
 

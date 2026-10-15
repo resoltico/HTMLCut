@@ -89,7 +89,7 @@ class FuzzProcessCleanupTest(unittest.TestCase):
         kernel.TerminateProcess.restype = wintypes.BOOL
         kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         kernel.CloseHandle.restype = wintypes.BOOL
-        root = Path(tempfile.mkdtemp(prefix='htmlcut-fuzz-process-control.'))
+        root = Path(tempfile.mkdtemp(prefix='htmlcut-fuzz-process-control.', dir=os.environ.get('RUNNER_TEMP') or None))
         controls = []
         facts = []
         confirmed = False
