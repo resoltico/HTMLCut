@@ -34,6 +34,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
   linux-maintainer:
     name: Linux full maintainer gate
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -48,7 +49,8 @@ jobs:
       - run: ./check.sh
 
   focused-smoke:
-    name: Linux contract and extraction fuzz smoke
+    name: Linux contract and extraction fuzz preflight
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -65,19 +67,21 @@ jobs:
       - uses: ./.github/actions/cargo-tool
         with:
           tool: cargo-fuzz
-      - name: Execute both bounded smokes
+      - name: Execute both bounded fuzz preflights
         shell: bash
-        run: ./scripts/focused-smoke.sh "$RUNNER_TEMP/focused-smoke"
+        run: ./scripts/focused-smoke.sh --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
       - name: Preserve smoke logs and crash inputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: focused-smoke
+          retention-days: 3
           path: ${{ runner.temp }}/focused-smoke/
           if-no-files-found: warn
 
   minimum-rust:
     name: Minimum supported Rust
+    needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -107,21 +111,26 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - if: ${{ matrix.needs_musl_tools }}
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
+      - name: Verify native workspace behavior
+        shell: bash
+        run: |
+          rustup target add "${{ matrix.target_triple }}"
+          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
       - uses: ./.github/actions/cargo-tool
         with:
           tool: cargo-about
-      - shell: bash
+      - name: Build and accept native package
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          rustup target add "${{ matrix.target_triple }}"
           source ./scripts/contributor-rust-tools.sh
           ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
           source ./scripts/release-targets.sh
           version=$(./scripts/workspace-version.sh Cargo.toml)
           package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
-          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
+          RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission --target "${{ matrix.target_triple }}" > "dist/parser-abort-${{ matrix.target_triple }}.log" 2>&1
           ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

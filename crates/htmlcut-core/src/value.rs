@@ -43,6 +43,12 @@ impl OutputSize {
     pub(crate) fn new(maximum: usize) -> Self {
         Self { used: 0, maximum }
     }
+    pub(crate) fn remaining(&self) -> usize {
+        self.maximum.saturating_sub(self.used)
+    }
+    pub(crate) fn maximum(&self) -> usize {
+        self.maximum
+    }
     pub(crate) fn syntax(&mut self, bytes: usize) -> Result<(), Error> {
         if bytes > self.maximum.saturating_sub(self.used) {
             return Err(Error::limit("output_bytes", self.maximum));

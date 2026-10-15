@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Complete input, a single publication claim, and atomic named output.
+use crate::authorization::{Policy, identity, identity_path};
 use crate::cli::{self, Command, Common};
 use htmlcut_core::{Contract, Document, Error, ErrorCode, OutlineOptions, Source, Value};
 use std::{
@@ -14,17 +15,66 @@ use std::{
 };
 
 const ACTIVE: u8 = 0;
-const CLAIMED: u8 = 1;
+const COMMIT_IN_PROGRESS: u8 = 1;
 const EXPIRED: u8 = 2;
+const SUCCESS: u8 = 3;
+const ERROR: u8 = 4;
+const REPORT_GRACE: Duration = Duration::from_millis(50);
 
+pub(crate) fn report(error: &Error) {
+    let bytes = error.to_json_line();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let _ = io::stderr().lock().write_all(&bytes);
+        let _ = sender.send(());
+    });
+    let _ = receiver.recv_timeout(REPORT_GRACE);
+}
 pub(crate) fn execute(command: Command) -> Result<(), Error> {
+    // Resolve competing stdin claims before acquisition and before starting work.
+    if let Command::Run(args) = &command {
+        if args.from_file.is_some() && args.operands.len() > 1 {
+            return Err(cli::argument_error(
+                "run --from-file accepts at most one FILE operand",
+            ));
+        }
+        if args.from_file.is_none() && args.operands.is_empty() {
+            return Err(cli::argument_error(
+                "run requires CONTRACT-JSON or --from-file PATH",
+            ));
+        }
+        if args
+            .from_file
+            .as_deref()
+            .is_some_and(|path| path.as_os_str() == "-")
+        {
+            let file = args.operands.first().map(std::path::PathBuf::from);
+            if file.as_deref().is_none_or(obvious_stdin_alias) {
+                return Err(cli::argument_error(
+                    "contract stdin requires a distinct explicit HTML file; competing standard input claims are refused before reading",
+                ));
+            }
+        }
+    }
+    let duration = match &command {
+        Command::Schema(a) => a.timeout,
+        Command::Get(a) => a.common.timeout,
+        Command::Run(a) => a.common.timeout,
+        Command::Outline(a) => a.common.timeout,
+    };
+    let watchdog = Watchdog::new(duration);
+    watchdog.check();
+    let result = execute_work(command, &watchdog);
+    watchdog.finish(result)
+}
+fn execute_work(command: Command, watchdog: &Watchdog) -> Result<(), Error> {
     match command {
-        Command::Schema => {
+        Command::Schema(args) => {
             let mut bytes = serde_json::to_vec(&Contract::schema()).map_err(|e| {
                 Error::new(ErrorCode::Internal, format!("Schema encoding failed: {e}."))
             })?;
             bytes.push(b'\n');
-            publish(&bytes, None)
+            publish_timed(&bytes, args.output.as_deref(), Some(watchdog))
         }
         Command::Get(args) => {
             let mut value = serde_json::json!({"select":args.css,"read":args.read});
@@ -32,16 +82,39 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                 value["match"] = "all".into();
             }
             let contract = Contract::from_json(&value.to_string())?;
-            extract(contract, args.file.as_deref(), args.raw, &args.common)
+            extract(
+                contract,
+                args.file.as_deref(),
+                args.raw,
+                &args.common,
+                watchdog,
+            )
         }
         Command::Run(args) => {
+            if args
+                .from_file
+                .as_deref()
+                .is_some_and(|path| path.as_os_str() == "-")
+                && args
+                    .operands
+                    .first()
+                    .is_some_and(|file| stdin_alias(Path::new(file)))
+            {
+                return Err(cli::argument_error(
+                    "contract stdin requires a distinct HTML source; this path aliases descriptor 0",
+                ));
+            }
             let (program, file) = if let Some(path) = &args.from_file {
                 if args.operands.len() > 1 {
                     return Err(cli::argument_error(
                         "run --from-file accepts at most one FILE operand",
                     ));
                 }
-                let bytes = read_file(path, 256 * 1024, true)?;
+                let bytes = if path.as_os_str() == "-" {
+                    read(&mut io::stdin().lock(), 256 * 1024, path, true)?
+                } else {
+                    read_file(path, 256 * 1024, true)?
+                };
                 let program = String::from_utf8(bytes).map_err(|e| {
                     Error::new(
                         ErrorCode::InvalidContract,
@@ -72,11 +145,10 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                 }
                 error
             })?;
-            extract(contract, file.as_deref(), args.raw, &args.common)
+            extract(contract, file.as_deref(), args.raw, &args.common, watchdog)
         }
         Command::Outline(args) => {
             let bytes = input(args.file.as_deref(), args.common.max_input_bytes)?;
-            let watchdog = Watchdog::new(args.common.timeout);
             let result = (|| {
                 let document = prepare(&bytes, &args.common)?;
                 let mut options = OutlineOptions::default();
@@ -86,8 +158,8 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
                 options.attrs = args.attrs;
                 Ok(document.outline(&options)?.into_bytes())
             })();
-            let bytes = watchdog.complete(result)?;
-            publish(&bytes, args.common.output.as_deref())
+            let bytes = result?;
+            publish_timed(&bytes, args.common.output.as_deref(), Some(watchdog))
         }
     }
 }
@@ -96,6 +168,7 @@ fn extract(
     file: Option<&Path>,
     raw: bool,
     common: &Common,
+    watchdog: &Watchdog,
 ) -> Result<(), Error> {
     if raw && contract.produces_records() {
         return Err(cli::argument_error(
@@ -103,7 +176,6 @@ fn extract(
         ));
     }
     let bytes = input(file, common.max_input_bytes)?;
-    let watchdog = Watchdog::new(common.timeout);
     let result = (|| {
         let document = prepare(&bytes, common)?;
         let value = document.extract(&contract)?;
@@ -115,8 +187,8 @@ fn extract(
             Ok(bytes)
         }
     })();
-    let bytes = watchdog.complete(result)?;
-    publish(&bytes, common.output.as_deref())
+    let bytes = result?;
+    publish_timed(&bytes, common.output.as_deref(), Some(watchdog))
 }
 fn prepare(bytes: &[u8], common: &Common) -> Result<Document, Error> {
     let mut source = Source::new(bytes);
@@ -134,8 +206,17 @@ fn raw_bytes(value: Value) -> Result<Vec<u8>, Error> {
         Value::Null => (),
         Value::String(value) => add(value),
         Value::List(values) => {
-            for value in values {
+            for (index, value) in values.into_iter().enumerate() {
                 if let Value::String(value) = value {
+                    if value.contains('\n') {
+                        let mut error = Error::new(
+                            ErrorCode::UnrepresentableOutput,
+                            "Raw lists require one LF-free string per record. Use canonical JSON output (omit --raw).",
+                        );
+                        error.path = Some("$".into());
+                        error.row = Some(vec![index + 1]);
+                        return Err(error);
+                    }
                     add(value);
                 } else {
                     return Err(Error::new(
@@ -169,7 +250,11 @@ fn input(path: Option<&Path>, maximum: usize) -> Result<Vec<u8>, Error> {
     }
 }
 fn read_file(path: &Path, maximum: usize, contract: bool) -> Result<Vec<u8>, Error> {
-    let mut file = File::open(path).map_err(|e| io_error(ErrorCode::InputUnreadable, path, e))?;
+    let mut file = File::open(path).map_err(|e| {
+        let mut error=io_error(ErrorCode::InputUnreadable,path,e);
+        if path.to_string_lossy().starts_with("https://") || path.to_string_lossy().starts_with("http://") {error.message.push_str(" FILE is a local snapshot path. Fetch successfully into owned storage first, then pass the effective URL with --base-url and declared charset with --encoding; see the acquisition recipe in docs/contract.md.");}
+        error
+    })?;
     read(&mut file, maximum, path, contract)
 }
 fn read(
@@ -341,6 +426,13 @@ fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
 }
 
 pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Error> {
+    publish_timed(bytes, destination, None)
+}
+fn publish_timed(
+    bytes: &[u8],
+    destination: Option<&Path>,
+    watchdog: Option<&Watchdog>,
+) -> Result<(), Error> {
     let Some(path) = destination.filter(|path| path.as_os_str() != "-") else {
         return write_output(&mut io::stdout().lock(), bytes, Path::new("-"));
     };
@@ -356,7 +448,7 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
         std::fs::metadata(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
         return write_output(&mut stream, bytes, path);
     }
-    let (resolved, permissions) = match OpenOptions::new().write(true).open(path) {
+    let (resolved, pinned) = match OpenOptions::new().write(true).open(path) {
         Ok(mut file) => {
             // Windows metadata attributes do not distinguish disk files from
             // connected pipes. Inspect the existing handle before any path reopen.
@@ -390,12 +482,23 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
             }
             let resolved = std::fs::canonicalize(resolved)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            (resolved, Some(metadata.permissions()))
+            let policy =
+                Policy::read(&file).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            let id = identity(&file).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            (resolved, Some((file, id, policy)))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             #[cfg(not(unix))]
             let resolved = resolve_output_links(path)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+            let spelling = path.as_os_str().to_string_lossy();
+            if spelling.ends_with('/')
+                || spelling.ends_with("/.")
+                || resolved.as_os_str().to_string_lossy().ends_with('/')
+                || resolved.as_os_str().to_string_lossy().ends_with("/.")
+            {
+                return Err(io_error(ErrorCode::OutputUnwritable, path, error));
+            }
             if descriptor_alias(&resolved) {
                 return Err(io_error(ErrorCode::OutputUnwritable, path, error));
             }
@@ -403,90 +506,577 @@ pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<(), Er
         }
         Err(error) => return Err(io_error(ErrorCode::OutputUnwritable, path, error)),
     };
+    if resolved.file_name().is_none() {
+        return Err(io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::new(io::ErrorKind::InvalidInput, "output path has no file name"),
+        ));
+    }
     let parent = resolved
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    let parent_handle = crate::authorization::open_parent(parent);
+    let parent_handle =
+        parent_handle.map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    let parent_id =
+        identity(&parent_handle).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    // An absent destination follows ordinary inherited/umask policy, captured on an
+    // empty policy probe. It never contains extraction bytes.
+    let new_policy = if pinned.is_none() {
+        let probe = create_stage(parent, watchdog, StageKind::InheritedPolicyProbe)
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        Some(
+            Policy::read(probe.as_file())
+                .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?,
+        )
+    } else {
+        None
+    };
     #[cfg(unix)]
-    let mut builder = tempfile::Builder::new();
-    #[cfg(not(unix))]
-    let builder = tempfile::Builder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if permissions.is_none() {
-            builder.permissions(std::fs::Permissions::from_mode(0o666));
-        }
-    }
-    let mut temporary = builder
-        .tempfile_in(parent)
+    let directory = create_private_directory(parent, watchdog)
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(unix)]
+    let stage_parent = directory.path();
+    #[cfg(windows)]
+    let stage_parent = parent;
+    let policy = pinned
+        .as_ref()
+        .map(|(_, _, policy)| policy)
+        .unwrap_or_else(|| new_policy.as_ref().unwrap());
+    #[cfg(windows)]
+    {
+        // A retained auto-inherited ACL can predate a move between parents.
+        // Native inheritance reconstruction may then add permissions. Verify
+        // reproduction on a distinct empty inode before any result bytes;
+        // readers retained from this probe can never observe the real result.
+        let probe = create_stage(
+            stage_parent,
+            watchdog,
+            StageKind::ReproductionPolicyProbe(policy),
+        )
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+        policy.preflight(probe.as_file()).map_err(|error| {
+            io_error(
+                ErrorCode::OutputUnwritable,
+                path,
+                io::Error::new(
+                    error.kind(),
+                    format!("Cannot reproduce output authorization on empty policy probe: {error}"),
+                ),
+            )
+        })?;
+        #[cfg(test)]
+        checkpoint("policy-probe", probe.path());
+    }
+    let mut temporary = create_stage(stage_parent, watchdog, StageKind::Result(policy))
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    policy.prepare(temporary.as_file()).map_err(|e| {
+        io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::new(
+                e.kind(),
+                format!("Cannot establish private staging authorization: {e}"),
+            ),
+        )
+    })?;
+    #[cfg(test)]
+    checkpoint("restricted", temporary.path());
     temporary
         .write_all(bytes)
         .and_then(|()| temporary.flush())
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-    #[cfg(unix)]
-    if let Some(permissions) = permissions {
-        use std::os::unix::fs::PermissionsExt;
-        temporary
-            .as_file()
-            .set_permissions(std::fs::Permissions::from_mode(permissions.mode() & 0o777))
-            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(test)]
+    checkpoint("filled", temporary.path());
+    policy
+        .apply(
+            temporary.as_file(),
+            #[cfg(test)]
+            temporary.path(),
+        )
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(test)]
+    checkpoint("policy", temporary.path());
+    // Recheck target identity, handle-derived policy and containing directory before the commit claim.
+    let current_parent = crate::authorization::open_parent(parent);
+    let current_parent =
+        current_parent.map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    if identity(&current_parent).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+        != parent_id
+    {
+        return Err(io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::other("publication parent identity changed during staging"),
+        ));
     }
-    #[cfg(not(unix))]
-    let _ = permissions;
-    temporary
-        .persist(resolved)
-        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e.error))?;
+    match (&pinned, OpenOptions::new().write(true).open(&resolved)) {
+        (Some((file, id, policy)), Ok(current)) => {
+            if identity(&current).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+                != *id
+                || Policy::read(file).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+                    != *policy
+            {
+                return Err(io_error(
+                    ErrorCode::OutputUnwritable,
+                    path,
+                    io::Error::other(
+                        "destination identity or authorization changed during staging",
+                    ),
+                ));
+            }
+        }
+        (None, Err(e)) if e.kind() == io::ErrorKind::NotFound => (),
+        _ => {
+            return Err(io_error(
+                ErrorCode::OutputUnwritable,
+                path,
+                io::Error::other("destination changed during staging"),
+            ));
+        }
+    }
+    let current_resolution =
+        resolve_output_links(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    let resolution_parent = current_resolution
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let expected_parent = std::fs::canonicalize(parent)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    let observed_parent = std::fs::canonicalize(resolution_parent)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    if observed_parent != expected_parent || current_resolution.file_name() != resolved.file_name()
+    {
+        return Err(io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::other("output path resolution changed during staging"),
+        ));
+    }
+    if Policy::read(temporary.as_file())
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+        != *policy
+    {
+        return Err(io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::other("staging authorization changed before commit"),
+        ));
+    }
+    if identity_path(temporary.path())
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+        != identity(temporary.as_file())
+            .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?
+    {
+        return Err(io_error(
+            ErrorCode::OutputUnwritable,
+            path,
+            io::Error::other(
+                "staging identity changed before commit; foreign replacement left untouched",
+            ),
+        ));
+    }
+    #[cfg(test)]
+    checkpoint("precommit", temporary.path());
+    if let Some(watchdog) = watchdog {
+        watchdog.commit();
+    }
+    #[cfg(test)]
+    checkpoint("commit", temporary.path());
+    #[cfg(unix)]
+    crate::authorization::commit(
+        &parent_handle,
+        temporary.path(),
+        &resolved,
+        &directory.handle,
+    )
+    .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    #[cfg(windows)]
+    std::fs::rename(temporary.path(), &resolved)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     Ok(())
+}
+
+struct StageOwnership {
+    path: std::path::PathBuf,
+    created_identity: std::sync::OnceLock<crate::authorization::Identity>,
+    creation_finished: std::sync::atomic::AtomicBool,
+    #[cfg(unix)]
+    directory: bool,
+    #[cfg(windows)]
+    deletion_handle: std::sync::Mutex<Option<File>>,
+}
+impl StageOwnership {
+    fn cleanup(&self) {
+        let owned = self
+            .created_identity
+            .get()
+            .is_some_and(|id| identity_path(&self.path).is_ok_and(|current| current == *id));
+        #[cfg(windows)]
+        if let Some(file) = self.deletion_handle.lock().unwrap().take()
+            && owned
+        {
+            let _ = crate::authorization::remove_stage(&file);
+        }
+        #[cfg(unix)]
+        if owned {
+            if self.directory {
+                let _ = std::fs::remove_dir(&self.path);
+            } else {
+                let _ = std::fs::remove_file(&self.path);
+            }
+        }
+    }
+}
+struct CreationHandoff<'a>(&'a StageOwnership);
+impl Drop for CreationHandoff<'_> {
+    fn drop(&mut self) {
+        self.0.creation_finished.store(true, Ordering::SeqCst);
+    }
+}
+struct OwnedStage {
+    file: File,
+    ownership: Arc<StageOwnership>,
+}
+impl OwnedStage {
+    fn as_file(&self) -> &File {
+        &self.file
+    }
+    fn path(&self) -> &Path {
+        &self.ownership.path
+    }
+}
+impl Write for OwnedStage {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.file.write(bytes)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
+    }
+}
+impl Drop for OwnedStage {
+    fn drop(&mut self) {
+        self.ownership.cleanup();
+    }
+}
+#[derive(Clone, Copy)]
+enum StageKind<'a> {
+    InheritedPolicyProbe,
+    #[cfg(windows)]
+    ReproductionPolicyProbe(&'a Policy),
+    Result(&'a Policy),
+}
+fn create_stage(
+    parent: &Path,
+    watchdog: Option<&Watchdog>,
+    kind: StageKind<'_>,
+) -> io::Result<OwnedStage> {
+    let (private, policy) = match kind {
+        StageKind::InheritedPolicyProbe => (false, None),
+        #[cfg(windows)]
+        StageKind::ReproductionPolicyProbe(policy) => (true, Some(policy)),
+        StageKind::Result(policy) => (true, Some(policy)),
+    };
+    #[cfg(not(windows))]
+    let _ = policy;
+    let mut ownership = None;
+    let mut builder = tempfile::Builder::new();
+    builder.disable_cleanup(true);
+    let temporary = builder.make_in(parent, |candidate| {
+        let record = Arc::new(StageOwnership {
+            path: candidate.to_path_buf(),
+            created_identity: std::sync::OnceLock::new(),
+            creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(unix)]
+            directory: false,
+            #[cfg(windows)]
+            deletion_handle: std::sync::Mutex::new(None),
+        });
+        let _handoff = CreationHandoff(&record);
+        if let Some(watchdog) = watchdog {
+            watchdog.reserve(Arc::clone(&record));
+            watchdog.check();
+        }
+        #[cfg(test)]
+        if matches!(kind, StageKind::Result(_)) {
+            checkpoint("reserved", candidate);
+        }
+        #[cfg(unix)]
+        let file = {
+            use std::os::unix::fs::OpenOptionsExt;
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .mode(if private { 0 } else { 0o666 })
+                .open(candidate)
+        }?;
+        #[cfg(windows)]
+        let file = match policy {
+            Some(policy) => crate::authorization::create_private_file(candidate, policy),
+            None => crate::authorization::stage_options().open(candidate),
+        }?;
+        let id = identity(&file).map_err(|error| {
+            #[cfg(windows)]
+            let _ = crate::authorization::remove_stage(&file);
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "Cannot confirm created staging identity at {}: {error}; unconfirmed Unix objects are left untouched",
+                    candidate.display()
+                ),
+            )
+        })?;
+        #[cfg(windows)]
+        {
+            match file.try_clone() {
+                Ok(handle) => *record.deletion_handle.lock().unwrap() = Some(handle),
+                Err(error) => {
+                    let _ = crate::authorization::remove_stage(&file);
+                    return Err(error);
+                }
+            }
+        }
+        record.created_identity.set(id).unwrap();
+        ownership = Some(Arc::clone(&record));
+        #[cfg(test)]
+        if matches!(kind, StageKind::Result(_)) {
+            checkpoint("created", candidate);
+        }
+        if let Some(watchdog) = watchdog {
+            watchdog.check();
+        }
+        Ok(file)
+    })?;
+    let (file, path) = temporary.into_parts();
+    drop(path); // Cleanup is identity checked, never pathname-only.
+    let stage = OwnedStage {
+        file,
+        ownership: ownership.unwrap(),
+    };
+    if private {
+        crate::authorization::restrict(stage.as_file())?;
+    }
+    Ok(stage)
+}
+#[cfg(unix)]
+struct PrivateDirectory {
+    handle: File,
+    ownership: Arc<StageOwnership>,
+}
+#[cfg(unix)]
+impl PrivateDirectory {
+    fn path(&self) -> &Path {
+        &self.ownership.path
+    }
+}
+#[cfg(unix)]
+impl Drop for PrivateDirectory {
+    fn drop(&mut self) {
+        self.ownership.cleanup();
+    }
+}
+#[cfg(unix)]
+fn create_private_directory(
+    parent: &Path,
+    watchdog: Option<&Watchdog>,
+) -> io::Result<PrivateDirectory> {
+    let mut builder = tempfile::Builder::new();
+    builder.disable_cleanup(true);
+    let directory = builder.make_in(parent, |candidate| {
+        let ownership = Arc::new(StageOwnership {
+            path: candidate.to_path_buf(),
+            created_identity: std::sync::OnceLock::new(),
+            creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(unix)]
+            directory: true,
+            #[cfg(windows)]
+            deletion_handle: std::sync::Mutex::new(None),
+        });
+        let _handoff = CreationHandoff(&ownership);
+        if let Some(watchdog) = watchdog {
+            watchdog.reserve(Arc::clone(&ownership));
+            watchdog.check();
+        }
+        std::fs::create_dir(candidate)?;
+        let handle = crate::authorization::open_private_directory(candidate).map_err(|error| {
+            io::Error::new(error.kind(), format!(
+                "Cannot open created staging directory {}: {error}; unconfirmed directory may remain and is not removed by pathname",
+                candidate.display()
+            ))
+        })?;
+        ownership.created_identity.set(identity(&handle).map_err(|error| {
+            io::Error::new(error.kind(), format!(
+                "Cannot confirm created staging directory {}: {error}; unconfirmed directory may remain",
+                candidate.display()
+            ))
+        })?).unwrap();
+        let owned = PrivateDirectory {
+            handle,
+            ownership: Arc::clone(&ownership),
+        };
+        crate::authorization::private_directory(&owned.handle)?;
+        if let Some(watchdog) = watchdog {
+            watchdog.check();
+        }
+        Ok(owned)
+    })?;
+    let (owned, path) = directory.into_parts();
+    drop(path);
+    Ok(owned)
+}
+fn expire(duration: Duration, staging: &Arc<std::sync::Mutex<Vec<Arc<StageOwnership>>>>) -> ! {
+    let diagnostic = staging
+        .try_lock()
+        .ok()
+        .and_then(|records| records.last().cloned());
+    let cleanup = Arc::clone(staging);
+    let started = Instant::now();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let records = cleanup.lock().unwrap().clone();
+        loop {
+            for owned in records.iter().rev() {
+                owned.cleanup();
+            }
+            let pending = records.iter().any(|owned| {
+                owned.created_identity.get().is_none()
+                    && !owned.creation_finished.load(Ordering::SeqCst)
+            });
+            if !pending || started.elapsed() >= REPORT_GRACE {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        let _ = sender.send(());
+    });
+    let mut error = Error::limit("time", duration.as_secs_f64());
+    if let Some(owned) = diagnostic {
+        error.detail = Some(format!(
+            "Staging candidate {}; extraordinary blocked filesystem calls can leave residue.",
+            owned.path.display()
+        ));
+    }
+    report(&error);
+    let _ = receiver.recv_timeout(REPORT_GRACE.saturating_sub(started.elapsed()));
+    std::process::exit(4);
+}
+#[cfg(test)]
+pub(crate) fn checkpoint(phase: &str, path: &Path) {
+    if std::env::var("HTMLCUT_PUBLICATION_PHASE").is_ok_and(|selected| selected == phase) {
+        std::fs::write(
+            std::env::var_os("HTMLCUT_PUBLICATION_READY").unwrap(),
+            path.as_os_str().as_encoded_bytes(),
+        )
+        .unwrap();
+        if phase == "policy-probe" {
+            let release =
+                std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").unwrap());
+            let started = Instant::now();
+            while !release.exists() && started.elapsed() < Duration::from_secs(2) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(
+                release.exists(),
+                "policy probe reader did not release publication"
+            );
+        } else if phase == "commit" {
+            std::thread::sleep(Duration::from_millis(800));
+        } else {
+            loop {
+                std::thread::park();
+            }
+        }
+    }
 }
 
 struct Watchdog {
     state: Arc<AtomicU8>,
     started: Instant,
     duration: Duration,
+    staging: Arc<std::sync::Mutex<Vec<Arc<StageOwnership>>>>,
 }
 impl Watchdog {
     fn new(duration: Duration) -> Self {
         let state = Arc::new(AtomicU8::new(ACTIVE));
         let started = Instant::now();
         let timer_state = Arc::clone(&state);
+        let staging = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let timer_staging = Arc::clone(&staging);
         std::thread::spawn(move || {
             std::thread::sleep(duration);
             if timer_state
                 .compare_exchange(ACTIVE, EXPIRED, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
             {
-                let error = Error::limit("time", duration.as_secs_f64());
-                let _ = io::stderr().lock().write_all(&error.to_json_line());
-                std::process::exit(4);
+                expire(duration, &timer_staging);
             }
         });
         Self {
             state,
             started,
             duration,
+            staging,
         }
     }
-    fn complete(&self, result: Result<Vec<u8>, Error>) -> Result<Vec<u8>, Error> {
+    fn reserve(&self, ownership: Arc<StageOwnership>) {
+        self.staging.lock().unwrap().push(ownership);
+    }
+    fn check(&self) {
+        if self.started.elapsed() >= self.duration
+            && self
+                .state
+                .compare_exchange(ACTIVE, EXPIRED, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        {
+            expire(self.duration, &self.staging);
+        }
+        if self.state.load(Ordering::SeqCst) == EXPIRED {
+            await_watchdog();
+        }
+    }
+    fn commit(&self) {
+        self.check();
         if self
             .state
-            .compare_exchange(ACTIVE, CLAIMED, Ordering::SeqCst, Ordering::SeqCst)
+            .compare_exchange(
+                ACTIVE,
+                COMMIT_IN_PROGRESS,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
             .is_err()
         {
             await_watchdog();
         }
-        if self.started.elapsed() >= self.duration {
-            return Err(Error::limit("time", self.duration.as_secs_f64()));
+    }
+    fn finish(&self, result: Result<(), Error>) -> Result<(), Error> {
+        if result.is_ok() && self.state.load(Ordering::SeqCst) == ACTIVE {
+            self.check();
         }
-        result
+        let terminal = if result.is_ok() { SUCCESS } else { ERROR };
+        loop {
+            let previous = self.state.load(Ordering::SeqCst);
+            if previous == EXPIRED {
+                await_watchdog();
+            }
+            if self
+                .state
+                .compare_exchange(previous, terminal, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return result;
+            }
+        }
     }
 }
 impl Drop for Watchdog {
     fn drop(&mut self) {
         if self
             .state
-            .compare_exchange(ACTIVE, CLAIMED, Ordering::SeqCst, Ordering::SeqCst)
+            .compare_exchange(ACTIVE, ERROR, Ordering::SeqCst, Ordering::SeqCst)
             == Err(EXPIRED)
         {
             await_watchdog();
@@ -498,10 +1088,234 @@ fn await_watchdog() -> ! {
         std::thread::park();
     }
 }
+fn obvious_stdin_alias(path: &Path) -> bool {
+    if path.as_os_str() == "-" {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        let value = path.as_os_str();
+        [
+            "/dev/stdin",
+            "/dev/fd/0",
+            "/proc/self/fd/0",
+            "/proc/thread-self/fd/0",
+        ]
+        .iter()
+        .any(|known| value == *known)
+            || path == Path::new(&format!("/proc/{}/fd/0", std::process::id()))
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+fn stdin_alias(path: &Path) -> bool {
+    if path.as_os_str() == "-" {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        let resolved = resolve_output_links(path).unwrap_or_else(|_| path.to_path_buf());
+        matches!(
+            descriptor_target(&resolved),
+            Some(DescriptorTarget::Current(0))
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn publication_phase_child() {
+        let Some(destination) = std::env::var_os("HTMLCUT_PUBLICATION_DESTINATION") else {
+            return;
+        };
+        let duration = if std::env::var("HTMLCUT_PUBLICATION_PHASE")
+            .is_ok_and(|phase| phase == "policy-probe")
+        {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_millis(500)
+        };
+        let watchdog = Watchdog::new(duration);
+        let result = publish_timed(
+            b"complete-private-result",
+            Some(Path::new(&destination)),
+            Some(&watchdog),
+        );
+        let result = watchdog.finish(result);
+        if let Err(error) = result {
+            report(&error);
+            std::process::exit(error.error.exit_status());
+        }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn reader_retained_from_actual_policy_probe_never_observes_result_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("result.json");
+        let ready = root.path().join("ready");
+        let release = root.path().join("release");
+        std::fs::write(&destination, b"old").unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "run::tests::publication_phase_child",
+                "--nocapture",
+            ])
+            .env("HTMLCUT_PUBLICATION_PHASE", "policy-probe")
+            .env("HTMLCUT_PUBLICATION_DESTINATION", &destination)
+            .env("HTMLCUT_PUBLICATION_READY", &ready)
+            .env("HTMLCUT_PUBLICATION_RELEASE", &release)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if !ready.exists() {
+            let _ = child.kill();
+            let result = child.wait_with_output().unwrap();
+            panic!("production policy probe was not reached: {result:?}");
+        }
+        let probe = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
+        let mut reader = File::open(&probe).unwrap();
+        let probe_id = identity(&reader).unwrap();
+        assert_eq!(reader.metadata().unwrap().len(), 0);
+        std::fs::write(&release, b"continue").unwrap();
+        while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            panic!("released policy probe exceeded external test deadline");
+        }
+        let result = child.wait_with_output().unwrap();
+        assert!(
+            result.status.success() && result.stderr.is_empty(),
+            "{result:?}"
+        );
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            b"complete-private-result"
+        );
+        assert_ne!(
+            identity(&File::open(&destination).unwrap()).unwrap(),
+            probe_id
+        );
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        assert!(
+            bytes.is_empty(),
+            "actual empty policy probe was reused for result bytes"
+        );
+        assert_eq!(reader.metadata().unwrap().len(), 0);
+        assert!(!probe.exists(), "actual owned policy probe was not removed");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 3);
+    }
+    #[test]
+    fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
+        for phase in [
+            "reserved",
+            "created",
+            "restricted",
+            "filled",
+            "metadata",
+            "policy",
+            "precommit",
+            "commit",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let destination = root.path().join("result.json");
+            let ready = root.path().join("ready");
+            std::fs::write(&destination, b"old").unwrap();
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "run::tests::publication_phase_child",
+                    "--nocapture",
+                ])
+                .env("HTMLCUT_PUBLICATION_PHASE", phase)
+                .env("HTMLCUT_PUBLICATION_DESTINATION", &destination)
+                .env("HTMLCUT_PUBLICATION_READY", &ready)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let started = Instant::now();
+            while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(ready.exists(), "checkpoint {phase} was not reached");
+            let stage = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
+            if matches!(phase, "created" | "restricted" | "filled") {
+                assert!(
+                    std::fs::read(&stage).is_err(),
+                    "{phase} stage is readable before completed policy"
+                );
+            }
+            while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(3)
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if child.try_wait().unwrap().is_none() {
+                child.kill().unwrap();
+                panic!("checkpoint {phase} exceeded external test deadline");
+            }
+            let result = child.wait_with_output().unwrap();
+            if phase == "commit" {
+                assert!(result.status.success(), "{result:?}");
+                assert_eq!(
+                    std::fs::read(&destination).unwrap(),
+                    b"complete-private-result"
+                );
+                assert!(result.stderr.is_empty());
+            } else {
+                assert_eq!(result.status.code(), Some(4), "{result:?}");
+                assert_eq!(std::fs::read(&destination).unwrap(), b"old");
+                assert_eq!(result.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+                assert!(!stage.exists());
+            }
+            assert_eq!(
+                std::fs::read_dir(root.path()).unwrap().count(),
+                2,
+                "{phase} stranded owned staging"
+            );
+        }
+    }
+    #[test]
+    fn cleanup_never_unlinks_unconfirmed_or_replaced_objects() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("collision");
+        std::fs::write(&path, b"foreign").unwrap();
+        let unconfirmed = StageOwnership {
+            path: path.clone(),
+            created_identity: std::sync::OnceLock::new(),
+            creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(unix)]
+            directory: false,
+            #[cfg(windows)]
+            deletion_handle: std::sync::Mutex::new(None),
+        };
+        unconfirmed.cleanup();
+        assert_eq!(std::fs::read(&path).unwrap(), b"foreign");
+        let stage = create_stage(root.path(), None, StageKind::InheritedPolicyProbe).unwrap();
+        let displaced = root.path().join("displaced");
+        std::fs::rename(stage.path(), &displaced).unwrap();
+        std::fs::write(stage.path(), b"foreign replacement").unwrap();
+        let name = stage.path().to_path_buf();
+        drop(stage);
+        assert_eq!(std::fs::read(name).unwrap(), b"foreign replacement");
+        std::fs::remove_file(displaced).unwrap();
+    }
     #[test]
     fn output_under_a_regular_file_refuses_and_preserves_the_parent() {
         let directory = tempfile::tempdir().unwrap();
@@ -680,7 +1494,12 @@ mod tests {
                     .is_ok()
             });
             let main = state
-                .compare_exchange(ACTIVE, CLAIMED, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(
+                    ACTIVE,
+                    COMMIT_IN_PROGRESS,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
                 .is_ok();
             assert_ne!(main, timer.join().unwrap());
         }

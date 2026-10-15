@@ -3,7 +3,7 @@
   "match": "all",
   "until": "dt",
   "fields": {
-    "term": {},
+    "term": {"select": ":scope"},
     "definitions": {
       "select": "dd",
       "match": "all"

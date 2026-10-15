@@ -43,6 +43,30 @@ fn explicit_input_dash_and_byte_limits_preserve_complete_results() {
     }
 }
 #[test]
+fn contract_directory_spellings_are_not_stdin_markers() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::create_dir(directory.path().join("-")).unwrap();
+    std::fs::write(directory.path().join("page.html"), b"<p>complete</p>").unwrap();
+    for spelling in ["-/", "-/.", "./-"] {
+        for explicit_source in [false, true] {
+            let mut invocation = command();
+            invocation
+                .current_dir(directory.path())
+                .arg("run")
+                .arg(format!("--from-file={spelling}"))
+                .stdin(Stdio::null());
+            if explicit_source {
+                invocation.arg("page.html");
+            }
+            let output = invocation.output().unwrap();
+            assert_eq!(output.status.code(), Some(5), "{spelling}: {output:?}");
+            assert!(output.stdout.is_empty());
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"], "input_unreadable");
+        }
+    }
+}
+#[test]
 fn contract_file_accepts_one_input_operand_and_refuses_more() {
     let directory = tempfile::tempdir().unwrap();
     let contract = directory.path().join("contract.json");

@@ -6,10 +6,12 @@
 pub struct Limits {
     /// Maximum input bytes before decoding.
     pub max_input_bytes: usize,
-    /// Maximum parsed tree nodes, admitted between chunks.
+    /// Maximum retained tree nodes, admitted before allocation.
     pub max_nodes: usize,
     /// Maximum complete encoded JSON result bytes.
     pub max_output_bytes: usize,
+    /// Maximum UTF-8 bytes in each transformed source reading, including predicate/capture sources.
+    pub max_reading_bytes: usize,
     /// Cooperative time bound for each preparation or execution call.
     pub time_limit: Option<std::time::Duration>,
 }
@@ -19,11 +21,13 @@ impl Default for Limits {
             max_input_bytes: 64 * 1024 * 1024,
             max_nodes: 2_000_000,
             max_output_bytes: 64 * 1024 * 1024,
+            max_reading_bytes: 64 * 1024 * 1024,
             time_limit: Some(std::time::Duration::from_secs(10)),
         }
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Clock {
     started: std::time::Instant,
     limit: Option<std::time::Duration>,
@@ -70,6 +74,8 @@ pub(crate) const MAX_REGEX_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const MAX_JSON_DEPTH: usize = 64;
 pub(crate) const MAX_RECORD_FIELDS: usize = 64;
 pub(crate) const MAX_SELECTOR_MATCHING_DEPTH: usize = 64;
+
+pub(crate) const MAX_DOM_DEPTH: usize = 1_024;
 
 #[cfg(test)]
 mod tests {

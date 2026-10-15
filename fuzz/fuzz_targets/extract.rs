@@ -8,17 +8,22 @@ fuzz_target!(|bytes: &[u8]| {
     }
     let length = usize::from(u16::from_le_bytes([bytes[0], bytes[1]])).min(bytes.len() - 2);
     let (contract, document) = bytes[2..].split_at(length);
+    let mut limits = Limits::default();
+    limits.max_input_bytes = 65536;
+    limits.max_output_bytes = 65536;
+    limits.max_reading_bytes = 1 + bytes.len() % 256;
+    limits.time_limit = Some(std::time::Duration::from_millis(50));
+    // Include zero and small arena budgets to exercise parser callbacks after an
+    // admission refusal, even when the contract bytes are not compilable.
+    limits.max_nodes = bytes.len() % 33;
+    let _ = Document::parse(Source::new(document), &limits);
+    limits.max_nodes = 4096;
     let Ok(text) = std::str::from_utf8(contract) else {
         return;
     };
     let Ok(contract) = Contract::from_json(text) else {
         return;
     };
-    let mut limits = Limits::default();
-    limits.max_input_bytes = 65536;
-    limits.max_nodes = 4096;
-    limits.max_output_bytes = 65536;
-    limits.time_limit = Some(std::time::Duration::from_millis(50));
     if let Ok(document) = Document::parse(Source::new(document), &limits) {
         let _ = document.extract(&contract);
         let _ = document.outline(&OutlineOptions::default());

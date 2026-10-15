@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded structural outlines, with deterministic sibling grouping.
+use crate::dom::ElementRef;
 use crate::{
     Document, Error, ErrorCode,
     eval::{Scope, candidates},
     limits::Clock,
     select::Selector,
 };
-use scraper::ElementRef;
 use std::collections::{HashMap, HashSet};
 
 /// Reader-facing outline options.
@@ -85,7 +85,21 @@ impl Document {
                 || matches!(element.value().name(), "svg" | "math" | "template");
             if lines < options.max_lines {
                 let mut line = "  ".repeat(level);
-                line.push_str(&describe(element, count, options.attrs, &clock)?);
+                line.push_str(
+                    &describe(
+                        element,
+                        count,
+                        options.attrs,
+                        &clock,
+                        self.limits.max_output_bytes.saturating_sub(output.len()),
+                    )
+                    .map_err(|mut error| {
+                        if error.limit.as_deref() == Some("output_bytes") {
+                            error.bound = Some(self.limits.max_output_bytes.into());
+                        }
+                        error
+                    })?,
+                );
                 if stopped {
                     let mut inside = 0;
                     for node in element.descendants() {
@@ -167,42 +181,103 @@ fn classes(element: ElementRef<'_>) -> Vec<String> {
         .map(String::from)
         .collect()
 }
-fn identifier(value: &str) -> Result<String, Error> {
-    let mut result = String::new();
-    cssparser::serialize_identifier(value, &mut result).map_err(|_| {
-        Error::new(
-            ErrorCode::Internal,
-            "An outline identifier could not be encoded.",
-        )
+fn identifier(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
+    struct Sink<'a> {
+        value: String,
+        maximum: usize,
+        clock: &'a Clock,
+        error: Option<Error>,
+    }
+    impl std::fmt::Write for Sink<'_> {
+        fn write_str(&mut self, value: &str) -> std::fmt::Result {
+            if let Err(error) = self.clock.tick() {
+                self.error = Some(error);
+                return Err(std::fmt::Error);
+            }
+            if value.len() > self.maximum.saturating_sub(self.value.len()) {
+                self.error = Some(Error::limit("output_bytes", self.maximum));
+                return Err(std::fmt::Error);
+            }
+            self.value.push_str(value);
+            Ok(())
+        }
+    }
+    let mut sink = Sink {
+        value: String::new(),
+        maximum,
+        clock,
+        error: None,
+    };
+    cssparser::serialize_identifier(value, &mut sink).map_err(|_| {
+        sink.error.unwrap_or_else(|| {
+            Error::new(
+                ErrorCode::Internal,
+                "An outline identifier could not be encoded.",
+            )
+        })
     })?;
-    Ok(result)
+    Ok(sink.value)
 }
 fn preview(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
-    let value = crate::read::collapsed(value, clock)?;
-    let mut chars = value.chars();
-    let mut result = chars.by_ref().take(maximum).collect::<String>();
-    if chars.next().is_some() {
-        result.push('…');
+    preview_parts(std::iter::once(value), maximum, clock)
+}
+fn preview_parts<'a>(
+    parts: impl Iterator<Item = &'a str>,
+    maximum: usize,
+    clock: &Clock,
+) -> Result<String, Error> {
+    let mut result = String::new();
+    let mut space = false;
+    let mut emitted = 0;
+    for part in parts {
+        for c in part.chars() {
+            clock.tick()?;
+            if c.is_whitespace() {
+                space = emitted > 0;
+                continue;
+            }
+            if space {
+                if emitted == maximum {
+                    result.push('…');
+                    return Ok(result);
+                }
+                result.push(' ');
+                emitted += 1;
+                space = false;
+            }
+            if emitted == maximum {
+                result.push('…');
+                return Ok(result);
+            }
+            result.push(c);
+            emitted += 1;
+        }
     }
     Ok(result)
 }
+
 fn describe(
     element: ElementRef<'_>,
     count: usize,
     attrs: bool,
     clock: &Clock,
+    maximum: usize,
 ) -> Result<String, Error> {
-    let mut line = identifier(element.value().name())?;
+    let mut line = identifier(element.value().name(), maximum, clock)?;
     if count == 1
         && let Some(id) = element.value().id().filter(|id| !id.is_empty())
     {
         line.push('#');
-        line.push_str(&identifier(id)?);
+        line.push_str(&identifier(id, maximum.saturating_sub(line.len()), clock)?);
     }
     let classes = classes(element);
     for class in classes.iter().take(4) {
         line.push('.');
-        line.push_str(&identifier(class)?);
+        line.push_str(&identifier(
+            class,
+            maximum.saturating_sub(line.len()),
+            clock,
+        )?);
     }
     if classes.len() > 4 {
         line.push_str(&format!(".+{}", classes.len() - 4));
@@ -210,26 +285,37 @@ fn describe(
     let mut names = Vec::new();
     for (key, value) in &element.value().attrs {
         clock.tick()?;
+        if key.prefix.is_none() && matches!(&*key.local, "id" | "class") {
+            continue;
+        }
+        if names.len() >= 6 {
+            if names.len() == 6 {
+                names.push("…".into());
+            }
+            continue;
+        }
+        let reserved = names
+            .iter()
+            .map(|name: &String| name.len() + 1)
+            .sum::<usize>();
+        if key.local.len() + key.prefix.as_ref().map_or(0, |p| p.len() + 1)
+            > maximum.saturating_sub(line.len() + reserved)
+        {
+            return Err(Error::limit("output_bytes", maximum));
+        }
         let name = key
             .prefix
             .as_ref()
             .map(|prefix| format!("{prefix}:{}", key.local))
             .unwrap_or_else(|| key.local.to_string());
-        if name == "id" || name == "class" {
-            continue;
-        }
-        if names.len() < 6 {
-            names.push(if attrs {
-                format!(
-                    "{name}={}",
-                    serde_json::to_string(&preview(value, 40, clock)?).unwrap()
-                )
-            } else {
-                name
-            });
-        } else if names.len() == 6 {
-            names.push("…".into());
-        }
+        names.push(if attrs {
+            format!(
+                "{name}={}",
+                serde_json::to_string(&preview(value, 40, clock)?).unwrap()
+            )
+        } else {
+            name
+        });
     }
     if !names.is_empty() {
         line.push_str(&format!(" [{}]", names.join(" ")));
@@ -238,14 +324,14 @@ fn describe(
         line.push_str(&format!(" ×{count}"));
     }
     if !matches!(element.value().name(), "script" | "style") {
-        let mut own = String::new();
-        for node in element.children() {
-            clock.tick()?;
-            if let scraper::Node::Text(text) = node.value() {
-                own.push_str(text);
-            }
-        }
-        let own = preview(&own, 60, clock)?;
+        let own = preview_parts(
+            element.children().filter_map(|node| match node.value() {
+                crate::dom::Node::Text(text) => Some(&**text),
+                _ => None,
+            }),
+            60,
+            clock,
+        )?;
         if !own.is_empty() {
             line.push(' ');
             line.push_str(&serde_json::to_string(&own).unwrap());
@@ -258,6 +344,31 @@ fn describe(
 mod tests {
     use super::*;
     use crate::{Limits, Source};
+    #[test]
+    fn previews_stream_normalized_parts_without_allocating_source_values() {
+        let limits = Limits::default();
+        let clock = Clock::new(&limits);
+        assert_eq!(
+            preview_parts([" a  ", " b "].into_iter(), 3, &clock).unwrap(),
+            "a b"
+        );
+        assert_eq!(
+            preview_parts(["a  ", " b c"].into_iter(), 3, &clock).unwrap(),
+            "a b…"
+        );
+        assert_eq!(
+            preview(
+                &format!("{}x{}", " ".repeat(1_000_000), " ".repeat(1_000_000)),
+                1,
+                &clock
+            )
+            .unwrap(),
+            "x"
+        );
+        let error = identifier(&"x".repeat(1_000_000), 8, &clock).unwrap_err();
+        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+        assert_eq!(error.bound, Some(8.into()));
+    }
     #[test]
     fn append_admits_complete_utf8_lines_and_preserves_buffer_on_refusal() {
         let initial = "old\n";

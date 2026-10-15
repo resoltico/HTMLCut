@@ -29,6 +29,8 @@ pub enum ErrorCode {
     MissingAttribute,
     /// A URL cannot be resolved.
     UnresolvableUrl,
+    /// The requested representation cannot preserve the result shape.
+    UnrepresentableOutput,
     /// Operator policy was exceeded.
     LimitExceeded,
     /// Input could not be read.
@@ -55,7 +57,8 @@ impl ErrorCode {
             | Self::ValueMismatch
             | Self::ExpectationFailed
             | Self::MissingAttribute
-            | Self::UnresolvableUrl => 3,
+            | Self::UnresolvableUrl
+            | Self::UnrepresentableOutput => 3,
             Self::LimitExceeded => 4,
             Self::InputUnreadable | Self::UndecodableInput | Self::OutputUnwritable => 5,
             Self::Internal => 6,

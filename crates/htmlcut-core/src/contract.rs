@@ -420,29 +420,30 @@ impl Compiler {
 
 fn schema() -> Json {
     let selector = serde_json::json!({"type":"string","maxLength":MAX_PATTERN_BYTES});
-    let count = serde_json::json!({"type":"integer","minimum":0,"maximum":MAX_DECLARED_COUNT});
+    let count = serde_json::json!({"type":"integer","minimum":0,"maximum":MAX_DECLARED_COUNT,"description":"Compiler requires exact unsigned integer tokens: 1 is admitted; 1.0, 1e0 and -0 are refused. Schema validates mathematical values and cannot enforce token spelling."});
     let pattern = serde_json::json!({"type":"string","maxLength":MAX_PATTERN_BYTES});
     let attr = format!("attr:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}}");
     let predicate = serde_json::json!({"anyOf":[selector.clone(), {
         "type":"object","additionalProperties":false,
-        "properties":{"select":selector,"read":{"type":"string","pattern":format!("^(text|text-content|{attr})$")},
+        "properties":{"select":selector,"read":{"type":"string","pattern":format!("^(text|text-content|{attr})(?![\\s\\S])")},
             "equals":{"type":"string"},"pattern":pattern,"min":count,"max":count},
         "not":{"required":["equals","pattern"]}
     }]});
     let predicates = serde_json::json!({"type":"array","maxItems":MAX_ENTRIES,"items":{"$ref":"#/$defs/predicate"}});
     serde_json::json!({"$schema":"https://json-schema.org/draft/2020-12/schema",
-    "title":"HTMLCut extraction contract","$ref":"#/$defs/node",
+    "title":"HTMLCut extraction contract","description":"Authoring structure validation only. The compiler is authoritative for exact integer token spelling (1 versus 1.0/1e0/-0), duplicate keys, CSS/regex compilation, global byte/node/depth/compiled-cost limits and relationships between counts.","$ref":"#/$defs/node",
     "$defs":{"predicate":predicate,"node":{"anyOf":[selector.clone(), {
         "type":"object","additionalProperties":false,
         "properties":{"select":selector,"where":predicates,"expect":predicates,
             "until":selector,"match":{"enum":["one","optional","all"]},"min":count,"max":count,
             "nth":{"type":"integer","minimum":1,"maximum":MAX_DECLARED_COUNT},
-            "fields":{"type":"object","minProperties":1,"maxProperties":MAX_RECORD_FIELDS,"propertyNames":{"pattern":format!("^[A-Za-z0-9_-]{{1,{MAX_FIELD_NAME_CHARS}}}$")},"additionalProperties":{"$ref":"#/$defs/node"}},
-            "read":{"type":"string","pattern":format!("^(text|text-content|outer-html|{attr}|url:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}})$")},
+            "fields":{"type":"object","minProperties":1,"maxProperties":MAX_RECORD_FIELDS,"propertyNames":{"pattern":format!("^[A-Za-z0-9_-]{{1,{MAX_FIELD_NAME_CHARS}}}(?![\\s\\S])")},"additionalProperties":{"$ref":"#/$defs/node"}},
+            "read":{"type":"string","pattern":format!("^(text|text-content|outer-html|{attr}|url:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}})(?![\\s\\S])")},
             "exclude":{"type":"array","maxItems":MAX_ENTRIES,"items":selector},"equals":{"type":"string"},"pattern":pattern},
         "dependentRequired":{"where":["select"],"until":["select"],"nth":["select"]},
         "not":{"required":["equals","pattern"]},
         "allOf":[
+            {"if":{"required":["read"],"properties":{"read":{"pattern":"^(attr:|url:)"}}},"then":{"not":{"required":["exclude"]}}},
             {"if":{"required":["fields"]},"then":{"not":{"anyOf":[{"required":["read"]},{"required":["exclude"]},{"required":["equals"]},{"required":["pattern"]}]}}},
             {"if":{"anyOf":[{"required":["min"]},{"required":["max"]}]},"then":{"required":["match"],"properties":{"match":{"const":"all"}}}},
             {"if":{"required":["nth"]},"then":{"properties":{"match":{"const":"one"}}}}
@@ -558,6 +559,20 @@ mod tests {
             serde_json::json!({"read":format!("attr:{}", "é".repeat(257))}),
             "reading",
         );
+    }
+    #[test]
+    fn schema_rejects_expressible_reading_and_field_shapes() {
+        let validator = jsonschema::validator_for(&Contract::schema()).unwrap();
+        for contract in [
+            serde_json::json!({"read":"attr:id","exclude":[]}),
+            serde_json::json!({"read":"url:href","exclude":[]}),
+            serde_json::json!({"read":"text\n"}),
+            serde_json::json!({"fields":{"title\n":{}}}),
+            serde_json::json!({"expect":[{"read":"text\n"}]}),
+        ] {
+            assert!(!validator.is_valid(&contract), "{contract}");
+            assert!(compile(contract).is_err());
+        }
     }
     #[test]
     fn ineffective_members_are_refused_and_schema_requires_record_fields() {

@@ -8,7 +8,7 @@ The executable specification of HTMLCut. Every case is a directory.
 | `options.json` | Optional: `base_url`, `encoding`, `max_nodes`. |
 | `contract.json` | The contract to run. |
 | `expected.json` | The result on success. Compare as JSON values. |
-| `error.json` | The failure. Every member except `message` must equal the produced error. |
+| `error.json` | The complete failure object. After removing `message`, expected and produced objects must be equal. |
 | `outline.json` | Outline options instead of a contract: `select`, `depth`, `max_lines`, `attrs`. |
 | `expected.txt` | The outline, byte for byte. |
 

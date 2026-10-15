@@ -210,6 +210,8 @@ proof={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=T
        'conformance_cases':int(counts[0]),'io_suite_passed':True,'log_sha256':hash_file(log)}
 Path('dist',f'native-conformance-{target}.json').write_text(json.dumps(proof,indent=2)+'\n')
 PY
+    python3 "${script_dir}/field-semantics.py" --binary "$binary_native" --results "${repo_root}/dist/native-semantics-${target_triple}.json"
+    python3 "${script_dir}/native-acceptance.py" --binary "$binary_native" --results "${repo_root}/dist/native-acceptance-${target_triple}.json"
     printf 'Smoke-tested %s\n' "${package_name}"
 }
 

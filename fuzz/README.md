@@ -2,30 +2,60 @@
 
 `contract_bytes` feeds arbitrary UTF-8 contract text to the closed compiler. `extract`
 feeds a length-prefixed contract and document bytes to document parsing, extraction and
-outline. Bounded operators exercise the maintained public library APIs.
+outline. It also parses with node admission budgets from zero through 32, independently
+of contract validity, and limits transformed readings to exercise ordinary refusals.
+These cooperative operator limits do not impose a physical memory cap.
 
-The pull-request smoke is a fixed-seed regression run of 10,000 executions per target.
-It generates starting inputs from conformance and `fuzz/seeds/documents/`, and discards
-its default generated corpus after success. A failure retains evidence and prints its
-path. An explicitly supplied output directory is always kept.
+Run from the repository root with Bash, Python 3.11 or newer, `cargo-fuzz` and the pinned
+nightly with `rust-src`. Install the versions declared in
+[contributor-rust-tools.sh](../scripts/contributor-rust-tools.sh).
 
 ```sh
+# Maintainer/release smoke: 10,000 requested executions per target.
 ./scripts/focused-smoke.sh
+# CI preflight: 250 requested executions, with mutation startup required.
+./scripts/focused-smoke.sh --runs 250 --require-mutations
+# Seed/harness plumbing: may perform no mutations.
+./scripts/focused-smoke.sh --runs 100
 ```
 
-Install the tool versions and nightly declared in
-[contributor-rust-tools.sh](../scripts/contributor-rust-tools.sh). For an exploratory,
-time-boxed run with a random seed and an output directory outside the checkout:
+The runner accepts 1 through 10,000 requested executions per target. It generates
+starting inputs from conformance and `fuzz/seeds/documents/`, builds both instrumented
+harnesses once, and runs them concurrently. AddressSanitizer, compare tracing and debug
+assertions remain enabled. Inputs, including seeds, are limited to 4096 bytes; oversized
+seeds are refused. Both targets must complete the selected count. Timeout or resource
+refusal fails the check.
+
+libFuzzer initializes every seed before mutation. A requested count below the seed count
+can therefore complete more executions than requested without entering the mutation
+loop. CI requires the final callback count to exceed the recorded `INITED` count. Corpus
+reloading is disabled, so seed replay alone cannot satisfy that check. If initialization
+consumes the selected budget, the preflight refuses; increase the count explicitly
+without discarding seeds. The CI preflight does not replace the 10,000-execution smoke.
+
+To retain results, supply an output directory outside the checkout:
 
 ```sh
-source scripts/contributor-rust-tools.sh
-fuzz_output=$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-exploration.XXXXXX")
-mkdir -p "$fuzz_output/corpus" "$fuzz_output/crashes"
-cargo +"$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" fuzz run extract "$fuzz_output/corpus" -- -max_total_time=200 -seed="$RANDOM" -max_len=4096 -timeout=10 -rss_limit_mb=2048 -artifact_prefix="$fuzz_output/crashes/"
+fuzz_output=$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-fuzz-results.XXXXXX")
+./scripts/focused-smoke.sh --runs 100 "$fuzz_output"
 ```
 
-A smoke result does not establish exhaustive fuzz assurance. Inspect and reproduce any
-crash with the pinned toolchain, minimize it, and add a regression test and a seed when
-the defect is corrected. Keep useful failure evidence; remove exploratory output when
-finished. A known upstream parser panic is recorded in the changelog; its seed is added
-when the maintained dependency upgrade fixes it.
+Each invocation creates a new subdirectory under the supplied output directory and
+preserves existing contents. Without an explicit output directory, success removes the
+generated results; failure retains them and prints their path. The isolated instrumented
+build directory is removed on success and failure, after copying its logs and resource
+reports to the results directory. Preinstalled toolchains and Cargo download caches are
+outside this cleanup. CI retains results for three days.
+
+The runner allows 1 GiB for the build, 64 MiB per target for results and a 4 MiB log per
+command. The build deadline is 600 seconds and each target's deadline is 180 seconds.
+These are sampled watchdog thresholds, not filesystem quotas; writes can exceed a disk
+threshold between samples. See [QA resource limits](../docs/qa-resources.md) for accounting
+scope and process cleanup limits. A fresh invocation rebuilds the instrumented harnesses;
+build and mutable corpus caches do not accumulate across successful local invocations.
+
+Finite fuzz runs provide regression exploration rather than exhaustive assurance.
+Use an explicit execution bound and the same resource controls for longer exploration.
+An unbounded `cargo fuzz run` is not a maintained QA command. Reproduce crashes with the
+pinned toolchain, minimize them, and add regression tests and retained seeds for corrected
+defects. Preserve useful failure results and remove only exploratory output you own.

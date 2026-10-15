@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Byte decoding and incremental upstream tree admission.
+use crate::dom::{Html, TreeBuilder};
 use crate::{Error, ErrorCode, Limits, limits::Clock};
 use encoding_rs::{
-    DecoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
+    DecoderResult, EncoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
 };
 use html5ever::{
     driver,
     tendril::{StrTendril, TendrilSink},
 };
-use scraper::{Html, HtmlTreeSink};
+use std::borrow::Cow;
 use url::Url;
 
-const CHUNK_BYTES: usize = 65_536;
-const MAX_DEPTH: usize = 1_024;
+const CHUNK_BYTES: usize = 1_024;
+#[cfg(test)]
+use crate::limits::MAX_DOM_DEPTH as MAX_DEPTH;
 
 /// Caller-owned document bytes and optional decoding/base metadata.
 #[derive(Clone, Copy, Debug)]
@@ -40,8 +42,10 @@ impl<'a> Source<'a> {
 #[derive(Debug)]
 pub struct Document {
     pub(crate) html: Html,
+    pub(crate) positions: std::collections::HashMap<ego_tree::NodeId, (usize, usize)>,
     pub(crate) limits: Limits,
     pub(crate) base_url: Option<Url>,
+    pub(crate) query_encoding: &'static Encoding,
 }
 impl Document {
     /// Decodes without replacement, parses incrementally and admits node/depth limits.
@@ -61,7 +65,7 @@ impl Document {
                 })
             })
             .transpose()?;
-        let decoded = decode(source, &clock)?;
+        let (decoded, query_encoding) = decode(source, &clock)?;
         let html = parse_admitted(&decoded, limits, CHUNK_BYTES, &clock)?;
         // The first base with href governs, even when its URL is unusable.
         let mut document_base = None;
@@ -70,14 +74,16 @@ impl Document {
             clock.tick()?;
             match edge {
                 ego_tree::iter::Edge::Open(node) => {
-                    if fragment_depth > 0 || matches!(node.value(), scraper::Node::Fragment) {
+                    if fragment_depth > 0 || matches!(node.value(), crate::dom::Node::Fragment) {
                         fragment_depth += 1;
-                    } else if let Some(e) = scraper::ElementRef::wrap(node)
+                    } else if let Some(e) = crate::dom::ElementRef::wrap(node)
                         && e.value().name.ns == html5ever::ns!(html)
                         && e.value().name() == "base"
                         && let Some(href) = e.value().attr("href")
                     {
-                        document_base = resolve(href, fallback.as_ref());
+                        document_base = resolve(href, fallback.as_ref(), query_encoding)
+                            .ok()
+                            .filter(|u| !matches!(u.scheme(), "data" | "javascript"));
                         break;
                     }
                 }
@@ -86,36 +92,104 @@ impl Document {
             }
         }
         let base_url = document_base.or(fallback);
+        let mut positions = std::collections::HashMap::new();
+        let mut index = 0;
+        for edge in html.tree.root().traverse() {
+            clock.tick()?;
+            match edge {
+                ego_tree::iter::Edge::Open(n) => {
+                    positions.insert(n.id(), (index, index));
+                    index += 1;
+                }
+                ego_tree::iter::Edge::Close(n) => {
+                    positions.get_mut(&n.id()).unwrap().1 = index;
+                }
+            }
+        }
         clock.check()?;
         Ok(Self {
+            positions,
             html,
             limits: limits.clone(),
             base_url,
+            query_encoding,
         })
     }
 }
 
-pub(crate) fn resolve(value: &str, base: Option<&Url>) -> Option<Url> {
+pub(crate) fn resolve(
+    value: &str,
+    base: Option<&Url>,
+    query_encoding: &'static Encoding,
+) -> Result<Url, url::ParseError> {
     let value = value.trim_matches(|c: char| c.is_ascii_whitespace());
-    match base {
-        Some(base) => base.join(value).ok(),
-        None => Url::parse(value).ok(),
+    let options = Url::options().base_url(base);
+    if query_encoding == UTF_8 {
+        return options.parse(value);
+    }
+    // URL preprocessing removes ASCII tabs/newlines. Do this before the hook:
+    // url's query iterator otherwise invokes it on separate slices, which would
+    // restart a stateful ISO-2022-JP encoder in the middle of the same query.
+    let value = if value.contains(['\t', '\r', '\n']) {
+        Cow::Owned(
+            value
+                .chars()
+                .filter(|c| !matches!(c, '\t' | '\r' | '\n'))
+                .collect::<String>(),
+        )
+    } else {
+        Cow::Borrowed(value)
+    };
+    let encode: &dyn Fn(&str) -> Cow<'_, [u8]> =
+        &|query| Cow::Owned(encode_url_query(query, query_encoding));
+    options.encoding_override(Some(encode)).parse(&value)
+}
+
+// https://url.spec.whatwg.org/#string-percent-encode-after-encoding
+// Keep one encoder across errors; HTML replacement encoding would leave '&'
+// and ';' literal instead of the URL algorithm's percent-escaped NCR fallback.
+fn encode_url_query(mut input: &str, encoding: &'static Encoding) -> Vec<u8> {
+    let mut encoder = encoding.new_encoder();
+    let mut output = Vec::with_capacity(input.len());
+    let mut buffer = [0; 1024];
+    loop {
+        let (result, read, written) =
+            encoder.encode_from_utf8_without_replacement(input, &mut buffer, true);
+        output.extend_from_slice(&buffer[..written]);
+        input = &input[read..];
+        match result {
+            EncoderResult::InputEmpty => return output,
+            EncoderResult::OutputFull => (),
+            EncoderResult::Unmappable(character) => {
+                // The URL crate's query percent-encode set leaves '%' intact.
+                // These ASCII bytes are emitted outside the encoder, preserving
+                // its state exactly as encode-or-fail requires.
+                output.extend_from_slice(format!("%26%23{}%3B", u32::from(character)).as_bytes());
+            }
+        }
     }
 }
 
 fn parse_admitted(text: &str, limits: &Limits, chunk: usize, clock: &Clock) -> Result<Html, Error> {
+    if limits.max_nodes == 0 {
+        return Err(Error::limit("nodes", 0));
+    }
     let mut parser =
-        driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        driver::parse_document(TreeBuilder::new(limits, clock.clone()), Default::default());
     feed(&mut parser, text, limits, chunk, clock)?;
     clock.check()?;
-    let html = parser.finish();
-    admit_tree(html, limits, clock)
+    if let Some(error) = parser.tokenizer.sink.sink.refusal() {
+        return Err(error);
+    }
+    let html = parser.finish()?;
+    clock.check()?;
+    Ok(html)
 }
 
 fn feed(
-    parser: &mut html5ever::Parser<HtmlTreeSink>,
+    parser: &mut html5ever::Parser<TreeBuilder>,
     text: &str,
-    limits: &Limits,
+    _limits: &Limits,
     chunk: usize,
     clock: &Clock,
 ) -> Result<(), Error> {
@@ -133,39 +207,14 @@ fn feed(
         }
         parser.process(StrTendril::from_slice(&remaining[..end]));
         remaining = &remaining[end..];
-        let nodes = parser.tokenizer.sink.sink.0.borrow().tree.nodes().len();
-        if nodes > limits.max_nodes {
-            return Err(Error::limit("nodes", limits.max_nodes));
+        if let Some(error) = parser.tokenizer.sink.sink.refusal() {
+            return Err(error);
         }
     }
     Ok(())
 }
 
-fn admit_tree(html: Html, limits: &Limits, clock: &Clock) -> Result<Html, Error> {
-    if html.tree.nodes().len() > limits.max_nodes {
-        return Err(Error::limit("nodes", limits.max_nodes));
-    }
-    // Arena roots include retained detached nodes; all roots get the same admission.
-    for root in html.tree.nodes().filter(|node| node.parent().is_none()) {
-        let mut depth = 0;
-        for edge in root.traverse() {
-            clock.tick()?;
-            match edge {
-                ego_tree::iter::Edge::Open(_) => {
-                    if depth > MAX_DEPTH {
-                        return Err(Error::limit("depth", MAX_DEPTH));
-                    }
-                    depth += 1;
-                }
-                ego_tree::iter::Edge::Close(_) => depth -= 1,
-            }
-        }
-    }
-    clock.check()?;
-    Ok(html)
-}
-
-fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
+fn decode(source: Source<'_>, clock: &Clock) -> Result<(String, &'static Encoding), Error> {
     let (encoding, skip) = if let Some(bom) = Encoding::for_bom(source.bytes) {
         bom
     } else if let Some(label) = source.encoding {
@@ -201,7 +250,7 @@ fn decode(source: Source<'_>, clock: &Clock) -> Result<String, Error> {
         let (result, read) = decoder.decode_to_string_without_replacement(input, &mut output, last);
         consumed += read;
         match result {
-            DecoderResult::InputEmpty if last => return Ok(output),
+            DecoderResult::InputEmpty if last => return Ok((output, encoding.output_encoding())),
             DecoderResult::InputEmpty | DecoderResult::OutputFull => (),
             DecoderResult::Malformed(length, after) => {
                 let offset = skip + consumed - usize::from(length) - usize::from(after);
@@ -428,6 +477,24 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 mod tests {
     use super::*;
     #[test]
+    fn strict_decode_retains_only_a_usable_query_output_encoding() {
+        for label in ["utf-16le", "utf-16be", "iso-2022-kr"] {
+            let mut source = Source::new(b"");
+            source.encoding = Some(label);
+            let clock = Clock::new(&Limits::default());
+            let (text, encoding) = decode(source, &clock).unwrap();
+            assert!(text.is_empty());
+            assert_eq!(encoding, UTF_8, "{label}");
+        }
+        let mut source = Source::new(b"");
+        source.encoding = Some("windows-1252");
+        assert_eq!(
+            decode(source, &Clock::new(&Limits::default())).unwrap().1,
+            WINDOWS_1252
+        );
+    }
+
+    #[test]
     fn chunk_boundaries_preserve_authored_document_trees() {
         let documents = [
             "<!doctype html><title>é🦀</title><p>a &amp; b<!--comment--></p>".into(),
@@ -462,8 +529,10 @@ mod tests {
             ..Limits::default()
         };
         assert!(input.len() <= limits.max_input_bytes);
-        let mut parser =
-            driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        let mut parser = driver::parse_document(
+            TreeBuilder::new(&limits, Clock::new(&limits)),
+            Default::default(),
+        );
         let error = feed(
             &mut parser,
             &input,
@@ -474,8 +543,8 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
         assert_eq!(error.bound, Some(limits.max_nodes.into()));
-        let observed = parser.tokenizer.sink.sink.0.borrow().tree.nodes().len();
-        assert!(observed > limits.max_nodes);
+        let observed = parser.tokenizer.sink.sink.node_count();
+        assert_eq!(observed, limits.max_nodes);
         assert!(
             observed < limits.max_nodes + CHUNK_BYTES / 3 + 4,
             "observed {observed}"
@@ -574,12 +643,12 @@ mod tests {
         );
         let template = document
             .html
-            .select(&scraper::Selector::parse("template").unwrap())
+            .select(&crate::select::Selector::parse("template").unwrap())
             .next()
             .unwrap();
         assert!(matches!(
             template.first_child().unwrap().value(),
-            scraper::Node::Fragment
+            crate::dom::Node::Fragment
         ));
         assert_eq!(template.text().collect::<String>(), "hidden");
         let mut source = Source::new(
@@ -698,7 +767,7 @@ mod tests {
             (b"<meta http-equiv=content-type content='charset='>", None),
             (b"<meta http-equiv=content-type content=\"charset='windows-1252\">", None),
         ] {
-            // Test decoding admission separately from the html5ever charset panic.
+            // Decoding admission is independent of parser construction.
             assert_eq!(prescan(bytes), expected, "{bytes:?}");
         }
     }
@@ -755,8 +824,10 @@ mod tests {
                 time_limit: None,
                 ..Limits::default()
             };
-            let mut parser =
-                driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+            let mut parser = driver::parse_document(
+                TreeBuilder::new(&limits, Clock::new(&limits)),
+                Default::default(),
+            );
             let result = feed(
                 &mut parser,
                 input,
@@ -764,7 +835,7 @@ mod tests {
                 input.len(),
                 &Clock::new(&limits),
             );
-            assert_eq!(parser.tokenizer.sink.sink.0.borrow().tree.nodes().len(), 5);
+            assert_eq!(parser.tokenizer.sink.sink.node_count(), maximum);
             if maximum == 5 {
                 result.unwrap();
             } else {
@@ -805,8 +876,10 @@ mod tests {
             time_limit: None,
             ..Limits::default()
         };
-        let mut parser =
-            driver::parse_document(HtmlTreeSink::new(Html::new_document()), Default::default());
+        let mut parser = driver::parse_document(
+            TreeBuilder::new(&limits, Clock::new(&limits)),
+            Default::default(),
+        );
         // A four-byte chunk ends inside é. Admission must see only <p>,
         // rather than consuming text past the chunk ceiling before refusing.
         let error = feed(
@@ -819,11 +892,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
         assert_eq!(error.bound, Some(4.into()));
-        let html = parser.tokenizer.sink.sink.0.borrow();
-        assert_eq!(
-            html.html(),
-            "<html><head></head><body><p></p></body></html>"
-        );
+        assert_eq!(parser.tokenizer.sink.sink.node_count(), 4);
     }
 
     #[test]

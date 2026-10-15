@@ -1,8 +1,8 @@
 HTMLCut
 Copyright (c) 2026 Ervins Strauhmanis
 
-Original HTMLCut source from version 18.0.0 is governed by the Mozilla Public
-License 2.0 (MPL-2.0). See LICENSE for the complete terms.
+Original HTMLCut source is governed by the Mozilla Public License 2.0 (MPL-2.0).
+See LICENSE for the complete terms.
 
 This Source Code Form is subject to the terms of the Mozilla Public License,
 v. 2.0. If a copy of the MPL was not distributed with this file, You can
@@ -11,14 +11,11 @@ obtain one at https://mozilla.org/MPL/2.0/.
 Scope
 -----
 The project license covers original HTMLCut software and project-authored
-associated documentation, configuration and synthetic test/evaluation fixtures.
-Registry dependencies retain their upstream license expressions and notices.
-They are not relicensed by the project license declaration.
-
-In source distributions, the earlier project MIT text is in
-LICENSES/HTMLCut-published-MIT.txt; that text
-records the published grant and is not an MIT alternative for newly covered
-v18 source. Earlier published tags and release artifacts retain their terms.
+associated documentation, configuration and synthetic test fixtures.
+Adapted portions of htmlcut-core retain their ISC terms and attribution in
+crates/htmlcut-core/LICENSE-ISC and crates/htmlcut-core/NOTICE in source
+distributions. Registry dependencies retain their upstream license expressions
+and notices. They are not relicensed by the project license declaration.
 
 The project license does not purport to license caller-provided HTML, captured
 third-party pages or extracted source content. Rights to that content remain
@@ -36,9 +33,8 @@ versions. Their licenses remain applicable independently of the project license.
 
 Native distributions must include the complete dependency permission/license
 texts and required attributions for their locked build graph, including
-supplementary copyright notices. Do not treat a
-representative crate list or this project-scope notice as a complete dependency
-license report.
+supplementary copyright notices. This project-scope notice is not a complete
+dependency license report.
 
 Mozilla and Firefox are trademarks of the Mozilla Foundation. Names used here
 are descriptive; HTMLCut is not endorsed by the Mozilla Foundation or other
