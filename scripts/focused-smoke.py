@@ -115,10 +115,19 @@ def stop_children(children):
     uncertain = False
     for process in list(children):
         try:
-            # Popen checks its owned child's state before sending a signal. A
-            # live child that exits stays unreaped until this controller waits.
-            process.terminate()
-        except OSError as error:
+            if os.name == "nt":
+                if process.poll() is None:
+                    # TerminateProcess would bypass the watchdog's handler.
+                    # Its retained Popen handle keeps this process identity
+                    # owned while taskkill stops the still-attached tree.
+                    uncertain = True
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   check=True, timeout=5)
+            else:
+                # Popen checks its owned child's state before sending a signal.
+                process.terminate()
+        except (OSError, subprocess.SubprocessError) as error:
             print(f"Cannot request fuzz watchdog cleanup: {error}", file=sys.stderr)
             uncertain = True
     for deadline in [time.monotonic() + 15, None]:
