@@ -10,12 +10,88 @@ import time
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "scripts/run-resource-bounded.py"
 
 
 class ResourceBudgetTests(unittest.TestCase):
+    def test_windows_access_denied_accepts_only_a_now_missing_namespace_entry(self):
+        functions = runpy.run_path(str(RUNNER))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sentinel = root / "preserved"
+            sentinel.write_bytes(b"counted")
+            removed = root / "removed"
+            removed.mkdir()
+            removed.rmdir()
+            error = PermissionError(13, "removal window", str(removed))
+            error.winerror = 5
+
+            def failed_walk(*_, onerror, **__):
+                onerror(error)
+                return [(str(root), [], [sentinel.name])]
+
+            with mock.patch.object(os, "walk", side_effect=failed_walk):
+                self.assertGreater(functions["disk_bytes"](root), 0)
+
+            original = Path.lstat
+
+            def failed_entry(path, *args, **kwargs):
+                if path == removed:
+                    raise error
+                return original(path, *args, **kwargs)
+
+            with mock.patch.object(os, "walk", return_value=[(str(root), [], [sentinel.name, removed.name])]), \
+                    mock.patch.object(Path, "lstat", failed_entry):
+                self.assertGreater(functions["disk_bytes"](root), 0)
+
+            removed.mkdir()
+            with mock.patch.object(os, "walk", side_effect=failed_walk):
+                with self.assertRaises(PermissionError) as raised:
+                    functions["disk_bytes"](root)
+                self.assertIs(raised.exception, error)
+
+            if os.name != "nt":
+                removed.rmdir()
+                removed.symlink_to(root / "missing-target", target_is_directory=True)
+                # lstat must inspect the link itself, not follow its absent target.
+                with mock.patch.object(os, "walk", side_effect=failed_walk):
+                    with self.assertRaises(PermissionError) as raised:
+                        functions["disk_bytes"](root)
+                    self.assertIs(raised.exception, error)
+
+    def test_windows_namespace_recheck_keeps_original_denial_on_every_other_result(self):
+        vanished = runpy.run_path(str(RUNNER))["vanished_entry"]
+        for path, code in [(None, 5), ("", 5), ("not-present", None), ("not-present", 32)]:
+            error = PermissionError(13, "original denial", path)
+            error.winerror = code
+            with self.subTest(path=path, code=code), mock.patch.object(os, "lstat") as check:
+                self.assertFalse(vanished(error))
+                check.assert_not_called()
+        error = PermissionError(13, "original denial", "fixture")
+        error.winerror = 5
+        for result in [PermissionError(13, "still denied"), OSError(5, "metadata failure")]:
+            with self.subTest(result=result), mock.patch.object(os, "lstat", side_effect=result) as check:
+                self.assertFalse(vanished(error))
+                check.assert_called_once_with("fixture")
+
+    def test_windows_listing_denial_remains_an_accounting_refusal(self):
+        fault = """
+def inaccessible(path):
+    error = PermissionError(13, 'listing denied', str(path))
+    error.winerror = 5
+    raise error
+namespace['main'].__globals__['os'].scandir = inaccessible
+"""
+        result, report, _ = self.run_child("import time; time.sleep(5)", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIn("disk-accounting-failed:", report["refusal"])
+        self.assertIn("listing denied", report["refusal"])
+        self.assertEqual([error["phase"] for error in report["disk_accounting_errors"]], ["monitor", "final"])
+        self.assertNotEqual(report["returncode"], 0)
+
     def test_shell_status_preserves_failures_outside_eight_bit_transport(self):
         status = runpy.run_path(str(RUNNER))["shell_exit_status"]
         for raw, expected in [(0, 0), (2, 2), (3, 3), (17, 17), (125, 125),

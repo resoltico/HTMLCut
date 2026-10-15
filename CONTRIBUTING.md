@@ -4,6 +4,8 @@ Start at the repository root with rustup, a native linker, Bash and Python 3.11 
 
 macOS unit tests also use Apple's `/usr/bin/leaks` to check native ACL allocation release. The test first requires detection of intentionally retained allocations, then requires zero leaks from ordinary drops. Detector output and stack-logging files stay in bounded owned temporary directories; missing or unusable detection fails the check.
 
+Linux authorization tests require mounted `/proc`, temporary storage supporting POSIX ACL extended attributes, and an account without DAC permission bypass. Run them as a regular user so the directory-listing denial control is effective. These tests use native APIs and need no ACL command-line tools.
+
 Install `cargo-deny` at the version declared in [the tool inventory](scripts/contributor-rust-tools.sh), then run the contributor gate:
 
 ```bash
