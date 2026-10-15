@@ -115,6 +115,7 @@ jobs:
       - name: Verify native workspace behavior
         shell: bash
         run: |
+          python3 -m unittest discover -s tests -p test_resource_budget.py -v
           rustup target add "${{ matrix.target_triple }}"
           cargo test --locked --workspace --target "${{ matrix.target_triple }}"
       - uses: ./.github/actions/cargo-tool

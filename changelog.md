@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [22.0.0] - 2026-10-15
+
 ### Changed
 
 - The minimum supported Rust version is 1.88.0, down from 1.98.1 in 21.0.0; development remains pinned to 1.99.0.
@@ -17,7 +19,7 @@ Notable changes to this project are documented in this file. The format is based
 - Invocation deadlines now cover contract/snapshot acquisition and stream delivery through flush, and named staging through the atomic commit claim. Error reporting is best effort within a 50 ms grace; blocked stderr cannot defeat termination. An indivisible commit retains its actual outcome, and extraordinary blocked filesystem calls can leave reported staging residue.
 - Named publication needs parent write/search permission, without requiring directory listing. Parent pinning retains handle identity and kernel alias resolution; Linux named publication requires kernel 3.6+ for `fstat` on an `O_PATH` directory handle.
 - Command help follows each command's grammar. `schema` supports output and timeout; `run --from-file -` accepts contract stdin with a distinct explicit HTML source and rejects recognizable competing FD0 aliases. URL filenames point to the verified external acquisition recipe.
-- Fuzz/mutation runs retain bounded evidence separately from disposable builds, prevent build configuration redirecting products into owner caches, and clean owned products on success, failure and cancellation. Short test runs are explicit; sampled disk watchdogs are not filesystem quotas.
+- Fuzz/mutation runs retain bounded evidence separately from disposable builds and prevent build configuration redirecting products into owner caches. Confirmed stopped build products are cleaned; uncertain cleanup retains their paths and fails the run. Parallel fuzz targets stop on the first failure, and seed preparation refuses oversized inputs before building. Short test runs are explicit; sampled disk watchdogs are not filesystem quotas.
 
 ### Fixed
 
@@ -33,7 +35,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Internal
 
 - The library, CLI and each unpacked native package run one conformance corpus. Contract cases are frozen within a major release; checks reject changed or deleted existing cases. PR CI runs 250-execution fuzz preflights with seed initialization and mutation-loop progress checks; the separate 10,000-execution maintainer/release smoke remains required before release. Crate packages ship self-contained unit tests; discovered corpus cases run through library and binary integration tests. Sibling-index caches persist across scopes while relative caches remain scope-local. The gate checks Python and cargo-deny prerequisites before builds.
-- Native package acceptance runs literal semantics, deadline/diagnostic and authorization controls plus positional performance checks against the shipped executable. Mutation review uses owned disposable workers with bounded time/logs and sampled disk admission; focused iteration remains distinct from a full review of survivors and timeouts.
+- Native package acceptance runs literal semantics, deadline/diagnostic and authorization controls plus positional performance checks against the shipped executable, retaining their proof before and after publication. Mutation review binds source inputs and verifies every planned outcome, including complete runs with survivors/timeouts; focused iteration remains distinct from a full review. Tool installation uses isolated bounded compiler products, while pinned binary caches invalidate only for the selected tool's build inputs. Owner dependency and toolchain caches remain outside these allowances.
 
 ## [21.0.0] - 2026-10-12
 

@@ -24,7 +24,17 @@ starting inputs from conformance and `fuzz/seeds/documents/`, builds both instru
 harnesses once, and runs them concurrently. AddressSanitizer, compare tracing and debug
 assertions remain enabled. Inputs, including seeds, are limited to 4096 bytes; oversized
 seeds are refused. Both targets must complete the selected count. Timeout or resource
-refusal fails the check.
+refusal fails the check. A failed target cancels its sibling rather than waiting for
+that target's deadline; both logs and resource reports remain available.
+
+Seed source sizes and the complete framed extraction input are checked before the
+instrumented build, with bounded reads even if a source grows. Each initial corpus is
+limited to 10,000 files, matching the runner's maximum requested execution count;
+exceeding this bound refuses the whole run rather than dropping seeds. This also bounds
+seed preparation, which precedes the watchdog, to at most 39.1 MiB of logical input per
+target. The retained `seeds.json` records every starting input and its size. Duplicate
+or empty seeds can change libFuzzer's initialization count, so this inventory does not
+replace the actual callback-progress check below.
 
 libFuzzer initializes every seed before mutation. A requested count below the seed count
 can therefore complete more executions than requested without entering the mutation
@@ -43,8 +53,12 @@ fuzz_output=$(mktemp -d "${TMPDIR:-/tmp}/htmlcut-fuzz-results.XXXXXX")
 Each invocation creates a new subdirectory under the supplied output directory and
 preserves existing contents. Without an explicit output directory, success removes the
 generated results; failure retains them and prints their path. The isolated instrumented
-build directory is removed on success and failure, after copying its logs and resource
-reports to the results directory. Preinstalled toolchains and Cargo download caches are
+build directory is removed on success and failure when its watchdog confirms process
+cleanup, after copying its logs and resource reports to the results directory. A missing,
+malformed or nonempty `cleanup_errors` report after a process starts leaves that build
+or result directory intact and prints its path; possibly active writers must be stopped
+before removing it. Cleanup uncertainty fails the run and never becomes a passing smoke.
+Preinstalled toolchains and Cargo download caches are
 outside this cleanup. CI retains results for three days.
 
 The runner allows 1 GiB for the build, 64 MiB per target for results and a 4 MiB log per
@@ -53,6 +67,21 @@ These are sampled watchdog thresholds, not filesystem quotas; writes can exceed 
 threshold between samples. See [QA resource limits](../docs/qa-resources.md) for accounting
 scope and process cleanup limits. A fresh invocation rebuilds the instrumented harnesses;
 build and mutable corpus caches do not accumulate across successful local invocations.
+
+The build allowance covers one shared pair of instrumented harnesses and their
+dependencies. A measured clean macOS ARM build used 532.2 MiB, so 1 GiB provides roughly
+twice that observed space for platform/compiler variation; a smaller allowance near
+the observation can refuse a valid cold build. This is an allowance, not a claim that
+every supported toolchain requires exactly 1 GiB. Ten thousand 4096-byte inputs occupy
+39.1 MiB before filesystem overhead, but each target's retained
+starting corpus, newly interesting corpus entries, allocation overhead and capped log
+also consume space. The 64 MiB threshold allows this small regression exploration
+without reserving another build-sized directory. A worst-case full initial corpus plus
+new corpus entries can exceed it; the result is a visible resource refusal, never
+discarded input or a passing incomplete campaign. Budget about 1.13 GiB for one build
+plus both result thresholds, with extra filesystem headroom for sampling overshoot.
+Tool installation/download caches and retained evidence from previous invocations
+remain separate; the runner neither deletes nor promises a bound on those owner resources.
 
 Finite fuzz runs provide regression exploration rather than exhaustive assurance.
 Use an explicit execution bound and the same resource controls for longer exploration.

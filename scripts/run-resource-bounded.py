@@ -40,13 +40,41 @@ def disk_bytes(root):
 
 def stop_process_tree(process):
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        result = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                check=False, timeout=5)
+        if result.returncode and process.poll() is None:
+            raise OSError(f"taskkill failed with exit {result.returncode}")
     else:
+        cooperation_timed_out = False
+        # cargo-mutants owns separate build/test groups. Give its interrupt
+        # handler a bounded chance to stop those before killing the outer group.
+        if process.poll() is None:
+            try:
+                process.send_signal(signal.SIGINT)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                cooperation_timed_out = True
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            # Darwin can return EPERM for an exited group. Do not ignore an
+            # actual live-group denial or an unavailable/uncertain inspection.
+            if sys.platform != "darwin" or process.poll() is None:
+                raise
+            listing = subprocess.check_output(["ps", "-axo", "pgid=,stat="],
+                                              text=True, timeout=2)
+            for line in listing.splitlines():
+                group, state = line.split()
+                if int(group) == process.pid and not state.startswith("Z"):
+                    raise PermissionError("live process group cleanup was denied")
+        if cooperation_timed_out:
+            raise TimeoutError("cooperative cleanup exceeded grace; escaped descendant cleanup is unconfirmed")
 
 
 def main():
@@ -95,7 +123,8 @@ def main():
                     log_bytes += len(kept)
                     if len(chunk) > len(kept):
                         log_exceeded.set()
-                        return
+                        # Drain without retaining excess: a cooperative stop
+                        # handler must not block writing cleanup diagnostics.
             except Exception as error:
                 reader_failed.append(str(error))
                 log_exceeded.set()
@@ -105,6 +134,7 @@ def main():
         peak = 0
         refusal = None
         accounting_errors = []
+        cleanup_errors = []
         try:
             while True:
                 try:
@@ -119,6 +149,8 @@ def main():
                     refusal = "interrupted"
                 elif usage > args.disk_limit_mib * 1024 * 1024:
                     refusal = "disk-budget-exceeded"
+                elif reader_failed:
+                    refusal = "output-reader-failed: " + reader_failed[0]
                 elif log_exceeded.is_set():
                     refusal = "log-budget-exceeded"
                 elif remaining <= 0:
@@ -133,15 +165,33 @@ def main():
         finally:
             # Kill descendants even if their parent has exited; they may hold
             # stdout open or continue writing after apparent success.
-            stop_process_tree(process)
-            returncode = process.wait()
+            try:
+                stop_process_tree(process)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__ + ": " + str(error))
+                # Still reap the leader where possible; this does not prove
+                # descendant cleanup when group termination failed.
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                except OSError as kill_error:
+                    cleanup_errors.append("leader kill: " + str(kill_error))
+            try:
+                returncode = process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                returncode = None
+                cleanup_errors.append("leader did not exit within cleanup grace")
             reader.join(timeout=5)
+        if cleanup_errors:
+            refusal = refusal or "process-cleanup-failed"
         if reader.is_alive():
             refusal = refusal or "output-reader-did-not-stop"
+            cleanup_errors.append("output reader still holds the child pipe")
         if log_exceeded.is_set():
             refusal = refusal or "log-budget-exceeded"
         if reader_failed:
-            refusal = "output-reader-failed: " + reader_failed[0]
+            refusal = refusal or "output-reader-failed: " + reader_failed[0]
         try:
             peak = max(peak, disk_bytes(root))
         except Exception as error:
@@ -154,6 +204,8 @@ def main():
                   "peak_sampled_disk_bytes": peak, "disk_limit_bytes": args.disk_limit_mib * 1024 * 1024,
                   "log_bytes": log_bytes, "log_limit_bytes": args.log_limit_mib * 1024 * 1024,
                   "disk_accounting_errors": accounting_errors,
+                  "cleanup_errors": cleanup_errors,
+                  "reader_errors": reader_failed,
                   "disk_enforcement": "sampled watchdog; not a filesystem quota"}
         with report_path.open("x", encoding="utf-8") as report:
             json.dump(result, report, indent=2)

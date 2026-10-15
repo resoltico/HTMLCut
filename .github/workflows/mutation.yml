@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Platform mutation outcomes
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact main source commit to exercise on Windows and Linux
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  platform-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Validate exact source before checkout
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.source_sha }}
+      - name: Bind source to main ancestry
+        id: source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Select complementary native platforms
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'matrix<<EOF'
+            ./scripts/release-targets.sh matrix-json | python3 -c 'import json,sys; rows=[r for r in json.load(sys.stdin)["include"] if r["id"] in {"linux-x64-musl","windows-x64"}]; assert {r["id"] for r in rows} == {"linux-x64-musl","windows-x64"} and len(rows)==2; print(json.dumps({"include":rows}))'
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+  collect:
+    name: Collect native CLI mutation outcomes ${{ matrix.id }}
+    needs: [platform-matrix]
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 210
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.platform-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.platform-matrix.outputs.source_sha }}
+      - if: ${{ matrix.needs_musl_tools }}
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
+      - name: Prepare locked native toolchain and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/contributor-rust-tools.sh
+          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN" --profile minimal
+          rustup target add --toolchain "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN" "${{ matrix.target_triple }}"
+          cargo fetch --locked
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-mutants
+      - name: Execute complete CLI selection; survivors and timeouts require review
+        shell: bash
+        env:
+          RUST_TEST_THREADS: '1'
+          CARGO_BUILD_TARGET: ${{ matrix.target_triple }}
+        run: |
+          set -euo pipefail
+          workers=$(python3 -c 'import os; print(min(4, os.cpu_count() or 1))')
+          python3 scripts/mutation-audit.py --jobs "$workers" --disk-limit-mib 4096 \
+            --timeout 10800 --file 'crates/htmlcut-cli/src/**' \
+            --output "$RUNNER_TEMP/mutation-outcomes"
+      - name: Preserve outcomes without compiler products
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ matrix.id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/mutation-outcomes/audit.json
+            ${{ runner.temp }}/mutation-outcomes/mutation.log
+            ${{ runner.temp }}/mutation-outcomes/mutation.resources.json
+            ${{ runner.temp }}/mutation-outcomes/mutants.out/

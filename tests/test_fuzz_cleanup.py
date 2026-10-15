@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Smoke scratch ownership, completion and failure evidence at the process boundary."""
 import os
+import json
 import signal
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FuzzCleanupTest(unittest.TestCase):
-    def exercise(self, failure=False, explicit=False, runs=10000, incomplete=False, require_mutations=False, seed_only=False):
+    def exercise(self, failure=False, explicit=False, runs=10000, incomplete=False, require_mutations=False, seed_only=False, slow_first=False, stale_reap=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scratch = root / "scratch"
@@ -34,6 +35,19 @@ for target in ['contract_bytes','extract']:
     executable.write_text('''#!/usr/bin/env python3
 import os
 import sys
+import time
+from pathlib import Path
+if os.environ.get('STALE_REAP') and sys.argv[0].endswith('extract'):
+    time.sleep(2)
+    sys.exit(42)
+if os.environ.get('SLOW_FIRST'):
+    if sys.argv[0].endswith('contract_bytes'):
+        Path(os.environ['CHILD_READY']).write_text(str(os.getpid()))
+        time.sleep(30)
+    else:
+        while not Path(os.environ['CHILD_READY']).exists(): time.sleep(.01)
+        print('intentional second-target failure', flush=True)
+        sys.exit(42)
 runs=next(arg.split('=')[1] for arg in sys.argv if arg.startswith('-runs='))
 if os.environ.get('INCOMPLETE'): print('Done '+str(int(runs)-1)+' runs'); sys.exit(0)
 print('#'+(runs if os.environ.get('SEED_ONLY') else '1')+'\tINITED cov: 1')
@@ -46,6 +60,12 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
             rustc = tools / "rustc"
             rustc.write_text("#!/usr/bin/env bash\nprintf 'host: test-host\\n'\n")
             rustc.chmod(0o755)
+            shell_environment=root/'shell-environment'
+            shell_environment.write_text('''kill() {
+    if [[ ${1:-} == -TERM ]]; then printf '%s\\n' "$*" >> "$CANCELLED_PIDS"; fi
+    builtin kill "$@"
+}
+''')
             destination = root / "caller-output"
             args = [str(ROOT / "scripts/focused-smoke.sh"), '--runs', str(runs)]
             if require_mutations:
@@ -57,13 +77,17 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
                 old_corpus.mkdir(parents=True)
                 (old_corpus / "caller-seed").write_text("preserve seed")
                 args.append(str(destination))
+            started=time.monotonic()
             result = subprocess.run(args, cwd=ROOT,
                 env={**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
                      "TMPDIR": str(scratch), 'FAIL_RUN': 'yes' if failure else '',
                      'INCOMPLETE': 'yes' if incomplete else '',
-                     'SEED_ONLY': 'yes' if seed_only else ''},
+                     'SEED_ONLY': 'yes' if seed_only else '',
+                     'STALE_REAP': 'yes' if stale_reap else '',
+                     **({'BASH_ENV':str(shell_environment),'CANCELLED_PIDS':str(root/'cancelled-pids')} if stale_reap else {}),
+                     'SLOW_FIRST': 'yes' if slow_first else '', 'CHILD_READY': str(root/'child-ready')},
                 capture_output=True, text=True, timeout=15)
-            expected = 42 if failure else 1 if incomplete or (seed_only and require_mutations) else 0
+            expected = 42 if failure or slow_first or stale_reap else 1 if incomplete or (seed_only and require_mutations) else 0
             self.assertEqual(result.returncode, expected, result.stderr)
             self.assertFalse(list(scratch.glob('htmlcut-fuzz-build.*')), 'build scratch must always be removed')
             if explicit:
@@ -72,11 +96,26 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
                 remaining = list(destination.glob('run.*'))
             else:
                 remaining = list(scratch.iterdir())
-            if failure or incomplete or (seed_only and require_mutations) or explicit:
+            if failure or slow_first or stale_reap or incomplete or (seed_only and require_mutations) or explicit:
                 self.assertEqual(len(remaining), 1)
                 self.assertIn(str(remaining[0]), result.stderr)
                 self.assertTrue((remaining[0] / "contract_bytes/corpus").is_dir())
                 self.assertTrue((remaining[0] / "build.resources.json").is_file())
+                inventory=json.loads((remaining[0]/'seeds.json').read_text())
+                for target,seeds in inventory.items():
+                    corpus=remaining[0]/target/'corpus'
+                    self.assertEqual({seed['name'] for seed in seeds}, {path.name for path in corpus.iterdir()})
+                    self.assertTrue(all((corpus/seed['name']).stat().st_size == seed['bytes'] <= 4096
+                                        for seed in seeds))
+                if slow_first:
+                    self.assertLess(time.monotonic()-started, 8, 'failed second target must cancel slow first target')
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(int((root/'child-ready').read_text()), 0)
+                    self.assertIn('intentional second-target failure', (remaining[0]/'extract/run.log').read_text())
+                    self.assertTrue((remaining[0]/'contract_bytes/run.resources.json').is_file())
+                if stale_reap:
+                    self.assertFalse((root/'cancelled-pids').exists(),
+                                     'completed and reaped watchdogs must not receive cancellation signals')
             else:
                 self.assertEqual(remaining, [])
             if runs != 10000 and expected == 0:
@@ -87,6 +126,99 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
 
     def test_default_failure_retains_output_and_prints_path(self):
         self.exercise(failure=True)
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX shell/process boundary')
+    def test_second_target_failure_cancels_slow_first_target(self):
+        self.exercise(runs=3, slow_first=True)
+
+    def test_reaped_workers_are_removed_from_cancellation_ownership(self):
+        self.exercise(runs=3, stale_reap=True)
+
+    def test_oversized_combined_seed_refuses_before_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            import shutil
+            root=Path(directory)
+            checkout=root/'checkout'
+            (checkout/'scripts').mkdir(parents=True)
+            for script in ['focused-smoke.sh','contributor-rust-tools.sh','run-resource-bounded.py']:
+                shutil.copy2(ROOT/'scripts'/script, checkout/'scripts'/script)
+            shutil.copy2(ROOT/'rust-toolchain.toml', checkout/'rust-toolchain.toml')
+            case=checkout/'conformance/contract/seed'
+            case.mkdir(parents=True)
+            (case/'contract.json').write_bytes(b'{"select":"h1"}')
+            # Each source separately fits4096; the framed combined input does not.
+            (case/'page.html').write_bytes(b'x'*4096)
+            (checkout/'fuzz/seeds/documents').mkdir(parents=True)
+            tools=root/'bin';tools.mkdir()
+            (tools/'python3').symlink_to(sys.executable)
+            cargo=tools/'cargo'
+            cargo.write_text('#!/usr/bin/env bash\ntouch "$BUILD_MARKER"\nexit 23\n');cargo.chmod(0o755)
+            scratch=root/'scratch';scratch.mkdir()
+            result=subprocess.run([str(checkout/'scripts/focused-smoke.sh'),'--runs','1'],
+                env={**os.environ,'PATH':str(tools)+os.pathsep+os.environ['PATH'],
+                     'TMPDIR':str(scratch),'BUILD_MARKER':str(root/'build-started')},
+                capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertIn('exceeds the smoke input bound',result.stderr)
+            self.assertFalse((root/'build-started').exists())
+            self.assertFalse(list(scratch.glob('htmlcut-fuzz-build.*')))
+            # Metadata-only refusal: no10,000-input fuzz campaign is launched.
+            (case/'page.html').write_bytes(b'x')
+            for index in range(10000):
+                (checkout/'fuzz/seeds/documents'/str(index)).touch()
+            result=subprocess.run([str(checkout/'scripts/focused-smoke.sh'),'--runs','1'],
+                env={**os.environ,'PATH':str(tools)+os.pathsep+os.environ['PATH'],
+                     'TMPDIR':str(scratch),'BUILD_MARKER':str(root/'build-started')},
+                capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertIn('exceeds the bounded initial corpus of 10000 seeds',result.stderr)
+            self.assertFalse((root/'build-started').exists())
+            # The second refusal discovers the total before copying any seed.
+            self.assertEqual(len(list(scratch.glob('htmlcut-fuzz.*/extract/corpus/*'))),0)
+
+    def test_unconfirmed_cleanup_preserves_only_affected_roots(self):
+        import shutil
+        for mode in ['build-error','build-report-missing','worker-error']:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory); checkout=root/'checkout'
+                (checkout/'scripts').mkdir(parents=True)
+                for script in ['focused-smoke.sh','contributor-rust-tools.sh']:
+                    shutil.copy2(ROOT/'scripts'/script,checkout/'scripts'/script)
+                shutil.copy2(ROOT/'rust-toolchain.toml',checkout/'rust-toolchain.toml')
+                case=checkout/'conformance/contract/seed';case.mkdir(parents=True)
+                (case/'contract.json').write_text('{"select":"h1"}')
+                (case/'page.html').write_text('<h1>x</h1>')
+                (checkout/'fuzz/seeds/documents').mkdir(parents=True)
+                # Inject the watchdog's report contract; no writer survives this fixture.
+                (checkout/'scripts/run-resource-bounded.py').write_text('''import json,os,sys
+from pathlib import Path
+args=sys.argv;root=Path(args[args.index('--root')+1]);label=args[args.index('--label')+1]
+mode=os.environ['REPORT_MODE']
+(root/(label+'.log')).write_text('#1 INITED cov: 1\\nDone 3 runs\\n')
+errors=['injected unconfirmed child cleanup'] if (mode=='worker-error' and label=='run') or mode=='build-error' else []
+if mode!='build-report-missing':
+    (root/(label+'.resources.json')).write_text(json.dumps({'cleanup_errors':errors}))
+if label=='build': (root/'owned-build-marker').write_text('preserve only if unconfirmed')
+sys.exit(125 if mode.startswith('build-') else 0)
+''')
+                tools=root/'bin';tools.mkdir();(tools/'python3').symlink_to(sys.executable)
+                rustc=tools/'rustc';rustc.write_text('#!/usr/bin/env bash\nprintf "host: test-host\\n"\n');rustc.chmod(0o755)
+                scratch=root/'scratch';scratch.mkdir()
+                result=subprocess.run([str(checkout/'scripts/focused-smoke.sh'),'--runs','3'],
+                    env={**os.environ,'PATH':str(tools)+os.pathsep+os.environ['PATH'],
+                         'TMPDIR':str(scratch),'REPORT_MODE':mode},capture_output=True,text=True,timeout=5)
+                self.assertEqual(result.returncode,125,result.stderr)
+                self.assertIn('process cleanup is unconfirmed',result.stderr)
+                builds=list(scratch.glob('htmlcut-fuzz-build.*'))
+                if mode.startswith('build-'):
+                    self.assertEqual(len(builds),1)
+                    self.assertTrue((builds[0]/'owned-build-marker').exists())
+                    self.assertIn(str(builds[0]),result.stderr)
+                else:
+                    self.assertEqual(builds,[],'confirmed build must still be removed')
+                evidence,=scratch.glob('htmlcut-fuzz.*')
+                self.assertTrue(evidence.is_dir())
+                self.assertIn(str(evidence),result.stderr)
 
     def test_explicit_output_survives_success_and_failure(self):
         self.exercise(explicit=True)
