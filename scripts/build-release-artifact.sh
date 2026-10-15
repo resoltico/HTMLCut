@@ -141,6 +141,13 @@ write_packaged_readme() {
     local binary_name="$4"
     local binary_command="$5"
     local source_commit="$6"
+    local example_shell="sh"
+    local fixture='<article><a class="more" href="../guide.html">Read more</a></article>'
+    local fixture_command="printf '%s\\n' '${fixture}' > ./page.html"
+    if [[ "${target_triple}" == x86_64-pc-windows-msvc ]]; then
+        example_shell="powershell"
+        fixture_command="'${fixture}' | Set-Content -Encoding UTF8 ./page.html"
+    fi
 
     cat > "${package_dir}/README.md" <<EOF
 # HTMLCut ${version}
@@ -157,7 +164,7 @@ This package contains the standalone HTMLCut CLI for \`${target_triple}\`.
 
 Run the binary from this directory or move it onto your PATH.
 
-\`\`\`bash
+\`\`\`${example_shell}
 ${binary_command} --version
 \`\`\`
 
@@ -165,8 +172,8 @@ ${binary_command} --version
 
 Create a tiny fixture and extract one link:
 
-\`\`\`bash
-printf '%s\n' '<article><a class="more" href="../guide.html">Read more</a></article>' > ./page.html
+\`\`\`${example_shell}
+${fixture_command}
 ${binary_command} get 'article a.more' ./page.html --read attr:href --raw
 \`\`\`
 

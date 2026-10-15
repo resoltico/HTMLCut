@@ -7,14 +7,16 @@ Usage:
   htmlcut run --from-file <CONTRACT.json> [FILE] [--raw]
   htmlcut schema [-o DEST] [--timeout SECONDS]
 
-FILE defaults to standard input. Results are compact JSON on stdout. A refusal
-prints one JSON line on stderr and nothing on stdout. A closed stdout pipe is
-silent success; other delivery failures can expose a prefix. Use -o for atomic output.
+FILE defaults to standard input. Get/run return compact JSON; outline prints text
+and schema prints JSON. A refusal before publication writes no result bytes.
+Diagnostics are one JSON line when delivery succeeds; reporting is best effort.
+A closed stdout pipe is silent success; other delivery failures can expose a prefix.
+Use -o for atomic regular-file output; stdout, pipes and devices are direct.
 
-Workflow:
-  htmlcut outline page.html --select 'article.product'
-  htmlcut get 'h1' page.html
-  htmlcut run '{"expect":[{"select":"h1","equals":"All products"}],"select":"article.product","match":"all","fields":{"title":{"select":"h3 a","read":"attr:title"},"price":{"select":".price","pattern":"^£(?<value>[0-9.]+)$"},"badge":{"select":".badge","match":"optional"}}}' page.html
+Workflow from a source checkout (substitute your snapshot for FILE):
+  htmlcut outline conformance/contract/04-records/page.html --select 'article.product'
+  htmlcut get 'h1' conformance/contract/04-records/page.html
+  htmlcut run '{"expect":[{"select":"h1","equals":"All products"}],"select":"article.product","match":"all","min":3,"max":3,"fields":{"title":{"select":"h3 a","read":"attr:title"},"price":{"select":".price","pattern":"^£(?<value>[0-9]+[.][0-9]{2})$"},"badge":{"select":".badge","match":"optional"}}}' conformance/contract/04-records/page.html
 
 Contract node (a bare selector string means {"select": that string}):
   select    CSS matched inside the enclosing match; omitted = inherited range; attrs/URLs use anchor
@@ -36,8 +38,8 @@ or :lang (use attributes). Patterns: Rust regex, Unicode, no look-around.
 
 Options:
   --base-url URL          base for url:NAME readings; a <base href> is honoured
-  --encoding LABEL        override the encoding the document declares
-  -o, --output FILE       write atomically; - is stdout; follows symlinks
+  --encoding LABEL        override document declaration; a BOM takes precedence
+  -o, --output FILE       atomic regular files; - is stdout; follows symlinks
   -r, --raw               scalar strings; lists require LF-free items
   --timeout SECONDS       invocation deadline including input/output; default 10
   --max-nodes N           default 2000000
@@ -51,7 +53,8 @@ Exit status: 0 success, 2 invalid arguments or contract, 3 refused (the document
 does not satisfy the contract or raw list cannot preserve framing), 4 limit exceeded, 5 input or output failure,
 6 internal error.
 
-Options above apply to extraction commands; schema supports only output and timeout.
-Use COMMAND --help for exact placement. Contract stdin: run --from-file - page.html.
+Common options apply to outline/get/run; --raw applies only to get/run.
+Schema supports only output and timeout. Use COMMAND --help for exact placement.
+Contract stdin: run --from-file - page.html, with a distinct HTML source.
 FILE URLs require successful external acquisition first; see docs/contract.md.
 Schema is authoring structure validation; integer tokens must be 1, not 1.0/1e0/-0.

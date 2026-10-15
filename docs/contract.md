@@ -10,12 +10,12 @@ A node written as a JSON string `S` means `{"select": S}`.
 
 | Member | Type | Meaning |
 |---|---|---|
-| `select` | CSS selector list | Elements matched within the scope. Omitted: the scope's anchor itself. |
+| `select` | CSS selector list | Elements matched within the inherited scope. Omitted: one anchor match; structural readings retain its whole extent. |
 | `where` | array of predicates | Keeps a match only when every predicate holds for it. Requires `select`. |
 | `match` | `"one"` (default), `"optional"`, `"all"` | How many matches the contract accepts. |
 | `min`, `max` | integers ≥ 0 | Bounds for `"all"`; default `min` 1 and no `max`. Only with `"all"`. |
 | `nth` | integer ≥ 1 | Takes the nth match; at least that many must exist. Only with `"one"`, requires `select`. |
-| `until` | CSS selector | Extends each match over its following siblings up to that boundary. Requires `select`. |
+| `until` | CSS selector | Extends each match over following siblings, stopping before this boundary or at the inherited scope's end. Requires `select`. |
 | `fields` | object: name → node | Makes the node a record with 1–64 fields. Names are 1–64 characters of `A-Z a-z 0-9 _ -`. |
 | `read` | reading | Value nodes only; default `"text"`. |
 | `exclude` | array of CSS selectors | Subtrees left out of `text`, `text-content` and `outer-html`. Value nodes only, and refused beside `attr:` or `url:` readings. |
@@ -29,11 +29,26 @@ A **predicate** is a selector string or an object with only `select`, `read`
 (`text`, `text-content` or `attr:NAME`; default `text`), `equals` or `pattern`, `min` and
 `max` (both default 1). A string `S` means `{"select": S}`.
 
-Grammar bounds, all refused at compile time with a message naming the bound: contract
+Grammar bounds, refused during compilation with a message naming the bound: contract
 text 256 KiB; 512 nodes; records nested 8 deep; 64 fields per record; 32 entries in each
-`where`, `expect` and `exclude`; selector 8 KiB with the existing syntax-nesting and
-matching-depth admission (64); pattern 8 KiB with the existing compiled-size limit;
+`where`, `expect` and `exclude`; selector 8 KiB with syntax-nesting and matching-depth
+bounds of 64; pattern 8 KiB with regex compilation admission;
 `min`, `max` and `nth` at most 1,000,000.
+
+### Compilation and schema
+
+`htmlcut schema` returns a JSON Schema for authoring structure. It checks member names,
+types and expressible combinations, but does not replace contract compilation. The
+compiler is authoritative for CSS/regex syntax, global byte/node/depth/compiled-cost
+limits, duplicate keys and relationships between counts.
+
+Counts require exact unsigned-integer tokens: `1` is valid; `1.0`, `1e0`, `-0` and
+rounded or underflowing decimals are refused. A schema validator over parsed mathematical
+values cannot recover token spelling or duplicate keys.
+
+The compiled regex allowance is 8 MiB across the contract, partitioned between patterns
+and their DFA caches. The schema derives structural bounds from the compiler's constants;
+its character-length checks do not replace the compiler's byte bounds.
 
 ### Evaluation
 
@@ -48,19 +63,24 @@ Evaluating a node in a scope:
 2. **Select.** With `select`: every element that is an extent member or a descendant of
    one, and that matches the selector, in document order. Template contents are outside
    the document and never selection candidates. The selector is matched against
-   the whole document, including outside ancestors/siblings, :has and positional facts; returned candidates remain members of the inherited range; `:scope` matches the
-   anchor. Without `select`: the anchor alone.
+   the whole document, including outside ancestors/siblings, `:has` and positional
+   facts. Returned candidates remain members of the inherited range; `:scope` matches
+   the anchor. Without `select`, the anchor is the sole candidate for counting; its
+   inherited extent remains available when reading.
 3. **Filter.** With `where`: keep a candidate only if every predicate holds in the scope
    whose anchor and sole extent member is that candidate.
 4. **Count.** `one`: exactly 1, or with `nth` N at least N and the Nth is taken.
    `optional`: 0 or 1. `all`: between `min` and `max`. Otherwise refuse with
    `count_mismatch`.
-5. **Read.** For each chosen element, in order, form its extent: the element alone, or
-   with `until` the element followed by its following sibling nodes up to, and excluding,
-   the first following sibling element that matches `until` (matched with `:scope` bound
-   to the chosen element). A final section without a stop naturally ends at that inherited boundary. Without `select`, structural readings inherit the whole range; attribute/URL readings use its anchor. Explicit `:scope` without `until` reads only the anchor. Then:
+5. **Read.** Without `select`, use the inherited scope. With `select`, each chosen
+   element starts an anchor-only scope. With `until`, extend it over following sibling
+   nodes, stopping before the first sibling element matching `until` or at the inherited
+   scope's end, whichever comes first. The boundary selector binds `:scope` to the chosen
+   element. If no sibling matches, the range ends naturally at the inherited boundary.
+   Structural readings use the resulting extent; attribute/URL readings use its anchor.
+   Explicit `:scope` without `until` reads only the anchor. Then:
    - record node: an object whose members are the fields, each evaluated in the scope
-     (chosen element, its extent), in byte order of field name;
+     (anchor, extent), in byte order of field name;
    - value node: the reading of the extent with `exclude` applied, then `equals` or
      `pattern`. A mismatch, or a `value` group that did not participate, refuses with
      `value_mismatch`. A participating `value` group replaces the value.
@@ -173,8 +193,7 @@ such as `type`.
 **Not available.** Pseudo-elements; state and linguistic pseudo-classes such as
 `:checked`, `:disabled`, `:link` and `:lang()`; `:nth-child(… of S)`; `:contains()`;
 and a nested `:has()`. They are refused as `invalid_selector`. Use attributes such as
-`[checked]`, `[disabled]` and `a[href]`, and predicates for text. A later minor version
-may accept more forms; refusals are not frozen by conformance cases.
+`[checked]`, `[disabled]` and `a[href]`, and predicates for text.
 
 **Template.** A template has no document children and matches `:empty`.
 
@@ -192,9 +211,6 @@ LF on the command line.
 
 Count bounds are the defence against cleanly truncated documents: HTML permits omitted closing tags. Use declared row counts and page expectations, as in [the guarded rows case](../conformance/contract/08-rows-with-page-expectations/contract.json).
 
-The compiled regex allowance is 8 MiB across the contract, partitioned between patterns and their DFA caches. The schema derives structural bounds from the same constants; CSS/regex syntax and byte bounds remain engine checks.
-
-
 ### Fetch before extraction
 
 FILE is a local snapshot, not a URL. Use the [two-phase acquisition example](../examples/acquire_snapshot.py):
@@ -211,9 +227,3 @@ can succeed on plausible partial HTML, so piping an unchecked fetch into HTMLCut
 shell pipefail—cannot undo an already published result. Counts/business expectations remain
 necessary for entity/completeness checks; JavaScript snapshots stay inert. Network/session
 policy, authentication, pagination and rendering belong to the caller.
-
-JSON Schema checks authoring structure, not complete compilation. Exact unsigned-integer
-tokens are required: `1` is valid, `1.0`, `1e0`, `-0` and rounded/underflowing decimals are
-refused. A validator over parsed mathematical values cannot preserve token spelling or
-recover duplicate keys. CSS/regex compilation, global limits and cross-count relations
-remain compiler-authoritative.

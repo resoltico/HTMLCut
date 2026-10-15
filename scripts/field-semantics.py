@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""Candidate semantic acceptance with independent literal expected results.
+"""Semantic acceptance with independent literal expected results.
 
-Run: python3 run_semantic_matrix.py --binary /absolute/htmlcut --results results.json
-Derived from the immutable 2026-10-14 audit. Explicit reviewed overrides below
-are contract changes, documented in docs/audit-acceptance.md.
+Run: python3 scripts/field-semantics.py --binary /absolute/htmlcut --results results.json
+Scope, readings and refusals follow docs/contract.md and docs/design.md.
 """
 import argparse
 import hashlib
@@ -132,7 +131,7 @@ case("markup-malformed-accepted", "HTML parser repairs omitted list end tags pre
 case("stress-many-records", "Bounded 5000-row extraction with exact count", "<main>"+"<p>x</p>"*5000+"</main>",dict(select="p",match="all",min=5000,max=5000),["x"]*5000)
 
 
-# Approved candidate contracts; immutable baseline oracles remain in the handoff archive.
+# Scope, namespace-case and raw-list framing expectations.
 for item in CASES:
     if item['id']=='extent-sibling-selection':
         item['contract']['fields']['title']={'select':':scope'}

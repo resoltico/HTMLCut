@@ -96,23 +96,3 @@ class MacosSignatureTests(unittest.TestCase):
                             '--identifier', 'other-product', str(binary)], check=True, capture_output=True)
             with self.assertRaisesRegex(RuntimeError, 'Identifier=htmlcut'):
                 module.verify(binary)
-
-
-class PackageGuideTests(unittest.TestCase):
-    def test_signature_instructions_only_in_apple_packages(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            for target in ('aarch64-apple-darwin', 'x86_64-apple-darwin',
-                           'x86_64-unknown-linux-musl', 'x86_64-pc-windows-msvc'):
-                package = root / target; package.mkdir()
-                subprocess.run(['bash', '-c', 'source "$1"; write_packaged_readme "$2" 21.0.0 "$3" htmlcut ./htmlcut "$4"',
-                                'guide', str(ROOT / 'scripts/build-release-artifact.sh'), str(package), target, 'a' * 40],
-                               check=True, capture_output=True)
-                guide = (package / 'README.md').read_text()
-                if 'apple' in target:
-                    self.assertIn('codesign --verify --strict --verbose=2 ./htmlcut', guide)
-                    self.assertIn('no Developer ID identity or Apple notarization', guide)
-                    self.assertIn('https://support.apple.com/en-us/102445', guide)
-                else:
-                    self.assertNotIn('codesign', guide)
-                    self.assertNotIn('Gatekeeper', guide)

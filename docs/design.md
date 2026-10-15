@@ -3,7 +3,7 @@
 ## Purpose
 
 HTMLCut returns exactly the data an extraction contract declares from one HTML document,
-or refuses with a diagnosis that is sufficient to repair the contract.
+or refuses with structured facts that help diagnose the failure.
 
 It serves one loop:
 
@@ -43,12 +43,13 @@ served better by an existing tool that composes with HTMLCut through files and p
   characters with `…`; it is omitted when empty and for `script` and `style`.
 - An element at `--depth` (default 6), and any `svg`, `math` or `template` element, is not expanded;
   it carries `(+K inside)`, K being its descendant element count.
-- Lines beyond `--max-lines` (default 80) are replaced by one final line:
+- Up to `--max-lines` (default 80) ordinary lines are printed, including the optional
+  selector header. If any lines are omitted, one additional summary line is printed:
   `… K more lines; narrow --select, lower --depth or raise --max-lines`.
 
 ## Document preparation
 
-**Input.** A path or standard input, read completely before any work. Any readable file
+**Input.** A path or standard input, read completely before decoding and parsing. Any readable file
 kind is accepted, including pipes and process substitution. More than `max_input_bytes`
 refuses with `limit_exceeded`.
 
@@ -61,8 +62,8 @@ byte offset of the malformed sequence.
 
 **Parsing.** A private HTMLCut builder admits retained DOM allocation and every
 append, insertion, detach and reparent operation before freezing an opaque document.
-Maintained html5ever 0.40.1 parses bounded feeds of at most 1,024 UTF-8 bytes. A refusal
-latch stops owned DOM allocation/mutation; unique handles retain immutable parser name,
+The maintained html5ever parser processes bounded feeds of at most 1,024 UTF-8 bytes.
+A refusal latch stops owned DOM allocation/mutation; unique handles retain immutable parser name,
 namespace, template and MathML integration facts until the current feed stops. Refusal
 uses ordinary errors, including under `panic=abort`, and does not finalize a partial tree.
 Depth is parent-edge distance from every retained arena root at depth zero, counting all
@@ -98,9 +99,9 @@ instruction. Callers supply physical process/memory containment when required.
 The CLI starts one monotonic deadline after valid argument parsing, before contract and
 snapshot acquisition. It stays active through stream write/flush or regular-file staging
 and metadata. Zero timeout wins before input consumption. An atomic winner selects expiry,
-commit-in-progress, success or error. A file commit claim succeeds only before expiry; after
-that indivisible rename starts, its actual outcome governs, with no contradictory time
-refusal. Atomic filesystem commit cannot promise an exact wall-clock bound or rollback.
+commit-in-progress, success or error. File commit checks the deadline before atomically
+claiming commit-in-progress. Once that claim wins, the actual rename outcome governs,
+with no contradictory time refusal. Atomic filesystem commit cannot promise an exact wall-clock bound or rollback.
 
 One reporting owner delivers best-effort diagnostics on a separate thread, with a central
 50 ms grace. Blocked/closed/nonblocking stderr cannot change the exit class or defeat
@@ -108,34 +109,23 @@ termination; its diagnostic can be absent/partial. Ordinary errors claim termina
 before reporting. Help/version are untimed metadata output and may block. Schema output
 uses its own default 10 s invocation deadline and ordinary publication.
 
-Staging ownership is reserved before exclusive creation, confirmed before result bytes,
-and checked on creation return. Timeout cleanup runs separately from hard termination;
-only confirmed owned stages are removed.
-
-Containing-parent handles require search/path capability rather than directory listing:
-Darwin uses `O_SEARCH`, and Linux uses `O_PATH` with `fstat` support (kernel 3.6+).
-Windows uses a zero-access metadata handle with directory semantics, following
-parent aliases and retaining handle identity revalidation.
-Linux requests this flag through native `open`: musl includes `O_PATH` in
-`O_ACCMODE`, which Rust's custom-flags interface masks out.
-Write/search permission remains necessary for actual creation and `renameat`; parent
-aliases follow kernel resolution and their identities are revalidated before commit.
-Darwin staging-directory handles request search access,
-so inherited listing denials do not prevent ACL preparation or cleanup. A creation that
-succeeds but cannot return a confirmable handle/identity (including inherited denial of
-search access) may leave an empty unconfirmed directory; diagnostics name it. Extraordinary
-stuck filesystem syscalls may exceed the cleanup grace and leave a candidate/stage, named
-in available diagnostics. Unconfirmed creation collisions are never deleted.
+Regular-file commit, authorization preservation, direct streams and cleanup are described
+in [Output publication](publication.md).
 
 ## Errors
 
-A contract, preparation or limit refusal is one JSON object on standard error, on one line, and nothing on standard output. A transport failure after stdout publication begins can expose a prefix. A closed downstream pipe ends silently with exit 0; other output failures report `output_unwritable` and exit 5. Regular-file output is atomic; stream and device output is direct. It always has `error` and `message`. Other members appear when known:
+Before publication, a contract, preparation or limit refusal produces no standard output.
+When stderr is writable, its diagnostic is one JSON object followed by LF. Diagnostic delivery is
+bounded and best effort: blocked, closed or nonblocking stderr can receive no diagnostic
+or only a prefix. A diagnostic object always has `error` and `message`; other members
+appear when known. Failures after direct output begins can expose an output prefix; see
+[Output publication](publication.md) for transport behavior and exit status.
 
 | Member | Meaning |
 |---|---|
 | `path` | Contract location, such as `$.fields.price` or `$.expect[0]` |
 | `select` | The selector at that location |
-| `row` | One-based indexes of the enclosing `all` matches, outermost first |
+| `row` | One-based indexes of enclosing `all` matches, outermost first; the root-list item for a raw framing refusal |
 | `found`, `expected` | Observed count and accepted range, such as `"1"`, `"0..1"`, `"3..20"`, `"4.."` |
 | `value` | At most 120 characters of the observed value |
 | `limit`, `bound` | The exceeded limit and its configured bound |
@@ -151,16 +141,17 @@ of the frozen surface. The facts each code carries are fixed:
 | `value_mismatch` | `path`, `row`, `value` |
 | `expectation_failed` | `path`, `select`, `row`, and either `found` with `expected`, `value`, or none of those when an attribute is missing |
 | `missing_attribute` | `path`, `row` |
-| `unresolvable_url`, `unrepresentable_output` | `path`, `row`, `value` |
-| `limit_exceeded` | `limit` (`input_bytes`, `nodes`, `depth`, `output_bytes`, `time`), `bound` |
+| `unresolvable_url` | `path`, `row`, `value` |
+| `unrepresentable_output` | root `path`, offending raw-list `row` |
+| `limit_exceeded` | `limit` (`input_bytes`, `nodes`, `depth`, `reading_bytes`, `output_bytes`, `time`), `bound` |
 | `undecodable_input` | `encoding` (the WHATWG name in lower case), `offset` |
 | `invalid_contract`, `invalid_pattern` | `path` when the failure has a location |
 | `invalid_selector` | `select`, and `path` only for a contract location |
 | `input_unreadable`, `output_unwritable` | `file`, `detail` |
 
-`row` is present only inside an `all` match, and `select` only where the contract gives
-one. Selector messages quote selectors as JSON and give a column and a reason on syntax
-errors. Without a selector, messages name "the match itself". Messages contain no Rust
+`row` identifies enclosing `all` matches; for `unrepresentable_output`, it identifies the
+offending root-list item instead. `select` appears only where a selector is supplied.
+Selector messages quote selectors as JSON and give a column and a reason on syntax errors. Without a selector, messages name "the match itself". Messages contain no Rust
 debug renderings.
 
 | Exit | Codes |
@@ -188,33 +179,19 @@ The four commands are:
 include pipes and process substitution. Implicit input from a terminal is refused before
 reading; pass a path, pipe a document, or explicitly use `-`. Input waiting is covered by the invocation deadline.
 
-Results are complete compact UTF-8 JSON followed by one LF. `--raw` / `-r` prints a
+`get` and `run` results are complete compact UTF-8 JSON followed by one LF.
+`outline` emits text; `schema` emits the authoring JSON schema. `--raw` / `-r` prints a
 string without JSON quoting followed by LF, an array of LF-free strings one per line, or no bytes
 for `null`. A record root is refused before document input is read. A multiline raw scalar remains valid; an LF-containing raw list refuses before publication with `unrepresentable_output`, a root path and offending row.
 
-`--output DEST` / `-o DEST` follows symbolic links to the destination a write would
-reach. `-` is standard output. A regular file must be writable by the caller without
-truncation; only then does a complete staged result atomically replace it. An absent
-path is created atomically. A directory is refused. Pipes, devices and descriptor aliases
-(such as `/dev/stdout` and `/dev/fd/N`) are written directly, without replacement or
-an atomicity guarantee. Local descriptor aliases duplicate the inherited descriptor,
-preserving its cursor, append flag and access mode. Foreign process descriptor paths
-are opened as path streams; they do not duplicate a local descriptor.
+`--output DEST` / `-o DEST` selects the destination; `-` means standard output.
+Writable regular files use atomic replacement, while streams and devices use direct
+delivery. See [Output publication](publication.md) for path resolution, authorization
+requirements, platform restrictions and failure boundaries.
 
-A refusal or limit before publication leaves destinations untouched, including a FIFO
-without a reader. Confirmed owned staging is cleaned subject to the creation/cleanup boundaries above. Existing files preserve handle-derived owner/group, rwx, discretionary ACLs and applicable access labels; privileged executable bits/capabilities and unrelated content xattrs are not copied. Unix result files start at mode zero in a verified directory with access/default ACLs removed. Windows result files are created atomically with the captured mandatory SACL/control and a protected DACL granting the owner only writer/metadata/delete rights, without data-read access; the retained writer handle installs an empty protected DACL before bytes. Thus a pathname reader cannot acquire a data handle before restriction. An empty non-secret policy probe captures inherited/umask authorization for absent destinations. Windows also verifies captured policy reproduction on a separate empty probe before result bytes; stale inherited ACLs that would acquire different parent permissions refuse before content. Probe readers retain a separate empty object. Parent, target and stage policy must remain stable through publication; native reconstruction and rename cannot make hostile concurrent policy changes atomic. Ownership and applicable mandatory labels are established and verified under restrictive staging before any result byte. A private deny-read ACL protects Darwin metadata inspection; final ACLs precede mode grants. Only complete content receives final discretionary policy; inspection/reproduction failure refuses before rename. Target identity/policy, original path resolution and stage identity are rechecked immediately before commit. Cleanup also checks created-object identity and leaves detected foreign replacements untouched. The guarantee assumes stage and target identities/policies stay unchanged through commit: portable replacement and unlink cannot eliminate every hostile mutation after revalidation. On Unix, a new file uses mode `0666`
-reduced by umask; replacement preserves read, write and execute bits, discarding
-set-user-ID, set-group-ID and sticky bits. Replacement retains the pinned owner/group;
-an absent destination follows the caller/inherited ownership policy. Other hard links retain the old content. Namespace changes by other processes
-between the permission check and rename are not isolated.
-
-Standard output and direct stream output can expose a prefix on transport failure. A
-reader closing the pipe is silent success, exit 0; other failures are
-`output_unwritable`, exit 5. File publication does not promise fsync durability.
-
-`--help`, `-h` and `help` print the [guide](../crates/htmlcut-cli/src/guide.txt).
-`--version` and `-V` print the engine version. A bare invocation remains an argument
-error. Argument errors carry the parser's message and end with
+Top-level `--help`, `-h` and `help` print the [guide](../crates/htmlcut-cli/src/guide.txt).
+Command-specific `--help` prints that command's grammar. `--version` and `-V` print the
+engine version. A bare invocation remains an argument error. Argument errors carry the parser's message and end with
 `Run htmlcut --help for the guide.` Invalid inline JSON that names an existing file
 points to `--from-file`.
 
@@ -224,23 +201,18 @@ points to `--from-file`.
 `#[non_exhaustive]` so that additions are not breaking.
 
 ```rust
-pub struct Limits { pub max_input_bytes: usize, pub max_nodes: usize,
-                    pub max_output_bytes: usize, pub time_limit: Option<Duration> }
-pub struct Source<'a> { pub bytes: &'a [u8], pub encoding: Option<&'a str>,
-                        pub base_url: Option<&'a str> }
+use htmlcut_core::{Contract, Document, Limits, Source, Value};
 
-impl Document {
-    pub fn parse(source: Source<'_>, limits: &Limits) -> Result<Document, Error>;
-    pub fn extract(&self, contract: &Contract) -> Result<Value, Error>;
-    pub fn outline(&self, options: &OutlineOptions) -> Result<String, Error>;
+fn main() -> Result<(), htmlcut_core::Error> {
+    let document = Document::parse(Source::new(b"<h1>Snapshot</h1>"), &Limits::default())?;
+    let contract = Contract::from_json(r#""h1""#)?;
+    assert_eq!(document.extract(&contract)?, Value::String("Snapshot".into()));
+    Ok(())
 }
-impl Contract {
-    pub fn from_json(text: &str) -> Result<Contract, Error>;
-    pub fn schema() -> serde_json::Value;
-}
-pub enum Value { Null, String(String), List(Vec<Value>), Record(BTreeMap<String, Value>) }
-pub struct Error { /* code, message and the documented error facts */ }
 ```
+
+The [public API](../crates/htmlcut-core/src/lib.rs) exports the engine types; the
+[packaged example](../crates/htmlcut-core/examples/contract.rs) shows record extraction.
 
 A `Document` keeps its limits; each `extract` and `outline` call gets a fresh time limit.
 The library does not start threads, read files or write output.
@@ -263,9 +235,13 @@ reader-facing format and may change in a minor release.
 `rust-version` is the lowest toolchain that builds and passes the suite, verified in
 continuous integration. `rust-toolchain.toml` pins the development toolchain separately.
 
-## Encoding and publication boundaries
+## Output representation
 
-The output limit counts the complete canonical JSON result, excluding its command-line framing LF. Raw output uses the same extraction policy and is no larger. Outline bytes include their line terminators. Output publication is outside the work deadline. Temporary-file rename is atomic replacement, not a durability/fsync guarantee. Memory grows in proportion to admitted input and tree nodes; operators requiring a physical cap provide it externally.
+The output limit counts the complete canonical JSON result, excluding its command-line
+framing LF. Raw output uses the same extraction policy and is no larger. Outline bytes
+include their line terminators. Memory includes input, decoded text, the retained tree,
+intermediate parser/selector/regex state and results; these admissions do not establish a
+physical heap cap. Operators requiring one provide it externally.
 
 Outline identifiers use CSS escaping and quoted previews use JSON escaping. Headers containing control characters quote the selector as JSON to retain line boundaries.
 
@@ -276,8 +252,3 @@ The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, 
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
 Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
 starts accepting that syntax.
-
-
-Windows mandatory labels are queried/set separately from audit-only SACL backup. SACL
-protection reproduction can require additional native rights; inability to reproduce it
-refuses before replacement. See Microsoft's [security information rights](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-information).
