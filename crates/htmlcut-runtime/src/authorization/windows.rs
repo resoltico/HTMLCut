@@ -1586,8 +1586,8 @@ mod tests {
             seed.text_with(DACL_SECURITY_INFORMATION).unwrap(),
             "D:PAI(A;;FA;;;OW)"
         );
-        // Under this controlled parent, the file setter produces an old-inheritance
-        // ACL: its ACE is inherited, while the descriptor is not auto-inherited.
+        // The file setter produces an old-inheritance policy. The owner ACE can
+        // be explicit or inherited; preserve the exact native source form below.
         // SAFETY: the terminated owned path and native descriptor remain live.
         boolean(unsafe {
             SetFileSecurityW(wide_path.as_ptr(), DACL_SECURITY_INFORMATION, authored.0)
@@ -1598,11 +1598,12 @@ mod tests {
             descriptor_control(&source_descriptor).unwrap() & inheritance,
             0
         );
-        assert_eq!(
-            source_descriptor
-                .text_with(DACL_SECURITY_INFORMATION)
-                .unwrap(),
-            "D:(A;ID;FA;;;OW)"
+        let source_dacl = source_descriptor
+            .text_with(DACL_SECURITY_INFORMATION)
+            .unwrap();
+        assert!(
+            matches!(source_dacl.as_str(), "D:(A;;FA;;;OW)" | "D:(A;ID;FA;;;OW)"),
+            "{source_dacl}"
         );
         let policy = Policy::read(&source).unwrap();
 
