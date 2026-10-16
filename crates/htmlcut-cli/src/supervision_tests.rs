@@ -173,6 +173,13 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
         supervise(job.control()).unwrap();
         let result = completion(job.present(b"complete-private-result", Destination::File(path)));
         let error = result.unwrap_err();
+        if mode == "ordinary" {
+            std::fs::write(
+                std::env::var_os("HTMLCUT_PUBLICATION_ERROR_OBSERVATION").unwrap(),
+                error.to_json_line(),
+            )
+            .unwrap();
+        }
         report(&error);
         std::process::exit(exit_status(error.error));
     }
@@ -180,6 +187,7 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
         let mut root = tempfile::tempdir().unwrap();
         let output = root.path().join("result");
         let ready = root.path().join("ready");
+        let observation = root.path().join("error-observation.json");
         std::fs::write(&output, b"old").unwrap();
         let mut command = std::process::Command::new(std::env::current_exe().unwrap());
         command
@@ -193,6 +201,9 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
             .env("HTMLCUT_PUBLICATION_PANIC_AT", "restricted")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped());
+        if mode == "ordinary" {
+            command.env("HTMLCUT_PUBLICATION_ERROR_OBSERVATION", &observation);
+        }
         if mode != "ordinary" {
             command
                 .env("HTMLCUT_PUBLICATION_PHASE", "cleanup")
@@ -234,19 +245,28 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
                 Some(if mode == "held" { 4 } else { 6 }),
                 "{mode}: {result:?}"
             );
-            let error: serde_json::Value = serde_json::from_slice(&result.stderr).unwrap();
-            assert_eq!(
-                error["error"],
-                if mode == "held" {
-                    "limit_exceeded"
-                } else {
-                    "internal"
-                }
-            );
-            assert_eq!(
-                result.stderr.iter().filter(|byte| **byte == b'\n').count(),
-                1
-            );
+            if mode == "ordinary" {
+                let diagnostic = std::fs::read(observation).unwrap();
+                let error: serde_json::Value = serde_json::from_slice(&diagnostic).unwrap();
+                assert_eq!(error["error"], "internal");
+                assert_eq!(diagnostic.iter().filter(|byte| **byte == b'\n').count(), 1);
+                assert!(diagnostic.starts_with(&result.stderr), "{result:?}");
+            } else {
+                let stage = std::fs::read_to_string(ready).unwrap();
+                let detail = serde_json::to_string(&format!(
+                    "Staging candidate {stage}; extraordinary blocked filesystem calls can leave residue."
+                ))
+                .unwrap();
+                let expected = format!(
+                    "{{\"error\":\"limit_exceeded\",\"message\":\"The time limit of 1.0 was exceeded.\",\"limit\":\"time\",\"bound\":1.0,\"detail\":{detail}}}\n"
+                );
+                // The watchdog never blocks on a test-only observation write.
+                // Its bounded report may emit only a prefix, including no bytes.
+                assert!(
+                    expected.as_bytes().starts_with(&result.stderr),
+                    "{result:?}"
+                );
+            }
         }
         assert_eq!(std::fs::read(output).unwrap(), b"old");
     }
