@@ -279,3 +279,19 @@ fn oversized_outline_selection_refuses_before_source_lookup_or_diagnostic_copy()
     assert!(error.select.is_none());
     assert!(error.file.is_none());
 }
+
+#[test]
+fn prepared_handle_debug_is_bounded_and_keeps_engine_state_opaque() {
+    let document = finished(Job::new(None).unwrap().prepare(
+        Input::Bytes(b"<p id=private-prepared-marker>unexported document text</p>".to_vec()),
+        None,
+        None,
+        Limits::default(),
+    ))
+    .unwrap();
+    let debug = format!("{document:?}");
+    assert!(debug.starts_with("PreparedDocument"));
+    assert!(debug.len() < 128);
+    assert!(!debug.contains("private-prepared-marker"));
+    assert!(!debug.contains("unexported document text"));
+}

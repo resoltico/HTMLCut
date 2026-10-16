@@ -97,8 +97,15 @@ impl Request {
     }
 }
 /// Immutable document state, shareable across independent jobs.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PreparedDocument(Arc<Document>);
+impl std::fmt::Debug for PreparedDocument {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedDocument")
+            .finish_non_exhaustive()
+    }
+}
 /// A completed immutable semantic result, suitable for a later Save job.
 #[derive(Clone, Debug)]
 pub struct Computed {
