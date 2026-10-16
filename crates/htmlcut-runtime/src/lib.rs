@@ -9,8 +9,8 @@ mod job;
 mod local_io;
 use htmlcut_core::{Contract, Document, Source};
 pub use htmlcut_core::{
-    DEFAULT_READING, Error, ErrorCode, ErrorFacts, ExportFormat, Limits, OutlineOptions,
-    OutlineReport, QueryCardinality, QuickQuery, Value,
+    DEFAULT_READING, Error, ErrorCode, ErrorFacts, ExportFormat, Limits, OutlineAttribute,
+    OutlineOptions, OutlineReport, OutlineRow, QueryCardinality, QuickQuery, Value,
 };
 pub use job::{CancelOutcome, Completion, Job, JobControl, Supervision};
 use std::{path::PathBuf, sync::Arc};

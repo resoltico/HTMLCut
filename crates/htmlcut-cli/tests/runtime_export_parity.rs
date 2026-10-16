@@ -77,3 +77,65 @@ fn returned_runtime_bytes_match_the_delivered_cli_for_every_representation() {
         assert_eq!(output.stdout, expected);
     }
 }
+
+#[test]
+fn schema_bytes_and_output_admission_match_the_delivered_cli() {
+    let binary = std::env::var_os("HTMLCUT_TEST_BINARY")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_htmlcut").into());
+    let request = |maximum| {
+        let mut limits = Limits::default();
+        limits.max_output_bytes = maximum;
+        Request {
+            operation: Operation::Schema,
+            input: Input::Bytes(Vec::new()),
+            encoding: None,
+            base_url: None,
+            limits,
+            destination: Destination::Return,
+        }
+    };
+    let Outcome::Returned(value) = finished(Job::new(None).unwrap().execute(request(usize::MAX)))
+    else {
+        panic!("expected schema value")
+    };
+    let expected = finished(Job::new(None).unwrap().export(&value, Limits::default()));
+    assert_eq!(expected.last(), Some(&b'\n'));
+    for maximum in [expected.len(), expected.len() - 1] {
+        let runtime = match Job::new(None).unwrap().execute(request(maximum)) {
+            Completion::Finished(result) => result,
+            Completion::Supervised(error) => Err(error),
+        };
+        let cli = Command::new(&binary)
+            .args(["schema", "--max-output-bytes"])
+            .arg(maximum.to_string())
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        if maximum == expected.len() {
+            let Outcome::Returned(value) = runtime.unwrap() else {
+                panic!("expected admitted schema")
+            };
+            assert_eq!(
+                finished(
+                    Job::new(None)
+                        .unwrap()
+                        .export(&value, request(maximum).limits)
+                ),
+                expected
+            );
+            assert!(cli.status.success(), "{cli:?}");
+            assert_eq!(cli.stdout, expected);
+            assert!(cli.stderr.is_empty());
+        } else {
+            let error = match runtime {
+                Err(error) => error,
+                Ok(_) => panic!("schema exceeded its complete output allowance"),
+            };
+            assert_eq!(error.error, ErrorCode::LimitExceeded);
+            assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+            assert_eq!(cli.status.code(), Some(4), "{cli:?}");
+            assert!(cli.stdout.is_empty());
+            assert_eq!(cli.stderr, error.to_json_line());
+        }
+    }
+}

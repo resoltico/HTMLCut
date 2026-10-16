@@ -361,17 +361,62 @@ fn real_input_and_output_errors_keep_paths_and_operating_system_details() {
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }
 #[cfg(unix)]
+fn fifo_input_output(executable: &std::ffi::OsStr, path: &Path) -> (Output, std::io::Result<()>) {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut child = Command::new(executable)
+        .args(["get", "h1"])
+        .arg(path)
+        .args(["--timeout", "1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let produced = loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(path)
+        {
+            // This fresh FIFO is empty and the fixed payload is below PIPE_BUF.
+            // Both opening and writing remain nonblocking if the reader refuses.
+            Ok(mut writer) => break writer.write_all(b"<h1>fifo</h1>"),
+            Err(error)
+                if error.raw_os_error() == Some(libc::ENXIO)
+                    || error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => break Err(error),
+        }
+        match child.try_wait() {
+            Ok(Some(_)) => break Err(std::io::ErrorKind::BrokenPipe.into()),
+            Ok(None) => {}
+            Err(error) => break Err(error),
+        }
+        if Instant::now() >= deadline {
+            break Err(std::io::ErrorKind::TimedOut.into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    // Complete or stop/reap the CLI before any assertion can unwind the fixture.
+    (bounded_output(child, Duration::from_secs(3)), produced)
+}
+
+#[cfg(unix)]
 #[test]
 fn process_substitution_and_fifo_inputs_are_readable_within_the_deadline() {
-    let output = Command::new("bash")
+    let child = Command::new("bash")
         .args([
             "-c",
-            "\"$1\" get h1 <(printf '<h1>substitution</h1>')",
+            "\"$1\" get h1 <(printf '<h1>substitution</h1>') --timeout 1",
             "htmlcut-input",
         ])
         .arg(binary())
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
+    let output = bounded_output(child, Duration::from_secs(3));
     assert!(output.status.success(), "{output:?}");
     assert_eq!(output.stdout, b"\"substitution\"\n");
     let directory = tempfile::tempdir().unwrap();
@@ -383,20 +428,50 @@ fn process_substitution_and_fifo_inputs_are_readable_within_the_deadline() {
             .unwrap()
             .success()
     );
-    let writer_path = path.clone();
-    let writer = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(200));
-        std::fs::write(writer_path, b"<h1>fifo</h1>").unwrap();
-    });
-    let output = Command::new(binary())
-        .args(["get", "h1"])
-        .arg(&path)
-        .args(["--timeout", "1"])
-        .output()
-        .unwrap();
-    writer.join().unwrap();
-    assert!(output.status.success(), "{output:?}");
+    let (output, produced) = fifo_input_output(&binary(), &path);
+    assert!(
+        output.status.success(),
+        "FIFO command refused after producer stopped: {output:?}"
+    );
+    produced.unwrap();
     assert_eq!(output.stdout, b"\"fifo\"\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn fifo_input_fixture_detects_refusal_before_open_without_hanging() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let executable = directory.path().join("refuse-fifo");
+    std::fs::write(
+        &executable,
+        b"#!/bin/sh\ncase \"$3\" in */snapshot.pipe) exit 2;; *) printf '\"substitution\"\\n';; esac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "process_substitution_and_fifo_inputs_are_readable_within_the_deadline",
+            "--nocapture",
+        ])
+        .env("HTMLCUT_TEST_BINARY", executable)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // A parent-forced timeout panics in bounded_output and cannot pass this control.
+    let output = bounded_output(child, Duration::from_secs(8));
+    assert_eq!(output.status.code(), Some(101), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("running 1 test"), "{output:?}");
+    assert!(stdout.contains("1 failed"), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("FIFO command refused after producer stopped"),
+        "{output:?}"
+    );
 }
 #[cfg(unix)]
 #[test]
