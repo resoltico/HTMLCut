@@ -436,6 +436,7 @@ class RunnerTests(unittest.TestCase):
                 result = json.loads((output / "audit.json").read_text())
                 self.assertEqual(actual, 0)
                 self.assertNotIn("--cargo-test-arg=--fail-fast", result["command"])
+                self.assertIn("--cargo-test-arg=--no-fail-fast", result["command"])
                 self.assertEqual(
                     result["execution_environment"]["RUST_TEST_THREADS"], expected
                 )

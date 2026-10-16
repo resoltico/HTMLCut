@@ -1040,6 +1040,27 @@ mod tests {
     }
 
     #[test]
+    fn path_identity_distinguishes_a_reparse_entry_from_its_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let target_path = directory.path().join("target");
+        let target = File::create(&target_path).unwrap();
+        let link_path = directory.path().join("link");
+        std::os::windows::fs::symlink_file(&target_path, &link_path).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link_path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+
+        let followed = File::open(&link_path).unwrap();
+        let target_identity = identity(&target).unwrap();
+        assert_eq!(identity(&followed).unwrap(), target_identity);
+        assert_eq!(identity_path(&target_path).unwrap(), target_identity);
+        assert_ne!(identity_path(&link_path).unwrap(), target_identity);
+    }
+
+    #[test]
     fn restriction_revokes_new_writer_handles_but_retains_the_original_writer() {
         use std::io::Write;
         let directory = tempfile::tempdir().unwrap();
@@ -1490,6 +1511,59 @@ mod tests {
             std::fs::read(path).unwrap_err().kind(),
             io::ErrorKind::PermissionDenied
         );
+    }
+
+    #[test]
+    fn publication_preserves_an_unprotected_dacl_without_auto_inheritance() {
+        use std::{io::Write, os::windows::ffi::OsStrExt};
+
+        let directory = tempfile::tempdir().unwrap();
+        let source_path = directory.path().join("source");
+        let source = stage_options().open(&source_path).unwrap();
+        let authored = Descriptor::parse("D:(A;;FA;;;OW)").unwrap();
+        let wide_path = source_path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        // Author the older, non-auto-inherited file policy through a distinct
+        // native file setter, not the publication setter under test.
+        // SAFETY: the terminated owned path and native descriptor remain live.
+        boolean(unsafe {
+            SetFileSecurityW(wide_path.as_ptr(), DACL_SECURITY_INFORMATION, authored.0)
+        })
+        .unwrap();
+        let source_descriptor = Descriptor::read(&source).unwrap();
+        let inheritance = SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED;
+        assert_eq!(
+            descriptor_control(&source_descriptor).unwrap() & inheritance,
+            0
+        );
+        assert_eq!(
+            source_descriptor
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:(A;;FA;;;OW)"
+        );
+        let policy = Policy::read(&source).unwrap();
+
+        let stage_path = directory.path().join("stage");
+        let mut stage = create_private_file(&stage_path, &policy).unwrap();
+        restrict(&stage).unwrap();
+        policy.prepare(&stage).unwrap();
+        assert_eq!(
+            Descriptor::read(&stage)
+                .unwrap()
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:P"
+        );
+        stage.write_all(b"complete").unwrap();
+        policy.apply(&stage, &stage_path).unwrap();
+        let observed = Descriptor::read(&stage).unwrap();
+        assert_eq!(descriptor_control(&observed).unwrap() & inheritance, 0);
+        assert_eq!(observed.text().unwrap(), source_descriptor.text().unwrap());
+        assert_eq!(std::fs::read(&stage_path).unwrap(), b"complete");
     }
 
     #[test]

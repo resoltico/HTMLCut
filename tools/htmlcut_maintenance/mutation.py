@@ -705,6 +705,10 @@ def main():
                              "--failure-output=never", "--success-output=never",
                              "--test-threads=" + str(test_threads)):
                 command.append("--cargo-test-arg=" + argument)
+        else:
+            # Cargo otherwise propagates an aborted test binary's native status.
+            # Run the remaining binaries and use Cargo's aggregate failure code.
+            command.append("--cargo-test-arg=--no-fail-fast")
         for pattern in args.file:
             command.extend(["--file", pattern])
         for pattern in args.exclude_file:
