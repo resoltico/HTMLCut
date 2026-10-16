@@ -47,13 +47,14 @@ class AcceptanceIdentityTests(unittest.TestCase):
         binary.chmod(0o755)
         for name in ("LICENSE", "PATENTS.md"):
             shutil.copy2(repo / name, directory / name)
-        (directory / "README.md").write_text(package.guide("23.0.0", row, sha))
+        (directory / "README.md").write_text(package.guide("23.0.0", row, sha), encoding="utf-8")
         (directory / "NOTICE").write_text(
             "Native dependency attribution: HTMLCut 23.0.0, "
             + row["triple"]
             + "\n/tree/"
             + sha
-            + "\nhtmlcut-core 23.0.0\nhtmlcut-runtime 23.0.0\n"
+            + "\nhtmlcut-core 23.0.0\nhtmlcut-runtime 23.0.0\nAttribution café 雪 \u0081\n",
+            encoding="utf-8",
         )
         archive = root / "native.tar.gz"
         package.pack(directory, archive, "tar.gz")
@@ -122,6 +123,17 @@ class AcceptanceIdentityTests(unittest.TestCase):
 
     def test_unchanged_identity_can_pass(self):
         self.exercise(None)
+
+    def test_utf8_package_metadata_survives_a_legacy_default_text_encoding(self):
+        original_open = Path.open
+
+        def legacy_open(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+            if "b" not in mode and encoding in (None, "locale"):
+                encoding = "cp1252"
+            return original_open(path, mode, buffering, encoding, errors, newline)
+
+        with patch.object(Path, "open", legacy_open):
+            self.exercise(None)
 
     def test_archive_changes_cannot_claim_acceptance(self):
         self.exercise("archive")

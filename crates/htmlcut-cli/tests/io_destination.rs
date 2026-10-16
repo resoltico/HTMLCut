@@ -2,6 +2,11 @@
 //! Native destination boundaries exercised through the built or delivered binary.
 #![cfg(unix)]
 
+// This suite uses preloaded pipe input; the other modes are used by sibling suites.
+#[allow(dead_code)]
+#[path = "support/capture.rs"]
+mod capture;
+
 use std::{
     io::{Read, Seek, SeekFrom},
     os::unix::fs::{FileTypeExt, symlink},
@@ -177,7 +182,6 @@ unsafe fn native_errno() -> i32 {
 
 #[test]
 fn descriptor_directory_suffixes_remain_input_errors_with_contract_stdin() {
-    use std::io::Write;
     let mut paths = vec!["/dev/fd/0/", "/dev/fd/0/."];
     if cfg!(target_os = "linux") {
         paths.extend([
@@ -188,20 +192,15 @@ fn descriptor_directory_suffixes_remain_input_errors_with_contract_stdin() {
         ]);
     }
     for path in paths {
-        let mut child = Command::new(binary())
-            .args(["run", "--from-file", "-", path])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(b"{\"select\":\"h1\"}")
-            .unwrap();
-        let result = child.wait_with_output().unwrap();
+        let mut invocation = Command::new(binary());
+        invocation.args(["run", "--from-file", "-", path]);
+        let result = capture::finite_capture(
+            &mut invocation,
+            Duration::from_secs(3),
+            1024 * 1024,
+            capture::Stdin::Bytes(b"{\"select\":\"h1\"}"),
+        )
+        .unwrap();
         assert_eq!(result.status.code(), Some(5), "{result:?}");
         assert!(result.stdout.is_empty());
         let error: serde_json::Value = serde_json::from_slice(&result.stderr).unwrap();

@@ -33,7 +33,7 @@ def guide(version, target, source):
     text = (
         Path(__file__)
         .with_name("package-readme.md")
-        .read_text()
+        .read_text(encoding="utf-8")
         .format(
             version=version,
             target_triple=target["triple"],
@@ -117,7 +117,7 @@ def build(triple, output, root=config.ROOT):
         if process.status(result):
             raise ValueError("native build failed; evidence " + str(work))
         binaries = []
-        for line in (work / "build.log").read_text().splitlines():
+        for line in (work / "build.log").read_text(encoding="utf-8").splitlines():
             try:
                 message = json.loads(line)
             except ValueError:
@@ -143,11 +143,12 @@ def build(triple, output, root=config.ROOT):
             re.sub(
                 r"^<!--\n.*?^-->\n",
                 "",
-                (root / "PATENTS.md").read_text(),
+                (root / "PATENTS.md").read_text(encoding="utf-8"),
                 flags=re.M | re.S,
-            )
+            ),
+            encoding="utf-8",
         )
-        (directory / "README.md").write_text(guide(version, target, sha))
+        (directory / "README.md").write_text(guide(version, target, sha), encoding="utf-8")
         subprocess.run(
             [
                 sys.executable,

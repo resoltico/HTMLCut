@@ -46,7 +46,7 @@ def main():
             json.loads(raw), sha, ".github/workflows/ci.yml", {"push"}
         )
     if a.output:
-        a.output.write_text(json.dumps(facts, indent=2) + "\n")
+        a.output.write_text(json.dumps(facts, indent=2) + "\n", encoding="utf-8")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             for key, value in facts.items():

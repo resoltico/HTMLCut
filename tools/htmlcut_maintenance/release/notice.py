@@ -31,7 +31,7 @@ def runtime_notice(root, target):
     metadata = dict(
         line.split(": ", 1) for line in compiler.splitlines()[1:] if ": " in line
     )
-    expected = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"][
+    expected = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"][
         "channel"
     ]
     if metadata["release"] != expected or not re.fullmatch(
@@ -167,8 +167,8 @@ def main():
         raise ValueError("Unsupported native target")
     if len(args.source) != 40 or any(c not in "0123456789abcdef" for c in args.source):
         raise ValueError("Expected exact source commit")
-    policy = tomllib.loads((root / "deny.toml").read_text())
-    version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"][
+    policy = tomllib.loads((root / "deny.toml").read_text(encoding="utf-8"))
+    version = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"][
         "version"
     ]
     with tempfile.TemporaryDirectory(prefix="htmlcut-license-") as directory:
@@ -185,7 +185,8 @@ def main():
             + json.dumps(accepted)
             + "\ntargets = "
             + json.dumps([args.target])
-            + "\nignore-dev-dependencies = true\n[private]\nignore = false\n"
+            + "\nignore-dev-dependencies = true\n[private]\nignore = false\n",
+            encoding="utf-8",
         )
         result = subprocess.check_output(
             [
@@ -207,7 +208,7 @@ def main():
         )
     notice = render_notice(
         json.loads(result),
-        (root / "NOTICE").read_text(),
+        (root / "NOTICE").read_text(encoding="utf-8"),
         args.source,
         version,
         args.target,

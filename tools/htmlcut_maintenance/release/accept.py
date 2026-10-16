@@ -177,19 +177,19 @@ def accept(archive, target, version, root=config.ROOT):
         if source_version != version:
             raise ValueError("native package version differs from acceptance source")
         report["source_sha"] = sha
-        if (package / "README.md").read_text() != guide(version, target, sha):
+        if (package / "README.md").read_text(encoding="utf-8") != guide(version, target, sha):
             raise ValueError("package guide differs from immutable source/target")
         if (package / "LICENSE").read_bytes() != (root / "LICENSE").read_bytes():
             raise ValueError("package original license differs")
         patents = re.sub(
             r"^<!--\n.*?^-->\n",
             "",
-            (root / "PATENTS.md").read_text(),
+            (root / "PATENTS.md").read_text(encoding="utf-8"),
             flags=re.M | re.S,
         )
-        if (package / "PATENTS.md").read_text() != patents:
+        if (package / "PATENTS.md").read_text(encoding="utf-8") != patents:
             raise ValueError("package patent notice differs")
-        notice = (package / "NOTICE").read_text()
+        notice = (package / "NOTICE").read_text(encoding="utf-8")
         for text in (
             f"Native dependency attribution: HTMLCut {version}, {target['triple']}",
             "/tree/" + sha,
@@ -207,7 +207,7 @@ def accept(archive, target, version, root=config.ROOT):
         language = "powershell" if target["archive"] == "zip" else "sh"
         blocks = re.findall(
             r"^```" + language + r"\n(.*?)^```",
-            (package / "README.md").read_text(),
+            (package / "README.md").read_text(encoding="utf-8"),
             re.M | re.S,
         )
         if len(blocks) < 2:
@@ -299,7 +299,7 @@ def accept(archive, target, version, root=config.ROOT):
         print("Native acceptance evidence: " + str(evidence), file=sys.stderr)
         return digest
     finally:
-        (evidence / "acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
+        (evidence / "acceptance.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 def main():

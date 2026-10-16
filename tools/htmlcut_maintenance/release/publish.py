@@ -36,7 +36,7 @@ def publish(tag, dist, root=config.ROOT):
     text = notes.from_ref(root, sha, version)
     with tempfile.TemporaryDirectory(prefix="htmlcut-release-notes-") as temporary:
         path = Path(temporary) / "notes.md"
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         try:
             release = provider(tag)
         except ValueError:

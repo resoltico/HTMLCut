@@ -61,7 +61,7 @@ def main():
         raise ValueError("unsupported native target")
     with tempfile.TemporaryDirectory(prefix="htmlcut-verify-notes-") as temporary:
         path = Path(temporary) / "notes.md"
-        path.write_text(notes.from_ref(config.ROOT, sha, version))
+        path.write_text(notes.from_ref(config.ROOT, sha, version), encoding="utf-8")
         assets.main(["--tag", a.tag, "--version", version, "--notes", str(path)])
     a.output.mkdir(parents=True, exist_ok=False)
     manifest = f"htmlcut-{version}-checksums.txt"

@@ -74,7 +74,7 @@ def archives(root, ref, output):
             check=True,
             timeout=60,
         )
-    (output / (basename + ".source-commit")).write_text(sha + "\n")
+    (output / (basename + ".source-commit")).write_text(sha + "\n", encoding="utf-8")
     return sha, version
 
 
