@@ -41,4 +41,4 @@ Registry dependency source is available at the exact name/version links in NOTIC
 
 - CLI guide: https://github.com/resoltico/HTMLCut/blob/{source_commit}/crates/htmlcut-cli/src/guide.txt
 - Getting started: https://github.com/resoltico/HTMLCut/blob/{source_commit}/README.md
-- Core embedding guide: https://github.com/resoltico/HTMLCut/blob/{source_commit}/docs/design.md
+- Embedding and API guarantees: https://github.com/resoltico/HTMLCut/blob/{source_commit}/docs/design.md

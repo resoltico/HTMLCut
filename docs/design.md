@@ -1,4 +1,4 @@
-# Design and guarantees
+# Execution and API guarantees
 
 ## Purpose
 
@@ -12,9 +12,6 @@ It serves one loop:
 3. **Run** the contract deterministically, as often as needed, without a model.
 4. **Refuse** when the document no longer satisfies the contract.
 5. **Repair** the contract from the refusal's facts.
-
-Authors are usually language models, so the surface must be guessable, the diagnostics
-must carry the observed facts, and a contract must be data that is safe to execute.
 
 ### Non-goals
 
@@ -190,7 +187,7 @@ requirements, platform restrictions and failure boundaries.
 
 Top-level `--help`, `-h` and `help` print the [guide](../crates/htmlcut-cli/src/guide.txt).
 Command-specific `--help` prints that command's grammar. `--version` and `-V` print the
-engine version. A bare invocation remains an argument error. Argument errors carry the parser's message and end with
+engine version. A bare invocation is an argument error. Argument errors carry the parser's message and end with
 `Run htmlcut --help for the guide.` Invalid inline JSON that names an existing file
 points to `--from-file`.
 
@@ -198,7 +195,7 @@ points to `--from-file`.
 
 `htmlcut-core` is a pure engine with `forbid(unsafe_code)`. Its immutable documents,
 compiled contracts, owned results and structured outline reports safely implement
-`Send + Sync`. Owned retained parser strings are admitted in the existing tree;
+`Send + Sync`. Owned parser strings are admitted within the tree;
 there is no second full DOM or unsafe trait implementation.
 
 ```rust
@@ -213,41 +210,43 @@ fn main() -> Result<(), htmlcut_core::Error> {
 }
 ```
 
-Each operation receives an explicit context and execution policy. The same context
-spans compilation, admission, evaluation and encoding; later operations receive a
-fresh context. Caches and counters are local to an execution. Core starts no threads
+Core callers supply explicit contexts and separate preparation/execution policies.
+Use the same context for compilation, admission, evaluation and encoding within one job,
+then a fresh context for each independent job. The deadline is optional and chosen when
+the context is created; work counters belong to that context. Core starts no threads
 and performs no filesystem or stream I/O. Closed operation/result/diagnostic enums
-require exhaustive adapter mappings; open fact/option structs can remain extensible.
+require exhaustive adapter mappings; extensible fact/option structs are marked `non_exhaustive`.
 
 `htmlcut-runtime` owns shared preflight, input acquisition, reusable opaque document
 handles, exports and local delivery. Its facade exposes no engine document, compiled
 contract or DOM entry point. See the [headless consumer](../crates/htmlcut-runtime/examples/headless.rs).
 The CLI's only production dependencies are Clap and runtime. It owns shell syntax,
-terminal help, exhaustive exit mapping and disposable-process supervision.
+terminal help, exhaustive exit mapping and disposable-process supervision. Runtime
+jobs choose their optional deadline at construction; passing later `Limits` does not
+restart it. Computed extraction results retain their JSON/raw format for later exports
+and Saves.
 
 Cancellation before the absolute deadline retains priority. Late cancellation records
 the elapsed deadline. A stop request or cooperative refusal does not establish host
 completion. The operation owner finishes only after delivery and owned cleanup; observer
 Drop is inert. Unwind cleanup does not invent cancellation: absent an earlier stop,
-panic becomes Internal/exit 6. Claiming commit atomically excludes later stops; actual
-rename success/failure governs even after expiry. Only the CLI may enforce a deadline
-by exiting. Library/GUI jobs remain cooperative; blocking OS/upstream calls require a
-future disposable-process boundary if hard isolation is needed.
+panic becomes Internal/exit 6. [Commit arbitration](#limits-and-time) governs deadline
+and stop requests during publication. Only the CLI may enforce a deadline by exiting.
+Library/GUI jobs are cooperative; hosts requiring hard isolation around blocking
+OS/upstream calls must supply a disposable-process boundary.
 
 ## Stability
 
 A contract carries no version. The engine's major version defines its semantics;
 `htmlcut --version` is what reproduction records. Unknown contract members refuse.
-Breaking changes require a major release and explicit outcome documentation; this
-overhaul provides no compatibility aliases or migrations.
+Breaking changes require a major release and explicit outcome documentation.
 
 The literal corpus is reviewed specification input. Its semantics and exact byte
 fixtures are checked through core, runtime, actual CLI and unpacked native executables.
-There is no byte-frozen/append-only corpus gate. Documented selector examples require
-executable dialect coverage. Historical released behavior remains recorded in the changelog.
+Documented selector examples require executable dialect coverage.
 
-`rust-version` is the lowest toolchain that builds and passes the suite, verified in
-continuous integration. `rust-toolchain.toml` pins the development toolchain separately.
+`Cargo.toml` declares the supported minimum Rust version; continuous integration tests
+that compiler. `rust-toolchain.toml` pins the development toolchain separately.
 
 ## Output representation
 
@@ -259,11 +258,9 @@ Outline identifiers use CSS escaping and quoted previews use JSON escaping. Head
 
 ## Implementation
 
-The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [runtime](../crates/htmlcut-runtime/src/lib.rs) owns preflight, host input, complete export/delivery, staging and native authorization. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument syntax, terminal presentation and hard supervision.
-
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
-Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
-starts accepting that syntax.
+Relative-selector caches are reset for each scope. Selectors with an `of S` argument
+are refused at admission.
 
 `OutlineReport` contains selection/header facts, bounded ordered rows, representative
 IDs/classes/attributes/previews, grouped counts, collapsed descendant counts and

@@ -6,7 +6,7 @@ The loop is **outline → author → run → refuse → repair**. Outline shows 
 
 ## Install from a clean checkout
 
-Install rustup and a native linker as described in [platform support](https://github.com/resoltico/HTMLCut/blob/main/docs/platform-support.md). Rustup uses the pinned development toolchain automatically from this directory.
+Install rustup and a native linker as described in [platform support](https://github.com/resoltico/HTMLCut/blob/main/docs/platform-support.md). From the checkout root, run the following command; rustup selects the pinned development toolchain automatically.
 
 ```sh
 cargo install --path crates/htmlcut-cli --locked
@@ -42,4 +42,4 @@ Fetching, JavaScript execution, article inference, document conversion, type con
 
 Read the [contract language](https://github.com/resoltico/HTMLCut/blob/main/docs/contract.md), [execution guarantees](https://github.com/resoltico/HTMLCut/blob/main/docs/design.md), [output publication](https://github.com/resoltico/HTMLCut/blob/main/docs/publication.md), [executable cases](https://github.com/resoltico/HTMLCut/blob/main/conformance/README.md) and [contributor setup](https://github.com/resoltico/HTMLCut/blob/main/CONTRIBUTING.md).
 
-For embedding, [htmlcut-runtime](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-runtime) supplies shared preflight, reusable documents, cancellation, structured outlines, exports and local publication. [htmlcut-core](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-core) remains the pure low-level engine.
+For embedding, [htmlcut-runtime](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-runtime) supplies shared preflight, reusable documents, cancellation, structured outlines, exports and local publication. [htmlcut-core](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-core) is the pure low-level engine.

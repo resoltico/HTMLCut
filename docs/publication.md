@@ -36,8 +36,9 @@ discretionary ACLs and applicable mandatory access labels. Privileged executable
 file capabilities and unrelated content extended attributes are not copied. A new Unix
 file follows ordinary mode `0666` creation policy, with umask or an inherited default ACL
 as applicable. Replacement discards set-user-ID, set-group-ID and sticky bits. A new
-destination follows the caller's and parent directory's ownership policy. An empty policy probe captures
-inherited authorization for an absent destination; it never contains result bytes.
+destination follows the caller's and parent directory's ownership policy. An empty
+policy probe captures inherited authorization for an absent destination; it never
+contains result bytes.
 
 Owner, group and applicable access labels are established and verified under restrictive
 staging before any result byte. Unix result files begin at mode zero in a verified private
@@ -48,7 +49,7 @@ content receives the final discretionary policy.
 Windows result files are created with the captured mandatory SACL and its control flags,
 and a protected DACL granting the owner only writer, metadata and deletion rights, without
 data-read access. Through the retained writer handle, an empty protected DACL is installed
-before bytes are written. A pathname reader cannot acquire a data handle before restriction.
+before bytes are written. A pathname reader cannot acquire a data-read handle before restriction.
 A distinct empty policy probe verifies exact reproduction before result bytes, including
 native inheritance processing; a retained inherited ACL that would gain different parent
 permissions refuses. Readers of that probe retain a separate empty object. Final policy
@@ -80,17 +81,18 @@ backup is excluded. Privilege activation does not bypass data-read ACLs or copy 
 
 The [invocation deadline](design.md#limits-and-time) includes acquisition, stream writes
 and flushes, regular-file staging and metadata. The regular-file commit boundary checks
-the deadline and atomically competes with expiry. Once commit wins, the actual rename outcome governs; there is no
-contradictory timeout or rollback promise. A stuck filesystem operation can outlast the
-deadline and cleanup grace.
+the deadline and atomically competes with expiry. Once commit wins, the actual rename
+outcome governs; there is no contradictory timeout or rollback promise. A stuck
+filesystem operation can outlast the deadline and cleanup grace.
 
 Staging ownership is reserved before exclusive creation, confirmed before result bytes,
 and checked when creation returns. Ordinary and timeout cleanup remove only objects whose
-ownership is established, using identity checks or a retained handle to the newly created object. Detected foreign
-replacements are left untouched. Creation can succeed while access denial or a failed identity query prevents confirmation.
-That can leave an empty unconfirmed file or directory; available diagnostics name possible
-residue. Hard termination and cleanup run separately, so extraordinary blocked syscalls
-can also leave a candidate or stage beyond the cleanup grace.
+ownership is established, using identity checks or a retained handle to the newly created
+object. Detected foreign replacements are left untouched. Creation can succeed while
+access denial or a failed identity query prevents confirmation. That can leave an empty
+unconfirmed file or directory; available diagnostics name possible residue. Hard
+termination and cleanup run separately, so extraordinary blocked syscalls can also leave
+a candidate or stage beyond the cleanup grace.
 
 Containing-parent identity, target identity and policy, original path resolution, and
 stage identity and policy are revalidated immediately before commit. The guarantee assumes
@@ -98,4 +100,7 @@ these identities and policies remain stable through publication. Native reconstr
 replacement and unlink cannot eliminate every hostile namespace or policy mutation after
 revalidation; this is not isolation from concurrent changes by other processes.
 
-Runtime callers use the same publication path as the CLI. Library cancellation and deadlines are cooperative; only the disposable executable supplies hard enforcement. Commit ownership excludes later stop claims, and completion encloses all potentially blocking owned cleanup. Dropping an observer never changes a running job.
+Runtime callers use the same publication path as the CLI. Library cancellation and
+deadlines are cooperative; only the disposable executable supplies hard enforcement.
+Commit ownership excludes later stop claims, and completion encloses all potentially
+blocking owned cleanup. Dropping an observer never changes a running job.

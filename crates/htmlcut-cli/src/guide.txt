@@ -50,14 +50,16 @@ Options:
   --version, -V           print the engine version
 
 Exit status: 0 success, 2 invalid arguments or contract, 3 refused (the document
-does not satisfy the contract or raw list cannot preserve framing), 4 limit exceeded, 5 input or output failure,
-6 internal error.
+does not satisfy the contract or raw list cannot preserve framing), 4 limit exceeded,
+5 input or output failure, 6 internal error, 130 cancelled.
 
 Common options apply to outline/get/run; --raw applies only to get/run.
 Schema supports output, timeout and max-output-bytes. Use COMMAND --help for exact placement.
 Contract stdin: run --from-file - page.html, with a distinct HTML source.
-FILE URLs require successful external acquisition first; see docs/contract.md.
-Schema is authoring structure validation; integer tokens must be 1, not 1.0/1e0/-0.
+FILE URLs require successful external acquisition first; see
+https://github.com/resoltico/HTMLCut/blob/main/docs/contract.md.
+Schema validates authoring structure, not original number spelling. Counts use
+unsigned integer tokens: 0 and 1 are valid spellings; 1.0, 1e0 and -0 refuse.
 
 Output ceilings admit the complete canonical export including final LF. Raw output
 also obeys canonical JSON admission; optional null needs five canonical bytes
