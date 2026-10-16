@@ -8,6 +8,20 @@ Disk accounting uses non-following entry metadata and does not descend symlinks 
 
 ## Tool and dependency reuse
 
+Windows cancellation stops the directly owned live command tree with `taskkill /T /F`
+before any leader-only fallback. Retained process handles preserve identity during that
+operation. Descendants orphaned by an already exited Windows parent are not guaranteed
+to be stopped; unconfirmed cleanup retains products and fails. The native Windows test
+pins process birth identities and detects the leader-only termination counterexample.
+
+Native CI package artifacts are retained for seven days; smoke and bounded failure
+evidence for three days. Published release assets are separate. Failed process fixtures
+use `RUNNER_TEMP` when available. CI uploads only the named resource-group, exited-group
+and process-tree roots, excluding compiler products and arbitrary temporary files.
+Successful teardown does not erase a failed observation: bounded receipts retain the
+actual status/refusal, capped log tail and late-handler diagnostics. Raw cleanup output
+remains unbuffered, and the handler must finish successfully to satisfy its control.
+
 [Tool pins](../tools/contributor-tools.toml) and [compiler pin](../rust-toolchain.toml) are separate authorities. Install optional tools once into a caller-selected fresh root and keep its `bin` on PATH. `install TOOL --root NEW_PATH` uses locked inputs, a 4 GiB sampled compilation allowance, 900 seconds and a 4 MiB log. Bounded version probes allow ten seconds, 4 MiB sampled products and 1 MiB logs. These are refusal allowances, not measured maxima. Cold and restored tools share the actual version/protocol verifier, including Cargo subcommand and Nextest multiline formats. Confirmed stopped compiler products are removed; failures retain bounded evidence and uncertain products.
 
 GitHub jobs use pinned standard cache actions for public crates.io compressed archives/index and exact-input installed tool binaries. Download keys can fall back within the same public OS namespace; missing locked inputs are still fetched. Executable keys include hosted OS/architecture/image and tool/compiler/installation inputs, with no fallback. Product source or Cargo.lock changes do not invalidate unrelated tool binaries. Every exact hit executes the bounded pin probe; a corrupt/wrong/hung hit fails. A missing/unavailable cache takes the cold path.

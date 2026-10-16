@@ -2,7 +2,11 @@
 """Real child writers prove QA resource refusals and retained evidence."""
 
 import json
+import io
+import shutil
+import signal
 import contextlib
+import ctypes
 import stat
 import threading
 from types import SimpleNamespace
@@ -21,7 +25,84 @@ ROOT = Path(__file__).resolve().parents[3]
 RUNNER = ROOT / "tools/htmlcut_maintenance/process.py"
 
 
+def retain_fixture_diagnostics(root, cleanup_errors):
+    """Retain bounded failure facts even when the console log filled first."""
+    facts = {"cleanup_errors": cleanup_errors}
+    if sys.exc_info()[1] is not None:
+        error = sys.exc_info()[1]
+        facts["observation_error"] = (type(error).__name__ + ": " + str(error))[:4096]
+    for name, limit in [("test.resources.json", 65536), ("handler-error.txt", 4096)]:
+        try:
+            with (root / name).open("rb") as source:
+                value = source.read(limit + 1)
+            facts[name] = value[:limit].decode("utf-8", errors="replace")
+            if len(value) > limit:
+                facts[name + "_truncated"] = True
+        except OSError as error:
+            facts[name] = str(error)
+    try:
+        with (root / "test.log").open("rb") as source:
+            source.seek(0, 2)
+            facts["log_bytes"] = source.tell()
+            source.seek(max(0, source.tell() - 4096))
+            facts["log_tail"] = source.read(4096).decode("utf-8", errors="replace")
+    except OSError as error:
+        facts["log_error"] = str(error)
+    try:
+        report = json.loads(facts["test.resources.json"])
+        if not isinstance(report, dict):
+            raise ValueError("resource report is not an object")
+        child_status, refusal = report.get("returncode"), report.get("refusal")
+    except (ValueError, TypeError):
+        child_status, refusal = "unavailable", "unavailable"
+    try:
+        (root / "fixture-diagnostic.json").write_text(
+            json.dumps(facts, indent=2) + "\n"
+        )
+    except OSError as error:
+        print(f"Cannot retain fixture diagnostics at {root}: {error}", file=sys.stderr)
+    preview = lambda value: str(value)[:512]
+    summary = (
+        f"Resource fixture evidence retained at {root}: "
+        f"child={preview(child_status)}; refusal={preview(refusal)}; "
+        f"cleanup={preview(cleanup_errors)}; handler={preview(facts['handler-error.txt'])}"
+    )
+    print(
+        summary.encode("utf-8", errors="replace")[:4095].decode(
+            "utf-8", errors="ignore"
+        ),
+        file=sys.stderr,
+    )
+
+
 class ResourceBudgetTests(unittest.TestCase):
+    def test_failure_diagnostics_keep_status_and_bound_late_error_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = {"returncode": 7, "refusal": "log-budget-exceeded"}
+            (root / "test.resources.json").write_text(json.dumps(report))
+            (root / "handler-error.txt").write_text("handler failure: " + "e" * 6000)
+            (root / "test.log").write_bytes(b"x" * (2 * 1024 * 1024))
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as console:
+                retain_fixture_diagnostics(root, [])
+            facts = json.loads((root / "fixture-diagnostic.json").read_text())
+            self.assertEqual(json.loads(facts["test.resources.json"]), report)
+            self.assertTrue(facts["handler-error.txt_truncated"])
+            self.assertEqual(len(facts["handler-error.txt"]), 4096)
+            self.assertEqual(facts["log_tail"], "x" * 4096)
+            self.assertIn("child=7; refusal=log-budget-exceeded", console.getvalue())
+            self.assertIn("handler failure:", console.getvalue())
+            self.assertLess(len(console.getvalue()), 1500)
+            self.assertLess((root / "fixture-diagnostic.json").stat().st_size, 80000)
+            (root / "test.resources.json").write_text(
+                json.dumps({"returncode": "u" * 15000, "refusal": "r" * 15000})
+            )
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as console:
+                retain_fixture_diagnostics(root, ["c" * 12000])
+            self.assertLessEqual(len(console.getvalue().encode("utf-8")), 4096)
+            for value in ["u", "r", "c"]:
+                self.assertNotIn(value * 513, console.getvalue())
+
     def test_windows_access_denied_accepts_only_a_now_missing_namespace_entry(self):
         functions = runpy.run_path(str(RUNNER))
         with tempfile.TemporaryDirectory() as directory:
@@ -684,7 +765,12 @@ namespace['main'].__globals__['subprocess'].Popen = start
         import shutil
         import signal
 
-        root = Path(tempfile.mkdtemp(prefix="htmlcut-descendant-control-"))
+        root = Path(
+            tempfile.mkdtemp(
+                prefix="htmlcut-resource-group.",
+                dir=os.environ.get("RUNNER_TEMP") or None,
+            )
+        )
         marker, ready, child_ready, release = [
             root / name
             for name in ("separate-child-wrote", "ready", "child-ready", "release")
@@ -692,6 +778,8 @@ namespace['main'].__globals__['subprocess'].Popen = start
         descendant = None
         parents = []
         confirmed = True
+        passed = False
+        cleanup_errors = []
         original_start = subprocess.Popen
         child = (
             "import pathlib,time,sys\n"
@@ -717,14 +805,23 @@ namespace['main'].__globals__['subprocess'].Popen = start
                 "import os,signal,sys,time,pathlib\n"
                 "def flood(byte):\n"
                 " data=byte*(2*1024*1024)\n"
-                " while data: data=data[os.write(1,data):]\n"
+                " while data:\n"
+                "  count=os.write(1,data)\n"
+                "  if count <= 0: raise OSError('stdout made no progress')\n"
+                "  data=data[count:]\n"
                 "def stop(*_):\n"
-                + (" flood(b'c')\n" if overflow else "")
+                " try:\n"
+                "  try:\n"
+                + ("   flood(b'c')\n" if overflow else "   pass\n")
+                + "  finally:\n"
                 + (
-                    " pass\n"
+                    "   pass\n"
                     if defective
-                    else f" os.killpg({descendant.pid},signal.SIGKILL)\n"
+                    else f"   os.killpg({descendant.pid},signal.SIGKILL)\n"
                 )
+                + " except BaseException as error:\n"
+                + f"  pathlib.Path({str(root / 'handler-error.txt')!r}).write_bytes((type(error).__name__+': '+str(error)).encode('utf-8',errors='replace')[:4096])\n"
+                + "  raise\n"
                 + " sys.exit(0)\n"
                 "signal.signal(signal.SIGINT,stop)\n"
                 + (
@@ -786,6 +883,7 @@ namespace['main'].__globals__['subprocess'].Popen = start
             self.assertEqual(
                 marker.exists(), defective, "post-cleanup descendant-release oracle"
             )
+            passed = True
         finally:
             # Do not reap a group leader before its last numeric group signal.
             # Popen.returncode is inspected without poll(): unknown means the
@@ -799,6 +897,7 @@ namespace['main'].__globals__['subprocess'].Popen = start
                         process.stdout.close()
                 except (OSError, subprocess.TimeoutExpired) as error:
                     confirmed = False
+                    cleanup_errors.append(f"parent: {error}")
                     print(
                         f"Parent cleanup unconfirmed; retained {root}: {error}",
                         file=sys.stderr,
@@ -812,13 +911,16 @@ namespace['main'].__globals__['subprocess'].Popen = start
                         descendant.wait(timeout=2)
                 except (OSError, subprocess.TimeoutExpired) as error:
                     confirmed = False
+                    cleanup_errors.append(f"descendant: {error}")
                     print(
                         f"Descendant cleanup unconfirmed; retained {root}: {error}",
                         file=sys.stderr,
                     )
-            if confirmed:
+            if confirmed and passed:
                 shutil.rmtree(root)
-            elif sys.exc_info()[0] is None:
+            else:
+                retain_fixture_diagnostics(root, cleanup_errors)
+            if not confirmed and sys.exc_info()[0] is None:
                 self.fail(f"fixture cleanup was not confirmed; retained {root}")
 
     @unittest.skipIf(os.name == "nt", "POSIX separately grouped child cleanup")
@@ -829,47 +931,445 @@ namespace['main'].__globals__['subprocess'].Popen = start
     def test_descendant_release_detects_deliberately_defective_cleanup(self):
         self.separately_grouped_child_cleanup(defective=True)
 
+    @unittest.skipIf(os.name == "nt", "POSIX failed-observation fixture retention")
+    def test_failed_observation_retains_fixture_after_confirmed_teardown(self):
+        root = Path(
+            tempfile.mkdtemp(
+                prefix="htmlcut-resource-group.",
+                dir=os.environ.get("RUNNER_TEMP") or None,
+            )
+        )
+        case = root / "case"
+        case.mkdir()
+        passed = False
+        try:
+            with (
+                mock.patch.object(tempfile, "mkdtemp", return_value=str(case)),
+                mock.patch.object(
+                    self,
+                    "assertEqual",
+                    side_effect=AssertionError("controlled observation failure"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    AssertionError, "controlled observation failure"
+                ):
+                    self.separately_grouped_child_cleanup()
+            self.assertTrue(
+                case.is_dir(), "successful teardown erased a failed observation"
+            )
+            facts = json.loads((case / "fixture-diagnostic.json").read_text())
+            self.assertEqual(facts["cleanup_errors"], [])
+            self.assertEqual(json.loads(facts["test.resources.json"])["returncode"], 0)
+            self.assertIn("controlled observation failure", facts["observation_error"])
+            passed = True
+        finally:
+            if passed:
+                shutil.rmtree(root)
+            else:
+                retain_fixture_diagnostics(case, [])
+
     @unittest.skipIf(os.name == "nt", "POSIX process-group orphan cleanup")
-    def test_successful_parent_cannot_leave_background_writer(self):
-        with tempfile.TemporaryDirectory() as directory:
-            marker = Path(directory) / "orphan-wrote"
-            child = (
-                "import pathlib,time; time.sleep(0.4); pathlib.Path("
-                + repr(str(marker))
-                + ").write_text('leaked')"
+    def test_exited_parent_group_cleanup_stops_a_gated_background_writer(self):
+        root = Path(
+            tempfile.mkdtemp(
+                prefix="htmlcut-exited-group.",
+                dir=os.environ.get("RUNNER_TEMP") or None,
             )
-            parent = (
-                "import subprocess,sys; subprocess.Popen([sys.executable, '-c', "
-                + repr(child)
-                + "])"
+        )
+        marker, gate, ready, expired = (
+            root / name
+            for name in [
+                "orphan-wrote",
+                "write-after-cleanup",
+                "writer-ready",
+                "writer-expired",
+            ]
+        )
+        child = (
+            "import os,pathlib,time\n"
+            "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
+            "ready.with_suffix('.pending').write_text(str(os.getpgrp())); ready.with_suffix('.pending').replace(ready)\n"
+            "gate=pathlib.Path(" + repr(str(gate)) + ")\n"
+            "deadline=time.monotonic()+10\n"
+            "while not gate.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+            "if gate.exists(): pathlib.Path("
+            + repr(str(marker))
+            + ").write_text('leaked')\n"
+            "else: pathlib.Path("
+            + repr(str(expired))
+            + ").write_text('natural expiry')\n"
+        )
+        parent_code = (
+            "import pathlib,subprocess,sys,time\n"
+            "subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n"
+            "ready=pathlib.Path(" + repr(str(ready)) + ")\n"
+            "deadline=time.monotonic()+3\n"
+            "while not ready.exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+            "assert ready.exists(), 'background writer did not become ready'\n"
+        )
+        parent = subprocess.Popen(
+            [sys.executable, "-c", parent_code],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        passed = False
+        cleanup_errors = []
+
+        def live_group_members():
+            listing = subprocess.check_output(
+                ["ps", "-axo", "pgid=,pid=,stat="], text=True, timeout=2
             )
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(RUNNER),
-                    "--root",
-                    directory,
-                    "--disk-limit-mib",
-                    "1",
-                    "--timeout",
-                    "2",
-                    "--poll-seconds",
-                    "0.02",
-                    "--label",
-                    "test",
-                    "--",
+            members = []
+            for line in listing.splitlines():
+                if not line.strip():
+                    continue
+                group, pid, state = line.split()
+                if int(group) == parent.pid and not state.startswith("Z"):
+                    members.append((int(pid), state))
+            return members
+
+        try:
+            deadline = time.monotonic() + 4
+            while (
+                os.waitid(os.P_PID, parent.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            exited = os.waitid(
+                os.P_PID, parent.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+            )
+            self.assertIsNotNone(exited, "parent did not exit after writer readiness")
+            self.assertEqual((exited.si_code, exited.si_status), (os.CLD_EXITED, 0))
+            self.assertEqual(int(ready.read_text()), parent.pid)
+            # The exited leader remains waitable, reserving this group identity
+            # through both the actual helper and the independent final signal.
+            runpy.run_path(str(RUNNER))["stop_process_tree"](parent)
+            deadline = time.monotonic() + 2
+            members = live_group_members()
+            while members and time.monotonic() < deadline:
+                time.sleep(0.01)
+                members = live_group_members()
+            self.assertEqual(members, [], "owned group still has live members")
+            self.assertFalse(
+                expired.exists(), "writer expired before group cleanup could be proved"
+            )
+            gate.write_text("write only after confirmed group termination")
+            self.assertFalse(
+                marker.exists(), "background writer survived group cleanup"
+            )
+            passed = True
+        finally:
+            try:
+                # Do not use the possibly faulted helper for fixture cleanup.
+                os.killpg(parent.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError as error:
+                try:
+                    if live_group_members():
+                        cleanup_errors.append(str(error))
+                except (
+                    OSError,
+                    ValueError,
+                    subprocess.SubprocessError,
+                ) as inspect_error:
+                    cleanup_errors.append(str(inspect_error))
+            except OSError as error:
+                cleanup_errors.append(str(error))
+            try:
+                deadline = time.monotonic() + 2
+                members = live_group_members()
+                while members and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                    members = live_group_members()
+                if members:
+                    cleanup_errors.append(f"live owned group members: {members}")
+                parent.wait(timeout=2)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                cleanup_errors.append(str(error))
+            if passed and not cleanup_errors:
+                shutil.rmtree(root)
+            else:
+                retain_fixture_diagnostics(root, cleanup_errors)
+            if cleanup_errors:
+                self.fail(
+                    f"Exited-group fixture cleanup unconfirmed at {root}: {cleanup_errors}"
+                )
+
+    @unittest.skipUnless(
+        os.name == "nt", "requires actual Windows taskkill/process handles"
+    )
+    def test_native_windows_tree_cancellation_detects_leader_only_stop(self):
+        # Native handles and creation times pin the command leader and its
+        # child writer before either cancellation primitive can run.
+        from ctypes import wintypes
+        from tools.htmlcut_maintenance import process as owner
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
+            ctypes.POINTER(wintypes.FILETIME)
+        ] * 4
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+
+        def birth(handle):
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel.GetProcessTimes(
+                handle, *(ctypes.byref(value) for value in times)
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return times[0].dwLowDateTime | (times[0].dwHighDateTime << 32)
+
+        def owned_handle(pid, expected_birth):
+            handle = kernel.OpenProcess(0x00101001, False, pid)
+            if not handle:
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                if birth(handle) != expected_birth:
+                    raise AssertionError(
+                        "process identity changed before handle acquisition"
+                    )
+            except (OSError, AssertionError):
+                kernel.CloseHandle(handle)
+                raise
+            return handle
+
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel.TerminateProcess.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        root = Path(
+            tempfile.mkdtemp(
+                prefix="htmlcut-process-tree.",
+                dir=os.environ.get("RUNNER_TEMP") or None,
+            )
+        )
+        controls = []
+        facts = []
+        confirmed = False
+        observations_complete = False
+        try:
+            for leader_only in [False, True]:
+                owned = root / ("leader-only" if leader_only else "tree-stop")
+                owned.mkdir()
+                ready, writer_ready, marker, start = (
+                    owned / name
+                    for name in ["ready.json", "writer-ready", "late-write", "start"]
+                )
+                writer_code = (
+                    "from pathlib import Path; import os,sys,time; "
+                    'p=Path(sys.argv[1]); p.with_suffix(".pending").write_text(str(os.getpid())); p.with_suffix(".pending").replace(p); '
+                    "deadline=time.monotonic()+15; "
+                    "\nwhile not Path(sys.argv[3]).exists() and time.monotonic()<deadline: time.sleep(.01)\n"
+                    "if not Path(sys.argv[3]).exists(): sys.exit(2)\n"
+                    'Path(sys.argv[2]).write_text("writer survived"); time.sleep(15)'
+                )
+                child_code = """from pathlib import Path
+import ctypes,json,os,subprocess,sys,time
+from ctypes import wintypes as W
+k=ctypes.WinDLL('kernel32',use_last_error=True)
+k.GetCurrentProcess.restype=W.HANDLE
+k.GetProcessTimes.argtypes=[W.HANDLE]+[ctypes.POINTER(W.FILETIME)]*4
+k.GetProcessTimes.restype=W.BOOL
+def birth(handle):
+    times=[W.FILETIME() for _ in range(4)]
+    if not k.GetProcessTimes(handle,*(ctypes.byref(value) for value in times)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return times[0].dwLowDateTime | (times[0].dwHighDateTime<<32)
+writer=subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[3],sys.argv[4],sys.argv[5]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+p=Path(sys.argv[2])
+p.with_suffix('.pending').write_text(json.dumps({
+    'child':{'pid':os.getpid(),'birth':birth(k.GetCurrentProcess())},
+    'writer':{'pid':writer.pid,'birth':birth(int(writer._handle))}}))
+p.with_suffix('.pending').replace(p)
+time.sleep(30)
+"""
+                command = [
                     sys.executable,
                     "-c",
-                    parent,
-                ],
-                capture_output=True,
-                timeout=5,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            time.sleep(0.5)
-            self.assertFalse(
-                marker.exists(), "background writer survived command completion"
-            )
+                    child_code,
+                    writer_code,
+                    str(ready),
+                    str(writer_ready),
+                    str(marker),
+                    str(start),
+                ]
+                control = {"process": None, "handles": [], "owned": owned}
+                cancellation = threading.Event()
+                original_start = subprocess.Popen
+
+                def start_command(*args, **kwargs):
+                    process = original_start(*args, **kwargs)
+                    if args[0] != command:
+                        return process
+                    control["process"] = process
+                    controls.append(control)
+                    deadline = time.monotonic() + 5
+                    while (
+                        not ready.exists() or not writer_ready.exists()
+                    ) and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(
+                        ready.exists() and writer_ready.exists(),
+                        "owned writer did not start",
+                    )
+                    identities = json.loads(ready.read_text())
+                    self.assertEqual(
+                        int(writer_ready.read_text()), identities["writer"]["pid"]
+                    )
+                    for role in ["child", "writer"]:
+                        expected = identities[role]
+                        handle = owned_handle(expected["pid"], expected["birth"])
+                        control["handles"].append((role, expected["pid"], handle))
+                    with self.assertRaisesRegex(AssertionError, "identity changed"):
+                        owned_handle(
+                            identities["writer"]["pid"],
+                            identities["writer"]["birth"] + 1,
+                        )
+                    self.assertFalse(
+                        marker.exists(), "writer fired before cancellation"
+                    )
+                    cancellation.set()
+                    return process
+
+                # The negative control changes only the actual owner's stop
+                # primitive. No nested watchdog/controller process is restored.
+                primitive = (
+                    mock.patch.object(
+                        owner,
+                        "stop_process_tree",
+                        side_effect=lambda process: process.terminate(),
+                    )
+                    if leader_only
+                    else contextlib.nullcontext()
+                )
+                with (
+                    mock.patch.object(
+                        owner.subprocess, "Popen", side_effect=start_command
+                    ),
+                    primitive,
+                ):
+                    report = owner.run(
+                        command,
+                        owned,
+                        disk_limit_mib=8,
+                        timeout=15,
+                        log_limit_mib=1,
+                        label="control",
+                        cancelled=cancellation,
+                    )
+                process = control["process"]
+                self.assertEqual(report["refusal"], "interrupted", report)
+                self.assertIsNotNone(report["returncode"])
+                self.assertEqual(report["cleanup_errors"], [], report)
+                start.write_text("write only after owner returned its cleanup report")
+                if leader_only:
+                    deadline = time.monotonic() + 4
+                    while not marker.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertEqual(marker.read_text(), "writer survived")
+                    self.assertEqual(
+                        kernel.WaitForSingleObject(control["handles"][1][2], 0), 258
+                    )
+                else:
+                    for role, _, handle in control["handles"]:
+                        self.assertEqual(
+                            kernel.WaitForSingleObject(handle, 2000),
+                            0,
+                            f"{role} survived tree stop",
+                        )
+                    self.assertFalse(marker.exists())
+                facts.append(
+                    {
+                        "case": "leader-only" if leader_only else "tree-stop",
+                        "late_writer_marker": marker.exists(),
+                        "reported_cleanup_errors": report["cleanup_errors"],
+                        "command_returncode": process.returncode,
+                    }
+                )
+            self.assertEqual([x["late_writer_marker"] for x in facts], [False, True])
+            observations_complete = True
+        finally:
+            failures, cleanup_attempt_errors = [], []
+            for control in controls:
+                process = control["process"]
+                try:
+                    if process.poll() is None:
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=True,
+                                timeout=5,
+                            )
+                        except (OSError, subprocess.SubprocessError) as error:
+                            cleanup_attempt_errors.append("command tree: " + str(error))
+                            process.kill()
+                        process.wait(timeout=2)
+                except (OSError, subprocess.SubprocessError) as error:
+                    failures.append("command cleanup: " + str(error))
+                if len(control["handles"]) != 2:
+                    failures.append(
+                        "descendant handles were not both pinned before failure"
+                    )
+                # Both handles keep exact process identities owned. Stop each
+                # still-live process even if another cleanup action failed.
+                for role, pid, handle in control["handles"]:
+                    if kernel.WaitForSingleObject(handle, 0) == 258:
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=True,
+                                timeout=5,
+                            )
+                        except (OSError, subprocess.SubprocessError) as error:
+                            cleanup_attempt_errors.append(role + " tree: " + str(error))
+                        if kernel.WaitForSingleObject(handle, 0) == 258:
+                            if not kernel.TerminateProcess(handle, 1):
+                                cleanup_attempt_errors.append(
+                                    role
+                                    + " handle termination: "
+                                    + str(ctypes.get_last_error())
+                                )
+                for role, _, handle in control["handles"]:
+                    if kernel.WaitForSingleObject(handle, 2000) != 0:
+                        failures.append(f"{role} cleanup not confirmed")
+                    if not kernel.CloseHandle(handle):
+                        failures.append(role + " handle close failed")
+            confirmed = not failures
+            if confirmed and observations_complete:
+                shutil.rmtree(root)
+            else:
+                (root / "control-failure.json").write_text(
+                    json.dumps(
+                        {
+                            "facts": facts,
+                            "cleanup_failures": failures,
+                            "cleanup_attempt_errors": cleanup_attempt_errors,
+                        },
+                        indent=2,
+                    )
+                )
+                print(
+                    f"Owned process evidence retained at {root}: {failures}",
+                    file=sys.stderr,
+                )
+            if failures:
+                self.fail(f"Owned process cleanup unconfirmed at {root}: {failures}")
+        self.assertTrue(confirmed)
+        print(
+            "native Windows direct-owner cancellation control: "
+            + json.dumps(facts, sort_keys=True)
+        )
 
     def test_existing_report_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:

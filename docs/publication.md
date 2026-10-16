@@ -14,6 +14,11 @@ truncation and create and rename entries in its containing directory. Directory 
 permission is not required, but write and search/traversal authorization is required.
 A directory destination is refused.
 
+For a missing destination, a trailing native separator or separator followed by
+`.` refuses regular-file creation, both in the original path and a symlink target.
+Windows recognizes `/` and `\`; Unix treats `\` as an ordinary filename character.
+Supply a filename to create a regular output file.
+
 Pipes, devices and descriptor aliases such as `/dev/stdout` and `/dev/fd/N` receive direct
 writes. Local descriptor aliases duplicate the inherited descriptor, preserving its
 cursor, append flag and access mode. Foreign-process descriptor paths are opened as path

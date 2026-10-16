@@ -918,3 +918,395 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
         }
     }
 }
+
+#[test]
+fn missing_regular_filenames_preserve_native_punctuation() {
+    let names = ["plain", "name.", "name.."];
+    #[cfg(unix)]
+    let names = names.into_iter().chain(["name\\", "name\\."]);
+    for name in names {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join(name);
+        let native = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        drop(native);
+        std::fs::remove_file(&path).unwrap();
+        publish(b"complete-filename", Some(&path)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"complete-filename");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod windows_namespace {
+    use super::*;
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+    use windows_sys::Win32::{
+        Foundation::{ERROR_ACCESS_DENIED, LocalFree},
+        Security::{Authorization::*, *},
+    };
+
+    struct LocalAllocation(*mut std::ffi::c_void);
+    impl Drop for LocalAllocation {
+        fn drop(&mut self) {
+            // SAFETY: this fixture owns the allocation returned by the security API.
+            unsafe { LocalFree(self.0) };
+        }
+    }
+    fn native_status(status: u32) {
+        assert_eq!(status, 0, "{}", io::Error::from_raw_os_error(status as i32));
+    }
+    fn wide_path(path: &Path) -> Vec<u16> {
+        use std::os::windows::ffi::OsStrExt;
+        path.as_os_str().encode_wide().chain(Some(0)).collect()
+    }
+    fn author_native_dacl(path: &Path, sddl: &str) {
+        let text = sddl.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: fixed terminated SDDL and a valid output pointer.
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    text.as_ptr(),
+                    1,
+                    &mut descriptor,
+                    std::ptr::null_mut(),
+                )
+            },
+            0,
+            "{}",
+            io::Error::last_os_error()
+        );
+        let descriptor = LocalAllocation(descriptor);
+        let mut acl = std::ptr::null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        // SAFETY: descriptor and its borrowed DACL remain live across assignment.
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, &mut defaulted)
+            },
+            0
+        );
+        assert_ne!(present, 0);
+        assert!(!acl.is_null());
+        // SAFETY: the terminated owned pathname and descriptor's borrowed DACL
+        // remain live across this DACL-only assignment.
+        native_status(unsafe {
+            SetNamedSecurityInfoW(
+                wide_path(path).as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                acl,
+                std::ptr::null_mut(),
+            )
+        });
+    }
+    fn deny_data_writes(path: &Path) {
+        // Leave owner read, metadata and DELETE available; deny data/append only.
+        author_native_dacl(path, "D:P(D;;0x00000006;;;WD)(A;;FA;;;OW)");
+    }
+    fn native_policy(path: &Path, information: u32) -> String {
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: terminated owned path and initialized output; only the requested components are queried.
+        native_status(unsafe {
+            GetNamedSecurityInfoW(
+                wide_path(path).as_ptr(),
+                SE_FILE_OBJECT,
+                information,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        });
+        let descriptor = LocalAllocation(descriptor);
+        let mut text = std::ptr::null_mut();
+        // SAFETY: native descriptor and output locals are valid; returned text is LocalFree-owned.
+        assert_ne!(
+            unsafe {
+                ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                    descriptor.0,
+                    1,
+                    information,
+                    &mut text,
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let _text = LocalAllocation(text.cast());
+        // The API returns a NUL-terminated SDDL allocation. Its optional
+        // size output is not the length of every requested component view.
+        let mut units = 0;
+        // SAFETY: conversion succeeded and the owned SDDL remains live until after decoding.
+        while unsafe { *text.add(units) } != 0 {
+            units += 1;
+        }
+        // SAFETY: only initialized UTF-16 units before the documented terminator are read.
+        String::from_utf16(unsafe { std::slice::from_raw_parts(text, units) }).unwrap()
+    }
+
+    fn native_dacl(path: &Path) -> String {
+        native_policy(path, DACL_SECURITY_INFORMATION)
+    }
+
+    #[test]
+    fn writable_file_symlink_publication_follows_the_native_target() {
+        use std::io::Read;
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        let alias = root.path().join("alias");
+        std::fs::write(&target, b"old").unwrap();
+        symlink_file(&target, &alias).expect("Windows namespace controls require native file-symlink creation; no machine policy is changed");
+        assert!(
+            std::fs::symlink_metadata(&alias)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let mut old = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&alias)
+            .unwrap();
+        assert_eq!(
+            identity(&old).unwrap(),
+            identity(&File::open(&target).unwrap()).unwrap()
+        );
+        let link = std::fs::read_link(&alias).unwrap();
+        publish(b"complete-linked-result", Some(&alias)).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"complete-linked-result");
+        assert_eq!(std::fs::read(&alias).unwrap(), b"complete-linked-result");
+        assert_eq!(std::fs::read_link(&alias).unwrap(), link);
+        let mut retained = Vec::new();
+        old.read_to_end(&mut retained).unwrap();
+        assert_eq!(retained, b"old");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn missing_native_directory_spellings_do_not_create_regular_files() {
+        for suffix in ["/", "/.", "\\", "\\."] {
+            for through_link in [false, true] {
+                let root = tempfile::tempdir().unwrap();
+                let target = root.path().join("missing-directory");
+                let path = if through_link {
+                    let alias = root.path().join("alias");
+                    symlink_file(format!("missing-directory{suffix}"), &alias)
+                        .expect("Windows suffix controls require native file-symlink creation");
+                    alias
+                } else {
+                    std::path::PathBuf::from(format!("{}{suffix}", target.display()))
+                };
+                let link = through_link.then(|| std::fs::read_link(&path).unwrap());
+                let result = publish(b"must-not-create", Some(&path));
+                assert!(
+                    result.is_err(),
+                    "{suffix:?} link={through_link} admitted a regular file"
+                );
+                let error = result.unwrap_err();
+                assert_eq!(error.error, ErrorCode::OutputUnwritable);
+                assert!(!target.exists());
+                if let Some(link) = link {
+                    assert_eq!(std::fs::read_link(&path).unwrap(), link);
+                }
+                assert_eq!(
+                    std::fs::read_dir(root.path()).unwrap().count(),
+                    usize::from(through_link)
+                );
+                eprintln!("completed native backslash suffix {suffix:?} link={through_link}");
+            }
+        }
+    }
+
+    #[test]
+    fn changed_output_namespace_or_authorization_refuses_publication() {
+        for change in [
+            "alias-parent",
+            "alias-leaf",
+            "appeared-dacl",
+            "identity",
+            "policy",
+        ] {
+            let mut root = tempfile::tempdir().unwrap();
+            let parent = root.path().join("parent");
+            let other_parent = root.path().join("other-parent");
+            std::fs::create_dir(&parent).unwrap();
+            std::fs::create_dir(&other_parent).unwrap();
+            let target = parent.join("target");
+            let alternate = if change == "alias-parent" {
+                other_parent.join("target")
+            } else {
+                parent.join("alternate")
+            };
+            if change != "appeared-dacl" {
+                std::fs::write(&target, b"old").unwrap();
+            }
+            std::fs::write(&alternate, b"foreign-alternate").unwrap();
+            let alias = root.path().join("alias");
+            let destination = match change {
+                "alias-parent" => {
+                    symlink_dir(&parent, &alias).expect(
+                        "Windows namespace controls require native directory-symlink creation",
+                    );
+                    alias.join("target")
+                }
+                "alias-leaf" => {
+                    symlink_file(&target, &alias)
+                        .expect("Windows namespace controls require native file-symlink creation");
+                    alias.clone()
+                }
+                _ => target.clone(),
+            };
+            if change != "appeared-dacl" {
+                assert_eq!(
+                    identity(&OpenOptions::new().write(true).open(&destination).unwrap()).unwrap(),
+                    identity(&File::open(&target).unwrap()).unwrap()
+                );
+            }
+            let ready = root.path().join("ready");
+            let release = root.path().join("release");
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "local_io::tests::publication_revalidation_child",
+                    "--nocapture",
+                ])
+                .env("HTMLCUT_REVALIDATION_DESTINATION", &destination)
+                .env("HTMLCUT_PUBLICATION_PHASE", "policy")
+                .env("HTMLCUT_PUBLICATION_READY", &ready)
+                .env("HTMLCUT_PUBLICATION_RELEASE", &release)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut child = TestChild {
+                child: Some(child),
+                fixture: Some(&mut root),
+            };
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !ready.exists() && Instant::now() < deadline {
+                if child.try_wait().unwrap().is_some() {
+                    let output = child.child.take().unwrap().wait_with_output().unwrap();
+                    panic!("{change} exited before completed staging: {output:?}");
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert!(ready.exists(), "{change} never reached completed staging");
+            let stage = std::path::PathBuf::from(std::fs::read_to_string(&ready).unwrap());
+            assert_eq!(std::fs::read(&stage).unwrap(), b"complete-private-result");
+            let displaced = parent.join("displaced");
+            let target_dacl = if change == "identity" {
+                let information = OWNER_SECURITY_INFORMATION
+                    | GROUP_SECURITY_INFORMATION
+                    | DACL_SECURITY_INFORMATION
+                    | LABEL_SECURITY_INFORMATION;
+                let before = native_policy(&target, information);
+                let old_id = identity(&File::open(&target).unwrap()).unwrap();
+                std::fs::rename(&target, &displaced).unwrap();
+                std::fs::write(&target, b"foreign-replacement").unwrap();
+                assert_ne!(identity(&File::open(&target).unwrap()).unwrap(), old_id);
+                assert_eq!(native_policy(&target, information), before);
+                drop(OpenOptions::new().write(true).open(&target).unwrap());
+                Some(native_dacl(&target))
+            } else if change == "policy" {
+                let old_id = identity(&File::open(&target).unwrap()).unwrap();
+                let before = native_dacl(&target);
+                let information = OWNER_SECURITY_INFORMATION
+                    | GROUP_SECURITY_INFORMATION
+                    | LABEL_SECURITY_INFORMATION;
+                let retained = native_policy(&target, information);
+                author_native_dacl(&target, "D:P(A;;FA;;;OW)");
+                assert_ne!(native_dacl(&target), before);
+                assert_eq!(native_policy(&target, information), retained);
+                assert_eq!(identity(&File::open(&target).unwrap()).unwrap(), old_id);
+                drop(OpenOptions::new().write(true).open(&target).unwrap());
+                Some(native_dacl(&target))
+            } else if change == "appeared-dacl" {
+                std::fs::write(&target, b"foreign-appeared").unwrap();
+                deny_data_writes(&target);
+                assert!(!target.metadata().unwrap().permissions().readonly());
+                let denied = OpenOptions::new().write(true).open(&target).unwrap_err();
+                assert_eq!(denied.raw_os_error(), Some(ERROR_ACCESS_DENIED as i32));
+                let peer = parent.join("replacement-control");
+                let replaceable = parent.join("denied-control");
+                std::fs::write(&peer, b"native-replaced").unwrap();
+                std::fs::write(&replaceable, b"native-old").unwrap();
+                deny_data_writes(&replaceable);
+                let policy = native_dacl(&target);
+                assert_eq!(native_dacl(&replaceable), policy);
+                assert_eq!(
+                    OpenOptions::new()
+                        .write(true)
+                        .open(&replaceable)
+                        .unwrap_err()
+                        .raw_os_error(),
+                    Some(ERROR_ACCESS_DENIED as i32)
+                );
+                std::fs::rename(&peer, &replaceable).unwrap();
+                assert_eq!(std::fs::read(&replaceable).unwrap(), b"native-replaced");
+                Some(policy)
+            } else {
+                if change == "alias-parent" {
+                    std::fs::remove_dir(&alias).unwrap();
+                    symlink_dir(&other_parent, &alias).unwrap();
+                    assert_eq!(
+                        std::fs::canonicalize(&alias).unwrap(),
+                        std::fs::canonicalize(&other_parent).unwrap()
+                    );
+                } else {
+                    std::fs::remove_file(&alias).unwrap();
+                    symlink_file(&alternate, &alias).unwrap();
+                    assert_eq!(
+                        identity(&File::open(&alias).unwrap()).unwrap(),
+                        identity(&File::open(&alternate).unwrap()).unwrap()
+                    );
+                }
+                None
+            };
+            std::fs::write(&release, b"continue").unwrap();
+            let output = wait_for_test_child(child, "Windows publication revalidation", deadline);
+            assert_eq!(output.status.code(), Some(5), "{change}: {output:?}");
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                if change == "appeared-dacl" {
+                    b"foreign-appeared".as_slice()
+                } else if change == "identity" {
+                    b"foreign-replacement".as_slice()
+                } else {
+                    b"old".as_slice()
+                }
+            );
+            assert_eq!(std::fs::read(&alternate).unwrap(), b"foreign-alternate");
+            if change == "identity" {
+                assert_eq!(std::fs::read(&displaced).unwrap(), b"old");
+            }
+            if let Some(policy) = target_dacl {
+                assert_eq!(native_dacl(&target), policy);
+            }
+            assert!(!stage.exists(), "{change} left owned result staging");
+            assert_eq!(
+                parent.read_dir().unwrap().count(),
+                match change {
+                    "alias-parent" => 1,
+                    "alias-leaf" | "policy" => 2,
+                    _ => 3,
+                },
+                "{change} left an unexpected parent entry"
+            );
+            assert_eq!(
+                other_parent.read_dir().unwrap().count(),
+                usize::from(change == "alias-parent")
+            );
+            eprintln!("completed native publication revalidation {change}");
+        }
+    }
+}

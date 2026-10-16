@@ -58,6 +58,18 @@ jobs:
           save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: python3 -m tools.htmlcut_maintenance check
 
+      - name: Preserve failed process fixtures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: process-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/htmlcut-resource-group.*/**
+            ${{ runner.temp }}/htmlcut-exited-group.*/**
+            ${{ runner.temp }}/htmlcut-process-tree.*/**
+
       - name: Preserve bounded installation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -191,10 +203,22 @@ jobs:
           package = build(target, Path('dist'))
           subprocess.run(['cargo','run','--locked','--release','-p','htmlcut-core','--example','parser_admission','--target',target], env={**os.environ,'RUSTFLAGS':'-Cpanic=abort'}, check=True)
           accept(package, target, read('Cargo.toml')['workspace']['package']['version'])
+      - name: Preserve failed process fixtures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: process-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/htmlcut-resource-group.*/**
+            ${{ runner.temp }}/htmlcut-exited-group.*/**
+            ${{ runner.temp }}/htmlcut-process-tree.*/**
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.id }}
+          retention-days: 7
           path: dist/
           if-no-files-found: error
       - name: Preserve bounded installation evidence

@@ -298,6 +298,16 @@ fn resolve_output_links(
     }
 }
 
+fn has_directory_suffix(path: &Path) -> bool {
+    // Keep native directory spelling before component normalization can turn a
+    // missing target into a regular filename. Native separators are ASCII.
+    let spelling = path.as_os_str().as_encoded_bytes();
+    let prefix = spelling.strip_suffix(b".").unwrap_or(spelling);
+    prefix
+        .last()
+        .is_some_and(|byte| std::path::is_separator(char::from(*byte)))
+}
+
 #[cfg(test)]
 pub(crate) fn publish(bytes: &[u8], destination: Option<&Path>) -> Result<crate::Delivery, Error> {
     publish_timed(bytes, destination, None)
@@ -368,12 +378,7 @@ pub(crate) fn publish_timed(
             #[cfg(not(any(target_os = "macos", target_os = "linux")))]
             let resolved = resolve_output_links(path, &context)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-            let spelling = path.as_os_str().to_string_lossy();
-            if spelling.ends_with('/')
-                || spelling.ends_with("/.")
-                || resolved.as_os_str().to_string_lossy().ends_with('/')
-                || resolved.as_os_str().to_string_lossy().ends_with("/.")
-            {
+            if has_directory_suffix(path) || has_directory_suffix(&resolved) {
                 return Err(io_error(ErrorCode::OutputUnwritable, path, error));
             }
             if descriptor_alias(&resolved) {

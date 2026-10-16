@@ -979,4 +979,496 @@ mod tests {
         assert_eq!(std::fs::read(&stage_path).unwrap(), b"");
         assert_eq!(source.metadata().unwrap().len(), b"original".len() as u64);
     }
+
+    #[test]
+    fn access_policy_queries_include_every_access_bearing_family() {
+        // SECURITY_INFORMATION: owner1, group2, DACL4, label16,
+        // resource32, scope64, process-trust128 and access-filter256.
+        assert_eq!(INSPECT_INFO, 0x1f7);
+        let scoped = Descriptor::parse("S:(SP;;;;;S-1-17-1)").unwrap();
+        assert_eq!(
+            scoped.require_supported_access_sacl().unwrap_err().kind(),
+            io::ErrorKind::Unsupported
+        );
+    }
+
+    #[test]
+    fn native_invalid_handles_preserve_security_and_metadata_errors() {
+        use windows_sys::Win32::Foundation::{ERROR_INVALID_HANDLE, GetLastError};
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: deliberately invalid NULL handle; every output pointer is valid.
+        let code = unsafe {
+            GetSecurityInfo(
+                std::ptr::null_mut(),
+                SE_FILE_OBJECT,
+                INFO,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(code, ERROR_INVALID_HANDLE);
+        assert_eq!(
+            status(code).unwrap_err().raw_os_error(),
+            Some(ERROR_INVALID_HANDLE as i32)
+        );
+        let mut information = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+        // SAFETY: the invalid native handle must fail; storage is writable and never assumed initialized.
+        let success =
+            unsafe { GetFileInformationByHandle(std::ptr::null_mut(), information.as_mut_ptr()) };
+        let error = unsafe { GetLastError() };
+        assert_eq!(success, 0);
+        assert_eq!(error, ERROR_INVALID_HANDLE);
+        // Preserve the captured LastError across assertion machinery.
+        unsafe { windows_sys::Win32::Foundation::SetLastError(error) };
+        assert_eq!(
+            boolean(success).unwrap_err().raw_os_error(),
+            Some(ERROR_INVALID_HANDLE as i32)
+        );
+    }
+
+    #[test]
+    fn restriction_revokes_new_writer_handles_but_retains_the_original_writer() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let source = stage_options()
+            .open(directory.path().join("source"))
+            .unwrap();
+        let policy = Policy::read(&source).unwrap();
+        let path = directory.path().join("private");
+        let mut file = create_private_file(&path, &policy).unwrap();
+        // The atomic constructor initially permits writer/metadata access only.
+        drop(
+            OpenOptions::new()
+                .write(true)
+                .access_mode(FILE_WRITE_DATA)
+                .open(&path)
+                .unwrap(),
+        );
+        assert_eq!(file.metadata().unwrap().len(), 0);
+        restrict(&file).unwrap();
+        assert_eq!(
+            Descriptor::read(&file)
+                .unwrap()
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:P"
+        );
+        assert_eq!(
+            OpenOptions::new()
+                .write(true)
+                .access_mode(FILE_WRITE_DATA)
+                .open(&path)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(5)
+        );
+        file.write_all(b"retained-writer").unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 15);
+        assert_eq!(
+            std::fs::read(&path).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn failed_native_assignment_preserves_actual_policy_diagnostics() {
+        use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, GetLastError};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("policy");
+        let file = stage_options().open(&path).unwrap();
+        let initial = Descriptor::parse("D:P(A;;FA;;;OW)").unwrap();
+        // SAFETY: independent full-descriptor fixture assignment keeps the literal controls.
+        assert_ne!(
+            unsafe {
+                SetKernelObjectSecurity(
+                    file.as_raw_handle() as HANDLE,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    initial.0,
+                )
+            },
+            0
+        );
+        assert_eq!(
+            Descriptor::read(&file)
+                .unwrap()
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:P(A;;FA;;;OW)"
+        );
+        let readonly = OpenOptions::new()
+            .read(true)
+            .access_mode(READ_CONTROL)
+            .open(&path)
+            .unwrap();
+        let wanted = Descriptor::parse("D:P(D;;CC;;;WD)(A;;FA;;;OW)").unwrap();
+        // SAFETY: a live metadata-only handle must reject this DACL assignment.
+        let success = unsafe {
+            SetKernelObjectSecurity(
+                readonly.as_raw_handle() as HANDLE,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                wanted.0,
+            )
+        };
+        let code = unsafe { GetLastError() };
+        assert_eq!(success, 0);
+        assert_eq!(code, ERROR_ACCESS_DENIED);
+        let error = wanted
+            .apply(&readonly, DACL_SECURITY_INFORMATION)
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        let message = error.to_string();
+        assert!(message.contains("(os error 5)"), "{message}");
+        assert!(
+            message.contains("wanted D:P(D;;CC;;;WD)(A;;FA;;;OW)"),
+            "{message}"
+        );
+        assert!(message.contains("before D:P(A;;FA;;;OW)"), "{message}");
+    }
+
+    #[test]
+    fn native_descriptor_allocations_are_released() {
+        use windows_sys::Win32::{
+            Foundation::{ERROR_NO_MORE_ITEMS, GetLastError},
+            System::Memory::{GetProcessHeap, HeapLock, HeapUnlock, HeapWalk, PROCESS_HEAP_ENTRY},
+            System::SystemServices::PROCESS_HEAP_ENTRY_BUSY,
+        };
+        const CHILD: &str = "HTMLCUT_TEST_WINDOWS_DESCRIPTOR_HEAP";
+        fn busy_allocation(address: usize) -> Result<bool, u32> {
+            // SAFETY: GetProcessHeap returns the calling process's managed heap.
+            let heap = unsafe { GetProcessHeap() };
+            if heap.is_null() || unsafe { HeapLock(heap) } == 0 {
+                return Err(unsafe { GetLastError() });
+            }
+            // No allocation, formatting, assertion or early return while locked.
+            let mut entry: PROCESS_HEAP_ENTRY = unsafe { std::mem::zeroed() };
+            let mut found = false;
+            let error = loop {
+                if unsafe { HeapWalk(heap, &mut entry) } == 0 {
+                    break unsafe { GetLastError() };
+                }
+                if u32::from(entry.wFlags) & PROCESS_HEAP_ENTRY_BUSY != 0
+                    && entry.lpData as usize == address
+                {
+                    found = true;
+                    break 0;
+                }
+            };
+            // SAFETY: this thread acquired the same live process heap above.
+            // A failed unlock cannot safely proceed to allocating diagnostics.
+            if unsafe { HeapUnlock(heap) } == 0 {
+                std::process::abort();
+            }
+            if found {
+                Ok(true)
+            } else if error == ERROR_NO_MORE_ITEMS {
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        }
+        if std::env::var_os(CHILD).is_some() {
+            for _ in 0..16 {
+                let descriptor = Descriptor::parse("D:P(A;;FA;;;OW)").unwrap();
+                let address = descriptor.0 as usize;
+                assert!(
+                    busy_allocation(address).unwrap(),
+                    "live descriptor not observable in the native heap"
+                );
+                std::mem::forget(descriptor);
+                let retained = busy_allocation(address).unwrap();
+                // SAFETY: this control still owns the live intentionally retained allocation.
+                let failed = unsafe { LocalFree(address as *mut std::ffi::c_void) };
+                assert!(failed.is_null());
+                assert!(retained, "retained-allocation positive control failed");
+            }
+            for _ in 0..16 {
+                let descriptor = Descriptor::parse("D:P(A;;FA;;;OW)").unwrap();
+                let address = descriptor.0 as usize;
+                assert!(busy_allocation(address).unwrap());
+                drop(descriptor);
+                // Only compare this saved numeric address with enumerated BUSY entries;
+                // never submit a freed pointer as a native handle or read its memory.
+                let retained = busy_allocation(address).unwrap();
+                assert!(
+                    !retained,
+                    "native descriptor allocation remained busy after Drop"
+                );
+            }
+            return;
+        }
+        struct HeapProbeChild(Option<std::process::Child>);
+        impl Drop for HeapProbeChild {
+            fn drop(&mut self) {
+                let Some(mut child) = self.0.take() else {
+                    return;
+                };
+                let kill_error = child.kill().err();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                let mut wait_error = None;
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => return,
+                        Err(error) => wait_error = Some(error),
+                        Ok(None) => {}
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        eprintln!(
+                            "Native heap child {} cleanup unconfirmed: kill {kill_error:?}, wait {wait_error:?}",
+                            child.id()
+                        );
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+        }
+        let test = format!(
+            "{}::native_descriptor_allocations_are_released",
+            module_path!().split_once("::").unwrap().1
+        );
+        let mut child = HeapProbeChild(Some(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", &test, "--nocapture"])
+                .env(CHILD, "1")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap(),
+        ));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            match child.0.as_mut().unwrap().try_wait() {
+                Ok(Some(_)) => break,
+                Err(error) => panic!("native heap child wait failed: {error}"),
+                Ok(None) => {}
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "native heap child exceeded two seconds"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let output = child.0.take().unwrap().wait_with_output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("1 passed; 0 failed; 0 ignored;")
+        );
+    }
+
+    #[test]
+    fn preparation_sets_native_assignable_distinct_owner_and_group_before_bytes() {
+        use std::os::windows::io::{FromRawHandle, OwnedHandle};
+        use windows_sys::Win32::{
+            Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError},
+            System::{
+                SystemServices::{SE_GROUP_ENABLED, SE_GROUP_OWNER},
+                Threading::{GetCurrentProcess, OpenProcessToken},
+            },
+        };
+        let mut handle = std::ptr::null_mut();
+        // SAFETY: current process and valid token output local.
+        assert_ne!(
+            unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut handle) },
+            0
+        );
+        // SAFETY: the successful native open returned exactly this owned token handle.
+        let _token = unsafe { OwnedHandle::from_raw_handle(handle) };
+        fn token_information(handle: HANDLE, class: TOKEN_INFORMATION_CLASS) -> (Vec<u64>, usize) {
+            let mut needed = 0;
+            // SAFETY: documented size query with no writable output buffer.
+            let success =
+                unsafe { GetTokenInformation(handle, class, std::ptr::null_mut(), 0, &mut needed) };
+            let code = unsafe { GetLastError() };
+            assert_eq!(success, 0);
+            assert_eq!(code, ERROR_INSUFFICIENT_BUFFER);
+            let mut storage = vec![0u64; (needed as usize).div_ceil(8)];
+            // SAFETY: u64 storage provides native pointer alignment and at least needed bytes.
+            assert_ne!(
+                unsafe {
+                    GetTokenInformation(
+                        handle,
+                        class,
+                        storage.as_mut_ptr().cast(),
+                        needed,
+                        &mut needed,
+                    )
+                },
+                0
+            );
+            assert!(needed > 0 && needed as usize <= storage.len() * 8);
+            (storage, needed as usize)
+        }
+        fn validate_sid(storage: &[u64], returned: usize, sid: PSID) {
+            let start = storage.as_ptr() as usize;
+            let offset = (sid as usize)
+                .checked_sub(start)
+                .expect("SID pointer precedes token buffer");
+            assert!(offset.checked_add(8).is_some_and(|end| end <= returned));
+            // SAFETY: returned bytes lie inside the initialized aligned token buffer.
+            let bytes =
+                unsafe { std::slice::from_raw_parts(storage.as_ptr().cast::<u8>(), returned) };
+            let sid_length = 8 + usize::from(bytes[offset + 1]) * 4;
+            assert!(
+                offset
+                    .checked_add(sid_length)
+                    .is_some_and(|end| end <= returned)
+            );
+        }
+        let (user, user_returned) = token_information(handle, TokenUser);
+        let (groups, groups_returned) = token_information(handle, TokenGroups);
+        assert!(user_returned >= std::mem::size_of::<TOKEN_USER>());
+        assert!(groups_returned >= std::mem::offset_of!(TOKEN_GROUPS, Groups));
+        // SAFETY: successful native queries initialized these aligned structures and their SID pointers.
+        let user_sid = unsafe { (*(user.as_ptr().cast::<TOKEN_USER>())).User.Sid };
+        validate_sid(&user, user_returned, user_sid);
+        let groups_header = groups.as_ptr().cast::<TOKEN_GROUPS>();
+        let count = unsafe { (*groups_header).GroupCount } as usize;
+        assert!(
+            std::mem::offset_of!(TOKEN_GROUPS, Groups)
+                + count * std::mem::size_of::<SID_AND_ATTRIBUTES>()
+                <= groups_returned
+        );
+        let entries =
+            unsafe { std::slice::from_raw_parts((*groups_header).Groups.as_ptr(), count) };
+        for entry in entries {
+            validate_sid(&groups, groups_returned, entry.Sid);
+        }
+        let owners = entries
+            .iter()
+            .filter(|entry| {
+                entry.Attributes & (SE_GROUP_ENABLED | SE_GROUP_OWNER) as u32
+                    == (SE_GROUP_ENABLED | SE_GROUP_OWNER) as u32
+            })
+            .map(|entry| entry.Sid)
+            .collect::<Vec<_>>();
+        let directory = tempfile::tempdir().unwrap();
+        let source = stage_options()
+            .open(directory.path().join("source"))
+            .unwrap();
+        let original = Descriptor::read(&source).unwrap();
+        let mut original_owner = std::ptr::null_mut();
+        let mut original_group = std::ptr::null_mut();
+        let mut defaulted = 0;
+        // SAFETY: native descriptor owns both returned SID pointers.
+        assert_ne!(
+            unsafe { GetSecurityDescriptorOwner(original.0, &mut original_owner, &mut defaulted) },
+            0
+        );
+        assert_ne!(
+            unsafe { GetSecurityDescriptorGroup(original.0, &mut original_group, &mut defaulted) },
+            0
+        );
+        let owner = std::iter::once(user_sid)
+            .chain(owners.iter().copied())
+            .find(|candidate| unsafe { EqualSid(*candidate, original_owner) } == 0)
+            .expect("native ownership control needs a distinct currently assignable owner SID");
+        let group = owners
+            .iter()
+            .copied()
+            .find(|candidate| unsafe { EqualSid(*candidate, original_group) } == 0)
+            .expect("native group control needs a distinct enabled owner-capable group SID");
+        // No privilege assignment/activation: both selected SIDs come from this caller's token.
+        let assigned = unsafe {
+            SetSecurityInfo(
+                source.as_raw_handle() as HANDLE,
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
+                owner,
+                group,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(
+            assigned, 0,
+            "native assigned-token ownership fixture was refused: {assigned}"
+        );
+        let selected_group_flags = entries
+            .iter()
+            .find(|entry| entry.Sid == group)
+            .unwrap()
+            .Attributes;
+        eprintln!(
+            "native ownership fixture: distinct_owner=true distinct_group=true group_flags={selected_group_flags:#x} owner_is_token_user={} native_assignment={assigned}",
+            unsafe { EqualSid(owner, user_sid) } != 0
+        );
+        let policy = Policy::read(&source).unwrap();
+        let path = directory.path().join("stage");
+        let stage = create_private_file(&path, &policy).unwrap();
+        restrict(&stage).unwrap();
+        let before = Descriptor::read(&stage).unwrap();
+        assert_ne!(
+            before
+                .text_with(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION)
+                .unwrap(),
+            Descriptor::read(&source)
+                .unwrap()
+                .text_with(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION)
+                .unwrap()
+        );
+        policy.prepare(&stage).unwrap();
+        let prepared = Descriptor::read(&stage).unwrap();
+        let mut observed_owner = std::ptr::null_mut();
+        let mut observed_group = std::ptr::null_mut();
+        assert_ne!(
+            unsafe { GetSecurityDescriptorOwner(prepared.0, &mut observed_owner, &mut defaulted) },
+            0
+        );
+        assert_ne!(
+            unsafe { GetSecurityDescriptorGroup(prepared.0, &mut observed_group, &mut defaulted) },
+            0
+        );
+        assert_ne!(unsafe { EqualSid(owner, observed_owner) }, 0);
+        assert_ne!(unsafe { EqualSid(group, observed_group) }, 0);
+        assert_eq!(stage.metadata().unwrap().len(), 0);
+        assert_eq!(
+            Descriptor::read(&stage)
+                .unwrap()
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:P"
+        );
+        assert_eq!(
+            std::fs::read(path).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn preparation_changes_a_distinct_label_without_reassigning_matching_protection() {
+        let directory = tempfile::tempdir().unwrap();
+        let initial = Policy("D:P(A;;FA;;;OW)S:PAI(ML;;NW;;;LW)".into());
+        let path = directory.path().join("stage");
+        let stage = create_private_file(&path, &initial).unwrap();
+        restrict(&stage).unwrap();
+        let before = Descriptor::read(&stage).unwrap();
+        assert_eq!(
+            before.text_with(LABEL_SECURITY_INFORMATION).unwrap(),
+            "S:PAI(ML;;NW;;;LW)"
+        );
+        let ownership = before
+            .text_with(
+                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            )
+            .unwrap();
+        let wanted = Policy(format!("{ownership}S:PAI(ML;;NR;;;ME)"));
+        wanted.prepare(&stage).unwrap();
+        assert_eq!(
+            Descriptor::read(&stage)
+                .unwrap()
+                .text_with(LABEL_SECURITY_INFORMATION)
+                .unwrap(),
+            "S:PAI(ML;;NR;;;ME)"
+        );
+        assert_eq!(stage.metadata().unwrap().len(), 0);
+        assert_eq!(
+            std::fs::read(path).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+    }
 }

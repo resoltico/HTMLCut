@@ -971,8 +971,10 @@ mod tests {
                 .process_group(0)
                 .spawn()
                 .expect("macOS authorization tests require /usr/bin/leaks");
-            // Reserve two seconds of the ten-second bound for failed-run cleanup.
-            let deadline = Instant::now() + Duration::from_secs(8);
+            // Native Intel symbolication can outlast the allocation child.
+            // Detector admission and failed-run cleanup have separate budgets.
+            let detector_seconds = 20;
+            let deadline = Instant::now() + Duration::from_secs(detector_seconds);
             let result = (|| -> io::Result<std::process::ExitStatus> {
                 loop {
                     if output.as_file().metadata()?.len() > 1024 * 1024 {
@@ -984,9 +986,9 @@ mod tests {
                         return Ok(status);
                     }
                     if Instant::now() >= deadline {
-                        return Err(io::Error::other(
-                            "native leak detector exceeded eight seconds",
-                        ));
+                        return Err(io::Error::other(format!(
+                            "native leak detector exceeded {detector_seconds} seconds"
+                        )));
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }

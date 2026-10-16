@@ -1,6 +1,18 @@
 # Foundations acceptance and implementation QA
 
-This records responsibility migration from baseline `bc3e6f2319f3705e810b821ed7e22784e4942f21` (22.0.0) to the breaking foundations change. The checkout matched that baseline and had no unrelated changes; no reset or source-snapshot overlay was used. Release tags/history and original legal material remain unchanged. This record is not a claim that external CI, publication or human full-mutation review has occurred.
+This records responsibility migration from baseline `bc3e6f2319f3705e810b821ed7e22784e4942f21` (22.0.0) to the breaking foundations change. The initial working checkout matched that baseline and had no unrelated local changes; no reset or source-snapshot overlay was used. Published main changes through `de670094` were subsequently reconciled by protected behavior as recorded below, including the published 22.0.0 release notes. Release tags and original legal material remain unchanged. This record is not a claim that external CI, publication or human full-mutation review has occurred.
+
+## Published post-baseline reconciliation
+
+| Published change | Current responsibility and control |
+|---|---|
+| `2af0549` native directory spelling and Windows publication | Runtime checks native suffixes on original/resolved paths; Unix backslash filename positives and Windows direct/link suffix refusals remain. Runtime native Windows tests cover distinct owner/group and label preparation, restricted fresh writers, native allocation release/error facts, access-bearing policy families, removed-privilege ordinary creation, writable file symlinks and five-way namespace/authorization revalidation. |
+| `507d506` measured Intel leak inspection | Runtime allocation inspection admits 20 seconds for native symbolication, with the separate two-second cleanup and intentional-leak detection control retained. |
+| `48cc9bc`, `d60f449` Windows fuzz cancellation | Fuzz calls the shared process owner directly; its live-tree `taskkill` precedes leader fallback. Native birth-pinned handles and a gated writer distinguish tree cleanup from deliberately defective leader-only termination. Already-exited-parent orphan limitations remain explicit. The native CI lane discovers the shared-owner tests. |
+| `2eab007`, `a1f27eb` POSIX readiness and cleanup | Forced-stop handler readiness, separately grouped writer ownership and post-cleanup release are retained. Exited-group controls use native readiness, gated release, nonreaping identity reservation and finite teardown instead of delayed absence. |
+| `e71c57d` cleanup output and retained evidence | Raw writes and successful-handler assertions remain. Failed observations retain bounded status/log/handler receipts even after successful teardown. Named CI roots are uploaded for three days; native CI packages retain seven days. |
+
+The original `a01a941` mutation campaign remains incomplete at 1,276/1,461 with a permission-accounting refusal. Focused follow-up and Rosetta execution have their own source/scope and do not complete that plan or establish native Intel CI.
 
 ## Product acceptance
 
