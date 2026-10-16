@@ -143,6 +143,8 @@ jobs:
           tool: cargo-about
       - name: Build and accept exact native package before provenance/publication
         id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           python - <<'PY'

@@ -589,6 +589,8 @@ pub(crate) struct StageOwnership {
     path: std::path::PathBuf,
     created_identity: std::sync::OnceLock<crate::authorization::Identity>,
     creation_finished: std::sync::atomic::AtomicBool,
+    #[cfg(any(test, feature = "instrumented-tests"))]
+    result_stage: bool,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     directory: bool,
     #[cfg(windows)]
@@ -600,7 +602,9 @@ impl StageOwnership {
     }
     fn cleanup(&self) {
         #[cfg(any(test, feature = "instrumented-tests"))]
-        checkpoint("cleanup", &self.path);
+        if self.result_stage {
+            checkpoint("cleanup", &self.path);
+        }
         let owned = self
             .created_identity
             .get()
@@ -682,6 +686,8 @@ fn create_stage(
             path: candidate.to_path_buf(),
             created_identity: std::sync::OnceLock::new(),
             creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(any(test, feature = "instrumented-tests"))]
+            result_stage: matches!(kind, StageKind::Result(_)),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             directory: false,
             #[cfg(windows)]
@@ -783,6 +789,8 @@ fn create_private_directory(
             path: candidate.to_path_buf(),
             created_identity: std::sync::OnceLock::new(),
             creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(any(test, feature = "instrumented-tests"))]
+            result_stage: false,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             directory: true,
             #[cfg(windows)]

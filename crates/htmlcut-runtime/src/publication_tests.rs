@@ -215,6 +215,7 @@ fn cleanup_returns_after_its_budget_when_creation_remains_unconfirmed() {
             path: Path::new(&root).join("foreign"),
             created_identity: std::sync::OnceLock::new(),
             creation_finished: std::sync::atomic::AtomicBool::new(false),
+            result_stage: true,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             directory: false,
             #[cfg(windows)]
@@ -261,6 +262,7 @@ fn cleanup_retries_when_reserved_creation_finishes_during_grace() {
             path: Path::new(&root).join("pending-stage"),
             created_identity: std::sync::OnceLock::new(),
             creation_finished: std::sync::atomic::AtomicBool::new(false),
+            result_stage: true,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             directory: false,
             #[cfg(windows)]
@@ -642,6 +644,47 @@ fn reader_retained_from_actual_policy_probe_never_observes_result_bytes() {
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 3);
 }
 #[test]
+fn policy_probe_cleanup_does_not_claim_a_result_checkpoint() {
+    const CHILD: &str = "HTMLCUT_POLICY_PROBE_CLEANUP_CHILD";
+    if let Some(root) = std::env::var_os(CHILD) {
+        let probe = create_stage(Path::new(&root), None, StageKind::InheritedPolicyProbe).unwrap();
+        drop(probe);
+        return;
+    }
+    let mut root = tempfile::tempdir().unwrap();
+    let ready = root.path().join("ready");
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "local_io::tests::policy_probe_cleanup_does_not_claim_a_result_checkpoint",
+            "--nocapture",
+        ])
+        .env(CHILD, root.path())
+        .env("HTMLCUT_PUBLICATION_PHASE", "cleanup")
+        .env("HTMLCUT_PUBLICATION_READY", &ready)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let child = TestChild {
+        child: Some(child),
+        fixture: Some(&mut root),
+    };
+    let output = wait_for_test_child(
+        child,
+        "empty policy-probe cleanup",
+        Instant::now() + Duration::from_secs(2),
+    );
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty());
+    assert!(
+        !ready.exists(),
+        "a policy probe claimed the result cleanup checkpoint"
+    );
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn cleanup_never_unlinks_unconfirmed_or_replaced_objects() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("collision");
@@ -650,6 +693,7 @@ fn cleanup_never_unlinks_unconfirmed_or_replaced_objects() {
         path: path.clone(),
         created_identity: std::sync::OnceLock::new(),
         creation_finished: std::sync::atomic::AtomicBool::new(false),
+        result_stage: true,
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         directory: false,
         #[cfg(windows)]
