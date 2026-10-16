@@ -2,6 +2,7 @@
 """Real child writers prove QA resource refusals and retained evidence."""
 
 import json
+import errno
 import io
 import shutil
 import signal
@@ -457,19 +458,28 @@ namespace['main'].__globals__['os'].scandir = inaccessible
                 os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)
             return child
 
-        with (
-            tempfile.TemporaryDirectory() as directory,
-            mock.patch.object(subprocess, "Popen", side_effect=exited),
-            mock.patch.object(
-                process, "disk_bytes", wraps=process.disk_bytes
-            ) as sampled,
-        ):
-            result = process.run(
-                command, Path(directory), disk_limit_mib=1, timeout=5, label="exited"
-            )
-            self.assertEqual(process.status(result), 0)
-            self.assertEqual(sampled.call_count, 2)
-            self.assertEqual(result["disk_samples"], 2)
+        for denied in (False, True):
+            event = threading.Event()
+            with (
+                self.subTest(denied=denied),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(subprocess, "Popen", side_effect=exited),
+                mock.patch.object(
+                    process, "disk_bytes", wraps=process.disk_bytes,
+                    side_effect=PermissionError(errno.EACCES, "exited denial") if denied else None,
+                ) as sampled,
+                mock.patch.object(event, "wait", wraps=event.wait) as waited,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = process.run(
+                    command, Path(directory), disk_limit_mib=1, timeout=5,
+                    label="exited", cancelled=event,
+                )
+                self.assertEqual(process.status(result), 125 if denied else 0)
+                self.assertEqual(sampled.call_count, 4 if denied else 2)
+                self.assertEqual(result["disk_samples"], sampled.call_count)
+                self.assertEqual(result["disk_scan_retries"], 2 if denied else 0)
+                waited.assert_not_called()
 
     def test_poll_interval_respects_remaining_deadline(self):
         result, report, _ = self.run_child(
@@ -541,6 +551,151 @@ namespace['main'].__globals__['os'].scandir = inaccessible
         os.name == "nt" or getattr(os, "geteuid", lambda: 1)() == 0,
         "requires ordinary POSIX directory access permissions",
     )
+    def test_actual_permission_recovery_requires_a_complete_fresh_count(self):
+        fault = """
+functions = namespace['main'].__globals__
+original = functions['disk_bytes']
+def observe_denial(root):
+    try:
+        return original(root)
+    except PermissionError:
+        (root / 'denial-observed').write_bytes(b'actual native denial')
+        raise
+functions['disk_bytes'] = observe_denial
+"""
+        for size, over_budget in [(256 * 1024, False), (2 * 1024 * 1024, True)]:
+            code = (
+                "import pathlib,sys,time\nroot=pathlib.Path(sys.argv[1])\n"
+                "denied=root/'denied'; denied.mkdir()\n"
+                "(denied/'hidden').write_bytes(b'x'*(128*1024)); denied.chmod(0)\n"
+                "try:\n"
+                " deadline=time.monotonic()+2\n"
+                " while not (root/'denial-observed').exists():\n"
+                "  if time.monotonic()>=deadline: raise RuntimeError('no real denial observed')\n"
+                "  time.sleep(.005)\n"
+                " time.sleep(.12)\n"
+                f" (root/'other-large').write_bytes(b'x'*{size})\n"
+                " denied.chmod(0o700)\n"
+                f" time.sleep({5 if over_budget else .15})\n"
+                "finally:\n denied.chmod(0o700)\n"
+            )
+            with self.subTest(over_budget=over_budget):
+                result, report, _ = self.run_child(code, poll="1", fault=fault)
+                self.assertEqual(result.returncode, 125 if over_budget else 0, result.stderr)
+                self.assertEqual(report["refusal"], "disk-budget-exceeded" if over_budget else None)
+                self.assertEqual(report["disk_accounting_errors"], [])
+                self.assertGreaterEqual(report["disk_scan_access_errors"], 1)
+                self.assertGreaterEqual(report["disk_scan_retries"], 1)
+                self.assertGreaterEqual(report["disk_completed_samples"], 2)
+                self.assertGreaterEqual(report["peak_sampled_disk_bytes"], size + 128 * 1024)
+                self.assertIn("denied", report["disk_scan_access_error_witnesses"][0]["error"])
+                self.assertEqual(report["disk_samples"], report["disk_completed_samples"] + report["disk_scan_access_errors"])
+
+    def test_access_recovery_has_bounded_attempts_and_witnesses(self):
+        from tools.htmlcut_maintenance import process
+
+        class ImmediateEvent(threading.Event):
+            def wait(self, timeout=None):
+                self.waits.append(timeout)
+                return self.is_set()
+
+        owner = ImmediateEvent()
+        owner.waits = []
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(process, "disk_bytes", side_effect=PermissionError(errno.EACCES, "x" * 900)),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            result = process.run([sys.executable, "-c", "import time;time.sleep(5)"],
+                                 Path(directory), disk_limit_mib=1, timeout=5,
+                                 label="denied", cancelled=owner)
+        self.assertEqual(process.status(result), 125)
+        self.assertEqual(result["disk_samples"], 23)  # 21 live attempts + two final confirmations.
+        self.assertEqual(result["disk_completed_samples"], 0)
+        self.assertEqual(result["disk_scan_retries"], 21)
+        self.assertEqual(result["disk_scan_access_errors"], 23)
+        self.assertEqual(len(result["disk_scan_access_error_witnesses"]), 16)
+        self.assertEqual(result["disk_scan_access_error_witnesses_omitted"], 7)
+        self.assertTrue(all(item["error_truncated"] and len(item["error"]) == 512
+                            for item in result["disk_scan_access_error_witnesses"]))
+        self.assertTrue(owner.waits)
+        self.assertTrue(all(0 <= wait <= .05 for wait in owner.waits))
+
+    def test_cancellation_during_access_recovery_keeps_its_stop_reason(self):
+        from tools.htmlcut_maintenance import process
+
+        class CancellingEvent(threading.Event):
+            def wait(self, timeout=None):
+                self.set()
+                return True
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(process, "disk_bytes", side_effect=PermissionError(errno.EACCES, "cancel denial")),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            result = process.run([sys.executable, "-c", "import time;time.sleep(5)"],
+                                 Path(directory), disk_limit_mib=1, timeout=5,
+                                 label="cancel", cancelled=CancellingEvent())
+        self.assertEqual(result["refusal"], "interrupted")
+        self.assertEqual(result["disk_scan_retries"], 1)
+        self.assertEqual(result["disk_samples"], 3)
+        self.assertLess(result["elapsed_seconds"], 2)
+        self.assertEqual(result["cleanup_errors"], [])
+
+    def test_other_accounting_errors_do_not_retry(self):
+        result, report, _ = self.run_child("import time;time.sleep(5)", fault="""
+def failed(root):
+    raise OSError(5, 'non-permission accounting failure')
+namespace['main'].__globals__['disk_bytes'] = failed
+""")
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertEqual(report["disk_samples"], 2)
+        self.assertEqual(report["disk_scan_retries"], 0)
+        self.assertEqual(report["disk_scan_access_errors"], 0)
+
+    def test_access_recovery_preserves_deadline_and_log_refusals(self):
+        fault = """
+def denied(root):
+    raise PermissionError(13, 'recovery stop probe')
+namespace['main'].__globals__['disk_bytes'] = denied
+"""
+        for code, timeout, refusal in [
+            ("import time;time.sleep(5)", .1, "wall-time-exceeded"),
+            ("import sys,time;sys.stdout.buffer.write(b'x'*(2*1024*1024));sys.stdout.flush();time.sleep(5)",
+             2, "log-budget-exceeded"),
+        ]:
+            with self.subTest(refusal=refusal):
+                result, report, _ = self.run_child(code, timeout=timeout, poll="1", fault=fault)
+                self.assertEqual(result.returncode, 125, result.stderr)
+                self.assertEqual(report["refusal"], refusal)
+                self.assertGreater(report["disk_scan_access_errors"], 0)
+                self.assertLess(report["disk_scan_retries"], 20)
+
+    def test_fast_sampling_does_not_allow_a_longer_access_recovery_window(self):
+        fault = """
+functions = namespace['main'].__globals__
+original = functions['disk_bytes']
+until = None
+def denied_briefly(root):
+    global until
+    if until is None:
+        until = functions['time'].monotonic()+.12
+    if functions['time'].monotonic()<until:
+        raise PermissionError(13, 'longer than the configured sample interval')
+    return original(root)
+functions['disk_bytes'] = denied_briefly
+"""
+        result, report, _ = self.run_child("import time;time.sleep(.3)", poll=".02", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertTrue(report["refusal"].startswith("disk-accounting-failed:"), report)
+        self.assertEqual(report["disk_accounting_errors"][0]["phase"], "monitor")
+        self.assertGreaterEqual(report["disk_scan_access_errors"], 1)
+
+    @unittest.skipIf(
+        os.name == "nt" or getattr(os, "geteuid", lambda: 1)() == 0,
+        "requires ordinary POSIX directory access permissions",
+    )
     def test_actual_inaccessible_directory_causes_disk_refusal(self):
         result, report, _ = self.run_child(
             "import pathlib,sys,time; denied=pathlib.Path(sys.argv[1])/'denied'; "
@@ -556,24 +711,97 @@ namespace['main'].__globals__['os'].scandir = inaccessible
             report["returncode"], 0, "sleeping child was not terminated"
         )
 
-    def final_sample_failure(self, code, timeout=2):
+    def final_sample_failure(self, code, timeout=2, *, recover_access=False):
         fault = """
 functions = namespace['main'].__globals__
 original_stop = functions['stop_process_tree']
 original_sample = functions['disk_bytes']
 cleaned = False
+access_failed = False
 def stop_child(process):
     global cleaned
     original_stop(process)
     cleaned = True
 def sample(root):
+    global access_failed
     if cleaned:
-        raise PermissionError('final sample probe')
+        if RECOVER_ACCESS:
+            if not access_failed:
+                access_failed = True
+                raise PermissionError(13, 'final access window')
+        else:
+            raise PermissionError('final sample probe')
     return original_sample(root)
 functions['stop_process_tree'] = stop_child
 functions['disk_bytes'] = sample
 """
-        return self.run_child(code, timeout=timeout, fault=fault)
+        return self.run_child(code, timeout=timeout, poll="1", fault=fault.replace("RECOVER_ACCESS", repr(recover_access)))
+
+    def test_final_access_window_requires_a_fresh_complete_confirmation(self):
+        result, report, log = self.final_sample_failure(
+            "print('completed child')", recover_access=True
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["returncode"], 0)
+        self.assertIsNone(report["refusal"])
+        self.assertEqual(report["disk_accounting_errors"], [])
+        self.assertEqual(report["disk_scan_retries"], 1)
+        self.assertEqual(report["disk_scan_access_errors"], 1)
+        self.assertEqual(report["disk_scan_access_error_witnesses"][0]["phase"], "final")
+        self.assertEqual(report["disk_samples"], report["disk_completed_samples"] + 1)
+        self.assertEqual(log, b"completed child\n")
+
+    def test_final_access_recovery_does_not_query_an_unconfirmed_child(self):
+        fault = """
+functions = namespace['main'].__globals__
+original_start = functions['subprocess'].Popen
+original_stop = functions['stop_process_tree']
+original_exited = functions['child_exited']
+original_sample = functions['disk_bytes']
+cleaned = False
+failed = False
+retained_wait = None
+def start(*args, **kwargs):
+    global retained_wait
+    child = original_start(*args, **kwargs)
+    if args[0][:1] != [sys.executable]:
+        return child
+    retained_wait = child.wait
+    def unconfirmed(*args, **kwargs):
+        raise functions['subprocess'].TimeoutExpired('synthetic unconfirmed cleanup', 2)
+    child.wait = unconfirmed
+    return child
+def stop(child):
+    global cleaned
+    original_stop(child)
+    cleaned = True
+def exited(child):
+    if cleaned:
+        raise AssertionError('final accounting queried an unconfirmed child identity')
+    return original_exited(child)
+def sample(root):
+    global failed
+    if cleaned:
+        if not failed:
+            failed = True
+            raise PermissionError(13, 'final access window')
+        # Fixture teardown confirms the stopped, still-owned child after the
+        # owner has already retained its deliberately unconfirmed wait result.
+        retained_wait(timeout=2)
+    return original_sample(root)
+functions['subprocess'].Popen = start
+functions['stop_process_tree'] = stop
+functions['child_exited'] = exited
+functions['disk_bytes'] = sample
+"""
+        result, report, log = self.run_child("print('completed')", poll="1", fault=fault)
+        self.assertEqual(result.returncode, 125, result.stderr)
+        self.assertIsNone(report["returncode"])
+        self.assertEqual(report["refusal"], "process-cleanup-failed")
+        self.assertEqual(report["cleanup_errors"], ["leader did not exit within cleanup grace"])
+        self.assertEqual(report["disk_accounting_errors"], [])
+        self.assertEqual(report["disk_scan_retries"], 1)
+        self.assertEqual(log, b"completed\n")
 
     def test_final_sample_failure_retains_successful_child_log_and_report(self):
         result, report, log = self.final_sample_failure(
@@ -1446,30 +1674,67 @@ functions['os'].killpg = group
 functions = namespace['main'].__globals__
 original_exited = functions['child_exited']
 original_start = functions['subprocess'].Popen
+original_stop = functions['stop_process_tree']
+original_sample = functions['disk_bytes']
+children = []
+lost = False
+sampled = False
 def forbidden(*args, **kwargs):
-    raise AssertionError('identity lost: numeric PID/group must not be touched')
+    functions['os'].write(2, b'identity-reuse-violation\\n')
+    raise ChildProcessError('identity lost: numeric PID/group must not be touched')
 def start(*args, **kwargs):
     child = original_start(*args, **kwargs)
     child.kill = forbidden
     child.wait = forbidden
     child.poll = forbidden
+    children.append(child)
     return child
 def lose_identity(process):
+    global lost
+    if lost:
+        forbidden()
     if not original_exited(process):
         return False
     functions['os'].waitpid(process.pid, 0)
+    lost = True
     raise ChildProcessError('externally reaped ownership probe')
+def stop(process):
+    if lost:
+        forbidden()
+    original_stop(process)
+def denied_after_exit(root):
+    global sampled
+    if not sampled:
+        sampled = True
+        deadline = functions['time'].monotonic()+2
+        while not original_exited(children[0]):
+            if functions['time'].monotonic()>=deadline:
+                raise RuntimeError('child did not exit for ownership control')
+            functions['time'].sleep(.005)
+        raise PermissionError(13, 'first sampling denial')
+    return original_sample(root)
 functions['subprocess'].Popen = start
 functions['child_exited'] = lose_identity
+functions['stop_process_tree'] = stop
 functions['os'].killpg = forbidden
 functions['os'].kill = forbidden
+if FORCE_ACCESS:
+    functions['disk_bytes'] = denied_after_exit
 """
-        result, report, log = self.run_child("print('completed')", fault=fault)
-        self.assertEqual(result.returncode, 125, result.stderr)
-        self.assertIsNone(report["returncode"], report)
-        self.assertIn("externally reaped ownership probe", report["refusal"])
-        self.assertTrue(report["cleanup_errors"])
-        self.assertEqual(log, b"completed\n")
+        for access_denied in (False, True):
+            with self.subTest(access_denied=access_denied):
+                result, report, log = self.run_child(
+                    "print('completed')", fault=fault.replace("FORCE_ACCESS", repr(access_denied))
+                )
+                self.assertEqual(result.returncode, 125, result.stderr)
+                self.assertIsNone(report["returncode"], report)
+                self.assertTrue(report["refusal"].startswith("monitor-failed: ChildProcessError:"), report)
+                self.assertIn("externally reaped ownership probe", report["refusal"])
+                self.assertEqual(report["cleanup_errors"], [
+                    "child identity lost; no further PID/group signals or waits attempted"
+                ])
+                self.assertEqual(log, b"completed\n")
+                self.assertEqual(report["disk_scan_access_errors"], int(access_denied))
 
     @unittest.skipIf(os.name == "nt", "POSIX ownership prerequisites")
     def test_unavailable_waitid_and_nondefault_sigchld_refuse_before_launch(self):

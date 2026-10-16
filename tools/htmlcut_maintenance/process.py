@@ -7,6 +7,7 @@ between samples. It never deletes files; callers own their temporary directories
 """
 
 import argparse
+import errno
 import json
 import math
 import os
@@ -330,16 +331,62 @@ def _run(
         cleanup_errors = []
         child_identity_lost = False
         sample_count = 0
+        completed_samples = 0
         sample_seconds = 0.0
+        scan_retries = 0
+        access_errors = 0
+        access_error_witnesses = []
 
-        def sample():
-            nonlocal sample_count, sample_seconds
-            sampled = time.monotonic()
-            sample_count += 1
-            try:
-                return disk_bytes(root)
-            finally:
-                sample_seconds += time.monotonic() - sampled
+        def sample(phase):
+            nonlocal sample_count, completed_samples, sample_seconds
+            nonlocal scan_retries, access_errors
+            retry_deadline = None
+            exit_confirmation = False
+            last_denial = None
+            for attempt in range(21):
+                if attempt:
+                    if stop_reason() or time.monotonic() >= retry_deadline:
+                        raise last_denial
+                    scan_retries += 1
+                sample_count += 1
+                sampled = time.monotonic()
+                try:
+                    try:
+                        usage = disk_bytes(root)
+                    finally:
+                        elapsed = time.monotonic() - sampled
+                        sample_seconds += elapsed
+                except OSError as error:
+                    if error.errno != errno.EACCES:
+                        raise
+                    last_denial = error
+                    access_errors += 1
+                    if len(access_error_witnesses) < 16:
+                        text = str(error)
+                        access_error_witnesses.append({
+                            "phase": phase,
+                            "attempt": attempt + 1,
+                            "error": text[:512],
+                            "error_truncated": len(text) > 512,
+                            "scan_seconds": round(elapsed, 6),
+                        })
+                    # A fresh complete walk may recover a changing namespace or
+                    # test-owned permission window. Never accept a partial sum.
+                    if attempt == 20 or stop_reason():
+                        raise
+                    if retry_deadline is None:
+                        retry_deadline = time.monotonic() + min(args.poll_seconds, 1.0)
+                    if phase == "final" or process.returncode is not None or child_exited(process):
+                        # Final accounting never queries child identity again.
+                        # Allow only one immediate confirmation after cleanup/exit.
+                        if exit_confirmation:
+                            raise
+                        exit_confirmation = True
+                    elif attempt:
+                        cancelled.wait(max(0, min(0.05, retry_deadline - time.monotonic())))
+                else:
+                    completed_samples += 1
+                    return usage
 
         def stop_reason():
             if cancelled.is_set():
@@ -363,12 +410,14 @@ def _run(
                         break
                 if time.monotonic() >= next_sample:
                     try:
-                        usage = sample()
+                        usage = sample("monitor")
+                    except ChildProcessError:
+                        raise
                     except OSError as error:
                         accounting_errors.append(
                             {"phase": "monitor", "error": str(error)}
                         )
-                        refusal = "disk-accounting-failed: " + str(error)
+                        refusal = stop_reason() or "disk-accounting-failed: " + str(error)
                         break
                     peak = max(peak, usage)
                     if usage > args.disk_limit_mib * 1024 * 1024:
@@ -434,10 +483,10 @@ def _run(
         if reader_failed:
             refusal = refusal or "output-reader-failed: " + reader_failed[0]
         try:
-            peak = max(peak, sample())
+            peak = max(peak, sample("final"))
         except Exception as error:
             accounting_errors.append({"phase": "final", "error": str(error)})
-            refusal = refusal or "disk-accounting-failed: " + str(error)
+            refusal = refusal or stop_reason() or "disk-accounting-failed: " + str(error)
         if peak > args.disk_limit_mib * 1024 * 1024:
             refusal = refusal or "disk-budget-exceeded"
         # Child exit is not host completion: an interruption during owned
@@ -455,7 +504,12 @@ def _run(
             "log_limit_bytes": args.log_limit_mib * 1024 * 1024,
             "disk_accounting_errors": accounting_errors,
             "disk_samples": sample_count,
+            "disk_completed_samples": completed_samples,
             "disk_scan_seconds": round(sample_seconds, 6),
+            "disk_scan_retries": scan_retries,
+            "disk_scan_access_errors": access_errors,
+            "disk_scan_access_error_witnesses": access_error_witnesses,
+            "disk_scan_access_error_witnesses_omitted": access_errors - len(access_error_witnesses),
             "cleanup_errors": cleanup_errors,
             "reader_errors": reader_failed,
             "disk_enforcement": "sampled watchdog; not a filesystem quota",

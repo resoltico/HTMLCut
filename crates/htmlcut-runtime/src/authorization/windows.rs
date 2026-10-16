@@ -1541,7 +1541,8 @@ mod tests {
                     !protected
                 );
                 let before_dacl = before.text_with(DACL_SECURITY_INFORMATION)?;
-                assert_eq!(before_dacl, "D:P(A;;FA;;;OW)");
+                assert_ne!(descriptor_control(&before)? & SE_DACL_PROTECTED, 0);
+                assert_eq!(before_dacl.split_once('(').unwrap().1, "A;;FA;;;OW)");
                 let wanted = Descriptor::parse(if protected {
                     "D:(A;;FA;;;OW)S:P(ML;;NW;;;LW)"
                 } else {

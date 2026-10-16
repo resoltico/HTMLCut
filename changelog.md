@@ -27,7 +27,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Internal
 
 - Shared corpus checks compare independent canonical JSON/raw/outline bytes, reject malformed fixture metadata and ambiguous oracles, and bound CLI child capture and cleanup. Authored realistic and binary-decoding cases, repaired-tree snapshots, and finite grammar, numeric, reading, carrier and delivery tables extend the detecting evidence without claiming every possible input combination.
-- Resource monitoring separates cheap stop/exit observations from sampled disk scans, uses non-following entry metadata and reports scan count and wall time. Accounting and cleanup refusals remain failures; sampled limits are not filesystem quotas or process containment.
+- Resource monitoring separates cheap stop/exit observations from sampled disk scans, uses non-following entry metadata and reports scan/retry counts and wall time. Access-denied scans have bounded retries of the entire walk with retained failure facts; unresolved accounting and cleanup failures still refuse. Sampled limits are not filesystem quotas or process containment.
 - Standard GitHub caches separate public Cargo downloads from exact-input installed tool binaries. Restored tools receive bounded version verification, and executable cache writers are restricted to trusted main sources. Project/mutant build trees, release artifacts, credentials and QA evidence are excluded.
 
 ## [22.0.0] - 2026-10-15
