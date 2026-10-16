@@ -437,7 +437,7 @@ def main():
             "--build-timeout",
             "300",
             "--timeout",
-            "60",
+            "180",
             "--output",
             str(output),
         ]
