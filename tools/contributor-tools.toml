@@ -9,3 +9,5 @@ features = ["cli"]
 version = "0.13.2"
 [tools.cargo-mutants]
 version = "27.1.0"
+[tools.cargo-nextest]
+version = "0.9.146"

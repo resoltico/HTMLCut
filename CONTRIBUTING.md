@@ -15,7 +15,9 @@ macOS native library tests require `/usr/bin/leaks`, with an intentionally retai
 
 The literal conformance corpus is specification input. Review semantic fixture changes with their intended behavior; there is no byte-freezing gate or append-only policy. Accepted documentation examples must have executable dialect cases. Product integration tests accept `HTMLCUT_TEST_BINARY` so the same tests can exercise an unpacked executable, including explicitly ignored native/performance controls.
 
-[tools/contributor-tools.toml](tools/contributor-tools.toml) pins optional QA tools and nightly. Install `cargo-about`, `cargo-fuzz` or `cargo-mutants` with the same bounded install command as needed. Attribution enables cargo-about's `cli` feature. Fresh installed roots are verified and never restored from a custom binary cache; owner Cargo/rustup caches are not pruned.
+[tools/contributor-tools.toml](tools/contributor-tools.toml) pins optional QA tools and nightly. Install `cargo-about`, `cargo-fuzz`, `cargo-mutants` and, for optimized mutation testing, `cargo-nextest` with the same bounded install command as needed. Attribution enables cargo-about's `cli` feature. Keep each installed tool's `bin` directory on PATH; local tools and Cargo downloads persist between QA commands. The cold installer requires a fresh root and never replaces an existing owner installation.
+
+CI reuses public crates.io archives/index and exact-input tool binaries through pinned GitHub cache actions. Every restored executable undergoes the same bounded version probe as a cold install. Only trusted main pushes and current-main mutation dispatches may save; PRs, tags and historical selections restore only. Project targets, credentials, private sources, release artifacts and QA evidence are excluded. A cache miss runs the ordinary bounded installer; owner Cargo/rustup caches are never pruned.
 
 ```sh
 python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations /path/outside/checkout/fuzz-results

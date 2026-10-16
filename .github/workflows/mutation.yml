@@ -77,6 +77,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
+        with:
+          save: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Prepare locked native toolchain and dependencies
@@ -87,16 +90,14 @@ jobs:
           rustup toolchain install "$stable" --profile minimal
           rustup target add --toolchain "$stable" "${{ matrix.target_triple }}"
           cargo fetch --locked
-      - name: Install pinned cargo-mutants in an owned root
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          from tools.htmlcut_maintenance.install import install
-          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-mutants'
-          executable = install('cargo-mutants', root)
-          with open(os.environ['GITHUB_PATH'], 'a') as path:
-              path.write(str(executable.parent)+'\n')
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-mutants
+          save: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-nextest
+          save: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
       - name: Execute active native runtime and CLI selection; survivors and timeouts require review
         shell: bash
         env:
@@ -133,8 +134,10 @@ jobs:
           name: installation-collect-${{ matrix.id }}
           retention-days: 3
           path: |
-            ${{ runner.temp }}/cargo-*/*.log
-            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
             ${{ runner.temp }}/htmlcut-tool-build-*/*.log
             ${{ runner.temp }}/htmlcut-tool-build-*/*.json
           if-no-files-found: warn

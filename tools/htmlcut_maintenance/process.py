@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -35,31 +36,39 @@ def vanished_entry(error):
 
 def disk_bytes(root):
     """Conservatively count file/directory allocation without following links."""
+    info = os.lstat(root)
+    total = max(info.st_size, getattr(info, "st_blocks", 0) * 512)
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
-    def walk_error(error):
-        # Build tools may remove a directory between enumeration and descent.
-        # Inaccessible directories cannot be safely omitted from accounting.
-        if not vanished_entry(error):
-            raise error
+    def descend(info):
+        # A Windows junction need not be a symlink. Its non-following metadata
+        # must decide both accounting and descent, just as for ordinary links.
+        return stat.S_ISDIR(info.st_mode) and not (
+            getattr(info, "st_file_attributes", 0) & reparse
+        )
 
-    total = 0
-    for directory, subdirectories, files in os.walk(
-        root, followlinks=False, onerror=walk_error
-    ):
-        paths = [Path(directory)] + [Path(directory) / name for name in files]
-        paths += [
-            Path(directory) / name
-            for name in subdirectories
-            if (Path(directory) / name).is_symlink()
-        ]
-        for path in paths:
+    def entries(directory):
+        try:
+            with os.scandir(directory) as found:
+                yield from found
+        except OSError as error:
+            # Compilers remove products during enumeration. Permission and
+            # accounting errors still refuse; absence alone permits omission.
+            if not vanished_entry(error):
+                raise
+
+    pending = [os.fspath(root)] if descend(info) else []
+    while pending:
+        for entry in entries(pending.pop()):
             try:
-                stat = path.lstat()
+                info = entry.stat(follow_symlinks=False)
             except OSError as error:
                 if vanished_entry(error):
                     continue
                 raise
-            total += max(stat.st_size, getattr(stat, "st_blocks", 0) * 512)
+            total += max(info.st_size, getattr(info, "st_blocks", 0) * 512)
+            if descend(info):
+                pending.append(entry.path)
     return total
 
 
@@ -320,31 +329,61 @@ def _run(
         accounting_errors = []
         cleanup_errors = []
         child_identity_lost = False
+        sample_count = 0
+        sample_seconds = 0.0
+
+        def sample():
+            nonlocal sample_count, sample_seconds
+            sampled = time.monotonic()
+            sample_count += 1
+            try:
+                return disk_bytes(root)
+            finally:
+                sample_seconds += time.monotonic() - sampled
+
+        def stop_reason():
+            if cancelled.is_set():
+                return "interrupted"
+            if reader_failed:
+                return "output-reader-failed: " + reader_failed[0]
+            if log_exceeded.is_set():
+                return "log-budget-exceeded"
+            if time.monotonic() - started >= args.timeout:
+                return "wall-time-exceeded"
+            return None
+
+        next_sample = started
         try:
             while True:
-                try:
-                    usage = disk_bytes(root)
-                except OSError as error:
-                    accounting_errors.append({"phase": "monitor", "error": str(error)})
-                    refusal = "disk-accounting-failed: " + str(error)
-                    break
-                peak = max(peak, usage)
-                remaining = args.timeout - (time.monotonic() - started)
-                if cancelled.is_set():
-                    refusal = "interrupted"
-                elif usage > args.disk_limit_mib * 1024 * 1024:
-                    refusal = "disk-budget-exceeded"
-                elif reader_failed:
-                    refusal = "output-reader-failed: " + reader_failed[0]
-                elif log_exceeded.is_set():
-                    refusal = "log-budget-exceeded"
-                elif remaining <= 0:
-                    refusal = "wall-time-exceeded"
+                # The first sample is mandatory, including for immediate exits.
+                # Subsequent cheap observations do not repeatedly walk products.
+                if sample_count:
+                    refusal = stop_reason()
+                    if refusal or child_exited(process):
+                        break
+                if time.monotonic() >= next_sample:
+                    try:
+                        usage = sample()
+                    except OSError as error:
+                        accounting_errors.append(
+                            {"phase": "monitor", "error": str(error)}
+                        )
+                        refusal = "disk-accounting-failed: " + str(error)
+                        break
+                    peak = max(peak, usage)
+                    if usage > args.disk_limit_mib * 1024 * 1024:
+                        refusal = "disk-budget-exceeded"
+                    # Never perform catch-up scans after a slow metadata call.
+                    next_sample = time.monotonic() + min(args.poll_seconds, 1.0)
+                refusal = refusal or stop_reason()
                 if refusal or child_exited(process):
                     break
-                # Large finite values must not overflow sleep or postpone the
-                # deadline or defer the next scan by more than one second.
-                time.sleep(min(args.poll_seconds, remaining, 1.0))
+                remaining = args.timeout - (time.monotonic() - started)
+                # This bounds idle waits, not the duration of a blocking scan.
+                # Event waits also observe an owner cancellation immediately.
+                cancelled.wait(
+                    max(0, min(0.05, next_sample - time.monotonic(), remaining))
+                )
         except Exception as error:
             child_identity_lost = isinstance(error, ChildProcessError)
             refusal = "monitor-failed: " + type(error).__name__ + ": " + str(error)
@@ -395,12 +434,16 @@ def _run(
         if reader_failed:
             refusal = refusal or "output-reader-failed: " + reader_failed[0]
         try:
-            peak = max(peak, disk_bytes(root))
+            peak = max(peak, sample())
         except Exception as error:
             accounting_errors.append({"phase": "final", "error": str(error)})
             refusal = refusal or "disk-accounting-failed: " + str(error)
         if peak > args.disk_limit_mib * 1024 * 1024:
             refusal = refusal or "disk-budget-exceeded"
+        # Child exit is not host completion: an interruption during owned
+        # cleanup/final accounting must not launch another successful phase.
+        if cancelled.is_set():
+            refusal = refusal or "interrupted"
         result = {
             "command": command,
             "returncode": returncode,
@@ -411,6 +454,8 @@ def _run(
             "log_bytes": log_bytes,
             "log_limit_bytes": args.log_limit_mib * 1024 * 1024,
             "disk_accounting_errors": accounting_errors,
+            "disk_samples": sample_count,
+            "disk_scan_seconds": round(sample_seconds, 6),
             "cleanup_errors": cleanup_errors,
             "reader_errors": reader_failed,
             "disk_enforcement": "sampled watchdog; not a filesystem quota",

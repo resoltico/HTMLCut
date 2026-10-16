@@ -76,7 +76,7 @@ Destinations below are responsibility records, not executable aliases. Paths abb
 | `check.sh` | Retired. `python3 -m tools.htmlcut_maintenance check` orchestrates standard checks and rejects empty discovery. |
 | `scripts/focused-smoke.sh` | Retired. `qa fuzz` reads the nightly/tool inventory directly. |
 | `scripts/check-conformance-frozen.sh` | Retired breaking policy. Literal semantic and exact-byte fixtures remain under normal review/testing. |
-| `scripts/contributor-rust-tools.sh` | `tools/contributor-tools.toml`, `config.py` and `install.py`; fresh locked bounded installs, exact version/feature protocol, no custom binary caches. |
+| `scripts/contributor-rust-tools.sh` | `tools/contributor-tools.toml`, `config.py` and `install.py`; locked bounded cold installs and exact restored-tool verification. Standard GitHub caches replace the former shell cache framework. |
 | `scripts/common.sh` | Concrete config, source and package functions replace shell path/native fallback helpers. |
 | `scripts/workspace-version.sh` | TOML source manifest parsing in `config.py` / `release/source.py`; immutable refs never substitute advancing checkout versions. |
 | `scripts/release-targets.sh` | `tools/release-targets.toml`; config derives matrix, names and floors. |
@@ -87,9 +87,9 @@ Destinations below are responsibility records, not executable aliases. Paths abb
 | `scripts/release-tag.sh` | `release/source.py` and `release/identity.py`; canonical annotated tag, manifest agreement, exact SHA and main ancestry. |
 | `scripts/publish-github-release.sh` | `release/publish.py`; exact immutable notes/bytes, draft convergence, no published retry edits or downgrade. |
 | `scripts/verify-github-release.sh` | `release/verify.py`; bounded anonymous public download, checksum/source attestation and execution of downloaded bytes. |
-| `.github/actions/cargo-tool/action.yml` | Retired composite and cache generations/trust/restore/save. Native installs use fresh owned roots and retained failure evidence. |
+| `.github/actions/cargo-tool/action.yml` | Replaced the former cache framework with exact-input standard cache actions, bounded verification on hits and fresh owned cold installs. Writer/source policy stays visible at workflow call sites. |
 | `.github/workflows/ci.yml` | Retained/reworked: standard gate, MSRV, four native lanes, two-target fuzz, immutable checkout and authoritative aggregate. |
-| `.github/workflows/mutation.yml` | Retained/reworked: main-ancestor SHA, fresh pinned tool, active runtime/CLI scopes, explicit exclusions and raw survivor/timeout failures. |
+| `.github/workflows/mutation.yml` | Retained/reworked: main-ancestor SHA, verified pinned tools, active runtime/CLI scopes, explicit exclusions and raw survivor/timeout failures. |
 | `.github/workflows/release.yml` | Retained/reworked: same-source CI, annotated SHA, all native prepublication acceptance, provenance, serialized immutable publication and public-byte native lanes. |
 | `.github/dependabot.yml` | Retained Cargo/GitHub Actions maintenance. Root workspace covers runtime; stdlib maintenance adds no Python dependency ecosystem. |
 

@@ -1,5 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 use htmlcut_core::*;
+
+#[test]
+fn public_documentation_example_has_a_regular_mutation_detector() {
+    let limits = Limits::default();
+    let context = ExecutionContext::new(limits.time_limit).unwrap();
+    let document = Document::parse(
+        Source::new(b"<h1>Snapshot</h1>"),
+        &limits.preparation(),
+        &context,
+    )
+    .unwrap();
+    let contract = Contract::from_json(r#""h1""#, &context).unwrap();
+    assert_eq!(
+        document
+            .extract(&contract, &limits.execution(), &context)
+            .unwrap(),
+        Value::String("Snapshot".into())
+    );
+}
 #[test]
 fn exact_engine_types_are_shareable_and_one_deadline_spans_phases() {
     fn share<T: Send + Sync>() {}

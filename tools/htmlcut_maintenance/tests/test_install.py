@@ -9,6 +9,14 @@ from unittest.mock import patch
 from tools.htmlcut_maintenance import config, install
 
 
+def fixture_executable(root, name):
+    executable = Path(root) / "bin" / (name + (".exe" if os.name == "nt" else ""))
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.touch()
+    executable.chmod(0o755)
+    return executable
+
+
 class InstallTests(unittest.TestCase):
     def test_locked_pins_features_and_owned_builds_ignore_inherited_owner_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -34,12 +42,7 @@ class InstallTests(unittest.TestCase):
                     Path(options["env"]["CARGO_TARGET_DIR"]).mkdir()
                     Path(options["env"]["CARGO_BUILD_BUILD_DIR"]).mkdir()
                     (build / "install.log").write_text("build")
-                    destination = root / "tool/bin"
-                    destination.mkdir(parents=True)
-                    (
-                        destination
-                        / ("cargo-about.exe" if os.name == "nt" else "cargo-about")
-                    ).touch()
+                    fixture_executable(root / "tool", "cargo-about")
                 else:
                     self.assertFalse((build / "target").exists())
                     self.assertFalse((build / "build").exists())
@@ -92,6 +95,8 @@ class InstallTests(unittest.TestCase):
                     build = Path(build)
                     builds.append(build)
                     label = options["label"]
+                    if label == "install":
+                        fixture_executable(Path(temporary) / "tool", "cargo-deny")
                     (build / (label + ".log")).write_text(
                         "wrong version" if label == "version" else "failed build"
                     )
@@ -129,6 +134,8 @@ class MutantsProtocolTests(unittest.TestCase):
                     builds.append(build)
                     seen.append((command, options))
                     label = options["label"]
+                    if label == "install":
+                        fixture_executable(root / "tool", "cargo-mutants")
                     (build / (label + ".log")).write_text(
                         "installed" if label == "install" else version_text + "\n"
                     )
@@ -227,6 +234,8 @@ class FailureProductTests(unittest.TestCase):
                         )
                         (build / (label + ".resources.json")).write_text("{}")
                         failing = label == phase
+                        if label == "install" and not failing:
+                            fixture_executable(root / "tool", "cargo-mutants")
                         return dict(
                             returncode=2
                             if failing and confirmed
@@ -272,6 +281,7 @@ class FailureProductTests(unittest.TestCase):
                 (build / "target").mkdir(exist_ok=True)
                 (build / "target/product").write_text("possibly active")
                 if options["label"] == "install":
+                    fixture_executable(Path(temporary) / "tool", "cargo-mutants")
                     (build / "install.log").write_text("install complete")
                     return dict(returncode=0, refusal=None, cleanup_errors=[])
                 raise OSError("version cleanup report unavailable")
@@ -281,3 +291,183 @@ class FailureProductTests(unittest.TestCase):
                     install.install("cargo-mutants", Path(temporary) / "tool")
             self.assertTrue((builds[0] / "target/product").exists())
             __import__("shutil").rmtree(builds[0])
+
+
+class RestoredToolTests(unittest.TestCase):
+    def nextest_version(self):
+        pin = config.tool_pin("cargo-nextest")["version"]
+        return (
+            f"cargo-nextest {pin} (123456789 2026-09-21)\n"
+            f"release: {pin}\n"
+            "commit-hash: 1234567890123456789012345678901234567890\n"
+            "commit-date: 2026-09-21\nhost: aarch64-apple-darwin\n"
+        )
+
+    def test_nextest_multiline_release_is_exact_and_consistent(self):
+        actual = self.nextest_version()
+        self.assertTrue(install.version_matches("cargo-nextest", actual))
+        for changed in (
+            actual.replace("release: ", "release: 0"),
+            actual.replace("cargo-nextest ", "cargo-nextest 0"),
+            actual.replace("commit-date: 2026-09-21", "commit-date: 2026-09-22"),
+            actual.replace("commit-hash: 1", "commit-hash: 2"),
+            actual.replace("host: aarch64-apple-darwin", "release: duplicate"),
+            actual + "unexpected trailer\n",
+            actual.splitlines()[0],
+        ):
+            with self.subTest(output=changed):
+                self.assertFalse(install.version_matches("cargo-nextest", changed))
+
+    def test_nextest_release_without_optional_commit_metadata_is_valid(self):
+        version = config.tool_pin("cargo-nextest")["version"]
+        actual = (
+            f"cargo-nextest {version}\nrelease: {version}\nhost: aarch64-apple-darwin\n"
+        )
+        self.assertTrue(install.version_matches("cargo-nextest", actual))
+        for changed in (
+            actual.replace("release: ", "release: 0"),
+            actual.replace("cargo-nextest ", "cargo-nextest 0"),
+            actual.replace("host: aarch64-apple-darwin", "release: duplicate"),
+            actual.replace("host: aarch64-apple-darwin", "host: malformed host"),
+            actual.replace("release: ", "release "),
+            actual + "commit-date: 2026-09-21\n",
+        ):
+            with self.subTest(output=changed):
+                self.assertFalse(install.version_matches("cargo-nextest", changed))
+
+    @unittest.skipIf(
+        os.name == "nt",
+        "POSIX executable fixture; native installed binaries are checked separately",
+    )
+    def test_restored_hit_uses_actual_bounded_probe_without_installing(self):
+        with tempfile.TemporaryDirectory(prefix="htmlcut-tool-hit-") as temporary:
+            root = Path(temporary)
+            executable = fixture_executable(root / "restored", "cargo-nextest")
+            executable.write_text(
+                "#!" + __import__("sys").executable + "\n"
+                "import sys\n"
+                "if sys.argv[1:] != ['--version']: raise SystemExit(31)\n"
+                "sys.stdout.write(" + repr(self.nextest_version()) + ")\n"
+            )
+            evidence = root / "evidence"
+            evidence.mkdir()
+            returned = install.verify("cargo-nextest", executable, evidence)
+            self.assertEqual(returned, executable)
+            report = __import__("json").loads(
+                (evidence / "version.resources.json").read_text()
+            )
+            self.assertEqual(report["returncode"], 0)
+            self.assertEqual(report["command"], [str(executable), "--version"])
+            self.assertEqual(report["cleanup_errors"], [])
+            self.assertFalse((evidence / "install.log").exists())
+
+    def test_restored_wrong_pin_refusal_and_uncertain_cleanup_do_not_become_hits(self):
+        expected = "cargo-deny " + config.tool_pin("cargo-deny")["version"]
+        for actual, report in (
+            ("cargo-deny 0.0.0", dict(returncode=0, refusal=None, cleanup_errors=[])),
+            (
+                expected,
+                dict(returncode=125, refusal="wall-time-exceeded", cleanup_errors=[]),
+            ),
+            (
+                expected,
+                dict(returncode=None, refusal=None, cleanup_errors=["uncertain"]),
+            ),
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                executable = fixture_executable(root / "restored", "cargo-deny")
+                before = executable.read_bytes()
+                evidence = root / "evidence"
+                evidence.mkdir()
+
+                def run(command, path, **options):
+                    self.assertEqual(options["timeout"], 10)
+                    self.assertEqual(options["poll_seconds"], 0.05)
+                    self.assertEqual(options["disk_limit_mib"], 4)
+                    self.assertEqual(options["log_limit_mib"], 1)
+                    (Path(path) / "version.log").write_text(actual)
+                    return report
+
+                with patch.object(install.process, "run", side_effect=run):
+                    with self.assertRaisesRegex(ValueError, "pinned version refused"):
+                        install.verify("cargo-deny", executable, evidence)
+                self.assertEqual(executable.read_bytes(), before)
+                self.assertTrue((evidence / "version.log").exists())
+
+    @unittest.skipIf(os.name == "nt", "POSIX controlled executable fixture")
+    def test_restored_hang_and_flood_use_the_real_bounded_owner(self):
+        for mode in ("hang", "flood"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                executable = fixture_executable(root / "restored", "cargo-deny")
+                executable.write_text(
+                    "#!"
+                    + __import__("sys").executable
+                    + "\nimport sys,time\n"
+                    + (
+                        "sys.stdout.buffer.write(b'x'*(2*1024*1024));sys.stdout.flush()\n"
+                        if mode == "flood"
+                        else ""
+                    )
+                    + "time.sleep(3)\n"
+                )
+                evidence = root / "evidence"
+                evidence.mkdir()
+                real_run = install.process.run
+
+                def shortened(command, path, **options):
+                    options["timeout"] = 0.15 if mode == "hang" else 2
+                    return real_run(command, path, **options)
+
+                with patch.object(install.process, "run", side_effect=shortened):
+                    with self.assertRaisesRegex(ValueError, "pinned version refused"):
+                        install.verify("cargo-deny", executable, evidence)
+                report = __import__("json").loads(
+                    (evidence / "version.resources.json").read_text()
+                )
+                self.assertEqual(
+                    report["refusal"],
+                    "wall-time-exceeded" if mode == "hang" else "log-budget-exceeded",
+                )
+                self.assertEqual(report["cleanup_errors"], [])
+                self.assertLessEqual(
+                    (evidence / "version.log").stat().st_size, 1024 * 1024
+                )
+                self.assertTrue(executable.is_file())
+
+    def test_installed_nextest_has_the_pinned_multiline_protocol(self):
+        import shutil
+
+        executable = shutil.which("cargo-nextest")
+        if executable is None:
+            self.skipTest("optional cargo-nextest binary is not installed")
+        with tempfile.TemporaryDirectory(
+            prefix="htmlcut-nextest-protocol-"
+        ) as temporary:
+            self.assertEqual(
+                install.verify("cargo-nextest", executable, temporary), Path(executable)
+            )
+
+    def test_missing_nonregular_or_linked_cached_binary_is_never_executed(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(install.process, "run") as launched,
+        ):
+            root = Path(temporary)
+            evidence = root / "evidence"
+            evidence.mkdir()
+            with self.assertRaises(OSError):
+                install.verify("cargo-deny", root / "missing", evidence)
+            with self.assertRaisesRegex(ValueError, "ordinary executable"):
+                install.verify("cargo-deny", root, evidence)
+            executable = fixture_executable(root / "restored", "cargo-deny")
+            linked = root / "alias"
+            try:
+                linked.symlink_to(executable)
+            except OSError:
+                pass
+            else:
+                with self.assertRaisesRegex(ValueError, "ordinary executable"):
+                    install.verify("cargo-deny", linked, evidence)
+            launched.assert_not_called()

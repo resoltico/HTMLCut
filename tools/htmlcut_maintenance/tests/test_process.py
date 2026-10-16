@@ -2,6 +2,10 @@
 """Real child writers prove QA resource refusals and retained evidence."""
 
 import json
+import contextlib
+import stat
+import threading
+from types import SimpleNamespace
 import shlex
 from pathlib import Path
 import subprocess
@@ -25,49 +29,107 @@ class ResourceBudgetTests(unittest.TestCase):
             sentinel = root / "preserved"
             sentinel.write_bytes(b"counted")
             removed = root / "removed"
-            removed.mkdir()
-            removed.rmdir()
             error = PermissionError(13, "removal window", str(removed))
             error.winerror = 5
+            original = os.lstat
 
-            def failed_walk(*_, onerror, **__):
-                onerror(error)
-                return [(str(root), [], [sentinel.name])]
+            def failed_entry(*, follow_symlinks):
+                self.assertFalse(follow_symlinks)
+                raise error
 
-            with mock.patch.object(os, "walk", side_effect=failed_walk):
-                self.assertGreater(functions["disk_bytes"](root), 0)
+            def known_entry(*, follow_symlinks):
+                self.assertFalse(follow_symlinks)
+                return original(sentinel)
 
-            original = Path.lstat
+            @contextlib.contextmanager
+            def entries(_):
+                yield iter(
+                    [
+                        SimpleNamespace(path=str(sentinel), stat=known_entry),
+                        SimpleNamespace(path=str(removed), stat=failed_entry),
+                    ]
+                )
 
-            def failed_entry(path, *args, **kwargs):
-                if path == removed:
-                    raise error
-                return original(path, *args, **kwargs)
-
-            with (
-                mock.patch.object(
-                    os,
-                    "walk",
-                    return_value=[(str(root), [], [sentinel.name, removed.name])],
-                ),
-                mock.patch.object(Path, "lstat", failed_entry),
-            ):
-                self.assertGreater(functions["disk_bytes"](root), 0)
+            with mock.patch.object(os, "scandir", side_effect=entries):
+                expected = sum(
+                    max(info.st_size, getattr(info, "st_blocks", 0) * 512)
+                    for info in [original(root), original(sentinel)]
+                )
+                self.assertEqual(functions["disk_bytes"](root), expected)
 
             removed.mkdir()
-            with mock.patch.object(os, "walk", side_effect=failed_walk):
+            with (
+                mock.patch.object(os, "scandir", side_effect=entries),
+                mock.patch.object(os, "lstat", side_effect=original) as checked,
+            ):
                 with self.assertRaises(PermissionError) as raised:
                     functions["disk_bytes"](root)
                 self.assertIs(raised.exception, error)
+                self.assertEqual(
+                    [call.args[0] for call in checked.call_args_list],
+                    [root, str(removed)],
+                )
 
             if os.name != "nt":
                 removed.rmdir()
                 removed.symlink_to(root / "missing-target", target_is_directory=True)
-                # lstat must inspect the link itself, not follow its absent target.
-                with mock.patch.object(os, "walk", side_effect=failed_walk):
+                with mock.patch.object(os, "scandir", side_effect=entries):
                     with self.assertRaises(PermissionError) as raised:
                         functions["disk_bytes"](root)
                     self.assertIs(raised.exception, error)
+
+    def test_disk_accounting_counts_links_and_directories_without_following_them(self):
+        disk_bytes = runpy.run_path(str(RUNNER))["disk_bytes"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            owned, outside = root / "owned", root / "outside"
+            owned.mkdir()
+            outside.mkdir()
+            (outside / "large").write_bytes(b"x" * 8192)
+            nested = owned / "nested"
+            nested.mkdir()
+            leaf = nested / "leaf"
+            leaf.write_bytes(b"owned")
+            expected_paths = [owned, nested, leaf]
+            if os.name != "nt":
+                link = owned / "external-link"
+                link.symlink_to(outside, target_is_directory=True)
+                expected_paths.append(link)
+                self.assertEqual(
+                    disk_bytes(link),
+                    max(link.lstat().st_size, link.lstat().st_blocks * 512),
+                )
+            expected = sum(
+                max(info.st_size, getattr(info, "st_blocks", 0) * 512)
+                for info in (path.lstat() for path in expected_paths)
+            )
+            self.assertEqual(disk_bytes(owned), expected)
+
+    def test_reparse_directory_is_counted_without_descending(self):
+        disk_bytes = runpy.run_path(str(RUNNER))["disk_bytes"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            info = root.lstat()
+            entry = mock.Mock(path=str(root / "junction"))
+            entry.stat.return_value = SimpleNamespace(
+                st_mode=stat.S_IFDIR | 0o755,
+                st_size=100,
+                st_blocks=1,
+                st_file_attributes=0x400,
+            )
+
+            @contextlib.contextmanager
+            def entries(path):
+                self.assertEqual(path, str(root))
+                yield iter([entry])
+
+            with mock.patch.object(os, "scandir", side_effect=entries) as scanned:
+                self.assertEqual(
+                    disk_bytes(root),
+                    max(info.st_size, getattr(info, "st_blocks", 0) * 512) + 512,
+                )
+            scanned.assert_called_once_with(str(root))
+            entry.stat.assert_called_once_with(follow_symlinks=False)
 
     def test_windows_namespace_recheck_keeps_original_denial_on_every_other_result(
         self,
@@ -261,6 +323,73 @@ namespace['main'].__globals__['os'].scandir = inaccessible
         self.assertEqual(log, b"short child\n")
         self.assertLess(report["elapsed_seconds"], 3)
 
+    def test_exit_observation_is_separate_from_disk_sampling(self):
+        from tools.htmlcut_maintenance import process
+
+        class OwnerEvent(threading.Event):
+            def __init__(self, release):
+                super().__init__()
+                self.release = release
+                self.waits = []
+
+            def wait(self, timeout=None):
+                self.waits.append(timeout)
+                self.release.write_text("owner observed the child")
+                return super().wait(min(timeout, 0.005))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release = root / "release"
+            owner = OwnerEvent(release)
+            code = (
+                "import pathlib,time,sys\n"
+                "release=pathlib.Path(sys.argv[1]); deadline=time.monotonic()+2\n"
+                "while not release.exists():\n"
+                " if time.monotonic()>=deadline: raise RuntimeError('no owner observation')\n"
+                " time.sleep(.005)\n"
+            )
+            result = process.run(
+                [sys.executable, "-c", code, str(release)],
+                root,
+                disk_limit_mib=1,
+                timeout=5,
+                label="observation",
+                poll_seconds=1,
+                cancelled=owner,
+            )
+            self.assertEqual(process.status(result), 0)
+            self.assertTrue(owner.waits)
+            self.assertTrue(all(0 <= interval <= 0.05 for interval in owner.waits))
+            self.assertGreaterEqual(result["disk_samples"], 2)
+            self.assertGreaterEqual(result["disk_scan_seconds"], 0)
+
+    @unittest.skipIf(os.name == "nt", "POSIX nonreaping completed-child control")
+    def test_an_already_exited_child_still_gets_initial_and_final_samples(self):
+        from tools.htmlcut_maintenance import process
+
+        command = [sys.executable, "-c", "pass"]
+        original = subprocess.Popen
+
+        def exited(*args, **kwargs):
+            child = original(*args, **kwargs)
+            if args[0] == command:
+                os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)
+            return child
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(subprocess, "Popen", side_effect=exited),
+            mock.patch.object(
+                process, "disk_bytes", wraps=process.disk_bytes
+            ) as sampled,
+        ):
+            result = process.run(
+                command, Path(directory), disk_limit_mib=1, timeout=5, label="exited"
+            )
+            self.assertEqual(process.status(result), 0)
+            self.assertEqual(sampled.call_count, 2)
+            self.assertEqual(result["disk_samples"], 2)
+
     def test_poll_interval_respects_remaining_deadline(self):
         result, report, _ = self.run_child(
             "import time; time.sleep(5)", timeout=0.1, poll="10"
@@ -268,6 +397,33 @@ namespace['main'].__globals__['os'].scandir = inaccessible
         self.assertEqual(result.returncode, 125, result.stderr)
         self.assertEqual(report["refusal"], "wall-time-exceeded")
         self.assertLess(report["elapsed_seconds"], 2)
+
+    def test_cancellation_during_cleanup_cannot_become_success(self):
+        from tools.htmlcut_maintenance import process
+
+        event = threading.Event()
+        original = process.stop_process_tree
+
+        def cleanup(child):
+            original(child)
+            event.set()
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(process, "stop_process_tree", side_effect=cleanup),
+        ):
+            result = process.run(
+                [sys.executable, "-c", "pass"],
+                Path(directory),
+                disk_limit_mib=1,
+                timeout=5,
+                label="cleanup-cancel",
+                cancelled=event,
+            )
+            self.assertEqual(result["returncode"], 0)
+            self.assertEqual(result["cleanup_errors"], [])
+            self.assertEqual(result["refusal"], "interrupted")
+            self.assertNotEqual(process.status(result), 0)
 
     def test_monitor_exception_still_terminates_real_child_and_reports(self):
         fault = """
@@ -559,12 +715,11 @@ namespace['main'].__globals__['subprocess'].Popen = start
             self.assertTrue(child_ready.exists(), "descendant readiness deadline")
             parent = (
                 "import os,signal,sys,time,pathlib\n"
+                "def flood(byte):\n"
+                " data=byte*(2*1024*1024)\n"
+                " while data: data=data[os.write(1,data):]\n"
                 "def stop(*_):\n"
-                + (
-                    " sys.stdout.write('c'*(2*1024*1024));sys.stdout.flush()\n"
-                    if overflow
-                    else ""
-                )
+                + (" flood(b'c')\n" if overflow else "")
                 + (
                     " pass\n"
                     if defective
@@ -577,11 +732,7 @@ namespace['main'].__globals__['subprocess'].Popen = start
                     if readiness_failure
                     else f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
                 )
-                + (
-                    "sys.stdout.write('x'*(2*1024*1024));sys.stdout.flush()\n"
-                    if overflow
-                    else ""
-                )
+                + ("flood(b'x')\n" if overflow else "")
                 + "time.sleep(5)\n"
             )
 
@@ -618,6 +769,11 @@ namespace['main'].__globals__['subprocess'].Popen = start
                     label="test",
                 )
             self.assertEqual(owner.status(report), 125)
+            self.assertEqual(
+                report["returncode"],
+                0,
+                "cooperative cleanup handler must complete, including its output",
+            )
             self.assertEqual(
                 report["refusal"],
                 "log-budget-exceeded" if overflow else "wall-time-exceeded",

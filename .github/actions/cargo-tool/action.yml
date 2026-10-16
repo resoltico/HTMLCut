@@ -1,0 +1,60 @@
+name: Pinned Cargo tool
+description: Restore an exact hosted-tool input or install cold, always probing the actual binary
+inputs:
+  tool:
+    description: Tool from tools/contributor-tools.toml
+    required: true
+  save:
+    description: Whether this trusted source may save a verified tool binary
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: python
+      env:
+        TOOL: ${{ inputs.tool }}
+      run: |
+        import os
+        from tools.htmlcut_maintenance.config import ci_tool_paths
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            for key, value in ci_tool_paths(os.environ['TOOL']).items():
+                output.write(key+'='+value+'\n')
+    - id: restore
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.paths.outputs.binary }}
+        key: cargo-tool-${{ steps.paths.outputs.platform }}-${{ inputs.tool }}-${{ hashFiles('tools/contributor-tools.toml', 'rust-toolchain.toml', 'tools/htmlcut_maintenance/install.py', 'tools/htmlcut_maintenance/config.py') }}
+    - name: Verify exact hit or install into the owned job root
+      shell: python
+      env:
+        TOOL: ${{ inputs.tool }}
+        TOOL_ROOT: ${{ steps.paths.outputs.root }}
+        TOOL_BINARY: ${{ steps.paths.outputs.binary }}
+        EXACT_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        import os, shutil
+        from pathlib import Path
+        from tools.htmlcut_maintenance.install import install, verify
+        root, binary = Path(os.environ['TOOL_ROOT']), Path(os.environ['TOOL_BINARY'])
+        if os.environ['EXACT_HIT'] == 'true':
+            evidence = Path(os.environ['RUNNER_TEMP'])/'htmlcut-tool-version'/os.environ['TOOL']
+            evidence.mkdir(parents=True)
+            verify(os.environ['TOOL'], binary, evidence)
+        else:
+            # The paths step proved this job owned no prior root. A partial or
+            # interrupted restore is never executed or reused as an exact hit.
+            if root.is_symlink():
+                raise ValueError('restored tool root must not be a symlink')
+            if root.exists():
+                shutil.rmtree(root)
+            binary = install(os.environ['TOOL'], root)
+        with open(os.environ['GITHUB_PATH'], 'a') as path:
+            path.write(str(binary.parent)+'\n')
+    - if: inputs.save == 'true' && steps.restore.outputs.cache-hit != 'true' && steps.restore.outputs.cache-primary-key != ''
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.paths.outputs.binary }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}

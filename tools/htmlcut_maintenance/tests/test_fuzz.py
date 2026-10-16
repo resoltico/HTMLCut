@@ -2,6 +2,7 @@
 """Smoke scratch ownership, completion and failure evidence at the process boundary."""
 
 import os
+import hashlib
 import json
 import runpy
 import shutil
@@ -42,6 +43,13 @@ class FuzzCleanupTest(unittest.TestCase):
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            checkout = root / "checkout"
+            copy_runner(checkout)
+            case = checkout / "conformance/contract/seed"
+            case.mkdir(parents=True)
+            (case / "contract.json").write_text('{"select":"h1"}')
+            (case / "page.html").write_text("<h1>value</h1>")
+            (checkout / "fuzz/seeds/documents").mkdir(parents=True)
             scratch = root / "scratch"
             scratch.mkdir()
             tools = root / "bin"
@@ -61,10 +69,8 @@ for target in ['contract_bytes','extract']:
     executable.write_text('''#!/usr/bin/env python3
 import os
 import sys
-import time
 from pathlib import Path
 if os.environ.get('LATER_FAILURE') and sys.argv[0].endswith('extract'):
-    time.sleep(2)
     sys.exit(42)
 if os.environ.get('SLOW_FIRST'):
     Path(os.environ['CHILD_READY']).write_text(str(os.getpid()))
@@ -101,7 +107,7 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
             started = time.monotonic()
             result = subprocess.run(
                 args,
-                cwd=ROOT,
+                cwd=checkout,
                 env={
                     **os.environ,
                     "PATH": str(tools) + os.pathsep + os.environ["PATH"],
@@ -167,6 +173,22 @@ sys.exit(42 if os.environ.get('FAIL_RUN') else 0)
                             for seed in seeds
                         )
                     )
+                    for seed in seeds:
+                        self.assertEqual(
+                            hashlib.sha256((corpus / seed["name"]).read_bytes()).hexdigest(),
+                            seed["sha256"],
+                        )
+                        self.assertTrue(seed["sources"])
+                run = json.loads((remaining[0] / "run.json").read_text())
+                self.assertIn("mode:u8", run["extract_framing"])
+                self.assertIn("source", run)
+                self.assertEqual(run["source_state"], {"kind": "standalone"})
+                self.assertEqual(run["complete"], expected == 0)
+                self.assertEqual(run["exit_status"], expected)
+                self.assertEqual(run["scope"], "full_smoke" if runs == 10000 else "short")
+                if expected == 0:
+                    self.assertEqual(run["source"]["sha256"], run["source_after_run"]["sha256"])
+                    self.assertEqual(set(run["progress"]), {"contract_bytes", "extract"})
                 if slow_first:
                     self.assertLess(
                         time.monotonic() - started,
@@ -586,6 +608,9 @@ def run(command, root, *, label, **kwargs):
                 (evidence,) = scratch.glob("htmlcut-fuzz.*")
                 self.assertTrue(evidence.is_dir())
                 self.assertIn(str(evidence), result.stderr)
+                run = json.loads((evidence / "run.json").read_text())
+                self.assertFalse(run["complete"])
+                self.assertEqual(run["exit_status"], 125)
 
     def test_explicit_output_survives_success_and_failure(self):
         self.exercise(explicit=True)
@@ -598,6 +623,148 @@ def run(command, root, *, label, **kwargs):
     def test_mutation_preflight_rejects_completed_seed_replay_only(self):
         self.exercise(runs=250, require_mutations=True)
         self.exercise(runs=250, require_mutations=True, seed_only=True)
+
+    def test_seed_modes_preserve_bytes_and_only_identical_inputs_share_aliases(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = root / "checkout"
+            cases = checkout / "conformance/contract"
+            documents = checkout / "fuzz/seeds/documents"
+            documents.mkdir(parents=True)
+            contract = b'{"select":":scope"}'
+            page = b"<p>\xff&amp;\xe9\x9b\xaa</p>"
+            for name in ["first", "same"]:
+                case = cases / name
+                case.mkdir(parents=True)
+                (case / "contract.json").write_bytes(contract)
+                (case / "page.html").write_bytes(page)
+            (documents / "first").write_bytes(page)
+            (documents / "same").write_bytes(page)
+            output = root / "output"
+            with mock.patch.object(fuzz, "ROOT", checkout):
+                inventory = fuzz.prepare_seeds(output, ["contract_bytes", "extract"])
+            self.assertEqual(len(inventory["contract_bytes"]), 1)
+            self.assertEqual(inventory["contract_bytes"][0]["sources"], ["first", "same"])
+            # Equal HTML/contract with a different node-budget mode is a distinct input.
+            self.assertEqual(len(inventory["extract"]), 4)
+            modes = []
+            for seed in inventory["extract"]:
+                data = (output / "extract/corpus" / seed["name"]).read_bytes()
+                modes.append(data[0])
+                length = int.from_bytes(data[1:3], "little")
+                self.assertEqual(data[3:3 + length], contract)
+                self.assertEqual(data[3 + length:], page)
+                self.assertEqual(seed["sha256"], hashlib.sha256(data).hexdigest())
+            self.assertEqual(modes, [0, 2, 1, 5])
+            self.assertEqual(inventory["extract"][0]["sources"], ["first", "same"])
+            self.assertEqual(inventory["extract"][1]["sources"], ["first"])
+
+    def test_unexpected_failure_cannot_record_completed_fuzz_evidence(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = root / "checkout"
+            copy_runner(checkout)
+            case = checkout / "conformance/contract/seed"
+            case.mkdir(parents=True)
+            (case / "contract.json").write_text('{"select":"h1"}')
+            (case / "page.html").write_text("<h1>value</h1>")
+            (checkout / "fuzz/seeds/documents").mkdir(parents=True)
+            scratch = root / "scratch"
+            scratch.mkdir()
+            output = root / "output"
+
+            def completed_build(command, build, **options):
+                self.assertEqual(options["label"], "build")
+                report = {"returncode": 0, "refusal": None, "cleanup_errors": []}
+                (build / "build.log").write_text("controlled build completed")
+                (build / "build.resources.json").write_text(json.dumps(report))
+                return report
+
+            handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+            try:
+                with (
+                    mock.patch.object(fuzz, "ROOT", checkout),
+                    mock.patch.dict(os.environ, {"TMPDIR": str(scratch)}),
+                    mock.patch.object(sys, "argv", ["fuzz", "--runs", "3", str(output)]),
+                    mock.patch.object(fuzz.process, "run", side_effect=completed_build),
+                    mock.patch.object(fuzz, "harness_directory", side_effect=RuntimeError("unexpected discovery failure")),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "unexpected discovery failure"):
+                        fuzz.main()
+            finally:
+                for sig, handler in handlers.items():
+                    signal.signal(sig, handler)
+            (evidence,) = output.glob("run.*")
+            run = json.loads((evidence / "run.json").read_text())
+            self.assertFalse(run["complete"])
+            self.assertEqual(run["exit_status"], 125)
+            self.assertNotIn("progress", run)
+            self.assertFalse(list(scratch.glob("htmlcut-fuzz-build.*")))
+
+    def test_source_labels_distinguish_clean_dirty_and_standalone_inputs(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with mock.patch.object(fuzz.process, "capture") as capture:
+            self.assertEqual(fuzz.source_state(Path("workspace"), {"git_commit": None}), {"kind": "standalone"})
+            capture.assert_not_called()
+            for status, dirty in [(b"", False), (b" M file\n", True)]:
+                capture.return_value = status
+                self.assertEqual(fuzz.source_state(Path("workspace"), {"git_commit": "a" * 40}), {"kind": "git", "dirty": dirty})
+                self.assertEqual(capture.call_args.kwargs["maximum_mib"], 1)
+                self.assertEqual(capture.call_args.kwargs["timeout"], 10)
+
+    def test_progress_reports_replayed_and_new_executions(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "extract").mkdir()
+            (root / "extract/run.log").write_text("#196 INITED cov: 5\nDone 250 runs\n")
+            self.assertEqual(fuzz.verify_progress(root, ["extract"], 250, True), {
+                "extract": {"initialized": 196, "completed": 250, "post_initialization": 54}
+            })
+            (root / "extract/run.log").write_text("#250 INITED cov: 5\nDone 250 runs\n")
+            with self.assertRaisesRegex(fuzz.Refusal, "no mutation after seed initialization"):
+                fuzz.verify_progress(root, ["extract"], 250, True)
+
+    def test_source_change_refuses_before_harness_launch_and_retains_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = root / "checkout"
+            copy_runner(checkout)
+            case = checkout / "conformance/contract/seed"
+            case.mkdir(parents=True)
+            (case / "contract.json").write_text('{"select":"h1"}')
+            (case / "page.html").write_text("<h1>value</h1>")
+            (checkout / "fuzz/seeds/documents").mkdir(parents=True)
+            tools = root / "bin"
+            tools.mkdir()
+            (tools / "python3").symlink_to(sys.executable)
+            cargo = tools / "cargo"
+            cargo.write_text('''#!/usr/bin/env python3
+import os
+from pathlib import Path
+root=Path(os.environ['CARGO_TARGET_DIR'])/'host/release';root.mkdir(parents=True)
+for name in ['contract_bytes','extract']:
+    path=root/name;path.write_text('#!/bin/sh\\nexit 99\\n');path.chmod(0o755)
+Path('conformance/contract/seed/page.html').write_text('<h1>changed while building</h1>')
+''')
+            cargo.chmod(0o755)
+            scratch = root / "scratch"
+            scratch.mkdir()
+            result = subprocess.run([
+                sys.executable, "-m", "tools.htmlcut_maintenance", "qa", "fuzz", "--runs", "3"
+            ], cwd=checkout, env={**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"], "TMPDIR": str(scratch)}, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("source/lock inputs changed", result.stderr)
+            (evidence,) = scratch.glob("htmlcut-fuzz.*")
+            self.assertFalse((evidence / "contract_bytes/run.log").exists())
+            self.assertTrue((evidence / "run.json").is_file())
+            self.assertFalse(list(scratch.glob("htmlcut-fuzz-build.*")))
 
     def test_rejects_unbounded_or_invalid_run_counts(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -49,16 +49,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
-      - name: Install pinned cargo-deny in an owned root
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          from tools.htmlcut_maintenance.install import install
-          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-deny'
-          executable = install('cargo-deny', root)
-          with open(os.environ['GITHUB_PATH'], 'a') as path:
-              path.write(str(executable.parent)+'\n')
+      - uses: ./.github/actions/cargo-downloads
+        with:
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-deny
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: python3 -m tools.htmlcut_maintenance check
 
       - name: Preserve bounded installation evidence
@@ -68,8 +65,10 @@ jobs:
           name: installation-linux-maintainer
           retention-days: 3
           path: |
-            ${{ runner.temp }}/cargo-*/*.log
-            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
             ${{ runner.temp }}/htmlcut-tool-build-*/*.log
             ${{ runner.temp }}/htmlcut-tool-build-*/*.json
           if-no-files-found: warn
@@ -87,21 +86,18 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
+        with:
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - shell: bash
         run: |
           set -euo pipefail
           nightly=$(python3 -c 'from tools.htmlcut_maintenance.config import tools; print(tools()["nightly"])')
           rustup toolchain install "$nightly" --component rust-src --profile minimal
-      - name: Install pinned cargo-fuzz in an owned root
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          from tools.htmlcut_maintenance.install import install
-          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-fuzz'
-          executable = install('cargo-fuzz', root)
-          with open(os.environ['GITHUB_PATH'], 'a') as path:
-              path.write(str(executable.parent)+'\n')
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-fuzz
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Execute both bounded fuzz preflights
         shell: bash
         run: python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
@@ -121,8 +117,10 @@ jobs:
           name: installation-focused-smoke
           retention-days: 3
           path: |
-            ${{ runner.temp }}/cargo-*/*.log
-            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
             ${{ runner.temp }}/htmlcut-tool-build-*/*.log
             ${{ runner.temp }}/htmlcut-tool-build-*/*.json
           if-no-files-found: warn
@@ -140,6 +138,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
+        with:
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - shell: bash
         run: |
           set -euo pipefail
@@ -163,6 +164,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
+        with:
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Verify native workspace behavior
@@ -171,16 +175,10 @@ jobs:
           python3 -m unittest tools.htmlcut_maintenance.tests.test_process -v
           rustup target add "${{ matrix.target_triple }}"
           cargo test --locked --workspace --target "${{ matrix.target_triple }}"
-      - name: Install pinned cargo-about in an owned root
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          from tools.htmlcut_maintenance.install import install
-          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-about'
-          executable = install('cargo-about', root)
-          with open(os.environ['GITHUB_PATH'], 'a') as path:
-              path.write(str(executable.parent)+'\n')
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-about
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Build and accept native package
         shell: python
         run: |
@@ -206,8 +204,10 @@ jobs:
           name: installation-release-target-smoke-${{ matrix.id }}
           retention-days: 3
           path: |
-            ${{ runner.temp }}/cargo-*/*.log
-            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
             ${{ runner.temp }}/htmlcut-tool-build-*/*.log
             ${{ runner.temp }}/htmlcut-tool-build-*/*.json
           if-no-files-found: warn

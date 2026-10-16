@@ -120,19 +120,19 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
-      - name: Install native toolchain and pinned attribution tool
+      - name: Install native toolchain
         shell: python
         run: |
-          import os, subprocess
-          from pathlib import Path
+          import subprocess
           from tools.htmlcut_maintenance.config import toolchain
-          from tools.htmlcut_maintenance.install import install
           subprocess.run(['rustup','toolchain','install',toolchain(),'--profile','minimal'],check=True)
           subprocess.run(['rustup','target','add','--toolchain',toolchain(),'${{ matrix.target_triple }}'],check=True)
-          executable=install('cargo-about',Path(os.environ['RUNNER_TEMP'])/'cargo-about')
-          with open(os.environ['GITHUB_PATH'],'a') as path:path.write(str(executable.parent)+'\n')
+      - uses: ./.github/actions/cargo-tool
+        with:
+          tool: cargo-about
       - name: Build and accept exact native package before provenance/publication
         id: package
         shell: python
@@ -159,8 +159,10 @@ jobs:
           name: installation-build-standalone-${{ matrix.id }}
           retention-days: 3
           path: |
-            ${{ runner.temp }}/cargo-*/*.log
-            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
+            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
+            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
             ${{ runner.temp }}/htmlcut-tool-build-*/*.log
             ${{ runner.temp }}/htmlcut-tool-build-*/*.json
           if-no-files-found: warn
@@ -232,6 +234,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      - uses: ./.github/actions/cargo-downloads
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Verify anonymous public bytes, attestation and native execution

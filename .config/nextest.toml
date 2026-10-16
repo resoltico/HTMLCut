@@ -1,0 +1,13 @@
+# Mutation scheduling changes order, never test membership.
+[profile.mutation]
+fail-fast = true
+retries = 0
+leak-timeout = { period = "200ms", result = "fail" }
+
+[[profile.mutation.overrides]]
+filter = 'package(=htmlcut-core)'
+priority = 100
+
+[[profile.mutation.overrides]]
+filter = 'package(=htmlcut-runtime)'
+priority = 50

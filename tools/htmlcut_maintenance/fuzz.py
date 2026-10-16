@@ -3,6 +3,7 @@
 """Own finite fuzz builds, sequential harnesses and their retained evidence."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,12 +16,14 @@ import sys
 import tempfile
 import threading
 from tools.htmlcut_maintenance import config, process
+from tools.htmlcut_maintenance.mutation import source_identity
 import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 MAXIMUM_SEEDS = 10000
 MAXIMUM_INPUT = 65536
+EXTRACT_FRAMING = "mode:u8, contract_bytes:u16le, contract:utf8, document:bytes"
 
 
 class Refusal(Exception):
@@ -40,7 +43,7 @@ def fuzz_targets():
         return [target["name"] for target in tomllib.load(source)["bin"]]
 
 
-def read_seed(path, remaining=MAXIMUM_INPUT):
+def seed_size(path, remaining=MAXIMUM_INPUT):
     metadata = path.stat()
     if not stat.S_ISREG(metadata.st_mode):
         raise Refusal(f"Fuzz seed {path} must be an ordinary regular file")
@@ -48,6 +51,11 @@ def read_seed(path, remaining=MAXIMUM_INPUT):
         raise Refusal(
             f"Fuzz seed {path} exceeds the smoke input bound of {MAXIMUM_INPUT} bytes"
         )
+    return metadata.st_size
+
+
+def read_seed(path, remaining=MAXIMUM_INPUT):
+    seed_size(path, remaining)
     with path.open("rb") as source:
         opened = os.fstat(source.fileno())
         if not stat.S_ISREG(opened.st_mode):
@@ -73,41 +81,82 @@ def seed_paths(directory, documents=False):
     return sorted(paths)
 
 
-def prepare_seeds(output, targets):
-    inventory = {"contract_bytes": [], "extract": []}
-    if set(targets) != inventory.keys():
-        raise Refusal("Fuzz target manifest and corpus formats disagree")
+def seed_sources():
     cases = seed_paths(ROOT / "conformance/contract")
     if not cases:
         raise Refusal("The conformance seed corpus is empty")
     documents = seed_paths(ROOT / "fuzz/seeds/documents", documents=True)
     if len(cases) + len(documents) > MAXIMUM_SEEDS:
         raise Refusal("extract exceeds the bounded initial corpus of 10000 seeds")
+    # Reject nonregular/oversized sources before source fingerprinting opens them.
+    for case in cases:
+        contract_bytes = seed_size(case / "contract.json", MAXIMUM_INPUT - 3)
+        seed_size(case / "page.html", MAXIMUM_INPUT - 3 - contract_bytes)
+    for path in documents:
+        seed_size(path, MAXIMUM_INPUT - 3 - len(b'{"select":":scope"}'))
+    return cases, documents
+
+
+def prepare_seeds(output, targets, sources=None):
+    inventory = {"contract_bytes": [], "extract": []}
+    identities = {target: {} for target in inventory}
+    if set(targets) != inventory.keys():
+        raise Refusal("Fuzz target manifest and corpus formats disagree")
+    cases, documents = seed_sources() if sources is None else sources
     for target in targets:
         (output / target / "corpus").mkdir(parents=True)
         (output / target / "crashes").mkdir()
 
-    def write_seed(target, name, value):
+    def write_seed(target, name, value, source=None):
+        source = name if source is None else source
+        digest = hashlib.sha256(value).hexdigest()
+        if digest in identities[target]:
+            identities[target][digest]["sources"].append(source)
+            return
         with (output / target / "corpus" / name).open("xb") as destination:
             destination.write(value)
-        inventory[target].append({"name": name, "bytes": len(value)})
+        record = {
+            "name": name,
+            "bytes": len(value),
+            "sha256": digest,
+            "sources": [source],
+        }
+        inventory[target].append(record)
+        identities[target][digest] = record
 
     for case in cases:
-        contract = read_seed(case / "contract.json", MAXIMUM_INPUT - 2)
-        page = read_seed(case / "page.html", MAXIMUM_INPUT - 2 - len(contract))
+        contract = read_seed(case / "contract.json", MAXIMUM_INPUT - 3)
+        page = read_seed(case / "page.html", MAXIMUM_INPUT - 3 - len(contract))
         write_seed("contract_bytes", case.name, contract)
         write_seed(
-            "extract", case.name, len(contract).to_bytes(2, "little") + contract + page
+            "extract",
+            case.name,
+            b"\0" + len(contract).to_bytes(2, "little") + contract + page,
         )
+    # Exercise the small-reading semantic policy during initialization as well
+    # as through mutations, without changing any authored source bytes.
+    first = cases[0]
+    contract = read_seed(first / "contract.json", MAXIMUM_INPUT - 3)
+    page = read_seed(first / "page.html", MAXIMUM_INPUT - 3 - len(contract))
+    write_seed(
+        "extract",
+        "small-reading-" + first.name,
+        b"\2" + len(contract).to_bytes(2, "little") + contract + page,
+        source=first.name,
+    )
     contract = b'{"select":":scope"}'
-    for path in documents:
-        page = read_seed(path, MAXIMUM_INPUT - 2 - len(contract))
+    for index, path in enumerate(documents):
+        page = read_seed(path, MAXIMUM_INPUT - 3 - len(contract))
         write_seed(
             "extract",
             "document-" + path.name,
-            len(contract).to_bytes(2, "little") + contract + page,
+            bytes([1 | ((index % 33) << 2)])
+            + len(contract).to_bytes(2, "little")
+            + contract
+            + page,
         )
     (output / "seeds.json").write_text(json.dumps(inventory, indent=2) + "\n")
+    return inventory
 
 
 def cleanup_confirmed(report):
@@ -154,17 +203,47 @@ def harness_directory(build, targets):
 
 
 def verify_progress(output, targets, runs, require_mutations):
+    progress = {}
     for target in targets:
         text = (output / target / "run.log").read_text(encoding="utf-8")
         completed = re.search(r"Done (\d+) runs", text)
         if completed is None or int(completed[1]) < runs:
             raise Refusal(f"{target} did not complete all {runs} iterations")
+        initialized = re.search(r"^#(\d+)\s+INITED\b", text, re.MULTILINE)
         if require_mutations:
-            initialized = re.search(r"^#(\d+)\s+INITED\b", text, re.MULTILINE)
             if initialized is None or int(completed[1]) <= int(initialized[1]):
                 raise Refusal(
                     f"{target} completed no mutation after seed initialization; increase --runs explicitly"
                 )
+        progress[target] = {
+            "initialized": int(initialized[1]) if initialized else None,
+            "completed": int(completed[1]),
+            "post_initialization": (
+                max(0, int(completed[1]) - int(initialized[1])) if initialized else None
+            ),
+        }
+    return progress
+
+
+def verify_source(expected, workspace):
+    observed = source_identity(workspace)
+    if observed != expected:
+        raise Refusal(
+            "Fuzz source/lock inputs changed; retained evidence does not establish a stable-source run"
+        )
+    return {"git_commit": observed["git_commit"], "sha256": observed["sha256"]}
+
+
+def source_state(workspace, identity):
+    if identity["git_commit"] is None:
+        return {"kind": "standalone"}
+    status = process.capture(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=workspace,
+        maximum_mib=1,
+        timeout=10,
+    )
+    return {"kind": "git", "dirty": bool(status.strip())}
 
 
 def main():
@@ -240,9 +319,35 @@ def main():
         if status:
             raise Refusal("Bounded fuzz phase failed", cancelled or status)
 
-    status = 0
+    status = 125
+    evidence = {
+        "extract_framing": EXTRACT_FRAMING,
+        "requested_runs": args.runs,
+        "require_mutations": args.require_mutations or args.runs == 10000,
+        "commands": {},
+        "scope": "full_smoke" if args.runs == 10000 else "short",
+        "complete": False,
+        "exit_status": None,
+    }
+
+    def preserve_run():
+        nonlocal status
+        evidence["complete"] = status == 0
+        evidence["exit_status"] = status
+        try:
+            (output / "run.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        except OSError as error:
+            print(f"Cannot preserve fuzz run evidence {output}: {error}", file=sys.stderr)
+            if status == 0:
+                status = 125
+
     try:
-        prepare_seeds(output, targets)
+        sources = seed_sources()
+        evidence["source"] = source_identity(ROOT)
+        evidence["source_state"] = source_state(ROOT, evidence["source"])
+        prepare_seeds(output, targets, sources)
+        evidence["source_after_seeds"] = verify_source(evidence["source"], ROOT)
+        (output / "run.json").write_text(json.dumps(evidence, indent=2) + "\n")
         env = {
             **os.environ,
             "CARGO_INCREMENTAL": "0",
@@ -253,55 +358,68 @@ def main():
         if cancelled:
             raise Refusal("Fuzz check interrupted", cancelled)
         build_started = True
+        build_command = [
+            "cargo",
+            "+" + toolchain,
+            "fuzz",
+            "build",
+            "--target-dir",
+            str(build / "target"),
+            "--codegen-units",
+            "16",
+        ]
+        evidence["commands"]["build"] = build_command
         start(
             build,
             1024,
             600,
             "build",
-            [
-                "cargo",
-                "+" + toolchain,
-                "fuzz",
-                "build",
-                "--target-dir",
-                str(build / "target"),
-                "--codegen-units",
-                "16",
-            ],
+            build_command,
             env,
         )
+        evidence["source_after_build"] = verify_source(evidence["source"], ROOT)
 
         release = harness_directory(build, targets)
         for target in targets:
             if cancelled:
                 raise Refusal("Fuzz check interrupted", cancelled)
             workers_started.append(target)
+            command = [
+                str(harness_path(release, target)),
+                str(output / target / "corpus"),
+                f"-runs={args.runs}",
+                "-reload=0",
+                f"-max_len={MAXIMUM_INPUT}",
+                "-timeout=10",
+                "-rss_limit_mb=2048",
+                "-seed=1008",
+                f"-artifact_prefix={output / target / 'crashes'}/",
+            ]
+            evidence["commands"][target] = command
             start(
                 output / target,
                 64,
                 180,
                 "run",
-                [
-                    str(harness_path(release, target)),
-                    str(output / target / "corpus"),
-                    f"-runs={args.runs}",
-                    "-reload=0",
-                    f"-max_len={MAXIMUM_INPUT}",
-                    "-timeout=10",
-                    "-rss_limit_mb=2048",
-                    "-seed=1008",
-                    f"-artifact_prefix={output / target / 'crashes'}/",
-                ],
+                command,
                 env,
             )
 
-        verify_progress(
+        evidence["progress"] = verify_progress(
             output, targets, args.runs, args.require_mutations or args.runs == 10000
         )
+        evidence["source_after_run"] = verify_source(evidence["source"], ROOT)
+        for target, progress in evidence["progress"].items():
+            print(
+                f"{target}: {progress['completed']} executions; "
+                f"{progress['initialized']} initialized; "
+                f"{progress['post_initialization']} after initialization."
+            )
         if args.runs != 10000:
             print(
                 f"Short test only: {args.runs} runs per target; required smoke is 10000."
             )
+        status = 0
     except Refusal as error:
         print(str(error), file=sys.stderr)
         status = error.status
@@ -312,14 +430,14 @@ def main():
         uncertain = False
         filesystem_failed = False
         try:
-            evidence = list(build.glob("build.*"))
+            build_evidence = list(build.glob("build.*"))
         except OSError as error:
             print(
                 f"Cannot inspect fuzz build evidence {build}: {error}", file=sys.stderr
             )
             filesystem_failed = True
-            evidence = []
-        for path in evidence:
+            build_evidence = []
+        for path in build_evidence:
             if not (output / path.name).exists():
                 try:
                     shutil.copy2(path, output / path.name)
@@ -365,14 +483,18 @@ def main():
         if status == 0 and not args.output_directory:
             try:
                 shutil.rmtree(output)
-            except OSError as error:
+            except BaseException as error:
+                status = 125
+                preserve_run()
+                if not isinstance(error, OSError):
+                    raise
                 print(
                     f"Cannot remove confirmed fuzz output {output}: {error}",
                     file=sys.stderr,
                 )
                 print(f"Fuzz evidence retained at {output}", file=sys.stderr)
-                status = 125
         else:
+            preserve_run()
             print(f"Fuzz evidence retained at {output}", file=sys.stderr)
     return status
 
