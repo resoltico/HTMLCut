@@ -49,17 +49,21 @@ jobs:
         env:
           CANDIDATE_TAG: ${{ steps.candidate.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import os, subprocess, sys
           subprocess.run([sys.executable,'-m','tools.htmlcut_maintenance','release','identity',os.environ['CANDIDATE_TAG'],'--require-ci','--output',os.environ['RUNNER_TEMP']+'/release-identity.json'],check=True)
+          PY
       - id: matrix
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import json, os
           from tools.htmlcut_maintenance.config import matrix
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('matrix='+json.dumps(matrix())+'\n')
+          PY
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -85,11 +89,13 @@ jobs:
           python-version-file: .python-version
       - env:
           SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import os
           from tools.htmlcut_maintenance.release.source import archives
           archives('.',os.environ['SOURCE_SHA'],'dist')
+          PY
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -124,25 +130,29 @@ jobs:
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Install native toolchain
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import subprocess
           from tools.htmlcut_maintenance.config import toolchain
           subprocess.run(['rustup','toolchain','install',toolchain(),'--profile','minimal'],check=True)
           subprocess.run(['rustup','target','add','--toolchain',toolchain(),'${{ matrix.target_triple }}'],check=True)
+          PY
       - uses: ./.github/actions/cargo-tool
         with:
           tool: cargo-about
       - name: Build and accept exact native package before provenance/publication
         id: package
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import os
           from tools.htmlcut_maintenance.release.package import build
           from tools.htmlcut_maintenance.release.accept import accept
           package=build('${{ matrix.target_triple }}','dist')
           accept(package,'${{ matrix.target_triple }}','${{ needs.release-target-matrix.outputs.version }}')
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write('name='+package.name+'\n')
+          PY
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/${{ steps.package.outputs.name }}
@@ -195,22 +205,26 @@ jobs:
           pattern: standalone-*
           path: dist/
           merge-multiple: true
-      - shell: python
+      - shell: bash
         run: |
+          python - <<'PY'
           import os
           from tools.htmlcut_maintenance.release.checksums import write
           write(os.environ['RELEASE_TAG'][1:],'dist')
+          PY
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/htmlcut-${{ needs.release-target-matrix.outputs.version }}-checksums.txt
       - name: Converge immutable release bytes without editing published retries
-        shell: python
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          python - <<'PY'
           import os
           from tools.htmlcut_maintenance.release.publish import publish
           publish(os.environ['RELEASE_TAG'],'dist')
+          PY
   published-native:
     needs: [release-target-matrix, release]
     runs-on: ${{ matrix.runs_on }}
@@ -238,10 +252,12 @@ jobs:
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Verify anonymous public bytes, attestation and native execution
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           import os, subprocess, sys
           subprocess.run([sys.executable,'-m','tools.htmlcut_maintenance','release','verify',os.environ['RELEASE_TAG'],'--target','${{ matrix.target_triple }}','--output','dist'],check=True)
+          PY
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

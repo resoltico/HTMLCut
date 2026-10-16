@@ -8,12 +8,14 @@ runs:
   using: composite
   steps:
     - id: paths
-      shell: python
+      shell: bash
       run: |
+        python - <<'PY'
         import os
         from tools.htmlcut_maintenance.config import cargo_download_paths
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write('paths<<CARGO_DOWNLOAD_PATHS\n'+'\n'.join(cargo_download_paths())+'\nCARGO_DOWNLOAD_PATHS\n')
+        PY
     - if: inputs.save == 'true'
       continue-on-error: true
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
