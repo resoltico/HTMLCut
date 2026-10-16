@@ -208,6 +208,53 @@ pub(super) fn complete_test_creation_after_pending_snapshot(records: &[Arc<Stage
 }
 
 #[test]
+fn cleanup_returns_after_its_budget_when_creation_remains_unconfirmed() {
+    const CHILD: &str = "HTMLCUT_UNCONFIRMED_CREATION_CHILD";
+    if let Some(root) = std::env::var_os(CHILD) {
+        let owned = Arc::new(StageOwnership {
+            path: Path::new(&root).join("foreign"),
+            created_identity: std::sync::OnceLock::new(),
+            creation_finished: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            directory: false,
+            #[cfg(windows)]
+            deletion_handle: std::sync::Mutex::new(None),
+        });
+        cleanup_owned_stages(&[owned], Instant::now(), Duration::ZERO);
+        std::process::exit(0);
+    }
+
+    let mut root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("foreign"), b"foreign bytes").unwrap();
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "local_io::tests::cleanup_returns_after_its_budget_when_creation_remains_unconfirmed",
+            "--nocapture",
+        ])
+        .env(CHILD, root.path())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let child = TestChild {
+        child: Some(child),
+        fixture: Some(&mut root),
+    };
+    let output = wait_for_test_child(
+        child,
+        "unconfirmed creation cleanup budget",
+        Instant::now() + Duration::from_secs(2),
+    );
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        std::fs::read(root.path().join("foreign")).unwrap(),
+        b"foreign bytes"
+    );
+}
+
+#[test]
 fn cleanup_retries_when_reserved_creation_finishes_during_grace() {
     if let Some(root) = std::env::var_os(PENDING_CREATION_CHILD) {
         let owned = Arc::new(StageOwnership {
