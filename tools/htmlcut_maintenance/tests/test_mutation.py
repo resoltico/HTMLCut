@@ -704,7 +704,7 @@ class DoctestBaselineTests(unittest.TestCase):
             (root / "src/lib.rs").write_text("", encoding="utf-8")
             (root / "Cargo.toml").write_text(
                 '[package]\nname="path-probe"\nversion="0.0.0"\n[workspace]\n', encoding="utf-8")
-            suffix = "baseline 雪🦀" if os.name == "nt" else "D:\\a\\_temp\\baseline 雪🦀\\build"
+            suffix = "config path 雪🦀" if os.name == "nt" else "D:\\a\\_temp\\baseline 雪🦀\\build"
             intended = root / suffix
             command = ["cargo", "+" + audit.config.toolchain(), "metadata", "--offline", "--no-deps",
                        "--format-version=1", "--manifest-path", str(root / "Cargo.toml"), "--config"]

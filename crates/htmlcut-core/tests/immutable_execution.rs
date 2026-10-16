@@ -20,26 +20,36 @@ fn public_documentation_example_has_a_regular_mutation_detector() {
     );
 }
 #[test]
-fn exact_engine_types_are_shareable_and_one_deadline_spans_phases() {
+fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
     fn share<T: Send + Sync>() {}
     share::<Document>();
     share::<Contract>();
     share::<Value>();
     share::<OutlineReport>();
     let limits = Limits::default();
-    let context = ExecutionContext::new(Some(std::time::Duration::from_millis(30))).unwrap();
+    let stopped = Arc::new(AtomicBool::new(false));
+    let observed = stopped.clone();
+    let context = ExecutionContext::with_checkpoint(move || {
+        if observed.load(Ordering::SeqCst) {
+            Err(Error::limit("time", 0))
+        } else {
+            Ok(())
+        }
+    });
     let contract = Contract::from_json("\"p\"", &context).unwrap();
     let document =
         Document::parse(Source::new(b"<p>x</p>"), &limits.preparation(), &context).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(40));
-    assert_eq!(
-        document
-            .extract(&contract, &limits.execution(), &context)
-            .unwrap_err()
-            .limit
-            .as_deref(),
-        Some("time")
-    );
+    stopped.store(true, Ordering::SeqCst);
+    let error = document
+        .extract(&contract, &limits.execution(), &context)
+        .unwrap_err();
+    assert_eq!(error.error, ErrorCode::LimitExceeded);
+    assert_eq!(error.limit.as_deref(), Some("time"));
+    assert_eq!(error.bound, Some(serde_json::json!(0)));
     let fresh = ExecutionContext::new(None).unwrap();
     assert_eq!(
         document
