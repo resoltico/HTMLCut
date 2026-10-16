@@ -332,3 +332,43 @@ fn simultaneous_blocked_reporting_and_cleanup_share_one_grace() {
         "central50ms grace exceeded40ms scheduling tolerance: {micros}us"
     );
 }
+
+#[test]
+fn completion_fallback_leaves_the_reporting_owner_its_grace() {
+    const READY: &str = "HTMLCUT_CLI_FALLBACK_READY";
+    if let Some(ready) = std::env::var_os(READY) {
+        std::fs::write(ready, b"reporting owner pending").unwrap();
+        let _ = completion::<()>(Completion::Supervised(Error::limit("time", 1.0)));
+        unreachable!("the process fallback must terminate");
+    }
+    let mut root = tempfile::tempdir().unwrap();
+    let ready = root.path().join("ready");
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "run::tests::completion_fallback_leaves_the_reporting_owner_its_grace",
+            "--nocapture",
+        ])
+        .env(READY, &ready)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let child = TestChild {
+        child: Some(child),
+        fixture: Some(&mut root),
+    };
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ready.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(ready.exists(), "fallback was not entered");
+    let observed = Instant::now();
+    let output = wait_for_test_child(child, "completion fallback", deadline);
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    assert!(output.stderr.is_empty());
+    assert!(
+        observed.elapsed() >= REPORT_GRACE,
+        "fallback overtook the reporting owner's central grace"
+    );
+}
