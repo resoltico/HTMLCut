@@ -739,7 +739,7 @@ functions['disk_bytes'] = sample
 
     def test_final_access_window_requires_a_fresh_complete_confirmation(self):
         result, report, log = self.final_sample_failure(
-            "print('completed child')", recover_access=True
+            "import sys; sys.stdout.buffer.write(b'completed child\\n')", recover_access=True
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(report["returncode"], 0)
@@ -794,7 +794,9 @@ functions['stop_process_tree'] = stop
 functions['child_exited'] = exited
 functions['disk_bytes'] = sample
 """
-        result, report, log = self.run_child("print('completed')", poll="1", fault=fault)
+        result, report, log = self.run_child(
+            "import sys; sys.stdout.buffer.write(b'completed\\n')", poll="1", fault=fault
+        )
         self.assertEqual(result.returncode, 125, result.stderr)
         self.assertIsNone(report["returncode"])
         self.assertEqual(report["refusal"], "process-cleanup-failed")
