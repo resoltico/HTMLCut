@@ -525,6 +525,32 @@ fn schema() -> Json {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn oversized_typed_query_refuses_before_encoding_work() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let checks = Arc::new(AtomicUsize::new(0));
+        let observed = checks.clone();
+        let context = crate::ExecutionContext::with_checkpoint(move || {
+            observed.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        });
+        let query = crate::QuickQuery {
+            select: "\\".repeat(super::MAX_CONTRACT_BYTES + 1),
+            read: "text".into(),
+            cardinality: crate::QueryCardinality::One,
+        };
+        let error = super::Contract::quick(&query, &context).err().unwrap();
+        assert_eq!(error.error, crate::ErrorCode::InvalidContract);
+        // Allow ordinary admission checks. Escaping this input before refusing
+        // would require hundreds of the context's 1024-iteration checkpoints.
+        assert!(
+            checks.load(Ordering::Relaxed) < 16,
+            "oversized quick syntax reached encoding work"
+        );
+    }
     use super::*;
     fn compile(value: Json) -> Result<Contract, Error> {
         Contract::from_json(
