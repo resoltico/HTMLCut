@@ -256,6 +256,36 @@ fn cleanup_returns_after_its_budget_when_creation_remains_unconfirmed() {
 }
 
 #[test]
+fn supervisor_cleanup_requires_claim_and_removes_a_confirmed_stage() {
+    let root = tempfile::tempdir().unwrap();
+    let stage = create_stage(root.path(), None, StageKind::InheritedPolicyProbe).unwrap();
+    let job = crate::Job::new(Some(Duration::ZERO)).unwrap();
+    job.reserve(Arc::clone(&stage.ownership));
+    let control = job.control();
+
+    control.cleanup(Duration::from_secs(2));
+    assert!(
+        stage.path().exists(),
+        "an active observer removed the confirmed stage before supervisor ownership"
+    );
+    assert!(matches!(
+        control.supervise(),
+        crate::Supervision::Claimed(_)
+    ));
+    control.cleanup(Duration::from_secs(2));
+    assert_eq!(
+        std::fs::symlink_metadata(stage.path())
+            .expect_err("claimed supervisor cleanup left its confirmed stage")
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    // Keep the real stage and its file handle alive through both assertions;
+    // dropping it earlier would let its destructor fake cleanup detection.
+    drop(stage);
+}
+
+#[test]
 fn cleanup_retries_when_reserved_creation_finishes_during_grace() {
     if let Some(root) = std::env::var_os(PENDING_CREATION_CHILD) {
         let owned = Arc::new(StageOwnership {

@@ -84,7 +84,7 @@ fn publication_phase_child() {
     }
 }
 #[test]
-fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
+fn publication_deadlines_preserve_old_output_and_honor_commit_claims() {
     for phase in [
         "reserved",
         "created",
@@ -96,8 +96,9 @@ fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
         "commit",
     ] {
         let mut root = tempfile::tempdir().unwrap();
-        let destination = root.path().join("result.json");
-        let ready = root.path().join("ready");
+        let canonical_root = root.path().canonicalize().unwrap();
+        let destination = canonical_root.join("result.json");
+        let ready = canonical_root.join("ready");
         std::fs::write(&destination, b"old").unwrap();
         let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -141,17 +142,125 @@ fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
                 b"complete-private-result"
             );
             assert!(result.stderr.is_empty());
+            assert_eq!(
+                std::fs::read_dir(root.path()).unwrap().count(),
+                2,
+                "{phase}: successful commit stranded staging at {stage:?}"
+            );
         } else {
             assert_eq!(result.status.code(), Some(4), "{result:?}");
             assert_eq!(std::fs::read(&destination).unwrap(), b"old");
-            // Deadline diagnostics are best effort within the reporting grace.
-            assert!(!stage.exists());
+            // Hard exit does not promise completion of the separate cleanup
+            // worker. Account only for this invocation's known staging names.
+            let relative = stage.strip_prefix(&canonical_root).unwrap_or_else(|error| {
+                panic!("{phase}: candidate {stage:?} escaped {canonical_root:?}: {error}")
+            });
+            let parts: Vec<_> = relative.components().collect();
+            assert_eq!(
+                parts.len(),
+                if cfg!(windows) { 1 } else { 2 },
+                "{phase}: candidate is not directly staged under {canonical_root:?}: {stage:?}"
+            );
+            assert!(
+                parts
+                    .iter()
+                    .all(|part| matches!(part, std::path::Component::Normal(_))),
+                "{phase}: candidate contains nonordinary components: {stage:?}"
+            );
+            let residue = parts[0].as_os_str();
+            let aliases_reserved_name = |name: &str| {
+                if cfg!(windows) {
+                    residue
+                        .as_encoded_bytes()
+                        .eq_ignore_ascii_case(name.as_bytes())
+                } else {
+                    residue == std::ffi::OsStr::new(name)
+                }
+            };
+            assert!(
+                !aliases_reserved_name("result.json") && !aliases_reserved_name("ready"),
+                "{phase}: candidate aliases destination or checkpoint: {stage:?}"
+            );
+            let mut required = std::collections::BTreeSet::from([
+                std::ffi::OsString::from("result.json"),
+                std::ffi::OsString::from("ready"),
+            ]);
+            for entry in std::fs::read_dir(&canonical_root).unwrap() {
+                let entry = entry.unwrap();
+                if required.remove(&entry.file_name()) {
+                    let kind = entry.file_type().unwrap();
+                    assert!(
+                        kind.is_file() && !kind.is_symlink(),
+                        "{phase}: base entry has unexpected type: {:?}",
+                        entry.path()
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    entry.file_name().as_os_str(),
+                    residue,
+                    "{phase}: unexpected residue {:?}; known candidate {stage:?}",
+                    entry.path()
+                );
+                let kind = match entry.file_type() {
+                    Ok(kind) => kind,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    Err(error) => panic!(
+                        "{phase}: cannot inspect known residue {:?}: {error}",
+                        entry.path()
+                    ),
+                };
+                #[cfg(windows)]
+                assert!(
+                    kind.is_file() && !kind.is_symlink(),
+                    "{phase}: candidate has unexpected type: {stage:?}"
+                );
+                #[cfg(unix)]
+                {
+                    assert!(
+                        kind.is_dir() && !kind.is_symlink(),
+                        "{phase}: candidate container has unexpected type: {:?}",
+                        entry.path()
+                    );
+                    let contents = match std::fs::read_dir(entry.path()) {
+                        Ok(contents) => contents.collect::<Result<Vec<_>, _>>().unwrap(),
+                        // A kernel cleanup already in flight may finish after exit.
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+                        Err(error) => panic!(
+                            "{phase}: cannot inspect candidate container {:?}: {error}",
+                            entry.path()
+                        ),
+                    };
+                    assert!(
+                        contents.len() <= 1,
+                        "{phase}: unexpected entries under candidate {stage:?}"
+                    );
+                    for entry in contents {
+                        assert_eq!(
+                            entry.file_name().as_os_str(),
+                            parts[1].as_os_str(),
+                            "{phase}: unexpected nested residue {:?}; known candidate {stage:?}",
+                            entry.path()
+                        );
+                        let kind = match entry.file_type() {
+                            Ok(kind) => kind,
+                            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                            Err(error) => {
+                                panic!("{phase}: cannot inspect known candidate {stage:?}: {error}")
+                            }
+                        };
+                        assert!(
+                            kind.is_file() && !kind.is_symlink(),
+                            "{phase}: candidate has unexpected type: {stage:?}"
+                        );
+                    }
+                }
+            }
+            assert!(
+                required.is_empty(),
+                "{phase}: base entries disappeared near candidate {stage:?}: {required:?}"
+            );
         }
-        assert_eq!(
-            std::fs::read_dir(root.path()).unwrap().count(),
-            2,
-            "{phase} stranded owned staging"
-        );
     }
 }
 
