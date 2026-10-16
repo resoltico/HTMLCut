@@ -201,8 +201,13 @@ fn native_acl_denial_and_inherited_directory_denial_remain_enforced() {
 #[ignore = "requires delivered executable, setfacl and sudo -n -u nobody; package acceptance runs this test"]
 fn named_user_acl_denial_preserves_actual_enforcement() {
     use std::ffi::OsStr;
-    let root = tempfile::tempdir().unwrap();
-    permissions(root.path(), 0o755);
+    // Cross-identity controls must not inherit a private TMPDIR ancestor from
+    // package acceptance. This test owns its /tmp child and changes only it.
+    let root = tempfile::Builder::new()
+        .prefix("htmlcut-cross-identity-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    permissions(root.path(), 0o700);
     let page = root.path().join("page.html");
     let path = root.path().join("result.json");
     fs::write(&page, b"<h1>complete</h1>").unwrap();
@@ -213,6 +218,11 @@ fn named_user_acl_denial_preserves_actual_enforcement() {
         command.args(["-n", "-u", "nobody", "cat"]).arg(&path);
         completed(command)
     };
+    assert!(
+        !read().status.success(),
+        "0700 ancestor must deny the independent reader before access policy changes"
+    );
+    permissions(root.path(), 0o711);
     assert!(
         read().status.success(),
         "native authorized read control must succeed"

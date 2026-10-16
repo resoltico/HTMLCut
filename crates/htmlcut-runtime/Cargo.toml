@@ -12,6 +12,10 @@ repository.workspace = true
 readme = "README.md"
 publish = true
 
+[features]
+# Instrumented ownership controls are excluded from default production builds.
+instrumented-tests = []
+
 [dependencies]
 htmlcut-core.workspace = true
 tempfile.workspace = true

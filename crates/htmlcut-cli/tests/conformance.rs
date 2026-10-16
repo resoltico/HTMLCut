@@ -1387,3 +1387,35 @@ fn documented_unavailable_selectors_refuse_as_selectors() {
         assert!(output.stdout.is_empty());
     }
 }
+
+#[test]
+fn acquisition_guidance_is_specific_to_url_shaped_input_paths() {
+    let directory = tempfile::tempdir().unwrap();
+    for (input, expected_hint) in [
+        (
+            directory
+                .path()
+                .join("missing.html")
+                .to_string_lossy()
+                .into_owned(),
+            false,
+        ),
+        ("https://example.invalid/snapshot".into(), true),
+        ("http://example.invalid/snapshot".into(), true),
+    ] {
+        let output = Command::new(binary())
+            .args(["get", "p", &input])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5));
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "input_unreadable");
+        assert_eq!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Fetch successfully"),
+            expected_hint
+        );
+    }
+}

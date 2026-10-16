@@ -459,6 +459,8 @@ original_start = namespace['main'].__globals__['subprocess'].Popen
 class BrokenReader:
     def __init__(self, original):
         self.original = original
+    def close(self):
+        self.original.close()
     def read1(self, size):
         __import__('time').sleep(0.3)
         raise OSError('late reader probe')
@@ -516,106 +518,156 @@ namespace['main'].__globals__['subprocess'].Popen = start
     def test_log_cap_does_not_block_separate_child_group_cleanup(self):
         self.separately_grouped_child_cleanup(overflow=True)
 
-    def separately_grouped_child_cleanup(self, overflow=False, defective=False):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            marker, ready, child_ready, release = [
-                root / name
-                for name in ("separate-child-wrote", "ready", "child-ready", "release")
-            ]
-            child = (
-                "import pathlib,time\n"
-                f"pathlib.Path({str(child_ready)!r}).write_text('ready')\n"
-                f"while not pathlib.Path({str(release)!r}).exists(): time.sleep(.005)\n"
-                f"pathlib.Path({str(marker)!r}).write_text('leaked')\n"
+    def separately_grouped_child_cleanup(
+        self, overflow=False, defective=False, readiness_failure=False
+    ):
+        # The test retains the separately sessioned child's unreaped Popen
+        # identity until the cooperative parent can make no further group signals.
+        # This also gives finally cleanup authority if the owner/probe fails.
+        from tools.htmlcut_maintenance import process as owner
+        import shutil
+        import signal
+
+        root = Path(tempfile.mkdtemp(prefix="htmlcut-descendant-control-"))
+        marker, ready, child_ready, release = [
+            root / name
+            for name in ("separate-child-wrote", "ready", "child-ready", "release")
+        ]
+        descendant = None
+        parents = []
+        confirmed = True
+        original_start = subprocess.Popen
+        child = (
+            "import pathlib,time,sys\n"
+            f"pathlib.Path({str(child_ready)!r}).write_text('ready')\n"
+            "deadline=time.monotonic()+10\n"
+            f"while not pathlib.Path({str(release)!r}).exists():\n"
+            " if time.monotonic()>=deadline: sys.exit(42)\n"
+            " time.sleep(.005)\n"
+            f"pathlib.Path({str(marker)!r}).write_text('leaked')\n"
+        )
+        try:
+            descendant = original_start(
+                [sys.executable, "-c", child],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
+            deadline = time.monotonic() + 3
+            while not child_ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.005)
+            self.assertTrue(child_ready.exists(), "descendant readiness deadline")
             parent = (
-                "import os,signal,subprocess,sys,time,pathlib\n"
-                f"child=subprocess.Popen([sys.executable,'-c',{child!r}],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
+                "import os,signal,sys,time,pathlib\n"
                 "def stop(*_):\n"
                 + (
-                    " sys.stdout.write('c'*(2*1024*1024)); sys.stdout.flush()\n"
+                    " sys.stdout.write('c'*(2*1024*1024));sys.stdout.flush()\n"
                     if overflow
                     else ""
                 )
                 + (
                     " pass\n"
                     if defective
-                    else " os.killpg(child.pid,signal.SIGKILL)\n child.wait()\n"
+                    else f" os.killpg({descendant.pid},signal.SIGKILL)\n"
                 )
                 + " sys.exit(0)\n"
                 "signal.signal(signal.SIGINT,stop)\n"
-                f"while not pathlib.Path({str(child_ready)!r}).exists(): time.sleep(.005)\n"
-                f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
                 + (
-                    "sys.stdout.write('x'*(2*1024*1024)); sys.stdout.flush()\n"
+                    "sys.exit(43)\n"
+                    if readiness_failure
+                    else f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
+                )
+                + (
+                    "sys.stdout.write('x'*(2*1024*1024));sys.stdout.flush()\n"
                     if overflow
                     else ""
                 )
                 + "time.sleep(5)\n"
             )
-            wrapper = (
-                "import runpy,sys,pathlib,time\n"
-                "namespace=runpy.run_path(sys.argv[1]); sys.argv=sys.argv[1:]\n"
-                "original=namespace['run'].__globals__['subprocess'].Popen\n"
-                "def start(*a,**kw):\n"
-                " child=original(*a,**kw)\n"
-                f" ready=pathlib.Path({str(ready)!r}); deadline=time.monotonic()+3\n"
-                " while not ready.exists():\n"
-                "  if time.monotonic()>=deadline: raise RuntimeError('child readiness deadline')\n"
-                "  time.sleep(.005)\n"
-                " return child\n"
-                "namespace['run'].__globals__['subprocess'].Popen=start\n"
-                "sys.exit(namespace['main']())\n"
-            )
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    wrapper,
-                    str(RUNNER),
-                    "--root",
-                    directory,
-                    "--disk-limit-mib",
-                    "4",
-                    "--log-limit-mib",
-                    "1",
-                    "--timeout",
-                    ".5",
-                    "--poll-seconds",
-                    ".02",
-                    "--label",
-                    "test",
-                    "--",
-                    sys.executable,
-                    "-c",
-                    parent,
-                ],
-                capture_output=True,
-                timeout=8,
-            )
-            self.assertTrue(ready.exists(), result.stderr)
-            self.assertEqual(result.returncode, 125, result.stderr)
-            report = json.loads((root / "test.resources.json").read_text())
+
+            def start(*args, **kwargs):
+                process = original_start(*args, **kwargs)
+                parents.append(process)
+                deadline = time.monotonic() + 3
+                while not ready.exists():
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("parent readiness deadline")
+                    time.sleep(0.005)
+                return process
+
+            with mock.patch.object(owner.subprocess, "Popen", side_effect=start):
+                if readiness_failure:
+                    with self.assertRaisesRegex(RuntimeError, "readiness deadline"):
+                        owner.run(
+                            [sys.executable, "-c", parent],
+                            root,
+                            disk_limit_mib=4,
+                            log_limit_mib=1,
+                            timeout=0.5,
+                            poll_seconds=0.02,
+                            label="test",
+                        )
+                    return
+                report = owner.run(
+                    [sys.executable, "-c", parent],
+                    root,
+                    disk_limit_mib=4,
+                    log_limit_mib=1,
+                    timeout=0.5,
+                    poll_seconds=0.02,
+                    label="test",
+                )
+            self.assertEqual(owner.status(report), 125)
             self.assertEqual(
                 report["refusal"],
                 "log-budget-exceeded" if overflow else "wall-time-exceeded",
             )
             self.assertEqual(report["cleanup_errors"], [])
-            # Release only after the owner's cleanup report exists. A descendant
-            # cannot write the negative marker before the property is tested.
+            # Only after the owner's completed cleanup report can an escaped
+            # descendant write the marker. The defective control must do so.
             release.write_text("released after cleanup")
-            deadline = time.monotonic() + 1
-            while not marker.exists() and time.monotonic() < deadline:
-                time.sleep(0.005)
-            if defective:
-                self.assertTrue(
-                    marker.exists(), "negative cleanup control did not leak"
-                )
-            else:
-                self.assertFalse(
-                    marker.exists(), "separately grouped child survived cancellation"
-                )
+            descendant.wait(timeout=2)
+            self.assertEqual(
+                marker.exists(), defective, "post-cleanup descendant-release oracle"
+            )
+        finally:
+            # Do not reap a group leader before its last numeric group signal.
+            # Popen.returncode is inspected without poll(): unknown means the
+            # directly owned identity is still retained until this kill/wait.
+            for process in parents:
+                try:
+                    if process.returncode is None:
+                        owner.stop_process_tree(process)
+                        process.wait(timeout=2)
+                    if process.stdout is not None:
+                        process.stdout.close()
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    confirmed = False
+                    print(
+                        f"Parent cleanup unconfirmed; retained {root}: {error}",
+                        file=sys.stderr,
+                    )
+            if descendant is not None:
+                try:
+                    if confirmed:
+                        release.touch()
+                    if descendant.returncode is None:
+                        owner.stop_process_tree(descendant)
+                        descendant.wait(timeout=2)
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    confirmed = False
+                    print(
+                        f"Descendant cleanup unconfirmed; retained {root}: {error}",
+                        file=sys.stderr,
+                    )
+            if confirmed:
+                shutil.rmtree(root)
+            elif sys.exc_info()[0] is None:
+                self.fail(f"fixture cleanup was not confirmed; retained {root}")
+
+    @unittest.skipIf(os.name == "nt", "POSIX separately grouped child cleanup")
+    def test_readiness_failure_still_tears_down_the_owned_separate_descendant(self):
+        self.separately_grouped_child_cleanup(readiness_failure=True)
 
     @unittest.skipIf(os.name == "nt", "POSIX separately grouped child cleanup")
     def test_descendant_release_detects_deliberately_defective_cleanup(self):

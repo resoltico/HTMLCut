@@ -326,9 +326,13 @@ impl Policy {
 
         Ok(())
     }
-    pub(crate) fn apply(&self, file: &File, #[cfg(test)] stage: &Path) -> io::Result<()> {
+    pub(crate) fn apply(
+        &self,
+        file: &File,
+        #[cfg(any(test, feature = "instrumented-tests"))] stage: &Path,
+    ) -> io::Result<()> {
         Descriptor::parse(&self.0)?.apply(file, INFO)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "instrumented-tests"))]
         crate::local_io::checkpoint("metadata", stage);
         self.verify(file)
     }
