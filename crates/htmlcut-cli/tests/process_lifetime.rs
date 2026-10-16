@@ -109,16 +109,20 @@ fn a_consumer_holding_stdout_open_cannot_block_hard_expiry() {
     use std::io::Read;
     let root = tempfile::tempdir().unwrap();
     let page = root.path().join("large.html");
-    std::fs::write(&page, format!("<p>{}</p>", "x".repeat(1024 * 1024))).unwrap();
+    let (mut consumer, mut writer) = std::io::pipe().unwrap();
+    let capacity = fill_pipe(&mut writer);
+    // Empty the measured pipe, then use that exact pipe for child stdout.
+    // Its payload exceeds capacity even after the readiness byte is consumed.
+    consumer.read_exact(&mut vec![0; capacity]).unwrap();
+    std::fs::write(&page, format!("<p>{}</p>", "x".repeat(capacity + 1024))).unwrap();
     let mut child = Command::new(binary())
         .args(["get", "p"])
         .arg(page)
         .args(["--timeout", "2"])
-        .stdout(Stdio::piped())
+        .stdout(writer)
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let mut consumer = child.stdout.take().unwrap();
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut prefix = [0];
@@ -133,7 +137,10 @@ fn a_consumer_holding_stdout_open_cannot_block_hard_expiry() {
             panic!("stdout readiness was not observed: {error}; {output:?}");
         }
     };
-    read.expect("the production binary must begin delivery before expiry");
+    if let Err(error) = read {
+        let output = finish(child);
+        panic!("the production binary did not begin delivery: {error}; {output:?}");
+    }
     assert_eq!(&prefix, b"\"");
     let output = finish(child);
     drop(consumer);

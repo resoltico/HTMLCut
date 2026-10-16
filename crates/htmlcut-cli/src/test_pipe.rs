@@ -2,7 +2,7 @@
 use std::io::Write;
 #[cfg(unix)]
 #[allow(unsafe_code)]
-pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) {
+pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) -> usize {
     use std::os::fd::AsRawFd;
     let fd = writer.as_raw_fd();
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
@@ -21,10 +21,11 @@ pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) {
     }
     assert!(capacity > 0);
     assert_eq!(unsafe { libc::fcntl(fd, libc::F_SETFL, flags) }, 0);
+    capacity
 }
 #[cfg(windows)]
 #[allow(unsafe_code)]
-pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) {
+pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) -> usize {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::{
         Foundation::ERROR_NO_DATA,
@@ -71,4 +72,5 @@ pub(crate) fn fill_pipe(writer: &mut std::io::PipeWriter) {
         0,
         "restore blocking mode before the executable inherits the writer"
     );
+    capacity
 }
