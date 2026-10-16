@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Command grammar; guide.txt is the complete reader-facing guide.
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use htmlcut_core::{Error, ErrorCode, Limits};
+use htmlcut_runtime::{Error, ErrorCode, Limits};
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
@@ -34,44 +34,56 @@ pub(crate) struct Common {
     pub(crate) encoding: Option<String>,
     #[arg(short = 'o', long)]
     pub(crate) output: Option<PathBuf>,
-    #[arg(long,default_value="10",value_parser=timeout)]
-    pub(crate) timeout: Duration,
-    #[arg(long, default_value_t = Limits::default().max_nodes)]
-    pub(crate) max_nodes: usize,
-    #[arg(long, default_value_t = Limits::default().max_input_bytes)]
-    pub(crate) max_input_bytes: usize,
-    #[arg(long, default_value_t = Limits::default().max_reading_bytes)]
-    pub(crate) max_reading_bytes: usize,
-    #[arg(long, default_value_t = Limits::default().max_output_bytes)]
-    pub(crate) max_output_bytes: usize,
+    #[arg(long, value_parser=timeout, help=format!("Time allowance in seconds [default: {}]", Limits::default().time_limit.unwrap().as_secs_f64()))]
+    pub(crate) timeout: Option<Duration>,
+    #[arg(long, help=format!("Policy ceiling [default: {}]", Limits::default().max_nodes))]
+    pub(crate) max_nodes: Option<usize>,
+    #[arg(long, help=format!("Policy ceiling [default: {}]", Limits::default().max_input_bytes))]
+    pub(crate) max_input_bytes: Option<usize>,
+    #[arg(long, help=format!("Policy ceiling [default: {}]", Limits::default().max_reading_bytes))]
+    pub(crate) max_reading_bytes: Option<usize>,
+    #[arg(long, help=format!("Policy ceiling [default: {}]", Limits::default().max_output_bytes))]
+    pub(crate) max_output_bytes: Option<usize>,
 }
 impl Common {
     pub(crate) fn limits(&self) -> Limits {
         let mut limits = Limits::default();
-        limits.max_input_bytes = self.max_input_bytes;
-        limits.max_nodes = self.max_nodes;
-        limits.max_output_bytes = self.max_output_bytes;
-        limits.max_reading_bytes = self.max_reading_bytes;
-        limits.time_limit = Some(self.timeout);
+        if let Some(value) = self.max_input_bytes {
+            limits.max_input_bytes = value;
+        }
+        if let Some(value) = self.max_nodes {
+            limits.max_nodes = value;
+        }
+        if let Some(value) = self.max_output_bytes {
+            limits.max_output_bytes = value;
+        }
+        if let Some(value) = self.max_reading_bytes {
+            limits.max_reading_bytes = value;
+        }
+        if let Some(value) = self.timeout {
+            limits.time_limit = Some(value);
+        }
         limits
     }
 }
 #[derive(Args)]
 pub(crate) struct Schema {
+    #[arg(long, help=format!("Complete schema byte ceiling [default: {}]", Limits::default().max_output_bytes))]
+    pub(crate) max_output_bytes: Option<usize>,
     #[arg(short = 'o', long)]
     pub(crate) output: Option<PathBuf>,
-    #[arg(long,default_value="10",value_parser=timeout)]
-    pub(crate) timeout: Duration,
+    #[arg(long, value_parser=timeout, help=format!("Time allowance in seconds [default: {}]", Limits::default().time_limit.unwrap().as_secs_f64()))]
+    pub(crate) timeout: Option<Duration>,
 }
 #[derive(Args)]
 pub(crate) struct Outline {
     pub(crate) file: Option<PathBuf>,
     #[arg(long)]
     pub(crate) select: Option<String>,
-    #[arg(long, default_value = "6")]
-    pub(crate) depth: usize,
-    #[arg(long, default_value = "80")]
-    pub(crate) max_lines: usize,
+    #[arg(long, help=format!("Expanded depth [default: {}]", htmlcut_runtime::OutlineOptions::default().depth))]
+    pub(crate) depth: Option<usize>,
+    #[arg(long, help=format!("Emitted lines [default: {}]", htmlcut_runtime::OutlineOptions::default().max_lines))]
+    pub(crate) max_lines: Option<usize>,
     #[arg(long)]
     pub(crate) attrs: bool,
     #[command(flatten)]
@@ -83,8 +95,8 @@ pub(crate) struct Get {
     pub(crate) file: Option<PathBuf>,
     #[arg(long)]
     pub(crate) all: bool,
-    #[arg(long, default_value = "text")]
-    pub(crate) read: String,
+    #[arg(long, help=format!("Value reading [default: {}]", htmlcut_runtime::DEFAULT_READING))]
+    pub(crate) read: Option<String>,
     #[arg(short = 'r', long)]
     pub(crate) raw: bool,
     #[command(flatten)]
@@ -115,7 +127,7 @@ pub(crate) fn argument_error(message: &str) -> Error {
 
 pub(crate) fn parser_error(error: clap::Error) -> Error {
     Error::new(
-        ErrorCode::InvalidArguments,
+        ErrorCode::InvalidRequest,
         format!(
             "{} Run htmlcut --help for the guide.",
             error.to_string().trim_end()

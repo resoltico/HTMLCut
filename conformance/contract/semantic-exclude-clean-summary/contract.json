@@ -1,0 +1,7 @@
+{
+  "select": "article",
+  "exclude": [
+    "nav",
+    ".ad"
+  ]
+}

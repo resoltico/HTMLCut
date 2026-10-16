@@ -1,0 +1,6 @@
+{
+  "error": "count_mismatch",
+  "path": "$",
+  "found": 1,
+  "expected": "2"
+}

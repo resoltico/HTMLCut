@@ -80,15 +80,15 @@ Limits are operator policy, outside the contract.
 | `max_input_bytes` | 64 MiB | supplied bytes before decoding |
 | `max_nodes` | 2,000,000 | retained owned DOM nodes before allocation |
 | `max_reading_bytes` | 64 MiB | each complete transformed UTF-8 source reading |
-| `max_output_bytes` | 64 MiB | complete canonical JSON, charged during production |
-| `time_limit` | 10 s | cooperative preparation or execution call |
+| `max_output_bytes` | 64 MiB | complete canonical export including final LF, charged during production |
+| `time_limit` | 10 s | default job duration; one absolute deadline spans all phases |
 | depth | 1,024, fixed | transient retained tree depth |
 
 Patterns/captures and predicates may require complete source scalars; their per-reading
 admission is separate from final output. A long source with a tiny capture remains valid
 within `reading_bytes`. Discarded normalization whitespace and excluded subtrees do not
 consume reading/output admission. Keys, delimiters, Unicode and JSON escaping count
-exactly. Caller-constructed `Value.to_json` enforces its supplied output bound independently.
+exactly. `Value::export` re-admits a complete canonical result and its requested representation under the supplied bound. Preparation and execution accept separate policies; `Limits` supplies shared configuration defaults. A prepared document retains neither execution policy nor a clock.
 
 Library time checks run between bounded parser feeds and at least every 1,024 owned
 iterations. Upstream tokenizer, attribute, parser stack, URL and regex operations may
@@ -98,16 +98,14 @@ instruction. Callers supply physical process/memory containment when required.
 
 The CLI starts one monotonic deadline after valid argument parsing, before contract and
 snapshot acquisition. It stays active through stream write/flush or regular-file staging
-and metadata. Zero timeout wins before input consumption. An atomic winner selects expiry,
-commit-in-progress, success or error. File commit checks the deadline before atomically
+and metadata. Zero timeout wins before input consumption. The runtime arbiter separates Active, CommitOwned, Completed and SupervisorOwned from pending cancellation/deadline requests. File commit checks the deadline before atomically
 claiming commit-in-progress. Once that claim wins, the actual rename outcome governs,
 with no contradictory time refusal. Atomic filesystem commit cannot promise an exact wall-clock bound or rollback.
 
 One reporting owner delivers best-effort diagnostics on a separate thread, with a central
 50 ms grace. Blocked/closed/nonblocking stderr cannot change the exit class or defeat
 termination; its diagnostic can be absent/partial. Ordinary errors claim terminal error
-before reporting. Help/version are untimed metadata output and may block. Schema output
-uses its own default 10 s invocation deadline and ordinary publication.
+before reporting. Help and version presentation also use bounded executable supervision and runtime publication. Schema receives the shared default job duration and supports an output-byte override.
 
 Regular-file commit, authorization preservation, direct streams and cleanup are described
 in [Output publication](publication.md).
@@ -133,7 +131,7 @@ appear when known. Failures after direct output begins can expose an output pref
 | `file`, `detail` | Path and operating-system error text for input and output failures |
 
 `message` is a complete English sentence that repeats the facts; its wording is not part
-of the frozen surface. The facts each code carries are fixed:
+of the structured diagnostic contract. Available facts depend on the refusal:
 
 | Code | Facts |
 |---|---|
@@ -146,7 +144,7 @@ of the frozen surface. The facts each code carries are fixed:
 | `limit_exceeded` | `limit` (`input_bytes`, `nodes`, `depth`, `reading_bytes`, `output_bytes`, `time`), `bound` |
 | `undecodable_input` | `encoding` (the WHATWG name in lower case), `offset` |
 | `invalid_contract`, `invalid_pattern` | `path` when the failure has a location |
-| `invalid_selector` | `select`, and `path` only for a contract location |
+| `invalid_selector` | bounded `select` when available; oversized selector input is omitted, and `path` only identifies a contract location |
 | `input_unreadable`, `output_unwritable` | `file`, `detail` |
 
 `row` identifies enclosing `all` matches; for `unrepresentable_output`, it identifies the
@@ -156,11 +154,12 @@ debug renderings.
 
 | Exit | Codes |
 |---|---|
-| 2 | `invalid_arguments`, `invalid_contract`, `invalid_selector`, `invalid_pattern`, `invalid_encoding`, `invalid_base_url` |
+| 2 | `invalid_request`, `invalid_contract`, `invalid_selector`, `invalid_pattern`, `invalid_encoding`, `invalid_base_url` |
 | 3 | `count_mismatch`, `value_mismatch`, `expectation_failed`, `missing_attribute`, `unresolvable_url`, `unrepresentable_output` |
 | 4 | `limit_exceeded` |
 | 5 | `input_unreadable`, `undecodable_input`, `output_unwritable` |
 | 6 | `internal` |
+| 130 | `cancelled` |
 
 Exit 3 means a contract or output-representation refusal: re-author or use JSON. Exit 2 means the
 request itself is wrong: fix it without looking at the document.
@@ -173,7 +172,7 @@ The four commands are:
 - `get CSS [FILE]` runs a value contract, with `--all` and `--read` when requested.
 - `run CONTRACT-JSON [FILE]` runs an inline contract; `run --from-file PATH [FILE]`
   reads the contract from a UTF-8 file. `--from-file -` consumes contract stdin only with a distinct explicit HTML source; implicit/dash and recognizable FD0 aliases (including symlinks) refuse before either read. Harder aliases are not universally detectable; `./-` is a literal filename.
-- `schema [-o DEST] [--timeout SECONDS]` prints the contract schema without document input.
+- `schema [-o DEST] [--timeout SECONDS] [--max-output-bytes N]` prints the contract schema without document input.
 
 `FILE` defaults to standard input; `-` explicitly selects standard input. Readable paths
 include pipes and process substitution. Implicit input from a terminal is refused before
@@ -197,49 +196,62 @@ points to `--from-file`.
 
 ## Library
 
-`htmlcut-core` exposes the same engine. Public enums and option structs are
-`#[non_exhaustive]` so that additions are not breaking.
+`htmlcut-core` is a pure engine with `forbid(unsafe_code)`. Its immutable documents,
+compiled contracts, owned results and structured outline reports safely implement
+`Send + Sync`. Owned retained parser strings are admitted in the existing tree;
+there is no second full DOM or unsafe trait implementation.
 
 ```rust
-use htmlcut_core::{Contract, Document, Limits, Source, Value};
-
+use htmlcut_core::{Contract, Document, ExecutionContext, Limits, Source, Value};
 fn main() -> Result<(), htmlcut_core::Error> {
-    let document = Document::parse(Source::new(b"<h1>Snapshot</h1>"), &Limits::default())?;
-    let contract = Contract::from_json(r#""h1""#)?;
-    assert_eq!(document.extract(&contract)?, Value::String("Snapshot".into()));
+    let limits = Limits::default();
+    let context = ExecutionContext::new(limits.time_limit)?;
+    let contract = Contract::from_json(r#""h1""#, &context)?;
+    let document = Document::parse(Source::new(b"<h1>Snapshot</h1>"), &limits.preparation(), &context)?;
+    assert_eq!(document.extract(&contract, &limits.execution(), &context)?, Value::String("Snapshot".into()));
     Ok(())
 }
 ```
 
-The [public API](../crates/htmlcut-core/src/lib.rs) exports the engine types; the
-[packaged example](../crates/htmlcut-core/examples/contract.rs) shows record extraction.
+Each operation receives an explicit context and execution policy. The same context
+spans compilation, admission, evaluation and encoding; later operations receive a
+fresh context. Caches and counters are local to an execution. Core starts no threads
+and performs no filesystem or stream I/O. Closed operation/result/diagnostic enums
+require exhaustive adapter mappings; open fact/option structs can remain extensible.
 
-A `Document` keeps its limits; each `extract` and `outline` call gets a fresh time limit.
-The library does not start threads, read files or write output.
+`htmlcut-runtime` owns shared preflight, input acquisition, reusable opaque document
+handles, exports and local delivery. Its facade exposes no engine document, compiled
+contract or DOM entry point. See the [headless consumer](../crates/htmlcut-runtime/examples/headless.rs).
+The CLI's only production dependencies are Clap and runtime. It owns shell syntax,
+terminal help, exhaustive exit mapping and disposable-process supervision.
+
+Cancellation before the absolute deadline retains priority. Late cancellation records
+the elapsed deadline. A stop request or cooperative refusal does not establish host
+completion. The operation owner finishes only after delivery and owned cleanup; observer
+Drop is inert. Unwind cleanup does not invent cancellation: absent an earlier stop,
+panic becomes Internal/exit 6. Claiming commit atomically excludes later stops; actual
+rename success/failure governs even after expiry. Only the CLI may enforce a deadline
+by exiting. Library/GUI jobs remain cooperative; blocking OS/upstream calls require a
+future disposable-process boundary if hard isolation is needed.
 
 ## Stability
 
-The following are frozen within a major version: contract members and their meaning; the
-readings; the commands and options under [Command line](#command-line) and exit classes under [Errors](#errors); error codes and fact
-names. Additions are allowed: new optional members, readings, options, codes and facts.
+A contract carries no version. The engine's major version defines its semantics;
+`htmlcut --version` is what reproduction records. Unknown contract members refuse.
+Breaking changes require a major release and explicit outcome documentation; this
+overhaul provides no compatibility aliases or migrations.
 
-A contract carries no version. The engine's major version is the semantics version, and
-`htmlcut --version` is what reproduction records. An older engine refuses a newer
-contract because unknown members are refused.
-
-`conformance/contract/` is append-only within a major version. Changing or removing an
-existing case there is a breaking change by definition, and continuous integration checks
-it against the latest release tag of the current major. `conformance/outline/` pins the
-reader-facing format and may change in a minor release.
+The literal corpus is reviewed specification input. Its semantics and exact byte
+fixtures are checked through core, runtime, actual CLI and unpacked native executables.
+There is no byte-frozen/append-only corpus gate. Documented selector examples require
+executable dialect coverage. Historical released behavior remains recorded in the changelog.
 
 `rust-version` is the lowest toolchain that builds and passes the suite, verified in
 continuous integration. `rust-toolchain.toml` pins the development toolchain separately.
 
 ## Output representation
 
-The output limit counts the complete canonical JSON result, excluding its command-line
-framing LF. Raw output uses the same extraction policy and is no larger. Outline bytes
-include their line terminators. Memory includes input, decoded text, the retained tree,
+The output limit counts the complete canonical materialized export: compact JSON plus final LF for extraction/schema, and canonical text including terminators for outline. Raw exports also admit canonical JSON plus LF and check their actual bytes. Optional null needs five canonical bytes even though raw null emits none. A later Save re-admits under its own ceiling. Memory includes input, decoded text, the retained tree,
 intermediate parser/selector/regex state and results; these admissions do not establish a
 physical heap cap. Operators requiring one provide it externally.
 
@@ -247,8 +259,20 @@ Outline identifiers use CSS escaping and quoted previews use JSON escaping. Head
 
 ## Implementation
 
-The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument parsing, input, watchdog and publication. The library starts no threads and performs no filesystem or stream I/O.
+The [core modules](../crates/htmlcut-core/src/lib.rs) own contract compilation, document preparation, scoped selection/evaluation, readings, outline, values and failures. The [runtime](../crates/htmlcut-runtime/src/lib.rs) owns preflight, host input, complete export/delivery, staging and native authorization. The [CLI](../crates/htmlcut-cli/src/main.rs) owns argument syntax, terminal presentation and hard supervision.
 
 Sibling indexes are cached for one extraction or outline call over the immutable tree.
 Relative-selector caches are reset for each scope. Selectors with an `of S` argument are refused at admission even if an upstream parser
 starts accepting that syntax.
+
+`OutlineReport` contains selection/header facts, bounded ordered rows, representative
+IDs/classes/attributes/previews, grouped counts, collapsed descendant counts and
+`omitted_lines`. A selector header consumes one `max_lines` line; an omitted header
+contributes to omissions even at zero lines. The omission summary is extra. Core
+admits canonical row bytes before retaining their bounded facts; consumers do not
+parse text or recompute grouping. Rendering observes the job context and new export policy.
+
+`cancelled` has no invented limit/bound facts and maps to CLI exit 130. All direct-stream
+BrokenPipe writes/flushes return neutral Disconnected; CLI maps it to silent success.
+The metadata dependency guard detects prohibited direct dependencies, with a synthetic
+negative graph; parity tests and review address copied std-only business logic.

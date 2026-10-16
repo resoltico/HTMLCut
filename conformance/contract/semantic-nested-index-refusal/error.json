@@ -1,0 +1,9 @@
+{
+  "error": "value_mismatch",
+  "path": "$.fields.items",
+  "row": [
+    2,
+    2
+  ],
+  "value": "bad"
+}

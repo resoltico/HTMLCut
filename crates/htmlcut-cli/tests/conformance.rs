@@ -16,9 +16,13 @@ fn corpus() -> PathBuf {
 fn exit_for(code: &str) -> i32 {
     match code {
         "invalid_contract" | "invalid_selector" | "invalid_pattern" | "invalid_encoding"
-        | "invalid_arguments" | "invalid_base_url" => 2,
-        "count_mismatch" | "value_mismatch" | "expectation_failed" | "missing_attribute"
-        | "unresolvable_url" => 3,
+        | "invalid_request" | "invalid_base_url" => 2,
+        "count_mismatch"
+        | "value_mismatch"
+        | "expectation_failed"
+        | "missing_attribute"
+        | "unresolvable_url"
+        | "unrepresentable_output" => 3,
         "limit_exceeded" => 4,
         "input_unreadable" | "output_unwritable" | "undecodable_input" => 5,
         "internal" => 6,
@@ -80,6 +84,13 @@ fn run_cases(root: &Path) -> usize {
                     }
                 }
             }
+            let options: Value = std::fs::read(path.join("options.json"))
+                .ok()
+                .map(|bytes| serde_json::from_slice(&bytes).unwrap())
+                .unwrap_or_default();
+            if options["raw"] == true {
+                command.arg("--raw");
+            }
             let output = command.stdin(Stdio::null()).output().unwrap();
             if path.join("error.json").exists() {
                 let mut expected: Value =
@@ -100,7 +111,13 @@ fn run_cases(root: &Path) -> usize {
                 assert!(actual["message"].is_string());
                 actual.as_object_mut().unwrap().remove("message");
                 expected.as_object_mut().unwrap().remove("message");
-                assert_eq!(actual, expected, "{path:?}");
+                if options["partial_error_facts"] == true {
+                    for (key, value) in expected.as_object().unwrap() {
+                        assert_eq!(actual.get(key), Some(value), "{path:?}: {key}");
+                    }
+                } else {
+                    assert_eq!(actual, expected, "{path:?}");
+                }
             } else {
                 assert!(output.status.success(), "{path:?}: {output:?}");
                 assert!(output.stderr.is_empty(), "{path:?}");
@@ -108,6 +125,12 @@ fn run_cases(root: &Path) -> usize {
                     assert_eq!(
                         output.stdout,
                         std::fs::read(path.join("expected.txt")).unwrap(),
+                        "{path:?}"
+                    );
+                } else if path.join("expected.raw").exists() {
+                    assert_eq!(
+                        output.stdout,
+                        std::fs::read(path.join("expected.raw")).unwrap(),
                         "{path:?}"
                     );
                 } else {
@@ -213,11 +236,11 @@ fn raw_strings_lists_null_and_record_rejection_have_the_declared_shape() {
         ])
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(3));
     assert!(output.stdout.is_empty());
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
-        "invalid_arguments"
+        "unrepresentable_output"
     );
 }
 #[test]
@@ -377,15 +400,40 @@ fn process_substitution_and_fifo_inputs_are_readable_within_the_deadline() {
 }
 #[cfg(unix)]
 #[test]
+#[allow(unsafe_code)]
 fn an_implicit_terminal_is_refused_before_reading() {
-    let script = "import os,pty,subprocess,sys,json\nm,s=pty.openpty()\np=subprocess.run([sys.argv[1],'get','h1'],stdin=s,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=3)\nos.close(m);os.close(s)\nassert p.returncode==2 and not p.stdout\nassert json.loads(p.stderr)['error']=='invalid_arguments'\n";
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(script)
-        .arg(binary())
-        .output()
+    use std::os::fd::{FromRawFd, OwnedFd};
+    let mut master = 0;
+    let mut slave = 0;
+    // openpty returns two independently owned descriptors on success.
+    assert_eq!(
+        unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        },
+        0
+    );
+    let _master = unsafe { OwnedFd::from_raw_fd(master) };
+    let slave = unsafe { OwnedFd::from_raw_fd(slave) };
+    let child = Command::new(binary())
+        .args(["get", "h1"])
+        .stdin(Stdio::from(slave))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
-    assert!(output.status.success(), "{output:?}");
+    let output = bounded_output(child, Duration::from_secs(3));
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+        "invalid_request"
+    );
 }
 
 #[test]
@@ -407,7 +455,7 @@ fn first_contact_reaches_the_guide_and_contract_files_get_a_hint() {
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"], "invalid_arguments");
+        assert_eq!(error["error"], "invalid_request");
         assert!(
             error["message"]
                 .as_str()
@@ -1039,57 +1087,122 @@ fn dash_is_a_stream_marker_only_when_it_is_the_entire_path() {
 
 #[cfg(unix)]
 #[test]
+#[allow(unsafe_code)]
 fn numeric_descriptor_aliases_use_the_inherited_descriptor_and_refuse_closed_handles() {
-    let directory = tempfile::tempdir().unwrap();
-    let output = Command::new("python3").args(["-c", r#"
-import os, pathlib, subprocess, sys
-binary, directory = sys.argv[1:]
-root = pathlib.Path(directory)
-source = root / 'page.html'
-source.write_bytes(b'<h1>complete</h1>')
-for append in (False, True):
-    target = root / 'output'
-    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
-    with target.open('ab' if append else 'r+b', buffering=0) as stream:
-        stream.seek(7)
-        fd = stream.fileno()
-        assert fd > 2
-        aliases = [f'/dev/fd/{fd}']
-        if sys.platform.startswith('linux'):
-            aliases += [f'/proc/self/fd/{fd}', f'/proc/thread-self/fd/{fd}']
-        for alias in aliases:
-            target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
-            stream.seek(7)
-            result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
-                pass_fds=(fd,), capture_output=True, timeout=10)
-            assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
-            expected = b'prefix|XXXXXXXXXXXXXXXX"complete"\n' if append else b'prefix|"complete"\nXXXXX'
-            assert target.read_bytes() == expected, (alias, append, target.read_bytes())
-            assert stream.tell() == (34 if append else 18)
-        closed_alias = f'/dev/fd/{fd}'
-    result = subprocess.run([binary, 'get', 'h1', str(source), '-o', closed_alias],
-        capture_output=True, timeout=10)
-    assert result.returncode == 5 and not result.stdout, result
-    assert b'output_unwritable' in result.stderr and b'Bad file descriptor' in result.stderr, result
-
-if sys.platform.startswith('linux'):
-    for alias in ['/proc/self/fd/01', '/dev/fd/0001', '/dev/fd/99999999999999999999']:
-        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
-            capture_output=True, timeout=10)
-        assert result.returncode == 5 and not result.stdout, (alias, result)
-    target.write_bytes(b'prefix|XXXXXXXXXXXXXXXX')
-    with target.open('r+b', buffering=0) as stream:
-        stream.seek(7)
-        identity = os.fstat(stream.fileno()).st_ino
-        alias = f'/proc/{os.getpid()}/fd/{stream.fileno()}'
-        result = subprocess.run([binary, 'get', 'h1', str(source), '-o', alias],
-            capture_output=True, timeout=10)
-        assert (result.returncode, result.stdout, result.stderr) == (0, b'', b''), result
-        assert target.stat().st_ino == identity
-        assert target.read_bytes() == b'"complete"\nXXXXXXXXXXXX'
-        assert stream.tell() == 7
-"#]).arg(binary()).arg(directory.path()).output().unwrap();
-    assert!(output.status.success(), "{output:?}");
+    use std::{
+        fs::OpenOptions,
+        io::{Seek, SeekFrom},
+        os::{fd::AsRawFd, unix::process::CommandExt},
+    };
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("page.html");
+    std::fs::write(&source, b"<h1>complete</h1>").unwrap();
+    let target = root.path().join("output");
+    for append in [false, true] {
+        std::fs::write(&target, b"prefix|XXXXXXXXXXXXXXXX").unwrap();
+        let mut stream = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .append(append)
+            .open(&target)
+            .unwrap();
+        let fd = stream.as_raw_fd();
+        assert!(fd > 2);
+        let mut aliases = vec![format!("/dev/fd/{fd}")];
+        if cfg!(target_os = "linux") {
+            aliases.extend([
+                format!("/proc/self/fd/{fd}"),
+                format!("/proc/thread-self/fd/{fd}"),
+            ]);
+        }
+        for alias in aliases {
+            std::fs::write(&target, b"prefix|XXXXXXXXXXXXXXXX").unwrap();
+            stream.seek(SeekFrom::Start(7)).unwrap();
+            let mut invocation = Command::new(binary());
+            invocation
+                .args(["get", "h1"])
+                .arg(&source)
+                .args(["-o", &alias])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            // Preserve just this owned descriptor across exec. fcntl is async-signal-safe.
+            unsafe {
+                invocation.pre_exec(move || {
+                    if libc::fcntl(fd, libc::F_SETFD, 0) < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            let output = bounded_output(invocation.spawn().unwrap(), Duration::from_secs(10));
+            assert!(output.status.success(), "{output:?}");
+            assert!(output.stdout.is_empty() && output.stderr.is_empty());
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                if append {
+                    &b"prefix|XXXXXXXXXXXXXXXX\"complete\"\n"[..]
+                } else {
+                    &b"prefix|\"complete\"\nXXXXX"[..]
+                }
+            );
+            assert_eq!(
+                stream.stream_position().unwrap(),
+                if append { 34 } else { 18 }
+            );
+        }
+        drop(stream);
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .args(["-o", &format!("/dev/fd/{fd}")])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Bad file descriptor"));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt;
+        for alias in [
+            "/proc/self/fd/01",
+            "/dev/fd/0001",
+            "/dev/fd/99999999999999999999",
+        ] {
+            let output = Command::new(binary())
+                .args(["get", "h1"])
+                .arg(&source)
+                .args(["-o", alias])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(5));
+            assert!(output.stdout.is_empty());
+        }
+        std::fs::write(&target, b"prefix|XXXXXXXXXXXXXXXX").unwrap();
+        let mut stream = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&target)
+            .unwrap();
+        stream.seek(SeekFrom::Start(7)).unwrap();
+        let inode = stream.metadata().unwrap().ino();
+        let output = Command::new(binary())
+            .args(["get", "h1"])
+            .arg(&source)
+            .args([
+                "-o",
+                &format!("/proc/{}/fd/{}", std::process::id(), stream.as_raw_fd()),
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(std::fs::metadata(&target).unwrap().ino(), inode);
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"\"complete\"\nXXXXXXXXXXXX"
+        );
+        assert_eq!(stream.stream_position().unwrap(), 7);
+    }
 }
 
 #[cfg(windows)]

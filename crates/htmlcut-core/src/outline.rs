@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bounded structural outlines, with deterministic sibling grouping.
+//! Bounded semantic outlines and their single canonical text encoder.
 use crate::dom::ElementRef;
 use crate::{
     Document, Error, ErrorCode,
     eval::{Scope, candidates},
-    limits::Clock,
+    limits::ExecutionContext,
     select::Selector,
 };
-use std::collections::{HashMap, HashSet};
-
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 /// Reader-facing outline options.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -32,6 +35,25 @@ impl Default for OutlineOptions {
         }
     }
 }
+impl OutlineOptions {
+    /// Validates selector admission before a host acquires HTML bytes.
+    pub fn validate(&self, context: &crate::ExecutionContext) -> Result<(), Error> {
+        context.check()?;
+        self.compile_selector()?;
+        context.check()
+    }
+    fn compile_selector(&self) -> Result<Option<Selector>, Error> {
+        self.select
+            .as_deref()
+            .map(|text| {
+                Selector::compile(text, "").map_err(|mut error| {
+                    error.path = None;
+                    error
+                })
+            })
+            .transpose()
+    }
+}
 #[derive(Hash, Eq, PartialEq)]
 struct Signature {
     tag: String,
@@ -39,38 +61,382 @@ struct Signature {
     children: Vec<String>,
 }
 
+/// Bounded semantic outline; no frontend must parse canonical text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineReport {
+    /// Selected CSS, when requested.
+    pub selection: Option<String>,
+    /// Complete match count, independently of the line allowance.
+    pub selection_count: Option<usize>,
+    /// Whether the selector header consumed an emitted line.
+    pub header_emitted: bool,
+    /// Ordered grouped element facts.
+    pub rows: Vec<OutlineRow>,
+    /// Omitted element rows plus any omitted selector header.
+    pub omitted_lines: usize,
+}
+/// A bounded grouped element row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineRow {
+    /// Element expansion depth.
+    pub depth: usize,
+    /// Local tag name.
+    pub tag: String,
+    /// Namespace URI.
+    pub namespace: String,
+    /// Representative ID, omitted for grouped elements.
+    pub id: Option<String>,
+    /// At most four representative classes.
+    pub classes: Vec<String>,
+    /// Additional class count.
+    pub omitted_classes: usize,
+    /// At most six representative attributes.
+    pub attributes: Vec<OutlineAttribute>,
+    /// Additional attribute count.
+    pub omitted_attributes: usize,
+    /// Normalized clipped own-text preview.
+    pub preview: String,
+    /// Number of sibling elements represented.
+    pub grouped_count: usize,
+    /// Descendants collapsed at the depth/foreign/template boundary.
+    pub collapsed_descendants: usize,
+}
+/// One representative attribute, with an optional clipped value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineAttribute {
+    /// Qualified name.
+    pub name: String,
+    /// Present only when attribute previews were requested.
+    pub value: Option<String>,
+}
+
+struct TextOutput<'a> {
+    bytes: Vec<u8>,
+    maximum: usize,
+    clock: &'a ExecutionContext,
+    error: Option<Error>,
+}
+impl<'a> TextOutput<'a> {
+    fn new(maximum: usize, clock: &'a ExecutionContext) -> Self {
+        Self {
+            bytes: Vec::new(),
+            maximum,
+            clock,
+            error: None,
+        }
+    }
+    fn refusal(&mut self) -> Error {
+        self.error
+            .take()
+            .unwrap_or_else(|| Error::new(ErrorCode::Internal, "Outline encoding failed."))
+    }
+    fn piece(&mut self, text: &str) -> Result<(), Error> {
+        self.write_all(text.as_bytes()).map_err(|_| self.refusal())
+    }
+    fn json(&mut self, text: &str) -> Result<(), Error> {
+        serde_json::to_writer(&mut *self, text).map_err(|_| self.refusal())
+    }
+    fn identifier(&mut self, text: &str) -> Result<(), Error> {
+        cssparser::serialize_identifier(text, self).map_err(|_| self.refusal())
+    }
+    fn text(self) -> String {
+        String::from_utf8(self.bytes).expect("canonical text encoders emit UTF-8")
+    }
+}
+impl Write for TextOutput<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if let Err(error) = self.clock.tick() {
+            self.error = Some(error);
+            return Err(std::io::Error::other("outline stopped"));
+        }
+        if bytes.len() > self.maximum.saturating_sub(self.bytes.len()) {
+            self.error = Some(Error::limit("output_bytes", self.maximum));
+            return Err(std::io::Error::other("outline byte allowance exceeded"));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+impl std::fmt::Write for TextOutput<'_> {
+    fn write_str(&mut self, text: &str) -> std::fmt::Result {
+        self.write_all(text.as_bytes()).map_err(|_| std::fmt::Error)
+    }
+}
+struct AttributeView<'a> {
+    prefix: Option<&'a str>,
+    name: &'a str,
+    value: Option<Cow<'a, str>>,
+}
+struct RowView<'a> {
+    depth: usize,
+    tag: &'a str,
+    namespace: &'a str,
+    id: Option<&'a str>,
+    classes: Vec<&'a str>,
+    omitted_classes: usize,
+    attributes: Vec<AttributeView<'a>>,
+    omitted_attributes: usize,
+    preview: Cow<'a, str>,
+    grouped_count: usize,
+    collapsed_descendants: usize,
+}
+impl<'a> RowView<'a> {
+    fn element(
+        element: ElementRef<'a>,
+        depth: usize,
+        count: usize,
+        attrs: bool,
+        inside: usize,
+        clock: &ExecutionContext,
+    ) -> Result<Self, Error> {
+        let mut classes = Vec::new();
+        let mut omitted_classes = 0;
+        for class in element
+            .value()
+            .attr("class")
+            .unwrap_or_default()
+            .split_ascii_whitespace()
+        {
+            clock.tick()?;
+            if classes.len() < 4 {
+                classes.push(class);
+            } else {
+                omitted_classes += 1;
+            }
+        }
+        let mut attributes = Vec::new();
+        let mut omitted_attributes = 0;
+        for (key, value) in &element.value().attrs {
+            clock.tick()?;
+            if key.prefix.is_none() && matches!(&*key.local, "id" | "class") {
+                continue;
+            }
+            if attributes.len() == 6 {
+                omitted_attributes += 1;
+                continue;
+            }
+            attributes.push(AttributeView {
+                prefix: key.prefix.as_deref(),
+                name: &key.local,
+                value: if attrs {
+                    Some(Cow::Owned(preview(value, 40, clock)?))
+                } else {
+                    None
+                },
+            });
+        }
+        let own = if matches!(element.value().name(), "script" | "style") {
+            String::new()
+        } else {
+            preview_parts(
+                element.children().filter_map(|node| match node.value() {
+                    crate::dom::Node::Text(text) => Some(text.as_str()),
+                    _ => None,
+                }),
+                60,
+                clock,
+            )?
+        };
+        Ok(Self {
+            depth,
+            tag: element.value().name(),
+            namespace: &element.value().name.ns,
+            id: if count == 1 {
+                element.value().id().filter(|id| !id.is_empty())
+            } else {
+                None
+            },
+            classes,
+            omitted_classes,
+            attributes,
+            omitted_attributes,
+            preview: Cow::Owned(own),
+            grouped_count: count,
+            collapsed_descendants: inside,
+        })
+    }
+    fn row(row: &'a OutlineRow) -> Self {
+        Self {
+            depth: row.depth,
+            tag: &row.tag,
+            namespace: &row.namespace,
+            id: row.id.as_deref(),
+            classes: row.classes.iter().map(String::as_str).collect(),
+            omitted_classes: row.omitted_classes,
+            attributes: row
+                .attributes
+                .iter()
+                .map(|attribute| AttributeView {
+                    prefix: None,
+                    name: &attribute.name,
+                    value: attribute.value.as_deref().map(Cow::Borrowed),
+                })
+                .collect(),
+            omitted_attributes: row.omitted_attributes,
+            preview: Cow::Borrowed(&row.preview),
+            grouped_count: row.grouped_count,
+            collapsed_descendants: row.collapsed_descendants,
+        }
+    }
+    fn write(&self, output: &mut TextOutput<'_>) -> Result<(), Error> {
+        for _ in 0..self.depth {
+            output.piece("  ")?;
+        }
+        output.identifier(self.tag)?;
+        if let Some(id) = self.id {
+            output.piece("#")?;
+            output.identifier(id)?;
+        }
+        for class in &self.classes {
+            output.piece(".")?;
+            output.identifier(class)?;
+        }
+        if self.omitted_classes > 0 {
+            output.piece(&format!(".+{}", self.omitted_classes))?;
+        }
+        if !self.attributes.is_empty() || self.omitted_attributes > 0 {
+            output.piece(" [")?;
+            for (index, attribute) in self.attributes.iter().enumerate() {
+                if index > 0 {
+                    output.piece(" ")?;
+                }
+                if let Some(prefix) = attribute.prefix {
+                    output.piece(prefix)?;
+                    output.piece(":")?;
+                }
+                output.piece(attribute.name)?;
+                if let Some(value) = &attribute.value {
+                    output.piece("=")?;
+                    output.json(value)?;
+                }
+            }
+            if self.omitted_attributes > 0 {
+                if !self.attributes.is_empty() {
+                    output.piece(" ")?;
+                }
+                output.piece("…")?;
+            }
+            output.piece("]")?;
+        }
+        if self.grouped_count > 1 {
+            output.piece(&format!(" ×{}", self.grouped_count))?;
+        }
+        if !self.preview.is_empty() {
+            output.piece(" ")?;
+            output.json(&self.preview)?;
+        }
+        if self.collapsed_descendants > 0 {
+            output.piece(&format!(" (+{} inside)", self.collapsed_descendants))?;
+        }
+        output.piece("\n")
+    }
+    fn owned(self) -> OutlineRow {
+        OutlineRow {
+            depth: self.depth,
+            tag: self.tag.into(),
+            namespace: self.namespace.into(),
+            id: self.id.map(str::to_owned),
+            classes: self.classes.into_iter().map(str::to_owned).collect(),
+            omitted_classes: self.omitted_classes,
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|attribute| OutlineAttribute {
+                    name: attribute
+                        .prefix
+                        .map(|prefix| format!("{prefix}:{}", attribute.name))
+                        .unwrap_or_else(|| attribute.name.into()),
+                    value: attribute.value.map(Cow::into_owned),
+                })
+                .collect(),
+            omitted_attributes: self.omitted_attributes,
+            preview: self.preview.into_owned(),
+            grouped_count: self.grouped_count,
+            collapsed_descendants: self.collapsed_descendants,
+        }
+    }
+}
+fn header(output: &mut TextOutput<'_>, count: usize, selection: &str) -> Result<(), Error> {
+    output.piece(&format!(
+        "{count} match{} for ",
+        if count == 1 { "" } else { "es" }
+    ))?;
+    if selection.chars().any(char::is_control) {
+        output.json(selection)?;
+    } else {
+        output.piece(selection)?;
+    }
+    output.piece("\n")
+}
+fn summary(output: &mut TextOutput<'_>, omitted: usize) -> Result<(), Error> {
+    if omitted > 0 {
+        output.piece(&format!("… {omitted} more lines; narrow the selection, reduce depth or increase the line allowance\n"))?;
+    }
+    Ok(())
+}
+impl OutlineReport {
+    /// Renders canonical text under the current operation's byte and stop policy.
+    pub fn render(
+        &self,
+        maximum: usize,
+        context: &crate::ExecutionContext,
+    ) -> Result<String, Error> {
+        context.check()?;
+        let clock = (context).clone();
+        let mut output = TextOutput::new(maximum, &clock);
+        if self.header_emitted {
+            header(
+                &mut output,
+                self.selection_count.unwrap_or(0),
+                self.selection.as_deref().unwrap_or_default(),
+            )?;
+        }
+        for row in &self.rows {
+            RowView::row(row).write(&mut output)?;
+        }
+        summary(&mut output, self.omitted_lines)?;
+        context.check()?;
+        Ok(output.text())
+    }
+}
 impl Document {
-    /// Prints a bounded deterministic skeleton with a fresh time limit.
-    pub fn outline(&self, options: &OutlineOptions) -> Result<String, Error> {
-        let clock = Clock::new(&self.limits);
+    /// Builds bounded semantic outline facts without retaining hidden DOM strings.
+    pub fn outline(
+        &self,
+        options: &OutlineOptions,
+        limits: &crate::ExecutionPolicy,
+        context: &crate::ExecutionContext,
+    ) -> Result<OutlineReport, Error> {
+        let clock = (context).clone();
         clock.check()?;
         let scope = Scope::one(self.html.root_element());
-        let mut output = String::new();
+        let mut output = TextOutput::new(limits.max_output_bytes, &clock);
         let mut lines = 0;
         let mut caches = Default::default();
+        let mut report = OutlineReport {
+            selection: None,
+            selection_count: None,
+            header_emitted: false,
+            rows: Vec::new(),
+            omitted_lines: 0,
+        };
         let root = if let Some(text) = &options.select {
-            let selector = Selector::compile(text, "").map_err(|mut error| {
-                error.path = None;
-                error
-            })?;
+            let selector = options.compile_selector()?.expect("selection supplied");
             let matches = candidates(Some(&selector), &scope, &clock, &mut caches)?;
-            let displayed = if text.chars().any(char::is_control) {
-                serde_json::to_string(text).unwrap()
-            } else {
-                text.clone()
-            };
-            lines = 1;
-            if options.max_lines > 0 {
-                append(
-                    &mut output,
-                    &format!(
-                        "{} match{} for {displayed}",
-                        matches.len(),
-                        if matches.len() == 1 { "" } else { "es" }
-                    ),
-                    self.limits.max_output_bytes,
-                )?;
+            // Even a hidden selector fact is bounded before its owned copy.
+            if text.len() > limits.max_output_bytes {
+                return Err(Error::limit("output_bytes", limits.max_output_bytes));
             }
+            if options.max_lines > 0 {
+                header(&mut output, matches.len(), text)?;
+                report.header_emitted = true;
+            }
+            report.selection = Some(text.clone());
+            report.selection_count = Some(matches.len());
+            lines = 1;
             matches.first().copied()
         } else {
             Some(scope.anchor)
@@ -84,37 +450,18 @@ impl Document {
             let stopped = level >= options.depth
                 || matches!(element.value().name(), "svg" | "math" | "template");
             if lines < options.max_lines {
-                let mut line = "  ".repeat(level);
-                line.push_str(
-                    &describe(
-                        element,
-                        count,
-                        options.attrs,
-                        &clock,
-                        self.limits.max_output_bytes.saturating_sub(output.len()),
-                    )
-                    .map_err(|mut error| {
-                        if error.limit.as_deref() == Some("output_bytes") {
-                            error.bound = Some(self.limits.max_output_bytes.into());
-                            error.message =
-                                Error::limit("output_bytes", self.limits.max_output_bytes).message;
-                        }
-                        error
-                    })?,
-                );
+                let mut inside = 0;
                 if stopped {
-                    let mut inside = 0;
                     for node in element.descendants() {
                         clock.tick()?;
                         if node.id() != element.id() && node.value().is_element() {
                             inside += 1;
                         }
                     }
-                    if inside > 0 {
-                        line.push_str(&format!(" (+{inside} inside)"));
-                    }
                 }
-                append(&mut output, &line, self.limits.max_output_bytes)?;
+                let row = RowView::element(element, level, count, options.attrs, inside, &clock)?;
+                row.write(&mut output)?; // The same encoder admits before source strings are copied.
+                report.rows.push(row.owned());
             }
             lines += 1;
             if stopped {
@@ -152,24 +499,11 @@ impl Document {
                     .map(|(element, count)| (element, level + 1, count)),
             );
         }
-        if lines > options.max_lines {
-            let summary = format!(
-                "… {} more lines; narrow --select, lower --depth or raise --max-lines",
-                lines - options.max_lines
-            );
-            append(&mut output, &summary, self.limits.max_output_bytes)?;
-        }
+        report.omitted_lines = lines.saturating_sub(options.max_lines);
+        summary(&mut output, report.omitted_lines)?;
         clock.check()?;
-        Ok(output)
+        Ok(report)
     }
-}
-fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> {
-    if line.len() + 1 > maximum.saturating_sub(output.len()) {
-        return Err(Error::limit("output_bytes", maximum));
-    }
-    output.push_str(line);
-    output.push('\n');
-    Ok(())
 }
 fn element_children(element: ElementRef<'_>) -> Vec<ElementRef<'_>> {
     element.children().filter_map(ElementRef::wrap).collect()
@@ -183,50 +517,13 @@ fn classes(element: ElementRef<'_>) -> Vec<String> {
         .map(String::from)
         .collect()
 }
-fn identifier(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
-    struct Sink<'a> {
-        value: String,
-        maximum: usize,
-        clock: &'a Clock,
-        error: Option<Error>,
-    }
-    impl std::fmt::Write for Sink<'_> {
-        fn write_str(&mut self, value: &str) -> std::fmt::Result {
-            if let Err(error) = self.clock.tick() {
-                self.error = Some(error);
-                return Err(std::fmt::Error);
-            }
-            if value.len() > self.maximum.saturating_sub(self.value.len()) {
-                self.error = Some(Error::limit("output_bytes", self.maximum));
-                return Err(std::fmt::Error);
-            }
-            self.value.push_str(value);
-            Ok(())
-        }
-    }
-    let mut sink = Sink {
-        value: String::new(),
-        maximum,
-        clock,
-        error: None,
-    };
-    cssparser::serialize_identifier(value, &mut sink).map_err(|_| {
-        sink.error.unwrap_or_else(|| {
-            Error::new(
-                ErrorCode::Internal,
-                "An outline identifier could not be encoded.",
-            )
-        })
-    })?;
-    Ok(sink.value)
-}
-fn preview(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
+fn preview(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<String, Error> {
     preview_parts(std::iter::once(value), maximum, clock)
 }
 fn preview_parts<'a>(
     parts: impl Iterator<Item = &'a str>,
     maximum: usize,
-    clock: &Clock,
+    clock: &ExecutionContext,
 ) -> Result<String, Error> {
     let mut result = String::new();
     let mut space = false;
@@ -257,89 +554,24 @@ fn preview_parts<'a>(
     }
     Ok(result)
 }
-
-fn describe(
-    element: ElementRef<'_>,
-    count: usize,
-    attrs: bool,
-    clock: &Clock,
-    maximum: usize,
-) -> Result<String, Error> {
-    let mut line = identifier(element.value().name(), maximum, clock)?;
-    if count == 1
-        && let Some(id) = element.value().id().filter(|id| !id.is_empty())
-    {
-        line.push('#');
-        line.push_str(&identifier(id, maximum.saturating_sub(line.len()), clock)?);
+#[cfg(test)]
+fn identifier(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<String, Error> {
+    let mut output = TextOutput::new(maximum, clock);
+    output.identifier(value)?;
+    Ok(output.text())
+}
+#[cfg(test)]
+fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> {
+    if line.len() + 1 > maximum.saturating_sub(output.len()) {
+        return Err(Error::limit("output_bytes", maximum));
     }
-    let classes = classes(element);
-    for class in classes.iter().take(4) {
-        line.push('.');
-        line.push_str(&identifier(
-            class,
-            maximum.saturating_sub(line.len()),
-            clock,
-        )?);
-    }
-    if classes.len() > 4 {
-        line.push_str(&format!(".+{}", classes.len() - 4));
-    }
-    let mut names = Vec::new();
-    for (key, value) in &element.value().attrs {
-        clock.tick()?;
-        if key.prefix.is_none() && matches!(&*key.local, "id" | "class") {
-            continue;
-        }
-        if names.len() >= 6 {
-            if names.len() == 6 {
-                names.push("…".into());
-            }
-            continue;
-        }
-        let reserved = names
-            .iter()
-            .map(|name: &String| name.len() + 1)
-            .sum::<usize>();
-        if key.local.len() + key.prefix.as_ref().map_or(0, |p| p.len() + 1)
-            > maximum.saturating_sub(line.len() + reserved)
-        {
-            return Err(Error::limit("output_bytes", maximum));
-        }
-        let name = key
-            .prefix
-            .as_ref()
-            .map(|prefix| format!("{prefix}:{}", key.local))
-            .unwrap_or_else(|| key.local.to_string());
-        names.push(if attrs {
-            format!(
-                "{name}={}",
-                serde_json::to_string(&preview(value, 40, clock)?).unwrap()
-            )
-        } else {
-            name
-        });
-    }
-    if !names.is_empty() {
-        line.push_str(&format!(" [{}]", names.join(" ")));
-    }
-    if count > 1 {
-        line.push_str(&format!(" ×{count}"));
-    }
-    if !matches!(element.value().name(), "script" | "style") {
-        let own = preview_parts(
-            element.children().filter_map(|node| match node.value() {
-                crate::dom::Node::Text(text) => Some(&**text),
-                _ => None,
-            }),
-            60,
-            clock,
-        )?;
-        if !own.is_empty() {
-            line.push(' ');
-            line.push_str(&serde_json::to_string(&own).unwrap());
-        }
-    }
-    Ok(line)
+    let clock = ExecutionContext::new(crate::Limits::default().time_limit).unwrap();
+    let mut sink = TextOutput::new(maximum, &clock);
+    sink.piece(output)?;
+    sink.piece(line)?;
+    sink.piece("\n")?;
+    *output = sink.text();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -354,14 +586,27 @@ mod tests {
         };
         let document = Document::parse(
             Source::new(b"<main id=identifier-longer-than-the-remaining-line></main>"),
-            &limits,
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
             select: Some("main".into()),
             ..OutlineOptions::default()
         };
-        let error = document.outline(&options).unwrap_err();
+        let error = document
+            .outline(
+                &options,
+                &limits.execution(),
+                &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+            )
+            .and_then(|report| {
+                report.render(
+                    limits.max_output_bytes,
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                )
+            })
+            .unwrap_err();
         assert_eq!(error.error, ErrorCode::LimitExceeded);
         assert_eq!(error.limit.as_deref(), Some("output_bytes"));
         assert_eq!(error.bound, Some(20.into()));
@@ -382,11 +627,41 @@ mod tests {
                 max_output_bytes: maximum,
                 ..Limits::default()
             };
-            let document = Document::parse(Source::new(html), &limits).unwrap();
+            let document = Document::parse(
+                Source::new(html),
+                &limits.preparation(),
+                &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+            )
+            .unwrap();
             if maximum >= expected.len() {
-                assert_eq!(document.outline(&options).unwrap(), expected);
+                assert_eq!(
+                    document
+                        .outline(
+                            &options,
+                            &limits.execution(),
+                            &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                        )
+                        .and_then(|report| report.render(
+                            limits.max_output_bytes,
+                            &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                        ))
+                        .unwrap(),
+                    expected
+                );
             } else {
-                let error = document.outline(&options).unwrap_err();
+                let error = document
+                    .outline(
+                        &options,
+                        &limits.execution(),
+                        &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                    )
+                    .and_then(|report| {
+                        report.render(
+                            limits.max_output_bytes,
+                            &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                        )
+                    })
+                    .unwrap_err();
                 assert_eq!(error.limit.as_deref(), Some("output_bytes"));
                 assert_eq!(error.bound, Some(maximum.into()));
                 assert_eq!(
@@ -401,13 +676,20 @@ mod tests {
     fn description_admission_refuses_an_oversized_source_attribute_name() {
         let html = format!("<main {}='value'></main>", "attribute".repeat(8192));
         let limits = Limits::default();
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
         let element = document
             .html
             .select(&Selector::parse("main").unwrap())
             .next()
             .unwrap();
-        let error = describe(element, 1, false, &Clock::new(&limits), 8).unwrap_err();
+        let clock = ExecutionContext::new(limits.time_limit).unwrap();
+        let row = RowView::element(element, 0, 1, false, 0, &clock).unwrap();
+        let error = row.write(&mut TextOutput::new(8, &clock)).unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("output_bytes"));
         assert_eq!(error.bound, Some(8.into()));
     }
@@ -415,7 +697,7 @@ mod tests {
     #[test]
     fn previews_stream_normalized_parts_without_allocating_source_values() {
         let limits = Limits::default();
-        let clock = Clock::new(&limits);
+        let clock = ExecutionContext::new(limits.time_limit).unwrap();
         assert_eq!(
             preview_parts([" a  ", " b "].into_iter(), 3, &clock).unwrap(),
             "a b"
@@ -458,39 +740,105 @@ mod tests {
     }
     #[test]
     fn hidden_selection_header_is_counted_even_without_a_root_match() {
-        let document = Document::parse(Source::new(b"<p>x</p>"), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(b"<p>x</p>"),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         let mut options = OutlineOptions {
             select: Some("main".into()),
             max_lines: 0,
             ..OutlineOptions::default()
         };
         assert_eq!(
-            document.outline(&options).unwrap(),
-            "… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
+            "… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
         );
         options.max_lines = 1;
-        assert_eq!(document.outline(&options).unwrap(), "0 matches for main\n");
+        assert_eq!(
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
+            "0 matches for main\n"
+        );
         options.select = None;
         options.depth = 0;
         options.max_lines = 0;
         assert_eq!(
-            document.outline(&options).unwrap(),
-            "… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
+            "… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
         );
         options.max_lines = 1;
-        assert_eq!(document.outline(&options).unwrap(), "html (+3 inside)\n");
+        assert_eq!(
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
+            "html (+3 inside)\n"
+        );
     }
     #[test]
     fn shapes_order_classes_source_attributes_and_clipping_are_preserved() {
         let html = "<main><p id=a class='z A b c d' z='1' a='2' b='3' c='4' d='5' e='6' f='7'>quoted \"text\"</p><p class='z A b c d'><b>shape</b></p><p class='z A b c d'>same shape</p></main>";
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         let options = OutlineOptions {
             select: Some("main".into()),
             attrs: true,
             ..OutlineOptions::default()
         };
         assert_eq!(
-            document.outline(&options).unwrap(),
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
             "1 match for main\nmain\n  p.z.A.b.c.+1 [z=\"1\" a=\"2\" b=\"3\" c=\"4\" d=\"5\" e=\"6\" …] ×2 \"quoted \\\"text\\\"\"\n  p.z.A.b.c.+1\n    b \"shape\"\n"
         );
     }
@@ -501,18 +849,51 @@ mod tests {
             max_output_bytes: 1,
             ..Limits::default()
         };
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
         let options = OutlineOptions {
             select: Some("svg".into()),
             ..OutlineOptions::default()
         };
         assert_eq!(
-            document.outline(&options).unwrap_err().limit.as_deref(),
+            document
+                .outline(
+                    &options,
+                    &limits.execution(),
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    limits.max_output_bytes,
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                ))
+                .unwrap_err()
+                .limit
+                .as_deref(),
             Some("output_bytes")
         );
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let limits = Limits::default();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.outline(&options).unwrap(),
+            document
+                .outline(
+                    &options,
+                    &limits.execution(),
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    limits.max_output_bytes,
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                ))
+                .unwrap(),
             "1 match for svg\nsvg#x (+2 inside)\n"
         );
     }
@@ -520,7 +901,8 @@ mod tests {
     fn control_characters_cannot_add_outline_lines() {
         let document = Document::parse(
             Source::new(b"<main><p>x</p></main>"),
-            &crate::Limits::default(),
+            &crate::Limits::default().preparation(),
+            &crate::ExecutionContext::new(crate::Limits::default().time_limit).unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
@@ -529,8 +911,18 @@ mod tests {
             ..OutlineOptions::default()
         };
         assert_eq!(
-            document.outline(&options).unwrap(),
-            "1 match for \"main\\np\"\n… 1 more lines; narrow --select, lower --depth or raise --max-lines\n"
+            document
+                .outline(
+                    &options,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    crate::Limits::default().max_output_bytes,
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                ))
+                .unwrap(),
+            "1 match for \"main\\np\"\n… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
         );
     }
 }

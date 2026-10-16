@@ -1,15 +1,32 @@
-# Release process
+# Release operations
 
-Release publication requires an existing annotated stable tag and green main CI for that exact source commit. The [release workflow](../.github/workflows/release.yml) validates the tag against the workspace version and main ancestry, then binds checkout, native packages, source archives and verification to one immutable source commit. The [target policy](../scripts/release-targets.sh) supplies the complete asset matrix.
+Publication requires an existing annotated stable tag, version agreement with its immutable source manifest, main ancestry and successful latest eligible main push CI for that exact source. [The release workflow](../.github/workflows/release.yml) resolves one SHA and carries it through source archives, all native packages, checksums, notes, provenance and public-byte verification. [The target registry](../tools/release-targets.toml) derives the matrix and asset names. Credentials are not persisted in checkouts; publication is serialized across tags.
 
-Run the release checksum, publication and download-verification shell scripts with Bash 4 or newer. On macOS, select a suitable installed Bash explicitly.
+Before creating a release candidate, run the full [contributor gate](../CONTRIBUTING.md), the 10,000-run two-target fuzz smoke and full product mutation campaign. Review all survivors and timeouts against the current source. Focused native runtime/CLI campaigns do not establish full workspace review. CI does not mechanically establish human survivor review.
 
-Native packages are unpacked and run against [the conformance corpus](../conformance/README.md). Apple signatures, complete dependency attribution, checksums and provenance are verified before publication. After publication, the workflow downloads package bytes anonymously, verifies them and runs the native corpus again.
+Inspect and build all publishable crates together with the pinned Cargo, in a clean immutable snapshot:
 
-The workflow publishes GitHub Releases. Creating tags, merging, changing repository settings and publishing crates.io packages are separate operator actions. Publish htmlcut-core before htmlcut-cli for registry releases. The core package includes its examples and uses registry dependencies; regression fixtures remain in the repository test suite.
+```sh
+cargo package --list -p htmlcut-core
+cargo package --list -p htmlcut-runtime
+cargo package --list -p htmlcut-cli
+cargo +1.99.0 package --locked -p htmlcut-core -p htmlcut-runtime -p htmlcut-cli
+```
 
-The [frozen-corpus policy](design.md#stability) rejects edits and removals in existing contract cases against the latest released tag of the current major. New cases can be added. Outline format may change in a minor version.
+Coordinated packaging verifies unpublished siblings through Cargo's temporary registry. `--no-verify` is not package-build evidence. Source archives include runtime, maintenance sources/config/tests, literal fixtures and licenses. Native archives contain only the executable, target guide and legal files and require no Python at runtime. Original attribution and exact locked native/runtime terms remain in NOTICE.
 
-Before publication, complete the [full workspace mutation review](qa-resources.md) and list every survivor and timeout with its reason in the release pull request. Focused selections, resource refusals and interrupted runs are incomplete. Investigate observable behavior changes and add regression tests or remove unreachable code before publication.
+Canonical operations:
 
-Mutation plans can include code disabled by the current platform. A missed mutation in an inactive branch is not detection or proof of equivalence. The manual [platform mutation workflow](../.github/workflows/mutation.yml) exercises the active native CLI selection on Windows and Linux musl to complement an unfiltered native macOS full-workspace review. Linux excludes only the entirely Windows-gated `authorization/windows.rs` and `authorization/windows/**` modules; Windows excludes only the entirely Unix-gated `authorization/unix.rs` module. All common CLI files, mixed-platform branches and workspace tests remain included. Exclusions are recorded explicitly in each audit report and command; an empty plan refuses completion. It accepts only an exact main-ancestor commit and retains raw tool failures and outcomes without compiler products. Combine reviews by source and mutant identity; these focused native selections do not replace the full workspace run or survivor review. Normal CI and downloaded-package acceptance remain required separately.
+```sh
+python3 -m tools.htmlcut_maintenance release identity vMAJOR.MINOR.PATCH --require-ci
+python3 -m tools.htmlcut_maintenance release source SOURCE_SHA --output /owned/source-archives
+python3 -m tools.htmlcut_maintenance release package TARGET --output /owned/native-packages
+python3 -m tools.htmlcut_maintenance release accept --archive ARCHIVE --target TARGET --version VERSION
+python3 -m tools.htmlcut_maintenance release checksums --version VERSION --dist /owned/complete-assets
+```
+
+Native package builds require a clean source checkout and pinned cargo-about. Acceptance validates exact layout, modes and legal material, verifies Apple signatures before execution, runs real signature rejection controls, then executes the common Rust suite against the unpacked binary, including ignored native/performance controls. The standalone executable is exercised outside the checkout. Missing required ACL/label/pipe/signature capabilities fail acceptance.
+
+Creating tags, publishing, repository-setting changes, merging and registry publication require separate authorization. Registry publication order is **core → runtime → CLI**. Local package builds do not establish external release success.
+
+When separately authorized, `release publish TAG --dist DIR` converges draft assets only after checking exact metadata, notes, inventory, size and bytes. A matching published retry performs no upload/edit; mismatched or missing published bytes refuse. Draft publication cannot downgrade a newer stable release. `release verify TAG --target TARGET --output NEW_DIR` verifies published metadata, downloads public bytes anonymously, checks the complete checksum inventory and exact archive digest, verifies source-bound GitHub attestation, and executes that downloaded native binary. It never rebuilds a replacement. All four native lanes and exact-source/public-byte evidence remain authoritative external gates.

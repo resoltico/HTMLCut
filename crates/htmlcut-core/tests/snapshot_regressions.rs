@@ -4,7 +4,11 @@ use htmlcut_core::{Contract, Document, Limits, Source, Value};
 #[test]
 fn authored_snapshots_keep_literal_repaired_trees_and_complete_rows() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pages");
-    let contract = Contract::from_json(r#"{"select":":scope","read":"outer-html"}"#).unwrap();
+    let contract = Contract::from_json(
+        r#"{"select":":scope","read":"outer-html"}"#,
+        &htmlcut_core::ExecutionContext::new(None).unwrap(),
+    )
+    .unwrap();
     for name in [
         "books.html",
         "context.html",
@@ -13,19 +17,46 @@ fn authored_snapshots_keep_literal_repaired_trees_and_complete_rows() {
         "technical.html",
     ] {
         let bytes = std::fs::read(root.join(name)).unwrap();
-        let document = Document::parse(Source::new(&bytes), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(&bytes),
+            &Limits::default().preparation(),
+            &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         let expected =
             std::fs::read_to_string(root.join(name.replace(".html", ".expected.txt"))).unwrap();
         assert_eq!(
-            document.extract(&contract).unwrap(),
+            document
+                .extract(
+                    &contract,
+                    &htmlcut_core::Limits::default().execution(),
+                    &htmlcut_core::ExecutionContext::new(
+                        (htmlcut_core::Limits::default()).time_limit
+                    )
+                    .unwrap()
+                )
+                .unwrap(),
             Value::String(expected),
             "{name}"
         );
     }
     let bytes = std::fs::read(root.join("books.html")).unwrap();
-    let document = Document::parse(Source::new(&bytes), &Limits::default()).unwrap();
-    let rows = Contract::from_json(r#"{"select":"article.book","match":"all","min":20,"max":20,"fields":{"title":{"select":"a","read":"attr:title"},"price":".price"}}"#).unwrap();
-    let Value::List(records) = document.extract(&rows).unwrap() else {
+    let document = Document::parse(
+        Source::new(&bytes),
+        &Limits::default().preparation(),
+        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    )
+    .unwrap();
+    let rows = Contract::from_json(r#"{"select":"article.book","match":"all","min":20,"max":20,"fields":{"title":{"select":"a","read":"attr:title"},"price":".price"}}"#, &htmlcut_core::ExecutionContext::new(None).unwrap()).unwrap();
+    let Value::List(records) = document
+        .extract(
+            &rows,
+            &htmlcut_core::Limits::default().execution(),
+            &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
+                .unwrap(),
+        )
+        .unwrap()
+    else {
         panic!("not records");
     };
     assert_eq!(records.len(), 20);

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 #![deny(unsafe_code)]
-#[allow(unsafe_code)]
-mod authorization;
 mod cli;
 mod run;
 use clap::{CommandFactory, Parser};
-use htmlcut_core::{Error, ErrorCode};
+use htmlcut_runtime::{Error, ErrorCode};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -15,7 +13,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             run::report(&error);
-            ExitCode::from(error.error.exit_status() as u8)
+            ExitCode::from(run::exit_status(error.error) as u8)
         }
     }
 }
@@ -68,11 +66,21 @@ mod tests {
     #[test]
     fn panic_boundary_produces_an_internal_failure() {
         let error = super::guarded(|| panic!("boundary witness")).unwrap_err();
-        assert_eq!(error.error, htmlcut_core::ErrorCode::Internal);
-        assert_eq!(error.error.exit_status(), 6);
+        assert_eq!(error.error, htmlcut_runtime::ErrorCode::Internal);
+        assert_eq!(crate::run::exit_status(error.error), 6);
         assert_eq!(
             error.to_json_line().iter().filter(|c| **c == b'\n').count(),
             1
         );
+    }
+    #[test]
+    fn cancellation_has_its_distinct_terminal_status_without_resource_facts() {
+        let error = htmlcut_runtime::Error::new(
+            htmlcut_runtime::ErrorCode::Cancelled,
+            "The operation was cancelled.",
+        );
+        assert_eq!(crate::run::exit_status(error.error), 130);
+        assert!(error.limit.is_none());
+        assert!(error.bound.is_none());
     }
 }

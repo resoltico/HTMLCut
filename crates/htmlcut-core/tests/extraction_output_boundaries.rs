@@ -3,16 +3,49 @@
 use htmlcut_core::{Contract, Document, ErrorCode, Limits, OutlineOptions, Source};
 
 fn extraction(html: &str, contract: &str, expected: &str) {
-    let contract = Contract::from_json(contract).unwrap();
+    let expected = format!("{expected}\n");
+    let contract = Contract::from_json(
+        contract,
+        &htmlcut_core::ExecutionContext::new(None).unwrap(),
+    )
+    .unwrap();
     for maximum in [expected.len(), expected.len() + 1] {
         let mut limits = Limits::default();
         limits.max_output_bytes = maximum;
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
-        let result = document.extract(&contract).unwrap();
-        assert_eq!(result.to_json(expected.len()).unwrap(), expected.as_bytes());
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
+        let result = document
+            .extract(
+                &contract,
+                &limits.execution(),
+                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            result
+                .export(
+                    htmlcut_core::ExportFormat::Json,
+                    expected.len(),
+                    &htmlcut_core::ExecutionContext::new(None).unwrap()
+                )
+                .unwrap(),
+            expected.as_bytes()
+        );
         for shorter in [expected.len() - 1, expected.len() - 2] {
             assert_eq!(
-                result.to_json(shorter).unwrap_err().limit.as_deref(),
+                result
+                    .export(
+                        htmlcut_core::ExportFormat::Json,
+                        shorter,
+                        &htmlcut_core::ExecutionContext::new(None).unwrap()
+                    )
+                    .unwrap_err()
+                    .limit
+                    .as_deref(),
                 Some("output_bytes")
             );
         }
@@ -20,8 +53,19 @@ fn extraction(html: &str, contract: &str, expected: &str) {
     for maximum in [expected.len() - 1, expected.len() - 2] {
         let mut limits = Limits::default();
         limits.max_output_bytes = maximum;
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
-        let error = document.extract(&contract).unwrap_err();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
+        let error = document
+            .extract(
+                &contract,
+                &limits.execution(),
+                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+            )
+            .unwrap_err();
         assert_eq!(error.error, ErrorCode::LimitExceeded);
         assert_eq!(error.limit.as_deref(), Some("output_bytes"));
         assert_eq!(error.bound, Some(maximum.into()));
@@ -58,14 +102,49 @@ fn outline(html: &str, options: &OutlineOptions, expected: &str) {
     for maximum in [expected.len(), expected.len() + 1] {
         let mut limits = Limits::default();
         limits.max_output_bytes = maximum;
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
-        assert_eq!(document.outline(options).unwrap(), expected);
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            document
+                .outline(
+                    options,
+                    &limits.execution(),
+                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap()
+                )
+                .and_then(|report| report.render(
+                    limits.max_output_bytes,
+                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap()
+                ))
+                .unwrap(),
+            expected
+        );
     }
     for maximum in [expected.len() - 1, expected.len() - 2] {
         let mut limits = Limits::default();
         limits.max_output_bytes = maximum;
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
-        let error = document.outline(options).unwrap_err();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
+        let error = document
+            .outline(
+                options,
+                &limits.execution(),
+                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+            )
+            .and_then(|report| {
+                report.render(
+                    limits.max_output_bytes,
+                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                )
+            })
+            .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("output_bytes"));
         assert_eq!(error.bound, Some(maximum.into()));
     }
@@ -79,19 +158,19 @@ fn outline_line_and_utf8_byte_limits_include_the_omission_summary() {
     for (maximum, expected) in [
         (
             0,
-            "… 4 more lines; narrow --select, lower --depth or raise --max-lines\n",
+            "… 4 more lines; narrow the selection, reduce depth or increase the line allowance\n",
         ),
         (
             1,
-            "1 match for main\n… 3 more lines; narrow --select, lower --depth or raise --max-lines\n",
+            "1 match for main\n… 3 more lines; narrow the selection, reduce depth or increase the line allowance\n",
         ),
         (
             2,
-            "1 match for main\nmain\n… 2 more lines; narrow --select, lower --depth or raise --max-lines\n",
+            "1 match for main\nmain\n… 2 more lines; narrow the selection, reduce depth or increase the line allowance\n",
         ),
         (
             3,
-            "1 match for main\nmain\n  p \"é\"\n… 1 more lines; narrow --select, lower --depth or raise --max-lines\n",
+            "1 match for main\nmain\n  p \"é\"\n… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n",
         ),
         (4, "1 match for main\nmain\n  p \"é\"\n  aside \"x\"\n"),
     ] {
@@ -146,7 +225,12 @@ fn outline_depth_classes_and_preview_cutoffs_are_exact() {
 
 #[test]
 fn cardinality_refusals_identify_the_selector_and_complete_range() {
-    let document = Document::parse(Source::new(b"<p>x</p>"), &Limits::default()).unwrap();
+    let document = Document::parse(
+        Source::new(b"<p>x</p>"),
+        &Limits::default().preparation(),
+        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    )
+    .unwrap();
     for (contract, path, selector, expected_range, identity) in [
         (
             r#"{"select":"p","match":"all","min":2,"max":3}"#,
@@ -178,7 +262,16 @@ fn cardinality_refusals_identify_the_selector_and_complete_range() {
         ),
     ] {
         let error = document
-            .extract(&Contract::from_json(contract).unwrap())
+            .extract(
+                &Contract::from_json(
+                    contract,
+                    &htmlcut_core::ExecutionContext::new(None).unwrap(),
+                )
+                .unwrap(),
+                &htmlcut_core::Limits::default().execution(),
+                &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
+                    .unwrap(),
+            )
             .unwrap_err();
         assert!(error.message.contains(identity), "{}", error.message);
         assert_eq!(error.path.as_deref(), Some(path));

@@ -63,18 +63,47 @@ fn consumer_thread_control() {
             let source = input["source"].as_str().unwrap();
             let selector = input["selector"].as_str().unwrap();
             if input["outline"].as_bool().unwrap_or(false) {
-                let document =
-                    Document::parse(Source::new(source.as_bytes()), &Limits::default()).unwrap();
+                let document = Document::parse(
+                    Source::new(source.as_bytes()),
+                    &Limits::default().preparation(),
+                    &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                )
+                .unwrap();
                 let mut options = OutlineOptions::default();
                 options.select = Some(selector.into());
-                assert_refusal(document.outline(&options).unwrap_err(), source, selector);
+                assert_refusal(
+                    document
+                        .outline(
+                            &options,
+                            &htmlcut_core::Limits::default().execution(),
+                            &htmlcut_core::ExecutionContext::new(
+                                (htmlcut_core::Limits::default()).time_limit,
+                            )
+                            .unwrap(),
+                        )
+                        .and_then(|report| {
+                            report.render(
+                                htmlcut_core::Limits::default().max_output_bytes,
+                                &htmlcut_core::ExecutionContext::new(
+                                    (htmlcut_core::Limits::default()).time_limit,
+                                )
+                                .unwrap(),
+                            )
+                        })
+                        .unwrap_err(),
+                    source,
+                    selector,
+                );
                 return;
             }
             let query = input
                 .get("query")
                 .cloned()
                 .unwrap_or_else(|| json!({"select":selector,"match":"all","min":0}));
-            let contract = Contract::from_json(&query.to_string());
+            let contract = Contract::from_json(
+                &query.to_string(),
+                &htmlcut_core::ExecutionContext::new(None).unwrap(),
+            );
             if input["refused"].as_bool().unwrap() {
                 assert_refusal(
                     contract.err().expect("unsafe selector was admitted"),
@@ -82,9 +111,22 @@ fn consumer_thread_control() {
                     selector,
                 );
             } else {
-                let document =
-                    Document::parse(Source::new(source.as_bytes()), &Limits::default()).unwrap();
-                let result = document.extract(&contract.unwrap()).unwrap();
+                let document = Document::parse(
+                    Source::new(source.as_bytes()),
+                    &Limits::default().preparation(),
+                    &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                )
+                .unwrap();
+                let result = document
+                    .extract(
+                        &contract.unwrap(),
+                        &htmlcut_core::Limits::default().execution(),
+                        &htmlcut_core::ExecutionContext::new(
+                            (htmlcut_core::Limits::default()).time_limit,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
                 assert_eq!(serde_json::to_value(result).unwrap(), input["expected"]);
             }
         })

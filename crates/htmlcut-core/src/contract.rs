@@ -9,6 +9,27 @@ use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value as Json};
 use std::collections::BTreeMap;
 
+/// Neutral shorthand for a value-root contract.
+#[derive(Clone, Debug)]
+pub struct QuickQuery {
+    /// CSS selection.
+    pub select: String,
+    /// Reading syntax, validated by the contract compiler.
+    pub read: String,
+    /// Match cardinality.
+    pub cardinality: QueryCardinality,
+}
+/// Quick-query cardinality.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryCardinality {
+    /// Exactly one match.
+    One,
+    /// Zero or one match.
+    Optional,
+    /// Every match.
+    All,
+}
+
 /// A compiled extraction contract, reusable across documents.
 pub struct Contract {
     pub(crate) node: Node,
@@ -58,7 +79,8 @@ pub(crate) struct Check {
 
 impl Contract {
     /// Reads one bounded JSON contract, rejecting duplicates and compiling its grammar.
-    pub fn from_json(text: &str) -> Result<Self, Error> {
+    pub fn from_json(text: &str, context: &crate::ExecutionContext) -> Result<Self, Error> {
+        context.check()?;
         if text.len() > MAX_CONTRACT_BYTES {
             return Err(invalid(
                 None,
@@ -71,18 +93,65 @@ impl Contract {
                 &format!("The contract is not valid closed JSON: {e}."),
             )
         })?;
-        let patterns = pattern_count(&value);
+        Self::compile(&value, context)
+    }
+    /// Maximum admitted contract-file bytes.
+    pub const MAX_BYTES: usize = MAX_CONTRACT_BYTES;
+    /// Compiles a typed quick query through the same semantic admission as JSON.
+    pub fn quick(query: &QuickQuery, context: &crate::ExecutionContext) -> Result<Self, Error> {
+        context.check()?;
+        if query.select.len().saturating_add(query.read.len()) > MAX_CONTRACT_BYTES {
+            return Err(invalid(
+                None,
+                "The quick query exceeds the contract byte bound.",
+            ));
+        }
+        let value = serde_json::json!({"select": query.select, "read": query.read,
+            "match": match query.cardinality { QueryCardinality::One => "one", QueryCardinality::Optional => "optional", QueryCardinality::All => "all" }});
+        // Count escaped input as well as source strings before compiler admission.
+        let mut size = crate::value::OutputSize::new(MAX_CONTRACT_BYTES);
+        size.value(&value, &(context).clone()).map_err(|error| {
+            if error.limit.as_deref() == Some("output_bytes") {
+                invalid(None, "The quick query exceeds the contract byte bound.")
+            } else {
+                error
+            }
+        })?;
+        Self::compile(&value, context)
+    }
+    fn compile(value: &Json, context: &crate::ExecutionContext) -> Result<Self, Error> {
+        context.check()?;
+        let patterns = pattern_count(value);
         let mut compiler = Compiler {
             nodes: 0,
             regex_bytes: crate::limits::MAX_REGEX_BYTES / (2 * patterns.max(1)),
+            context,
         };
-        Ok(Self {
-            node: compiler.node(&value, "$", 0)?,
-        })
+        let node = compiler.node(value, "$", 0)?;
+        context.check()?;
+        Ok(Self { node })
     }
     /// JSON Schema for the closed contract surface; byte and compiled bounds remain engine checks.
     pub fn schema() -> Json {
         schema()
+    }
+    /// Encodes the complete schema under the operation's output and stop policy.
+    pub fn export_schema(
+        maximum: usize,
+        context: &crate::ExecutionContext,
+    ) -> Result<Vec<u8>, Error> {
+        context.check()?;
+        crate::value::encode_json(&Self::schema(), maximum, context)
+    }
+    /// Admits export shape before acquiring any document bytes.
+    pub fn admit_export(&self, format: crate::ExportFormat) -> Result<(), Error> {
+        if format == crate::ExportFormat::Raw && self.produces_records() {
+            return Err(Error::new(
+                ErrorCode::UnrepresentableOutput,
+                "Raw export requires a value root, not a record root.",
+            ));
+        }
+        Ok(())
     }
     /// Whether the root produces records, which cannot be emitted as raw strings.
     pub fn produces_records(&self) -> bool {
@@ -187,7 +256,7 @@ fn selector(map: &Map<String, Json>, name: &str, path: &str) -> Result<Option<Se
         .transpose()
 }
 fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Reading, Error> {
-    let text = string(map, "read", path)?.unwrap_or_else(|| "text".into());
+    let text = string(map, "read", path)?.unwrap_or_else(|| crate::DEFAULT_READING.into());
     let valid_name = |name: &str| {
         !name.is_empty()
             && name.chars().count() <= MAX_ATTRIBUTE_NAME_CHARS
@@ -217,12 +286,14 @@ fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Readi
     }
 }
 
-struct Compiler {
+struct Compiler<'a> {
+    context: &'a crate::ExecutionContext,
     nodes: usize,
     regex_bytes: usize,
 }
-impl Compiler {
+impl Compiler<'_> {
     fn check(&self, map: &Map<String, Json>, path: &str) -> Result<Check, Error> {
+        self.context.check()?;
         let equals = string(map, "equals", path)?;
         let text = string(map, "pattern", path)?;
         if equals.is_some() && text.is_some() {
@@ -276,6 +347,7 @@ impl Compiler {
         })
     }
     fn node(&mut self, value: &Json, path: &str, records: usize) -> Result<Node, Error> {
+        self.context.check()?;
         self.nodes += 1;
         if self.nodes > MAX_CONTRACT_NODES {
             return Err(invalid(
@@ -455,21 +527,27 @@ fn schema() -> Json {
 mod tests {
     use super::*;
     fn compile(value: Json) -> Result<Contract, Error> {
-        Contract::from_json(&serde_json::to_string(&value).unwrap())
+        Contract::from_json(
+            &serde_json::to_string(&value).unwrap(),
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
     }
     fn refused(value: Json, message: &str) {
         let error = compile(value).err().expect("grammar must refuse");
         assert!(error.message.contains(message), "{}", error.message);
-        assert_eq!(error.error.exit_status(), 2);
+        assert!(matches!(
+            error.error,
+            ErrorCode::InvalidContract | ErrorCode::InvalidSelector | ErrorCode::InvalidPattern
+        ));
     }
     #[test]
     fn contract_text_bound_is_checked_before_json_reading() {
         let mut text = String::from("{}");
         text.push_str(&" ".repeat(256 * 1024 - 2));
-        assert!(Contract::from_json(&text).is_ok());
+        assert!(Contract::from_json(&text, &crate::ExecutionContext::new(None).unwrap()).is_ok());
         text.push(' ');
         assert!(
-            Contract::from_json(&text)
+            Contract::from_json(&text, &crate::ExecutionContext::new(None).unwrap())
                 .err()
                 .unwrap()
                 .message

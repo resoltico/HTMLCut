@@ -1,155 +1,109 @@
 # SPDX-License-Identifier: MPL-2.0
 name: Release
-
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to build, publish, and verify (for example v15.0.0)
+        description: Existing annotated stable release tag
         required: true
         type: string
-
 permissions:
   contents: read
-
 concurrency:
-  # Serialize publications across tags as well as retries; an older draft cannot race latest.
   group: publication-${{ github.repository }}
   cancel-in-progress: false
-
 jobs:
   release-target-matrix:
-    name: Compute release target matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       source_sha: ${{ steps.source.outputs.source_sha }}
       release_tag: ${{ steps.source.outputs.release_tag }}
       version: ${{ steps.source.outputs.version }}
-
     steps:
-      - name: Validate release tag before checkout
+      - name: Validate tag syntax before checkout
         id: candidate
         shell: bash
         env:
           CANDIDATE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
-          [[ "$CANDIDATE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          [[ "$CANDIDATE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           echo "tag=$CANDIDATE_TAG" >> "$GITHUB_OUTPUT"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ steps.candidate.outputs.tag }}
-
-      - name: Resolve and validate one immutable source commit
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - name: Admit exact annotated main source and latest same-source push CI
         id: source
-        shell: bash
         env:
           CANDIDATE_TAG: ${{ steps.candidate.outputs.tag }}
-        run: |
-          set -euo pipefail
-          TAG="$(./scripts/release-tag.sh "$CANDIDATE_TAG")"
-          [[ "$(git cat-file -t "refs/tags/$TAG")" == "tag" ]]
-          SOURCE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
-          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
-          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
-          {
-            echo "source_sha=$SOURCE_SHA"
-            echo "release_tag=$TAG"
-            echo "version=${TAG#v}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Require completed verification of this exact main source
-        shell: bash
-        env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        shell: python
         run: |
-          set -euo pipefail
-          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-            -f head_sha="$RELEASE_SOURCE_SHA" -f branch=main -f per_page=100 > "$RUNNER_TEMP/release-ci.json"
-          python3 scripts/check-release-verification.py --source-sha "$RELEASE_SOURCE_SHA" \
-            --ci "$RUNNER_TEMP/release-ci.json"
-
-      - name: Export release target matrix
-        id: matrix
-        shell: bash
+          import os, subprocess, sys
+          subprocess.run([sys.executable,'-m','tools.htmlcut_maintenance','release','identity',os.environ['CANDIDATE_TAG'],'--require-ci','--output',os.environ['RUNNER_TEMP']+'/release-identity.json'],check=True)
+      - id: matrix
+        shell: python
         run: |
-          set -euo pipefail
-          source ./scripts/release-targets.sh
-          {
-            echo 'matrix<<EOF'
-            release_matrix_json
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-
+          import json, os
+          from tools.htmlcut_maintenance.config import matrix
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('matrix='+json.dumps(matrix())+'\n')
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-identity
+          path: ${{ runner.temp }}/release-identity.json
+          if-no-files-found: warn
   build-archives:
-    name: Build release archives
     needs: [release-target-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
-      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
     permissions:
       contents: read
       id-token: write
       attestations: write
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.release-target-matrix.outputs.source_sha }}
-
-      - name: Resolve target release tag and version
-        id: release
-        shell: bash
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - env:
+          SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
+        shell: python
         run: |
-          set -euo pipefail
-          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Create release archives from the validated source
-        shell: bash
-        run: ./scripts/build-source-archives.sh "${{ needs.release-target-matrix.outputs.source_sha }}" dist
-
-      - name: Generate source archive attestation
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+          import os
+          from tools.htmlcut_maintenance.release.source import archives
+          archives('.',os.environ['SOURCE_SHA'],'dist')
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
-            dist/htmlcut-source-${{ steps.release.outputs.version }}.zip
-            dist/htmlcut-source-${{ steps.release.outputs.version }}.tar.gz
-
-      - name: Upload archive artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            dist/htmlcut-source-${{ needs.release-target-matrix.outputs.version }}.zip
+            dist/htmlcut-source-${{ needs.release-target-matrix.outputs.version }}.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-archives
           path: dist/*
           if-no-files-found: error
-          retention-days: 7
-
   build-standalone:
-    name: Build standalone ${{ matrix.id }} package
-    needs:
-      - release-target-matrix
+    needs: [release-target-matrix]
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 20
-    env:
-      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
-      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
+    timeout-minutes: 90
     permissions:
       contents: read
       id-token: write
@@ -157,159 +111,108 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.release-target-matrix.outputs.source_sha }}
-
-      - name: Install Linux musl toolchain packages
-        if: ${{ matrix.needs_musl_tools }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes musl-tools acl
-
-      - name: Install Rust toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
-
-      - name: Resolve target release tag and version
-        id: release
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve artifact names
-        id: artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/release-targets.sh
-          VERSION="${{ steps.release.outputs.version }}"
-          echo "package=$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
-          echo "compiled_binary=$(binary_name_for_target "${{ matrix.target_triple }}")" >> "$GITHUB_OUTPUT"
-
-      - name: Install native attribution tool
-        uses: ./.github/actions/cargo-tool
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          tool: cargo-about
-
-      - name: Build standalone executable
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
-
-      - name: Verify native package and bind source evidence
-        shell: bash
+          python-version-file: .python-version
+      - if: ${{ matrix.needs_musl_tools }}
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
+      - name: Install native toolchain and pinned attribution tool
+        shell: python
         run: |
-          set -euo pipefail
-          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
-
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+          import os, subprocess
+          from pathlib import Path
+          from tools.htmlcut_maintenance.config import toolchain
+          from tools.htmlcut_maintenance.install import install
+          subprocess.run(['rustup','toolchain','install',toolchain(),'--profile','minimal'],check=True)
+          subprocess.run(['rustup','target','add','--toolchain',toolchain(),'${{ matrix.target_triple }}'],check=True)
+          executable=install('cargo-about',Path(os.environ['RUNNER_TEMP'])/'cargo-about')
+          with open(os.environ['GITHUB_PATH'],'a') as path:path.write(str(executable.parent)+'\n')
+      - name: Build and accept exact native package before provenance/publication
+        id: package
+        shell: python
+        run: |
+          import os
+          from tools.htmlcut_maintenance.release.package import build
+          from tools.htmlcut_maintenance.release.accept import accept
+          package=build('${{ matrix.target_triple }}','dist')
+          accept(package,'${{ matrix.target_triple }}','${{ needs.release-target-matrix.outputs.version }}')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write('name='+package.name+'\n')
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/${{ steps.artifact.outputs.package }}
-
-      - name: Upload standalone artifact
+          subject-path: dist/${{ steps.package.outputs.name }}
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact_bundle_name }}
-          path: |
-            dist/${{ steps.artifact.outputs.package }}
-            dist/native-conformance-*
-            dist/native-semantics-*
-            dist/native-acceptance-*
+          path: dist/
           if-no-files-found: error
-          retention-days: 7
-
+      - name: Preserve bounded installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installation-build-standalone-${{ matrix.id }}
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/cargo-*/*.log
+            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
+          if-no-files-found: warn
   release:
-    name: Build and publish release
+    needs: [release-target-matrix, build-archives, build-standalone]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
-      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
-    needs:
-      - release-target-matrix
-      - build-archives
-      - build-standalone
     permissions:
       contents: write
       id-token: write
       attestations: write
-
+    env:
+      RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-          # All assets and publication metadata use the commit resolved once above.
           ref: ${{ needs.release-target-matrix.outputs.source_sha }}
-
-      - name: Resolve target release tag and version
-        id: release
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="$(./scripts/release-tag.sh "$RELEASE_TAG")"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Download archive artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-archives
           path: dist/
-
-      - name: Download standalone artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: standalone-*
           path: dist/
           merge-multiple: true
-
-      - name: Build checksum manifest
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: ./scripts/build-release-checksums.sh
-
-      - name: Generate checksum manifest attestation
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - shell: python
+        run: |
+          import os
+          from tools.htmlcut_maintenance.release.checksums import write
+          write(os.environ['RELEASE_TAG'][1:],'dist')
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/htmlcut-${{ steps.release.outputs.version }}-checksums.txt
-
-      - name: Publish GitHub release idempotently
-        shell: bash
+          subject-path: dist/htmlcut-${{ needs.release-target-matrix.outputs.version }}-checksums.txt
+      - name: Converge immutable release bytes without editing published retries
+        shell: python
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: ./scripts/publish-github-release.sh
-
-      - name: Verify GitHub release handoff
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: ./scripts/verify-github-release.sh
-
+        run: |
+          import os
+          from tools.htmlcut_maintenance.release.publish import publish
+          publish(os.environ['RELEASE_TAG'],'dist')
   published-native:
-    name: Execute published package ${{ matrix.id }}
     needs: [release-target-matrix, release]
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       attestations: read
@@ -317,8 +220,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
     env:
-      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
       RELEASE_SOURCE_SHA: ${{ needs.release-target-matrix.outputs.source_sha }}
+      RELEASE_TAG: ${{ needs.release-target-matrix.outputs.release_tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -326,66 +229,19 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.release-target-matrix.outputs.source_sha }}
-
-      - name: Install Linux musl toolchain packages
-        if: ${{ matrix.needs_musl_tools }}
-        shell: bash
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - if: ${{ matrix.needs_musl_tools }}
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
+      - name: Verify anonymous public bytes, attestation and native execution
+        shell: python
         run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes musl-tools acl
-
-      - name: Install Rust toolchain for native I/O tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" --profile minimal
-          rustup target add --toolchain "${HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN}" "${{ matrix.target_triple }}"
-
-      - name: Download public bytes anonymously and verify provenance
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/release-targets.sh
-          VERSION="${RELEASE_TAG#v}"
-          PACKAGE="$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")"
-          CHECKSUM="htmlcut-${VERSION}-checksums.txt"
-          mkdir -p dist
-          for NAME in "$PACKAGE" "$CHECKSUM"; do
-            curl --fail --location --max-time 120 --max-filesize 134217728 \
-              --output "dist/$NAME" "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$NAME"
-          done
-          python3 - "$PACKAGE" "$CHECKSUM" <<'PY'
-          import runpy,sys
-          from pathlib import Path
-          helpers=runpy.run_path('scripts/release-assets.py')
-          package=Path('dist')/sys.argv[1]
-          checksums=helpers['parse_checksums']((Path('dist')/sys.argv[2]).read_bytes())
-          assert helpers['digest'](package)[1]==checksums[package.name], 'Public package checksum differs'
-          PY
-          gh attestation verify "dist/$PACKAGE" --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
-            --source-digest "$RELEASE_SOURCE_SHA" --format json > dist/published-attestation.json
-
-      - name: Execute downloaded native package and retain its binding
-        shell: bash
-        run: |
-          set -euo pipefail
-          source ./scripts/release-targets.sh
-          VERSION="${RELEASE_TAG#v}"
-          PACKAGE="$(release_package_name_for_target "$VERSION" "${{ matrix.target_triple }}")"
-          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
-
-      - name: Preserve downloaded package and complete native proof
-        if: always()
+          import os, subprocess, sys
+          subprocess.run([sys.executable,'-m','tools.htmlcut_maintenance','release','verify',os.environ['RELEASE_TAG'],'--target','${{ matrix.target_triple }}','--output','dist'],check=True)
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: published-native-${{ matrix.id }}
-          path: |
-            dist/htmlcut-*
-            dist/native-conformance-*
-            dist/native-semantics-*
-            dist/native-acceptance-*
+          path: dist/
           if-no-files-found: error
-          retention-days: 7

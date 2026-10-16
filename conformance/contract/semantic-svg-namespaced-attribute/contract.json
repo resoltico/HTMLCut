@@ -1,0 +1,4 @@
+{
+  "select": "svg a",
+  "read": "attr:xlink:href"
+}

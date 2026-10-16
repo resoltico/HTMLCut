@@ -19,16 +19,18 @@ impl Selector {
         Self::compile(text, "$")
     }
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
-        let failure = |message: String| {
-            let mut e = Error::new(ErrorCode::InvalidSelector, message).at(path);
-            e.select = Some(text.into());
-            e
-        };
         if text.len() > MAX_PATTERN_BYTES {
-            return Err(failure(
-                "The selector exceeds the 8192-byte grammar bound.".into(),
-            ));
+            return Err(Error::new(
+                ErrorCode::InvalidSelector,
+                format!("The selector exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
+            )
+            .at(path));
         }
+        let failure = |message: String| {
+            let mut error = Error::new(ErrorCode::InvalidSelector, message).at(path);
+            error.select = Some(text.into());
+            error
+        };
         if !syntax_admitted(text) {
             return Err(failure(
                 "The selector exceeds the syntax nesting bound of 64.".into(),

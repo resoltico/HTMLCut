@@ -19,17 +19,19 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-htmlcut-core.workspace = true
-tempfile.workspace = true
+htmlcut-runtime.workspace = true
+
+[dev-dependencies]
 serde_json.workspace = true
+tempfile.workspace = true
 
-[target.'cfg(windows)'.dependencies]
-winapi-util.workspace = true
-windows-sys.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-filedescriptor.workspace = true
+[target.'cfg(unix)'.dev-dependencies]
 libc.workspace = true
+filedescriptor.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Pipes"] }
+winapi-util.workspace = true
 
 [lints]
 workspace = true

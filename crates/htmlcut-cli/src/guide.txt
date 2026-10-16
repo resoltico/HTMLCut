@@ -5,7 +5,7 @@ Usage:
   htmlcut get <CSS> [FILE] [--all] [--read READING] [--raw]
   htmlcut run <CONTRACT-JSON> [FILE] [--raw]
   htmlcut run --from-file <CONTRACT.json> [FILE] [--raw]
-  htmlcut schema [-o DEST] [--timeout SECONDS]
+  htmlcut schema [-o DEST] [--timeout SECONDS] [--max-output-bytes N]
 
 FILE defaults to standard input. Get/run return compact JSON; outline prints text
 and schema prints JSON. A refusal before publication writes no result bytes.
@@ -58,3 +58,7 @@ Schema supports only output and timeout. Use COMMAND --help for exact placement.
 Contract stdin: run --from-file - page.html, with a distinct HTML source.
 FILE URLs require successful external acquisition first; see docs/contract.md.
 Schema is authoring structure validation; integer tokens must be 1, not 1.0/1e0/-0.
+
+Output ceilings admit the complete canonical export including final LF. Raw output
+also obeys canonical JSON admission; optional null needs five canonical bytes
+though its raw export is empty. Each invocation has one absolute deadline.

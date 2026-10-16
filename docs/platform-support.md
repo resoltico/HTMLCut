@@ -1,6 +1,6 @@
 # Platform support
 
-The maintained native targets and runners are derived from [release-targets.sh](../scripts/release-targets.sh): Apple ARM64 and Intel, Linux x64 musl, and Windows x64 MSVC. CI runs the library/CLI tests and the same conformance corpus against each unpacked native package.
+The maintained native targets and runners are derived from [release-targets.toml](../tools/release-targets.toml): Apple ARM64 and Intel, Linux x64 musl, and Windows x64 MSVC. CI runs the core/runtime/CLI tests and the same conformance corpus against each unpacked native package.
 
 Apple executables target macOS 12 and are signed ad hoc. Strict signature verification establishes sealed-code integrity; it supplies no Developer ID or notarization. Current native runners do not establish execution on every older OS version.
 

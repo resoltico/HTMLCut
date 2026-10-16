@@ -13,19 +13,20 @@ fuzz_target!(|bytes: &[u8]| {
     limits.max_output_bytes = 65536;
     limits.max_reading_bytes = 1 + bytes.len() % 256;
     limits.time_limit = Some(std::time::Duration::from_millis(50));
+    let context = htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap();
     // Include zero and small arena budgets to exercise parser callbacks after an
     // admission refusal, even when the contract bytes are not compilable.
     limits.max_nodes = bytes.len() % 33;
-    let _ = Document::parse(Source::new(document), &limits);
+    let _ = Document::parse(Source::new(document), &limits.preparation(), &context);
     limits.max_nodes = 4096;
     let Ok(text) = std::str::from_utf8(contract) else {
         return;
     };
-    let Ok(contract) = Contract::from_json(text) else {
+    let Ok(contract) = Contract::from_json(text, &context) else {
         return;
     };
-    if let Ok(document) = Document::parse(Source::new(document), &limits) {
-        let _ = document.extract(&contract);
-        let _ = document.outline(&OutlineOptions::default());
+    if let Ok(document) = Document::parse(Source::new(document), &limits.preparation(), &context) {
+        let _ = document.extract(&contract, &limits.execution(), &context);
+        let _ = document.outline(&OutlineOptions::default(), &limits.execution(), &context);
     }
 });

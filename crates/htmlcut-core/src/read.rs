@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: MPL-2.0 AND ISC
 //! Deterministic structural text and original-tree readings.
 use crate::dom::Node;
-use crate::{Document, Error, ErrorCode, contract::Reading, eval::Scope, limits::Clock};
+use crate::{Document, Error, ErrorCode, contract::Reading, eval::Scope, limits::ExecutionContext};
 use ego_tree::{NodeId, NodeRef, iter::Edge};
 use html5ever::serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize};
 use std::{collections::HashSet, io};
 
 pub(crate) fn read(
     document: &Document,
+    reading_limit: usize,
     scope: &Scope<'_>,
     reading: &Reading,
     excluded: &HashSet<NodeId>,
-    clock: &Clock,
+    clock: &ExecutionContext,
     output: Option<(usize, usize)>,
 ) -> Result<String, Error> {
     clock.check()?;
-    let mut sink = ReadingSink::new(document.limits.max_reading_bytes, output, clock)?;
+    let mut sink = ReadingSink::new(reading_limit, output, clock)?;
     let result = match reading {
         Reading::Attr(name) | Reading::Url(name) => {
             let value = attribute(scope.anchor.value(), name).ok_or_else(|| {
@@ -84,7 +85,7 @@ fn attribute<'a>(element: &'a crate::dom::Element, name: &str) -> Option<&'a str
 fn text_content(
     scope: &Scope<'_>,
     excluded: &HashSet<NodeId>,
-    clock: &Clock,
+    clock: &ExecutionContext,
     result: &mut ReadingSink,
 ) -> Result<(), Error> {
     for root in scope.roots() {
@@ -195,7 +196,7 @@ impl<'d, 's, 'c> Lines<'d, 's, 'c> {
             sink,
         }
     }
-    fn end(&mut self, keep_blank: bool, clock: &Clock) -> Result<(), Error> {
+    fn end(&mut self, keep_blank: bool, clock: &ExecutionContext) -> Result<(), Error> {
         let cells = std::mem::replace(&mut self.cells, vec![Vec::new()]);
         let mut content = false;
         for cell in &cells {
@@ -247,7 +248,12 @@ impl<'d, 's, 'c> Lines<'d, 's, 'c> {
         self.verbatim = false;
         Ok(())
     }
-    fn add(&mut self, text: &'d str, verbatim: bool, clock: &Clock) -> Result<(), Error> {
+    fn add(
+        &mut self,
+        text: &'d str,
+        verbatim: bool,
+        clock: &ExecutionContext,
+    ) -> Result<(), Error> {
         if !verbatim {
             self.cells.last_mut().unwrap().push(text);
             return Ok(());
@@ -271,7 +277,7 @@ impl<'d, 's, 'c> Lines<'d, 's, 'c> {
 }
 
 struct ReadingSink<'c> {
-    clock: &'c Clock,
+    clock: &'c ExecutionContext,
     value: String,
     pending_utf8: [u8; 4],
     pending_length: usize,
@@ -283,7 +289,7 @@ impl<'c> ReadingSink<'c> {
     fn new(
         reading_maximum: usize,
         output: Option<(usize, usize)>,
-        clock: &'c Clock,
+        clock: &'c ExecutionContext,
     ) -> Result<Self, Error> {
         let sink = Self {
             clock,
@@ -370,7 +376,7 @@ impl io::Write for ReadingSink<'_> {
 fn text(
     scope: &Scope<'_>,
     excluded: &HashSet<NodeId>,
-    clock: &Clock,
+    clock: &ExecutionContext,
     sink: &mut ReadingSink,
 ) -> Result<(), Error> {
     if scope.single() && matches!(scope.anchor.value().name(), "script" | "style" | "template") {
@@ -459,7 +465,7 @@ fn text(
 struct Filtered<'a, 'd> {
     root: NodeRef<'d, Node>,
     excluded: &'a HashSet<NodeId>,
-    clock: &'a Clock,
+    clock: &'a ExecutionContext,
 }
 impl Serialize for Filtered<'_, '_> {
     fn serialize<S: Serializer>(&self, serializer: &mut S, _: TraversalScope) -> io::Result<()> {
@@ -493,7 +499,7 @@ impl Serialize for Filtered<'_, '_> {
 fn outer_html(
     scope: &Scope<'_>,
     excluded: &HashSet<NodeId>,
-    clock: &Clock,
+    clock: &ExecutionContext,
     output: &mut ReadingSink,
 ) -> Result<(), Error> {
     for root in scope.roots() {
@@ -522,7 +528,10 @@ fn outer_html(
 }
 
 #[cfg(test)]
-pub(crate) fn read_html(root: crate::dom::ElementRef<'_>, clock: &Clock) -> Result<String, Error> {
+pub(crate) fn read_html(
+    root: crate::dom::ElementRef<'_>,
+    clock: &ExecutionContext,
+) -> Result<String, Error> {
     {
         let mut sink = ReadingSink::new(usize::MAX, None, clock)?;
         outer_html(&Scope::one(root), &HashSet::new(), clock, &mut sink)?;
@@ -544,7 +553,7 @@ mod tests {
     #[test]
     fn canonical_control_escape_admission_precedes_appending_the_reading() {
         let limits = Limits::default();
-        let clock = Clock::new(&limits);
+        let clock = ExecutionContext::new(limits.time_limit).unwrap();
         for maximum in [7, 8, 9] {
             let mut sink = ReadingSink::new(1, Some((maximum, maximum)), &clock).unwrap();
             let result = sink.push("\u{1}");
@@ -561,11 +570,32 @@ mod tests {
                 );
             }
         }
-        let contract = Contract::from_json(r#"{"select":"p","read":"text-content"}"#).unwrap();
-        let document = Document::parse(Source::new(b"<p>&#1;</p>"), &limits).unwrap();
+        let contract = Contract::from_json(
+            r#"{"select":"p","read":"text-content"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
+        let document = Document::parse(
+            Source::new(b"<p>&#1;</p>"),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.extract(&contract).unwrap().to_json(8).unwrap(),
-            b"\"\\u0001\""
+            document
+                .extract(
+                    &contract,
+                    &limits.execution(),
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                )
+                .unwrap()
+                .export(
+                    crate::ExportFormat::Json,
+                    9,
+                    &crate::ExecutionContext::new(None).unwrap()
+                )
+                .unwrap(),
+            b"\"\\u0001\"\n"
         );
     }
 
@@ -573,12 +603,23 @@ mod tests {
     fn outer_html_reassembles_the_native_serializers_split_c2_scalars() {
         let document = Document::parse(
             Source::new("<p title='¡\u{85}&nbsp;'>¡\u{85}&nbsp;é雪😀</p>".as_bytes()),
-            &Limits::default(),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
         )
         .unwrap();
-        let contract = Contract::from_json(r#"{"select":"p","read":"outer-html"}"#).unwrap();
+        let contract = Contract::from_json(
+            r#"{"select":"p","read":"outer-html"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.extract(&contract).unwrap(),
+            document
+                .extract(
+                    &contract,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap(),
             Value::String("<p title=\"¡\u{85}&nbsp;\">¡\u{85}&nbsp;é雪😀</p>".into())
         );
     }
@@ -587,7 +628,7 @@ mod tests {
     fn serialized_utf8_writer_preserves_fragmented_scalars_and_rejects_malformed_continuations() {
         use std::io::Write;
         let limits = Limits::default();
-        let clock = Clock::new(&limits);
+        let clock = ExecutionContext::new(limits.time_limit).unwrap();
         for scalar in ["¡", "雪", "😀"] {
             for split in 1..scalar.len() {
                 let mut sink = ReadingSink::new(scalar.len(), None, &clock).unwrap();
@@ -620,9 +661,22 @@ mod tests {
 
     use crate::{Contract, Limits, Source, Value};
     fn value(html: &str, contract: serde_json::Value) -> Value {
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         document
-            .extract(&Contract::from_json(&contract.to_string()).unwrap())
+            .extract(
+                &Contract::from_json(
+                    &contract.to_string(),
+                    &crate::ExecutionContext::new(None).unwrap(),
+                )
+                .unwrap(),
+                &crate::Limits::default().execution(),
+                &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap(),
+            )
             .unwrap()
     }
     fn text_of(html: &str, select: &str) -> String {
@@ -733,35 +787,74 @@ mod tests {
             b"<svg id=x viewBox='0 0' xlink:href='../doc'></svg><meta id=m content=' img.png '>",
         );
         source.base_url = Some("https://example.test/app/page");
-        let document = Document::parse(source, &Limits::default()).unwrap();
+        let document = Document::parse(
+            source,
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         for (read, expected) in [
             ("attr:viewBox", "0 0"),
             ("attr:xlink:href", "../doc"),
             ("url:xlink:href", "https://example.test/doc"),
         ] {
-            let c =
-                Contract::from_json(&serde_json::json!({"select":"#x","read":read}).to_string())
-                    .unwrap();
+            let c = Contract::from_json(
+                &serde_json::json!({"select":"#x","read":read}).to_string(),
+                &crate::ExecutionContext::new(None).unwrap(),
+            )
+            .unwrap();
             assert_eq!(
-                document.extract(&c).unwrap(),
+                document
+                    .extract(
+                        &c,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String(expected.into())
             );
         }
-        let c = Contract::from_json(r##"{"select":"#x","read":"attr:viewbox"}"##).unwrap();
+        let c = Contract::from_json(
+            r##"{"select":"#x","read":"attr:viewbox"}"##,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.extract(&c).unwrap_err().error,
+            document
+                .extract(
+                    &c,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap_err()
+                .error,
             ErrorCode::MissingAttribute
         );
-        let c = Contract::from_json(r##"{"select":"#m","read":"url:content"}"##).unwrap();
+        let c = Contract::from_json(
+            r##"{"select":"#m","read":"url:content"}"##,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.extract(&c).unwrap(),
+            document
+                .extract(
+                    &c,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap(),
             Value::String("https://example.test/app/img.png".into())
         );
     }
     #[test]
     fn document_url_query_uses_effective_encoding_for_base_and_attributes_only() {
         use crate::{Contract, Value};
-        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        let contract = Contract::from_json(
+            r#"{"select":"a","read":"url:href"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         for (bytes, encoding, fallback, expected) in [
             (
                 b"<meta charset=windows-1252><base href='?q=\xe9'><a href='#id'>x".to_vec(),
@@ -814,9 +907,21 @@ mod tests {
             let mut source = Source::new(&bytes);
             source.encoding = encoding;
             source.base_url = Some(fallback);
-            let document = Document::parse(source, &Limits::default()).unwrap();
+            let document = Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap();
             assert_eq!(
-                document.extract(&contract).unwrap(),
+                document
+                    .extract(
+                        &contract,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String(expected.into()),
                 "encoding {encoding:?}"
             );
@@ -838,9 +943,21 @@ mod tests {
             let mut source = Source::new(&bytes);
             source.encoding = Some("windows-1252");
             source.base_url = Some("https://origin.test/page");
-            let document = Document::parse(source, &Limits::default()).unwrap();
+            let document = Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap();
             assert_eq!(
-                document.extract(&contract).unwrap(),
+                document
+                    .extract(
+                        &contract,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String("https://origin.test/page?q=%C3%A9".into())
             );
         }
@@ -849,7 +966,11 @@ mod tests {
     #[test]
     fn document_url_query_escapes_only_actual_encoding_errors() {
         use crate::{Contract, Value};
-        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        let contract = Contract::from_json(
+            r#"{"select":"a","read":"url:href"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         for (label, href, expected) in [
             (
                 "windows-1252",
@@ -885,9 +1006,21 @@ mod tests {
             let html = format!("<meta charset={label}><a href='{href}'>x");
             let mut source = Source::new(html.as_bytes());
             source.base_url = Some("https://origin.test/page");
-            let document = Document::parse(source, &Limits::default()).unwrap();
+            let document = Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap();
             assert_eq!(
-                document.extract(&contract).unwrap(),
+                document
+                    .extract(
+                        &contract,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String(expected.into()),
                 "{label}: {href}"
             );
@@ -897,14 +1030,30 @@ mod tests {
     #[test]
     fn document_url_query_state_survives_removed_controls_and_encoder_output_buffers() {
         use crate::{Contract, Value};
-        let contract = Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        let contract = Contract::from_json(
+            r#"{"select":"a","read":"url:href"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         for control in ["&#9;", "&#10;", "&#13;"] {
             let html = format!("<meta charset=iso-2022-jp><a href='?q=&#165;{control}&#165;'>x");
             let mut source = Source::new(html.as_bytes());
             source.base_url = Some("https://origin.test/page");
-            let document = Document::parse(source, &Limits::default()).unwrap();
+            let document = Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap();
             assert_eq!(
-                document.extract(&contract).unwrap(),
+                document
+                    .extract(
+                        &contract,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String(r"https://origin.test/page?q=%1B(J\\%1B(B".into())
             );
         }
@@ -914,10 +1063,21 @@ mod tests {
         );
         let mut source = Source::new(html.as_bytes());
         source.base_url = Some("https://origin.test/page");
-        let document = Document::parse(source, &Limits::default()).unwrap();
+        let document = Document::parse(
+            source,
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         let expected = format!("https://origin.test/page?q=%1B(J{}%1B(B", "\\".repeat(1025));
         assert_eq!(
-            document.extract(&contract).unwrap(),
+            document
+                .extract(
+                    &contract,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap(),
             Value::String(expected)
         );
     }
@@ -925,13 +1085,36 @@ mod tests {
     #[test]
     fn filtered_serialization_keeps_the_original_tree_and_source_attribute_order() {
         let html = "<main id=x><p z='2' a='1'>a &amp; b</p><!--keep--><b class=omit>gone</b><noscript><i>x</i></noscript></main>";
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         let source_html = document.html.html();
-        let c = Contract::from_json(r##"{"select":"#x","read":"outer-html","exclude":[".omit"]}"##)
-            .unwrap();
-        assert_eq!(document.extract(&c).unwrap(), Value::String("<main id=\"x\"><p z=\"2\" a=\"1\">a &amp; b</p><!--keep--><noscript><i>x</i></noscript></main>".into()));
+        let c = Contract::from_json(
+            r##"{"select":"#x","read":"outer-html","exclude":[".omit"]}"##,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(document.extract(&c, &crate::Limits::default().execution(), &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()).unwrap(), Value::String("<main id=\"x\"><p z=\"2\" a=\"1\">a &amp; b</p><!--keep--><noscript><i>x</i></noscript></main>".into()));
         assert_eq!(document.html.html(), source_html);
-        assert_eq!(document.extract(&c).unwrap(), document.extract(&c).unwrap());
+        assert_eq!(
+            document
+                .extract(
+                    &c,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap(),
+            document
+                .extract(
+                    &c,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap()
+        );
     }
     #[test]
     fn foreign_block_and_cell_names_do_not_gain_html_layout() {
@@ -968,7 +1151,12 @@ mod tests {
     #[test]
     fn unrendered_element_siblings_do_not_create_a_table_column() {
         let html = "<table id=x><tr><td>first</td></tr><tr><script>ignored</script><template><td>inert</td></template><td>a</td><th>b</th></tr></table>";
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         // HTML retains these non-cell elements in the row, unlike foster-parented span/div nodes.
         let row = document
             .html
@@ -989,8 +1177,12 @@ mod tests {
             "<!doctype html><html><head></head><body><main>a<!doctype html>b<h2>x</h2>c<!doctype html>d<h2>stop</h2></main></body></html>",
             "<!doctype html><html><head></head><body><main>ab<h2>x</h2>cd<h2>stop</h2></main></body></html><!doctype html>",
         ] {
-            let document =
-                Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
+            let document = Document::parse(
+                Source::new(html.as_bytes()),
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap();
             // The parser's document doctype precedes the root element; interior and trailing doctypes are discarded.
             let doctypes: Vec<_> = document
                 .html
@@ -1021,16 +1213,28 @@ mod tests {
     fn output_policy_applies_to_the_final_capture_without_an_intermediate_value_limit() {
         let html = format!("<p>{}<b>x</b></p>", "a".repeat(10_000));
         let limits = Limits {
-            max_output_bytes: 3,
+            max_output_bytes: 4,
             ..Limits::default()
         };
-        let document = Document::parse(Source::new(html.as_bytes()), &limits).unwrap();
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap();
         let contract = Contract::from_json(
             r#"{"select":"p","read":"outer-html","pattern":"<b>(?<value>x)</b>"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
         )
         .unwrap();
         assert_eq!(
-            document.extract(&contract).unwrap(),
+            document
+                .extract(
+                    &contract,
+                    &limits.execution(),
+                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                )
+                .unwrap(),
             Value::String("x".into())
         );
     }

@@ -4,4 +4,4 @@ html
     title "Catalogue | Example Books"
   body
     h1 "All products"
-… 4 more lines; narrow --select, lower --depth or raise --max-lines
+… 4 more lines; narrow the selection, reduce depth or increase the line allowance

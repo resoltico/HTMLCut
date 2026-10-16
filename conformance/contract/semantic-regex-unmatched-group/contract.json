@@ -1,0 +1,4 @@
+{
+  "select": "p",
+  "pattern": "(?<value>[0-9]+)|sold"
+}

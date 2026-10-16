@@ -1,32 +1,26 @@
 # Contributing
 
-Start at the repository root with rustup, a native linker, Bash and Python 3.11 or newer (3.13 or newer for bounded QA on macOS); [platform support](docs/platform-support.md) lists native prerequisites. [rust-toolchain.toml](rust-toolchain.toml) pins development, [Cargo.toml](Cargo.toml) declares the minimum tested compiler, and [Cargo.lock](Cargo.lock) pins dependency resolution.
+Install rustup and the native linker prerequisites in [platform support](docs/platform-support.md). From a clean checkout, `cargo test --locked --workspace --all-features` builds and tests the product. Ordinary Cargo tests do not need Python. The compiler pin is [rust-toolchain.toml](rust-toolchain.toml), the minimum Rust version is [Cargo.toml](Cargo.toml), and dependency resolution is [Cargo.lock](Cargo.lock).
 
-macOS unit tests also use Apple's `/usr/bin/leaks` to check native ACL allocation release. The test first requires detection of intentionally retained allocations, then requires zero leaks from ordinary drops. Detector output and stack-logging files stay in bounded owned temporary directories; missing or unusable detection fails the check.
-
-Linux authorization tests require mounted `/proc`, temporary storage supporting POSIX ACL extended attributes, and an account without DAC permission bypass. Run them as a regular user so the directory-listing denial control is effective. These tests use native APIs and need no ACL command-line tools.
-
-Install `cargo-deny` at the version declared in [the tool inventory](scripts/contributor-rust-tools.sh), then run the contributor gate:
-
-```bash
-source ./scripts/contributor-rust-tools.sh
-cargo_deny_version=$(htmlcut_contributor_cargo_tool_inventory | awk '$1 == "cargo-deny" {print $2}')
-cargo install cargo-deny --version "$cargo_deny_version" --locked
-./check.sh
-```
-
-The gate checks formatting, denies lint and rustdoc warnings, runs library, CLI, conformance, resource and release-maintenance tests, checks dependency policy and enforces the [frozen contract corpus](docs/design.md#stability). CI also tests the minimum compiler and all native targets. Native package smoke tests use the unpacked executable through `HTMLCUT_TEST_BINARY` and include the ignored positional performance check.
-
-Build output stays in `target/` unless `CARGO_TARGET_DIR` selects another location. Use `cargo clean` to remove the checkout's build output.
-
-Conformance expectations are independent specification inputs. Report a questionable case and reasoning before editing it. Preserve the append-only contract corpus within a major version. Keep default values and limits authoritative in code and derive or check dependent help and schema documentation.
-
-Packaging requires `cargo-about`; install its inventory version with `cargo install`, `--locked` and `--features cli`. Fuzzing requires the inventory version of `cargo-fuzz` and the pinned nightly with `rust-src`. [Fuzzing](fuzz/README.md) describes the bounded commands, seed controls and output ownership. CI runs a 250-execution preflight per target with mutation startup required; the local default is 10,000 executions per target.
-
-Before a release, install the inventory version of `cargo-mutants` with `--locked`, fetch locked dependencies with `cargo fetch --locked`, then run:
+Maintenance uses Python 3.13+ on macOS and 3.11+ on Linux/Windows; invoke a suitable `python3`. CI's exact interpreter is declared in [.python-version](.python-version). The package is stdlib-only. Install the required dependency-policy tool into a fresh directory outside the checkout, add its `bin` directory to PATH, and run:
 
 ```sh
-python3 scripts/mutation-audit.py --output /path/outside/checkout/mutation-results
+python3 -m tools.htmlcut_maintenance install cargo-deny --root /path/outside/checkout/cargo-deny
+python3 -m tools.htmlcut_maintenance check
 ```
 
-The runner uses disposable build roots, offline builds and finite resource budgets. See [QA resource limits](docs/qa-resources.md) for prerequisites, focused runs and retained results. Complete the full workspace review and report every survivor and timeout in the release pull request, explaining either the unresolved defect or why it changes nothing observable.
+The check command runs standard Cargo fmt, warning-denied Clippy, locked workspace tests, warning-denied rustdoc, nonempty maintenance unittest discovery, and cargo-deny. It checks prerequisites before building and does not install optional tools. Its metadata guard enforces the CLI's production dependency allowlist and product dependency direction, with a prohibited-dependency negative control. That guard does not prove the absence of copied business logic; corpus parity and code review cover that risk.
+
+macOS native library tests require `/usr/bin/leaks`, with an intentionally retained allocation as a detection control. Linux library authorization tests require mounted `/proc`, POSIX ACL-capable temporary storage and a regular account without DAC bypass. Delivered-binary native acceptance additionally requires `setfacl` and `sudo -n -u nobody` on Linux, native PowerShell and the required authorization capabilities on Windows, and codesign/ACL tools on macOS. Missing required native capabilities fail acceptance.
+
+The literal conformance corpus is specification input. Review semantic fixture changes with their intended behavior; there is no byte-freezing gate or append-only policy. Accepted documentation examples must have executable dialect cases. Product integration tests accept `HTMLCUT_TEST_BINARY` so the same tests can exercise an unpacked executable, including explicitly ignored native/performance controls.
+
+[tools/contributor-tools.toml](tools/contributor-tools.toml) pins optional QA tools and nightly. Install `cargo-about`, `cargo-fuzz` or `cargo-mutants` with the same bounded install command as needed. Attribution enables cargo-about's `cli` feature. Fresh installed roots are verified and never restored from a custom binary cache; owner Cargo/rustup caches are not pruned.
+
+```sh
+python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations /path/outside/checkout/fuzz-results
+cargo fetch --locked
+python3 -m tools.htmlcut_maintenance qa mutation --output /path/outside/checkout/mutation-results
+```
+
+Fuzzing requires the pinned nightly with `rust-src`; its default full smoke is 10,000 runs per target. Mutation builds are locked/offline after preparation. Both retain bounded evidence and reject incomplete outcomes; source identity must stay stable. Full workspace mutation survivor/timeout review remains a pre-publication operator requirement. Focused platform campaigns do not establish full review. See [QA resource limits](docs/qa-resources.md), [fuzzing](fuzz/README.md) and [release operations](docs/release.md).

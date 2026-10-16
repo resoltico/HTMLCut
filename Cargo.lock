@@ -448,11 +448,11 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-cli"
-version = "22.0.0"
+version = "23.0.0"
 dependencies = [
  "clap",
  "filedescriptor",
- "htmlcut-core",
+ "htmlcut-runtime",
  "libc",
  "serde_json",
  "tempfile",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-core"
-version = "22.0.0"
+version = "23.0.0"
 dependencies = [
  "cssparser",
  "ego-tree",
@@ -480,10 +480,23 @@ dependencies = [
 
 [[package]]
 name = "htmlcut-fuzz"
-version = "22.0.0"
+version = "23.0.0"
 dependencies = [
  "htmlcut-core",
  "libfuzzer-sys",
+]
+
+[[package]]
+name = "htmlcut-runtime"
+version = "23.0.0"
+dependencies = [
+ "filedescriptor",
+ "htmlcut-core",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "winapi-util",
+ "windows-sys",
 ]
 
 [[package]]

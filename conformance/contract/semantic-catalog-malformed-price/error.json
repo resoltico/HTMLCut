@@ -1,0 +1,8 @@
+{
+  "error": "value_mismatch",
+  "path": "$.fields.price.fields.amount",
+  "row": [
+    2
+  ],
+  "value": "ask us"
+}

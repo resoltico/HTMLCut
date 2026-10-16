@@ -1,0 +1,33 @@
+[
+  {
+    "badge": "New",
+    "id": "A",
+    "price": {
+      "amount": "3.50"
+    },
+    "stock": {
+      "amount": "12"
+    },
+    "tags": [
+      "green",
+      "loose"
+    ],
+    "title": "Tea",
+    "url": "https://shop.test/tea"
+  },
+  {
+    "badge": null,
+    "id": "B",
+    "price": {
+      "amount": "6.25"
+    },
+    "stock": {
+      "amount": "0"
+    },
+    "tags": [
+      "ground"
+    ],
+    "title": "Coffee",
+    "url": "https://shop.test/coffee"
+  }
+]

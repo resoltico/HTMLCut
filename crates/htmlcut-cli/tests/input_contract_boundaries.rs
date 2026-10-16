@@ -104,7 +104,7 @@ fn schema_routes_complete_output_without_accepting_snapshot_options() {
         assert!(output.stdout.is_empty());
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
-            "invalid_arguments"
+            "invalid_request"
         );
     }
 }
@@ -160,7 +160,7 @@ fn competing_stdin_claims_refuse_before_eof_or_invocation_timeout() {
         assert_eq!(output.status.code(), Some(2), "{output:?}");
         assert!(output.stdout.is_empty());
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"], "invalid_arguments");
+        assert_eq!(error["error"], "invalid_request");
         assert!(error["message"].as_str().unwrap().contains("distinct"));
     }
 }
@@ -292,7 +292,7 @@ fn contract_file_accepts_one_input_operand_and_refuses_more() {
     assert_eq!(output.status.code(), Some(2), "{output:?}");
     assert!(output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["error"], "invalid_arguments");
+    assert_eq!(error["error"], "invalid_request");
     assert!(
         error["message"]
             .as_str()
@@ -381,4 +381,34 @@ fn contract_file_hint_is_specific_to_a_mistaken_positional_file() {
             .unwrap()
             .contains("Read a contract file with --from-file.")
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn contract_descriptor_aliases_conflict_with_html_stdin_before_consumption() {
+    let root = tempfile::tempdir().unwrap();
+    let alias = root.path().join("contract-stdin");
+    std::os::unix::fs::symlink("/dev/stdin", &alias).unwrap();
+    let mut aliases = vec![
+        std::path::PathBuf::from("/dev/stdin"),
+        "/dev/fd/0".into(),
+        alias,
+    ];
+    if cfg!(target_os = "linux") {
+        aliases.extend(["/proc/self/fd/0".into(), "/proc/thread-self/fd/0".into()]);
+    }
+    for source in aliases {
+        let mut invocation = command();
+        invocation
+            .args(["run", "--from-file"])
+            .arg(source)
+            .args(["-", "--timeout", "1"]);
+        let output = held_stdin(invocation);
+        assert_eq!(output.status.code(), Some(2), "{output:?}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+            "invalid_request"
+        );
+    }
 }

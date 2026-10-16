@@ -1,0 +1,4 @@
+{
+  "select": "linearGradient",
+  "read": "attr:id"
+}

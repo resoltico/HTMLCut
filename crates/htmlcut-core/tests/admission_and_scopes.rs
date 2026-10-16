@@ -2,21 +2,38 @@
 //! Independent literal oracles for the reviewed range and source admission contracts.
 use htmlcut_core::{Contract, Document, Limits, Source, Value};
 fn extract(html: &str, contract: &str, limits: &Limits) -> Result<Value, htmlcut_core::Error> {
-    Document::parse(Source::new(html.as_bytes()), limits)?.extract(&Contract::from_json(contract)?)
+    Document::parse(
+        Source::new(html.as_bytes()),
+        &(limits).preparation(),
+        &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+    )?
+    .extract(
+        &Contract::from_json(
+            contract,
+            &htmlcut_core::ExecutionContext::new(None).unwrap(),
+        )?,
+        &limits.execution(),
+        &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+    )
 }
 #[test]
 fn inherited_range_contains_children_but_preserves_real_css_context() {
     let html = "<main><h2 id=a>A</h2><!--c--><p>one</p><h2 id=b>B</h2><p>two</p><footer>end</footer></main>";
     let limits = Limits::default();
     let contract = r#"{"select":"h2","match":"all","until":"h2","fields":{"body":{"select":":scope","until":"footer"},"whole":{},"heading":{"select":":scope"},"neighbor":{"select":":scope:has(+ p)","read":"attr:id","match":"optional"}}}"#;
-    assert_eq!(extract(html,contract,&limits).unwrap().to_json(1024).unwrap(),br#"[{"body":"A\none","heading":"A","neighbor":"a","whole":"A\none"},{"body":"B\ntwo","heading":"B","neighbor":"b","whole":"B\ntwo\nend"}]"#);
+    assert_eq!(extract(html,contract,&limits).unwrap().export(htmlcut_core::ExportFormat::Json, 1024, &htmlcut_core::ExecutionContext::new(None).unwrap()).unwrap(),br#"[{"body":"A\none","heading":"A","neighbor":"a","whole":"A\none"},{"body":"B\ntwo","heading":"B","neighbor":"b","whole":"B\ntwo\nend"}]
+"#);
     let contract = r#"{"select":"h2","nth":1,"until":"h2","fields":{"outside":{"select":"h2:nth-child(3)","match":"optional"}}}"#;
     assert_eq!(
         extract(html, contract, &limits)
             .unwrap()
-            .to_json(1024)
+            .export(
+                htmlcut_core::ExportFormat::Json,
+                1024,
+                &htmlcut_core::ExecutionContext::new(None).unwrap()
+            )
             .unwrap(),
-        br#"{"outside":null}"#
+        b"{\"outside\":null}\n"
     );
 }
 #[test]
@@ -37,7 +54,7 @@ fn source_reading_limit_is_independent_of_final_capture_and_predicates() {
     let contract = r#"{"select":"p","pattern":"(?<value>x)$"}"#;
     let mut limits = Limits::default();
     limits.max_reading_bytes = 6;
-    limits.max_output_bytes = 3;
+    limits.max_output_bytes = 4;
     assert_eq!(
         extract(html, contract, &limits).unwrap(),
         Value::String("x".into())
@@ -58,7 +75,7 @@ fn discarded_whitespace_never_consumes_transformed_reading_admission() {
     let html = format!("<p>{}x{}</p>", " ".repeat(1_000_000), " ".repeat(1_000_000));
     let mut limits = Limits::default();
     limits.max_reading_bytes = 1;
-    limits.max_output_bytes = 3;
+    limits.max_output_bytes = 4;
     assert_eq!(
         extract(&html, r#""p""#, &limits).unwrap(),
         Value::String("x".into())
@@ -75,9 +92,23 @@ fn discarded_whitespace_never_consumes_transformed_reading_admission() {
 fn malformed_url_with_base_reports_its_actual_parse_cause() {
     let mut source = Source::new(b"<a href='https://['>bad</a>");
     source.base_url = Some("https://good.test/");
-    let document = Document::parse(source, &Limits::default()).unwrap();
+    let document = Document::parse(
+        source,
+        &Limits::default().preparation(),
+        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    )
+    .unwrap();
     let error = document
-        .extract(&Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap())
+        .extract(
+            &Contract::from_json(
+                r#"{"select":"a","read":"url:href"}"#,
+                &htmlcut_core::ExecutionContext::new(None).unwrap(),
+            )
+            .unwrap(),
+            &htmlcut_core::Limits::default().execution(),
+            &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
+                .unwrap(),
+        )
         .unwrap_err();
     assert!(error.message.contains("malformed URL"));
     assert!(!error.message.contains("without a usable"));

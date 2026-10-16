@@ -1,0 +1,4 @@
+{
+  "select": "lineargradient",
+  "read": "attr:id"
+}

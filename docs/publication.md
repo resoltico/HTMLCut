@@ -1,6 +1,6 @@
 # Output publication
 
-The CLI computes and validates a complete result before publishing it. `-o DEST` or
+The shared runtime computes and validates a complete result before publishing it. `-o DEST` or
 `--output DEST` selects the destination; `-` means standard output. Extraction refusals
 and limits before publication leave the destination unchanged, including a FIFO without
 a reader. Temporary staging can still require cleanup as described below.
@@ -92,3 +92,5 @@ stage identity and policy are revalidated immediately before commit. The guarant
 these identities and policies remain stable through publication. Native reconstruction,
 replacement and unlink cannot eliminate every hostile namespace or policy mutation after
 revalidation; this is not isolation from concurrent changes by other processes.
+
+Runtime callers use the same publication path as the CLI. Library cancellation and deadlines are cooperative; only the disposable executable supplies hard enforcement. Commit ownership excludes later stop claims, and completion encloses all potentially blocking owned cleanup. Dropping an observer never changes a running job.

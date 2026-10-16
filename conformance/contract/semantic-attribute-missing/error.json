@@ -1,0 +1,4 @@
+{
+  "error": "missing_attribute",
+  "path": "$.fields.url"
+}

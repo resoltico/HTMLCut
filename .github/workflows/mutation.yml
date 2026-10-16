@@ -36,6 +36,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - name: Bind source to main ancestry
         id: source
         shell: bash
@@ -53,7 +56,7 @@ jobs:
           set -euo pipefail
           {
             echo 'matrix<<EOF'
-            ./scripts/release-targets.sh matrix-json | python3 -c 'import json,sys; rows=[r for r in json.load(sys.stdin)["include"] if r["id"] in {"linux-x64-musl","windows-x64"}]; assert {r["id"] for r in rows} == {"linux-x64-musl","windows-x64"} and len(rows)==2; print(json.dumps({"include":rows}))'
+            python3 -c 'import json; from tools.htmlcut_maintenance.config import mutation_matrix; print(json.dumps(mutation_matrix()))'
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
@@ -71,44 +74,30 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ needs.platform-matrix.outputs.source_sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Prepare locked native toolchain and dependencies
         shell: bash
         run: |
           set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN" --profile minimal
-          rustup target add --toolchain "$HTMLCUT_CONTRIBUTOR_RUST_STABLE_TOOLCHAIN" "${{ matrix.target_triple }}"
+          stable=$(python3 -c 'from tools.htmlcut_maintenance.config import toolchain; print(toolchain())')
+          rustup toolchain install "$stable" --profile minimal
+          rustup target add --toolchain "$stable" "${{ matrix.target_triple }}"
           cargo fetch --locked
-      - uses: ./.github/actions/cargo-tool
-        id: mutation-tool
-        with:
-          tool: cargo-mutants
-      - name: Check current main cache eligibility
-        id: cache-source
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          WORKFLOW_REF: ${{ github.ref }}
-          WORKFLOW_SHA: ${{ github.sha }}
-          SOURCE_SHA: ${{ needs.platform-matrix.outputs.source_sha }}
+      - name: Install pinned cargo-mutants in an owned root
+        shell: python
         run: |
-          set -euo pipefail
-          eligible=false
-          if [[ "$EVENT_NAME" == workflow_dispatch && "$WORKFLOW_REF" == refs/heads/main &&
-                "$SOURCE_SHA" == "$WORKFLOW_SHA" && "$(git rev-parse HEAD)" == "$SOURCE_SHA" &&
-                "$(git rev-parse refs/remotes/origin/main)" == "$SOURCE_SHA" ]]; then
-            eligible=true
-          fi
-          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
-      - name: Retain verified current main mutation tool
-        if: steps.cache-source.outputs.eligible == 'true' && steps.mutation-tool.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.mutation-tool.outputs.cache-path }}
-          key: ${{ steps.mutation-tool.outputs.cache-key }}
-      - name: Execute active native CLI selection; survivors and timeouts require review
+          import os
+          from pathlib import Path
+          from tools.htmlcut_maintenance.install import install
+          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-mutants'
+          executable = install('cargo-mutants', root)
+          with open(os.environ['GITHUB_PATH'], 'a') as path:
+              path.write(str(executable.parent)+'\n')
+      - name: Execute active native runtime and CLI selection; survivors and timeouts require review
         shell: bash
         env:
           RUST_TEST_THREADS: '1'
@@ -117,12 +106,12 @@ jobs:
           set -euo pipefail
           workers=$(python3 -c 'import os; print(min(4, os.cpu_count() or 1))')
           case "$RUNNER_OS" in
-            Linux) exclusions=(--exclude-file 'crates/htmlcut-cli/src/authorization/windows.rs' --exclude-file 'crates/htmlcut-cli/src/authorization/windows/**') ;;
-            Windows) exclusions=(--exclude-file 'crates/htmlcut-cli/src/authorization/unix.rs') ;;
+            Linux) exclusions=(--exclude-file 'crates/htmlcut-runtime/src/authorization/windows.rs' --exclude-file 'crates/htmlcut-runtime/src/authorization/windows/**') ;;
+            Windows) exclusions=(--exclude-file 'crates/htmlcut-runtime/src/authorization/unix.rs') ;;
             *) echo "Unsupported native mutation platform: $RUNNER_OS" >&2; exit 2 ;;
           esac
-          python3 scripts/mutation-audit.py --jobs "$workers" --disk-limit-mib 4096 \
-            --timeout 10800 --file 'crates/htmlcut-cli/src/**' \
+          python3 -m tools.htmlcut_maintenance qa mutation --jobs "$workers" --disk-limit-mib 4096 \
+            --timeout 10800 --file 'crates/htmlcut-cli/src/**' --file 'crates/htmlcut-runtime/src/**' \
             "${exclusions[@]}" --output "$RUNNER_TEMP/mutation-outcomes"
       - name: Preserve outcomes without compiler products
         if: always()
@@ -137,3 +126,15 @@ jobs:
             ${{ runner.temp }}/mutation-outcomes/mutation.resources.json
             ${{ runner.temp }}/mutation-outcomes/tool-version/
             ${{ runner.temp }}/mutation-outcomes/mutants.out/
+      - name: Preserve bounded installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installation-collect-${{ matrix.id }}
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/cargo-*/*.log
+            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
+          if-no-files-found: warn

@@ -12,6 +12,5 @@ The executable specification of HTMLCut. Every case is a directory.
 | `outline.json` | Outline options instead of a contract: `select`, `depth`, `max_lines`, `attrs`. |
 | `expected.txt` | The outline, byte for byte. |
 
-`contract/` is append-only within a major version: changing or removing a case there is
 a breaking change. `outline/` pins a reader-facing format and may change in a minor
 release.

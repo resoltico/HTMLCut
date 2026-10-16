@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Private admitted tree and immutable selector view.
-use crate::{Error, Limits, limits::Clock};
+use crate::{Error, PreparationPolicy, limits::ExecutionContext};
 use ego_tree::{NodeId, NodeRef, Tree};
 use html5ever::{
     Attribute, QualName,
@@ -9,11 +9,13 @@ use html5ever::{
 };
 use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 mod matching;
+#[cfg(test)]
+use crate::Limits;
 
 #[derive(Debug)]
 pub(crate) struct Element {
     pub(crate) name: QualName,
-    pub(crate) attrs: Vec<(QualName, StrTendril)>,
+    pub(crate) attrs: Vec<(QualName, String)>,
 }
 impl Element {
     pub(crate) fn name(&self) -> &str {
@@ -44,8 +46,8 @@ pub(crate) enum Node {
     Document,
     Fragment,
     Element(Element),
-    Text(StrTendril),
-    Comment(StrTendril),
+    Text(String),
+    Comment(String),
     Doctype,
     ProcessingInstruction,
 }
@@ -127,7 +129,16 @@ impl Html {
             &Limits {
                 time_limit: None,
                 ..Limits::default()
-            },
+            }
+            .preparation(),
+            &crate::ExecutionContext::new(
+                Limits {
+                    time_limit: None,
+                    ..Limits::default()
+                }
+                .time_limit,
+            )
+            .unwrap(),
         )
         .unwrap()
         .html
@@ -135,7 +146,7 @@ impl Html {
     #[cfg(test)]
     pub(crate) fn html(&self) -> String {
         let limits = Limits::default();
-        let clock = Clock::new(&limits);
+        let clock = ExecutionContext::new(limits.time_limit).unwrap();
         crate::read::read_html(self.root_element(), &clock).unwrap()
     }
 }
@@ -154,7 +165,7 @@ struct Builder {
     depths: HashMap<NodeId, usize>,
     maximum: usize,
     error: Option<Error>,
-    clock: Clock,
+    clock: ExecutionContext,
 }
 impl Builder {
     fn check(&mut self) -> bool {
@@ -232,10 +243,10 @@ impl Builder {
                 if let Some(id) = previous
                     && let Node::Text(value) = self.html.tree.get_mut(id).unwrap().value()
                 {
-                    value.push_tendril(&text);
+                    value.push_str(&text);
                     return;
                 }
-                if let Some(id) = self.allocate(|| Node::Text(text))
+                if let Some(id) = self.allocate(|| Node::Text(text.to_string()))
                     && self.depth(id, self.depths[&parent] + 1)
                 {
                     if let Some(before) = before {
@@ -253,7 +264,7 @@ pub(crate) struct TreeBuilder {
     document: Handle,
 }
 impl TreeBuilder {
-    pub(crate) fn new(limits: &Limits, clock: Clock) -> Self {
+    pub(crate) fn new(limits: &PreparationPolicy, clock: ExecutionContext) -> Self {
         let tree = Tree::new(Node::Document);
         let id = tree.root().id();
         let document = Self::handle(
@@ -286,8 +297,8 @@ impl TreeBuilder {
             template,
         }))
     }
-    fn unnamed(&self, node: Node) -> Handle {
-        let id = self.inner.borrow_mut().allocate(|| node);
+    fn unnamed(&self, node: impl FnOnce() -> Node) -> Handle {
+        let id = self.inner.borrow_mut().allocate(node);
         Self::handle(id, self.document.0.name.clone(), false, None)
     }
     #[cfg(test)]
@@ -324,16 +335,24 @@ impl TreeSink for TreeBuilder {
         let template =
             name.ns == html5ever::ns!(html) && name.local == html5ever::local_name!("template");
         let mut b = self.inner.borrow_mut();
-        let id = if b.check() {
-            b.allocate(|| {
-                Node::Element(Element {
-                    name: name.clone(),
-                    attrs: attrs.into_iter().map(|a| (a.name, a.value)).collect(),
-                })
+        let id = b.allocate(|| {
+            Node::Element(Element {
+                name: name.clone(),
+                attrs: Vec::new(),
             })
-        } else {
-            None
-        };
+        });
+        if let Some(id) = id {
+            for attribute in attrs {
+                if !b.check() {
+                    break;
+                }
+                if let Node::Element(element) = b.html.tree.get_mut(id).unwrap().value() {
+                    element
+                        .attrs
+                        .push((attribute.name, attribute.value.to_string()));
+                }
+            }
+        }
         let contents = template.then(|| {
             let fragment = b.allocate(|| Node::Fragment);
             if let (Some(parent), Some(child)) = (id, fragment)
@@ -351,10 +370,10 @@ impl TreeSink for TreeBuilder {
         )
     }
     fn create_comment(&self, text: StrTendril) -> Handle {
-        self.unnamed(Node::Comment(text))
+        self.unnamed(|| Node::Comment(text.to_string()))
     }
     fn create_pi(&self, _: StrTendril, _: StrTendril) -> Handle {
-        self.unnamed(Node::ProcessingInstruction)
+        self.unnamed(|| Node::ProcessingInstruction)
     }
     fn append(&self, parent: &Handle, child: NodeOrText<Handle>) {
         if let Some(id) = parent.0.id {
@@ -395,7 +414,7 @@ impl TreeSink for TreeBuilder {
         }
     }
     fn append_doctype_to_document(&self, _name: StrTendril, _: StrTendril, _: StrTendril) {
-        let h = self.unnamed(Node::Doctype);
+        let h = self.unnamed(|| Node::Doctype);
         self.append(&self.document, NodeOrText::AppendNode(h));
     }
     fn get_template_contents(&self, target: &Handle) -> Handle {
@@ -436,13 +455,20 @@ impl TreeSink for TreeBuilder {
     }
     fn add_attrs_if_missing(&self, target: &Handle, attrs: Vec<Attribute>) {
         let mut b = self.inner.borrow_mut();
-        if b.check()
-            && let Some(id) = target.0.id
-            && let Node::Element(e) = b.html.tree.get_mut(id).unwrap().value()
-        {
-            for a in attrs {
-                if !e.attrs.iter().any(|(name, _)| *name == a.name) {
-                    e.attrs.push((a.name, a.value));
+        if let Some(id) = target.0.id {
+            for attribute in attrs {
+                if !b.check() {
+                    break;
+                }
+                if let Node::Element(element) = b.html.tree.get_mut(id).unwrap().value()
+                    && !element
+                        .attrs
+                        .iter()
+                        .any(|(name, _)| *name == attribute.name)
+                {
+                    element
+                        .attrs
+                        .push((attribute.name, attribute.value.to_string()));
                 }
             }
         }
@@ -454,16 +480,29 @@ mod tests {
     use crate::{Contract, Document, Limits, Source, Value};
 
     fn reading(html: &str, select: &str, read: &str) -> Value {
-        let document = Document::parse(Source::new(html.as_bytes()), &Limits::default()).unwrap();
-        let contract =
-            Contract::from_json(&serde_json::json!({"select": select, "read": read}).to_string())
-                .unwrap();
-        document.extract(&contract).unwrap()
+        let document = Document::parse(
+            Source::new(html.as_bytes()),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
+        let contract = Contract::from_json(
+            &serde_json::json!({"select": select, "read": read}).to_string(),
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
+        document
+            .extract(
+                &contract,
+                &crate::Limits::default().execution(),
+                &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap(),
+            )
+            .unwrap()
     }
 
     #[test]
     fn callback_refusal_stops_allocation_but_retains_parser_handle_facts() {
-        use super::{Clock, TreeBuilder};
+        use super::{ExecutionContext, TreeBuilder};
         use html5ever::{
             QualName, local_name, ns,
             tree_builder::{ElementFlags, TreeSink},
@@ -473,7 +512,10 @@ mod tests {
             time_limit: Some(std::time::Duration::ZERO),
             ..Limits::default()
         };
-        let sink = TreeBuilder::new(&limits, Clock::new(&limits));
+        let sink = TreeBuilder::new(
+            &limits.preparation(),
+            ExecutionContext::new(limits.time_limit).unwrap(),
+        );
         for _ in 0..1024 {
             sink.create_comment("before-refusal".into());
         }
@@ -525,7 +567,11 @@ mod tests {
                 "<div>".repeat(nested_divs),
                 "</div>".repeat(nested_divs)
             );
-            let result = Document::parse(Source::new(html.as_bytes()), &Limits::default());
+            let result = Document::parse(
+                Source::new(html.as_bytes()),
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            );
             match expected {
                 None => assert!(result.is_ok()),
                 Some(limit) => assert_eq!(result.err().unwrap().limit.as_deref(), Some(limit)),
@@ -535,7 +581,7 @@ mod tests {
 
     #[test]
     fn attaching_or_reparenting_existing_subtrees_checks_every_descendant_depth() {
-        use super::{Clock, TreeBuilder};
+        use super::{ExecutionContext, TreeBuilder};
         use html5ever::{
             QualName, local_name, ns,
             tree_builder::{ElementFlags, NodeOrText, TreeSink},
@@ -546,7 +592,10 @@ mod tests {
                 time_limit: None,
                 ..Limits::default()
             };
-            let sink = TreeBuilder::new(&limits, Clock::new(&limits));
+            let sink = TreeBuilder::new(
+                &limits.preparation(),
+                ExecutionContext::new(limits.time_limit).unwrap(),
+            );
             let element = || {
                 sink.create_element(
                     QualName::new(None, ns!(html), local_name!("div")),

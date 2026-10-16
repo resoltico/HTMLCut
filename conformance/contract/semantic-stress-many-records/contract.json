@@ -1,0 +1,6 @@
+{
+  "select": "p",
+  "match": "all",
+  "min": 5000,
+  "max": 5000
+}

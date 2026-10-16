@@ -23,13 +23,16 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - id: matrix
         shell: bash
         run: |
           set -euo pipefail
           {
             echo 'matrix<<EOF'
-            ./scripts/release-targets.sh matrix-json
+            python3 -m tools.htmlcut_maintenance matrix
             echo EOF
           } >> "$GITHUB_OUTPUT"
   linux-maintainer:
@@ -43,33 +46,65 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - uses: ./.github/actions/cargo-tool
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          tool: cargo-deny
-      - run: ./check.sh
+          python-version-file: .python-version
+      - name: Install pinned cargo-deny in an owned root
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          from tools.htmlcut_maintenance.install import install
+          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-deny'
+          executable = install('cargo-deny', root)
+          with open(os.environ['GITHUB_PATH'], 'a') as path:
+              path.write(str(executable.parent)+'\n')
+      - run: python3 -m tools.htmlcut_maintenance check
 
+      - name: Preserve bounded installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installation-linux-maintainer
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/cargo-*/*.log
+            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
+          if-no-files-found: warn
   focused-smoke:
     name: Linux contract and extraction fuzz preflight
     needs: [release-target-matrix]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - shell: bash
         run: |
           set -euo pipefail
-          source ./scripts/contributor-rust-tools.sh
-          rustup toolchain install "$HTMLCUT_CONTRIBUTOR_RUST_NIGHTLY_TOOLCHAIN" --component rust-src --profile minimal
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-fuzz
+          nightly=$(python3 -c 'from tools.htmlcut_maintenance.config import tools; print(tools()["nightly"])')
+          rustup toolchain install "$nightly" --component rust-src --profile minimal
+      - name: Install pinned cargo-fuzz in an owned root
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          from tools.htmlcut_maintenance.install import install
+          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-fuzz'
+          executable = install('cargo-fuzz', root)
+          with open(os.environ['GITHUB_PATH'], 'a') as path:
+              path.write(str(executable.parent)+'\n')
       - name: Execute both bounded fuzz preflights
         shell: bash
-        run: ./scripts/focused-smoke.sh --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
+        run: python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
       - name: Preserve smoke logs and crash inputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -79,6 +114,18 @@ jobs:
           path: ${{ runner.temp }}/focused-smoke/
           if-no-files-found: warn
 
+      - name: Preserve bounded installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installation-focused-smoke
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/cargo-*/*.log
+            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
+          if-no-files-found: warn
   minimum-rust:
     name: Minimum supported Rust
     needs: [release-target-matrix]
@@ -90,6 +137,9 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +150,7 @@ jobs:
     name: Native package ${{ matrix.id }}
     needs: [release-target-matrix]
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
@@ -110,46 +160,62 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
       - if: ${{ matrix.needs_musl_tools }}
         run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
       - name: Verify native workspace behavior
         shell: bash
         run: |
-          python3 -m unittest discover -s tests -p test_resource_budget.py -v
+          python3 -m unittest tools.htmlcut_maintenance.tests.test_process -v
           rustup target add "${{ matrix.target_triple }}"
           cargo test --locked --workspace --target "${{ matrix.target_triple }}"
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-about
-      - name: Build and accept native package
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Install pinned cargo-about in an owned root
+        shell: python
         run: |
-          source ./scripts/contributor-rust-tools.sh
-          ./scripts/build-release-artifact.sh "${{ matrix.target_triple }}"
-          source ./scripts/release-targets.sh
-          version=$(./scripts/workspace-version.sh Cargo.toml)
-          package=$(release_package_name_for_target "$version" "${{ matrix.target_triple }}")
-          RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission --target "${{ matrix.target_triple }}" > "dist/parser-abort-${{ matrix.target_triple }}.log" 2>&1
-          ./scripts/smoke-release-artifact.sh "${{ matrix.target_triple }}"
+          import os
+          from pathlib import Path
+          from tools.htmlcut_maintenance.install import install
+          root = Path(os.environ['RUNNER_TEMP']) / 'cargo-about'
+          executable = install('cargo-about', root)
+          with open(os.environ['GITHUB_PATH'], 'a') as path:
+              path.write(str(executable.parent)+'\n')
+      - name: Build and accept native package
+        shell: python
+        run: |
+          import os, subprocess
+          from pathlib import Path
+          from tools.htmlcut_maintenance.release.package import build
+          from tools.htmlcut_maintenance.release.accept import accept
+          from tools.htmlcut_maintenance.config import read
+          target = '${{ matrix.target_triple }}'
+          package = build(target, Path('dist'))
+          subprocess.run(['cargo','run','--locked','--release','-p','htmlcut-core','--example','parser_admission','--target',target], env={**os.environ,'RUSTFLAGS':'-Cpanic=abort'}, check=True)
+          accept(package, target, read('Cargo.toml')['workspace']['package']['version'])
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-${{ matrix.id }}
           path: dist/
           if-no-files-found: error
+      - name: Preserve bounded installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installation-release-target-smoke-${{ matrix.id }}
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/cargo-*/*.log
+            ${{ runner.temp }}/cargo-*/*.json
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
+            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
+          if-no-files-found: warn
   check:
     name: Check
     if: always()
     needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, minimum-rust]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
-        run: python3 scripts/check-ci-results.py
+      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1

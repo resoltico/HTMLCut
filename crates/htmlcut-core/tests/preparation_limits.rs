@@ -9,11 +9,23 @@ fn input_bytes_admit_equality_and_refuse_every_excess() {
     for excess in [0, 1, 2] {
         let mut limits = Limits::default();
         limits.max_input_bytes = bytes.len() - excess;
-        let result = Document::parse(Source::new(bytes), &limits);
+        let result = Document::parse(
+            Source::new(bytes),
+            &limits.preparation(),
+            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        );
         if excess == 0 {
             let value = result
                 .unwrap()
-                .extract(&Contract::from_json(r#""p""#).unwrap())
+                .extract(
+                    &Contract::from_json(
+                        r#""p""#,
+                        &htmlcut_core::ExecutionContext::new(None).unwrap(),
+                    )
+                    .unwrap(),
+                    &limits.execution(),
+                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                )
                 .unwrap();
             assert_eq!(serde_json::to_value(value).unwrap(), "snow: 雪");
         } else {
@@ -29,16 +41,34 @@ fn input_bytes_admit_equality_and_refuse_every_excess() {
 fn library_deadlines_are_enforced_without_a_cli_watchdog() {
     let mut limits = Limits::default();
     limits.time_limit = Some(Duration::ZERO);
-    let error = Document::parse(Source::new(b"<p>x</p>"), &limits).unwrap_err();
+    let error = Document::parse(
+        Source::new(b"<p>x</p>"),
+        &limits.preparation(),
+        &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+    )
+    .unwrap_err();
     assert_eq!(error.error, ErrorCode::LimitExceeded);
     assert_eq!(error.limit.as_deref(), Some("time"));
     let mut unlimited = Limits::default();
     unlimited.time_limit = None;
-    let document = Document::parse(Source::new(b"<p>x</p>"), &unlimited).unwrap();
+    let document = Document::parse(
+        Source::new(b"<p>x</p>"),
+        &unlimited.preparation(),
+        &htmlcut_core::ExecutionContext::new(unlimited.time_limit).unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         serde_json::to_value(
             document
-                .extract(&Contract::from_json(r#""p""#).unwrap())
+                .extract(
+                    &Contract::from_json(
+                        r#""p""#,
+                        &htmlcut_core::ExecutionContext::new(None).unwrap()
+                    )
+                    .unwrap(),
+                    &unlimited.execution(),
+                    &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+                )
                 .unwrap()
         )
         .unwrap(),
@@ -46,7 +76,15 @@ fn library_deadlines_are_enforced_without_a_cli_watchdog() {
     );
     assert!(
         !document
-            .outline(&OutlineOptions::default())
+            .outline(
+                &OutlineOptions::default(),
+                &unlimited.execution(),
+                &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+            )
+            .and_then(|report| report.render(
+                unlimited.max_output_bytes,
+                &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+            ))
             .unwrap()
             .is_empty()
     );

@@ -1,0 +1,9 @@
+{
+  "select": "p",
+  "match": "all",
+  "where": [
+    {
+      "read": "attr:id"
+    }
+  ]
+}

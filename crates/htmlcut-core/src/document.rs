@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Byte decoding and incremental upstream tree admission.
 use crate::dom::{Html, TreeBuilder};
-use crate::{Error, ErrorCode, Limits, limits::Clock};
+use crate::{Error, ErrorCode, PreparationPolicy, limits::ExecutionContext};
 use encoding_rs::{
     DecoderResult, EncoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
 };
@@ -43,14 +43,18 @@ impl<'a> Source<'a> {
 pub struct Document {
     pub(crate) html: Html,
     pub(crate) positions: std::collections::HashMap<ego_tree::NodeId, (usize, usize)>,
-    pub(crate) limits: Limits,
     pub(crate) base_url: Option<Url>,
     pub(crate) query_encoding: &'static Encoding,
 }
 impl Document {
     /// Decodes without replacement, parses incrementally and admits node/depth limits.
-    pub fn parse(source: Source<'_>, limits: &Limits) -> Result<Self, Error> {
-        let clock = Clock::new(limits);
+    pub fn parse(
+        source: Source<'_>,
+        limits: &PreparationPolicy,
+        context: &crate::ExecutionContext,
+    ) -> Result<Self, Error> {
+        let clock = (context).clone();
+        clock.check()?;
         if source.bytes.len() > limits.max_input_bytes {
             return Err(Error::limit("input_bytes", limits.max_input_bytes));
         }
@@ -110,7 +114,6 @@ impl Document {
         Ok(Self {
             positions,
             html,
-            limits: limits.clone(),
             base_url,
             query_encoding,
         })
@@ -170,13 +173,18 @@ fn encode_url_query(mut input: &str, encoding: &'static Encoding) -> Vec<u8> {
     }
 }
 
-fn parse_admitted(text: &str, limits: &Limits, chunk: usize, clock: &Clock) -> Result<Html, Error> {
+fn parse_admitted(
+    text: &str,
+    limits: &PreparationPolicy,
+    chunk: usize,
+    clock: &ExecutionContext,
+) -> Result<Html, Error> {
     if limits.max_nodes == 0 {
         return Err(Error::limit("nodes", 0));
     }
     let mut parser =
         driver::parse_document(TreeBuilder::new(limits, clock.clone()), Default::default());
-    feed(&mut parser, text, limits, chunk, clock)?;
+    feed(&mut parser, text, chunk, clock)?;
     clock.check()?;
     if let Some(error) = parser.tokenizer.sink.sink.refusal() {
         return Err(error);
@@ -189,9 +197,8 @@ fn parse_admitted(text: &str, limits: &Limits, chunk: usize, clock: &Clock) -> R
 fn feed(
     parser: &mut html5ever::Parser<TreeBuilder>,
     text: &str,
-    _limits: &Limits,
     chunk: usize,
-    clock: &Clock,
+    clock: &ExecutionContext,
 ) -> Result<(), Error> {
     let mut remaining = text;
     while !remaining.is_empty() {
@@ -219,7 +226,10 @@ fn utf8_feed_end(text: &str, maximum: usize) -> usize {
     end
 }
 
-fn decode(source: Source<'_>, clock: &Clock) -> Result<(String, &'static Encoding), Error> {
+fn decode(
+    source: Source<'_>,
+    clock: &ExecutionContext,
+) -> Result<(String, &'static Encoding), Error> {
     let (encoding, skip) = if let Some(bom) = Encoding::for_bom(source.bytes) {
         bom
     } else if let Some(label) = source.encoding {
@@ -481,6 +491,7 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Limits;
     #[test]
     fn utf8_feeds_respect_the_byte_ceiling_without_losing_text() {
         for scalar in ["é", "€", "🦀"] {
@@ -509,7 +520,7 @@ mod tests {
         for label in ["utf-16le", "utf-16be", "iso-2022-kr"] {
             let mut source = Source::new(b"");
             source.encoding = Some(label);
-            let clock = Clock::new(&Limits::default());
+            let clock = ExecutionContext::new(Limits::default().time_limit).unwrap();
             let (text, encoding) = decode(source, &clock).unwrap();
             assert!(text.is_empty());
             assert_eq!(encoding, UTF_8, "{label}");
@@ -517,7 +528,12 @@ mod tests {
         let mut source = Source::new(b"");
         source.encoding = Some("windows-1252");
         assert_eq!(
-            decode(source, &Clock::new(&Limits::default())).unwrap().1,
+            decode(
+                source,
+                &ExecutionContext::new(Limits::default().time_limit).unwrap()
+            )
+            .unwrap()
+            .1,
             WINDOWS_1252
         );
     }
@@ -539,7 +555,13 @@ mod tests {
         for document in documents {
             let one = Html::parse_document(&document);
             for chunk in [1, 7, CHUNK_BYTES] {
-                let many = parse_admitted(&document, &limits, chunk, &Clock::new(&limits)).unwrap();
+                let many = parse_admitted(
+                    &document,
+                    &limits.preparation(),
+                    chunk,
+                    &ExecutionContext::new(limits.time_limit).unwrap(),
+                )
+                .unwrap();
                 assert_eq!(
                     one.tree.nodes().len(),
                     many.tree.nodes().len(),
@@ -558,15 +580,17 @@ mod tests {
         };
         assert!(input.len() <= limits.max_input_bytes);
         let mut parser = driver::parse_document(
-            TreeBuilder::new(&limits, Clock::new(&limits)),
+            TreeBuilder::new(
+                &limits.preparation(),
+                ExecutionContext::new(limits.time_limit).unwrap(),
+            ),
             Default::default(),
         );
         let error = feed(
             &mut parser,
             &input,
-            &limits,
             CHUNK_BYTES,
-            &Clock::new(&limits),
+            &ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
@@ -586,7 +610,11 @@ mod tests {
                 "<div>".repeat(depth - 2),
                 "</div>".repeat(depth - 2)
             );
-            let result = Document::parse(Source::new(html.as_bytes()), &Limits::default());
+            let result = Document::parse(
+                Source::new(html.as_bytes()),
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            );
             if depth == MAX_DEPTH {
                 assert!(result.is_ok());
             } else {
@@ -602,10 +630,14 @@ mod tests {
             ..Limits::default()
         };
         assert_eq!(
-            Document::parse(Source::new(input.as_bytes()), &limits)
-                .unwrap_err()
-                .limit
-                .as_deref(),
+            Document::parse(
+                Source::new(input.as_bytes()),
+                &limits.preparation(),
+                &crate::ExecutionContext::new(limits.time_limit).unwrap()
+            )
+            .unwrap_err()
+            .limit
+            .as_deref(),
             Some("nodes")
         );
     }
@@ -650,21 +682,43 @@ mod tests {
         let limits = Limits::default();
         let mut bad = vec![b'a'; CHUNK_BYTES - 1];
         bad.extend_from_slice(&[0xe2, 0x82, b'x']);
-        let error = Document::parse(Source::new(&bad), &limits).unwrap_err();
+        let error = Document::parse(
+            Source::new(&bad),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(error.offset, Some(CHUNK_BYTES - 1));
         let bytes = [0xff, 0xfe, b'x', 0, 0, 0xd8];
-        let error = Document::parse(Source::new(&bytes), &limits).unwrap_err();
+        let error = Document::parse(
+            Source::new(&bytes),
+            &limits.preparation(),
+            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(error.encoding.as_deref(), Some("utf-16le"));
         assert_eq!(error.offset, Some(4));
         let mut source = Source::new(b"\xef\xbb\xbf<title>ok</title>");
         source.encoding = Some("klingon");
-        assert!(Document::parse(source, &limits).is_ok());
+        assert!(
+            Document::parse(
+                source,
+                &limits.preparation(),
+                &crate::ExecutionContext::new(limits.time_limit).unwrap()
+            )
+            .is_ok()
+        );
     }
     #[test]
     fn document_base_uses_only_the_first_href_and_template_fragments_are_visible() {
         let mut source = Source::new(b"<base href='../cdn/'><base href='https://wrong.test/'><template><p>hidden</p></template>");
         source.base_url = Some("https://example.test/app/page");
-        let document = Document::parse(source, &Limits::default()).unwrap();
+        let document = Document::parse(
+            source,
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             document.base_url.unwrap().as_str(),
             "https://example.test/cdn/"
@@ -684,11 +738,15 @@ mod tests {
         );
         source.base_url = Some("https://example.test/app/page");
         assert_eq!(
-            Document::parse(source, &Limits::default())
-                .unwrap()
-                .base_url
-                .unwrap()
-                .as_str(),
+            Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap()
+            )
+            .unwrap()
+            .base_url
+            .unwrap()
+            .as_str(),
             "https://example.test/cdn/"
         );
     }
@@ -833,10 +891,25 @@ mod tests {
     fn closed_body_elements_do_not_make_template_base_urls_active() {
         let mut source = Source::new(b"<body><p>before</p><template><base href='https://wrong.test/'></template><base href='../cdn/'><a href='item'>x</a>");
         source.base_url = Some("https://example.test/app/page");
-        let document = Document::parse(source, &Limits::default()).unwrap();
-        let contract = crate::Contract::from_json(r#"{"select":"a","read":"url:href"}"#).unwrap();
+        let document = Document::parse(
+            source,
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        )
+        .unwrap();
+        let contract = crate::Contract::from_json(
+            r#"{"select":"a","read":"url:href"}"#,
+            &crate::ExecutionContext::new(None).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            document.extract(&contract).unwrap(),
+            document
+                .extract(
+                    &contract,
+                    &crate::Limits::default().execution(),
+                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                )
+                .unwrap(),
             crate::Value::String("https://example.test/cdn/item".into())
         );
     }
@@ -853,15 +926,17 @@ mod tests {
                 ..Limits::default()
             };
             let mut parser = driver::parse_document(
-                TreeBuilder::new(&limits, Clock::new(&limits)),
+                TreeBuilder::new(
+                    &limits.preparation(),
+                    ExecutionContext::new(limits.time_limit).unwrap(),
+                ),
                 Default::default(),
             );
             let result = feed(
                 &mut parser,
                 input,
-                &limits,
                 input.len(),
-                &Clock::new(&limits),
+                &ExecutionContext::new(limits.time_limit).unwrap(),
             );
             assert_eq!(parser.tokenizer.sink.sink.node_count(), maximum);
             if maximum == 5 {
@@ -885,7 +960,12 @@ mod tests {
                 time_limit: None,
                 ..Limits::default()
             };
-            let result = parse_admitted("", &limits, CHUNK_BYTES, &Clock::new(&limits));
+            let result = parse_admitted(
+                "",
+                &limits.preparation(),
+                CHUNK_BYTES,
+                &ExecutionContext::new(limits.time_limit).unwrap(),
+            );
             if maximum == 4 {
                 assert_eq!(result.unwrap().tree.nodes().len(), 4);
             } else {
@@ -905,7 +985,10 @@ mod tests {
             ..Limits::default()
         };
         let mut parser = driver::parse_document(
-            TreeBuilder::new(&limits, Clock::new(&limits)),
+            TreeBuilder::new(
+                &limits.preparation(),
+                ExecutionContext::new(limits.time_limit).unwrap(),
+            ),
             Default::default(),
         );
         // A four-byte chunk ends inside é. Admission must see only <p>,
@@ -913,9 +996,8 @@ mod tests {
         let error = feed(
             &mut parser,
             "<p>é</p><p>later</p>",
-            &limits,
             4,
-            &Clock::new(&limits),
+            &ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
         assert_eq!(error.limit.as_deref(), Some("nodes"));
@@ -933,7 +1015,12 @@ mod tests {
         ] {
             let mut source = Source::new(bytes);
             source.encoding = Some("gb18030");
-            let error = Document::parse(source, &Limits::default()).unwrap_err();
+            let error = Document::parse(
+                source,
+                &Limits::default().preparation(),
+                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            )
+            .unwrap_err();
             assert_eq!(error.error, ErrorCode::UndecodableInput);
             assert_eq!(error.encoding.as_deref(), Some("gb18030"));
             assert_eq!(error.offset, Some(1));

@@ -8,11 +8,11 @@ pub struct Limits {
     pub max_input_bytes: usize,
     /// Maximum retained tree nodes, admitted before allocation.
     pub max_nodes: usize,
-    /// Maximum complete encoded JSON result bytes.
+    /// Maximum complete canonical export bytes, including final LF.
     pub max_output_bytes: usize,
     /// Maximum UTF-8 bytes in each transformed source reading, including predicate/capture sources.
     pub max_reading_bytes: usize,
-    /// Cooperative time bound for each preparation or execution call.
+    /// Default duration used when creating a host job; documents never retain it.
     pub time_limit: Option<std::time::Duration>,
 }
 impl Default for Limits {
@@ -27,31 +27,78 @@ impl Default for Limits {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct Clock {
-    started: std::time::Instant,
-    limit: Option<std::time::Duration>,
-    iterations: std::cell::Cell<usize>,
+/// Limits applied only while admitting a document.
+#[derive(Clone, Debug)]
+pub struct PreparationPolicy {
+    /// Maximum source byte length.
+    pub max_input_bytes: usize,
+    /// Maximum retained tree nodes.
+    pub max_nodes: usize,
 }
-impl Clock {
-    pub(crate) fn new(limits: &Limits) -> Self {
+/// Limits applied independently to each prepared-document operation.
+#[derive(Clone, Debug)]
+pub struct ExecutionPolicy {
+    /// Complete canonical export ceiling, including framing LF.
+    pub max_output_bytes: usize,
+    /// Transformed source reading ceiling.
+    pub max_reading_bytes: usize,
+}
+impl Limits {
+    /// The preparation subset of this application configuration.
+    pub fn preparation(&self) -> PreparationPolicy {
+        PreparationPolicy {
+            max_input_bytes: self.max_input_bytes,
+            max_nodes: self.max_nodes,
+        }
+    }
+    /// The execution subset of this application configuration.
+    pub fn execution(&self) -> ExecutionPolicy {
+        ExecutionPolicy {
+            max_output_bytes: self.max_output_bytes,
+            max_reading_bytes: self.max_reading_bytes,
+        }
+    }
+}
+
+/// Cooperative checks shared by every phase of one operation.
+#[derive(Clone)]
+pub struct ExecutionContext {
+    checkpoint: std::sync::Arc<dyn Fn() -> Result<(), crate::Error> + Send + Sync>,
+    iterations: std::rc::Rc<std::cell::Cell<usize>>,
+}
+impl ExecutionContext {
+    /// Creates one checked absolute deadline. No phase restarts it.
+    pub fn new(limit: Option<std::time::Duration>) -> Result<Self, crate::Error> {
+        let started = std::time::Instant::now();
+        let deadline = limit
+            .map(|limit| {
+                started.checked_add(limit).ok_or_else(|| {
+                    crate::Error::new(
+                        crate::ErrorCode::InvalidRequest,
+                        "The deadline cannot be represented.",
+                    )
+                })
+            })
+            .transpose()?;
+        Ok(Self::with_checkpoint(move || {
+            if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+                return Err(crate::Error::limit("time", limit.unwrap().as_secs_f64()));
+            }
+            Ok(())
+        }))
+    }
+    /// Uses the host job's stop/commit arbiter without resetting its deadline.
+    pub fn with_checkpoint(
+        checkpoint: impl Fn() -> Result<(), crate::Error> + Send + Sync + 'static,
+    ) -> Self {
         Self {
-            started: std::time::Instant::now(),
-            limit: limits.time_limit,
-            iterations: std::cell::Cell::new(0),
+            checkpoint: std::sync::Arc::new(checkpoint),
+            iterations: std::rc::Rc::new(std::cell::Cell::new(0)),
         }
     }
-    #[cfg(test)]
-    pub(crate) fn work_ticks(&self) -> usize {
-        self.iterations.get()
-    }
-    pub(crate) fn check(&self) -> Result<(), crate::Error> {
-        if let Some(limit) = self.limit
-            && self.started.elapsed() >= limit
-        {
-            return Err(crate::Error::limit("time", limit.as_secs_f64()));
-        }
-        Ok(())
+    /// Checks cancellation and the absolute deadline immediately.
+    pub fn check(&self) -> Result<(), crate::Error> {
+        (self.checkpoint)()
     }
     pub(crate) fn tick(&self) -> Result<(), crate::Error> {
         let count = self.iterations.get().wrapping_add(1);
@@ -61,8 +108,11 @@ impl Clock {
         }
         Ok(())
     }
+    #[cfg(test)]
+    pub(crate) fn work_ticks(&self) -> usize {
+        self.iterations.get()
+    }
 }
-
 // Contract grammar bounds; schema copies derive from these authorities.
 pub(crate) const MAX_CONTRACT_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_CONTRACT_NODES: usize = 512;
@@ -85,35 +135,11 @@ pub(crate) const MAX_DOM_DEPTH: usize = 1_024;
 mod tests {
     use super::*;
     #[test]
-    fn expired_clocks_refuse_at_checks_and_within_the_iteration_cadence() {
-        let limits = Limits {
-            time_limit: Some(std::time::Duration::ZERO),
-            ..Limits::default()
-        };
-        let clock = Clock::new(&limits);
-        let error = clock.check().unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("time"));
-        assert_eq!(error.bound, Some(0.0.into()));
-        let clock = Clock::new(&limits);
+    fn context_deadline_is_absolute_and_overflow_is_a_request_error() {
+        let context = ExecutionContext::new(Some(std::time::Duration::ZERO)).unwrap();
+        assert_eq!(context.check().unwrap_err().limit.as_deref(), Some("time"));
+        assert!(ExecutionContext::new(Some(std::time::Duration::MAX)).is_err());
+        let clock = context.clone();
         assert!((0..1024).any(|_| clock.tick().is_err()));
-        // Reading the clock once is insufficient: expiration may happen after
-        // arbitrarily much admitted work, so the cadence must recur.
-        let mut clock = Clock::new(&Limits {
-            time_limit: None,
-            ..Limits::default()
-        });
-        for _ in 0..1024 {
-            clock.tick().unwrap();
-        }
-        clock.limit = Some(std::time::Duration::ZERO);
-        assert!((0..1024).any(|_| clock.tick().is_err()));
-        let unlimited = Clock::new(&Limits {
-            time_limit: None,
-            ..Limits::default()
-        });
-        for _ in 0..2048 {
-            unlimited.tick().unwrap();
-        }
-        unlimited.check().unwrap();
     }
 }

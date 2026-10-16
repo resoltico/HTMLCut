@@ -18,7 +18,11 @@ fn main() {
             let mut limits = Limits::default();
             limits.max_nodes = maximum;
             limits.time_limit = None;
-            match Document::parse(Source::new(html.as_bytes()), &limits) {
+            match Document::parse(
+                Source::new(html.as_bytes()),
+                &limits.preparation(),
+                &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            ) {
                 Err(error) => {
                     assert_eq!(error.limit.as_deref(), Some("nodes"));
                     refusals += 1;
@@ -26,8 +30,13 @@ fn main() {
                 Ok(document) => {
                     document
                         .extract(
-                            &Contract::from_json(r#"{"select":":scope","read":"outer-html"}"#)
-                                .unwrap(),
+                            &Contract::from_json(
+                                r#"{"select":":scope","read":"outer-html"}"#,
+                                &htmlcut_core::ExecutionContext::new(None).unwrap(),
+                            )
+                            .unwrap(),
+                            &limits.execution(),
+                            &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
                         )
                         .unwrap();
                     admitted += 1;
@@ -37,12 +46,21 @@ fn main() {
     }
     let document = Document::parse(
         Source::new(b"<meta http-equiv=content-type content='text/html; charset'><p>ok</p>"),
-        &Limits::default(),
+        &Limits::default().preparation(),
+        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
     )
     .unwrap();
     assert_eq!(
         document
-            .extract(&Contract::from_json(r#""p""#).unwrap())
+            .extract(
+                &Contract::from_json(
+                    r#""p""#,
+                    &htmlcut_core::ExecutionContext::new(None).unwrap()
+                )
+                .unwrap(),
+                &Limits::default().execution(),
+                &htmlcut_core::ExecutionContext::new(None).unwrap()
+            )
             .unwrap(),
         Value::String("ok".into())
     );

@@ -3,16 +3,18 @@
 members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
+    "crates/htmlcut-runtime",
     "fuzz",
 ]
 default-members = [
     "crates/htmlcut-core",
     "crates/htmlcut-cli",
+    "crates/htmlcut-runtime",
 ]
 resolver = "3"
 
 [workspace.package]
-version = "22.0.0"
+version = "23.0.0"
 edition = "2024"
 rust-version = "1.88.0"
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots, with complete compact results."
@@ -33,7 +35,8 @@ cssparser = "0.37.0"
 selectors = "0.38.0"
 html5ever = "0.40.1"
 tempfile = "3.27.0"
-htmlcut-core = { path = "crates/htmlcut-core", version = "22.0.0" }
+htmlcut-runtime = { path = "crates/htmlcut-runtime", version = "23.0.0" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "23.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -1,5 +1,4 @@
 * text=auto eol=lf
-*.sh text eol=lf
 
 # Fuzz seeds are exact byte inputs, including malformed encodings.
 fuzz/seeds/** -text -diff

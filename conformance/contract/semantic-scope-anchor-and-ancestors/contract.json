@@ -1,0 +1,10 @@
+{
+  "select": "article",
+  "fields": {
+    "self": {
+      "select": "main article:scope",
+      "read": "attr:id"
+    },
+    "body": "b"
+  }
+}

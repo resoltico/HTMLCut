@@ -1,0 +1,14 @@
+{
+  "select": "h2",
+  "match": "all",
+  "until": "h2",
+  "fields": {
+    "title": {
+      "select": ":scope"
+    },
+    "body": {
+      "select": ":scope ~ p",
+      "match": "all"
+    }
+  }
+}

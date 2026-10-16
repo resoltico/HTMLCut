@@ -1,0 +1,5 @@
+{
+  "select": "p",
+  "match": "all",
+  "min": 0
+}

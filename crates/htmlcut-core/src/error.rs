@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Repairable failures and their frozen facts.
+//! Repairable failures and their structured facts.
 use serde::Serialize;
 
 /// A stable failure class.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum ErrorCode {
-    /// The command-line request is malformed.
-    InvalidArguments,
+    /// The operation request is malformed.
+    InvalidRequest,
     /// The contract is malformed or exceeds a grammar bound.
     InvalidContract,
     /// CSS cannot be compiled.
@@ -39,31 +38,10 @@ pub enum ErrorCode {
     UndecodableInput,
     /// Output could not be published.
     OutputUnwritable,
+    /// The caller cancelled the operation.
+    Cancelled,
     /// An internal invariant failed.
     Internal,
-}
-
-impl ErrorCode {
-    /// The command-line exit class for this failure.
-    pub fn exit_status(self) -> i32 {
-        match self {
-            Self::InvalidArguments
-            | Self::InvalidContract
-            | Self::InvalidSelector
-            | Self::InvalidPattern
-            | Self::InvalidEncoding
-            | Self::InvalidBaseUrl => 2,
-            Self::CountMismatch
-            | Self::ValueMismatch
-            | Self::ExpectationFailed
-            | Self::MissingAttribute
-            | Self::UnresolvableUrl
-            | Self::UnrepresentableOutput => 3,
-            Self::LimitExceeded => 4,
-            Self::InputUnreadable | Self::UndecodableInput | Self::OutputUnwritable => 5,
-            Self::Internal => 6,
-        }
-    }
 }
 
 /// One failure, with only the facts known at the point of refusal.
@@ -193,46 +171,6 @@ mod tests {
                 .unwrap()
                 .contains("$.fields.name")
         );
-    }
-    #[test]
-    fn every_code_has_its_declared_exit_class() {
-        for (codes, expected) in [
-            (
-                vec![
-                    ErrorCode::InvalidArguments,
-                    ErrorCode::InvalidContract,
-                    ErrorCode::InvalidSelector,
-                    ErrorCode::InvalidPattern,
-                    ErrorCode::InvalidEncoding,
-                    ErrorCode::InvalidBaseUrl,
-                ],
-                2,
-            ),
-            (
-                vec![
-                    ErrorCode::CountMismatch,
-                    ErrorCode::ValueMismatch,
-                    ErrorCode::ExpectationFailed,
-                    ErrorCode::MissingAttribute,
-                    ErrorCode::UnresolvableUrl,
-                ],
-                3,
-            ),
-            (vec![ErrorCode::LimitExceeded], 4),
-            (
-                vec![
-                    ErrorCode::InputUnreadable,
-                    ErrorCode::UndecodableInput,
-                    ErrorCode::OutputUnwritable,
-                ],
-                5,
-            ),
-            (vec![ErrorCode::Internal], 6),
-        ] {
-            for code in codes {
-                assert_eq!(code.exit_status(), expected);
-            }
-        }
     }
     #[test]
     fn unknown_facts_are_absent_and_messages_stay_on_one_line() {

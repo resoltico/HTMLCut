@@ -153,7 +153,9 @@ mod tests {
             "p[data-note='original spelling']:hover",
         ] {
             let input = serde_json::json!({"select": selector}).to_string();
-            let error = Contract::from_json(&input).err().unwrap();
+            let error = Contract::from_json(&input, &crate::ExecutionContext::new(None).unwrap())
+                .err()
+                .unwrap();
             assert_eq!(error.error, ErrorCode::InvalidSelector, "{selector}");
             assert_eq!(error.path.as_deref(), Some("$.select"));
             assert_eq!(error.select.as_deref(), Some(selector));
@@ -166,7 +168,8 @@ mod tests {
             Source::new(
                 b"<a href='/'>Follow</a><input checked value='Check'><input disabled value='Off'>",
             ),
-            &Limits::default(),
+            &Limits::default().preparation(),
+            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
         )
         .unwrap();
         for (selector, read, expected) in [
@@ -175,9 +178,17 @@ mod tests {
             ("[disabled]", "attr:value", "Off"),
         ] {
             let input = serde_json::json!({"select": selector, "read": read}).to_string();
-            let contract = Contract::from_json(&input).unwrap();
+            let contract =
+                Contract::from_json(&input, &crate::ExecutionContext::new(None).unwrap()).unwrap();
             assert_eq!(
-                document.extract(&contract).unwrap(),
+                document
+                    .extract(
+                        &contract,
+                        &crate::Limits::default().execution(),
+                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
+                            .unwrap()
+                    )
+                    .unwrap(),
                 Value::String(expected.into())
             );
         }
