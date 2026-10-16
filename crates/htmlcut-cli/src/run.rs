@@ -32,6 +32,9 @@ pub(crate) fn exit_status(code: ErrorCode) -> i32 {
     }
 }
 pub(crate) fn report(error: &Error) {
+    report_for(error, REPORT_GRACE);
+}
+fn report_for(error: &Error, grace: Duration) {
     let bytes = error.to_json_line();
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     if std::thread::Builder::new()
@@ -41,7 +44,7 @@ pub(crate) fn report(error: &Error) {
         })
         .is_ok()
     {
-        let _ = receiver.recv_timeout(REPORT_GRACE);
+        let _ = receiver.recv_timeout(grace);
     }
 }
 
@@ -60,6 +63,7 @@ fn supervise(control: JobControl) -> Result<(), Error> {
                     | Supervision::EnforcementInProgress => return,
                     Supervision::Claimed(error) => {
                         let status = exit_status(error.error);
+                        let grace_started = std::time::Instant::now();
                         // Enforcement still exits if reporting or cleanup setup panics.
                         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let (sender, receiver) = std::sync::mpsc::sync_channel(1);
@@ -67,9 +71,20 @@ fn supervise(control: JobControl) -> Result<(), Error> {
                                 control.cleanup(REPORT_GRACE);
                                 let _ = sender.send(());
                             });
-                            report(&error);
-                            let _ = receiver.recv_timeout(REPORT_GRACE);
+                            report_for(
+                                &error,
+                                REPORT_GRACE.saturating_sub(grace_started.elapsed()),
+                            );
+                            let _ = receiver
+                                .recv_timeout(REPORT_GRACE.saturating_sub(grace_started.elapsed()));
                         }));
+                        #[cfg(test)]
+                        if let Some(path) = std::env::var_os("HTMLCUT_CLI_ENFORCEMENT_TIMING") {
+                            let _ = std::fs::write(
+                                path,
+                                grace_started.elapsed().as_micros().to_string(),
+                            );
+                        }
                         std::process::exit(status);
                     }
                 }
@@ -261,3 +276,7 @@ fn terminal_delivery(outcome: htmlcut_runtime::Outcome) -> Result<(), Error> {
         )),
     }
 }
+
+#[cfg(test)]
+#[path = "supervision_tests.rs"]
+mod tests;

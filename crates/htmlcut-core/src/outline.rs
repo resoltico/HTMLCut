@@ -426,10 +426,8 @@ impl Document {
         let root = if let Some(text) = &options.select {
             let selector = options.compile_selector()?.expect("selection supplied");
             let matches = candidates(Some(&selector), &scope, &clock, &mut caches)?;
-            // Even a hidden selector fact is bounded before its owned copy.
-            if text.len() > limits.max_output_bytes {
-                return Err(Error::limit("output_bytes", limits.max_output_bytes));
-            }
+            // Selector admission bounds this metadata to the selector grammar.
+            // Only an emitted header is charged to canonical output bytes.
             if options.max_lines > 0 {
                 header(&mut output, matches.len(), text)?;
                 report.header_emitted = true;
@@ -446,7 +444,7 @@ impl Document {
             .unwrap_or_default();
         while let Some((element, level, count)) = pending.pop() {
             clock.tick()?;
-            let children = element_children(element);
+            let children = element_children(element, &clock)?;
             let stopped = level >= options.depth
                 || matches!(element.value().name(), "svg" | "math" | "template");
             if lines < options.max_lines {
@@ -473,7 +471,7 @@ impl Document {
                 clock.tick()?;
                 let mut seen = HashSet::new();
                 let mut tags = Vec::new();
-                for descendant in element_children(child) {
+                for descendant in element_children(child, &clock)? {
                     clock.tick()?;
                     let tag = descendant.value().name();
                     if seen.insert(tag) {
@@ -482,7 +480,7 @@ impl Document {
                 }
                 let signature = Signature {
                     tag: child.value().name().into(),
-                    classes: classes(child),
+                    classes: classes(child, &clock)?,
                     children: tags,
                 };
                 if let Some(&index) = indexes.get(&signature) {
@@ -505,18 +503,34 @@ impl Document {
         Ok(report)
     }
 }
-fn element_children(element: ElementRef<'_>) -> Vec<ElementRef<'_>> {
-    element.children().filter_map(ElementRef::wrap).collect()
+fn element_children<'a>(
+    element: ElementRef<'a>,
+    clock: &ExecutionContext,
+) -> Result<Vec<ElementRef<'a>>, Error> {
+    let mut children = Vec::new();
+    for child in element.children() {
+        clock.tick()?;
+        if let Some(element) = ElementRef::wrap(child) {
+            children.push(element);
+        }
+    }
+    Ok(children)
 }
-fn classes(element: ElementRef<'_>) -> Vec<String> {
-    element
+
+fn classes(element: ElementRef<'_>, clock: &ExecutionContext) -> Result<Vec<String>, Error> {
+    let mut classes = Vec::new();
+    for class in element
         .value()
         .attr("class")
         .unwrap_or_default()
         .split_ascii_whitespace()
-        .map(String::from)
-        .collect()
+    {
+        clock.tick()?;
+        classes.push(class.to_owned());
+    }
+    Ok(classes)
 }
+
 fn preview(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<String, Error> {
     preview_parts(std::iter::once(value), maximum, clock)
 }
@@ -924,5 +938,97 @@ mod tests {
                 .unwrap(),
             "1 match for \"main\\np\"\n… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
         );
+    }
+    #[test]
+    fn hidden_selector_initial_admission_matches_later_rendering_at_exact_bounds() {
+        let limits = Limits::default();
+        let context = ExecutionContext::new(None).unwrap();
+        let document = Document::parse(
+            Source::new(b"<p>value</p>"),
+            &limits.preparation(),
+            &context,
+        )
+        .unwrap();
+        let options = OutlineOptions {
+            select: Some(format!("p{}", " ".repeat(200))),
+            max_lines: 0,
+            ..OutlineOptions::default()
+        };
+        let report = document
+            .outline(&options, &limits.execution(), &context)
+            .unwrap();
+        let expected =
+            "… 2 more lines; narrow the selection, reduce depth or increase the line allowance\n";
+        assert_eq!(report.render(expected.len(), &context).unwrap(), expected);
+        assert_eq!(report.selection.as_deref(), options.select.as_deref());
+        assert!(!report.header_emitted);
+        assert!(report.rows.is_empty());
+        for maximum in [expected.len() - 1, expected.len(), expected.len() + 1, 100] {
+            let mut policy = limits.execution();
+            policy.max_output_bytes = maximum;
+            let initial = document
+                .outline(&options, &policy, &context)
+                .and_then(|report| report.render(maximum, &context));
+            let saved = report.render(maximum, &context);
+            match (initial, saved) {
+                (Ok(initial), Ok(saved)) => assert_eq!(initial, saved),
+                (Err(initial), Err(saved)) => {
+                    assert_eq!(initial.error, saved.error);
+                    assert_eq!(initial.limit, saved.limit);
+                    assert_eq!(initial.bound, saved.bound);
+                }
+                _ => panic!("initial/render admission differs for {maximum}"),
+            }
+        }
+    }
+    #[test]
+    fn hidden_grouping_class_loops_check_each_iteration_cadence_and_cancel() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let limits = Limits::default();
+        let prepare = ExecutionContext::new(None).unwrap();
+        let tokens = 200_000;
+        let source = format!("<p class='{}'>value</p>", "a ".repeat(tokens));
+        let document = Document::parse(
+            Source::new(source.as_bytes()),
+            &limits.preparation(),
+            &prepare,
+        )
+        .unwrap();
+        let options = OutlineOptions {
+            max_lines: 0,
+            ..OutlineOptions::default()
+        };
+        let checks = Arc::new(AtomicUsize::new(0));
+        let observed = checks.clone();
+        let context = ExecutionContext::with_checkpoint(move || {
+            observed.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        });
+        document
+            .outline(&options, &limits.execution(), &context)
+            .unwrap();
+        assert!(checks.load(Ordering::Relaxed) >= tokens / 1024);
+        let checks = Arc::new(AtomicUsize::new(0));
+        let observed = checks.clone();
+        let context = ExecutionContext::with_checkpoint(move || {
+            if observed.fetch_add(1, Ordering::Relaxed) >= 3 {
+                Err(Error::new(
+                    ErrorCode::Cancelled,
+                    "controlled cancellation during grouping",
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        let error = document
+            .outline(&options, &limits.execution(), &context)
+            .unwrap_err();
+        assert_eq!(error.error, ErrorCode::Cancelled);
+        assert!(error.limit.is_none());
+        assert!(error.bound.is_none());
+        assert_eq!(checks.load(Ordering::Relaxed), 4);
     }
 }

@@ -181,12 +181,18 @@ impl Job {
             let context = self.context();
             let contract_stdin = match &request.operation {
                 Operation::Extract { contract: ContractInput::Stdin, .. } => true,
-                Operation::Extract { contract: ContractInput::File(path), .. } => local_io::stdin_alias(path),
+                Operation::Extract { contract: ContractInput::File(path), .. } => local_io::stdin_alias(path,&context)?,
                 Operation::Extract { contract: ContractInput::Json(_) | ContractInput::Quick(_), .. } | Operation::Outline(_) | Operation::Schema => false,
             };
-            context.check()?;
-            let html_stdin = match &request.input { Input::Stdin { .. } => true, Input::File(path) => local_io::stdin_alias(path), Input::Bytes(_) => false };
-            if contract_stdin && html_stdin { return Err(Error::new(ErrorCode::InvalidRequest, "Contract standard input requires a distinct HTML source; the path aliases descriptor 0.")); }
+            if contract_stdin {
+                context.check()?;
+                let html_stdin=match &request.input {
+                    Input::Stdin {..}=>true,
+                    Input::File(path)=>local_io::stdin_alias(path,&context)?,
+                    Input::Bytes(_)=>false,
+                };
+                if html_stdin {return Err(Error::new(ErrorCode::InvalidRequest,"Contract standard input requires a distinct HTML source; the path aliases descriptor 0."));}
+            }
             let operation = compile(&request.operation, &context)?;
             let document = if matches!(operation, Compiled::Schema) { None } else {
                 Some(prepare(&request.input, &request.encoding, &request.base_url, &request.limits, &context)?)
@@ -234,6 +240,11 @@ impl Job {
             let context = self.context();
             self.deliver(result.clone(), &destination, &limits, &context)
         })
+    }
+    /// Returns complete canonical export bytes under this new job's policy.
+    /// Typed results do not retain an additional serialized copy.
+    pub fn export(self, result: &Computed, limits: Limits) -> Completion<Vec<u8>> {
+        self.perform(|| result.encode(limits.max_output_bytes, &self.context()))
     }
     /// Delivers host presentation bytes with the same destination protections.
     pub fn present(self, bytes: &[u8], destination: Destination) -> Completion<Delivery> {
@@ -384,3 +395,7 @@ fn compute(
         data: Arc::new(data),
     })
 }
+
+#[cfg(test)]
+#[path = "request_tests.rs"]
+mod request_tests;

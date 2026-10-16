@@ -409,4 +409,86 @@ mod tests {
         release.wait();
         assert!(matches!(worker.join().unwrap(), Completion::Supervised(_)));
     }
+    #[test]
+    fn finish_and_expiry_choose_exactly_one_owner_for_disconnected_delivery() {
+        for cancellation in [false, true] {
+            for supervisor_first in [false, true] {
+                let mut job = Job::new(Some(Duration::from_secs(10))).unwrap();
+                if cancellation {
+                    job.control.cancel();
+                }
+                expired(&mut job);
+                if !cancellation {
+                    job.control.cancel();
+                }
+                let job = Arc::new(job);
+                let control = job.control();
+                let expected = if cancellation {
+                    ErrorCode::Cancelled
+                } else {
+                    ErrorCode::LimitExceeded
+                };
+                let (release_sender, release_receiver) = std::sync::mpsc::sync_channel(1);
+                if supervisor_first {
+                    let (done_sender, done_receiver) = std::sync::mpsc::sync_channel(1);
+                    let worker = job.clone();
+                    let thread = std::thread::spawn(move || {
+                        release_receiver
+                            .recv_timeout(Duration::from_secs(2))
+                            .unwrap();
+                        done_sender
+                            .send(worker.finish(Ok(crate::Delivery::Disconnected)))
+                            .ok();
+                    });
+                    let Supervision::Claimed(error) = control.supervise() else {
+                        panic!("supervisor did not own expiry")
+                    };
+                    assert_eq!(error.error, expected);
+                    release_sender.send(()).unwrap();
+                    let completion = done_receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+                    assert!(
+                        matches!(completion,Completion::Supervised(error) if error.error==expected)
+                    );
+                    thread.join().unwrap();
+                    assert!(matches!(
+                        control.supervise(),
+                        Supervision::EnforcementInProgress
+                    ));
+                } else {
+                    let (done_sender, done_receiver) = std::sync::mpsc::sync_channel(1);
+                    let thread = std::thread::spawn(move || {
+                        release_receiver
+                            .recv_timeout(Duration::from_secs(2))
+                            .unwrap();
+                        done_sender.send(control.supervise()).ok();
+                    });
+                    assert_eq!(
+                        code(job.finish(Ok(crate::Delivery::Disconnected))),
+                        expected
+                    );
+                    release_sender.send(()).unwrap();
+                    assert!(matches!(
+                        done_receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+                        Supervision::Finished
+                    ));
+                    thread.join().unwrap();
+                }
+            }
+        }
+    }
+    #[test]
+    fn ordinary_failure_completed_before_expiry_keeps_its_terminal_owner() {
+        let mut job = Job::new(Some(Duration::from_secs(10))).unwrap();
+        assert_eq!(
+            code(job.finish::<()>(Err(Error::new(
+                ErrorCode::OutputUnwritable,
+                "native stream failed"
+            )))),
+            ErrorCode::OutputUnwritable
+        );
+        expired(&mut job);
+        let control = job.control();
+        assert!(matches!(control.supervise(), Supervision::Finished));
+        assert_eq!(control.cancel(), CancelOutcome::AlreadyFinished);
+    }
 }

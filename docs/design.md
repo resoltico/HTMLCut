@@ -45,7 +45,7 @@ served better by an existing tool that composes with HTMLCut through files and p
   it carries `(+K inside)`, K being its descendant element count.
 - Up to `--max-lines` (default 80) ordinary lines are printed, including the optional
   selector header. If any lines are omitted, one additional summary line is printed:
-  `… K more lines; narrow --select, lower --depth or raise --max-lines`.
+  `… K more lines; narrow the selection, reduce depth or increase the line allowance`.
 
 ## Document preparation
 

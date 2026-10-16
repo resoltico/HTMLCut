@@ -18,6 +18,7 @@ import zipfile
 from .. import config, process
 from . import signature
 from .source import STABLE
+from ..mutation import source_identity
 
 
 def unpack(archive, target, version, destination):
@@ -149,10 +150,16 @@ def accept(archive, target, version, root=config.ROOT):
         if target.get("apple_floor"):
             report["signature"] = signature.verify(binary)
             report["signature_rejections"] = signature.rejection_controls(binary)
-        from .source import resolve
+        from .source import resolve, git
         from .package import guide
 
+        if git(root, "status", "--porcelain"):
+            raise ValueError("native acceptance requires a clean source checkout")
+        before_source = source_identity(root)
         sha, source_version = resolve(root, "HEAD")
+        if before_source["git_commit"] != sha:
+            raise ValueError("acceptance source changed during initial admission")
+        report["source_identity_before"] = before_source["sha256"]
         if source_version != version:
             raise ValueError("native package version differs from acceptance source")
         report["source_sha"] = sha
@@ -266,6 +273,12 @@ def accept(archive, target, version, root=config.ROOT):
         )
         if hashlib.sha256(binary.read_bytes()).hexdigest() != digest:
             raise ValueError("acceptance changed production executable bytes")
+        after_source = source_identity(root)
+        report["source_identity_after"] = after_source["sha256"]
+        if after_source != before_source or git(root, "status", "--porcelain"):
+            raise ValueError("acceptance source changed during native execution")
+        if asset_digest(archive) != (archive_size, archive_sha):
+            raise ValueError("acceptance archive bytes changed during native execution")
         report["status"] = "pass"
     except BaseException as error:
         report["status"] = "fail"

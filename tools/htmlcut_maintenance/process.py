@@ -378,6 +378,11 @@ def _run(
                     returncode = None
                     cleanup_errors.append("leader did not exit within cleanup grace")
             reader.join(timeout=5)
+            if not reader.is_alive():
+                try:
+                    process.stdout.close()
+                except OSError as error:
+                    reader_failed.append("pipe close: " + str(error))
         if child_identity_lost:
             returncode = None
         if cleanup_errors:

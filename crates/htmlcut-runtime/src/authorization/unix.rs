@@ -146,7 +146,11 @@ impl Policy {
         syscall(unsafe { libc::fchmod(file.as_raw_fd(), 0) })?;
         Ok(())
     }
-    pub(crate) fn apply(&self, file: &File, #[cfg(test)] stage: &Path) -> io::Result<()> {
+    pub(crate) fn apply(
+        &self,
+        file: &File,
+        #[cfg(any(test, feature = "instrumented-tests"))] stage: &Path,
+    ) -> io::Result<()> {
         // Mandatory policy/ownership are established before writing. Complete
         // content receives its final ACL before mode bits can grant pathname reads.
         #[cfg(target_os = "macos")]
@@ -163,7 +167,7 @@ impl Policy {
         }
         // SAFETY: open descriptor; discard special privilege bits and preserve the final ACL mask.
         syscall(unsafe { libc::fchmod(file.as_raw_fd(), self.mode as libc::mode_t) })?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "instrumented-tests"))]
         crate::local_io::checkpoint("metadata", stage);
         if Self::read(file)? != *self {
             return Err(io::Error::other(

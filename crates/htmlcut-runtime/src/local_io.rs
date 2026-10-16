@@ -212,14 +212,47 @@ fn duplicate_output_descriptor(
     })
 }
 
-fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
+fn link_metadata(path: &Path) -> io::Result<std::fs::Metadata> {
+    #[cfg(test)]
+    LINK_LOOKUP_PROBE.with(|probe| {
+        if let Some(probe) = probe.borrow_mut().as_mut() {
+            probe(path)?;
+        }
+        Ok::<(), io::Error>(())
+    })?;
+    std::fs::symlink_metadata(path)
+}
+#[cfg(test)]
+type LinkLookupProbe = Box<dyn FnMut(&Path) -> io::Result<()>>;
+#[cfg(test)]
+thread_local! { static LINK_LOOKUP_PROBE: std::cell::RefCell<Option<LinkLookupProbe>> = std::cell::RefCell::new(None); }
+#[cfg(test)]
+pub(crate) fn with_link_lookup_probe<T>(
+    probe: impl FnMut(&Path) -> io::Result<()> + 'static,
+    action: impl FnOnce() -> T,
+) -> T {
+    struct Restore(Option<LinkLookupProbe>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LINK_LOOKUP_PROBE.with(|probe| *probe.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(LINK_LOOKUP_PROBE.with(|slot| slot.replace(Some(Box::new(probe)))));
+    action()
+}
+
+fn resolve_output_links(
+    path: &Path,
+    context: &htmlcut_core::ExecutionContext,
+) -> io::Result<std::path::PathBuf> {
     let mut current = path.to_path_buf();
     let mut visited = std::collections::HashSet::new();
     loop {
+        context.check().map_err(io::Error::other)?;
         if descriptor_alias(&current) {
             return Ok(current);
         }
-        match std::fs::symlink_metadata(&current) {
+        match link_metadata(&current) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 // Resolve the parent with the OS rather than collapsing `..` across
                 // symlinks. The identity stays stable even if relative links grow the path.
@@ -227,8 +260,11 @@ fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
                     .parent()
                     .filter(|p| !p.as_os_str().is_empty())
                     .unwrap_or_else(|| Path::new("."));
+                context.check().map_err(io::Error::other)?;
+                let parent_identity = std::fs::canonicalize(parent)?;
+                context.check().map_err(io::Error::other)?;
                 let identity = (
-                    std::fs::canonicalize(parent)?,
+                    parent_identity,
                     current.file_name().map(|name| name.to_owned()),
                 );
                 if !visited.insert(identity) {
@@ -237,7 +273,9 @@ fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
                         "symbolic link cycle",
                     ));
                 }
+                context.check().map_err(io::Error::other)?;
                 let target = std::fs::read_link(&current)?;
+                context.check().map_err(io::Error::other)?;
                 current = if target.is_absolute() {
                     target
                 } else {
@@ -247,8 +285,14 @@ fn resolve_output_links(path: &Path) -> io::Result<std::path::PathBuf> {
                         .join(target)
                 };
             }
-            Ok(_) => return Ok(current),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(current),
+            Ok(_) => {
+                context.check().map_err(io::Error::other)?;
+                return Ok(current);
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                context.check().map_err(io::Error::other)?;
+                return Ok(current);
+            }
             Err(error) => return Err(error),
         }
     }
@@ -266,9 +310,12 @@ pub(crate) fn publish_timed(
     let Some(path) = destination else {
         return write_output(&mut io::stdout().lock(), bytes, Path::new("-"), job);
     };
+    let context = job
+        .map(crate::Job::context)
+        .unwrap_or_else(|| htmlcut_core::ExecutionContext::new(None).unwrap());
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let resolved =
-        resolve_output_links(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    let resolved = resolve_output_links(path, &context)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     if let Some(DescriptorTarget::Current(fd)) = descriptor_target(&resolved) {
         let mut stream = duplicate_output_descriptor(fd)
@@ -305,7 +352,7 @@ pub(crate) fn publish_timed(
                 return write_output(&mut file, bytes, path, job);
             }
             #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-            let resolved = resolve_output_links(path)
+            let resolved = resolve_output_links(path, &context)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             if descriptor_alias(&resolved) {
                 return write_output(&mut file, bytes, path, job);
@@ -319,7 +366,7 @@ pub(crate) fn publish_timed(
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-            let resolved = resolve_output_links(path)
+            let resolved = resolve_output_links(path, &context)
                 .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
             let spelling = path.as_os_str().to_string_lossy();
             if spelling.ends_with('/')
@@ -397,7 +444,7 @@ pub(crate) fn publish_timed(
                 ),
             )
         })?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "instrumented-tests"))]
         checkpoint("policy-probe", probe.path());
     }
     let mut temporary = create_stage(stage_parent, job, StageKind::Result(policy))
@@ -412,20 +459,26 @@ pub(crate) fn publish_timed(
             ),
         )
     })?;
-    #[cfg(test)]
+    #[cfg(feature = "instrumented-tests")]
+    if std::env::var_os("HTMLCUT_TEST_EARLY_COMPLETION").is_some()
+        && let Some(job) = job
+    {
+        let _ = job.finish(Ok(()));
+    }
+    #[cfg(any(test, feature = "instrumented-tests"))]
     checkpoint("restricted", temporary.path());
     write_all_timed(&mut temporary, bytes, job)
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "instrumented-tests"))]
     checkpoint("filled", temporary.path());
     policy
         .apply(
             temporary.as_file(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "instrumented-tests"))]
             temporary.path(),
         )
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "instrumented-tests"))]
     checkpoint("policy", temporary.path());
     // Recheck target identity, handle-derived policy and containing directory before the commit claim.
     let current_parent = crate::authorization::open_parent(parent);
@@ -465,8 +518,8 @@ pub(crate) fn publish_timed(
             ));
         }
     }
-    let current_resolution =
-        resolve_output_links(path).map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
+    let current_resolution = resolve_output_links(path, &context)
+        .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
     let resolution_parent = current_resolution
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -506,12 +559,12 @@ pub(crate) fn publish_timed(
             ),
         ));
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "instrumented-tests"))]
     checkpoint("precommit", temporary.path());
     if let Some(job) = job {
         job.commit()?;
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "instrumented-tests"))]
     checkpoint("commit", temporary.path());
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     crate::authorization::commit(
@@ -541,6 +594,8 @@ impl StageOwnership {
         &self.path
     }
     fn cleanup(&self) {
+        #[cfg(any(test, feature = "instrumented-tests"))]
+        checkpoint("cleanup", &self.path);
         let owned = self
             .created_identity
             .get()
@@ -632,7 +687,7 @@ fn create_stage(
             job.reserve(Arc::clone(&record));
             job.check().map_err(io::Error::other)?;
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "instrumented-tests"))]
         if matches!(kind, StageKind::Result(_)) {
             checkpoint("reserved", candidate);
         }
@@ -674,7 +729,7 @@ fn create_stage(
         }
         record.created_identity.set(id).unwrap();
         ownership = Some(Arc::clone(&record));
-        #[cfg(test)]
+        #[cfg(any(test, feature = "instrumented-tests"))]
         if matches!(kind, StageKind::Result(_)) {
             checkpoint("created", candidate);
         }
@@ -782,16 +837,21 @@ pub(crate) fn cleanup_owned_stages(
         std::thread::yield_now();
     }
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "instrumented-tests"))]
 pub(crate) fn checkpoint(phase: &str, path: &Path) {
+    if std::env::var("HTMLCUT_PUBLICATION_PANIC_AT").is_ok_and(|selected| selected == phase) {
+        panic!("controlled panic before owned native cleanup");
+    }
     if std::env::var("HTMLCUT_PUBLICATION_PHASE").is_ok_and(|selected| selected == phase) {
         let ready =
             std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_READY").unwrap());
-        let mut pending_name = ready.file_name().unwrap().to_os_string();
-        pending_name.push(".pending");
-        let pending = ready.with_file_name(pending_name);
-        std::fs::write(&pending, path.as_os_str().as_encoded_bytes()).unwrap();
-        std::fs::rename(&pending, &ready).unwrap();
+        if !ready.exists() {
+            let mut pending = tempfile::NamedTempFile::new_in(ready.parent().unwrap()).unwrap();
+            pending
+                .write_all(path.as_os_str().as_encoded_bytes())
+                .unwrap();
+            let _ = pending.persist_noclobber(&ready);
+        }
         if phase == "policy-probe" || std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").is_some() {
             let release =
                 std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_RELEASE").unwrap());
@@ -804,10 +864,15 @@ pub(crate) fn checkpoint(phase: &str, path: &Path) {
                 "policy probe reader did not release publication"
             );
         } else if phase == "commit" {
-            std::thread::sleep(Duration::from_millis(800));
+            let hold = std::env::var("HTMLCUT_PUBLICATION_COMMIT_HOLD_MS")
+                .ok()
+                .map(|value| value.parse::<u64>().unwrap())
+                .unwrap_or(800);
+            std::thread::sleep(Duration::from_millis(hold.min(4000)));
         } else {
-            loop {
-                std::thread::park();
+            let started = Instant::now();
+            while started.elapsed() < Duration::from_secs(4) {
+                std::thread::sleep(Duration::from_millis(1));
             }
         }
     }
@@ -833,21 +898,28 @@ pub(crate) fn obvious_stdin_alias(path: &Path) -> bool {
         false
     }
 }
-pub(crate) fn stdin_alias(path: &Path) -> bool {
+pub(crate) fn stdin_alias(
+    path: &Path,
+    context: &htmlcut_core::ExecutionContext,
+) -> Result<bool, Error> {
+    context.check()?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
-        let resolved = resolve_output_links(path).unwrap_or_else(|_| path.to_path_buf());
-        matches!(
+        let resolved = resolve_output_links(path, context)
+            .map_err(|error| io_error(ErrorCode::InputUnreadable, path, error))?;
+        context.check()?;
+        Ok(matches!(
             descriptor_target(&resolved),
             Some(DescriptorTarget::Current(0))
-        )
+        ))
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = path;
-        false
+        Ok(false)
     }
 }
 
 #[cfg(test)]
-include!("publication_tests.rs");
+#[path = "publication_tests.rs"]
+mod tests;

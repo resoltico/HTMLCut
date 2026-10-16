@@ -30,6 +30,8 @@ fn main() -> Result<(), Error> {
     ))?;
     if let Outcome::Returned(result) = outcome {
         assert!(result.value().is_some());
+        let bytes = completed(Job::new(limits.time_limit)?.export(&result, limits.clone()))?;
+        assert_eq!(bytes, b"\"Snapshot\"\n");
     }
     let outline = completed(Job::new(limits.time_limit)?.execute_prepared(
         &document,
