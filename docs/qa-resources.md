@@ -35,6 +35,8 @@ Inherited `HTMLCUT_*` delivery/test-helper controls, including empty values, and
 
 The default campaign allowance remains 4 GiB sampled owned output and 1,800 seconds; tool-version probing is separate. Test phases allow 180 seconds and builds 300 seconds. `audit.json` retains runner/pin/profile, actual scope/concurrency, source identity, baseline/outcome completeness and build/test timing summaries. Execution completion never means survivor/timeout review is complete. Nextest can create separate test process groups; tests must clean their owned children, and physical containment remains an operator responsibility.
 
+Permission-changing mutants can make their own test scratch unreadable, including while a cleanup checkpoint is blocked. The disk owner then refuses accounting; it neither skips that subtree nor changes live permissions. This is an infrastructure refusal, not a caught mutant or completed review. Preserve the partial audit and review the responsible scenario separately; any focused follow-up retains its own scope. Faster scheduling does not guarantee that every mutant can run inside this sampled owner.
+
 For a short developer cycle, select the relevant mutation plan explicitly:
 
 ```sh
