@@ -6,14 +6,14 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- **Breaking Rust application API:** `htmlcut-runtime` owns typed extraction, outline and schema requests, local acquisition, reusable prepared documents, exports and policy-preserving delivery. Frontends share this boundary. Core document preparation and execution receive separate policies and an explicit job context; prepared documents retain no limits or live stop state and safely support shared worker use.
+- **Breaking Rust application API:** `htmlcut-runtime` owns typed extraction, outline and schema requests, local acquisition, reusable prepared documents, exports and policy-preserving delivery. Frontends share this boundary; no compatibility aliases or migrations are provided. Core document preparation and execution receive separate policies and an explicit job context; prepared documents retain no limits or live stop state and safely support shared worker use.
 - **Breaking output admission:** canonical JSON and schema ceilings include final LF. Raw record roots now refuse before input with `unrepresentable_output` (exit 3); use JSON for records. Raw output remains subject to complete canonical admission, including five bytes for optional null. Later Save operations re-admit the result under their own policy. Outline exposes bounded grouped facts and canonical text with explicit header/omission accounting. `schema` accepts `--max-output-bytes`.
 - **Breaking diagnostics:** `invalid_arguments` becomes neutral `invalid_request`; cancellation uses `cancelled` without invented resource facts, with CLI exit 130. Oversized selectors omit their unbounded source from diagnostic facts. Shell exit classification belongs only to the CLI; direct-stream disconnects return a neutral outcome and remain silent CLI success.
 - Contributor commands use the stdlib `python3 -m tools.htmlcut_maintenance` package. Target and tool facts have TOML authorities. Fresh pinned tool installs replace custom installed-binary caches. Fuzz targets execute sequentially through one process owner; the bounded seed/input allowance is 64 KiB, including the retained stress corpus.
 
 ### Removed
 
-- Compatibility aliases and migrations; shell maintenance bridges, duplicated Python product acceptance runners, byte-frozen corpus enforcement, cache-generation/trust machinery and formatting-sensitive workflow assertions.
+- Shell maintenance bridges, duplicated Python product acceptance runners, byte-frozen corpus enforcement, cache-generation/trust machinery and formatting-sensitive workflow assertions.
 
 ### Internal
 
