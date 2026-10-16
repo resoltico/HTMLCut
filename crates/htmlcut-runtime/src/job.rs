@@ -383,6 +383,27 @@ mod tests {
         }
     }
     #[test]
+    fn dropping_the_owner_finishes_uncommitted_jobs_and_preserves_commit_ownership() {
+        for cancelled in [false, true] {
+            let job = Job::new(None).unwrap();
+            let control = job.control();
+            if cancelled {
+                assert_eq!(control.cancel(), CancelOutcome::Accepted);
+            }
+            drop(job);
+            assert!(matches!(control.supervise(), Supervision::Finished));
+            assert_eq!(control.cancel(), CancelOutcome::AlreadyFinished);
+        }
+
+        let job = Job::new(None).unwrap();
+        let control = job.control();
+        job.commit().unwrap();
+        drop(job);
+        assert!(matches!(control.supervise(), Supervision::CommitInProgress));
+        assert_eq!(control.cancel(), CancelOutcome::CommitInProgress);
+    }
+
+    #[test]
     fn dropping_observers_is_inert_and_unwind_does_not_invent_cancellation() {
         let job = Job::new(None).unwrap();
         drop(job.control());

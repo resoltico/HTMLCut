@@ -1,5 +1,111 @@
 use super::*;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn inherited_stdin_is_recognized_through_a_descriptor_directory_alias() {
+    let fixture = tempfile::tempdir().unwrap();
+    let alias = fixture.path().join("inherited");
+    std::os::unix::fs::symlink("/dev/fd", &alias).unwrap();
+    let context = htmlcut_core::ExecutionContext::new(None).unwrap();
+    assert!(stdin_alias(&alias.join("0"), &context).unwrap());
+    assert!(!stdin_alias(&alias.join("1"), &context).unwrap());
+
+    let ordinary = fixture.path().join("input");
+    std::fs::write(&ordinary, b"ordinary input").unwrap();
+    assert!(!stdin_alias(&ordinary, &context).unwrap());
+}
+
+#[test]
+fn interrupted_input_retries_without_losing_bytes_and_rechecks_cancellation() {
+    struct InterruptedOnce {
+        attempts: usize,
+        cancel: Option<crate::JobControl>,
+        bytes: io::Cursor<&'static [u8]>,
+    }
+    impl Read for InterruptedOnce {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.attempts += 1;
+            if self.attempts == 1 {
+                if let Some(control) = &self.cancel {
+                    control.cancel();
+                }
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            self.bytes.read(buffer)
+        }
+    }
+    for cancelled in [false, true] {
+        let job = crate::Job::new(None).unwrap();
+        let mut reader = InterruptedOnce {
+            attempts: 0,
+            cancel: cancelled.then(|| job.control()),
+            bytes: io::Cursor::new(b"data"),
+        };
+        let result = read(&mut reader, 4, Path::new("input"), false, &job.context());
+        if cancelled {
+            assert_eq!(result.unwrap_err().error, ErrorCode::Cancelled);
+            assert_eq!(reader.attempts, 1);
+            assert_eq!(reader.bytes.position(), 0);
+        } else {
+            assert_eq!(result.unwrap(), b"data");
+            assert_eq!(reader.attempts, 3);
+        }
+    }
+}
+
+#[test]
+fn interrupted_output_retries_partial_writes_and_rechecks_cancellation() {
+    struct InterruptedOnce {
+        attempts: usize,
+        cancel: Option<crate::JobControl>,
+        bytes: Vec<u8>,
+    }
+    impl Write for InterruptedOnce {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.attempts += 1;
+            if self.attempts == 1 {
+                if let Some(control) = &self.cancel {
+                    control.cancel();
+                }
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            let count = bytes.len().min(2);
+            self.bytes.extend_from_slice(&bytes[..count]);
+            Ok(count)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    for cancelled in [false, true] {
+        let job = crate::Job::new(None).unwrap();
+        let mut writer = InterruptedOnce {
+            attempts: 0,
+            cancel: cancelled.then(|| job.control()),
+            bytes: Vec::new(),
+        };
+        let result = write_all_timed(&mut writer, b"data", Some(&job));
+        if cancelled {
+            let error = result.unwrap_err();
+            assert_eq!(
+                error
+                    .get_ref()
+                    .unwrap()
+                    .downcast_ref::<Error>()
+                    .unwrap()
+                    .error,
+                ErrorCode::Cancelled
+            );
+            assert_eq!(writer.attempts, 1);
+            assert!(writer.bytes.is_empty());
+        } else {
+            result.unwrap();
+            assert_eq!(writer.bytes, b"data");
+            assert_eq!(writer.attempts, 3);
+        }
+    }
+}
+
 fn exit_status(code: ErrorCode) -> i32 {
     match code {
         ErrorCode::LimitExceeded => 4,

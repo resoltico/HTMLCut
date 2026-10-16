@@ -593,6 +593,34 @@ mod tests {
     use super::*;
     use crate::{Limits, Source};
     #[test]
+    fn caller_constructed_rows_render_omissions_without_representative_attributes() {
+        let report = OutlineReport {
+            selection: None,
+            selection_count: None,
+            header_emitted: false,
+            rows: vec![OutlineRow {
+                depth: 0,
+                tag: "main".into(),
+                namespace: html5ever::ns!(html).to_string(),
+                id: None,
+                classes: Vec::new(),
+                omitted_classes: 0,
+                attributes: Vec::new(),
+                omitted_attributes: 2,
+                preview: String::new(),
+                grouped_count: 1,
+                collapsed_descendants: 0,
+            }],
+            omitted_lines: 0,
+        };
+        let expected = "main […]\n";
+        let context = ExecutionContext::new(None).unwrap();
+        assert_eq!(report.render(expected.len(), &context).unwrap(), expected);
+        let error = report.render(expected.len() - 1, &context).unwrap_err();
+        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+    }
+
+    #[test]
     fn description_refusals_report_the_global_output_policy_consistently() {
         let limits = Limits {
             max_output_bytes: 20,
