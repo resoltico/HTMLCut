@@ -1514,27 +1514,86 @@ mod tests {
     }
 
     #[test]
-    fn publication_preserves_an_unprotected_dacl_without_auto_inheritance() {
+    fn publication_preserves_an_old_inheritance_dacl() {
         use std::{io::Write, os::windows::ffi::OsStrExt};
 
+        let wide = |path: &Path| {
+            path.as_os_str()
+                .encode_wide()
+                .chain(Some(0))
+                .collect::<Vec<_>>()
+        };
+        let author_protected = |path: &[u16], descriptor: &Descriptor| {
+            let mut acl = std::ptr::null_mut();
+            let mut present = 0;
+            let mut defaulted = 0;
+            // SAFETY: terminated fixture path and the descriptor-owned ACL remain live.
+            unsafe {
+                boolean(GetSecurityDescriptorDacl(
+                    descriptor.0,
+                    &mut present,
+                    &mut acl,
+                    &mut defaulted,
+                ))
+                .unwrap();
+                assert!(present != 0 && !acl.is_null());
+                status(SetNamedSecurityInfoW(
+                    path.as_ptr(),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    acl,
+                    std::ptr::null_mut(),
+                ))
+                .unwrap();
+            }
+        };
         let directory = tempfile::tempdir().unwrap();
-        let source_path = directory.path().join("source");
+        let parent_path = directory.path().join("policy-parent");
+        std::fs::create_dir(&parent_path).unwrap();
+        let parent_policy = Descriptor::parse("D:(A;OICI;FA;;;OW)").unwrap();
+        author_protected(&wide(&parent_path), &parent_policy);
+        let parent = OpenOptions::new()
+            .read(true)
+            .access_mode(READ_CONTROL)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(&parent_path)
+            .unwrap();
+        let parent_descriptor = Descriptor::read(&parent).unwrap();
+        let inheritance = SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED;
+        assert_eq!(
+            descriptor_control(&parent_descriptor).unwrap() & inheritance,
+            inheritance
+        );
+        assert_eq!(
+            parent_descriptor
+                .text_with(DACL_SECURITY_INFORMATION)
+                .unwrap(),
+            "D:PAI(A;OICI;FA;;;OW)"
+        );
+        let source_path = parent_path.join("source");
         let source = stage_options().open(&source_path).unwrap();
         let authored = Descriptor::parse("D:(A;;FA;;;OW)").unwrap();
-        let wide_path = source_path
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
-        // Author the older, non-auto-inherited file policy through a distinct
-        // native file setter, not the publication setter under test.
+        let wide_path = wide(&source_path);
+        author_protected(&wide_path, &authored);
+        let seed = Descriptor::read(&source).unwrap();
+        assert_eq!(
+            descriptor_control(&seed).unwrap() & inheritance,
+            inheritance
+        );
+        assert_eq!(
+            seed.text_with(DACL_SECURITY_INFORMATION).unwrap(),
+            "D:PAI(A;;FA;;;OW)"
+        );
+        // Under this controlled parent, the file setter produces an old-inheritance
+        // ACL: its ACE is inherited, while the descriptor is not auto-inherited.
         // SAFETY: the terminated owned path and native descriptor remain live.
         boolean(unsafe {
             SetFileSecurityW(wide_path.as_ptr(), DACL_SECURITY_INFORMATION, authored.0)
         })
         .unwrap();
         let source_descriptor = Descriptor::read(&source).unwrap();
-        let inheritance = SE_DACL_PROTECTED | SE_DACL_AUTO_INHERITED;
         assert_eq!(
             descriptor_control(&source_descriptor).unwrap() & inheritance,
             0
@@ -1543,21 +1602,20 @@ mod tests {
             source_descriptor
                 .text_with(DACL_SECURITY_INFORMATION)
                 .unwrap(),
-            "D:(A;;FA;;;OW)"
+            "D:(A;ID;FA;;;OW)"
         );
         let policy = Policy::read(&source).unwrap();
 
-        let stage_path = directory.path().join("stage");
+        let stage_path = parent_path.join("stage");
         let mut stage = create_private_file(&stage_path, &policy).unwrap();
         restrict(&stage).unwrap();
         policy.prepare(&stage).unwrap();
+        let private = Descriptor::read(&stage).unwrap();
         assert_eq!(
-            Descriptor::read(&stage)
-                .unwrap()
-                .text_with(DACL_SECURITY_INFORMATION)
-                .unwrap(),
-            "D:P"
+            descriptor_control(&private).unwrap() & inheritance,
+            SE_DACL_PROTECTED
         );
+        assert_eq!(private.text_with(DACL_SECURITY_INFORMATION).unwrap(), "D:P");
         stage.write_all(b"complete").unwrap();
         policy.apply(&stage, &stage_path).unwrap();
         let observed = Descriptor::read(&stage).unwrap();
