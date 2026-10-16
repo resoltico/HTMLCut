@@ -258,7 +258,7 @@ fn cleanup_returns_after_its_budget_when_creation_remains_unconfirmed() {
 #[test]
 fn supervisor_cleanup_requires_claim_and_removes_a_confirmed_stage() {
     let root = tempfile::tempdir().unwrap();
-    let stage = create_stage(root.path(), None, StageKind::InheritedPolicyProbe).unwrap();
+    let mut stage = create_stage(root.path(), None, StageKind::InheritedPolicyProbe).unwrap();
     let job = crate::Job::new(Some(Duration::ZERO)).unwrap();
     job.reserve(Arc::clone(&stage.ownership));
     let control = job.control();
@@ -267,6 +267,17 @@ fn supervisor_cleanup_requires_claim_and_removes_a_confirmed_stage() {
     assert!(
         stage.path().exists(),
         "an active observer removed the confirmed stage before supervisor ownership"
+    );
+    // The Windows cleanup capability duplicates the writer's file object.
+    // Close the writer without running OwnedStage::drop, so claimed cleanup
+    // can close its last handle and complete deletion of the candidate name.
+    drop(std::mem::replace(
+        &mut stage.file,
+        tempfile::tempfile().unwrap(),
+    ));
+    assert!(
+        stage.path().exists(),
+        "active cleanup marked the confirmed stage for deletion before supervisor ownership"
     );
     assert!(matches!(
         control.supervise(),
@@ -280,8 +291,8 @@ fn supervisor_cleanup_requires_claim_and_removes_a_confirmed_stage() {
         io::ErrorKind::NotFound
     );
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
-    // Keep the real stage and its file handle alive through both assertions;
-    // dropping it earlier would let its destructor fake cleanup detection.
+    // Keep the stage's ownership alive through every assertion; dropping it
+    // earlier would let its destructor fake cleanup detection.
     drop(stage);
 }
 
