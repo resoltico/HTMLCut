@@ -126,6 +126,10 @@ jobs:
             ${{ runner.temp }}/mutation-outcomes/mutation.log
             ${{ runner.temp }}/mutation-outcomes/mutation.resources.json
             ${{ runner.temp }}/mutation-outcomes/tool-version/
+            ${{ runner.temp }}/mutation-outcomes/nextest-version/version.log
+            ${{ runner.temp }}/mutation-outcomes/nextest-version/version.resources.json
+            ${{ runner.temp }}/mutation-outcomes/doctest-baseline/*.log
+            ${{ runner.temp }}/mutation-outcomes/doctest-baseline/*.resources.json
             ${{ runner.temp }}/mutation-outcomes/mutants.out/
       - name: Preserve bounded installation evidence
         if: always()

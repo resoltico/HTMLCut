@@ -7,9 +7,11 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -694,6 +696,28 @@ class NextestRunnerTests(unittest.TestCase):
 
 
 class DoctestBaselineTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("cargo"), "Cargo is required for config parsing")
+    def test_native_build_directory_config_is_accepted_by_cargo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "src/lib.rs").write_text("", encoding="utf-8")
+            (root / "Cargo.toml").write_text(
+                '[package]\nname="path-probe"\nversion="0.0.0"\n[workspace]\n', encoding="utf-8")
+            suffix = "baseline 雪🦀" if os.name == "nt" else "D:\\a\\_temp\\baseline 雪🦀\\build"
+            intended = root / suffix
+            command = ["cargo", "+" + audit.config.toolchain(), "metadata", "--offline", "--no-deps",
+                       "--format-version=1", "--manifest-path", str(root / "Cargo.toml"), "--config"]
+            old = subprocess.run(command + ['build.build-dir="' + str(intended) + '"'],
+                                 cwd=root, capture_output=True, timeout=30)
+            self.assertNotEqual(old.returncode, 0, old.stdout)
+            self.assertIn(b"failed to parse value from --config", old.stderr)
+            quoted = audit.build_directory_config(intended)
+            self.assertEqual(tomllib.loads(quoted)["build"]["build-dir"], str(intended))
+            accepted = subprocess.run(command + [quoted], cwd=root, capture_output=True, timeout=30)
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertEqual(json.loads(accepted.stdout)["build_directory"], str(intended))
+
     def test_baseline_uses_hash_checked_owned_source_and_records_the_real_phase(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as directory:
@@ -715,6 +739,8 @@ class DoctestBaselineTests(unittest.TestCase):
                     (owned / "discovery.log").write_text(json.dumps(nextest_listing()) + "\n")
                 self.assertIn("--locked", command)
                 self.assertIn("--offline", command)
+                build_config = command[command.index("--config") + 1]
+                self.assertEqual(tomllib.loads(build_config)["build"]["build-dir"], str(owned / "build"))
                 self.assertEqual(Path(kwargs["env"]["TMPDIR"]).parent, owned)
                 self.assertLessEqual(kwargs["timeout"], 10)
                 observed.append(command)

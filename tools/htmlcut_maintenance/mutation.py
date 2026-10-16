@@ -413,6 +413,11 @@ def guarded_phase(command, root, label, *, disk_limit_mib, timeout, log_limit_mi
     return details, resources
 
 
+def build_directory_config(directory):
+    """Quote a native path as a Cargo TOML basic string."""
+    return "build.build-dir=" + json.dumps(str(directory), ensure_ascii=False)
+
+
 def doctest_baseline(workspace, output, identity, args, env, started):
     """Run actual same-source doctests without modifying the audited checkout."""
     root = output / "doctest-baseline"
@@ -433,9 +438,10 @@ def doctest_baseline(workspace, output, identity, args, env, started):
     remaining = args.timeout - (time.monotonic() - started)
     if remaining <= 0:
         raise ValueError("campaign budget expired before doctest baseline")
+    build_config = build_directory_config(root / "build")
     command = ["cargo", "test", "--doc", "--workspace", "--all-features", "--locked", "--offline",
                "--manifest-path", str(source / "Cargo.toml"), "--target-dir", str(root / "target"),
-               "--config", 'build.build-dir="' + str(root / "build") + '"']
+               "--config", build_config]
     temporary = root / "temporary"
     temporary.mkdir()
     phase, _ = guarded_phase(command, root, "doctests", disk_limit_mib=args.disk_limit_mib,
@@ -448,7 +454,7 @@ def doctest_baseline(workspace, output, identity, args, env, started):
             raise ValueError("campaign budget expired before Nextest discovery")
         discovery_command = ["cargo", "nextest", "list", "--message-format=json", "--workspace",
                              "--all-features", "--locked", "--offline", "--manifest-path", str(source / "Cargo.toml"),
-                             "--target-dir", str(root / "target"), "--config", 'build.build-dir="' + str(root / "build") + '"',
+                             "--target-dir", str(root / "target"), "--config", build_config,
                              "--config-file", str(output / "nextest.toml"), "--profile=mutation", "--user-config-file=none"]
         discovery, _ = guarded_phase(discovery_command, root, "discovery", disk_limit_mib=args.disk_limit_mib,
                                      timeout=remaining, log_limit_mib=8,
