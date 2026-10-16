@@ -22,6 +22,8 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 MAXIMUM_SEEDS = 10000
+# Bound source aliases/enumeration independently of generated-input deduplication.
+MAXIMUM_SOURCES = 10000
 MAXIMUM_INPUT = 65536
 EXTRACT_FRAMING = "mode:u8, contract_bytes:u16le, contract:utf8, document:bytes"
 
@@ -43,10 +45,22 @@ def fuzz_targets():
         return [target["name"] for target in tomllib.load(source)["bin"]]
 
 
+def seed_metadata(path, *, directory=False):
+    metadata = path.lstat()
+    redirected = stat.S_ISLNK(metadata.st_mode) or (
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    )
+    ordinary = stat.S_ISDIR(metadata.st_mode) if directory else stat.S_ISREG(metadata.st_mode)
+    if redirected or not ordinary:
+        expected = "ordinary non-redirected directory" if directory else "ordinary regular file"
+        raise Refusal(f"Fuzz seed {path} must be an {expected}")
+    return metadata
+
+
 def seed_size(path, remaining=MAXIMUM_INPUT):
-    metadata = path.stat()
-    if not stat.S_ISREG(metadata.st_mode):
-        raise Refusal(f"Fuzz seed {path} must be an ordinary regular file")
+    seed_metadata(path.parent, directory=True)
+    metadata = seed_metadata(path)
     if metadata.st_size > remaining:
         raise Refusal(
             f"Fuzz seed {path} exceeds the smoke input bound of {MAXIMUM_INPUT} bytes"
@@ -58,7 +72,8 @@ def read_seed(path, remaining=MAXIMUM_INPUT):
     seed_size(path, remaining)
     with path.open("rb") as source:
         opened = os.fstat(source.fileno())
-        if not stat.S_ISREG(opened.st_mode):
+        observed = seed_metadata(path)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (observed.st_dev, observed.st_ino):
             raise Refusal(f"Fuzz seed {path} must be an ordinary regular file")
         value = source.read(remaining + 1)
     if len(value) > remaining:
@@ -68,33 +83,46 @@ def read_seed(path, remaining=MAXIMUM_INPUT):
     return value
 
 
-def seed_paths(directory, documents=False):
+def seed_paths(directory, *, remaining, documents=False):
+    seed_metadata(directory, directory=True)
     paths = []
-    for path in directory.iterdir():
-        if documents and path.is_dir():
-            continue
-        if len(paths) >= MAXIMUM_SEEDS:
-            raise Refusal(
-                f"{directory} exceeds the bounded initial corpus of 10000 seeds"
-            )
-        paths.append(path)
-    return sorted(paths)
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            path = Path(entry.path)
+            if remaining == 0:
+                raise Refusal(f"Fuzz source corpus exceeds the bounded admission of {MAXIMUM_SOURCES} sources")
+            remaining -= 1
+            if documents:
+                metadata = path.lstat()
+                if stat.S_ISDIR(metadata.st_mode):
+                    seed_metadata(path, directory=True)
+                    continue
+                seed_metadata(path)
+            else:
+                seed_metadata(path, directory=True)
+            paths.append(path)
+    return sorted(paths), remaining
 
 
 def seed_sources():
-    cases = seed_paths(ROOT / "conformance/contract")
+    # Inspect every workspace-owned ancestor; lstat on a leaf cannot detect a
+    # redirected parent. No lookup depends on Git or follows seed redirects.
+    for directory in [ROOT, ROOT / "conformance", ROOT / "fuzz", ROOT / "fuzz/seeds"]:
+        seed_metadata(directory, directory=True)
+    cases, remaining = seed_paths(ROOT / "conformance/contract", remaining=MAXIMUM_SOURCES)
     if not cases:
         raise Refusal("The conformance seed corpus is empty")
-    documents = seed_paths(ROOT / "fuzz/seeds/documents", documents=True)
-    if len(cases) + len(documents) > MAXIMUM_SEEDS:
-        raise Refusal("extract exceeds the bounded initial corpus of 10000 seeds")
+    documents, remaining = seed_paths(ROOT / "fuzz/seeds/documents", documents=True, remaining=remaining)
+    outlines, _ = seed_paths(ROOT / "conformance/outline", remaining=remaining)
     # Reject nonregular/oversized sources before source fingerprinting opens them.
     for case in cases:
         contract_bytes = seed_size(case / "contract.json", MAXIMUM_INPUT - 3)
         seed_size(case / "page.html", MAXIMUM_INPUT - 3 - contract_bytes)
     for path in documents:
         seed_size(path, MAXIMUM_INPUT - 3 - len(b'{"select":":scope"}'))
-    return cases, documents
+    for case in outlines:
+        seed_size(case / "page.html", MAXIMUM_INPUT - 3 - len(b'{"select":":scope"}'))
+    return cases, documents, outlines
 
 
 def prepare_seeds(output, targets, sources=None):
@@ -102,7 +130,7 @@ def prepare_seeds(output, targets, sources=None):
     identities = {target: {} for target in inventory}
     if set(targets) != inventory.keys():
         raise Refusal("Fuzz target manifest and corpus formats disagree")
-    cases, documents = seed_sources() if sources is None else sources
+    cases, documents, outlines = seed_sources() if sources is None else sources
     for target in targets:
         (output / target / "corpus").mkdir(parents=True)
         (output / target / "crashes").mkdir()
@@ -113,6 +141,10 @@ def prepare_seeds(output, targets, sources=None):
         if digest in identities[target]:
             identities[target][digest]["sources"].append(source)
             return
+        if len(inventory[target]) >= MAXIMUM_SEEDS:
+            raise Refusal(f"{target} exceeds the bounded initial corpus of {MAXIMUM_SEEDS} seeds")
+        # Complete-frame identity makes filenames safe even when source basenames collide.
+        name = digest
         with (output / target / "corpus" / name).open("xb") as destination:
             destination.write(value)
         record = {
@@ -127,10 +159,10 @@ def prepare_seeds(output, targets, sources=None):
     for case in cases:
         contract = read_seed(case / "contract.json", MAXIMUM_INPUT - 3)
         page = read_seed(case / "page.html", MAXIMUM_INPUT - 3 - len(contract))
-        write_seed("contract_bytes", case.name, contract)
+        write_seed("contract_bytes", "contract/" + case.name, contract)
         write_seed(
             "extract",
-            case.name,
+            "contract/" + case.name,
             b"\0" + len(contract).to_bytes(2, "little") + contract + page,
         )
     # Exercise the small-reading semantic policy during initialization as well
@@ -142,18 +174,24 @@ def prepare_seeds(output, targets, sources=None):
         "extract",
         "small-reading-" + first.name,
         b"\2" + len(contract).to_bytes(2, "little") + contract + page,
-        source=first.name,
+        source="contract/" + first.name,
     )
     contract = b'{"select":":scope"}'
     for index, path in enumerate(documents):
         page = read_seed(path, MAXIMUM_INPUT - 3 - len(contract))
         write_seed(
             "extract",
-            "document-" + path.name,
+            "document/" + path.name,
             bytes([1 | ((index % 33) << 2)])
             + len(contract).to_bytes(2, "little")
             + contract
             + page,
+        )
+    for case in outlines:
+        page = read_seed(case / "page.html", MAXIMUM_INPUT - 3 - len(contract))
+        write_seed(
+            "extract", "outline/" + case.name,
+            b"\0" + len(contract).to_bytes(2, "little") + contract + page,
         )
     (output / "seeds.json").write_text(json.dumps(inventory, indent=2) + "\n")
     return inventory
@@ -257,7 +295,6 @@ def main():
         # The shared watchdog has the stronger nonreaping group-ownership check.
         config.prerequisites()
         toolchain = config.tools()["nightly"]
-        targets = fuzz_targets()
         scratch_parent = Path(
             os.environ.get("TMPDIR") or tempfile.gettempdir()
         ).resolve()
@@ -343,6 +380,7 @@ def main():
 
     try:
         sources = seed_sources()
+        targets = fuzz_targets()
         evidence["source"] = source_identity(ROOT)
         evidence["source_state"] = source_state(ROOT, evidence["source"])
         prepare_seeds(output, targets, sources)

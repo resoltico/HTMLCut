@@ -34,129 +34,159 @@ fn every_case_runs_through_the_delivered_binary() {
     let checked = run_cases(&corpus());
     println!("HTMLCUT_CONFORMANCE_CASES={checked}");
 }
+#[path = "../../../conformance/fixture.rs"]
+mod fixture;
 fn run_cases(root: &Path) -> usize {
-    let mut checked = 0;
-    let mut discovered = 0;
-    for kind in ["contract", "outline"] {
-        let mut paths = std::fs::read_dir(root.join(kind))
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .collect::<Vec<_>>();
-        paths.retain(|path| path.is_dir());
-        discovered += paths.len();
-        paths.sort();
-        for path in paths {
-            let mut command = Command::new(binary());
-            if kind == "contract" {
-                command
-                    .args(["run", "--from-file"])
-                    .arg(path.join("contract.json"));
-            } else {
-                command.arg("outline");
-                let config: Value =
-                    serde_json::from_slice(&std::fs::read(path.join("outline.json")).unwrap())
-                        .unwrap();
-                for option in ["select", "depth", "max_lines"] {
-                    if let Some(value) = config.get(option) {
-                        command.arg(format!("--{}", option.replace('_', "-"))).arg(
-                            value
-                                .as_str()
-                                .map(String::from)
-                                .unwrap_or_else(|| value.to_string()),
-                        );
-                    }
-                }
-                if config["attrs"].as_bool() == Some(true) {
-                    command.arg("--attrs");
-                }
-            }
-            command.arg(path.join("page.html"));
-            if let Ok(options) = std::fs::read(path.join("options.json")) {
-                let options: Value = serde_json::from_slice(&options).unwrap();
-                for option in ["base_url", "encoding", "max_nodes"] {
-                    if let Some(value) = options.get(option) {
-                        command.arg(format!("--{}", option.replace('_', "-"))).arg(
-                            value
-                                .as_str()
-                                .map(String::from)
-                                .unwrap_or_else(|| value.to_string()),
-                        );
-                    }
-                }
-            }
-            let options: Value = std::fs::read(path.join("options.json"))
-                .ok()
-                .map(|bytes| serde_json::from_slice(&bytes).unwrap())
-                .unwrap_or_default();
-            if options["raw"] == true {
-                command.arg("--raw");
-            }
-            let output = command.stdin(Stdio::null()).output().unwrap();
-            if path.join("error.json").exists() {
-                let mut expected: Value =
-                    serde_json::from_slice(&std::fs::read(path.join("error.json")).unwrap())
-                        .unwrap();
-                assert_eq!(
-                    output.status.code(),
-                    Some(exit_for(expected["error"].as_str().unwrap())),
-                    "{path:?}: {output:?}"
-                );
-                assert!(output.stdout.is_empty(), "{path:?}: failed output leaked");
-                assert_eq!(
-                    output.stderr.iter().filter(|c| **c == b'\n').count(),
-                    1,
-                    "{path:?}"
-                );
-                let mut actual: Value = serde_json::from_slice(&output.stderr).unwrap();
-                assert!(actual["message"].is_string());
-                actual.as_object_mut().unwrap().remove("message");
-                expected.as_object_mut().unwrap().remove("message");
-                if options["partial_error_facts"] == true {
-                    for (key, value) in expected.as_object().unwrap() {
-                        assert_eq!(actual.get(key), Some(value), "{path:?}: {key}");
-                    }
-                } else {
-                    assert_eq!(actual, expected, "{path:?}");
-                }
-            } else {
-                assert!(output.status.success(), "{path:?}: {output:?}");
-                assert!(output.stderr.is_empty(), "{path:?}");
-                if kind == "outline" {
-                    assert_eq!(
-                        output.stdout,
-                        std::fs::read(path.join("expected.txt")).unwrap(),
-                        "{path:?}"
-                    );
-                } else if path.join("expected.raw").exists() {
-                    assert_eq!(
-                        output.stdout,
-                        std::fs::read(path.join("expected.raw")).unwrap(),
-                        "{path:?}"
-                    );
-                } else {
-                    let expected: Value =
-                        serde_json::from_slice(&std::fs::read(path.join("expected.json")).unwrap())
-                            .unwrap();
-                    assert_eq!(
-                        serde_json::from_slice::<Value>(&output.stdout).unwrap(),
-                        expected,
-                        "{path:?}"
-                    );
-                    let mut compact = serde_json::to_vec(&expected).unwrap();
-                    compact.push(b'\n');
-                    assert_eq!(
-                        output.stdout, compact,
-                        "{path:?}: encoding is not complete compact JSON"
-                    );
-                }
-            }
-            checked += 1;
+    let cases = fixture::discover(root);
+    for case in &cases {
+        run_case(case);
+        println!("HTMLCUT_CONFORMANCE_ID={}", case.identity());
+    }
+    cases.len()
+}
+fn run_case(case: &fixture::Case) {
+    let mut command = Command::new(binary());
+    if case.contract.is_some() {
+        command
+            .args(["run", "--from-file"])
+            .arg(case.path.join("contract.json"));
+    } else {
+        command.arg("outline");
+        let config = case.outline.as_ref().unwrap();
+        if let Some(s) = &config.select {
+            command.args(["--select", s]);
+        }
+        if let Some(n) = config.depth {
+            command.arg("--depth").arg(n.to_string());
+        }
+        if let Some(n) = config.max_lines {
+            command.arg("--max-lines").arg(n.to_string());
+        }
+        if config.attrs {
+            command.arg("--attrs");
         }
     }
-    assert!(discovered > 0, "the conformance corpus is empty");
-    assert_eq!(checked, discovered);
-    checked
+    command.arg(case.path.join("page.html"));
+    let o = &case.options;
+    for (name, value) in [("encoding", &o.encoding), ("base-url", &o.base_url)] {
+        if let Some(value) = value {
+            command.arg(format!("--{name}")).arg(value);
+        }
+    }
+    for (name, value) in [
+        ("max-input-bytes", o.max_input_bytes),
+        ("max-nodes", o.max_nodes),
+        ("max-reading-bytes", o.max_reading_bytes),
+        ("max-output-bytes", o.max_output_bytes),
+    ] {
+        if let Some(value) = value {
+            command.arg(format!("--{name}")).arg(value.to_string());
+        }
+    }
+    if o.raw {
+        command.arg("--raw");
+    }
+    let output = finite_capture(
+        &mut command,
+        Duration::from_secs(10),
+        8 * 1024 * 1024,
+        Stdin::Closed,
+    )
+    .unwrap();
+    if let Some(expected) = &case.error {
+        assert_eq!(
+            output.status.code(),
+            Some(exit_for(expected["error"].as_str().unwrap())),
+            "{:?}: {output:?}",
+            case.path
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "failed output leaked: {:?}",
+            case.path
+        );
+        assert_eq!(output.stderr.iter().filter(|c| **c == b'\n').count(), 1);
+        let actual: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert!(actual["message"].is_string());
+        case.assert_error(actual);
+    } else {
+        assert!(output.status.success(), "{:?}: {output:?}", case.path);
+        assert!(output.stderr.is_empty());
+        case.assert_bytes(&output.stdout);
+        if !o.raw
+            && let Some(expected) = &case.expected
+        {
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+                *expected
+            );
+        }
+    }
 }
+
+#[path = "support/capture.rs"]
+mod capture;
+use capture::{Stdin, finite_capture};
+#[test]
+fn capture_child() {
+    match std::env::var("HTMLCUT_CAPTURE_CHILD").as_deref() {
+        Ok("hang") => std::thread::sleep(Duration::from_secs(5)),
+        Ok("large") => {
+            std::io::stdout()
+                .write_all(&vec![b'x'; 256 * 1024])
+                .unwrap();
+        }
+        _ => (),
+    }
+}
+#[test]
+fn finite_capture_detects_hang_and_rapid_overproduction_and_preserves_large_output() {
+    let command = |mode| {
+        let mut c = Command::new(std::env::current_exe().unwrap());
+        c.args(["--exact", "capture_child", "--nocapture"])
+            .env("HTMLCUT_CAPTURE_CHILD", mode);
+        c
+    };
+    assert_eq!(
+        finite_capture(
+            &mut command("hang"),
+            Duration::from_millis(100),
+            1024,
+            Stdin::Held
+        )
+        .unwrap_err(),
+        "capture deadline exceeded"
+    );
+    assert_eq!(
+        finite_capture(
+            &mut command("large"),
+            Duration::from_secs(5),
+            1024,
+            Stdin::Bytes(b"")
+        )
+        .unwrap_err(),
+        "capture output bound exceeded"
+    );
+    let output = finite_capture(
+        &mut command("large"),
+        Duration::from_secs(5),
+        512 * 1024,
+        Stdin::Closed,
+    )
+    .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        output.stdout.iter().filter(|b| **b == b'x').count(),
+        256 * 1024
+    );
+}
+#[test]
+fn cli_adapter_rejects_wrong_oracle() {
+    let mut case = fixture::load(&corpus().join("contract/01-value-one"), "contract");
+    case.bytes = b"wrong\n".to_vec();
+    assert!(std::panic::catch_unwind(|| run_case(&case)).is_err());
+}
+
 fn piped(args: &[&str], bytes: &[u8]) -> Output {
     let mut child = Command::new(binary())
         .args(args)

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Actual binary input admission and contract-file repair boundaries.
 use serde_json::Value;
+#[path = "support/capture.rs"]
+mod capture;
 use std::{
     io::Write,
     process::{Command, Output, Stdio},
@@ -410,5 +412,281 @@ fn contract_descriptor_aliases_conflict_with_html_stdin_before_consumption() {
             serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
             "invalid_request"
         );
+    }
+}
+
+#[test]
+fn declared_command_and_input_carriers_have_independent_unicode_oracles() {
+    let directory = tempfile::tempdir().unwrap();
+    let page = directory.path().join("page.html");
+    let contract = directory.path().join("contract.json");
+    std::fs::write(&page, "<p>Rīga 雪</p>").unwrap();
+    std::fs::write(&contract, b"\"p\"").unwrap();
+    let mut checked = 0;
+    for operation in 0..5 {
+        for input in 0..3 {
+            let mut invocation = command();
+            match operation {
+                0 => {
+                    invocation.args(["get", "p"]);
+                }
+                1 => {
+                    invocation.args(["run", "\"p\""]);
+                }
+                2 => {
+                    invocation.args(["run", "--from-file"]).arg(&contract);
+                }
+                3 => {
+                    invocation.args(["run", "--from-file", "-"]);
+                }
+                4 => {
+                    invocation.args(["outline", "--select", "p"]);
+                }
+                _ => unreachable!(),
+            }
+            if input == 0 {
+                invocation.arg(&page);
+            }
+            if input == 2 {
+                invocation.arg("-");
+            }
+            if operation == 3 && input != 0 {
+                let output = held_stdin(invocation);
+                assert_eq!(output.status.code(), Some(2));
+                assert!(output.stdout.is_empty());
+                let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                assert_eq!(error["error"], "invalid_request");
+            } else {
+                let bytes = if operation == 3 {
+                    b"\"p\"".as_slice()
+                } else if input != 0 {
+                    "<p>Rīga 雪</p>".as_bytes()
+                } else {
+                    b""
+                };
+                let output = capture::finite_capture(
+                    &mut invocation,
+                    Duration::from_secs(3),
+                    1024 * 1024,
+                    capture::Stdin::Bytes(bytes),
+                )
+                .unwrap();
+                assert!(output.status.success(), "{operation}/{input}: {output:?}");
+                assert!(output.stderr.is_empty());
+                let expected = if operation == 4 {
+                    "1 match for p\np \"Rīga 雪\"\n"
+                } else {
+                    "\"Rīga 雪\"\n"
+                };
+                assert_eq!(output.stdout, expected.as_bytes(), "{operation}/{input}");
+            }
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 15);
+}
+
+#[test]
+fn limit_forwarding_has_exact_and_below_controls_without_publication() {
+    let directory = tempfile::tempdir().unwrap();
+    let page = directory.path().join("page.html");
+    let destination = directory.path().join("result");
+    // Document + html/head/body/p + text = 6 nodes; input and readings count UTF-8 bytes.
+    std::fs::write(&page, "<p>雪</p>").unwrap();
+    for (flag, exact, limit) in [
+        ("--max-input-bytes", 10, "input_bytes"),
+        ("--max-nodes", 6, "nodes"),
+        ("--max-reading-bytes", 3, "reading_bytes"),
+        ("--max-output-bytes", 6, "output_bytes"),
+    ] {
+        let mut invocation = command();
+        invocation
+            .args(["get", "p"])
+            .arg(&page)
+            .args([flag, &exact.to_string()]);
+        let output = capture::finite_capture(
+            &mut invocation,
+            Duration::from_secs(3),
+            1024 * 1024,
+            capture::Stdin::Closed,
+        )
+        .unwrap();
+        assert!(output.status.success(), "{flag}: {output:?}");
+        assert_eq!(output.stdout, "\"雪\"\n".as_bytes());
+        assert!(output.stderr.is_empty());
+        std::fs::write(&destination, b"old").unwrap();
+        let mut invocation = command();
+        invocation
+            .args(["get", "p"])
+            .arg(&page)
+            .args([flag, &(exact - 1).to_string(), "-o"])
+            .arg(&destination);
+        let output = capture::finite_capture(
+            &mut invocation,
+            Duration::from_secs(3),
+            1024 * 1024,
+            capture::Stdin::Closed,
+        )
+        .unwrap();
+        assert_eq!(output.status.code(), Some(4), "{flag}: {output:?}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr.iter().filter(|b| **b == b'\n').count(), 1);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], "limit_exceeded");
+        assert_eq!(error["limit"], limit);
+        assert_eq!(error["bound"], exact - 1);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+    }
+}
+
+#[test]
+fn invalid_preflight_and_numeric_syntax_refuse_before_held_html() {
+    let directory = tempfile::tempdir().unwrap();
+    let destination = directory.path().join("result");
+    for (args, code) in [
+        (
+            vec!["run", "--from-file", "absent-contract.json"],
+            "input_unreadable",
+        ),
+        (vec!["run", "{\"unknown\":1}"], "invalid_contract"),
+        (vec!["run", "{\"select\":\"p:hover\"}"], "invalid_selector"),
+        (
+            vec!["run", "{\"fields\":{\"x\":\"p\"}}", "--raw"],
+            "unrepresentable_output",
+        ),
+        (vec!["get", "p", "--timeout", "NaN"], "invalid_request"),
+        (vec!["get", "p", "--max-nodes", "1.0"], "invalid_request"),
+    ] {
+        std::fs::write(&destination, b"old").unwrap();
+        let mut invocation = command();
+        invocation.args(args).arg("-o").arg(&destination);
+        let output = capture::finite_capture(
+            &mut invocation,
+            Duration::from_secs(3),
+            1024 * 1024,
+            capture::Stdin::Held,
+        )
+        .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(if code == "input_unreadable" {
+                5
+            } else if code == "unrepresentable_output" {
+                3
+            } else {
+                2
+            }),
+            "{output:?}"
+        );
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"], code);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn carrier_child() {
+    if std::env::var_os("HTMLCUT_CARRIER_CHILD").is_some() {
+        std::thread::sleep(Duration::from_secs(5));
+    }
+}
+#[test]
+fn carrier_owner_reaps_a_child_that_never_reads_or_finishes() {
+    let mut child = Command::new(std::env::current_exe().unwrap());
+    child
+        .args(["--exact", "carrier_child", "--nocapture"])
+        .env("HTMLCUT_CARRIER_CHILD", "hang");
+    let started = Instant::now();
+    let error = capture::finite_capture(
+        &mut child,
+        Duration::from_millis(100),
+        1024,
+        capture::Stdin::Bytes(b"held input"),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error, "capture deadline exceeded",
+        "cleanup must be confirmed before assertions"
+    );
+    assert!(started.elapsed() < Duration::from_secs(3));
+}
+#[test]
+fn decoding_and_semantic_refusals_precede_an_unpublishable_destination() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
+    for (case, expected, exit) in [
+        ("authored-offers-bad-decoding", "undecodable_input", 5),
+        ("authored-offers-wrong-page", "expectation_failed", 3),
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("destination");
+        std::fs::create_dir(&destination).unwrap();
+        std::fs::write(destination.join("marker"), b"old marker").unwrap();
+        let case = root.join(case);
+        let mut invocation = command();
+        invocation
+            .args(["run", "--from-file"])
+            .arg(case.join("contract.json"))
+            .arg(case.join("page.html"));
+        invocation
+            .args([
+                "--encoding",
+                if expected == "undecodable_input" {
+                    "utf-8"
+                } else {
+                    "windows-1252"
+                },
+                "--base-url",
+                "https://origin.test/shop/page",
+                "-o",
+            ])
+            .arg(&destination);
+        let output = capture::finite_capture(
+            &mut invocation,
+            Duration::from_secs(3),
+            1024,
+            capture::Stdin::Closed,
+        )
+        .unwrap();
+        assert_eq!(output.status.code(), Some(exit), "{output:?}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr.iter().filter(|b| **b == b'\n').count(), 1);
+        let facts: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(facts["error"], expected);
+        assert_eq!(
+            std::fs::read(destination.join("marker")).unwrap(),
+            b"old marker"
+        );
+        assert_eq!(std::fs::read_dir(&destination).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+        // This exact destination independently refuses a valid operation.
+        let mut publish = command();
+        publish
+            .args(["get", "h1"])
+            .arg(root.join("authored-offers-bom/page.html"))
+            .arg("-o")
+            .arg(&destination);
+        let output = capture::finite_capture(
+            &mut publish,
+            Duration::from_secs(3),
+            1024,
+            capture::Stdin::Closed,
+        )
+        .unwrap();
+        assert_eq!(output.status.code(), Some(5), "{output:?}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr.iter().filter(|b| **b == b'\n').count(), 1);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"],
+            "output_unwritable"
+        );
+        assert_eq!(
+            std::fs::read(destination.join("marker")).unwrap(),
+            b"old marker"
+        );
+        assert_eq!(std::fs::read_dir(&destination).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 }

@@ -1,0 +1,1 @@
+{"error":"invalid_selector","path":"$.select","select":"p:nth-child(1 of .x)"}

@@ -49,48 +49,110 @@ fn exact_engine_types_are_shareable_and_one_deadline_spans_phases() {
     );
 }
 #[test]
-fn quick_queries_and_json_share_reading_cardinality_and_rejection_rules() {
+fn quick_queries_and_json_share_independently_expected_reading_cardinality_counts() {
     let context = ExecutionContext::new(None).unwrap();
     let limits = Limits::default();
-    let document = Document::parse(
-        Source::new(b"<p title='x'>one</p><p title='y'>two</p>"),
-        &limits.preparation(),
-        &context,
-    )
-    .unwrap();
-    for reading in [
-        "text",
-        "text-content",
-        "outer-html",
-        "attr:title",
-        "url:title",
-        "html",
-        "attr:",
+    let mut checked = 0;
+    for (reading, literal) in [
+        ("text", "X"),
+        ("text-content", "X"),
+        ("outer-html", "<p title=\"T\" href=\"/x\">X</p>"),
+        ("attr:title", "T"),
+        ("url:href", "https://origin.test/x"),
     ] {
-        for (cardinality, name) in [
-            (QueryCardinality::One, "one"),
-            (QueryCardinality::Optional, "optional"),
-            (QueryCardinality::All, "all"),
+        for (cardinality, name, expected_range) in [
+            (QueryCardinality::One, "one", "1"),
+            (QueryCardinality::Optional, "optional", "0..1"),
+            (QueryCardinality::All, "all", "1.."),
         ] {
-            let query = QuickQuery {
-                select: "p".into(),
-                read: reading.into(),
-                cardinality,
-            };
-            let quick = Contract::quick(&query, &context)
-                .and_then(|contract| document.extract(&contract, &limits.execution(), &context));
-            let text = serde_json::json!({"select":"p","read":reading,"match":name}).to_string();
-            let json = Contract::from_json(&text, &context)
-                .and_then(|contract| document.extract(&contract, &limits.execution(), &context));
-            match (quick, json) {
-                (Ok(a), Ok(b)) => assert_eq!(a, b),
-                (Err(a), Err(b)) => {
-                    assert_eq!(a.error, b.error);
-                    assert_eq!(a.to_json_line(), b.to_json_line());
+            for count in 0..=2 {
+                let page = "<p title=\"T\" href=\"/x\">X</p>".repeat(count);
+                let mut source = Source::new(page.as_bytes());
+                source.base_url = Some("https://origin.test/");
+                let document = Document::parse(source, &limits.preparation(), &context).unwrap();
+                let query = QuickQuery {
+                    select: "p".into(),
+                    read: reading.into(),
+                    cardinality,
+                };
+                let text =
+                    serde_json::json!({"select":"p","read":reading,"match":name}).to_string();
+                for contract in [
+                    Contract::quick(&query, &context),
+                    Contract::from_json(&text, &context),
+                ] {
+                    let actual =
+                        document.extract(&contract.unwrap(), &limits.execution(), &context);
+                    if (count == 0 && name != "optional") || (count == 2 && name != "all") {
+                        let error = actual.unwrap_err();
+                        let mut facts = serde_json::to_value(error).unwrap();
+                        facts.as_object_mut().unwrap().remove("message");
+                        assert_eq!(
+                            facts,
+                            serde_json::json!({"error":"count_mismatch","path":"$","select":"p","found":count,"expected":expected_range})
+                        );
+                    } else {
+                        let expected = if name == "all" {
+                            serde_json::Value::Array(vec![literal.into(); count])
+                        } else if count == 0 {
+                            serde_json::Value::Null
+                        } else {
+                            literal.into()
+                        };
+                        let mut bytes = serde_json::to_vec(&expected).unwrap();
+                        bytes.push(b'\n');
+                        let actual = actual.unwrap();
+                        assert_eq!(serde_json::to_value(&actual).unwrap(), expected);
+                        assert_eq!(
+                            actual
+                                .export(ExportFormat::Json, limits.max_output_bytes, &context)
+                                .unwrap(),
+                            bytes
+                        );
+                    }
                 }
-                _ => panic!("typed/JSON drift for {text}"),
+                checked += 1;
             }
         }
+    }
+    assert_eq!(checked, 45);
+    for reading in ["html", "attr:"] {
+        let query = QuickQuery {
+            select: "p".into(),
+            read: reading.into(),
+            cardinality: QueryCardinality::One,
+        };
+        let text = serde_json::json!({"select":"p","read":reading,"match":"one"}).to_string();
+        for result in [
+            Contract::quick(&query, &context),
+            Contract::from_json(&text, &context),
+        ] {
+            let error = result.err().expect("invalid reading admitted");
+            let mut facts = serde_json::to_value(error).unwrap();
+            facts.as_object_mut().unwrap().remove("message");
+            assert_eq!(
+                facts,
+                serde_json::json!({"error":"invalid_contract","path":"$.read"}),
+                "{text}"
+            );
+        }
+    }
+    let contract =
+        Contract::from_json(r#"{"select":"p","match":"all","min":1,"max":3}"#, &context).unwrap();
+    for count in 0..=4 {
+        let page = "<p>X</p>".repeat(count);
+        let document = Document::parse(
+            Source::new(page.as_bytes()),
+            &limits.preparation(),
+            &context,
+        )
+        .unwrap();
+        assert_eq!(
+            document
+                .extract(&contract, &limits.execution(), &context)
+                .is_ok(),
+            (1..=3).contains(&count)
+        );
     }
 }
 

@@ -83,7 +83,7 @@ class AcceptanceIdentityTests(unittest.TestCase):
                 data = {
                     "guide-0": b"htmlcut 23.0.0\n",
                     "guide-1": b"../guide.html\n",
-                    "native-tests": b"HTMLCUT_CONFORMANCE_CASES=2\n",
+                    "native-tests": b"HTMLCUT_CONFORMANCE_ID=contract/one\nHTMLCUT_CONFORMANCE_ID=outline/one\nHTMLCUT_CONFORMANCE_CASES=2\n",
                     "acquisition": b"passed\n",
                 }[label]
                 (work / (label + ".log")).write_bytes(data)
@@ -134,3 +134,25 @@ class AcceptanceIdentityTests(unittest.TestCase):
 
     def test_dirty_source_refuses_before_executable_phases(self):
         self.exercise("dirty-start")
+
+
+class CorpusEvidenceTests(unittest.TestCase):
+    def test_each_kind_and_actual_case_identity_are_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for kind in ("contract", "outline"):
+                (root / "conformance" / kind / "one").mkdir(parents=True)
+            valid = b"HTMLCUT_CONFORMANCE_ID=contract/one\nHTMLCUT_CONFORMANCE_ID=outline/one\nHTMLCUT_CONFORMANCE_CASES=2\n"
+            self.assertEqual(accept.conformance_evidence(root, valid), 2)
+            serial = b"test every_case_runs_through_the_delivered_binary ... " + valid
+            self.assertEqual(accept.conformance_evidence(root, serial), 2)
+            contract, outline, count = valid.splitlines(keepends=True)
+            for malformed in [outline + contract + count, contract + contract + outline + count, valid + outline, b"arbitrary prefix " + valid]:
+                with self.assertRaisesRegex(ValueError, "missing or incomplete"):
+                    accept.conformance_evidence(root, malformed)
+            for log in [b"HTMLCUT_CONFORMANCE_CASES=2\n", valid.replace(b"outline/one", b"outline/wrong"), valid.replace(b"outline/one", b"contract/one")]:
+                with self.assertRaisesRegex(ValueError, "missing or incomplete"):
+                    accept.conformance_evidence(root, log)
+            (root / "conformance/outline/one").rmdir()
+            with self.assertRaisesRegex(ValueError, "outline corpus discovery is empty"):
+                accept.conformance_evidence(root, valid)

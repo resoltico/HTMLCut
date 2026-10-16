@@ -1,0 +1,1 @@
+{"match":"all","min":0,"read":"attr:id","select":"article","where":[{"max":0,"min":0,"read":"attr:missing","select":"i"}]}

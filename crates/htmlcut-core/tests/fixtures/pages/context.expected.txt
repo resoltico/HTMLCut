@@ -1,2 +1,0 @@
-<html><head></head><body><h2 id="label">Repair cost</h2><p id="amount" data-currency="EUR">EUR 180</p><nav>Unrelated navigation</nav>
-</body></html>

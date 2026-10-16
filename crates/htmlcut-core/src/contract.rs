@@ -649,6 +649,42 @@ mod tests {
         );
     }
     #[test]
+    fn unsigned_limits_preserve_raw_numeric_token_spelling_at_every_position() {
+        let context = crate::ExecutionContext::new(None).unwrap();
+        for (prefix, suffix, path) in [
+            (r#"{"select":"p","match":"all","min":"#, "}", "$.min"),
+            (r#"{"select":"p","match":"all","max":"#, "}", "$.max"),
+            (r#"{"select":"p","nth":"#, "}", "$.nth"),
+            (r#"{"select":"p","where":[{"min":"#, "}]}", "$.where[0].min"),
+            (r#"{"select":"p","where":[{"max":"#, "}]}", "$.where[0].max"),
+            (r#"{"expect":[{"min":"#, "}]}", "$.expect[0].min"),
+            (r#"{"expect":[{"max":"#, "}]}", "$.expect[0].max"),
+        ] {
+            for token in [
+                "1",
+                "1.0",
+                "1e0",
+                "-0",
+                "1.0000000000000000001",
+                "1e-999",
+                "-1",
+                "true",
+                "null",
+                r#""1""#,
+            ] {
+                let text = format!("{prefix}{token}{suffix}");
+                let actual = Contract::from_json(&text, &context);
+                if token == "1" {
+                    assert!(actual.is_ok(), "{text}");
+                } else {
+                    let error = actual.err().unwrap_or_else(|| panic!("admitted {text}"));
+                    assert_eq!(error.error, ErrorCode::InvalidContract, "{text}");
+                    assert_eq!(error.path.as_deref(), Some(path), "{text}");
+                }
+            }
+        }
+    }
+    #[test]
     fn numeric_and_attribute_name_bounds_are_checked() {
         for name in ["min", "max", "nth"] {
             let mut value =
@@ -667,12 +703,74 @@ mod tests {
     #[test]
     fn schema_rejects_expressible_reading_and_field_shapes() {
         let validator = jsonschema::validator_for(&Contract::schema()).unwrap();
+        for (member, admitted_type) in [
+            ("select", "string"),
+            ("read", "string"),
+            ("match", "string"),
+            ("fields", "object"),
+            ("exclude", "array"),
+            ("expect", "array"),
+            ("where", "array"),
+            ("until", "string"),
+            ("nth", "number"),
+            ("min", "number"),
+            ("max", "number"),
+            ("equals", "string"),
+            ("pattern", "string"),
+        ] {
+            for (kind, value) in [
+                ("null", serde_json::Value::Null),
+                ("boolean", serde_json::json!(false)),
+                ("number", serde_json::json!(1)),
+                ("string", serde_json::json!("p")),
+                ("array", serde_json::json!([])),
+                ("object", serde_json::json!({})),
+            ] {
+                if kind == admitted_type {
+                    continue;
+                }
+                let mut contract = serde_json::json!({"select":"p"});
+                if ["min", "max"].contains(&member) {
+                    contract["match"] = serde_json::json!("all");
+                }
+                contract[member] = value.clone();
+                assert!(!validator.is_valid(&contract), "{contract}");
+                assert!(compile(contract).is_err());
+                if ["select", "read", "min", "max", "equals", "pattern"].contains(&member) {
+                    let predicate = serde_json::json!({member:value});
+                    let contract = serde_json::json!({"expect":[predicate]});
+                    assert!(!validator.is_valid(&contract), "{contract}");
+                    assert!(compile(contract).is_err());
+                }
+            }
+        }
         for contract in [
             serde_json::json!({"read":"attr:id","exclude":[]}),
             serde_json::json!({"read":"url:href","exclude":[]}),
             serde_json::json!({"read":"text\n"}),
             serde_json::json!({"fields":{"title\n":{}}}),
             serde_json::json!({"expect":[{"read":"text\n"}]}),
+            serde_json::json!({"fields":{"x":{}},"read":"text"}),
+            serde_json::json!({"fields":{"x":{}},"exclude":[]}),
+            serde_json::json!({"fields":{"x":{}},"equals":"x"}),
+            serde_json::json!({"fields":{"x":{}},"pattern":"x"}),
+            serde_json::json!({"where":[]}),
+            serde_json::json!({"until":"p"}),
+            serde_json::json!({"nth":1}),
+            serde_json::json!({"select":"p","nth":0}),
+            serde_json::json!({"select":"p","nth":1,"match":"optional"}),
+            serde_json::json!({"select":"p","nth":1,"match":"all"}),
+            serde_json::json!({"min":0}),
+            serde_json::json!({"max":1,"match":"optional"}),
+            serde_json::json!({"equals":"x","pattern":"x"}),
+            serde_json::json!({"expect":[{"read":"outer-html"}]}),
+            serde_json::json!({"expect":[{"read":"url:href"}]}),
+            serde_json::json!({"expect":[{"nth":1}]}),
+            serde_json::json!({"expect":[{"until":"p"}]}),
+            serde_json::json!({"expect":[{"fields":{"x":{}}}]}),
+            serde_json::json!({"expect":[{"where":[]}]}),
+            serde_json::json!({"expect":[{"match":"all"}]}),
+            serde_json::json!({"expect":[{"exclude":[]}]}),
         ] {
             assert!(!validator.is_valid(&contract), "{contract}");
             assert!(compile(contract).is_err());

@@ -22,6 +22,7 @@ clap.workspace = true
 htmlcut-runtime.workspace = true
 
 [dev-dependencies]
+serde.workspace = true
 htmlcut-runtime = { workspace = true, features = ["instrumented-tests"] }
 serde_json.workspace = true
 tempfile.workspace = true

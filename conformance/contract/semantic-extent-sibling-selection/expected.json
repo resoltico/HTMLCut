@@ -1,14 +1,1 @@
-[
-  {
-    "body": [
-      "one"
-    ],
-    "title": "A"
-  },
-  {
-    "body": [
-      "two"
-    ],
-    "title": "B"
-  }
-]
+[{"body":["one"],"title":"A"},{"body":["two"],"title":"B"}]

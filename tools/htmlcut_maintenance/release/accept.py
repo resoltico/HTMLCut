@@ -92,6 +92,20 @@ def unpack(archive, target, version, destination):
     return destination / base
 
 
+def conformance_evidence(root, log):
+    identities = []
+    for kind in ("contract", "outline"):
+        cases = sorted(path for path in (root / "conformance" / kind).iterdir() if path.is_dir())
+        if not cases:
+            raise ValueError(f"delivered-binary {kind} corpus discovery is empty")
+        identities.extend(f"{kind}/{path.name}" for path in cases)
+    actual = [value.decode() for value in re.findall(rb"^(?:test [^\r\n]+ \.\.\. )?HTMLCUT_CONFORMANCE_ID=([^\r\n]+)\r?$", log, re.MULTILINE)]
+    counts = [int(count) for count in re.findall(rb"HTMLCUT_CONFORMANCE_CASES=(\d+)", log)]
+    if actual != identities or counts != [len(identities)]:
+        raise ValueError("delivered-binary corpus evidence is missing or incomplete")
+    return len(identities)
+
+
 def accept(archive, target, version, root=config.ROOT):
     root = Path(root).resolve()
     archive = Path(archive).resolve()
@@ -246,18 +260,7 @@ def accept(archive, target, version, root=config.ROOT):
             cwd=root,
             env=env,
         )
-        counts = [
-            int(count) for count in re.findall(rb"HTMLCUT_CONFORMANCE_CASES=(\d+)", log)
-        ]
-        expected = sum(
-            sum(path.is_dir() for path in (root / "conformance" / kind).iterdir())
-            for kind in ("contract", "outline")
-        )
-        if expected == 0 or counts != [expected]:
-            raise ValueError(
-                "delivered-binary corpus evidence is missing or incomplete"
-            )
-        report["conformance_cases"] = expected
+        report["conformance_cases"] = conformance_evidence(root, log)
         phase(
             "acquisition",
             [

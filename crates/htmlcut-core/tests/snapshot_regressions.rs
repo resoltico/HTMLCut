@@ -2,45 +2,10 @@
 //! Retained authored snapshots protect original-tree repair and lexical row values.
 use htmlcut_core::{Contract, Document, Limits, Source, Value};
 #[test]
-fn authored_snapshots_keep_literal_repaired_trees_and_complete_rows() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pages");
-    let contract = Contract::from_json(
-        r#"{"select":":scope","read":"outer-html"}"#,
-        &htmlcut_core::ExecutionContext::new(None).unwrap(),
-    )
-    .unwrap();
-    for name in [
-        "books.html",
-        "context.html",
-        "malformed.html",
-        "rendered.html",
-        "technical.html",
-    ] {
-        let bytes = std::fs::read(root.join(name)).unwrap();
-        let document = Document::parse(
-            Source::new(&bytes),
-            &Limits::default().preparation(),
-            &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
-        )
-        .unwrap();
-        let expected =
-            std::fs::read_to_string(root.join(name.replace(".html", ".expected.txt"))).unwrap();
-        assert_eq!(
-            document
-                .extract(
-                    &contract,
-                    &htmlcut_core::Limits::default().execution(),
-                    &htmlcut_core::ExecutionContext::new(
-                        (htmlcut_core::Limits::default()).time_limit
-                    )
-                    .unwrap()
-                )
-                .unwrap(),
-            Value::String(expected),
-            "{name}"
-        );
-    }
-    let bytes = std::fs::read(root.join("books.html")).unwrap();
+fn authored_book_rows_keep_complete_lexical_values() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/contract/authored-books");
+    let bytes = std::fs::read(root.join("page.html")).unwrap();
     let document = Document::parse(
         Source::new(&bytes),
         &Limits::default().preparation(),

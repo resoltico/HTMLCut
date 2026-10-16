@@ -8,3 +8,4 @@ conformance/** -text -diff
 
 # Corpus documentation remains ordinary reviewable text.
 conformance/README.md text eol=lf diff
+conformance/fixture.rs text eol=lf diff

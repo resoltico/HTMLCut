@@ -1,0 +1,1 @@
+{"nth":3,"select":"li","where":[{"equals":"yes","read":"attr:data-keep"}]}

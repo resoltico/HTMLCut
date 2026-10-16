@@ -2,6 +2,7 @@
 """Smoke scratch ownership, completion and failure evidence at the process boundary."""
 
 import os
+import contextlib
 import hashlib
 import json
 import runpy
@@ -26,6 +27,7 @@ def copy_runner(checkout):
     )
     shutil.copy2(ROOT / "rust-toolchain.toml", checkout / "rust-toolchain.toml")
     (checkout / "fuzz").mkdir()
+    (checkout / "conformance/outline").mkdir(parents=True)
     shutil.copy2(ROOT / "fuzz/Cargo.toml", checkout / "fuzz/Cargo.toml")
 
 
@@ -457,7 +459,7 @@ sys.exit(int(os.environ['BUILD_EXIT']))
             case = checkout / "conformance/contract/seed"
             case.mkdir(parents=True)
             (case / "contract.json").write_bytes(b'{"select":"h1"}')
-            # Each source separately fits4096; the framed combined input does not.
+            # Each source separately fits 65536; the framed combined input does not.
             (case / "page.html").write_bytes(b"x" * 65536)
             (checkout / "fuzz/seeds/documents").mkdir(parents=True)
             tools = root / "bin"
@@ -493,40 +495,6 @@ sys.exit(int(os.environ['BUILD_EXIT']))
             self.assertIn("exceeds the smoke input bound", result.stderr)
             self.assertFalse((root / "build-started").exists())
             self.assertFalse(list(scratch.glob("htmlcut-fuzz-build.*")))
-            # Metadata-only refusal: no10,000-input fuzz campaign is launched.
-            (case / "page.html").write_bytes(b"x")
-            for index in range(10000):
-                (checkout / "fuzz/seeds/documents" / str(index)).touch()
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tools.htmlcut_maintenance",
-                    "qa",
-                    "fuzz",
-                    "--runs",
-                    "1",
-                ],
-                cwd=checkout,
-                env={
-                    **os.environ,
-                    "PATH": str(tools) + os.pathsep + os.environ["PATH"],
-                    "TMPDIR": str(scratch),
-                    "BUILD_MARKER": str(root / "build-started"),
-                },
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertIn(
-                "exceeds the bounded initial corpus of 10000 seeds", result.stderr
-            )
-            self.assertFalse((root / "build-started").exists())
-            # The second refusal discovers the total before copying any seed.
-            self.assertEqual(
-                len(list(scratch.glob("htmlcut-fuzz.*/extract/corpus/*"))), 0
-            )
 
     def test_unconfirmed_cleanup_preserves_only_affected_roots(self):
         import shutil
@@ -633,6 +601,7 @@ def run(command, root, *, label, **kwargs):
             cases = checkout / "conformance/contract"
             documents = checkout / "fuzz/seeds/documents"
             documents.mkdir(parents=True)
+            (checkout / "conformance/outline").mkdir(parents=True)
             contract = b'{"select":":scope"}'
             page = b"<p>\xff&amp;\xe9\x9b\xaa</p>"
             for name in ["first", "same"]:
@@ -646,7 +615,7 @@ def run(command, root, *, label, **kwargs):
             with mock.patch.object(fuzz, "ROOT", checkout):
                 inventory = fuzz.prepare_seeds(output, ["contract_bytes", "extract"])
             self.assertEqual(len(inventory["contract_bytes"]), 1)
-            self.assertEqual(inventory["contract_bytes"][0]["sources"], ["first", "same"])
+            self.assertEqual(inventory["contract_bytes"][0]["sources"], ["contract/first", "contract/same"])
             # Equal HTML/contract with a different node-budget mode is a distinct input.
             self.assertEqual(len(inventory["extract"]), 4)
             modes = []
@@ -658,8 +627,42 @@ def run(command, root, *, label, **kwargs):
                 self.assertEqual(data[3 + length:], page)
                 self.assertEqual(seed["sha256"], hashlib.sha256(data).hexdigest())
             self.assertEqual(modes, [0, 2, 1, 5])
-            self.assertEqual(inventory["extract"][0]["sources"], ["first", "same"])
-            self.assertEqual(inventory["extract"][1]["sources"], ["first"])
+            self.assertEqual(inventory["extract"][0]["sources"], ["contract/first", "contract/same"])
+            self.assertEqual(inventory["extract"][1]["sources"], ["contract/first"])
+
+    def test_actual_generated_cap_includes_mode_two_and_outline_semantics(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract = b'{"select":":scope"}'
+            cases = []
+            for name in ["first", "same"]:
+                case = root / "contract" / name
+                case.mkdir(parents=True)
+                (case / "contract.json").write_bytes(contract)
+                (case / "page.html").write_bytes(b"<p>X</p>")
+                cases.append(case)
+            outline = root / "outline" / "first"
+            outline.mkdir(parents=True)
+            (outline / "page.html").write_bytes(b"<p>X</p>")
+            document = root / "document" / "first"
+            document.parent.mkdir()
+            document.write_bytes(b"<p>X</p>")
+            sources = cases, [document], [outline]
+            with mock.patch.object(fuzz, "MAXIMUM_SEEDS", 3):
+                inventory = fuzz.prepare_seeds(root / "exact", ["contract_bytes", "extract"], sources)
+            self.assertEqual(len(inventory["extract"]), 3)
+            semantic = inventory["extract"][0]
+            self.assertEqual(semantic["sources"], ["contract/first", "contract/same", "outline/first"])
+            self.assertEqual((root / "exact/extract/corpus" / semantic["name"]).read_bytes(), b"\0" + len(contract).to_bytes(2, "little") + contract + b"<p>X</p>")
+            self.assertEqual(len({seed["name"] for seed in inventory["extract"]}), 3)
+            with mock.patch.object(fuzz, "MAXIMUM_SEEDS", 2):
+                with self.assertRaisesRegex(fuzz.Refusal, "extract exceeds"):
+                    fuzz.prepare_seeds(root / "over", ["contract_bytes", "extract"], sources)
+            with mock.patch.object(fuzz, "MAXIMUM_SEEDS", 1):
+                with self.assertRaisesRegex(fuzz.Refusal, "extract exceeds"):
+                    fuzz.prepare_seeds(root / "mode-two-over", ["contract_bytes", "extract"], (cases, [], []))
 
     def test_unexpected_failure_cannot_record_completed_fuzz_evidence(self):
         from tools.htmlcut_maintenance import fuzz
@@ -874,3 +877,142 @@ Path('conformance/contract/seed/page.html').write_text('<h1>changed while buildi
 class FullSmokeTests(unittest.TestCase):
     def test_full_seed_replay_cannot_be_reported_as_mutation_smoke(self):
         FuzzCleanupTest().exercise(runs=10000, seed_only=True)
+
+
+class SeedSourceAdmissionTests(unittest.TestCase):
+    def source_fixture(self, root):
+        checkout = root / "checkout"
+        contract = b'{"select":":scope"}'
+        for kind in ["contract", "outline"]:
+            case = checkout / "conformance" / kind / "one"
+            case.mkdir(parents=True)
+            (case / "page.html").write_bytes(b"<p>X</p>")
+            if kind == "contract":
+                (case / "contract.json").write_bytes(contract)
+        documents = checkout / "fuzz/seeds/documents"
+        documents.mkdir(parents=True)
+        (documents / "one").write_bytes(b"<p>X</p>")
+        return checkout
+
+    def refuses_before_fingerprinting_or_building(self, checkout, output):
+        from tools.htmlcut_maintenance import fuzz
+
+        with (
+            mock.patch.object(fuzz, "ROOT", checkout),
+            mock.patch.object(fuzz, "fuzz_targets", return_value=["contract_bytes", "extract"]) as manifest,
+            mock.patch.object(fuzz, "source_identity") as fingerprint,
+            mock.patch.object(fuzz.process, "run") as launch,
+            mock.patch.object(fuzz.signal, "signal"),
+            mock.patch.object(sys, "argv", ["fuzz", "--runs", "1", str(output)]),
+        ):
+            self.assertEqual(fuzz.main(), 1)
+            manifest.assert_not_called()
+            fingerprint.assert_not_called()
+            launch.assert_not_called()
+        (run,) = output.glob("run.*/run.json")
+        self.assertFalse(json.loads(run.read_text())["complete"])
+
+    def test_duplicate_sources_have_a_separate_aggregate_admission_budget(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = self.source_fixture(root)
+            shutil.copytree(checkout / "conformance/contract/one", checkout / "conformance/contract/same")
+            with mock.patch.object(fuzz, "ROOT", checkout), mock.patch.object(fuzz, "MAXIMUM_SOURCES", 4):
+                sources = fuzz.seed_sources()
+                self.assertEqual(tuple(map(len, sources)), (2, 1, 1))
+                inventory = fuzz.prepare_seeds(root / "exact", ["contract_bytes", "extract"], sources)
+                self.assertEqual(len(inventory["extract"]), 3)
+            with mock.patch.object(fuzz, "MAXIMUM_SOURCES", 3):
+                self.refuses_before_fingerprinting_or_building(checkout, root / "refused")
+            # Ignored ordinary document directories also consume enumeration budget.
+            (checkout / "fuzz/seeds/documents/unused").mkdir()
+            with mock.patch.object(fuzz, "MAXIMUM_SOURCES", 4):
+                self.refuses_before_fingerprinting_or_building(checkout, root / "directory-refused")
+
+    def test_source_enumeration_stops_at_the_first_entry_over_budget(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = self.source_fixture(root)
+            group = checkout / "conformance/contract"
+            for name in ["two", "three", "four"]:
+                shutil.copytree(group / "one", group / name)
+            scandir = os.scandir
+            observed = []
+
+            @contextlib.contextmanager
+            def bounded_entries(directory):
+                with scandir(directory) as entries:
+                    def counted():
+                        for entry in entries:
+                            observed.append(entry.name)
+                            if len(observed) > 3:
+                                self.fail("source enumeration continued beyond the first over-budget entry")
+                            yield entry
+                    yield counted() if str(directory) == str(group) else entries
+
+            with mock.patch.object(fuzz, "MAXIMUM_SOURCES", 2), mock.patch.object(fuzz.os, "scandir", bounded_entries):
+                self.refuses_before_fingerprinting_or_building(checkout, root / "refused")
+            self.assertEqual(len(observed), 3)
+
+    def test_external_target_changes_cannot_enter_seed_preparation(self):
+        from tools.htmlcut_maintenance import fuzz
+        from tools.htmlcut_maintenance.mutation import source_identity
+
+        for relative in ["conformance/contract/one/contract.json", "conformance/contract/one/page.html", "conformance/outline/one/page.html", "fuzz/seeds/documents/one"]:
+            with self.subTest(source=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                checkout = self.source_fixture(root)
+                external = root / "external"
+                external.write_bytes(b"first target bytes")
+                path = checkout / relative
+                path.unlink()
+                path.symlink_to(external)
+                before = source_identity(checkout)["sha256"]
+                self.refuses_before_fingerprinting_or_building(checkout, root / "first-refused")
+                external.write_bytes(b"different target bytes")
+                self.assertEqual(source_identity(checkout)["sha256"], before)
+                self.refuses_before_fingerprinting_or_building(checkout, root / "changed-refused")
+                with self.assertRaisesRegex(fuzz.Refusal, "ordinary regular file"):
+                    fuzz.read_seed(path)
+
+    def test_redirected_roots_groups_and_cases_are_refused(self):
+        for relative in [".", "conformance", "conformance/contract", "conformance/outline", "fuzz", "fuzz/seeds", "fuzz/seeds/documents", "conformance/contract/one", "conformance/outline/one"]:
+            with self.subTest(directory=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                checkout = self.source_fixture(root)
+                path = checkout if relative == "." else checkout / relative
+                target = root / "external-directory"
+                path.rename(target)
+                if os.name == "nt":
+                    subprocess.run(["cmd", "/d", "/c", "mklink", "/J", str(path), str(target)], check=True, capture_output=True, timeout=3)
+                else:
+                    path.symlink_to(target, target_is_directory=True)
+                self.refuses_before_fingerprinting_or_building(checkout, root / "refused")
+
+    def test_seed_files_and_cases_require_their_ordinary_type(self):
+        from tools.htmlcut_maintenance import fuzz
+
+        for relative in ["conformance/contract/one/contract.json", "conformance/contract/one/page.html", "conformance/outline/one/page.html", "fuzz/seeds/documents/one"]:
+            with self.subTest(source=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                checkout = self.source_fixture(root)
+                path = checkout / relative
+                path.unlink()
+                path.mkdir()
+                if relative.startswith("fuzz/"):
+                    # A standalone document directory is ignored, never read as a seed.
+                    with mock.patch.object(fuzz, "ROOT", checkout):
+                        self.assertEqual(len(fuzz.seed_sources()[1]), 0)
+                    with self.assertRaisesRegex(fuzz.Refusal, "ordinary regular file"):
+                        fuzz.read_seed(path)
+                else:
+                    self.refuses_before_fingerprinting_or_building(checkout, root / "refused")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout = self.source_fixture(root)
+            (checkout / "conformance/outline/stray").write_bytes(b"not a case directory")
+            self.refuses_before_fingerprinting_or_building(checkout, root / "refused")
