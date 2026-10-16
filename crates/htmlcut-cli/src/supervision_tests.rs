@@ -150,11 +150,18 @@ fn local_creation_handoffs_clean_owned_files_and_commit_wins_expiry() {
 #[test]
 fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
     const CHILD: &str = "HTMLCUT_CLI_UNWIND_CONTROL";
-    if std::env::var(CHILD).is_ok() {
+    if let Ok(mode) = std::env::var(CHILD) {
         std::panic::set_hook(Box::new(|_| {}));
         let path =
             std::path::PathBuf::from(std::env::var_os("HTMLCUT_PUBLICATION_DESTINATION").unwrap());
-        let job = Job::new(Some(Duration::from_millis(250))).unwrap();
+        // Ordinary cleanup must complete before expiry: its two-second parent
+        // bound is strictly shorter than this operation's ten-second deadline.
+        let duration = if mode == "ordinary" {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_secs(1)
+        };
+        let job = Job::new(Some(duration)).unwrap();
         supervise(job.control()).unwrap();
         let result = completion(job.present(b"complete-private-result", Destination::File(path)));
         let error = result.unwrap_err();
@@ -198,7 +205,7 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
             assert!(ready.exists(), "owned unwind cleanup was not entered");
         }
         if mode == "early-disarm" {
-            let limit = Instant::now() + Duration::from_millis(700);
+            let limit = Instant::now() + Duration::from_secs(2);
             while child.try_wait().unwrap().is_none() && Instant::now() < limit {
                 std::thread::sleep(Duration::from_millis(1));
             }
@@ -289,7 +296,7 @@ fn simultaneous_blocked_reporting_and_cleanup_share_one_grace() {
     let mut root = tempfile::tempdir().unwrap();
     let output = root.path().join("result");
     let ready = root.path().join("ready");
-    let timing = root.path().join("enforcement-micros");
+    let cleanup_wait = root.path().join("cleanup-wait-nanos");
     std::fs::write(&output, b"old").unwrap();
     let (reader, mut writer) = std::io::pipe().unwrap();
     test_pipe::fill_pipe(&mut writer);
@@ -304,7 +311,7 @@ fn simultaneous_blocked_reporting_and_cleanup_share_one_grace() {
         .env("HTMLCUT_PUBLICATION_PANIC_AT", "restricted")
         .env("HTMLCUT_PUBLICATION_PHASE", "cleanup")
         .env("HTMLCUT_PUBLICATION_READY", &ready)
-        .env("HTMLCUT_CLI_ENFORCEMENT_TIMING", &timing)
+        .env("HTMLCUT_CLI_CLEANUP_WAIT_NANOS", &cleanup_wait)
         .stdout(std::process::Stdio::null())
         .stderr(writer.try_clone().unwrap())
         .spawn()
@@ -326,10 +333,13 @@ fn simultaneous_blocked_reporting_and_cleanup_share_one_grace() {
     drop(writer);
     drop(reader);
     assert_eq!(result.status.code(), Some(4));
-    let micros: u128 = std::fs::read_to_string(timing).unwrap().parse().unwrap();
-    assert!(
-        micros < 90_000,
-        "central50ms grace exceeded40ms scheduling tolerance: {micros}us"
+    let nanos: u128 = std::fs::read_to_string(cleanup_wait)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        nanos, 0,
+        "blocked reporting consumed the entire central grace; cleanup must not receive a second wait budget"
     );
 }
 

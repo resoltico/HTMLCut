@@ -75,16 +75,13 @@ fn supervise(control: JobControl) -> Result<(), Error> {
                                 &error,
                                 REPORT_GRACE.saturating_sub(grace_started.elapsed()),
                             );
-                            let _ = receiver
-                                .recv_timeout(REPORT_GRACE.saturating_sub(grace_started.elapsed()));
+                            let cleanup_wait = REPORT_GRACE.saturating_sub(grace_started.elapsed());
+                            #[cfg(test)]
+                            if let Some(path) = std::env::var_os("HTMLCUT_CLI_CLEANUP_WAIT_NANOS") {
+                                let _ = std::fs::write(path, cleanup_wait.as_nanos().to_string());
+                            }
+                            let _ = receiver.recv_timeout(cleanup_wait);
                         }));
-                        #[cfg(test)]
-                        if let Some(path) = std::env::var_os("HTMLCUT_CLI_ENFORCEMENT_TIMING") {
-                            let _ = std::fs::write(
-                                path,
-                                grace_started.elapsed().as_micros().to_string(),
-                            );
-                        }
                         std::process::exit(status);
                     }
                 }
