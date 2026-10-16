@@ -576,6 +576,16 @@ mod tests {
         }
     }
 
+    fn descriptor_control(descriptor: &Descriptor) -> io::Result<u16> {
+        let mut control = 0;
+        let mut revision = 0;
+        // SAFETY: the descriptor and both native output locals remain live.
+        boolean(unsafe {
+            GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision)
+        })?;
+        Ok(control)
+    }
+
     #[test]
     fn access_policy_inspection_needs_no_audit_privilege() {
         let mut required = 0;
@@ -1350,7 +1360,17 @@ mod tests {
         let source = stage_options()
             .open(directory.path().join("source"))
             .unwrap();
+        author_dacl(
+            &source,
+            "D:(A;;FA;;;OW)",
+            UNPROTECTED_DACL_SECURITY_INFORMATION,
+        )
+        .unwrap();
         let original = Descriptor::read(&source).unwrap();
+        assert_eq!(
+            descriptor_control(&original).unwrap() & SE_DACL_PROTECTED,
+            0
+        );
         let mut original_owner = std::ptr::null_mut();
         let mut original_group = std::ptr::null_mut();
         let mut defaulted = 0;
@@ -1440,7 +1460,7 @@ mod tests {
     }
 
     #[test]
-    fn preparation_changes_a_distinct_label_without_reassigning_matching_protection() {
+    fn preparation_changes_label_and_preserves_unselected_dacl() {
         let directory = tempfile::tempdir().unwrap();
         let initial = Policy("D:P(A;;FA;;;OW)S:PAI(ML;;NW;;;LW)".into());
         let path = directory.path().join("stage");
@@ -1452,23 +1472,95 @@ mod tests {
             "S:PAI(ML;;NW;;;LW)"
         );
         let ownership = before
-            .text_with(
-                OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-            )
+            .text_with(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION)
             .unwrap();
-        let wanted = Policy(format!("{ownership}S:PAI(ML;;NR;;;ME)"));
+        let wanted = Policy(format!("{ownership}D:(A;;FA;;;OW)S:PAI(ML;;NR;;;ME)"));
         wanted.prepare(&stage).unwrap();
+        let prepared = Descriptor::read(&stage).unwrap();
         assert_eq!(
-            Descriptor::read(&stage)
-                .unwrap()
-                .text_with(LABEL_SECURITY_INFORMATION)
-                .unwrap(),
+            prepared.text_with(LABEL_SECURITY_INFORMATION).unwrap(),
             "S:PAI(ML;;NR;;;ME)"
+        );
+        assert_eq!(
+            prepared.text_with(DACL_SECURITY_INFORMATION).unwrap(),
+            "D:P"
         );
         assert_eq!(stage.metadata().unwrap().len(), 0);
         assert_eq!(
             std::fs::read(path).unwrap_err().kind(),
             io::ErrorKind::PermissionDenied
         );
+    }
+
+    #[test]
+    fn mandatory_policy_assignment_repairs_sacl_protection_without_changing_dacl() {
+        for protected in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let before_token = thread_token_identity();
+            security_privilege::with_security_privilege(|| {
+                let file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create_new(true)
+                    .access_mode(
+                        FILE_GENERIC_READ
+                            | FILE_GENERIC_WRITE
+                            | READ_CONTROL
+                            | WRITE_DAC
+                            | WRITE_OWNER
+                            | ACCESS_SYSTEM_SECURITY,
+                    )
+                    .open(directory.path().join("policy"))?;
+                author_dacl(
+                    &file,
+                    "D:P(A;;FA;;;OW)",
+                    PROTECTED_DACL_SECURITY_INFORMATION,
+                )?;
+                let initial = Descriptor::parse(if protected {
+                    "S:(ML;;NW;;;LW)"
+                } else {
+                    "S:P(ML;;NW;;;LW)"
+                })?;
+                let initial_protection = if protected {
+                    UNPROTECTED_SACL_SECURITY_INFORMATION
+                } else {
+                    PROTECTED_SACL_SECURITY_INFORMATION
+                };
+                // Independently author the opposite protection through the native setter.
+                // SAFETY: the SACL descriptor and security-capable file handle remain live.
+                boolean(unsafe {
+                    SetKernelObjectSecurity(
+                        file.as_raw_handle() as HANDLE,
+                        SACL_SECURITY_INFORMATION | initial_protection,
+                        initial.0,
+                    )
+                })?;
+                let before = Descriptor::read(&file)?;
+                assert_eq!(
+                    descriptor_control(&before)? & SE_SACL_PROTECTED != 0,
+                    !protected
+                );
+                let before_dacl = before.text_with(DACL_SECURITY_INFORMATION)?;
+                assert_eq!(before_dacl, "D:P(A;;FA;;;OW)");
+                let wanted = Descriptor::parse(if protected {
+                    "D:(A;;FA;;;OW)S:P(ML;;NW;;;LW)"
+                } else {
+                    "D:(A;;FA;;;OW)S:(ML;;NW;;;LW)"
+                })?;
+                wanted.apply(&file, LABEL_SECURITY_INFORMATION)?;
+                let observed = Descriptor::read(&file)?;
+                assert_eq!(
+                    descriptor_control(&observed)? & SE_SACL_PROTECTED != 0,
+                    protected
+                );
+                assert_eq!(observed.text_with(DACL_SECURITY_INFORMATION)?, before_dacl);
+                let label = observed.text_with(LABEL_SECURITY_INFORMATION)?;
+                assert_eq!(label.split_once('(').unwrap().1, "ML;;NW;;;LW)");
+                assert_eq!(file.metadata()?.len(), 0);
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(thread_token_identity(), before_token);
+        }
     }
 }

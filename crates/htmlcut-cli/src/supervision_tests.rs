@@ -65,12 +65,20 @@ fn publication_phase_child() {
     };
     std::panic::set_hook(Box::new(|_| {}));
     let job = Job::new(Some(Duration::from_secs(2))).unwrap();
+    let deadline = job.control().deadline().unwrap();
     supervise(job.control()).unwrap();
     let result = completion(job.present(
         b"complete-private-result",
         Destination::File(destination.into()),
     ));
     if let Err(error) = result {
+        if let Some(path) = std::env::var_os("HTMLCUT_PUBLICATION_ERROR_OBSERVATION") {
+            let observation = serde_json::json!({
+                "diagnostic": String::from_utf8(error.to_json_line()).unwrap(),
+                "deadline_elapsed": Instant::now() >= deadline,
+            });
+            std::fs::write(path, serde_json::to_vec(&observation).unwrap()).unwrap();
+        }
         report(&error);
         std::process::exit(exit_status(error.error));
     }
@@ -250,6 +258,7 @@ fn real_commit_failure_after_claim_beats_late_expiry() {
     let destination = root.path().join("result");
     let saved = root.path().join("saved");
     let ready = root.path().join("ready");
+    let observation = root.path().join("error-observation.json");
     std::fs::write(&destination, b"old").unwrap();
     let child = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
@@ -258,8 +267,10 @@ fn real_commit_failure_after_claim_beats_late_expiry() {
             "--nocapture",
         ])
         .env("HTMLCUT_PUBLICATION_PHASE", "commit")
+        .env("HTMLCUT_PUBLICATION_COMMIT_HOLD_MS", "2500")
         .env("HTMLCUT_PUBLICATION_DESTINATION", &destination)
         .env("HTMLCUT_PUBLICATION_READY", &ready)
+        .env("HTMLCUT_PUBLICATION_ERROR_OBSERVATION", &observation)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -269,7 +280,7 @@ fn real_commit_failure_after_claim_beats_late_expiry() {
         fixture: Some(&mut root),
     };
     let started = Instant::now();
-    while !ready.exists() && started.elapsed() < Duration::from_secs(2) {
+    while !ready.exists() && started.elapsed() < Duration::from_secs(6) {
         std::thread::sleep(Duration::from_millis(1));
     }
     assert!(ready.exists(), "real commit claim was not reached");
@@ -278,15 +289,22 @@ fn real_commit_failure_after_claim_beats_late_expiry() {
     let result = wait_for_test_child(
         child,
         "claimed commit failure",
-        started + Duration::from_secs(3),
+        started + Duration::from_secs(6),
     );
     assert_eq!(result.status.code(), Some(5), "{result:?}");
+    let observation: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(observation).unwrap()).unwrap();
+    assert_eq!(observation["deadline_elapsed"], true);
+    let diagnostic = observation["diagnostic"].as_str().unwrap().as_bytes();
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&result.stderr).unwrap()["error"],
+        serde_json::from_slice::<serde_json::Value>(diagnostic).unwrap()["error"],
         "output_unwritable"
     );
+    assert!(diagnostic.starts_with(&result.stderr), "{result:?}");
     assert_eq!(std::fs::read(saved).unwrap(), b"old");
     assert!(destination.is_dir());
+    assert_eq!(std::fs::read_dir(destination).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 4);
 }
 
 #[path = "test_pipe.rs"]
