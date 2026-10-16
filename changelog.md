@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [23.0.0] - 2026-10-16
+
 ### Added
 
 - The `htmlcut-runtime` crate provides typed extraction, outline and schema requests, local acquisition, opaque thread-safe prepared documents, cooperative cancellation, and shared export and delivery. `Computed` results expose values, structured outline facts or schema bytes; `Job::export` returns bytes and `Job::save` re-admits output policy for a later delivery. See the [Rust application API](https://github.com/resoltico/HTMLCut/blob/e763315d5a5ee3ade835a3f3cb785dad8d0da37e/crates/htmlcut-runtime/README.md).
