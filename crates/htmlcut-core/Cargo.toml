@@ -12,6 +12,8 @@ repository.workspace = true
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots."
 
 [dependencies]
+schemars.workspace = true
+serde_path_to_error.workspace = true
 cssparser.workspace = true
 selectors.workspace = true
 precomputed-hash.workspace = true

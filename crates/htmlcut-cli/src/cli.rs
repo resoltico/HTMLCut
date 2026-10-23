@@ -95,7 +95,7 @@ pub(crate) struct Get {
     pub(crate) file: Option<PathBuf>,
     #[arg(long)]
     pub(crate) all: bool,
-    #[arg(long, help=format!("Value reading [default: {}]", htmlcut_runtime::DEFAULT_READING))]
+    #[arg(long, help=format!("Value reading [default: {}]", htmlcut_runtime::Reading::default().to_string()))]
     pub(crate) read: Option<String>,
     #[arg(short = 'r', long)]
     pub(crate) raw: bool,

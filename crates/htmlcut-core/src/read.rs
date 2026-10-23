@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 AND ISC
 //! Deterministic structural text and original-tree readings.
 use crate::dom::Node;
-use crate::{Document, Error, contract::Reading, eval::Scope, stop::Clock};
+use crate::{Document, Error, Reading, eval::Scope, stop::Clock};
 use ego_tree::{NodeId, NodeRef, iter::Edge};
 use html5ever::serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize};
 use std::{collections::HashSet, io};

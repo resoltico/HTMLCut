@@ -1,4 +1,5 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
+use support::{QueryFixture, compile_query};
 mod support;
 // SPDX-License-Identifier: MPL-2.0
 use htmlcut_core::*;
@@ -84,24 +85,20 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
         ("url:href", "https://origin.test/x"),
     ] {
         for (cardinality, name, expected_range) in [
+            (Match::One, "one", serde_json::json!({"min":1,"max":1})),
             (
-                QueryCardinality::One,
-                "one",
-                serde_json::json!({"min":1,"max":1}),
-            ),
-            (
-                QueryCardinality::Optional,
+                Match::Optional,
                 "optional",
                 serde_json::json!({"min":0,"max":1}),
             ),
-            (QueryCardinality::All, "all", serde_json::json!({"min":1})),
+            (Match::All, "all", serde_json::json!({"min":1})),
         ] {
             for count in 0..=2 {
                 let page = "<p title=\"T\" href=\"/x\">X</p>".repeat(count);
                 let mut source = DocumentFixture::new(page.as_bytes());
                 source.base_url = Some("https://origin.test/");
                 let document = parse_fixture(source, &limits.preparation(), &context).unwrap();
-                let query = QuickQuery {
+                let query = QueryFixture {
                     select: "p".into(),
                     read: reading.into(),
                     cardinality,
@@ -109,7 +106,7 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
                 let text =
                     serde_json::json!({"select":"p","read":reading,"match":name}).to_string();
                 for contract in [
-                    Contract::quick(&query, &context),
+                    compile_query(&query, &context),
                     Contract::from_json(&text, &context),
                 ] {
                     let actual = document.extract(
@@ -152,14 +149,14 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
     }
     assert_eq!(checked, 45);
     for reading in ["html", "attr:"] {
-        let query = QuickQuery {
+        let query = QueryFixture {
             select: "p".into(),
             read: reading.into(),
-            cardinality: QueryCardinality::One,
+            cardinality: Match::One,
         };
         let text = serde_json::json!({"select":"p","read":reading,"match":"one"}).to_string();
         for result in [
-            Contract::quick(&query, &context),
+            compile_query(&query, &context),
             Contract::from_json(&text, &context),
         ] {
             let error = result.err().expect("invalid reading admitted");
@@ -201,12 +198,12 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
     let context = Stop::none().with_cancel(std::sync::Arc::new(
         std::sync::atomic::AtomicBool::new(true),
     ));
-    let query = QuickQuery {
+    let query = QueryFixture {
         select: "p".into(),
         read: "text".into(),
-        cardinality: QueryCardinality::One,
+        cardinality: Match::One,
     };
-    let error = Contract::quick(&query, &context).err().unwrap();
+    let error = compile_query(&query, &context).err().unwrap();
     assert_eq!(error.code(), ErrorCode::Cancelled);
     assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
     assert!(
@@ -223,14 +220,14 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
         ("x".repeat(Contract::MAX_BYTES), "text".into()),
         ("\u{1}".repeat(Contract::MAX_BYTES / 2), "text".into()),
     ] {
-        let query = QuickQuery {
+        let query = QueryFixture {
             select,
             read,
-            cardinality: QueryCardinality::One,
+            cardinality: Match::One,
         };
         let text =
             serde_json::json!({"select":query.select,"read":query.read,"match":"one"}).to_string();
-        let typed = Contract::quick(&query, &context).err().unwrap();
+        let typed = compile_query(&query, &context).err().unwrap();
         let json = Contract::from_json(&text, &context).err().unwrap();
         assert_eq!(typed.code(), json.code());
         let facts = |error: &Error| {

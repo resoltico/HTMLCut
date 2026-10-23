@@ -1,36 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Closed recursive contracts, validated and compiled before document evaluation.
-use crate::bounds::{
-    MAX_ATTRIBUTE_NAME_CHARS, MAX_CONTRACT_BYTES, MAX_CONTRACT_NODES, MAX_DECLARED_COUNT,
-    MAX_ENTRIES, MAX_FIELD_NAME_CHARS, MAX_PATTERN_BYTES, MAX_RECORD_DEPTH, MAX_RECORD_FIELDS,
+//! Semantic admission and compilation of typed contracts.
+use crate::bounds::*;
+use crate::{
+    Error, Match, NodeObject, NodeSpec, PredicateObject, PredicateSpec, Reading, Stop,
+    select::Selector,
 };
-use crate::stop::Clock;
-use crate::{Error, select::Selector};
 use regex::{Regex, RegexBuilder};
-use serde_json::{Map, Value as Json};
+use serde_json::Value as Json;
 use std::collections::BTreeMap;
-
-/// Neutral shorthand for a value-root contract.
-#[derive(Clone, Debug)]
-pub struct QuickQuery {
-    /// CSS selection.
-    pub select: String,
-    /// Reading syntax, validated by the contract compiler.
-    pub read: String,
-    /// Match cardinality.
-    pub cardinality: QueryCardinality,
-}
-/// Quick-query cardinality.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum QueryCardinality {
-    /// Exactly one match.
-    One,
-    /// Zero or one match.
-    Optional,
-    /// Every match.
-    All,
-}
-
 /// A compiled extraction contract, reusable across documents.
 pub struct Contract {
     pub(crate) node: Node,
@@ -65,27 +42,23 @@ pub(crate) struct Predicate {
     pub(crate) min: usize,
     pub(crate) max: usize,
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum Reading {
-    Text,
-    TextContent,
-    OuterHtml,
-    Attr(String),
-    Url(String),
-}
 pub(crate) struct Check {
     pub(crate) equals: Option<String>,
     pub(crate) pattern: Option<Regex>,
 }
-
 impl Contract {
-    /// Reads one bounded JSON contract, rejecting duplicates and compiling its grammar.
-    pub fn from_json(text: &str, context: &crate::Stop) -> Result<Self, Error> {
-        context.check()?;
-        if text.len() > MAX_CONTRACT_BYTES {
+    /// Maximum contract JSON byte length.
+    pub const MAX_BYTES: usize = MAX_CONTRACT_BYTES;
+    /// Read bounded closed JSON, deserialize its shape, then compile its semantics.
+    pub fn from_json(text: &str, stop: &Stop) -> Result<Self, Error> {
+        stop.check()?;
+        if text.len() > Self::MAX_BYTES {
             return Err(invalid(
                 None,
-                &format!("The contract exceeds the {MAX_CONTRACT_BYTES}-byte grammar bound."),
+                &format!(
+                    "The contract exceeds the {}-byte grammar bound.",
+                    Self::MAX_BYTES
+                ),
             ));
         }
         let value = crate::json::read(text.as_bytes()).map_err(|e| {
@@ -94,50 +67,111 @@ impl Contract {
                 &format!("The contract is not valid closed JSON: {e}."),
             )
         })?;
-        Self::compile(&value, context)
+        let spec: NodeSpec = serde_path_to_error::deserialize(value).map_err(|e| {
+            let path = e.path().to_string();
+            let path = if path == "." {
+                "$".into()
+            } else if path.starts_with('[') {
+                format!("${path}")
+            } else {
+                format!("$.{path}")
+            };
+            invalid(Some(&path), &e.inner().to_string())
+        })?;
+        Self::compile(&spec, stop)
     }
-    /// Maximum admitted contract-file bytes.
-    pub const MAX_BYTES: usize = MAX_CONTRACT_BYTES;
-    /// Compiles a typed quick query through the same semantic admission as JSON.
-    pub fn quick(query: &QuickQuery, context: &crate::Stop) -> Result<Self, Error> {
-        context.check()?;
-        if query.select.len().saturating_add(query.read.len()) > MAX_CONTRACT_BYTES {
-            return Err(invalid(
-                None,
-                "The quick query exceeds the contract byte bound.",
-            ));
-        }
-        let value = serde_json::json!({"select": query.select, "read": query.read,
-            "match": match query.cardinality { QueryCardinality::One => "one", QueryCardinality::Optional => "optional", QueryCardinality::All => "all" }});
-        // Count escaped input as well as source strings before compiler admission.
-        let mut size = crate::value::OutputSize::new(MAX_CONTRACT_BYTES);
-        size.value(&value, &Clock::for_stop(context))
-            .map_err(|error| {
-                if serde_json::to_value(&error).unwrap()["limit"].as_str() == Some("output_bytes") {
-                    invalid(None, "The quick query exceeds the contract byte bound.")
-                } else {
-                    error
+    /// Compile a programmatic specification without a JSON round trip.
+    pub fn compile(spec: &NodeSpec, stop: &Stop) -> Result<Self, Error> {
+        stop.check()?;
+        // Bound traversal before serialization or recursive compilation, including programmatic input.
+        let mut pending = vec![(spec, 0, String::from("$"))];
+        let mut nodes = 0;
+        let mut patterns = 0;
+        while let Some((spec, depth, path)) = pending.pop() {
+            stop.check()?;
+            nodes += 1;
+            let oversized = match spec {
+                NodeSpec::Selector(s) => s.len() > Self::MAX_BYTES,
+                NodeSpec::Node(o) => [&o.select, &o.until, &o.equals, &o.pattern]
+                    .into_iter()
+                    .flatten()
+                    .any(|s| s.len() > Self::MAX_BYTES),
+            };
+            if oversized {
+                return Err(invalid(
+                    None,
+                    "The specification exceeds the contract byte bound.",
+                ));
+            }
+
+            if nodes > MAX_CONTRACT_NODES {
+                return Err(invalid(
+                    Some(&path),
+                    "The contract exceeds the 512-node grammar bound.",
+                ));
+            }
+            if let NodeSpec::Node(o) = spec {
+                patterns += usize::from(o.pattern.is_some());
+                for (name, predicates) in [("where", &o.r#where), ("expect", &o.expect)] {
+                    if let Some(predicates) = predicates {
+                        if predicates.len() > MAX_ENTRIES {
+                            return Err(invalid(
+                                Some(&format!("{path}.{name}")),
+                                "The member must be an array with at most 32 entries.",
+                            ));
+                        }
+                        patterns += predicates
+                            .iter()
+                            .filter(
+                                |p| matches!(p,PredicateSpec::Predicate(o) if o.pattern.is_some()),
+                            )
+                            .count();
+                    }
                 }
+                if let Some(fields) = &o.fields {
+                    if depth >= MAX_RECORD_DEPTH {
+                        return Err(invalid(
+                            Some(&path),
+                            "Records exceed the nesting bound of 8.",
+                        ));
+                    }
+                    if fields.is_empty() || fields.len() > MAX_RECORD_FIELDS {
+                        return Err(invalid(
+                            Some(&format!("{path}.fields")),
+                            "A record must have 1–64 fields.",
+                        ));
+                    }
+                    pending.extend(
+                        fields
+                            .iter()
+                            .rev()
+                            .map(|(name, spec)| (spec, depth + 1, format!("{path}.fields.{name}"))),
+                    );
+                }
+            }
+        }
+        let mut size = crate::value::OutputSize::new(Self::MAX_BYTES);
+        size.value(spec, &crate::stop::Clock::for_stop(stop))
+            .map_err(|error| match error {
+                Error::LimitExceeded {
+                    limit: crate::Limit::OutputBytes,
+                    ..
+                } => invalid(None, "The specification exceeds the contract byte bound."),
+                e => e,
             })?;
-        Self::compile(&value, context)
-    }
-    fn compile(value: &Json, context: &crate::Stop) -> Result<Self, Error> {
-        context.check()?;
-        let patterns = pattern_count(value);
         let mut compiler = Compiler {
-            nodes: 0,
-            regex_bytes: crate::bounds::MAX_REGEX_BYTES / (2 * patterns.max(1)),
-            context,
+            stop,
+            regex_bytes: MAX_REGEX_BYTES / (2 * patterns.max(1)),
         };
-        let node = compiler.node(value, "$", 0)?;
-        context.check()?;
+        let node = compiler.node(spec, "$")?;
+        stop.check()?;
         Ok(Self { node })
     }
-    /// JSON Schema for the closed contract surface; byte and compiled bounds remain engine checks.
+    /// Generated authoring schema; compilation remains authoritative for semantic bounds.
     pub fn schema() -> Json {
-        schema()
+        crate::spec::schema()
     }
-    /// Admits export shape before acquiring any document bytes.
+    /// Refuse output representations that cannot preserve the root shape.
     pub fn supports(&self, format: crate::ExportFormat) -> Result<(), Error> {
         if format == crate::ExportFormat::Raw && matches!(self.node.body, Body::Record(_)) {
             return Err(Error::UnrepresentableOutput {
@@ -149,165 +183,66 @@ impl Contract {
         Ok(())
     }
 }
-
-fn invalid(path: Option<&str>, message: &str) -> Error {
+fn invalid(path: Option<&str>, reason: &str) -> Error {
     Error::InvalidContract {
         path: path.map(Into::into),
-        reason: message.into(),
+        reason: reason.into(),
     }
 }
-fn pattern_count(value: &Json) -> usize {
-    let Some(map) = value.as_object() else {
-        return 0;
-    };
-    let predicates = ["where", "expect"]
-        .into_iter()
-        .filter_map(|key| map.get(key).and_then(Json::as_array))
-        .flatten()
-        .filter(|v| v.as_object().is_some_and(|m| m.contains_key("pattern")))
-        .count();
-    let children = map
-        .get("fields")
-        .and_then(Json::as_object)
-        .map(|fields| fields.values().map(pattern_count).sum::<usize>())
-        .unwrap_or(0);
-    usize::from(map.contains_key("pattern")) + predicates + children
-}
-
-fn object(value: &Json, path: &str, allowed: &[&str]) -> Result<Map<String, Json>, Error> {
-    let map = if let Some(text) = value.as_str() {
-        Map::from_iter([(String::from("select"), Json::String(text.into()))])
-    } else {
-        value.as_object().cloned().ok_or_else(|| {
-            invalid(
-                Some(path),
-                "A contract node or predicate must be a selector string or an object.",
-            )
-        })?
-    };
-    for (key, value) in &map {
-        if !allowed.contains(&key.as_str()) {
-            return Err(invalid(
-                Some(&format!("{path}.{key}")),
-                &format!("Unknown contract member {key:?}."),
-            ));
-        }
-        if value.is_null() {
-            return Err(invalid(
-                Some(&format!("{path}.{key}")),
-                "JSON null cannot replace an omitted member.",
-            ));
-        }
-    }
-    Ok(map)
-}
-fn string(map: &Map<String, Json>, name: &str, path: &str) -> Result<Option<String>, Error> {
-    map.get(name)
-        .map(|v| {
-            v.as_str().map(String::from).ok_or_else(|| {
-                invalid(
+fn count(value: Option<u32>, path: &str, name: &str) -> Result<Option<usize>, Error> {
+    value
+        .map(|n| {
+            if n as usize > MAX_DECLARED_COUNT {
+                Err(invalid(
                     Some(&format!("{path}.{name}")),
-                    &format!("The {name} member must be a string."),
-                )
-            })
+                    "Counts must be integers from 0 to 1000000.",
+                ))
+            } else {
+                Ok(n as usize)
+            }
         })
         .transpose()
 }
-fn integer(map: &Map<String, Json>, name: &str, path: &str) -> Result<Option<usize>, Error> {
-    map.get(name)
-        .map(|v| {
-            v.as_u64()
-                .filter(|n| *n <= MAX_DECLARED_COUNT as u64)
-                .map(|n| n as usize)
-                .ok_or_else(|| {
-                    invalid(
-                        Some(&format!("{path}.{name}")),
-                        &format!(
-                            "The {name} member must be an integer from 0 to {MAX_DECLARED_COUNT}."
-                        ),
-                    )
-                })
-        })
+fn selector(value: Option<&String>, path: &str, name: &str) -> Result<Option<Selector>, Error> {
+    value
+        .map(|s| Selector::compile(s, &format!("{path}.{name}")))
         .transpose()
 }
-fn array<'a>(map: &'a Map<String, Json>, name: &str, path: &str) -> Result<&'a [Json], Error> {
-    match map.get(name) {
-        None => Ok(&[]),
-        Some(Json::Array(v)) if v.len() <= MAX_ENTRIES => Ok(v),
-        _ => Err(invalid(
-            Some(&format!("{path}.{name}")),
-            &format!("The {name} member must be an array with at most {MAX_ENTRIES} entries."),
-        )),
-    }
-}
-fn selector(map: &Map<String, Json>, name: &str, path: &str) -> Result<Option<Selector>, Error> {
-    string(map, name, path)?
-        .map(|s| Selector::compile(&s, &format!("{path}.{name}")))
-        .transpose()
-}
-fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Reading, Error> {
-    let text = string(map, "read", path)?.unwrap_or_else(|| crate::DEFAULT_READING.into());
-    let valid_name = |name: &str| {
-        !name.is_empty()
-            && name.chars().count() <= MAX_ATTRIBUTE_NAME_CHARS
-            && !name
-                .chars()
-                .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '/' | '='))
-    };
-    match text.as_str() {
-        "text" => Ok(Reading::Text),
-        "text-content" => Ok(Reading::TextContent),
-        "outer-html" if !predicate => Ok(Reading::OuterHtml),
-        s if s.strip_prefix("attr:").is_some_and(valid_name) => Ok(Reading::Attr(s[5..].into())),
-        s if !predicate && s.strip_prefix("url:").is_some_and(valid_name) => {
-            Ok(Reading::Url(s[4..].into()))
-        }
-        _ => Err(invalid(
-            Some(&format!("{path}.read")),
-            &format!(
-                "Unknown or invalid reading {text:?}. {}",
-                if predicate {
-                    "A predicate reads text, text-content or attr:NAME."
-                } else {
-                    "Readings are text, text-content, outer-html, attr:NAME and url:NAME."
-                }
-            ),
-        )),
-    }
-}
-
 struct Compiler<'a> {
-    context: &'a crate::Stop,
-    nodes: usize,
+    stop: &'a Stop,
     regex_bytes: usize,
 }
 impl Compiler<'_> {
-    fn check(&self, map: &Map<String, Json>, path: &str) -> Result<Check, Error> {
-        self.context.check()?;
-        let equals = string(map, "equals", path)?;
-        let text = string(map, "pattern", path)?;
-        if equals.is_some() && text.is_some() {
+    fn check(
+        &self,
+        equals: &Option<String>,
+        pattern: &Option<String>,
+        path: &str,
+    ) -> Result<Check, Error> {
+        self.stop.check()?;
+        if equals.is_some() && pattern.is_some() {
             return Err(invalid(
                 Some(path),
                 "equals and pattern are mutually exclusive.",
             ));
         }
-        let pattern = text
+        let pattern = pattern
+            .as_ref()
             .map(|text| {
                 let location = format!("{path}.pattern");
                 if text.len() > MAX_PATTERN_BYTES {
                     return Err(invalid(
                         Some(&location),
-                        &format!("The pattern exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
+                        "The pattern exceeds the 8192-byte grammar bound.",
                     ));
                 }
-                RegexBuilder::new(&text)
+                RegexBuilder::new(text)
                     .size_limit(self.regex_bytes)
                     .dfa_size_limit(self.regex_bytes)
-                    .nest_limit(64)
+                    .nest_limit(MAX_PATTERN_DEPTH)
                     .build()
                     .map_err(|e| Error::InvalidPattern {
-                        path: location.clone(),
+                        path: location,
                         reason: format!(
                             "Invalid regular expression or exceeded compiled-size bound {}: {e}.",
                             self.regex_bytes
@@ -315,64 +250,82 @@ impl Compiler<'_> {
                     })
             })
             .transpose()?;
-        Ok(Check { equals, pattern })
+        Ok(Check {
+            equals: equals.clone(),
+            pattern,
+        })
     }
     fn predicates(
-        &mut self,
-        map: &Map<String, Json>,
-        name: &str,
+        &self,
+        spec: &Option<Vec<PredicateSpec>>,
         path: &str,
+        name: &str,
     ) -> Result<Vec<Predicate>, Error> {
-        array(map, name, path)?
+        spec.as_deref()
+            .unwrap_or_default()
             .iter()
             .enumerate()
-            .map(|(i, v)| self.predicate(v, &format!("{path}.{name}[{i}]")))
+            .map(|(i, p)| self.predicate(p, &format!("{path}.{name}[{i}]")))
             .collect()
     }
-    fn predicate(&mut self, value: &Json, path: &str) -> Result<Predicate, Error> {
-        let map = object(
-            value,
-            path,
-            &["select", "read", "equals", "pattern", "min", "max"],
-        )?;
-        let min = integer(&map, "min", path)?.unwrap_or(1);
-        let max = integer(&map, "max", path)?.unwrap_or(1);
+    fn predicate(&self, spec: &PredicateSpec, path: &str) -> Result<Predicate, Error> {
+        let short;
+        let o = match spec {
+            PredicateSpec::Selector(s) => {
+                short = PredicateObject {
+                    select: Some(s.clone()),
+                    ..Default::default()
+                };
+                &short
+            }
+            PredicateSpec::Predicate(o) => o,
+        };
+        let min = count(o.min, path, "min")?.unwrap_or(1);
+        let max = count(o.max, path, "max")?.unwrap_or(1);
         if min > max {
             return Err(invalid(
                 Some(path),
                 "The predicate minimum exceeds its maximum.",
             ));
         }
+        let read = o.read.clone().unwrap_or_default();
+        read.to_string()
+            .parse::<Reading>()
+            .map_err(|reason| invalid(Some(&format!("{path}.read")), &reason))?;
+        if matches!(read, Reading::OuterHtml | Reading::Url(_)) {
+            return Err(invalid(
+                Some(&format!("{path}.read")),
+                "A predicate reads text, text-content or attr:NAME.",
+            ));
+        }
         Ok(Predicate {
             path: path.into(),
-            select: selector(&map, "select", path)?,
-            read: reading(&map, path, true)?,
-            check: self.check(&map, path)?,
+            select: selector(o.select.as_ref(), path, "select")?,
+            read,
+            check: self.check(&o.equals, &o.pattern, path)?,
             min,
             max,
         })
     }
-    fn node(&mut self, value: &Json, path: &str, records: usize) -> Result<Node, Error> {
-        self.context.check()?;
-        self.nodes += 1;
-        if self.nodes > MAX_CONTRACT_NODES {
-            return Err(invalid(
-                Some(path),
-                &format!("The contract exceeds the {MAX_CONTRACT_NODES}-node grammar bound."),
-            ));
-        }
-        let map = object(
-            value,
-            path,
-            &[
-                "select", "where", "match", "min", "max", "nth", "until", "fields", "read",
-                "exclude", "equals", "pattern", "expect",
-            ],
-        )?;
-        let select = selector(&map, "select", path)?;
-        let until = selector(&map, "until", path)?;
-        let nth = integer(&map, "nth", path)?;
-        if (map.contains_key("where") || until.is_some() || nth.is_some()) && select.is_none() {
+    fn node(&mut self, spec: &NodeSpec, path: &str) -> Result<Node, Error> {
+        self.stop.check()?;
+        let short;
+        let o = match spec {
+            NodeSpec::Selector(s) => {
+                short = NodeObject {
+                    select: Some(s.clone()),
+                    ..Default::default()
+                };
+                &short
+            }
+            NodeSpec::Node(o) => o,
+        };
+        let select = selector(o.select.as_ref(), path, "select")?;
+        let until = selector(o.until.as_ref(), path, "until")?;
+        let nth = count(o.nth, path, "nth")?;
+        let min = count(o.min, path, "min")?;
+        let max = count(o.max, path, "max")?;
+        if (o.r#where.is_some() || until.is_some() || nth.is_some()) && select.is_none() {
             return Err(invalid(Some(path), "where, until and nth require select."));
         }
         if nth == Some(0) {
@@ -381,65 +334,42 @@ impl Compiler<'_> {
                 "nth must be at least 1.",
             ));
         }
-        let mode = string(&map, "match", path)?.unwrap_or_else(|| "one".into());
-        if mode != "all" && (map.contains_key("min") || map.contains_key("max")) {
+        let mode = o.r#match.unwrap_or_default();
+        if mode != Match::All && (min.is_some() || max.is_some()) {
             return Err(invalid(Some(path), "min and max require match all."));
         }
-        if nth.is_some() && mode != "one" {
+        if nth.is_some() && mode != Match::One {
             return Err(invalid(Some(path), "nth requires match one."));
         }
-        let cardinality = match mode.as_str() {
-            "one" => Cardinality::One(nth),
-            "optional" => Cardinality::Optional,
-            "all" => {
-                let min = integer(&map, "min", path)?.unwrap_or(1);
-                let max = integer(&map, "max", path)?;
-                if max.is_some_and(|n| n < min) {
+        let cardinality = match mode {
+            Match::One => Cardinality::One(nth),
+            Match::Optional => Cardinality::Optional,
+            Match::All => {
+                let min = min.unwrap_or(1);
+                if max.is_some_and(|max| max < min) {
                     return Err(invalid(Some(path), "The minimum exceeds the maximum."));
                 }
                 Cardinality::All { min, max }
             }
-            _ => {
-                return Err(invalid(
-                    Some(&format!("{path}.match")),
-                    "match must be one, optional or all.",
-                ));
-            }
         };
-        let expect = self.predicates(&map, "expect", path)?;
-        let predicates = self.predicates(&map, "where", path)?;
-        let body = if let Some(fields) = map.get("fields") {
-            for name in ["read", "exclude", "equals", "pattern"] {
-                if map.contains_key(name) {
+        let expect = self.predicates(&o.expect, path, "expect")?;
+        let predicates = self.predicates(&o.r#where, path, "where")?;
+        let body = if let Some(fields) = &o.fields {
+            for (name, present) in [
+                ("read", o.read.is_some()),
+                ("exclude", o.exclude.is_some()),
+                ("equals", o.equals.is_some()),
+                ("pattern", o.pattern.is_some()),
+            ] {
+                if present {
                     return Err(invalid(
                         Some(&format!("{path}.{name}")),
                         &format!("{name} cannot be combined with fields."),
                     ));
                 }
             }
-            if records >= MAX_RECORD_DEPTH {
-                return Err(invalid(
-                    Some(path),
-                    &format!("Records exceed the nesting bound of {MAX_RECORD_DEPTH}."),
-                ));
-            }
-            let fields = fields.as_object().ok_or_else(|| {
-                invalid(Some(&format!("{path}.fields")), "fields must be an object.")
-            })?;
-            if fields.is_empty() {
-                return Err(invalid(
-                    Some(&format!("{path}.fields")),
-                    "A record must have at least one field.",
-                ));
-            }
-            if fields.len() > MAX_RECORD_FIELDS {
-                return Err(invalid(
-                    Some(&format!("{path}.fields")),
-                    &format!("A record exceeds the {MAX_RECORD_FIELDS}-field grammar bound."),
-                ));
-            }
             let mut compiled = BTreeMap::new();
-            for (name, field) in fields {
+            for (name, spec) in fields {
                 if name.is_empty()
                     || name.len() > MAX_FIELD_NAME_CHARS
                     || !name
@@ -448,40 +378,43 @@ impl Compiler<'_> {
                 {
                     return Err(invalid(
                         Some(&format!("{path}.fields")),
-                        &format!(
-                            "Field name {name:?} must be 1–{MAX_FIELD_NAME_CHARS} ASCII letters, digits, underscores or hyphens."
-                        ),
+                        "Field names must be 1–64 ASCII letters, digits, underscores or hyphens.",
                     ));
                 }
                 compiled.insert(
                     name.clone(),
-                    self.node(field, &format!("{path}.fields.{name}"), records + 1)?,
+                    self.node(spec, &format!("{path}.fields.{name}"))?,
                 );
             }
             Body::Record(compiled)
         } else {
-            let read = reading(&map, path, false)?;
-            if map.contains_key("exclude") && matches!(read, Reading::Attr(_) | Reading::Url(_)) {
+            let read = o.read.clone().unwrap_or_default();
+            if o.exclude.is_some() && matches!(read, Reading::Attr(_) | Reading::Url(_)) {
                 return Err(invalid(
                     Some(&format!("{path}.exclude")),
                     "exclude cannot be combined with an attribute or URL reading.",
                 ));
             }
-            let exclude = array(&map, "exclude", path)?
+            let exclusions = o.exclude.as_deref().unwrap_or_default();
+            if exclusions.len() > MAX_ENTRIES {
+                return Err(invalid(
+                    Some(&format!("{path}.exclude")),
+                    "The member must be an array with at most 32 entries.",
+                ));
+            }
+            let exclude = exclusions
                 .iter()
                 .enumerate()
-                .map(|(i, v)| {
-                    let location = format!("{path}.exclude[{i}]");
-                    let text = v.as_str().ok_or_else(|| {
-                        invalid(Some(&location), "An exclusion must be a selector string.")
-                    })?;
-                    Selector::compile(text, &location)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|(i, s)| Selector::compile(s, &format!("{path}.exclude[{i}]")))
+                .collect::<Result<_, _>>()?;
+            // Programmatic Reading values obey the same attribute-name rules as JSON.
+            read.to_string()
+                .parse::<Reading>()
+                .map_err(|reason| invalid(Some(&format!("{path}.read")), &reason))?;
             Body::Value {
                 read,
                 exclude,
-                check: self.check(&map, path)?,
+                check: self.check(&o.equals, &o.pattern, path)?,
             }
         };
         Ok(Node {
@@ -494,39 +427,6 @@ impl Compiler<'_> {
             body,
         })
     }
-}
-
-fn schema() -> Json {
-    let selector = serde_json::json!({"type":"string","maxLength":MAX_PATTERN_BYTES});
-    let count = serde_json::json!({"type":"integer","minimum":0,"maximum":MAX_DECLARED_COUNT,"description":"Compiler requires exact unsigned integer tokens: 1 is admitted; 1.0, 1e0 and -0 are refused. Schema validates mathematical values and cannot enforce token spelling."});
-    let pattern = serde_json::json!({"type":"string","maxLength":MAX_PATTERN_BYTES});
-    let attr = format!("attr:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}}");
-    let predicate = serde_json::json!({"anyOf":[selector.clone(), {
-        "type":"object","additionalProperties":false,
-        "properties":{"select":selector,"read":{"type":"string","pattern":format!("^(text|text-content|{attr})(?![\\s\\S])")},
-            "equals":{"type":"string"},"pattern":pattern,"min":count,"max":count},
-        "not":{"required":["equals","pattern"]}
-    }]});
-    let predicates = serde_json::json!({"type":"array","maxItems":MAX_ENTRIES,"items":{"$ref":"#/$defs/predicate"}});
-    serde_json::json!({"$schema":"https://json-schema.org/draft/2020-12/schema",
-    "title":"HTMLCut extraction contract","description":"Authoring structure validation only. The compiler is authoritative for exact integer token spelling (1 versus 1.0/1e0/-0), duplicate keys, CSS/regex compilation, global byte/node/depth/compiled-cost limits and relationships between counts.","$ref":"#/$defs/node",
-    "$defs":{"predicate":predicate,"node":{"anyOf":[selector.clone(), {
-        "type":"object","additionalProperties":false,
-        "properties":{"select":selector,"where":predicates,"expect":predicates,
-            "until":selector,"match":{"enum":["one","optional","all"]},"min":count,"max":count,
-            "nth":{"type":"integer","minimum":1,"maximum":MAX_DECLARED_COUNT},
-            "fields":{"type":"object","minProperties":1,"maxProperties":MAX_RECORD_FIELDS,"propertyNames":{"pattern":format!("^[A-Za-z0-9_-]{{1,{MAX_FIELD_NAME_CHARS}}}(?![\\s\\S])")},"additionalProperties":{"$ref":"#/$defs/node"}},
-            "read":{"type":"string","pattern":format!("^(text|text-content|outer-html|{attr}|url:[^\\s\"'<>/=]{{1,{MAX_ATTRIBUTE_NAME_CHARS}}})(?![\\s\\S])")},
-            "exclude":{"type":"array","maxItems":MAX_ENTRIES,"items":selector},"equals":{"type":"string"},"pattern":pattern},
-        "dependentRequired":{"where":["select"],"until":["select"],"nth":["select"]},
-        "not":{"required":["equals","pattern"]},
-        "allOf":[
-            {"if":{"required":["read"],"properties":{"read":{"pattern":"^(attr:|url:)"}}},"then":{"not":{"required":["exclude"]}}},
-            {"if":{"required":["fields"]},"then":{"not":{"anyOf":[{"required":["read"]},{"required":["exclude"]},{"required":["equals"]},{"required":["pattern"]}]}}},
-            {"if":{"anyOf":[{"required":["min"]},{"required":["max"]}]},"then":{"required":["match"],"properties":{"match":{"const":"all"}}}},
-            {"if":{"required":["nth"]},"then":{"properties":{"match":{"const":"one"}}}}
-        ]
-    }]}}})
 }
 
 #[cfg(test)]
@@ -543,12 +443,14 @@ mod tests {
             observed.fetch_add(1, Ordering::Relaxed);
             Ok(())
         });
-        let query = crate::QuickQuery {
+        let query = crate::test_support::QueryFixture {
             select: "\\".repeat(super::MAX_CONTRACT_BYTES + 1),
             read: "text".into(),
-            cardinality: crate::QueryCardinality::One,
+            cardinality: crate::Match::One,
         };
-        let error = super::Contract::quick(&query, &context).err().unwrap();
+        let error = crate::test_support::compile_query(&query, &context)
+            .err()
+            .unwrap();
         assert_eq!(error.code(), crate::ErrorCode::InvalidContract);
         // Allow ordinary admission checks. Escaping this input before refusing
         // would require hundreds of the context's 1024-iteration checkpoints.
@@ -564,6 +466,7 @@ mod tests {
         stop::Clock,
         test_support::{DocumentFixture, TestOptions, parse_fixture},
     };
+    use serde_json::Map;
     fn compile(value: Json) -> Result<Contract, Error> {
         Contract::from_json(
             &serde_json::to_string(&value).unwrap(),

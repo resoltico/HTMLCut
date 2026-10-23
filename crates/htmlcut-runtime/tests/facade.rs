@@ -9,10 +9,10 @@ fn finished<T>(result: Completion<T>) -> Result<T, Error> {
 }
 fn query(format: ExportFormat) -> Operation {
     Operation::Extract {
-        contract: ContractInput::Quick(QuickQuery {
+        contract: ContractInput::Quick(QueryRequest {
             select: "p".into(),
             read: "text".into(),
-            cardinality: QueryCardinality::One,
+            cardinality: Match::One,
         }),
         format,
     }

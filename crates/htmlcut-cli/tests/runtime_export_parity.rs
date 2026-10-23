@@ -20,10 +20,10 @@ fn returned_runtime_bytes_match_the_delivered_cli_for_every_representation() {
     let cases = [
         (
             Operation::Extract {
-                contract: ContractInput::Quick(QuickQuery {
+                contract: ContractInput::Quick(QueryRequest {
                     select: "p".into(),
-                    read: DEFAULT_READING.into(),
-                    cardinality: QueryCardinality::All,
+                    read: Reading::default().to_string(),
+                    cardinality: Match::All,
                 }),
                 format: ExportFormat::Json,
             },
@@ -31,10 +31,10 @@ fn returned_runtime_bytes_match_the_delivered_cli_for_every_representation() {
         ),
         (
             Operation::Extract {
-                contract: ContractInput::Quick(QuickQuery {
+                contract: ContractInput::Quick(QueryRequest {
                     select: "p".into(),
-                    read: DEFAULT_READING.into(),
-                    cardinality: QueryCardinality::All,
+                    read: Reading::default().to_string(),
+                    cardinality: Match::All,
                 }),
                 format: ExportFormat::Raw,
             },

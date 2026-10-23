@@ -44,3 +44,32 @@ impl Settings {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct QueryRequest {
+    pub select: String,
+    pub read: String,
+    pub cardinality: htmlcut_core::Match,
+}
+pub(crate) fn compile_query(
+    query: &QueryRequest,
+    stop: &htmlcut_core::Stop,
+) -> Result<htmlcut_core::Contract, htmlcut_core::Error> {
+    stop.check()?;
+    let read = query
+        .read
+        .parse()
+        .map_err(|reason| htmlcut_core::Error::InvalidContract {
+            path: Some("$.read".into()),
+            reason,
+        })?;
+    htmlcut_core::Contract::compile(
+        &htmlcut_core::NodeSpec::Node(Box::new(htmlcut_core::NodeObject {
+            select: Some(query.select.clone()),
+            read: Some(read),
+            r#match: Some(query.cardinality),
+            ..Default::default()
+        })),
+        stop,
+    )
+}

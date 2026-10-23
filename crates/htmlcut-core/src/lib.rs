@@ -12,7 +12,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 mod bounds;
-mod contract;
+mod compile;
 mod css;
 mod document;
 mod dom;
@@ -23,18 +23,19 @@ mod options;
 mod outline;
 mod read;
 mod select;
+mod spec;
 mod stop;
 mod value;
-pub use contract::{Contract, QueryCardinality, QuickQuery};
+pub use compile::Contract;
 pub use document::Document;
 pub use error::{CountRange, Error, ErrorClass, ErrorCode, ExpectationFailure, Limit};
 pub use options::{ParseOptions, ResultLimits};
 pub use outline::{OutlineAttribute, OutlineOptions, OutlineReport, OutlineRow};
+pub use spec::{
+    CONTRACT_SUMMARY, Match, NodeObject, NodeSpec, PredicateObject, PredicateSpec, Reading,
+};
 pub use stop::Stop;
 pub use value::{ExportFormat, Value};
-
-/// Default reading syntax for value contracts and frontend overrides.
-pub const DEFAULT_READING: &str = "text";
 
 #[cfg(test)]
 extern crate self as htmlcut_core;

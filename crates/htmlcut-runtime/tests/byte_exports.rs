@@ -29,10 +29,10 @@ fn runtime_only_consumer_gets_complete_json_raw_and_outline_exports() {
         (ExportFormat::Raw, "A & 雪\nB\n"),
     ] {
         let value = result(Operation::Extract {
-            contract: ContractInput::Quick(QuickQuery {
+            contract: ContractInput::Quick(QueryRequest {
                 select: "p".into(),
-                read: DEFAULT_READING.into(),
-                cardinality: QueryCardinality::All,
+                read: Reading::default().to_string(),
+                cardinality: Match::All,
             }),
             format,
         });

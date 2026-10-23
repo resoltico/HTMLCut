@@ -23,6 +23,8 @@ authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
+schemars = "1.2.2"
+serde_path_to_error = "0.1.20"
 filedescriptor = "0.8.3"
 libc = "0.2.189"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_System_Threading"] }

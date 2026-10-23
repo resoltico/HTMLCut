@@ -22,10 +22,10 @@ fn malformed_or_schema_requests_never_inspect_irrelevant_html_metadata() {
         ),
         (
             Operation::Extract {
-                contract: ContractInput::Quick(QuickQuery {
+                contract: ContractInput::Quick(QueryRequest {
                     select: "[".into(),
-                    read: DEFAULT_READING.into(),
-                    cardinality: QueryCardinality::One,
+                    read: Reading::default().to_string(),
+                    cardinality: Match::One,
                 }),
                 format: ExportFormat::Json,
             },

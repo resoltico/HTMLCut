@@ -73,3 +73,29 @@ pub fn test_stop(limit: Option<std::time::Duration>) -> Result<Stop, Error> {
         .transpose()?
         .unwrap_or_else(Stop::none))
 }
+
+#[derive(Clone, Debug)]
+pub struct QueryFixture {
+    pub select: String,
+    pub read: String,
+    pub cardinality: htmlcut_core::Match,
+}
+pub fn compile_query(query: &QueryFixture, stop: &Stop) -> Result<htmlcut_core::Contract, Error> {
+    stop.check()?;
+    let read = query
+        .read
+        .parse()
+        .map_err(|reason| Error::InvalidContract {
+            path: Some("$.read".into()),
+            reason,
+        })?;
+    htmlcut_core::Contract::compile(
+        &htmlcut_core::NodeSpec::Node(Box::new(htmlcut_core::NodeObject {
+            select: Some(query.select.clone()),
+            read: Some(read),
+            r#match: Some(query.cardinality),
+            ..Default::default()
+        })),
+        stop,
+    )
+}

@@ -10,11 +10,11 @@ mod local_io;
 use htmlcut_core::{Contract, Document};
 mod settings;
 pub use htmlcut_core::{
-    DEFAULT_READING, Error, ErrorClass, ErrorCode, ExportFormat, Limit, OutlineAttribute,
-    OutlineOptions, OutlineReport, OutlineRow, QueryCardinality, QuickQuery, Value,
+    Error, ErrorClass, ErrorCode, ExportFormat, Limit, Match, OutlineAttribute, OutlineOptions,
+    OutlineReport, OutlineRow, Reading, Value,
 };
 pub use job::{CancelOutcome, Completion, Job, JobControl, Supervision};
-pub use settings::Settings as Limits;
+pub use settings::{QueryRequest, Settings as Limits};
 use std::{path::PathBuf, sync::Arc};
 
 /// Caller-owned bytes or a concrete local source.
@@ -30,7 +30,7 @@ pub enum ContractInput {
     Json(String),
     File(PathBuf),
     Stdin,
-    Quick(QuickQuery),
+    Quick(QueryRequest),
 }
 /// The closed application operation set.
 #[derive(Clone, Debug)]
@@ -296,7 +296,7 @@ fn compile(operation: &Operation, context: &htmlcut_core::Stop) -> Result<Compil
                         error
                     })?
                 }
-                ContractInput::Quick(query) => Contract::quick(query, context)?,
+                ContractInput::Quick(query) => settings::compile_query(query, context)?,
                 ContractInput::File(path) => {
                     let bytes = local_io::read_file(path, Contract::MAX_BYTES, true, context)?;
                     let text = std::str::from_utf8(&bytes).map_err(|e| Error::InvalidContract {

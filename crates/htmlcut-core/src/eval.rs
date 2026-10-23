@@ -3,7 +3,7 @@
 use crate::dom::{ElementRef, Node as DomNode};
 use crate::{
     Contract, Document, Error, ErrorCode, Value,
-    contract::{Body, Cardinality, Check, Node, Predicate},
+    compile::{Body, Cardinality, Check, Node, Predicate},
     select::Selector,
     stop::Clock,
     value::OutputSize,
@@ -127,10 +127,9 @@ fn needs_range(node: &Node) -> bool {
         return true;
     }
     match &node.body {
-        Body::Value { read, .. } => !matches!(
-            read,
-            crate::contract::Reading::Attr(_) | crate::contract::Reading::Url(_)
-        ),
+        Body::Value { read, .. } => {
+            !matches!(read, crate::Reading::Attr(_) | crate::Reading::Url(_))
+        }
         Body::Record(fields) => fields.values().any(needs_range),
     }
 }
@@ -181,7 +180,7 @@ impl<'d> Engine<'d> {
         for element in elements {
             self.clock.tick()?;
             // An explicitly requested attribute must exist even without a value comparison.
-            if !tests && !matches!(predicate.read, crate::contract::Reading::Attr(_)) {
+            if !tests && !matches!(predicate.read, crate::Reading::Attr(_)) {
                 continue;
             }
             let value = match crate::read::read(
@@ -280,10 +279,9 @@ impl<'d> Engine<'d> {
                 here.push(index + 1);
             }
             let structural = match &node.body {
-                Body::Value { read, .. } => !matches!(
-                    read,
-                    crate::contract::Reading::Attr(_) | crate::contract::Reading::Url(_)
-                ),
+                Body::Value { read, .. } => {
+                    !matches!(read, crate::Reading::Attr(_) | crate::Reading::Url(_))
+                }
                 Body::Record(fields) => fields.values().any(needs_range),
             };
             let extent = if node.select.is_none() {
@@ -316,9 +314,9 @@ impl<'d> Engine<'d> {
                     let mut excluded = HashSet::<NodeId>::new();
                     if matches!(
                         read,
-                        crate::contract::Reading::Text
-                            | crate::contract::Reading::TextContent
-                            | crate::contract::Reading::OuterHtml
+                        crate::Reading::Text
+                            | crate::Reading::TextContent
+                            | crate::Reading::OuterHtml
                     ) {
                         for selector in exclude {
                             for element in

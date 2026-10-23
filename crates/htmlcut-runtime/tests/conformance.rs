@@ -124,10 +124,10 @@ fn non_stdin_carriers_preserve_independent_unicode_bytes() {
         for contract in [
             ContractInput::Json("\"p\"".into()),
             ContractInput::File(contract.clone()),
-            ContractInput::Quick(QuickQuery {
+            ContractInput::Quick(QueryRequest {
                 select: "p".into(),
                 read: "text".into(),
-                cardinality: QueryCardinality::One,
+                cardinality: Match::One,
             }),
         ] {
             let request = Request {

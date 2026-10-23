@@ -3,7 +3,7 @@
 use crate::cli::{self, Command};
 use htmlcut_runtime::{
     Completion, ContractInput, Destination, Error, ErrorCode, ExportFormat, Input, Job, JobControl,
-    Limits, Operation, OutlineOptions, QueryCardinality, QuickQuery, Request, Supervision,
+    Limits, Match, Operation, OutlineOptions, QueryRequest, Request, Supervision,
 };
 use std::{
     io::Write,
@@ -141,16 +141,12 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
         }
         Command::Get(args) => Request {
             operation: Operation::Extract {
-                contract: ContractInput::Quick(QuickQuery {
+                contract: ContractInput::Quick(QueryRequest {
                     select: args.css,
                     read: args
                         .read
-                        .unwrap_or_else(|| htmlcut_runtime::DEFAULT_READING.into()),
-                    cardinality: if args.all {
-                        QueryCardinality::All
-                    } else {
-                        QueryCardinality::One
-                    },
+                        .unwrap_or_else(|| htmlcut_runtime::Reading::default().to_string()),
+                    cardinality: if args.all { Match::All } else { Match::One },
                 }),
                 format: if args.raw {
                     ExportFormat::Raw
