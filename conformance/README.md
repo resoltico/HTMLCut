@@ -17,12 +17,12 @@ Cases live below `contract/` area directories (including `read/text`, `read/attr
 
 Expected values and error facts are authored independently of the engine. Error oracles use complete fact comparison by default; `partial_error_facts` selects an explicit subset.
 
-Review fixture changes as semantic specification changes. Rejection controls exercise empty/incomplete discovery and incorrect oracles. Passing runs report executed case identities and counts.
+Review fixture changes as semantic specification changes.
 
 The helper crate has no engine dependency. Discovery rejects redirected directories, nonregular files, unexpected entries, incomplete or conflicting oracles and malformed metadata. Contract text remains opaque so duplicates, malformed JSON and exact numeric token spellings reach the compiler. `README.md` and `PROVENANCE.md` are permitted case documentation.
 
 Core compares values and exact bytes. CLI commands set stdin explicitly and compare stdout bytes or diagnostic facts plus exit status. Empty discovery, incomplete cases and deliberately wrong oracles have rejection controls. See the [contract specification](../docs/contract.md), [core adapter](../crates/htmlcut-core/tests/conformance.rs), [CLI adapter](../crates/htmlcut/tests/conformance.rs) and [input tests](../crates/htmlcut/tests/input_contract_boundaries.rs).
 
-## Provenance
+## Fixture coverage
 
-The corpus includes synthetic authored pages, generated stress inputs and minimized regressions. The authored rendered example is synthetic, not a browser capture. The offer family combines encoding, first-base resolution, URL queries, filtering, optional fields and captures; navigation/template duplicates and script content remain inert. Report examples combine prose, exclusions, pre/code, tables, definition structures and outline output. The static-source example preserves CSS-hidden source text without executing scripts.
+The corpus includes synthetic authored pages and generated stress and boundary inputs. The authored rendered example is synthetic, not a browser capture. The offer family combines encoding, first-base resolution, URL queries, filtering, optional fields and captures; navigation/template duplicates and script content remain inert. Report examples combine prose, exclusions, pre/code, tables, definition structures and outline output. The static-source example preserves CSS-hidden source text without executing scripts.

@@ -159,7 +159,7 @@ the default style sheet. It is deterministic and does not consult CSS.
 9. In any other line each cell has every run of Unicode `White_Space` collapsed to one
    U+0020 and is trimmed; cells are joined by U+0009; a line whose cells are all empty is
    dropped.
-10. Lines are joined by U+000A, without an added framing LF; a preserved final blank line can contribute a separator.
+10. Lines are joined by U+000A, without an added framing LF. Using `\n` to denote an LF, `<pre>a\n</pre>` in `text` reads as `a`, while `<pre>a\n\n</pre>` reads as `a\n`: the second LF ends a preserved blank line. Use `text-content` to retain the descendant text's trailing LF.
 
 ### Selectors and patterns
 

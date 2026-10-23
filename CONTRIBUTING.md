@@ -1,6 +1,6 @@
 # Contributing
 
-Install rustup and the platform C/C++ linker toolchain (MSVC build tools on Windows). From a clean checkout, run `cargo test --workspace --locked`. The development compiler and components are declared in [rust-toolchain.toml](rust-toolchain.toml), the MSRV in [Cargo.toml](Cargo.toml), and resolved inputs in [Cargo.lock](Cargo.lock). No Python setup is needed.
+Install rustup and the platform C/C++ linker toolchain (MSVC build tools on Windows). From a clean checkout, run `cargo test --workspace --locked`. The development compiler and components are declared in [rust-toolchain.toml](rust-toolchain.toml), the MSRV in [Cargo.toml](Cargo.toml), and resolved inputs in [Cargo.lock](Cargo.lock).
 
 ## Checks
 
@@ -45,15 +45,15 @@ HTMLCUT_TEST_BINARY=target/release/htmlcut cargo test -p htmlcut --locked
 cargo package --locked -p htmlcut-core -p htmlcut
 ```
 
-`HTMLCUT_TEST_BINARY` accepts an absolute path or a path relative to the workspace root. Native CI repeats conformance against release-built executables on the same four runners/targets as dist. Dist has a pre-build setup hook, not a supported per-target post-build test hook, so that native matrix is the release acceptance fallback. Other platforms require their native CI results; a host run does not verify them.
+`HTMLCUT_TEST_BINARY` accepts an absolute path or a path relative to the workspace root. Native CI repeats conformance against release-built executables on the same four runners/targets as dist. Archive building uses dist’s pre-build setup hook; executable acceptance runs separately in the native CI matrix. A host run does not verify the other targets or the exact archives built by the release workflow.
 
-The private conformance crate stays an unversioned path dev-dependency so Cargo omits it from published manifests. cargo-deny's `allow-wildcard-paths` exception applies only to private/dev paths; registry and public production wildcards remain denied. Crate unit tests are self-contained; repository documentation/corpus checks live in excluded integration tests.
+The conformance helper is an unversioned path dev-dependency omitted from published manifests. cargo-deny's `allow-wildcard-paths` exception applies only to private/dev paths; registry and public production wildcards remain denied. Crate unit tests are self-contained; repository documentation/corpus checks live in integration tests excluded from the published packages.
 
 ## Releasing
 
 Commit/push and wait for CI on the final release commit before tagging. The required `Check` status aggregates all applicable jobs.
 
-Configure crates.io trusted publishing for `.github/workflows/publish-crates.yml` before release; the first publication of the new CLI name may require a maintainer token.
+Before tagging, configure crates.io trusted publishing for both `htmlcut-core` and `htmlcut`, using `.github/workflows/publish-crates.yml`. [Trusted publishing](https://crates.io/docs/trusted-publishing) requires an existing crate; an unpublished name needs initial API-token publication. The tag workflow has no token bootstrap or already-published-version skip. Resolve that prerequisite before using it; manually publishing a release version and then rerunning the unchanged workflow will fail on the duplicate version.
 
 1. Bump the workspace/dependency versions and lockfile.
 2. Move Unreleased notes to the version heading with its release date.
@@ -62,4 +62,4 @@ Configure crates.io trusted publishing for `.github/workflows/publish-crates.yml
 5. Dist builds the GitHub release archives and attestations.
 6. The publishing workflow uploads htmlcut-core, then htmlcut.
 
-The tag starts archive building and crate publishing independently. Retiring previously published package names and account configuration remain maintainer actions.
+The tag starts archive building and crate publishing independently. Account configuration and any initial API-token publication are maintainer actions. Check both workflow outcomes; a successful archive release does not establish successful registry publication.

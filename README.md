@@ -65,7 +65,7 @@ No destination is opened until complete result bytes exist. `-o PATH` stages bes
 
 Stdout (`-o -` or no output option), lexical device paths and existing nonregular targets are direct writes. Device paths are Unix `/dev/…`, Windows `\\.\…` and reserved DOS device names, case-insensitive and ignoring extensions. Broken pipes on direct writes/flushes are silent success; other I/O failures can expose a prefix. File replacement does not provide a concurrency or durability guarantee beyond the rename.
 
-Errors are one flat JSON object plus LF on stderr when reporting succeeds. Facts include paths, selectors, row indexes, observed counts/value previews and resource or I/O details. Count expectations are objects such as `{"min":1,"max":1}`. See the [diagnostic facts table](docs/contract.md#diagnostics).
+Help and version use stdout with exit 0. Request errors, including unknown flags, use the same JSON diagnostic format as extraction errors. Errors are one flat JSON object plus LF on stderr when reporting succeeds. Facts include paths, selectors, row indexes, observed counts/value previews and resource or I/O details. Count expectations are objects such as `{"min":1,"max":1}`. See the [diagnostic facts table](docs/contract.md#diagnostics).
 
 | Exit | Meaning |
 |---|---|
