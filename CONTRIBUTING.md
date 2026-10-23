@@ -59,7 +59,7 @@ Before tagging, configure crates.io trusted publishing for both `htmlcut-core` a
 2. Move Unreleased notes to the version heading with its release date.
 3. Tag `vX.Y.Z`.
 4. Push the branch and tag.
-5. Dist builds the GitHub release archives and attestations.
+5. Dispatch the `Release` workflow with tag `vX.Y.Z` from the source ref to package; dist builds the GitHub release archives and attestations. Use the tagged ref when it supports dispatch.
 6. The publishing workflow uploads htmlcut-core, then htmlcut.
 
-The tag starts archive building and crate publishing independently. Account configuration and any initial API-token publication are maintainer actions. Check both workflow outcomes; a successful archive release does not establish successful registry publication.
+Tagging starts registry publication; archive publication requires a separate workflow dispatch. Precise dist builds select only the distributed package, excluding development-only workspace binaries. For an archive packaging repair, use a reviewed ref with application source, dependency lockfile and toolchain identical to the release tag; keep existing tags fixed. Archive attestations identify the actual build ref. Account configuration and any initial API-token publication are maintainer actions. Check both workflow outcomes; a successful archive release does not establish successful registry publication.
