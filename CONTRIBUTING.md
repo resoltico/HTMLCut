@@ -53,7 +53,7 @@ The conformance helper is an unversioned path dev-dependency omitted from publis
 
 Commit/push and wait for CI on the final release commit before tagging. The required `Check` status aggregates all applicable jobs.
 
-Before tagging, configure crates.io trusted publishing for both `htmlcut-core` and `htmlcut`, using `.github/workflows/publish-crates.yml`. [Trusted publishing](https://crates.io/docs/trusted-publishing) requires an existing crate; an unpublished name needs initial API-token publication. The tag workflow has no token bootstrap or already-published-version skip. Resolve that prerequisite before using it; manually publishing a release version and then rerunning the unchanged workflow will fail on the duplicate version.
+Before tagging, configure crates.io trusted publishing for both `htmlcut-core` and `htmlcut`, using `.github/workflows/publish-crates.yml`. [Trusted publishing](https://crates.io/docs/trusted-publishing) requires an existing crate; an unpublished name needs initial API-token publication. For an initial publication, publish core and then CLI from the clean, CI-approved release commit with a maintainer API token, then configure their trusted publishers before tagging. The tag workflow verifies the source commit recorded inside an existing registry package before skipping that version; a different commit or a dirty-source package fails verification. Missing versions use trusted publishing.
 
 1. Bump the workspace/dependency versions and lockfile.
 2. Move Unreleased notes to the version heading with its release date.

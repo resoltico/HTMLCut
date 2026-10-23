@@ -24,9 +24,31 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
           test "$GITHUB_REF_NAME" = "v$version"
       - run: rustup show
+      - name: Check registry versions against this source commit
+        id: registry
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          commit=$(git rev-parse HEAD)
+          for crate in htmlcut-core htmlcut; do
+            key=${crate//-/_}
+            status=$(curl --user-agent "HTMLCut release publisher (https://github.com/resoltico/HTMLCut)" --silent --show-error --retry 3 --output "$RUNNER_TEMP/$crate.json" --write-out '%{http_code}' "https://crates.io/api/v1/crates/$crate/$version")
+            case "$status" in
+              404) echo "$key=true" >> "$GITHUB_OUTPUT" ;;
+              200)
+                curl --user-agent "HTMLCut release publisher (https://github.com/resoltico/HTMLCut)" --fail --silent --show-error --location --retry 3 "https://crates.io/api/v1/crates/$crate/$version/download" --output "$RUNNER_TEMP/$crate.crate"
+                tar -xzOf "$RUNNER_TEMP/$crate.crate" "$crate-$version/.cargo_vcs_info.json" | jq --exit-status --arg commit "$commit" '.git.sha1 == $commit and ((.git.dirty // false) == false)'
+                echo "$key=false" >> "$GITHUB_OUTPUT"
+                ;;
+              *) echo "Registry lookup for $crate failed with HTTP $status" >&2; exit 1 ;;
+            esac
+          done
       - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
+        if: steps.registry.outputs.htmlcut_core == 'true' || steps.registry.outputs.htmlcut == 'true'
         id: auth
       - run: cargo publish -p htmlcut-core --locked
+        if: steps.registry.outputs.htmlcut_core == 'true'
         env: { CARGO_REGISTRY_TOKEN: '${{ steps.auth.outputs.token }}' }
       - run: cargo publish -p htmlcut --locked
+        if: steps.registry.outputs.htmlcut == 'true'
         env: { CARGO_REGISTRY_TOKEN: '${{ steps.auth.outputs.token }}' }

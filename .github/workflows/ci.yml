@@ -16,6 +16,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   FUZZ_NIGHTLY: nightly-2026-09-30
+  FUZZ_TARGET: x86_64-unknown-linux-gnu
   CARGO_DENY_VERSION: 0.20.2
   CARGO_FUZZ_VERSION: 0.13.2
   CARGO_MUTANTS_VERSION: 27.1.0
@@ -102,7 +103,7 @@ jobs:
           cp -R fuzz/corpus "$RUNNER_TEMP/htmlcut-fuzz-corpus"
           for source in fuzz/fuzz_targets/*.rs; do
             target=${source##*/}; target=${target%.rs}
-            cargo +"$FUZZ_NIGHTLY" fuzz run "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -runs=2000 -max_len=65536 -rss_limit_mb=2048 -timeout=10
+            cargo +"$FUZZ_NIGHTLY" fuzz run --target "$FUZZ_TARGET" "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -runs=2000 -max_len=65536 -rss_limit_mb=2048 -timeout=10
           done
           git diff --exit-code Cargo.lock
       - if: failure()
@@ -138,7 +139,7 @@ jobs:
           cp -R fuzz/corpus "$RUNNER_TEMP/htmlcut-fuzz-corpus"
           for source in fuzz/fuzz_targets/*.rs; do
             target=${source##*/}; target=${target%.rs}
-            cargo +"$FUZZ_NIGHTLY" fuzz run "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -max_total_time=600 -max_len=65536 -rss_limit_mb=2048 -timeout=10
+            cargo +"$FUZZ_NIGHTLY" fuzz run --target "$FUZZ_TARGET" "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -max_total_time=600 -max_len=65536 -rss_limit_mb=2048 -timeout=10
           done
           git diff --exit-code Cargo.lock
       - if: failure()

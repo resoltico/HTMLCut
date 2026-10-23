@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [24.0.0] - 2026-10-23
+
 ### Added
 
 - Typed `NodeSpec`, `PredicateSpec`, `Reading` and `Match` APIs for programmatic contracts, with a generated authoring schema. Use `Contract::compile` for typed specifications or `Contract::from_json` for closed JSON.
