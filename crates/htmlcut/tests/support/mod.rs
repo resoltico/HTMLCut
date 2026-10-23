@@ -10,7 +10,9 @@ pub fn binary() -> PathBuf {
     if path.is_absolute() {
         path
     } else {
-        std::env::current_dir().unwrap().join(path)
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path)
     }
 }
 pub fn command() -> Command {

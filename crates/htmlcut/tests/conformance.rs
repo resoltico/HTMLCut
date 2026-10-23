@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-#[path = "../../../conformance/fixture.rs"]
-mod fixture;
+use htmlcut_conformance as fixture;
 mod support;
 use std::path::Path;
 #[test]

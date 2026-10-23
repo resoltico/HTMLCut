@@ -6,7 +6,7 @@ use htmlcut_core::{Contract, Value};
 #[test]
 fn authored_book_rows_keep_complete_lexical_values() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../conformance/contract/authored-books");
+        .join("../../conformance/contract/authored/books");
     let bytes = std::fs::read(root.join("page.html")).unwrap();
     let document = parse_fixture(
         DocumentFixture::new(&bytes),

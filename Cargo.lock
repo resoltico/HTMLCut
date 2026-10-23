@@ -446,7 +446,17 @@ name = "htmlcut"
 version = "23.0.0"
 dependencies = [
  "clap",
+ "htmlcut-conformance",
  "htmlcut-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "htmlcut-conformance"
+version = "23.0.0"
+dependencies = [
  "serde",
  "serde_json",
  "tempfile",
@@ -460,6 +470,7 @@ dependencies = [
  "ego-tree",
  "encoding_rs",
  "html5ever",
+ "htmlcut-conformance",
  "jsonschema",
  "precomputed-hash",
  "regex",

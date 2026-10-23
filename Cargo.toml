@@ -3,11 +3,13 @@
 members = [
     "crates/htmlcut-core",
     "crates/htmlcut",
+    "crates/htmlcut-conformance",
     "fuzz",
 ]
 default-members = [
     "crates/htmlcut-core",
     "crates/htmlcut",
+    "crates/htmlcut-conformance",
 ]
 resolver = "3"
 
@@ -21,6 +23,7 @@ authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
+htmlcut-conformance = { path = "crates/htmlcut-conformance" }
 schemars = "1.2.2"
 serde_path_to_error = "0.1.20"
 clap = { version = "4.6.7", features = ["derive"] }

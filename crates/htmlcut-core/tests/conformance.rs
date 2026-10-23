@@ -10,8 +10,7 @@ fn every_case_runs_through_the_core_engine() {
     let checked = run_cases(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance"));
     println!("HTMLCUT_CONFORMANCE_CASES={checked}");
 }
-#[path = "../../../conformance/fixture.rs"]
-mod fixture;
+use htmlcut_conformance as fixture;
 fn run_cases(root: &Path) -> usize {
     let cases = fixture::discover(root);
     for case in &cases {
@@ -242,13 +241,11 @@ fn documented_selector_examples_have_literal_dialect_evidence() {
         .collect::<BTreeSet<_>>();
     assert!(!examples.is_empty());
     let mut tested = BTreeSet::new();
-    for entry in std::fs::read_dir(root.join("conformance/contract")).unwrap() {
-        let path = entry.unwrap().path();
-        if !path.join("error.json").exists() {
-            let value: Value =
-                serde_json::from_slice(&std::fs::read(path.join("contract.json")).unwrap())
-                    .unwrap();
-            selectors(&value, &mut tested);
+    for case in fixture::discover(&root.join("conformance")) {
+        if case.error.is_none()
+            && let Some(contract) = case.contract
+        {
+            selectors(&serde_json::from_str(&contract).unwrap(), &mut tested);
         }
     }
     assert!(
@@ -261,8 +258,8 @@ fn documented_selector_examples_have_literal_dialect_evidence() {
 #[test]
 fn core_adapter_rejects_wrong_json_and_raw_oracles() {
     for (id, oracle) in [
-        ("01-value-one", "expected.json"),
-        ("semantic-raw-null", "expected.raw"),
+        ("cardinality/one", "expected.json"),
+        ("raw/optional-null", "expected.raw"),
     ] {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/contract");
         let dir = tempfile::tempdir().unwrap();

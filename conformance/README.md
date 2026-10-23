@@ -1,6 +1,8 @@
 # Conformance corpus
 
-The executable specification of HTMLCut. Every case is a directory. Core, runtime and the actual CLI consume the same independent literal inputs and oracles; `HTMLCUT_TEST_BINARY` selects an unpacked production binary for delivered acceptance.
+The executable specification of HTMLCut. The public-core adapter and the black-box CLI adapter use the development-only `htmlcut-conformance` crate for discovery, typed options and independent literal oracles. `HTMLCUT_TEST_BINARY` selects a delivered executable.
+
+Cases live below `contract/` area directories (including `read/text`, `read/attr-url` and `read/html`) and `outline/`. A case is a directory containing `page.html`; intermediate areas contain only directories. Discovery rejects empty areas/groups and compares its result with an independent recursive page count. Both adapters print every case identity and the executed total; use `-- --nocapture` to see successful-case output.
 
 | File | Meaning |
 |---|---|
@@ -17,14 +19,10 @@ Expected values and error facts are authored independently of the engine. Error 
 
 Review fixture changes as semantic specification changes. Rejection controls exercise empty/incomplete discovery and incorrect oracles. Passing runs report executed case identities and counts.
 
-`fixture.rs` is a repository-only Rust path module shared by all three adapters. Discovery rejects empty extraction or outline groups, redirected directories, nonregular files, unexpected entries, missing/conflicting/irrelevant oracles and invalid metadata. Options and outline metadata use closed types: unknown/duplicate keys, null and out-of-range unsigned limits refuse. Missing optional metadata alone selects product defaults. Contract text remains opaque, preserving malformed JSON, duplicates and numeric token spelling for the compiler. `README.md` and `PROVENANCE.md` are permitted human documentation in case directories. Ordinary Cargo tests require no Python or runtime compiler invocation.
+The helper crate has no engine dependency. Discovery rejects redirected directories, nonregular files, unexpected entries, incomplete or conflicting oracles and malformed metadata. Contract text remains opaque so duplicates, malformed JSON and exact numeric token spellings reach the compiler. `README.md` and `PROVENANCE.md` are permitted case documentation.
 
-Core uses one execution context through compilation, export admission, preparation, evaluation and export. Core and runtime compare extracted values with `expected.json`; all three adapters compare complete output with the selected byte oracle. Runtime also checks fresh export and named Save bytes. CLI invocations use bounded capture and require confirmed child cleanup. Native I/O, authorization, cancellation and commit tests remain separate.
+Core compares values and exact bytes. CLI commands set stdin explicitly and compare stdout bytes or diagnostic facts plus exit status. Empty discovery, incomplete cases and deliberately wrong oracles have rejection controls. See the [contract specification](../docs/contract.md), [core adapter](../crates/htmlcut-core/tests/conformance.rs), [CLI adapter](../crates/htmlcut/tests/conformance.rs) and [input tests](../crates/htmlcut/tests/input_contract_boundaries.rs).
 
-## Provenance and coverage
+## Provenance
 
-The corpus contains offline authored examples and realistic pages, generated stress inputs and minimized regressions. The `authored-*` pages are synthetic, including `authored-rendered`; its name does not indicate a browser capture.
-
-The authored offer family combines caller encoding, conflicting meta, relative first base, legacy versus UTF-8 URL queries, conjunctive filtering, optional fields and captures, with decoding and semantic refusals. Navigation/template duplicates and script contents stay inert. The report family combines prose, exclusions, pre/code, table and definition structures and an outline over the same bytes. The static-source example preserves CSS-hidden source text and excludes script text without executing it.
-
-Focused public-core tables independently exhaust the declared five reading families × three cardinalities × zero/one/two matches and seven numeric positions × ten raw tokens. Compiler/schema tests cover expressible grammar restrictions without claiming schema can validate duplicate keys, raw numeric spellings or selector/regex compilation. Runtime and CLI carrier tables cover their finite supported source combinations, while representation/destination tests check complete admission, preservation on refusal and retry. See [the contract reference](../docs/contract.md), [runtime export tests](../crates/htmlcut-runtime/tests/byte_exports.rs), [carrier and preflight tests](../crates/htmlcut-cli/tests/input_contract_boundaries.rs) and [native QA boundaries](../docs/qa-resources.md).
+The corpus includes synthetic authored pages, generated stress inputs and minimized regressions. The authored rendered example is synthetic, not a browser capture. The offer family combines encoding, first-base resolution, URL queries, filtering, optional fields and captures; navigation/template duplicates and script content remain inert. Report examples combine prose, exclusions, pre/code, tables, definition structures and outline output. The static-source example preserves CSS-hidden source text without executing scripts.
