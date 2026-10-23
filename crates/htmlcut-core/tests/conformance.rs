@@ -174,13 +174,7 @@ fn corpus_runner_refuses_empty_or_incomplete_corpora() {
 }
 
 fn plain_message(error: &htmlcut_core::Error) {
-    for rendering in [
-        "Some(",
-        "None",
-        "ParseError",
-        "DocumentFixtureLocation",
-        " { ",
-    ] {
+    for rendering in ["Some(", "None", "ParseError", "SourceLocation", " { "] {
         assert!(
             !error.to_string().contains(rendering),
             "{}",

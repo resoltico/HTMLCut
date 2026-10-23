@@ -29,6 +29,9 @@ registries = []
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
+# Permit source-only private/dev paths so Cargo omits the unpublished test helper
+# from packaged manifests. Registry and public production wildcards remain denied.
+allow-wildcard-paths = true
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"

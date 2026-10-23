@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>HTMLCut third-party licenses</title>
+<style>body{max-width:72rem;margin:2rem auto;padding:0 1rem;font:16px/1.5 sans-serif}pre{white-space:pre-wrap}</style>
+<h1>HTMLCut third-party licenses</h1>
+{{#each licenses}}
+<section><h2>{{name}}</h2><ul>
+{{#each used_by}}<li>{{crate.name}} {{crate.version}}</li>{{/each}}
+</ul><pre>{{text}}</pre></section>
+{{/each}}
+</html>

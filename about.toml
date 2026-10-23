@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+# Notice-generation choices; dependency admission policy is in deny.toml.
+accepted = ["MPL-2.0", "Apache-2.0", "MIT", "BSD-3-Clause", "ISC", "Unicode-3.0", "NCSA", "Unlicense"]
+ignore-dev-dependencies = true

@@ -39,7 +39,6 @@ pub use value::{ExportFormat, Value};
 #[cfg(test)]
 extern crate self as htmlcut_core;
 #[cfg(test)]
-#[path = "../tests/support/mod.rs"]
 mod test_support;
 
 #[cfg(test)]

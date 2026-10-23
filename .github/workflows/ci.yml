@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 name: CI
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,240 +14,133 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 env:
+  CARGO_TERM_COLOR: always
   FUZZ_NIGHTLY: nightly-2026-09-30
+  CARGO_DENY_VERSION: 0.20.2
+  CARGO_FUZZ_VERSION: 0.13.2
+  CARGO_MUTANTS_VERSION: 27.1.0
 jobs:
-  release-target-matrix:
-    name: Compute release target matrix
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - id: matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo 'matrix<<EOF'
-            python3 -m tools.htmlcut_maintenance matrix
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-  linux-maintainer:
-    name: Linux full maintainer gate
-    needs: [release-target-matrix]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - uses: ./.github/actions/cargo-downloads
-        with:
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-deny
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - run: python3 -m tools.htmlcut_maintenance check
-
-      - name: Preserve failed process fixtures
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: process-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
-          retention-days: 3
-          if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/htmlcut-resource-group.*/**
-            ${{ runner.temp }}/htmlcut-exited-group.*/**
-            ${{ runner.temp }}/htmlcut-process-tree.*/**
-
-      - name: Preserve bounded installation evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: installation-linux-maintainer
-          retention-days: 3
-          path: |
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
-          if-no-files-found: warn
-  focused-smoke:
-    name: Linux contract and extraction fuzz preflight
-    needs: [release-target-matrix]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - uses: ./.github/actions/cargo-downloads
-        with:
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - shell: bash
-        run: |
-          set -euo pipefail
-          nightly=$(python3 -c 'from tools.htmlcut_maintenance.config import tools; print(tools()["nightly"])')
-          rustup toolchain install "$nightly" --component rust-src --profile minimal
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-fuzz
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Execute both bounded fuzz preflights
-        shell: bash
-        run: python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations "$RUNNER_TEMP/focused-smoke"
-      - name: Preserve smoke logs and crash inputs
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: focused-smoke
-          retention-days: 3
-          path: ${{ runner.temp }}/focused-smoke/
-          if-no-files-found: warn
-
-      - name: Preserve bounded installation evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: installation-focused-smoke
-          retention-days: 3
-          path: |
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
-          if-no-files-found: warn
-  minimum-rust:
-    name: Minimum supported Rust
-    needs: [release-target-matrix]
+  check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - uses: ./.github/actions/cargo-downloads
-        with:
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - shell: bash
-        run: |
-          set -euo pipefail
-          msrv=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["rust-version"])')
-          rustup toolchain install "$msrv" --profile minimal
-          cargo +"$msrv" test --locked --workspace
-  release-target-smoke:
-    name: Native package ${{ matrix.id }}
-    needs: [release-target-matrix]
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 90
+        with: { persist-credentials: false }
+      - run: rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo doc --workspace --no-deps --locked
+        env: { RUSTDOCFLAGS: '-Dwarnings' }
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with: { tool: 'cargo-deny@${{ env.CARGO_DENY_VERSION }}' }
+      - run: cargo deny check
+  test:
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.release-target-matrix.outputs.matrix) }}
+      matrix:
+        include:
+          - { runner: macos-15, target: aarch64-apple-darwin }
+          - { runner: macos-15-intel, target: x86_64-apple-darwin }
+          - { runner: ubuntu-24.04, target: x86_64-unknown-linux-musl }
+          - { runner: windows-2022, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - uses: ./.github/actions/cargo-downloads
-        with:
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - if: ${{ matrix.needs_musl_tools }}
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools acl
-      - name: Verify native workspace behavior
+        with: { persist-credentials: false }
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { key: '${{ matrix.target }}' }
+      - run: cargo test --workspace --locked --target ${{ matrix.target }}
+      - name: Delivered-binary conformance
         shell: bash
         run: |
-          python3 -m unittest tools.htmlcut_maintenance.tests.test_process -v
-          rustup target add "${{ matrix.target_triple }}"
-          cargo test --locked --workspace --target "${{ matrix.target_triple }}"
-      - uses: ./.github/actions/cargo-tool
-        with:
-          tool: cargo-about
-          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Build and accept native package
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+          cargo build --locked --release -p htmlcut --target ${{ matrix.target }}
+          binary="$PWD/target/${{ matrix.target }}/release/htmlcut"
+          if [ "$RUNNER_OS" = Windows ]; then binary="$(cygpath -w "$binary.exe")"; fi
+          HTMLCUT_TEST_BINARY="$binary" cargo test -p htmlcut --test conformance --locked --target ${{ matrix.target }}
+  panic-abort:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo run --locked --release -p htmlcut-core --example parser_admission
+        env: { RUSTFLAGS: '-Cpanic=abort' }
+  msrv:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - shell: bash
         run: |
-          python - <<'PY'
-          import os, subprocess
-          from pathlib import Path
-          from tools.htmlcut_maintenance.release.package import build
-          from tools.htmlcut_maintenance.release.accept import accept
-          from tools.htmlcut_maintenance.config import read
-          target = '${{ matrix.target_triple }}'
-          package = build(target, Path('dist'))
-          subprocess.run(['cargo','run','--locked','--release','-p','htmlcut-core','--example','parser_admission','--target',target], env={**os.environ,'RUSTFLAGS':'-Cpanic=abort'}, check=True)
-          accept(package, target, read('Cargo.toml')['workspace']['package']['version'])
-          PY
-      - name: Preserve failed process fixtures
-        if: failure()
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          rustup toolchain install "$msrv" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$msrv" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { key: msrv }
+      - run: cargo test --workspace --locked
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { key: fuzz }
+      - shell: bash
+        run: |
+          cp -R fuzz/corpus "$RUNNER_TEMP/htmlcut-fuzz-corpus"
+          for source in fuzz/fuzz_targets/*.rs; do
+            target=${source##*/}; target=${target%.rs}
+            cargo +"$FUZZ_NIGHTLY" fuzz run "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -runs=2000 -max_len=65536 -rss_limit_mb=2048 -timeout=10
+          done
+          git diff --exit-code Cargo.lock
+      - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: process-fixtures-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
-          retention-days: 3
-          if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/htmlcut-resource-group.*/**
-            ${{ runner.temp }}/htmlcut-exited-group.*/**
-            ${{ runner.temp }}/htmlcut-process-tree.*/**
+        with: { name: fuzz-smoke-artifacts, path: fuzz/artifacts, retention-days: 7 }
+  mutants:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
+      - run: cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: native-${{ matrix.id }}
-          retention-days: 7
-          path: dist/
-          if-no-files-found: error
-      - name: Preserve bounded installation evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: installation-release-target-smoke-${{ matrix.id }}
-          retention-days: 3
-          path: |
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.log
-            ${{ runner.temp }}/htmlcut-cargo-tools/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.log
-            ${{ runner.temp }}/htmlcut-tool-version/*/*.json
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.log
-            ${{ runner.temp }}/htmlcut-tool-build-*/*.json
-          if-no-files-found: warn
-  check:
-    name: Check
-    if: always()
-    needs: [release-target-matrix, linux-maintainer, focused-smoke, release-target-smoke, minimum-rust]
+        with: { name: mutants-out, path: mutants.out, retention-days: 14 }
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
-      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { key: fuzz }
+      - shell: bash
+        run: |
+          cp -R fuzz/corpus "$RUNNER_TEMP/htmlcut-fuzz-corpus"
+          for source in fuzz/fuzz_targets/*.rs; do
+            target=${source##*/}; target=${target%.rs}
+            cargo +"$FUZZ_NIGHTLY" fuzz run "$target" "$RUNNER_TEMP/htmlcut-fuzz-corpus/$target" -- -max_total_time=600 -max_len=65536 -rss_limit_mb=2048 -timeout=10
+          done
+          git diff --exit-code Cargo.lock
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: fuzz-artifacts, path: fuzz/artifacts, retention-days: 7 }

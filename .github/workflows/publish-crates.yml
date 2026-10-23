@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Publish crates
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: publish-crates
+  cancel-in-progress: false
+jobs:
+  publish-crates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Match the tag to the workspace version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          test "$GITHUB_REF_NAME" = "v$version"
+      - run: rustup show
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
+        id: auth
+      - run: cargo publish -p htmlcut-core --locked
+        env: { CARGO_REGISTRY_TOKEN: '${{ steps.auth.outputs.token }}' }
+      - run: cargo publish -p htmlcut --locked
+        env: { CARGO_REGISTRY_TOKEN: '${{ steps.auth.outputs.token }}' }
