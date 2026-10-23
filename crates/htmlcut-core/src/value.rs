@@ -30,7 +30,7 @@ pub enum ExportFormat {
     Raw,
 }
 impl Value {
-    /// Admits the canonical complete result, then renders the requested format.
+    /// Exports the requested representation under its emitted-byte bound and stop policy.
     pub fn export(
         &self,
         format: ExportFormat,

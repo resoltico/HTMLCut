@@ -1,6 +1,6 @@
 # Bounded fuzzing
 
-Use the nightly and cargo-fuzz versions pinned in the top-level environment of [CI](../.github/workflows/ci.yml). From the repository root, with `FUZZ_NIGHTLY` set to that nightly:
+Use the nightly (with `rust-src`) and cargo-fuzz versions pinned in the top-level environment of [CI](../.github/workflows/ci.yml). From the repository root, with `FUZZ_NIGHTLY` set to that nightly:
 
 ```sh
 cargo +"$FUZZ_NIGHTLY" fuzz run contract_bytes fuzz/corpus/contract_bytes -- -runs=2000 -max_len=65536 -rss_limit_mb=2048 -timeout=10

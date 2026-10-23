@@ -430,7 +430,10 @@ impl Serialize for Error {
                 if let Some(path) = path {
                     map.serialize_entry("path", path)?;
                 }
-                if let Some(select) = select.as_ref().filter(|s| s.len() <= 8192) {
+                if let Some(select) = select
+                    .as_ref()
+                    .filter(|s| s.len() <= crate::bounds::MAX_PATTERN_BYTES)
+                {
                     map.serialize_entry("select", select)?;
                 }
             }
@@ -445,7 +448,10 @@ impl Serialize for Error {
                 expected,
             } => {
                 map.serialize_entry("path", path)?;
-                if let Some(select) = select {
+                if let Some(select) = select
+                    .as_ref()
+                    .filter(|s| s.len() <= crate::bounds::MAX_PATTERN_BYTES)
+                {
                     map.serialize_entry("select", select)?;
                 }
                 if !row.is_empty() {
@@ -475,7 +481,10 @@ impl Serialize for Error {
                 failure,
             } => {
                 map.serialize_entry("path", path)?;
-                if let Some(select) = select {
+                if let Some(select) = select
+                    .as_ref()
+                    .filter(|s| s.len() <= crate::bounds::MAX_PATTERN_BYTES)
+                {
                     map.serialize_entry("select", select)?;
                 }
                 if !row.is_empty() {
@@ -721,6 +730,39 @@ mod tests {
         let facts = serde_json::to_value(&error).unwrap();
         assert_eq!(facts["value"], "🦀".repeat(120));
         assert!(!error.to_string().contains(&"🦀".repeat(121)));
+        for (length, present) in [(8192, true), (8194, false)] {
+            let select = "é".repeat(length / 2);
+            let errors = [
+                Error::InvalidSelector {
+                    path: None,
+                    select: Some(select.clone()),
+                    reason: "invalid".into(),
+                },
+                Error::CountMismatch {
+                    path: "$".into(),
+                    select: Some(select.clone()),
+                    row: vec![],
+                    found: 0,
+                    expected: CountRange {
+                        min: 1,
+                        max: Some(1),
+                    },
+                },
+                Error::ExpectationFailed {
+                    path: "$".into(),
+                    select: Some(select),
+                    row: vec![],
+                    failure: ExpectationFailure::MissingAttribute,
+                },
+            ];
+            for error in errors {
+                assert_eq!(
+                    serde_json::to_value(error).unwrap().get("select").is_some(),
+                    present
+                );
+            }
+        }
+
         let error = Error::InvalidSelector {
             path: None,
             select: Some("x".repeat(8193)),

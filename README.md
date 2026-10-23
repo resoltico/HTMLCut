@@ -1,45 +1,93 @@
 # HTMLCut
 
-HTMLCut returns exactly the data an extraction contract declares from one caller-owned HTML document, or refuses with facts that help repair the contract.
+HTMLCut extracts exactly what a contract declares from a caller-owned HTML snapshot, or refuses with facts that help repair the contract.
 
-The loop is **outline → author → run → refuse → repair**. Outline shows a bounded skeleton; a contract declares selectors, counts, lexical value shapes and page expectations; subsequent runs need no model.
+Use **outline → author → run → refuse → repair**: inspect a bounded skeleton, declare selectors, counts, value checks and page expectations, then reuse the contract without a model.
 
-## Install from a clean checkout
+## Install
 
-Install rustup and a native linker as described in [platform support](https://github.com/resoltico/HTMLCut/blob/main/docs/platform-support.md). From the checkout root, run the following command; rustup selects the pinned development toolchain automatically.
+Install the CLI with `cargo install htmlcut --locked`, or unpack an archive from [GitHub releases](https://github.com/resoltico/HTMLCut/releases). Put the executable on your PATH. Archives contain the binary, documentation and license notices; there are no installer scripts.
+
+For a clean source checkout, install rustup and a native linker, then build:
 
 ```sh
-cargo install --path crates/htmlcut-cli --locked
+cargo build --release -p htmlcut --locked
 ```
 
-Cargo builds the executable and installs it in its standard bin directory; ensure that directory is on your PATH.
+The executable is `target/release/htmlcut` (`htmlcut.exe` on Windows). Rustup uses [rust-toolchain.toml](rust-toolchain.toml); [Cargo.toml](Cargo.toml) declares the minimum supported Rust version.
+
+Release targets are macOS arm64 and x86_64, Linux x86_64 musl and Windows x86_64 MSVC. Apple release builds target macOS 12; native CI does not establish execution on every older OS version. Source builds work wherever Rust and the dependencies build. Windows source builds need the MSVC C++ build tools; Unix builds need the native linker; fuzz tooling also needs a C++ compiler.
 
 ## Workflow
 
-From the checkout root, extract the three products in the included [catalogue snapshot](https://github.com/resoltico/HTMLCut/blob/main/conformance/contract/04-records/page.html):
+These commands run from the checkout root against the included three-product snapshot:
 
 ```sh
-htmlcut outline conformance/contract/04-records/page.html --select 'article.product'
-htmlcut get 'h1' conformance/contract/04-records/page.html
-htmlcut run '{"expect":[{"select":"h1","equals":"All products"}],"select":"article.product","match":"all","min":3,"max":3,"fields":{"title":{"select":"h3 a","read":"attr:title"},"price":{"select":".price","pattern":"^£(?<value>[0-9]+[.][0-9]{2})$"},"badge":{"select":".badge","match":"optional"}}}' conformance/contract/04-records/page.html
+cargo run -q -p htmlcut -- outline conformance/contract/records/product-fields/page.html --select 'article.product'
+cargo run -q -p htmlcut -- get h1 conformance/contract/records/product-fields/page.html
+cargo run -q -p htmlcut -- run conformance/contract/records/product-fields/contract.json conformance/contract/records/product-fields/page.html --base-url https://books.example/shop/index.html
 ```
 
-Save the same JSON as `contract.json` to reuse it:
+The contract asserts the page heading and extracts records with lexical values, optional badges and resolved URLs. Author the contract once; subsequent runs use the JSON file. A count that the snapshot cannot satisfy refuses with exit 3:
 
 ```sh
-htmlcut run --from-file contract.json conformance/contract/04-records/page.html
+cargo run -q -p htmlcut -- run --json '{"select":"article.product","match":"all","min":4}' conformance/contract/records/product-fields/page.html
 ```
 
-Use your own local snapshot as `FILE`. It defaults to standard input; readable paths include pipes and process substitution. Run `htmlcut --help` for the [workflow guide](https://github.com/resoltico/HTMLCut/blob/main/crates/htmlcut-cli/src/guide.txt) and `htmlcut COMMAND --help` for that command's options.
+After checking that three products are the intended complete set, repair the declaration:
 
-Extraction results are complete compact UTF-8 JSON followed by LF; outline prints a text skeleton. The output ceiling includes this LF. Raw scalars print strings with LF; raw lists require LF-free items and otherwise refuse with a repair hint to use JSON. Diagnostics carry the available contract location, selector, row indexes, observed count or value, and resource or I/O facts.
+```sh
+cargo run -q -p htmlcut -- run --json '{"select":"article.product","match":"all","min":3,"max":3}' conformance/contract/records/product-fields/page.html
+```
 
-`-o FILE` atomically replaces a regular file only after a complete result. Symlinks are followed; stdout, pipes and devices are written directly. Existing-file authorization must be inspectable and reproducible. See [output publication](https://github.com/resoltico/HTMLCut/blob/main/docs/publication.md) for access-policy requirements, deadlines, cleanup and concurrency limits.
+Counts protect against missing, duplicated and cleanly truncated rows. A structurally identical wrong business entity can still satisfy a contract; declare the page expectations you need.
 
-Counts defend against missing, duplicated or cleanly truncated rows. Callers still validate that a snapshot represents the intended business entity; a structurally identical wrong page can satisfy a contract.
+## Commands and input
 
-Fetching, JavaScript execution, article inference, document conversion, type conversion, pagination and joins belong to other tools that compose through files and pipes. Operators supply physical isolation when they require it.
+- `htmlcut outline [FILE]` inspects structure; `--select`, `--depth`, `--max-lines` and `--attrs` control the view.
+- `htmlcut get CSS [FILE]` reads one value; use `--all`, `--read READING` and `-r/--raw` as needed.
+- `htmlcut run CONTRACT [FILE]` reads a contract path; `-` in the CONTRACT position selects contract stdin. `htmlcut run --json TEXT [FILE]` uses inline JSON.
+- `htmlcut schema [-o DEST]` prints the generated authoring schema.
 
-Read the [contract language](https://github.com/resoltico/HTMLCut/blob/main/docs/contract.md), [execution guarantees](https://github.com/resoltico/HTMLCut/blob/main/docs/design.md), [output publication](https://github.com/resoltico/HTMLCut/blob/main/docs/publication.md), [executable cases](https://github.com/resoltico/HTMLCut/blob/main/conformance/README.md) and [contributor setup](https://github.com/resoltico/HTMLCut/blob/main/CONTRIBUTING.md).
+FILE is a local snapshot path and defaults to stdin. Implicit stdin is refused when it is a terminal; explicit `-` is allowed. Contract `-` cannot be combined with absent HTML FILE or HTML `-`. Contract files must be UTF-8 and fit the contract byte bound. `--base-url` and `--encoding` supply snapshot metadata; a BOM takes precedence over an encoding label.
 
-For embedding, [htmlcut-runtime](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-runtime) supplies shared preflight, reusable documents, cancellation, structured outlines, exports and local publication. [htmlcut-core](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-core) is the pure low-level engine.
+Use `htmlcut --help` for examples, contract members and exit statuses, and `htmlcut COMMAND --help` for exact options. Help and version have no deadline.
+
+## Output, limits and diagnostics
+
+JSON is compact UTF-8 plus LF. Raw scalars emit their bytes plus LF; raw lists require LF-free strings and emit one LF per item; an optional null emits nothing. The output limit counts the bytes emitted in the requested format. Each transformed source reading has its own reading-byte ceiling.
+
+The defaults are 64 MiB input, 2,000,000 retained nodes, 64 MiB per reading and 64 MiB output. Override them with `--max-input-bytes`, `--max-nodes`, `--max-reading-bytes` and `--max-output-bytes`. The contract and parser also have fixed admission bounds described in the [language specification](docs/contract.md).
+
+`--timeout SECONDS` defaults to 10 and is **cooperative** through compilation, chunked input, parsing, evaluation and export. Blocking input can exceed it; output writing is not interrupted. For a hard wall-clock bound, use a process supervisor, for example `timeout 10 htmlcut …` where `timeout(1)` is installed. Logical limits do not impose an operating-system memory quota.
+
+No destination is opened until complete result bytes exist. `-o PATH` stages beside an ordinary file and renames it into place. Symlinks to existing files keep the link and replace its canonical target; dangling symlinks and directories refuse. Existing file permission bits are copied; ownership, ACLs and extended access policy are not preserved. New Unix files follow the umask. Hard links and open handles retain the old file. There is no fsync, and a kill signal can leave a `.htmlcut-*` stage.
+
+Stdout (`-o -` or no output option), lexical device paths and existing nonregular targets are direct writes. Device paths are Unix `/dev/…`, Windows `\\.\…` and reserved DOS device names, case-insensitive and ignoring extensions. Broken pipes on direct writes/flushes are silent success; other I/O failures can expose a prefix. File replacement does not provide a concurrency or durability guarantee beyond the rename.
+
+Errors are one flat JSON object plus LF on stderr when reporting succeeds. Facts include paths, selectors, row indexes, observed counts/value previews and resource or I/O details. Count expectations are objects such as `{"min":1,"max":1}`. See the [diagnostic facts table](docs/contract.md#diagnostics).
+
+| Exit | Meaning |
+|---|---|
+| 0 | Success, including a closed direct output pipe |
+| 2 | Invalid request, contract, selector, pattern, encoding or base URL |
+| 3 | Contract or output representation refusal |
+| 4 | Resource limit exceeded |
+| 5 | Input, decoding or output failure |
+| 6 | Internal error, including a caught panic with message/location |
+| 130 | Cancellation |
+
+## Acquire a snapshot first
+
+Fetch successfully before launching extraction, and pass the source URL for relative links:
+
+```sh
+curl -fsSL --max-filesize 67108864 -o page.html https://example.test/catalogue \
+  && htmlcut run contract.json page.html --base-url https://example.test/catalogue
+```
+
+`example.test` is a placeholder for your source URL. Supply `--encoding` when a transport charset is needed. An unchecked partial fetch can still look like valid HTML; counts and entity expectations remain necessary.
+
+Fetching, JavaScript execution, article inference, conversion, pagination, joins and session/network policy belong to other tools. HTMLCut does not execute page scripts or infer business meaning.
+
+For embedding, use [htmlcut-core](crates/htmlcut-core/README.md). Read the [contract language](docs/contract.md), [executable corpus](conformance/README.md), [contributor instructions](CONTRIBUTING.md) and [changelog](CHANGELOG.md).

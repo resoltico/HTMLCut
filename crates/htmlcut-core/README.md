@@ -1,9 +1,22 @@
 # htmlcut-core
 
-A pure engine for caller-owned HTML bytes. Compile a JSON `Contract` or typed `QuickQuery`, admit a `Document` with `PreparationPolicy`, then evaluate with an independent `ExecutionPolicy` and `ExecutionContext`. Share the same context across all phases of a job; it owns one optional absolute deadline. Documents retain semantic state only and safely implement `Send + Sync` without unsafe trait implementations.
+A pure engine for caller-owned HTML bytes. Compile JSON with `Contract::from_json` or build `NodeSpec` and call `Contract::compile`. Parse with `ParseOptions`, then reuse the immutable document with independent `ResultLimits` and `Stop` values. `Document`, `Contract`, `Value` and `OutlineReport` are `Send + Sync`.
 
-`Document::extract` returns complete owned lexical values. `Value::export` implements canonical JSON and raw semantics. `Document::outline` returns bounded grouped facts in `OutlineReport`, whose renderer produces canonical text. Canonical materialization admission includes final LF for JSON, schema and outline. Raw exports also obey canonical JSON admission and their own complete byte bound. Each complete transformed UTF-8 source reading has a separate byte ceiling from output admission.
+```rust
+use htmlcut_core::{Contract, Document, ExportFormat, ParseOptions, ResultLimits, Stop, Value};
 
-The core forbids unsafe code, starts no threads and reads or writes no files or streams. Logical limits and cooperative checks do not establish physical containment. Application frontends use [htmlcut-runtime](https://github.com/resoltico/HTMLCut/tree/main/crates/htmlcut-runtime); low-level consumers can use the [packaged example](examples/contract.rs).
+let stop = Stop::none();
+let document = Document::parse(b"<h1>Snapshot</h1>", &ParseOptions::default(), &stop)?;
+let contract = Contract::from_json(r#""h1""#, &stop)?;
+let limits = ResultLimits::default();
+let value = document.extract(&contract, ExportFormat::Json, &limits, &stop)?;
+assert_eq!(value, Value::String("Snapshot".into()));
+assert_eq!(value.export(ExportFormat::Json, limits.max_output_bytes, &stop)?, b"\"Snapshot\"\n");
+# Ok::<(), htmlcut_core::Error>(())
+```
 
-Child sibling ranges stay inside inherited membership. Structural readings without a selector inherit the whole range; attribute and URL readings use its anchor. See [the language](https://github.com/resoltico/HTMLCut/blob/main/docs/contract.md) and [execution guarantees](https://github.com/resoltico/HTMLCut/blob/main/docs/design.md).
+`Contract::supports(format)` admits the root representation before acquiring HTML. `Document::outline` returns grouped facts; `OutlineReport::render` emits bounded text. Result ceilings count emitted bytes in the requested format, including LF; raw null emits zero bytes. Transformed source readings have a separate reading-byte limit. Parsing defaults to 64 MiB input and 2,000,000 retained nodes; result limits default to 64 MiB per reading/output.
+
+`Stop::after` creates one cooperative deadline, and `with_cancel` attaches an atomic cancellation flag. Core imposes no default deadline, starts no threads and performs no local stream/file acquisition or publication. Checkpoints do not impose a physical memory quota or interrupt blocking host operations. Error variants carry typed facts; `ErrorCode::class()` lets hosts choose their terminal policy, and `to_json_line()` renders the diagnostic wire format.
+
+Read the [contract specification](https://github.com/resoltico/HTMLCut/blob/main/docs/contract.md) and the [packaged example](https://github.com/resoltico/HTMLCut/blob/main/crates/htmlcut-core/examples/contract.rs). The workspace lint forbids unsafe code. Scopes, sibling extents, readings, decoding, URL resolution and the selector dialect follow the language specification.

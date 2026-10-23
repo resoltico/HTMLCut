@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Deterministic extraction contracts for caller-owned HTML documents.
-//!
-//! ```
-//! use htmlcut_core::{Contract, Document, ParseOptions, ResultLimits, Stop, ExportFormat, Value};
-//! let stop = Stop::none();
-//! let document = Document::parse(b"<h1>Snapshot</h1>", &ParseOptions::default(), &stop)?;
-//! let contract = Contract::from_json(r#""h1""#, &stop)?;
-//! assert_eq!(document.extract(&contract, ExportFormat::Json, &ResultLimits::default(), &stop)?, Value::String("Snapshot".into()));
-//! # Ok::<(), htmlcut_core::Error>(())
-//! ```
+#![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 mod bounds;
 mod compile;

@@ -49,7 +49,7 @@ impl<'d> Scope<'d> {
 }
 
 impl Document {
-    /// Runs a compiled contract under the supplied execution policy/context, returning the whole value or one refusal.
+    /// Evaluates with the requested format, result limits and stop, returning a complete value or one refusal.
     pub fn extract(
         &self,
         contract: &Contract,
@@ -66,7 +66,7 @@ impl Document {
             caches: Default::default(),
         };
         engine.clock.check()?;
-        engine.output.framing()?; // Complete canonical export includes its final LF.
+        engine.output.framing()?; // JSON includes its final LF; raw framing belongs to each string.
         let value = engine.node(&contract.node, &Scope::one(self.html.root_element()), &[])?;
         engine.clock.check()?;
         Ok(value)

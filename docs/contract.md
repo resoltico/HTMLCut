@@ -4,7 +4,7 @@
 
 A contract is one JSON document: a **node**. Members are a closed set. Unknown members,
 duplicate member names, wrong types and JSON `null` in place of an omitted member are
-refused with `invalid_contract`. There is no version member; see [Stability](design.md#stability).
+refused with `invalid_contract`. There is no version member; the engine major version defines the semantics.
 
 A node written as a JSON string `S` means `{"select": S}`.
 
@@ -47,8 +47,10 @@ rounded or underflowing decimals are refused. A schema validator over parsed mat
 values cannot recover token spelling or duplicate keys.
 
 The compiled regex allowance is 8 MiB across the contract, partitioned between patterns
-and their DFA caches. The schema derives structural bounds from the compiler's constants;
+and their DFA caches. The schema derives structural bounds from the shared admission constants;
 its character-length checks do not replace the compiler's byte bounds.
+
+Serde type and object-shape errors precede cross-member rules. Duplicate keys, exact numeric token spelling and JSON nesting are checked before typed deserialization; selector/regex compilation and semantic relationships remain compiler checks.
 
 ### Evaluation
 
@@ -209,21 +211,44 @@ Values are JSON strings. Records are JSON objects with members in byte order of 
 Encoding is compact UTF-8 JSON without escaping of non-ASCII characters, followed by one
 LF on the command line.
 
-Count bounds are the defence against cleanly truncated documents: HTML permits omitted closing tags. Use declared row counts and page expectations, as in [the guarded rows case](../conformance/contract/08-rows-with-page-expectations/contract.json).
+Count bounds are the defence against cleanly truncated documents: HTML permits omitted closing tags. Use declared row counts and page expectations, as in [the guarded rows case](../conformance/contract/records/rows-with-page-expectations/contract.json).
 
-### Fetch before extraction
+### Output limits
 
-FILE is a local snapshot, not a URL. Use the [two-phase acquisition example](../examples/acquire_snapshot.py):
+`max_output_bytes` is the number of bytes emitted in the requested format, checked during extraction and again during export:
 
-```sh
-python3 examples/acquire_snapshot.py htmlcut https://example.test/catalogue contract.json result.json --report acquisition.json
-```
+- JSON: compact UTF-8 JSON plus its final LF.
+- Raw scalar: its UTF-8 bytes plus one LF.
+- Raw list: the sum of each string's UTF-8 bytes plus one LF; an item containing LF refuses as `unrepresentable_output`.
+- Raw optional null: zero bytes, accepted with a zero output limit.
 
-It fetches into owned temporary storage with curl fail-status, redirects, decompression
-and a transport timeout, with a 64 MiB download cap. Only successful complete 2xx HTML acquisition launches extraction,
-with the final effective URL and declared HTTP charset. A failed/truncated transfer never
-updates the result. BOM precedence remains the engine's decoding rule. A loose extraction
-can succeed on plausible partial HTML, so piping an unchecked fetch into HTMLCut—even with
-shell pipefail—cannot undo an already published result. Counts/business expectations remain
-necessary for entity/completeness checks; JavaScript snapshots stay inert. Network/session
-policy, authentication, pagination and rendering belong to the caller.
+Records cannot be represented as raw. `Contract::supports` rejects a raw record root before CLI input acquisition. `max_reading_bytes` separately bounds each transformed source reading, including predicate and capture sources; a small captured result does not waive that reading limit. Outline output includes emitted headers and omission summaries in its byte bound.
+
+## Diagnostics
+
+A returned error is one flat JSON object and LF when stderr reporting succeeds. `error` is the stable snake-case code and `message` is its human-readable display; the remaining facts depend on the variant. Empty row contexts are omitted. Selectors over 8 KiB are omitted from selector facts, and value previews contain at most 120 Unicode characters.
+
+| Error code | Facts beyond error/message | Class / CLI exit |
+|---|---|---|
+| `invalid_request` | None | Request / 2 |
+| `invalid_contract` | Optional `path` | Request / 2 |
+| `invalid_selector` | Optional `path`, `select` | Request / 2 |
+| `invalid_pattern` | `path` | Request / 2 |
+| `invalid_encoding` | `encoding` (the supplied label) | Request / 2 |
+| `invalid_base_url` | `value` | Request / 2 |
+| `count_mismatch` | `path`, optional `select`, optional `row`, `found`, `expected` | Refusal / 3 |
+| `value_mismatch` | `path`, optional `row`, `value` preview | Refusal / 3 |
+| `expectation_failed` | `path`, optional `select`/`row`; count failure adds `found`/`expected`, value failure adds `value`, missing attribute adds neither | Refusal / 3 |
+| `missing_attribute` | `path`, optional `row` | Refusal / 3 |
+| `unresolvable_url` | `path`, optional `row`, `value` preview | Refusal / 3 |
+| `unrepresentable_output` | `path`, optional raw-list item `row` | Refusal / 3 |
+| `limit_exceeded` | `limit`, numeric `bound` | Limit / 4 |
+| `input_unreadable` | `file`, `detail` | Io / 5 |
+| `undecodable_input` | `encoding`, byte `offset` | Io / 5 |
+| `output_unwritable` | `file`, `detail` | Io / 5 |
+| `internal` | None; message includes the reason and any captured panic location | Internal / 6 |
+| `cancelled` | None | Cancelled / 130 |
+
+`expected` is `{"min":M}` for an unbounded upper range, or `{"min":M,"max":N}` for an inclusive upper bound. Exact cardinality uses equal min/max. Normal `row` arrays contain one-based enclosing `all` indexes; a raw-list framing refusal instead carries a one-element array identifying the raw item. `path` identifies the contract location.
+
+Limits are `input_bytes`, `nodes`, `depth`, `reading_bytes`, `output_bytes` and `time`. Byte/node/depth bounds are integers; time bounds are seconds. Cancellation carries no invented limit/bound facts. Local I/O details contain operating-system text and, where applicable, CLI snapshot-acquisition guidance. Messages are for people; consumers should use codes and structured facts.

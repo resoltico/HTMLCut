@@ -9,7 +9,7 @@ use std::{
 fn unreadable(file: &str, error: io::Error) -> Error {
     let mut detail = error.to_string();
     if file.starts_with("http://") || file.starts_with("https://") {
-        detail.push_str(" FILE is a local snapshot path; fetch it first (see README).");
+        detail.push_str("; FILE is a local snapshot path; fetch it first (see README)");
     }
     Error::InputUnreadable {
         file: file.into(),

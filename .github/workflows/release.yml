@@ -131,6 +131,10 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Preserve the macOS release deployment floor"
+        if: "runner.os == 'macOS'"
+        run: "echo \"MACOSX_DEPLOYMENT_TARGET=12.0\" >> \"$GITHUB_ENV\""
+        shell: "bash"
       - name: "Install license notice generator"
         run: "cargo install cargo-about --version 0.9.2 --features cli --locked"
         shell: "bash"

@@ -28,7 +28,7 @@ fn public_documentation_example_has_a_regular_mutation_detector() {
     );
 }
 #[test]
-fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
+fn immutable_engine_types_share_one_stop_across_phases() {
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -73,7 +73,7 @@ fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
     );
 }
 #[test]
-fn quick_queries_and_json_share_independently_expected_reading_cardinality_counts() {
+fn typed_specs_and_json_share_independent_reading_cardinality_oracles() {
     let context = support::test_stop(None).unwrap();
     let limits = TestOptions::default();
     let mut checked = 0;

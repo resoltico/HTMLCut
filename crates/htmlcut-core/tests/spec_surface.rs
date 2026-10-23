@@ -29,7 +29,12 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         };
         let documented = docs
+            .split("| Member |")
+            .nth(1)
+            .unwrap()
             .lines()
+            .skip(2)
+            .take_while(|line| line.starts_with('|'))
             .filter(|l| l.starts_with("| `"))
             .flat_map(|l| {
                 l.split('|')
@@ -65,6 +70,11 @@ mod tests {
         let mut fake = schema.clone();
         fake["$defs"]["NodeObject"]["properties"]["fake"] = true.into();
         assert!(!consistent(&fake, CONTRACT_SUMMARY, docs));
+        assert!(!consistent(
+            &schema,
+            CONTRACT_SUMMARY,
+            &docs.replacen("| `select`", "| `invented`", 1)
+        ));
         assert!(!consistent(
             &schema,
             &CONTRACT_SUMMARY.replace("expect", "invented"),

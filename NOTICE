@@ -24,7 +24,7 @@ with the applicable rights holders.
 Source availability and third-party terms
 ----------------------------------------
 Matching HTMLCut source is available from the source archives on the same
-GitHub release and the exact source commit linked in the native package README:
+GitHub release:
 https://github.com/resoltico/HTMLCut/releases
 
 Cargo.lock records exact registry dependency versions; their

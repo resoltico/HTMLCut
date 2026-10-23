@@ -4,6 +4,28 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Added
+
+- Typed `NodeSpec`, `PredicateSpec`, `Reading` and `Match` APIs for programmatic contracts, with a generated authoring schema. Use `Contract::compile` for typed specifications; `from_json` first checks closed JSON and then reports serde member paths. Type/shape errors now precede cross-member checks.
+- Typed refusal variants and `ErrorCode::class()` for embedding hosts. Match the appropriate variant or inspect its code/class instead of mutating an error fact bag.
+
+### Changed
+
+- **Breaking Rust API:** replace `Source`, `Limits`, `PreparationPolicy`, `ExecutionPolicy` and `ExecutionContext` with `ParseOptions`, `ResultLimits` and `Stop`. Pass the requested `ExportFormat` to extraction, use `supports` for root representation admission, and call `schema` for the generated JSON value. Replace `Contract::quick`, `QuickQuery`, `QueryCardinality` and `DEFAULT_READING` with typed specs and reading/cardinality enums. Replace `Contract::export_schema`, `admit_export` and `produces_records` with `schema`, `supports` and explicit result export. Documents and compiled contracts remain immutable and reusable across calls with independent limits/stops.
+- **Breaking CLI package and syntax:** install with `cargo install htmlcut`; the binary remains `htmlcut`. `run CONTRACT [FILE]` now reads a path, `run --json TEXT [FILE]` accepts inline JSON, and contract `-` requires a distinct HTML source. Replace `--from-file` and positional inline JSON accordingly. Stdin conflict checks cover literal `-` operands only.
+- **Breaking diagnostics:** replace `Error::new`/`ErrorFacts` construction and direct error/message field access with typed variants, `code()` and Display. Count `expected` facts are objects with `min` and optional `max`, replacing range strings. Update structured-error consumers. Invalid encoding/base URL diagnostics also carry their supplied label/value, and raw record-root refusals carry the root path.
+- **Breaking output limits:** ceilings count emitted bytes in the requested format rather than requiring canonical JSON admission for raw output. Recalculate raw ceilings from string bytes plus LF per item; raw null needs zero bytes. Reading-byte limits still apply to the full transformed source before capture.
+- **Breaking named output:** use same-directory temporary files and rename, following existing file symlinks and refusing dangling symlinks/directories. Existing Unix permission bits are kept; new files follow umask. Ownership, ACLs and access labels are no longer preserved; special native authorization checks and descriptor-duplication guarantees are removed. Use stdout or arrange destination policy externally when required. Devices/nonregular targets are direct; hard links/open handles keep the old file. There is no fsync or hard cleanup guarantee after a kill signal.
+- **Breaking timeout behavior:** `--timeout` is cooperative through compilation, chunked input and engine work; blocking I/O can exceed it and output writing is not interrupted. Use an external supervisor such as `timeout(1)` for a hard bound. Help/version print without a deadline. `schema` accepts only output routing; remove its timeout/output-limit options.
+- **Release asset names:** archives are `htmlcut-<target>.tar.gz` or `.zip`, source is `source.tar.gz`, and checksums use per-archive `.sha256` files plus `sha256.sum`. Update scripts that depend on custom versioned asset/checksum names.
+- macOS x86_64 binaries are no longer ad-hoc signed; arm64 binaries carry the linker's ad-hoc signature. No Developer ID signing is provided.
+- **Contributor tooling and releases:** use plain Cargo, cargo-deny, cargo-fuzz and cargo-mutants instead of Python maintenance commands. Development builds use Cargo defaults for debug information and incremental compilation. Corpora are grouped by area and run through a shared unpublished helper plus core/CLI adapters; rerun the Rust fuzz-corpus example after case changes. Dist generates archive releases/attestations, and the tag-triggered trusted-publishing workflow publishes core then CLI. Configure trusted publishing before release. Native CI provides per-target binary acceptance; mutation survivors/timeouts still require human review.
+
+### Removed
+
+- `htmlcut-runtime` is retired. Move embedding code to `htmlcut-core` and supply local acquisition/output as needed; there is no replacement runtime facade or migration layer. `htmlcut-cli` is also retired; install the `htmlcut` package. Old-name retirement publications are separate maintainer actions.
+- Custom authorization/publication, process-supervision and Python QA/release machinery. Use standard file policy, external hard process bounds and the documented Cargo/tool commands.
+
 ## [23.0.0] - 2026-10-16
 
 ### Added

@@ -107,7 +107,7 @@ impl Contract {
             if nodes > MAX_CONTRACT_NODES {
                 return Err(invalid(
                     Some(&path),
-                    "The contract exceeds the 512-node grammar bound.",
+                    &format!("The contract exceeds the {MAX_CONTRACT_NODES}-node grammar bound."),
                 ));
             }
             if let NodeSpec::Node(o) = spec {
@@ -117,7 +117,9 @@ impl Contract {
                         if predicates.len() > MAX_ENTRIES {
                             return Err(invalid(
                                 Some(&format!("{path}.{name}")),
-                                "The member must be an array with at most 32 entries.",
+                                &format!(
+                                    "The member must be an array with at most {MAX_ENTRIES} entries."
+                                ),
                             ));
                         }
                         patterns += predicates
@@ -132,13 +134,13 @@ impl Contract {
                     if depth >= MAX_RECORD_DEPTH {
                         return Err(invalid(
                             Some(&path),
-                            "Records exceed the nesting bound of 8.",
+                            &format!("Records exceed the nesting bound of {MAX_RECORD_DEPTH}."),
                         ));
                     }
                     if fields.is_empty() || fields.len() > MAX_RECORD_FIELDS {
                         return Err(invalid(
                             Some(&format!("{path}.fields")),
-                            "A record must have 1–64 fields.",
+                            &format!("A record must have 1–{MAX_RECORD_FIELDS} fields."),
                         ));
                     }
                     pending.extend(
@@ -195,7 +197,7 @@ fn count(value: Option<u32>, path: &str, name: &str) -> Result<Option<usize>, Er
             if n as usize > MAX_DECLARED_COUNT {
                 Err(invalid(
                     Some(&format!("{path}.{name}")),
-                    "Counts must be integers from 0 to 1000000.",
+                    &format!("Counts must be integers from 0 to {MAX_DECLARED_COUNT}."),
                 ))
             } else {
                 Ok(n as usize)
@@ -233,7 +235,7 @@ impl Compiler<'_> {
                 if text.len() > MAX_PATTERN_BYTES {
                     return Err(invalid(
                         Some(&location),
-                        "The pattern exceeds the 8192-byte grammar bound.",
+                        &format!("The pattern exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
                     ));
                 }
                 RegexBuilder::new(text)
@@ -378,7 +380,9 @@ impl Compiler<'_> {
                 {
                     return Err(invalid(
                         Some(&format!("{path}.fields")),
-                        "Field names must be 1–64 ASCII letters, digits, underscores or hyphens.",
+                        &format!(
+                            "Field names must be 1–{MAX_FIELD_NAME_CHARS} ASCII letters, digits, underscores or hyphens."
+                        ),
                     ));
                 }
                 compiled.insert(
@@ -399,7 +403,7 @@ impl Compiler<'_> {
             if exclusions.len() > MAX_ENTRIES {
                 return Err(invalid(
                     Some(&format!("{path}.exclude")),
-                    "The member must be an array with at most 32 entries.",
+                    &format!("The member must be an array with at most {MAX_ENTRIES} entries."),
                 ));
             }
             let exclude = exclusions
@@ -432,7 +436,7 @@ impl Compiler<'_> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn oversized_typed_query_refuses_before_encoding_work() {
+    fn oversized_typed_selectors_refuse_before_encoding_work() {
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
@@ -456,7 +460,7 @@ mod tests {
         // would require hundreds of the context's 1024-iteration checkpoints.
         assert!(
             checks.load(Ordering::Relaxed) < 16,
-            "oversized quick syntax reached encoding work"
+            "oversized typed selector reached encoding work"
         );
     }
     use super::*;

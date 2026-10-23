@@ -1,37 +1,65 @@
 # Contributing
 
-Install rustup and the native linker prerequisites in [platform support](docs/platform-support.md). From a clean checkout, `cargo test --locked --workspace --all-features` builds and tests the product. Ordinary Cargo tests do not need Python. The compiler pin is [rust-toolchain.toml](rust-toolchain.toml), the minimum Rust version is [Cargo.toml](Cargo.toml), and dependency resolution is [Cargo.lock](Cargo.lock).
+Install rustup and the platform C/C++ linker toolchain (MSVC build tools on Windows). From a clean checkout, run `cargo test --workspace --locked`. The development compiler and components are declared in [rust-toolchain.toml](rust-toolchain.toml), the MSRV in [Cargo.toml](Cargo.toml), and resolved inputs in [Cargo.lock](Cargo.lock). No Python setup is needed.
 
-Maintenance uses Python 3.13+ on macOS and 3.11+ on Linux/Windows; invoke a suitable `python3`. CI's exact interpreter is declared in [.python-version](.python-version). The package is stdlib-only. Install the required dependency-policy tool into a fresh directory outside the checkout:
+## Checks
 
-```sh
-python3 -m tools.htmlcut_maintenance install cargo-deny --root /path/outside/checkout/cargo-deny
-```
-
-Add that directory's `bin` to PATH before running:
+Run the same commands as [CI](.github/workflows/ci.yml):
 
 ```sh
-python3 -m tools.htmlcut_maintenance check
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --locked
+cargo deny check
+RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission
 ```
 
-The check command runs standard Cargo fmt, warning-denied Clippy, locked workspace tests, warning-denied rustdoc, nonempty maintenance unittest discovery, and cargo-deny. It checks prerequisites before building and does not install optional tools. Its metadata guard enforces the CLI's production dependency allowlist and product dependency direction, with a prohibited-dependency negative control. That guard does not prove the absence of copied business logic; corpus parity and code review cover that risk.
+Install cargo-deny, cargo-fuzz and cargo-mutants at the versions declared once in CI's top-level environment. For example, read a tool version there and pass it to `cargo install --version VERSION --locked TOOL`; keep its `bin` directory on PATH. The MSRV job installs the declared minimum compiler and runs the workspace tests. Native tests run on the four shipped target/runner combinations.
 
-The `htmlcut-runtime` feature `instrumented-tests` enables test controls. Default production builds and native release packages exclude those controls.
+`actionlint` checks all workflows. [.github/actionlint.yaml](.github/actionlint.yaml) scopes reviewed SC2086/SC2129 exceptions to dist's generated release file; handwritten workflows retain full ShellCheck checking. Do not hand-edit generated release YAML: change [dist-workspace.toml](dist-workspace.toml) or [.github/build-setup.yml](.github/build-setup.yml), then run `dist generate` using the configured dist version.
 
-macOS native library tests require `/usr/bin/leaks`, with an intentionally retained allocation as a detection control. Linux library authorization tests require mounted `/proc`, POSIX ACL-capable temporary storage and a regular account without DAC bypass. Delivered-binary native acceptance additionally requires `setfacl` and `sudo -n -u nobody` on Linux, native PowerShell and the required authorization capabilities on Windows, and codesign/ACL tools on macOS. Missing required native capabilities fail acceptance.
+## Corpus, fuzzing and mutation
 
-Windows native QA requires an account with assigned `SeSecurityPrivilege`, token identities permitting owner/group assignments distinct from file defaults, and native file/directory symbolic-link creation. See [Windows symlink requirements](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw). Missing capabilities fail the relevant controls; these are QA prerequisites, not a promise that every caller needs that authority.
+Fixture changes are specification changes. Author `expected.json`, `expected.raw`, `expected.txt` and `error.json` by hand from the intended semantics; never generate them by running the engine. Keep the page and contract bytes exact. The [conformance helper](crates/htmlcut-conformance/src/lib.rs) validates metadata and independent oracles; the core and CLI adapters execute the cases and guard against empty/skipped discovery.
 
-The literal conformance corpus is specification input. Review semantic fixture changes with their intended behavior. Accepted documentation examples must have executable dialect cases. Product integration tests accept `HTMLCUT_TEST_BINARY` so the same tests can exercise an unpacked executable, including explicitly ignored native/performance controls.
-
-[tools/contributor-tools.toml](tools/contributor-tools.toml) pins QA tools and nightly. Install `cargo-about` for attribution, `cargo-fuzz` for fuzzing, and `cargo-mutants` plus `cargo-nextest` for the default mutation runner, using the same bounded install command. Use `--test-tool cargo` to select Cargo instead of Nextest, including doctests on every mutant. Cargo runs with `--no-fail-fast`: a failed or aborted test binary does not prevent the remaining binaries from running, and the aggregate failure status is 101. A caught verdict still requires review of the actual failure; it does not establish an assertion failure or its cause. Attribution enables cargo-about's `cli` feature. Keep each installed tool's `bin` directory on PATH; local tools and Cargo downloads persist between QA commands. The installer requires a fresh root and never replaces an existing owner installation.
-
-CI reuses public crates.io archives/index and exact-input tool binaries through pinned GitHub cache actions. Every restored executable undergoes the same bounded version probe as a cold install. Only trusted main pushes and current-main mutation dispatches may save; PRs, tags and historical selections restore only. Project targets, credentials, private sources, release artifacts and QA evidence are excluded. A cache miss runs the ordinary bounded installer; owner Cargo/rustup caches are never pruned.
+After changing cases, regenerate fuzz inputs:
 
 ```sh
-python3 -m tools.htmlcut_maintenance qa fuzz --runs 250 --require-mutations /path/outside/checkout/fuzz-results
-cargo fetch --locked
-python3 -m tools.htmlcut_maintenance qa mutation --output /path/outside/checkout/mutation-results
+cargo run -p htmlcut-conformance --example fuzz_corpus -- fuzz/corpus
 ```
 
-Fuzzing requires the pinned nightly with `rust-src`; its default full smoke is 10,000 runs per target. Mutation builds are locked/offline after preparation. Both retain bounded evidence and reject incomplete outcomes; source identity must stay stable. Full workspace mutation survivor/timeout review remains a pre-publication operator requirement. Focused platform campaigns do not establish full review. See [QA resource limits](docs/qa-resources.md), [fuzzing](fuzz/README.md) and [release operations](docs/release.md).
+The generator keeps existing admission entries and rejects content-hash collisions. Its optional second directory adds raw admission documents with the required mode/length framing. Review newly generated bytes before committing them. See [fuzz framing and smoke commands](fuzz/README.md); take writable corpus copies when keeping verification inputs stable.
+
+```sh
+cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
+```
+
+Review mutation survivors and timeouts as a human release step. Scheduled/dispatch CI runs mutation and longer fuzz campaigns; short local smoke runs do not establish those outcomes.
+
+## Delivered binaries and packaging
+
+```sh
+cargo build --release -p htmlcut --locked
+HTMLCUT_TEST_BINARY=target/release/htmlcut cargo test -p htmlcut --locked
+cargo package --locked -p htmlcut-core -p htmlcut
+```
+
+`HTMLCUT_TEST_BINARY` accepts an absolute path or a path relative to the workspace root. Native CI repeats conformance against release-built executables on the same four runners/targets as dist. Dist has a pre-build setup hook, not a supported per-target post-build test hook, so that native matrix is the release acceptance fallback. Other platforms require their native CI results; a host run does not verify them.
+
+The private conformance crate stays an unversioned path dev-dependency so Cargo omits it from published manifests. cargo-deny's `allow-wildcard-paths` exception applies only to private/dev paths; registry and public production wildcards remain denied. Crate unit tests are self-contained; repository documentation/corpus checks live in excluded integration tests.
+
+## Releasing
+
+Commit/push and wait for CI on the final release commit before tagging. The required `Check` status aggregates all applicable jobs.
+
+Configure crates.io trusted publishing for `.github/workflows/publish-crates.yml` before release; the first publication of the new CLI name may require a maintainer token.
+
+1. Bump the workspace/dependency versions and lockfile.
+2. Move Unreleased notes to the version heading with its release date.
+3. Tag `vX.Y.Z`.
+4. Push the branch and tag.
+5. Dist builds the GitHub release archives and attestations.
+6. The publishing workflow uploads htmlcut-core, then htmlcut.
+
+The tag starts archive building and crate publishing independently. Retiring previously published package names and account configuration remain maintainer actions.
