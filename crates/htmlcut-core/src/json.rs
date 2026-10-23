@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Duplicate-rejecting bounded JSON before map conversion.
-use crate::limits::MAX_JSON_DEPTH;
+use crate::bounds::MAX_JSON_DEPTH;
 use serde::Deserializer;
 use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
@@ -86,6 +86,11 @@ impl<'de> Visitor<'de> for Seed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     #[test]
     fn scalars_and_containers_preserve_complete_json_values() {
         for (bytes, expected) in [

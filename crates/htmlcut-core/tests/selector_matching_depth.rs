@@ -1,6 +1,8 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Run admitted selectors at the consumer thread/process boundary where stack aborts occurred.
-use htmlcut_core::{Contract, Document, ErrorCode, Limits, OutlineOptions, Source};
+// Run admitted selectors at the consumer thread/process boundary where stack aborts occurred.
+use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 use serde_json::json;
 use std::process::Command;
 
@@ -63,10 +65,10 @@ fn consumer_thread_control() {
             let source = input["source"].as_str().unwrap();
             let selector = input["selector"].as_str().unwrap();
             if input["outline"].as_bool().unwrap_or(false) {
-                let document = Document::parse(
-                    Source::new(source.as_bytes()),
-                    &Limits::default().preparation(),
-                    &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                let document = parse_fixture(
+                    DocumentFixture::new(source.as_bytes()),
+                    &TestOptions::default().preparation(),
+                    &support::test_stop(TestOptions::default().time_limit).unwrap(),
                 )
                 .unwrap();
                 let mut options = OutlineOptions::default();
@@ -75,19 +77,15 @@ fn consumer_thread_control() {
                     document
                         .outline(
                             &options,
-                            &htmlcut_core::Limits::default().execution(),
-                            &htmlcut_core::ExecutionContext::new(
-                                (htmlcut_core::Limits::default()).time_limit,
-                            )
-                            .unwrap(),
+                            &support::TestOptions::default().execution(),
+                            &support::test_stop((support::TestOptions::default()).time_limit)
+                                .unwrap(),
                         )
                         .and_then(|report| {
                             report.render(
-                                htmlcut_core::Limits::default().max_output_bytes,
-                                &htmlcut_core::ExecutionContext::new(
-                                    (htmlcut_core::Limits::default()).time_limit,
-                                )
-                                .unwrap(),
+                                support::TestOptions::default().max_output_bytes,
+                                &support::test_stop((support::TestOptions::default()).time_limit)
+                                    .unwrap(),
                             )
                         })
                         .unwrap_err(),
@@ -100,10 +98,8 @@ fn consumer_thread_control() {
                 .get("query")
                 .cloned()
                 .unwrap_or_else(|| json!({"select":selector,"match":"all","min":0}));
-            let contract = Contract::from_json(
-                &query.to_string(),
-                &htmlcut_core::ExecutionContext::new(None).unwrap(),
-            );
+            let contract =
+                Contract::from_json(&query.to_string(), &support::test_stop(None).unwrap());
             if input["refused"].as_bool().unwrap() {
                 assert_refusal(
                     contract.err().expect("unsafe selector was admitted"),
@@ -111,20 +107,18 @@ fn consumer_thread_control() {
                     selector,
                 );
             } else {
-                let document = Document::parse(
-                    Source::new(source.as_bytes()),
-                    &Limits::default().preparation(),
-                    &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                let document = parse_fixture(
+                    DocumentFixture::new(source.as_bytes()),
+                    &TestOptions::default().preparation(),
+                    &support::test_stop(TestOptions::default().time_limit).unwrap(),
                 )
                 .unwrap();
                 let result = document
                     .extract(
                         &contract.unwrap(),
-                        &htmlcut_core::Limits::default().execution(),
-                        &htmlcut_core::ExecutionContext::new(
-                            (htmlcut_core::Limits::default()).time_limit,
-                        )
-                        .unwrap(),
+                        htmlcut_core::ExportFormat::Json,
+                        &support::TestOptions::default().execution(),
+                        &support::test_stop((support::TestOptions::default()).time_limit).unwrap(),
                     )
                     .unwrap();
                 assert_eq!(serde_json::to_value(result).unwrap(), input["expected"]);

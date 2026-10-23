@@ -4,8 +4,8 @@ use crate::dom::{ElementRef, Node as DomNode};
 use crate::{
     Contract, Document, Error, ErrorCode, Value,
     contract::{Body, Cardinality, Check, Node, Predicate},
-    limits::ExecutionContext,
     select::Selector,
+    stop::Clock,
     value::OutputSize,
 };
 use ego_tree::{NodeId, NodeRef};
@@ -53,18 +53,20 @@ impl Document {
     pub fn extract(
         &self,
         contract: &Contract,
-        limits: &crate::ExecutionPolicy,
-        context: &crate::ExecutionContext,
+        format: crate::ExportFormat,
+        limits: &crate::ResultLimits,
+        context: &crate::Stop,
     ) -> Result<Value, Error> {
+        contract.supports(format)?;
         let mut engine = Engine {
             document: self,
             reading_limit: limits.max_reading_bytes,
-            clock: (context).clone(),
-            output: OutputSize::new(limits.max_output_bytes),
+            clock: Clock::for_stop(context),
+            output: OutputSize::for_format(limits.max_output_bytes, format),
             caches: Default::default(),
         };
         engine.clock.check()?;
-        engine.output.syntax(1)?; // Complete canonical export includes its final LF.
+        engine.output.framing()?; // Complete canonical export includes its final LF.
         let value = engine.node(&contract.node, &Scope::one(self.html.root_element()), &[])?;
         engine.clock.check()?;
         Ok(value)
@@ -74,7 +76,7 @@ impl Document {
 pub(crate) fn candidates<'d>(
     select: Option<&Selector>,
     scope: &Scope<'d>,
-    clock: &ExecutionContext,
+    clock: &Clock,
     shared: &mut selectors::matching::SelectorCaches,
 ) -> Result<Vec<ElementRef<'d>>, Error> {
     let Some(select) = select else {
@@ -148,7 +150,7 @@ type PredicateFailure = crate::ExpectationFailure;
 struct Engine<'d> {
     document: &'d Document,
     reading_limit: usize,
-    clock: ExecutionContext,
+    clock: Clock,
     output: OutputSize,
     caches: selectors::matching::SelectorCaches,
 }
@@ -333,10 +335,11 @@ impl<'d> Engine<'d> {
                         read,
                         &excluded,
                         &self.clock,
-                        check
-                            .pattern
-                            .is_none()
-                            .then_some((self.output.remaining(), self.output.maximum())),
+                        check.pattern.is_none().then_some((
+                            self.output.remaining(),
+                            self.output.maximum(),
+                            self.output.format(),
+                        )),
                     )
                     .map_err(|e| {
                         if matches!(
@@ -349,7 +352,7 @@ impl<'d> Engine<'d> {
                         }
                     })?;
                     let value = self.value(check, value, &node.path, &here)?;
-                    self.output.value(&value, &self.clock)?;
+                    self.output.string(&value, &self.clock)?;
                     Value::String(value)
                 }
             };
@@ -429,18 +432,24 @@ impl<'d> Engine<'d> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Limits, Source};
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     fn extract(html: &str, contract: &str) -> Result<Value, Error> {
-        Document::parse(
-            Source::new(html.as_bytes()),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap()
         .extract(
-            &Contract::from_json(contract, &crate::ExecutionContext::new(None).unwrap()).unwrap(),
-            &crate::Limits::default().execution(),
-            &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap(),
+            &Contract::from_json(contract, &crate::stop::Clock::new(None).unwrap()).unwrap(),
+            crate::ExportFormat::Json,
+            &crate::test_support::TestOptions::default().execution(),
+            &crate::stop::Clock::new((crate::test_support::TestOptions::default()).time_limit)
+                .unwrap(),
         )
     }
 
@@ -506,10 +515,10 @@ mod tests {
                     "<main><h2 id=anchor>Title</h2>{}<h2 class=stop>Stop</h2></main>",
                     "<p>irrelevant</p>".repeat(tail)
                 );
-                let document = Document::parse(
-                    Source::new(html.as_bytes()),
-                    &Limits::default().preparation(),
-                    &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                let document = parse_fixture(
+                    DocumentFixture::new(html.as_bytes()),
+                    &TestOptions::default().preparation(),
+                    &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
                 )
                 .unwrap();
                 let anchor = document
@@ -521,17 +530,17 @@ mod tests {
                 let contract = Contract::from_json(
                     &serde_json::json!({"select":":scope","until":".stop","fields":{"id":field}})
                         .to_string(),
-                    &crate::ExecutionContext::new(None).unwrap(),
+                    &crate::stop::Clock::new(None).unwrap(),
                 )
                 .unwrap();
-                let limits = Limits {
+                let limits = TestOptions {
                     time_limit: None,
-                    ..Limits::default()
+                    ..TestOptions::default()
                 };
                 let mut engine = Engine {
                     document: &document,
                     reading_limit: limits.max_reading_bytes,
-                    clock: ExecutionContext::new(limits.time_limit).unwrap(),
+                    clock: Clock::new(limits.time_limit).unwrap(),
                     output: OutputSize::new(limits.max_output_bytes),
                     caches: Default::default(),
                 };
@@ -560,25 +569,25 @@ mod tests {
 
     #[test]
     fn predicate_reading_preserves_a_cooperative_time_refusal() {
-        let document = Document::parse(
-            Source::new(b"<p id=x>x</p>"),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        let document = parse_fixture(
+            DocumentFixture::new(b"<p id=x>x</p>"),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         let contract = Contract::from_json(
             r#"{"expect":[{"read":"attr:id"}]}"#,
-            &crate::ExecutionContext::new(None).unwrap(),
+            &crate::stop::Clock::new(None).unwrap(),
         )
         .unwrap();
-        let limits = Limits {
+        let limits = TestOptions {
             time_limit: Some(std::time::Duration::ZERO),
-            ..Limits::default()
+            ..TestOptions::default()
         };
         let mut engine = Engine {
             document: &document,
             reading_limit: limits.max_reading_bytes,
-            clock: ExecutionContext::new(limits.time_limit).unwrap(),
+            clock: Clock::new(limits.time_limit).unwrap(),
             output: OutputSize::new(limits.max_output_bytes),
             caches: Default::default(),
         };
@@ -705,56 +714,60 @@ mod tests {
             r#"{"fields":{"z":{"select":"p","match":"all"},"a":{"select":"none","match":"optional"}}}"#,
         ] {
             let contract =
-                Contract::from_json(text, &crate::ExecutionContext::new(None).unwrap()).unwrap();
-            let value = Document::parse(
-                Source::new(html.as_bytes()),
-                &Limits::default().preparation(),
-                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+                Contract::from_json(text, &crate::stop::Clock::new(None).unwrap()).unwrap();
+            let value = parse_fixture(
+                DocumentFixture::new(html.as_bytes()),
+                &TestOptions::default().preparation(),
+                &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
             )
             .unwrap()
             .extract(
                 &contract,
-                &crate::Limits::default().execution(),
-                &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap(),
+                crate::ExportFormat::Json,
+                &crate::test_support::TestOptions::default().execution(),
+                &crate::stop::Clock::new((crate::test_support::TestOptions::default()).time_limit)
+                    .unwrap(),
             )
             .unwrap();
             let size = value
                 .export(
                     crate::ExportFormat::Json,
                     usize::MAX,
-                    &crate::ExecutionContext::new(None).unwrap(),
+                    &crate::stop::Clock::new(None).unwrap(),
                 )
                 .unwrap()
                 .len();
-            let mut limits = Limits {
+            let mut limits = TestOptions {
                 max_output_bytes: size,
-                ..Limits::default()
+                ..TestOptions::default()
             };
             assert!(
-                Document::parse(
-                    Source::new(html.as_bytes()),
+                parse_fixture(
+                    DocumentFixture::new(html.as_bytes()),
                     &limits.preparation(),
-                    &crate::ExecutionContext::new(limits.time_limit).unwrap()
+                    &crate::stop::Clock::new(limits.time_limit).unwrap()
                 )
                 .unwrap()
                 .extract(
                     &contract,
+                    crate::ExportFormat::Json,
                     &limits.execution(),
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                    &crate::stop::Clock::new((limits).time_limit).unwrap()
                 )
                 .is_ok()
             );
             limits.max_output_bytes -= 1;
-            let error = Document::parse(
-                Source::new(html.as_bytes()),
+            let error = parse_fixture(
+                DocumentFixture::new(html.as_bytes()),
                 &limits.preparation(),
-                &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+                &crate::stop::Clock::new(limits.time_limit).unwrap(),
             )
             .unwrap()
             .extract(
                 &contract,
+                crate::ExportFormat::Json,
                 &limits.execution(),
-                &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                &crate::stop::Clock::new((limits).time_limit).unwrap(),
             )
             .unwrap_err();
             assert_eq!(
@@ -769,16 +782,19 @@ mod tests {
     }
     #[test]
     fn relative_selector_answers_remain_local_to_each_row() {
-        let contract = Contract::from_json(r#"{"select":"section","match":"all","min":0,"where":[{"select":":scope:has(> b)"}],"read":"attr:id"}"#, &crate::ExecutionContext::new(None).unwrap()).unwrap();
-        let document = Document::parse(Source::new(b"<section id=a><b>x</b></section><section id=b><i>x</i></section><section id=c><b>x</b></section>"), &Limits::default().preparation(), &crate::ExecutionContext::new(Limits::default().time_limit).unwrap()).unwrap();
+        let contract = Contract::from_json(r#"{"select":"section","match":"all","min":0,"where":[{"select":":scope:has(> b)"}],"read":"attr:id"}"#, &crate::stop::Clock::new(None).unwrap()).unwrap();
+        let document = parse_fixture(DocumentFixture::new(b"<section id=a><b>x</b></section><section id=b><i>x</i></section><section id=c><b>x</b></section>"), &TestOptions::default().preparation(), &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap()).unwrap();
         for _ in 0..2 {
             assert_eq!(
                 document
                     .extract(
                         &contract,
-                        &crate::Limits::default().execution(),
-                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
-                            .unwrap()
+                        crate::ExportFormat::Json,
+                        &crate::test_support::TestOptions::default().execution(),
+                        &crate::stop::Clock::new(
+                            (crate::test_support::TestOptions::default()).time_limit
+                        )
+                        .unwrap()
                     )
                     .unwrap(),
                 Value::List(vec![Value::String("a".into()), Value::String("c".into())])
@@ -787,20 +803,20 @@ mod tests {
         assert!(
             Contract::from_json(
                 r#"{"select":"p:nth-child(2 of :scope)"}"#,
-                &crate::ExecutionContext::new(None).unwrap()
+                &crate::stop::Clock::new(None).unwrap()
             )
             .is_err()
         );
     }
     #[test]
     fn compiled_selectors_reuse_across_documents_without_scope_cache_leaks() {
-        let contract = Contract::from_json(r#"{"select":"section","match":"all","fields":{"second":"p:nth-child(2)","self":{"select":":scope","read":"attr:id"}}}"#, &crate::ExecutionContext::new(None).unwrap()).unwrap();
+        let contract = Contract::from_json(r#"{"select":"section","match":"all","fields":{"second":"p:nth-child(2)","self":{"select":":scope","read":"attr:id"}}}"#, &crate::stop::Clock::new(None).unwrap()).unwrap();
         for title in ["a", "b", "a"] {
             let html = format!("<section id={title}><p>first</p><p>{title}</p></section>");
-            let document = Document::parse(
-                Source::new(html.as_bytes()),
-                &Limits::default().preparation(),
-                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            let document = parse_fixture(
+                DocumentFixture::new(html.as_bytes()),
+                &TestOptions::default().preparation(),
+                &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
             )
             .unwrap();
             let expected = Value::List(vec![Value::Record(BTreeMap::from([
@@ -811,9 +827,12 @@ mod tests {
                 document
                     .extract(
                         &contract,
-                        &crate::Limits::default().execution(),
-                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
-                            .unwrap()
+                        crate::ExportFormat::Json,
+                        &crate::test_support::TestOptions::default().execution(),
+                        &crate::stop::Clock::new(
+                            (crate::test_support::TestOptions::default()).time_limit
+                        )
+                        .unwrap()
                     )
                     .unwrap(),
                 expected
@@ -822,9 +841,12 @@ mod tests {
                 document
                     .extract(
                         &contract,
-                        &crate::Limits::default().execution(),
-                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
-                            .unwrap()
+                        crate::ExportFormat::Json,
+                        &crate::test_support::TestOptions::default().execution(),
+                        &crate::stop::Clock::new(
+                            (crate::test_support::TestOptions::default()).time_limit
+                        )
+                        .unwrap()
                     )
                     .unwrap(),
                 expected

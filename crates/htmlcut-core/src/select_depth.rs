@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Bounded, iterative admission of parsed matching paths before recursive execution.
+use crate::bounds::MAX_SELECTOR_MATCHING_DEPTH;
 use crate::css::Simple;
-use crate::limits::MAX_SELECTOR_MATCHING_DEPTH;
 use selectors::parser::{Component, SelectorList};
 
 pub(super) fn admit(list: &SelectorList<Simple>) -> Result<(), &'static str> {

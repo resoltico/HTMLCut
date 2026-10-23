@@ -135,7 +135,8 @@ impl ToCss for PseudoElement {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Contract, Document, ErrorCode, Limits, Source, Value};
+    use crate::test_support::{DocumentFixture, TestOptions, parse_fixture};
+    use crate::{Contract, ErrorCode, Value};
 
     #[test]
     fn static_selector_contract_refuses_state_and_generated_content_with_original_facts() {
@@ -153,7 +154,7 @@ mod tests {
             "p[data-note='original spelling']:hover",
         ] {
             let input = serde_json::json!({"select": selector}).to_string();
-            let error = Contract::from_json(&input, &crate::ExecutionContext::new(None).unwrap())
+            let error = Contract::from_json(&input, &crate::stop::Clock::new(None).unwrap())
                 .err()
                 .unwrap();
             assert_eq!(error.code(), ErrorCode::InvalidSelector, "{selector}");
@@ -173,12 +174,12 @@ mod tests {
 
         // The documented attribute alternatives inspect snapshot state without
         // inventing a live browser state or pseudo-element selection surface.
-        let document = Document::parse(
-            Source::new(
+        let document = parse_fixture(
+            DocumentFixture::new(
                 b"<a href='/'>Follow</a><input checked value='Check'><input disabled value='Off'>",
             ),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         for (selector, read, expected) in [
@@ -188,14 +189,17 @@ mod tests {
         ] {
             let input = serde_json::json!({"select": selector, "read": read}).to_string();
             let contract =
-                Contract::from_json(&input, &crate::ExecutionContext::new(None).unwrap()).unwrap();
+                Contract::from_json(&input, &crate::stop::Clock::new(None).unwrap()).unwrap();
             assert_eq!(
                 document
                     .extract(
                         &contract,
-                        &crate::Limits::default().execution(),
-                        &crate::ExecutionContext::new((crate::Limits::default()).time_limit)
-                            .unwrap()
+                        crate::ExportFormat::Json,
+                        &crate::test_support::TestOptions::default().execution(),
+                        &crate::stop::Clock::new(
+                            (crate::test_support::TestOptions::default()).time_limit
+                        )
+                        .unwrap()
                     )
                     .unwrap(),
                 Value::String(expected.into())

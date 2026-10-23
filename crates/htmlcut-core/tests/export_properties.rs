@@ -1,21 +1,21 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Bounded composed scalar cases with an oracle independent of materialization accounting.
-use htmlcut_core::{
-    Contract, Document, ErrorCode, ExecutionContext, ExportFormat, Limits, Source, Value,
-};
+// Bounded composed scalar cases with an oracle independent of materialization accounting.
+use htmlcut_core::{Contract, ErrorCode, ExportFormat, Value};
 
 #[test]
 fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
     let pieces = [
         "", "a", "雪", "🦀", "&", "<", ">", "\"", "'", "\\", "\t", "\n", "\u{2028}",
     ];
-    let context = ExecutionContext::new(None).unwrap();
+    let context = support::test_stop(None).unwrap();
     let contract = Contract::from_json(
         r#"{"select":"p","match":"all","min":0,"read":"text-content"}"#,
         &context,
     )
     .unwrap();
-    let limits = Limits::default();
+    let limits = TestOptions::default();
     for case in 0..128 {
         let expected: Vec<String> = (0..case % 5)
             .map(|row| {
@@ -34,8 +34,8 @@ fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
                 format!("<p>{escaped}</p>")
             })
             .collect::<String>();
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
             &context,
         )
@@ -45,7 +45,12 @@ fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
         let mut policy = limits.execution();
         policy.max_output_bytes = json.len();
         let value = document
-            .extract(&contract, &policy, &context)
+            .extract(
+                &contract,
+                htmlcut_core::ExportFormat::Json,
+                &policy,
+                &context,
+            )
             .unwrap_or_else(|error| panic!("case {case}, input {html:?}: {error}"));
         assert_eq!(
             value,
@@ -60,7 +65,14 @@ fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
             "JSON case {case}"
         );
         policy.max_output_bytes -= 1;
-        let error = document.extract(&contract, &policy, &context).unwrap_err();
+        let error = document
+            .extract(
+                &contract,
+                htmlcut_core::ExportFormat::Json,
+                &policy,
+                &context,
+            )
+            .unwrap_err();
         assert_eq!(
             error.code(),
             ErrorCode::LimitExceeded,

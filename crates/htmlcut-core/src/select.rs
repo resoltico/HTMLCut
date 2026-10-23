@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Admitted upstream selectors and scope-aware matching caches.
 use crate::Error;
-use crate::limits::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};
+use crate::bounds::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};
 use selectors::{
     matching,
     parser::{ParseRelative, SelectorList},
@@ -143,6 +143,11 @@ fn syntax_admitted(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     #[test]
     fn syntax_nesting_counts_only_unquoted_unescaped_noncomment_delimiters() {
         // Lexical admission precedes CSS parsing. A balanced 64-level boundary

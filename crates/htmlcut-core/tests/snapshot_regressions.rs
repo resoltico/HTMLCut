@@ -1,24 +1,26 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Retained authored snapshots protect original-tree repair and lexical row values.
-use htmlcut_core::{Contract, Document, Limits, Source, Value};
+// Retained authored snapshots protect original-tree repair and lexical row values.
+use htmlcut_core::{Contract, Value};
 #[test]
 fn authored_book_rows_keep_complete_lexical_values() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/contract/authored-books");
     let bytes = std::fs::read(root.join("page.html")).unwrap();
-    let document = Document::parse(
-        Source::new(&bytes),
-        &Limits::default().preparation(),
-        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    let document = parse_fixture(
+        DocumentFixture::new(&bytes),
+        &TestOptions::default().preparation(),
+        &support::test_stop(TestOptions::default().time_limit).unwrap(),
     )
     .unwrap();
-    let rows = Contract::from_json(r#"{"select":"article.book","match":"all","min":20,"max":20,"fields":{"title":{"select":"a","read":"attr:title"},"price":".price"}}"#, &htmlcut_core::ExecutionContext::new(None).unwrap()).unwrap();
+    let rows = Contract::from_json(r#"{"select":"article.book","match":"all","min":20,"max":20,"fields":{"title":{"select":"a","read":"attr:title"},"price":".price"}}"#, &support::test_stop(None).unwrap()).unwrap();
     let Value::List(records) = document
         .extract(
             &rows,
-            &htmlcut_core::Limits::default().execution(),
-            &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
-                .unwrap(),
+            htmlcut_core::ExportFormat::Json,
+            &support::TestOptions::default().execution(),
+            &support::test_stop((support::TestOptions::default()).time_limit).unwrap(),
         )
         .unwrap()
     else {

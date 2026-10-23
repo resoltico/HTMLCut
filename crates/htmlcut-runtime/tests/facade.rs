@@ -81,7 +81,7 @@ fn workers_share_only_semantic_state_and_keep_policy_and_cancellation_independen
     );
 }
 #[test]
-fn later_save_rechecks_canonical_admission_including_null_and_framing() {
+fn raw_null_can_be_saved_with_zero_emitted_bytes() {
     let mut limits = Limits::default();
     limits.max_output_bytes = 5;
     let operation = Operation::Extract {
@@ -97,18 +97,17 @@ fn later_save_rechecks_canonical_admission_including_null_and_framing() {
     .unwrap() else {
         panic!()
     };
-    limits.max_output_bytes = 4;
+    limits.max_output_bytes = 0;
     let root = tempfile::tempdir().unwrap();
     let output = root.path().join("result");
     std::fs::write(&output, b"old").unwrap();
-    let error = finished(Job::new(None).unwrap().save(
-        &result,
-        Destination::File(output.clone()),
-        limits,
-    ))
-    .unwrap_err();
-    assert_eq!(error.code(), ErrorCode::LimitExceeded);
-    assert_eq!(std::fs::read(output).unwrap(), b"old");
+    finished(
+        Job::new(None)
+            .unwrap()
+            .save(&result, Destination::File(output.clone()), limits),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(output).unwrap(), b"");
 }
 #[test]
 fn invalid_export_and_contract_refuse_before_missing_html_and_zero_jobs_do_no_lookup() {

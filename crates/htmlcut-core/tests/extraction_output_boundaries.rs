@@ -1,28 +1,29 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Public result and inspection boundaries, with independent literal output oracles.
-use htmlcut_core::{Contract, Document, ErrorCode, Limits, OutlineOptions, Source};
+// Public result and inspection boundaries, with independent literal output oracles.
+use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 
 fn extraction(html: &str, contract: &str, expected: &str) {
     let expected = format!("{expected}\n");
-    let contract = Contract::from_json(
-        contract,
-        &htmlcut_core::ExecutionContext::new(None).unwrap(),
-    )
-    .unwrap();
+    let contract = Contract::from_json(contract, &support::test_stop(None).unwrap()).unwrap();
     for maximum in [expected.len(), expected.len() + 1] {
-        let mut limits = Limits::default();
-        limits.max_output_bytes = maximum;
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let limits = TestOptions {
+            max_output_bytes: maximum,
+            ..Default::default()
+        };
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            &support::test_stop(limits.time_limit).unwrap(),
         )
         .unwrap();
         let result = document
             .extract(
                 &contract,
+                htmlcut_core::ExportFormat::Json,
                 &limits.execution(),
-                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                &support::test_stop((limits).time_limit).unwrap(),
             )
             .unwrap();
         assert_eq!(
@@ -30,7 +31,7 @@ fn extraction(html: &str, contract: &str, expected: &str) {
                 .export(
                     htmlcut_core::ExportFormat::Json,
                     expected.len(),
-                    &htmlcut_core::ExecutionContext::new(None).unwrap()
+                    &support::test_stop(None).unwrap()
                 )
                 .unwrap(),
             expected.as_bytes()
@@ -42,7 +43,7 @@ fn extraction(html: &str, contract: &str, expected: &str) {
                         .export(
                             htmlcut_core::ExportFormat::Json,
                             shorter,
-                            &htmlcut_core::ExecutionContext::new(None).unwrap()
+                            &support::test_stop(None).unwrap()
                         )
                         .unwrap_err()
                 )
@@ -53,19 +54,22 @@ fn extraction(html: &str, contract: &str, expected: &str) {
         }
     }
     for maximum in [expected.len() - 1, expected.len() - 2] {
-        let mut limits = Limits::default();
-        limits.max_output_bytes = maximum;
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let limits = TestOptions {
+            max_output_bytes: maximum,
+            ..Default::default()
+        };
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            &support::test_stop(limits.time_limit).unwrap(),
         )
         .unwrap();
         let error = document
             .extract(
                 &contract,
+                htmlcut_core::ExportFormat::Json,
                 &limits.execution(),
-                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                &support::test_stop((limits).time_limit).unwrap(),
             )
             .unwrap_err();
         assert_eq!(error.code(), ErrorCode::LimitExceeded);
@@ -108,12 +112,14 @@ fn complete_json_counts_one_and_three_list_members_and_record_fields() {
 
 fn outline(html: &str, options: &OutlineOptions, expected: &str) {
     for maximum in [expected.len(), expected.len() + 1] {
-        let mut limits = Limits::default();
-        limits.max_output_bytes = maximum;
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let limits = TestOptions {
+            max_output_bytes: maximum,
+            ..Default::default()
+        };
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            &support::test_stop(limits.time_limit).unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -121,35 +127,37 @@ fn outline(html: &str, options: &OutlineOptions, expected: &str) {
                 .outline(
                     options,
                     &limits.execution(),
-                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap()
+                    &support::test_stop((limits).time_limit).unwrap()
                 )
                 .and_then(|report| report.render(
                     limits.max_output_bytes,
-                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap()
+                    &support::test_stop((limits).time_limit).unwrap()
                 ))
                 .unwrap(),
             expected
         );
     }
     for maximum in [expected.len() - 1, expected.len() - 2] {
-        let mut limits = Limits::default();
-        limits.max_output_bytes = maximum;
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let limits = TestOptions {
+            max_output_bytes: maximum,
+            ..Default::default()
+        };
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            &support::test_stop(limits.time_limit).unwrap(),
         )
         .unwrap();
         let error = document
             .outline(
                 options,
                 &limits.execution(),
-                &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                &support::test_stop((limits).time_limit).unwrap(),
             )
             .and_then(|report| {
                 report.render(
                     limits.max_output_bytes,
-                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                    &support::test_stop((limits).time_limit).unwrap(),
                 )
             })
             .unwrap_err();
@@ -239,10 +247,10 @@ fn outline_depth_classes_and_preview_cutoffs_are_exact() {
 
 #[test]
 fn cardinality_refusals_identify_the_selector_and_complete_range() {
-    let document = Document::parse(
-        Source::new(b"<p>x</p>"),
-        &Limits::default().preparation(),
-        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    let document = parse_fixture(
+        DocumentFixture::new(b"<p>x</p>"),
+        &TestOptions::default().preparation(),
+        &support::test_stop(TestOptions::default().time_limit).unwrap(),
     )
     .unwrap();
     for (contract, path, selector, expected_range, identity) in [
@@ -277,14 +285,10 @@ fn cardinality_refusals_identify_the_selector_and_complete_range() {
     ] {
         let error = document
             .extract(
-                &Contract::from_json(
-                    contract,
-                    &htmlcut_core::ExecutionContext::new(None).unwrap(),
-                )
-                .unwrap(),
-                &htmlcut_core::Limits::default().execution(),
-                &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
-                    .unwrap(),
+                &Contract::from_json(contract, &support::test_stop(None).unwrap()).unwrap(),
+                htmlcut_core::ExportFormat::Json,
+                &support::TestOptions::default().execution(),
+                &support::test_stop((support::TestOptions::default()).time_limit).unwrap(),
             )
             .unwrap_err();
         assert!(

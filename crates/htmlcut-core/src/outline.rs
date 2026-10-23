@@ -4,8 +4,8 @@ use crate::dom::ElementRef;
 use crate::{
     Document, Error,
     eval::{Scope, candidates},
-    limits::ExecutionContext,
     select::Selector,
+    stop::Clock,
 };
 use std::{
     borrow::Cow,
@@ -37,7 +37,7 @@ impl Default for OutlineOptions {
 }
 impl OutlineOptions {
     /// Validates selector admission before a host acquires HTML bytes.
-    pub fn validate(&self, context: &crate::ExecutionContext) -> Result<(), Error> {
+    pub fn validate(&self, context: &crate::Stop) -> Result<(), Error> {
         context.check()?;
         self.compile_selector()?;
         context.check()
@@ -115,11 +115,11 @@ pub struct OutlineAttribute {
 struct TextOutput<'a> {
     bytes: Vec<u8>,
     maximum: usize,
-    clock: &'a ExecutionContext,
+    clock: &'a Clock,
     error: Option<Error>,
 }
 impl<'a> TextOutput<'a> {
-    fn new(maximum: usize, clock: &'a ExecutionContext) -> Self {
+    fn new(maximum: usize, clock: &'a Clock) -> Self {
         Self {
             bytes: Vec::new(),
             maximum,
@@ -195,7 +195,7 @@ impl<'a> RowView<'a> {
         count: usize,
         attrs: bool,
         inside: usize,
-        clock: &ExecutionContext,
+        clock: &Clock,
     ) -> Result<Self, Error> {
         let mut classes = Vec::new();
         let mut omitted_classes = 0;
@@ -384,13 +384,9 @@ fn summary(output: &mut TextOutput<'_>, omitted: usize) -> Result<(), Error> {
 }
 impl OutlineReport {
     /// Renders canonical text under the current operation's byte and stop policy.
-    pub fn render(
-        &self,
-        maximum: usize,
-        context: &crate::ExecutionContext,
-    ) -> Result<String, Error> {
+    pub fn render(&self, maximum: usize, context: &crate::Stop) -> Result<String, Error> {
         context.check()?;
-        let clock = (context).clone();
+        let clock = Clock::for_stop(context);
         let mut output = TextOutput::new(maximum, &clock);
         if self.header_emitted {
             header(
@@ -412,10 +408,10 @@ impl Document {
     pub fn outline(
         &self,
         options: &OutlineOptions,
-        limits: &crate::ExecutionPolicy,
-        context: &crate::ExecutionContext,
+        limits: &crate::ResultLimits,
+        context: &crate::Stop,
     ) -> Result<OutlineReport, Error> {
-        let clock = (context).clone();
+        let clock = Clock::for_stop(context);
         clock.check()?;
         let scope = Scope::one(self.html.root_element());
         let mut output = TextOutput::new(limits.max_output_bytes, &clock);
@@ -510,7 +506,7 @@ impl Document {
 }
 fn element_children<'a>(
     element: ElementRef<'a>,
-    clock: &ExecutionContext,
+    clock: &Clock,
 ) -> Result<Vec<ElementRef<'a>>, Error> {
     let mut children = Vec::new();
     for child in element.children() {
@@ -522,7 +518,7 @@ fn element_children<'a>(
     Ok(children)
 }
 
-fn classes(element: ElementRef<'_>, clock: &ExecutionContext) -> Result<Vec<String>, Error> {
+fn classes(element: ElementRef<'_>, clock: &Clock) -> Result<Vec<String>, Error> {
     let mut classes = Vec::new();
     for class in element
         .value()
@@ -536,13 +532,13 @@ fn classes(element: ElementRef<'_>, clock: &ExecutionContext) -> Result<Vec<Stri
     Ok(classes)
 }
 
-fn preview(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<String, Error> {
+fn preview(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
     preview_parts(std::iter::once(value), maximum, clock)
 }
 fn preview_parts<'a>(
     parts: impl Iterator<Item = &'a str>,
     maximum: usize,
-    clock: &ExecutionContext,
+    clock: &Clock,
 ) -> Result<String, Error> {
     let mut result = String::new();
     let mut space = false;
@@ -574,7 +570,7 @@ fn preview_parts<'a>(
     Ok(result)
 }
 #[cfg(test)]
-fn identifier(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<String, Error> {
+fn identifier(value: &str, maximum: usize, clock: &Clock) -> Result<String, Error> {
     let mut output = TextOutput::new(maximum, clock);
     output.identifier(value)?;
     Ok(output.text())
@@ -587,7 +583,7 @@ fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> 
             bound: (maximum).into(),
         });
     }
-    let clock = ExecutionContext::new(crate::Limits::default().time_limit).unwrap();
+    let clock = Clock::new(None).unwrap();
     let mut sink = TextOutput::new(maximum, &clock);
     sink.piece(output)?;
     sink.piece(line)?;
@@ -600,7 +596,11 @@ fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> 
 mod tests {
     use super::*;
     use crate::ErrorCode;
-    use crate::{Limits, Source};
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     #[test]
     fn caller_constructed_rows_render_omissions_without_representative_attributes() {
         let report = OutlineReport {
@@ -623,7 +623,7 @@ mod tests {
             omitted_lines: 0,
         };
         let expected = "main […]\n";
-        let context = ExecutionContext::new(None).unwrap();
+        let context = Clock::new(None).unwrap();
         assert_eq!(report.render(expected.len(), &context).unwrap(), expected);
         let error = report.render(expected.len() - 1, &context).unwrap_err();
         assert_eq!(
@@ -634,14 +634,14 @@ mod tests {
 
     #[test]
     fn description_refusals_report_the_global_output_policy_consistently() {
-        let limits = Limits {
+        let limits = TestOptions {
             max_output_bytes: 20,
-            ..Limits::default()
+            ..TestOptions::default()
         };
-        let document = Document::parse(
-            Source::new(b"<main id=identifier-longer-than-the-remaining-line></main>"),
+        let document = parse_fixture(
+            DocumentFixture::new(b"<main id=identifier-longer-than-the-remaining-line></main>"),
             &limits.preparation(),
-            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+            &crate::stop::Clock::new(limits.time_limit).unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
@@ -652,12 +652,12 @@ mod tests {
             .outline(
                 &options,
                 &limits.execution(),
-                &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                &crate::stop::Clock::new((limits).time_limit).unwrap(),
             )
             .and_then(|report| {
                 report.render(
                     limits.max_output_bytes,
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                    &crate::stop::Clock::new((limits).time_limit).unwrap(),
                 )
             })
             .unwrap_err();
@@ -686,14 +686,14 @@ mod tests {
             ..OutlineOptions::default()
         };
         for maximum in [expected.len() - 1, expected.len(), expected.len() + 1] {
-            let limits = Limits {
+            let limits = TestOptions {
                 max_output_bytes: maximum,
-                ..Limits::default()
+                ..TestOptions::default()
             };
-            let document = Document::parse(
-                Source::new(html),
+            let document = parse_fixture(
+                DocumentFixture::new(html),
                 &limits.preparation(),
-                &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+                &crate::stop::Clock::new(limits.time_limit).unwrap(),
             )
             .unwrap();
             if maximum >= expected.len() {
@@ -702,11 +702,11 @@ mod tests {
                         .outline(
                             &options,
                             &limits.execution(),
-                            &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                            &crate::stop::Clock::new((limits).time_limit).unwrap()
                         )
                         .and_then(|report| report.render(
                             limits.max_output_bytes,
-                            &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                            &crate::stop::Clock::new((limits).time_limit).unwrap()
                         ))
                         .unwrap(),
                     expected
@@ -716,12 +716,12 @@ mod tests {
                     .outline(
                         &options,
                         &limits.execution(),
-                        &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                        &crate::stop::Clock::new((limits).time_limit).unwrap(),
                     )
                     .and_then(|report| {
                         report.render(
                             limits.max_output_bytes,
-                            &crate::ExecutionContext::new((limits).time_limit).unwrap(),
+                            &crate::stop::Clock::new((limits).time_limit).unwrap(),
                         )
                     })
                     .unwrap_err();
@@ -744,11 +744,11 @@ mod tests {
     #[test]
     fn description_admission_refuses_an_oversized_source_attribute_name() {
         let html = format!("<main {}='value'></main>", "attribute".repeat(8192));
-        let limits = Limits::default();
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let limits = TestOptions::default();
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+            &crate::stop::Clock::new(limits.time_limit).unwrap(),
         )
         .unwrap();
         let element = document
@@ -756,7 +756,7 @@ mod tests {
             .select(&Selector::parse("main").unwrap())
             .next()
             .unwrap();
-        let clock = ExecutionContext::new(limits.time_limit).unwrap();
+        let clock = Clock::new(limits.time_limit).unwrap();
         let row = RowView::element(element, 0, 1, false, 0, &clock).unwrap();
         let error = row.write(&mut TextOutput::new(8, &clock)).unwrap_err();
         assert_eq!(
@@ -771,8 +771,8 @@ mod tests {
 
     #[test]
     fn previews_stream_normalized_parts_without_allocating_source_values() {
-        let limits = Limits::default();
-        let clock = ExecutionContext::new(limits.time_limit).unwrap();
+        let limits = TestOptions::default();
+        let clock = Clock::new(limits.time_limit).unwrap();
         assert_eq!(
             preview_parts([" a  ", " b "].into_iter(), 3, &clock).unwrap(),
             "a b"
@@ -827,10 +827,10 @@ mod tests {
     }
     #[test]
     fn hidden_selection_header_is_counted_even_without_a_root_match() {
-        let document = Document::parse(
-            Source::new(b"<p>x</p>"),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        let document = parse_fixture(
+            DocumentFixture::new(b"<p>x</p>"),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         let mut options = OutlineOptions {
@@ -842,12 +842,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
@@ -857,12 +863,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "0 matches for main\n"
@@ -874,12 +886,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
@@ -889,12 +907,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "html (+3 inside)\n"
@@ -903,10 +927,10 @@ mod tests {
     #[test]
     fn shapes_order_classes_source_attributes_and_clipping_are_preserved() {
         let html = "<main><p id=a class='z A b c d' z='1' a='2' b='3' c='4' d='5' e='6' f='7'>quoted \"text\"</p><p class='z A b c d'><b>shape</b></p><p class='z A b c d'>same shape</p></main>";
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
@@ -918,12 +942,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "1 match for main\nmain\n  p.z.A.b.c.+1 [z=\"1\" a=\"2\" b=\"3\" c=\"4\" d=\"5\" e=\"6\" …] ×2 \"quoted \\\"text\\\"\"\n  p.z.A.b.c.+1\n    b \"shape\"\n"
@@ -932,14 +962,14 @@ mod tests {
     #[test]
     fn foreign_roots_stop_and_output_limits_refuse_instead_of_truncating_bytes() {
         let html = "<svg id=x><g><path></path></g></svg>";
-        let limits = Limits {
+        let limits = TestOptions {
             max_output_bytes: 1,
-            ..Limits::default()
+            ..TestOptions::default()
         };
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
             &limits.preparation(),
-            &crate::ExecutionContext::new(limits.time_limit).unwrap(),
+            &crate::stop::Clock::new(limits.time_limit).unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
@@ -952,11 +982,11 @@ mod tests {
                     .outline(
                         &options,
                         &limits.execution(),
-                        &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                        &crate::stop::Clock::new((limits).time_limit).unwrap()
                     )
                     .and_then(|report| report.render(
                         limits.max_output_bytes,
-                        &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                        &crate::stop::Clock::new((limits).time_limit).unwrap()
                     ))
                     .unwrap_err()
             )
@@ -964,11 +994,11 @@ mod tests {
                 .as_str(),
             Some("output_bytes")
         );
-        let limits = Limits::default();
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        let limits = TestOptions::default();
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -976,11 +1006,11 @@ mod tests {
                 .outline(
                     &options,
                     &limits.execution(),
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                    &crate::stop::Clock::new((limits).time_limit).unwrap()
                 )
                 .and_then(|report| report.render(
                     limits.max_output_bytes,
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                    &crate::stop::Clock::new((limits).time_limit).unwrap()
                 ))
                 .unwrap(),
             "1 match for svg\nsvg#x (+2 inside)\n"
@@ -988,10 +1018,11 @@ mod tests {
     }
     #[test]
     fn control_characters_cannot_add_outline_lines() {
-        let document = Document::parse(
-            Source::new(b"<main><p>x</p></main>"),
-            &crate::Limits::default().preparation(),
-            &crate::ExecutionContext::new(crate::Limits::default().time_limit).unwrap(),
+        let document = parse_fixture(
+            DocumentFixture::new(b"<main><p>x</p></main>"),
+            &crate::test_support::TestOptions::default().preparation(),
+            &crate::stop::Clock::new(crate::test_support::TestOptions::default().time_limit)
+                .unwrap(),
         )
         .unwrap();
         let options = OutlineOptions {
@@ -1003,12 +1034,18 @@ mod tests {
             document
                 .outline(
                     &options,
-                    &crate::Limits::default().execution(),
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    &crate::test_support::TestOptions::default().execution(),
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 )
                 .and_then(|report| report.render(
-                    crate::Limits::default().max_output_bytes,
-                    &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
+                    crate::test_support::TestOptions::default().max_output_bytes,
+                    &crate::stop::Clock::new(
+                        (crate::test_support::TestOptions::default()).time_limit
+                    )
+                    .unwrap()
                 ))
                 .unwrap(),
             "1 match for \"main\\np\"\n… 1 more lines; narrow the selection, reduce depth or increase the line allowance\n"
@@ -1016,10 +1053,10 @@ mod tests {
     }
     #[test]
     fn hidden_selector_initial_admission_matches_later_rendering_at_exact_bounds() {
-        let limits = Limits::default();
-        let context = ExecutionContext::new(None).unwrap();
-        let document = Document::parse(
-            Source::new(b"<p>value</p>"),
+        let limits = TestOptions::default();
+        let context = Clock::new(None).unwrap();
+        let document = parse_fixture(
+            DocumentFixture::new(b"<p>value</p>"),
             &limits.preparation(),
             &context,
         )
@@ -1068,12 +1105,12 @@ mod tests {
             Arc,
             atomic::{AtomicUsize, Ordering},
         };
-        let limits = Limits::default();
-        let prepare = ExecutionContext::new(None).unwrap();
+        let limits = TestOptions::default();
+        let prepare = Clock::new(None).unwrap();
         let tokens = 200_000;
         let source = format!("<p class='{}'>value</p>", "a ".repeat(tokens));
-        let document = Document::parse(
-            Source::new(source.as_bytes()),
+        let document = parse_fixture(
+            DocumentFixture::new(source.as_bytes()),
             &limits.preparation(),
             &prepare,
         )
@@ -1084,7 +1121,7 @@ mod tests {
         };
         let checks = Arc::new(AtomicUsize::new(0));
         let observed = checks.clone();
-        let context = ExecutionContext::with_checkpoint(move || {
+        let context = Clock::testing(move || {
             observed.fetch_add(1, Ordering::Relaxed);
             Ok(())
         });
@@ -1094,7 +1131,7 @@ mod tests {
         assert!(checks.load(Ordering::Relaxed) >= tokens / 1024);
         let checks = Arc::new(AtomicUsize::new(0));
         let observed = checks.clone();
-        let context = ExecutionContext::with_checkpoint(move || {
+        let context = Clock::testing(move || {
             if observed.fetch_add(1, Ordering::Relaxed) >= 3 {
                 Err(Error::Cancelled)
             } else {

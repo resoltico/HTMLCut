@@ -1,30 +1,31 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Caller-owned byte and cooperative deadline boundaries through the public API.
-use htmlcut_core::{Contract, Document, ErrorCode, Limits, OutlineOptions, Source};
+// Caller-owned byte and cooperative deadline boundaries through the public API.
+use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 use std::time::Duration;
 
 #[test]
 fn input_bytes_admit_equality_and_refuse_every_excess() {
     let bytes = b"<p>snow: \xe9\x9b\xaa</p>";
     for excess in [0, 1, 2] {
-        let mut limits = Limits::default();
-        limits.max_input_bytes = bytes.len() - excess;
-        let result = Document::parse(
-            Source::new(bytes),
+        let limits = TestOptions {
+            max_input_bytes: bytes.len() - excess,
+            ..Default::default()
+        };
+        let result = parse_fixture(
+            DocumentFixture::new(bytes),
             &limits.preparation(),
-            &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+            &support::test_stop(limits.time_limit).unwrap(),
         );
         if excess == 0 {
             let value = result
                 .unwrap()
                 .extract(
-                    &Contract::from_json(
-                        r#""p""#,
-                        &htmlcut_core::ExecutionContext::new(None).unwrap(),
-                    )
-                    .unwrap(),
+                    &Contract::from_json(r#""p""#, &support::test_stop(None).unwrap()).unwrap(),
+                    htmlcut_core::ExportFormat::Json,
                     &limits.execution(),
-                    &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
+                    &support::test_stop((limits).time_limit).unwrap(),
                 )
                 .unwrap();
             assert_eq!(serde_json::to_value(value).unwrap(), "snow: 雪");
@@ -45,12 +46,14 @@ fn input_bytes_admit_equality_and_refuse_every_excess() {
 
 #[test]
 fn library_deadlines_are_enforced_without_a_cli_watchdog() {
-    let mut limits = Limits::default();
-    limits.time_limit = Some(Duration::ZERO);
-    let error = Document::parse(
-        Source::new(b"<p>x</p>"),
+    let limits = TestOptions {
+        time_limit: Some(Duration::ZERO),
+        ..Default::default()
+    };
+    let error = parse_fixture(
+        DocumentFixture::new(b"<p>x</p>"),
         &limits.preparation(),
-        &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
+        &support::test_stop(limits.time_limit).unwrap(),
     )
     .unwrap_err();
     assert_eq!(error.code(), ErrorCode::LimitExceeded);
@@ -58,25 +61,24 @@ fn library_deadlines_are_enforced_without_a_cli_watchdog() {
         serde_json::to_value(&error).unwrap()["limit"].as_str(),
         Some("time")
     );
-    let mut unlimited = Limits::default();
-    unlimited.time_limit = None;
-    let document = Document::parse(
-        Source::new(b"<p>x</p>"),
+    let unlimited = TestOptions {
+        time_limit: None,
+        ..Default::default()
+    };
+    let document = parse_fixture(
+        DocumentFixture::new(b"<p>x</p>"),
         &unlimited.preparation(),
-        &htmlcut_core::ExecutionContext::new(unlimited.time_limit).unwrap(),
+        &support::test_stop(unlimited.time_limit).unwrap(),
     )
     .unwrap();
     assert_eq!(
         serde_json::to_value(
             document
                 .extract(
-                    &Contract::from_json(
-                        r#""p""#,
-                        &htmlcut_core::ExecutionContext::new(None).unwrap()
-                    )
-                    .unwrap(),
+                    &Contract::from_json(r#""p""#, &support::test_stop(None).unwrap()).unwrap(),
+                    htmlcut_core::ExportFormat::Json,
                     &unlimited.execution(),
-                    &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+                    &support::test_stop((unlimited).time_limit).unwrap()
                 )
                 .unwrap()
         )
@@ -88,11 +90,11 @@ fn library_deadlines_are_enforced_without_a_cli_watchdog() {
             .outline(
                 &OutlineOptions::default(),
                 &unlimited.execution(),
-                &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+                &support::test_stop((unlimited).time_limit).unwrap()
             )
             .and_then(|report| report.render(
                 unlimited.max_output_bytes,
-                &htmlcut_core::ExecutionContext::new((unlimited).time_limit).unwrap()
+                &support::test_stop((unlimited).time_limit).unwrap()
             ))
             .unwrap()
             .is_empty()

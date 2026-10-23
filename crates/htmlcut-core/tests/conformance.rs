@@ -1,6 +1,8 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
-//! Every executable specification case through the public library.
-use htmlcut_core::{Contract, Document, Limits, OutlineOptions, Source};
+// Every executable specification case through the public library.
+use htmlcut_core::{Contract, OutlineOptions};
 use serde_json::Value;
 use std::path::Path;
 #[test]
@@ -20,7 +22,7 @@ fn run_cases(root: &Path) -> usize {
 }
 fn run_case(case: &fixture::Case) {
     let options = &case.options;
-    let mut limits = Limits::default();
+    let mut limits = TestOptions::default();
     if let Some(n) = options.max_input_bytes {
         limits.max_input_bytes = n;
     }
@@ -33,8 +35,8 @@ fn run_case(case: &fixture::Case) {
     if let Some(n) = options.max_output_bytes {
         limits.max_output_bytes = n;
     }
-    let context = htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap();
-    let mut source = Source::new(&case.page);
+    let context = support::test_stop(limits.time_limit).unwrap();
+    let mut source = DocumentFixture::new(&case.page);
     source.encoding = options.encoding.as_deref();
     source.base_url = options.base_url.as_deref();
     let actual = if let Some(text) = &case.contract {
@@ -44,9 +46,10 @@ fn run_case(case: &fixture::Case) {
             } else {
                 htmlcut_core::ExportFormat::Json
             };
-            contract.admit_export(format)?;
-            let value = Document::parse(source, &limits.preparation(), &context)?.extract(
+            contract.supports(format)?;
+            let value = parse_fixture(source, &limits.preparation(), &context)?.extract(
                 &contract,
+                format,
                 &limits.execution(),
                 &context,
             )?;
@@ -65,7 +68,7 @@ fn run_case(case: &fixture::Case) {
         }
         outline.attrs = config.attrs;
         outline.validate(&context).and_then(|()| {
-            Document::parse(source, &limits.preparation(), &context)?
+            parse_fixture(source, &limits.preparation(), &context)?
                 .outline(&outline, &limits.execution(), &context)?
                 .render(limits.max_output_bytes, &context)
                 .map(|text| (None, text.into_bytes()))
@@ -86,7 +89,7 @@ fn run_case(case: &fixture::Case) {
 fn compiling_literal_contracts_have_schema_witnesses() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance");
     let validator = jsonschema::validator_for(&Contract::schema()).unwrap();
-    let context = htmlcut_core::ExecutionContext::new(None).unwrap();
+    let context = support::test_stop(None).unwrap();
     for case in fixture::discover(&root) {
         if let Some(text) = &case.contract
             && Contract::from_json(text, &context).is_ok()
@@ -105,7 +108,7 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
     for selector in ["[id=", "p:contains(x)", "div:has(p:has(a))", "p >"] {
         let error = Contract::from_json(
             &serde_json::json!({"select":selector}).to_string(),
-            &htmlcut_core::ExecutionContext::new(None).unwrap(),
+            &support::test_stop(None).unwrap(),
         )
         .err()
         .unwrap();
@@ -116,12 +119,9 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
             error.to_string()
         );
     }
-    let error = Contract::from_json(
-        r#"{"read":"html"}"#,
-        &htmlcut_core::ExecutionContext::new(None).unwrap(),
-    )
-    .err()
-    .unwrap();
+    let error = Contract::from_json(r#"{"read":"html"}"#, &support::test_stop(None).unwrap())
+        .err()
+        .unwrap();
     for reading in [
         "text",
         "text-content",
@@ -131,10 +131,10 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
     ] {
         assert!(error.to_string().contains(reading));
     }
-    let document = Document::parse(
-        Source::new(b"<p>x</p>"),
-        &Limits::default().preparation(),
-        &htmlcut_core::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+    let document = parse_fixture(
+        DocumentFixture::new(b"<p>x</p>"),
+        &TestOptions::default().preparation(),
+        &support::test_stop(TestOptions::default().time_limit).unwrap(),
     )
     .unwrap();
     let mut options = OutlineOptions::default();
@@ -142,15 +142,13 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
     let error = document
         .outline(
             &options,
-            &htmlcut_core::Limits::default().execution(),
-            &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
-                .unwrap(),
+            &support::TestOptions::default().execution(),
+            &support::test_stop((support::TestOptions::default()).time_limit).unwrap(),
         )
         .and_then(|report| {
             report.render(
-                htmlcut_core::Limits::default().max_output_bytes,
-                &htmlcut_core::ExecutionContext::new((htmlcut_core::Limits::default()).time_limit)
-                    .unwrap(),
+                support::TestOptions::default().max_output_bytes,
+                &support::test_stop((support::TestOptions::default()).time_limit).unwrap(),
             )
         })
         .unwrap_err();
@@ -177,7 +175,13 @@ fn corpus_runner_refuses_empty_or_incomplete_corpora() {
 }
 
 fn plain_message(error: &htmlcut_core::Error) {
-    for rendering in ["Some(", "None", "ParseError", "SourceLocation", " { "] {
+    for rendering in [
+        "Some(",
+        "None",
+        "ParseError",
+        "DocumentFixtureLocation",
+        " { ",
+    ] {
         assert!(
             !error.to_string().contains(rendering),
             "{}",

@@ -2,16 +2,16 @@
 //! Deterministic extraction contracts for caller-owned HTML documents.
 //!
 //! ```
-//! use htmlcut_core::{Contract, Document, Limits, ExecutionContext, Source, Value};
-//! let limits = Limits::default();
-//! let context = ExecutionContext::new(limits.time_limit)?;
-//! let document = Document::parse(Source::new(b"<h1>Snapshot</h1>"), &limits.preparation(), &context)?;
-//! let contract = Contract::from_json(r#""h1""#, &context)?;
-//! assert_eq!(document.extract(&contract, &limits.execution(), &context)?, Value::String("Snapshot".into()));
+//! use htmlcut_core::{Contract, Document, ParseOptions, ResultLimits, Stop, ExportFormat, Value};
+//! let stop = Stop::none();
+//! let document = Document::parse(b"<h1>Snapshot</h1>", &ParseOptions::default(), &stop)?;
+//! let contract = Contract::from_json(r#""h1""#, &stop)?;
+//! assert_eq!(document.extract(&contract, ExportFormat::Json, &ResultLimits::default(), &stop)?, Value::String("Snapshot".into()));
 //! # Ok::<(), htmlcut_core::Error>(())
 //! ```
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+mod bounds;
 mod contract;
 mod css;
 mod document;
@@ -19,17 +19,28 @@ mod dom;
 mod error;
 mod eval;
 mod json;
-mod limits;
+mod options;
 mod outline;
 mod read;
 mod select;
+mod stop;
 mod value;
 pub use contract::{Contract, QueryCardinality, QuickQuery};
-pub use document::{Document, Source};
+pub use document::Document;
 pub use error::{CountRange, Error, ErrorClass, ErrorCode, ExpectationFailure, Limit};
-pub use limits::{ExecutionContext, ExecutionPolicy, Limits, PreparationPolicy};
+pub use options::{ParseOptions, ResultLimits};
 pub use outline::{OutlineAttribute, OutlineOptions, OutlineReport, OutlineRow};
+pub use stop::Stop;
 pub use value::{ExportFormat, Value};
 
 /// Default reading syntax for value contracts and frontend overrides.
 pub const DEFAULT_READING: &str = "text";
+
+#[cfg(test)]
+extern crate self as htmlcut_core;
+#[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+mod test_support;
+
+#[cfg(test)]
+pub(crate) use test_support::TestOptions;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Complete values and bounded compact JSON encoding.
-use crate::Error;
+use crate::{Error, stop::Clock};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -35,13 +35,10 @@ impl Value {
         &self,
         format: ExportFormat,
         maximum: usize,
-        context: &crate::ExecutionContext,
+        context: &crate::Stop,
     ) -> Result<Vec<u8>, Error> {
         context.check()?;
-        let clock = (context).clone();
-        let mut canonical = OutputSize::new(maximum);
-        canonical.syntax(1)?;
-        canonical.value(self, &clock)?;
+        let clock = Clock::for_stop(context);
         if format == ExportFormat::Json {
             return encode_json(self, maximum, context);
         }
@@ -93,10 +90,10 @@ fn raw_shape() -> Error {
 pub(crate) fn encode_json(
     value: &impl Serialize,
     maximum: usize,
-    context: &crate::ExecutionContext,
+    context: &crate::Stop,
 ) -> Result<Vec<u8>, Error> {
     context.check()?;
-    let clock = (context).clone();
+    let clock = Clock::for_stop(context);
     let mut output = BoundedOutput {
         bytes: Vec::new(),
         maximum,
@@ -118,10 +115,32 @@ pub(crate) fn encode_json(
 pub(crate) struct OutputSize {
     used: usize,
     maximum: usize,
+    format: ExportFormat,
 }
 impl OutputSize {
     pub(crate) fn new(maximum: usize) -> Self {
-        Self { used: 0, maximum }
+        Self::for_format(maximum, ExportFormat::Json)
+    }
+    pub(crate) fn for_format(maximum: usize, format: ExportFormat) -> Self {
+        Self {
+            used: 0,
+            maximum,
+            format,
+        }
+    }
+    pub(crate) fn format(&self) -> ExportFormat {
+        self.format
+    }
+    pub(crate) fn framing(&mut self) -> Result<(), Error> {
+        self.syntax(1)
+    }
+    pub(crate) fn string(&mut self, value: &str, clock: &Clock) -> Result<(), Error> {
+        if self.format == ExportFormat::Json {
+            self.value(&value, clock)
+        } else {
+            self.charge(value.len())?;
+            self.charge(1)
+        }
     }
     pub(crate) fn remaining(&self) -> usize {
         self.maximum.saturating_sub(self.used)
@@ -130,6 +149,12 @@ impl OutputSize {
         self.maximum
     }
     pub(crate) fn syntax(&mut self, bytes: usize) -> Result<(), Error> {
+        if self.format == ExportFormat::Raw {
+            return Ok(());
+        }
+        self.charge(bytes)
+    }
+    fn charge(&mut self, bytes: usize) -> Result<(), Error> {
         if bytes > self.maximum.saturating_sub(self.used) {
             return Err(Error::LimitExceeded {
                 limit: crate::Limit::OutputBytes,
@@ -142,11 +167,11 @@ impl OutputSize {
     pub(crate) fn value(
         &mut self,
         value: &impl Serialize,
-        clock: &crate::limits::ExecutionContext,
+        clock: &crate::stop::Clock,
     ) -> Result<(), Error> {
         struct Count<'a> {
             size: &'a mut OutputSize,
-            clock: &'a crate::limits::ExecutionContext,
+            clock: &'a crate::stop::Clock,
             error: Option<Error>,
         }
         impl Write for Count<'_> {
@@ -179,7 +204,7 @@ impl OutputSize {
     }
 }
 struct BoundedOutput<'a> {
-    clock: &'a crate::limits::ExecutionContext,
+    clock: &'a crate::stop::Clock,
     error: Option<Error>,
     bytes: Vec<u8>,
     maximum: usize,
@@ -205,6 +230,11 @@ impl Write for BoundedOutput<'_> {
 mod tests {
     use super::*;
     use crate::ErrorCode;
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     #[test]
     fn encoding_counts_escaped_bytes_and_keeps_unicode_and_field_order() {
         let value = Value::Record(BTreeMap::from([
@@ -217,7 +247,7 @@ mod tests {
                 .export(
                     crate::ExportFormat::Json,
                     expected.len(),
-                    &crate::ExecutionContext::new(None).unwrap()
+                    &crate::stop::Clock::new(None).unwrap()
                 )
                 .unwrap(),
             expected
@@ -226,7 +256,7 @@ mod tests {
             .export(
                 crate::ExportFormat::Json,
                 expected.len() - 1,
-                &crate::ExecutionContext::new(None).unwrap(),
+                &crate::stop::Clock::new(None).unwrap(),
             )
             .unwrap_err();
         assert_eq!(error.code(), ErrorCode::LimitExceeded);

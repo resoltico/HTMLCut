@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Private admitted tree and immutable selector view.
-use crate::{Error, PreparationPolicy, limits::ExecutionContext};
+use crate::{Error, ParseOptions, stop::Clock};
 use ego_tree::{NodeId, NodeRef, Tree};
 use html5ever::{
     Attribute, QualName,
@@ -10,7 +10,7 @@ use html5ever::{
 use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 mod matching;
 #[cfg(test)]
-use crate::Limits;
+use crate::TestOptions;
 
 #[derive(Debug)]
 pub(crate) struct Element {
@@ -125,28 +125,17 @@ impl Html {
     #[cfg(test)]
     pub(crate) fn parse_document(text: &str) -> Self {
         crate::Document::parse(
-            crate::Source::new(text.as_bytes()),
-            &Limits {
-                time_limit: None,
-                ..Limits::default()
-            }
-            .preparation(),
-            &crate::ExecutionContext::new(
-                Limits {
-                    time_limit: None,
-                    ..Limits::default()
-                }
-                .time_limit,
-            )
-            .unwrap(),
+            text.as_bytes(),
+            &crate::ParseOptions::default(),
+            &crate::Stop::none(),
         )
         .unwrap()
         .html
     }
     #[cfg(test)]
     pub(crate) fn html(&self) -> String {
-        let limits = Limits::default();
-        let clock = ExecutionContext::new(limits.time_limit).unwrap();
+        let limits = TestOptions::default();
+        let clock = Clock::new(limits.time_limit).unwrap();
         crate::read::read_html(self.root_element(), &clock).unwrap()
     }
 }
@@ -165,7 +154,7 @@ struct Builder {
     depths: HashMap<NodeId, usize>,
     maximum: usize,
     error: Option<Error>,
-    clock: ExecutionContext,
+    clock: Clock,
 }
 impl Builder {
     fn check(&mut self) -> bool {
@@ -200,10 +189,10 @@ impl Builder {
         let mut pending = vec![(id, depth)];
         let mut updates = Vec::new();
         while let Some((id, d)) = pending.pop() {
-            if d > crate::limits::MAX_DOM_DEPTH {
+            if d > crate::bounds::MAX_DOM_DEPTH {
                 self.error = Some(Error::LimitExceeded {
                     limit: crate::Limit::Depth,
-                    bound: (crate::limits::MAX_DOM_DEPTH).into(),
+                    bound: (crate::bounds::MAX_DOM_DEPTH).into(),
                 });
                 return false;
             }
@@ -270,7 +259,7 @@ pub(crate) struct TreeBuilder {
     document: Handle,
 }
 impl TreeBuilder {
-    pub(crate) fn new(limits: &PreparationPolicy, clock: ExecutionContext) -> Self {
+    pub(crate) fn new(limits: &ParseOptions, clock: Clock) -> Self {
         let tree = Tree::new(Node::Document);
         let id = tree.root().id();
         let document = Self::handle(
@@ -483,44 +472,47 @@ impl TreeSink for TreeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Contract, Document, Limits, Source, Value};
+    use crate::test_support::{DocumentFixture, TestOptions, parse_fixture};
+    use crate::{Contract, Value};
 
     fn reading(html: &str, select: &str, read: &str) -> Value {
-        let document = Document::parse(
-            Source::new(html.as_bytes()),
-            &Limits::default().preparation(),
-            &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+        let document = parse_fixture(
+            DocumentFixture::new(html.as_bytes()),
+            &TestOptions::default().preparation(),
+            &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
         )
         .unwrap();
         let contract = Contract::from_json(
             &serde_json::json!({"select": select, "read": read}).to_string(),
-            &crate::ExecutionContext::new(None).unwrap(),
+            &crate::stop::Clock::new(None).unwrap(),
         )
         .unwrap();
         document
             .extract(
                 &contract,
-                &crate::Limits::default().execution(),
-                &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap(),
+                crate::ExportFormat::Json,
+                &crate::test_support::TestOptions::default().execution(),
+                &crate::stop::Clock::new((crate::test_support::TestOptions::default()).time_limit)
+                    .unwrap(),
             )
             .unwrap()
     }
 
     #[test]
     fn callback_refusal_stops_allocation_but_retains_parser_handle_facts() {
-        use super::{ExecutionContext, TreeBuilder};
+        use super::{Clock, TreeBuilder};
         use html5ever::{
             QualName, local_name, ns,
             tree_builder::{ElementFlags, TreeSink},
         };
-        let limits = Limits {
+        let limits = TestOptions {
             max_nodes: 4096,
             time_limit: Some(std::time::Duration::ZERO),
-            ..Limits::default()
+            ..TestOptions::default()
         };
         let sink = TreeBuilder::new(
             &limits.preparation(),
-            ExecutionContext::new(limits.time_limit).unwrap(),
+            Clock::new(limits.time_limit).unwrap(),
         );
         for _ in 0..1024 {
             sink.create_comment("before-refusal".into());
@@ -579,10 +571,10 @@ mod tests {
                 "<div>".repeat(nested_divs),
                 "</div>".repeat(nested_divs)
             );
-            let result = Document::parse(
-                Source::new(html.as_bytes()),
-                &Limits::default().preparation(),
-                &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
+            let result = parse_fixture(
+                DocumentFixture::new(html.as_bytes()),
+                &TestOptions::default().preparation(),
+                &crate::stop::Clock::new(TestOptions::default().time_limit).unwrap(),
             );
             match expected {
                 None => assert!(result.is_ok()),
@@ -596,20 +588,20 @@ mod tests {
 
     #[test]
     fn attaching_or_reparenting_existing_subtrees_checks_every_descendant_depth() {
-        use super::{ExecutionContext, TreeBuilder};
+        use super::{Clock, TreeBuilder};
         use html5ever::{
             QualName, local_name, ns,
             tree_builder::{ElementFlags, NodeOrText, TreeSink},
         };
         for (parent_depth, reparent) in [(1023, false), (1024, true)] {
-            let limits = Limits {
+            let limits = TestOptions {
                 max_nodes: 4096,
                 time_limit: None,
-                ..Limits::default()
+                ..TestOptions::default()
             };
             let sink = TreeBuilder::new(
                 &limits.preparation(),
-                ExecutionContext::new(limits.time_limit).unwrap(),
+                Clock::new(limits.time_limit).unwrap(),
             );
             let element = || {
                 sink.create_element(

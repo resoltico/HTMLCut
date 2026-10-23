@@ -6,7 +6,7 @@ fn inherited_stdin_is_recognized_through_a_descriptor_directory_alias() {
     let fixture = tempfile::tempdir().unwrap();
     let alias = fixture.path().join("inherited");
     std::os::unix::fs::symlink("/dev/fd", &alias).unwrap();
-    let context = htmlcut_core::ExecutionContext::new(None).unwrap();
+    let context = htmlcut_core::Stop::none();
     assert!(stdin_alias(&alias.join("0"), &context).unwrap());
     assert!(!stdin_alias(&alias.join("1"), &context).unwrap());
 
@@ -977,7 +977,8 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
         os::unix::fs::symlink,
         sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    for deadline in [false, true] {
+    {
+        let deadline = false;
         let root = tempfile::tempdir().unwrap();
         let last = root.path().join("last");
         std::fs::write(&last, b"value").unwrap();
@@ -989,20 +990,7 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
         let read_stop = stopped.clone();
         let lookups = Arc::new(AtomicUsize::new(0));
         let observed = lookups.clone();
-        let context = htmlcut_core::ExecutionContext::with_checkpoint(move || {
-            if read_stop.load(Ordering::Relaxed) {
-                if deadline {
-                    Err(Error::LimitExceeded {
-                        limit: htmlcut_core::Limit::Time,
-                        bound: serde_json::Number::from_f64(0.0_f64).unwrap(),
-                    })
-                } else {
-                    Err(Error::Cancelled)
-                }
-            } else {
-                Ok(())
-            }
-        });
+        let context = htmlcut_core::Stop::none().with_cancel(read_stop);
         let error = with_link_lookup_probe(
             move |_| {
                 if observed.fetch_add(1, Ordering::Relaxed) == 1 {

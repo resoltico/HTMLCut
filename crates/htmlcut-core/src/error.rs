@@ -519,6 +519,11 @@ impl Serialize for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     #[test]
     fn every_variant_has_an_exact_flat_diagnostic_and_class() {
         use ErrorClass::{Cancelled, Internal, Io, Limit as Limited, Refusal, Request};

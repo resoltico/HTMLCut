@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Closed recursive contracts, validated and compiled before document evaluation.
-use crate::limits::{
+use crate::bounds::{
     MAX_ATTRIBUTE_NAME_CHARS, MAX_CONTRACT_BYTES, MAX_CONTRACT_NODES, MAX_DECLARED_COUNT,
     MAX_ENTRIES, MAX_FIELD_NAME_CHARS, MAX_PATTERN_BYTES, MAX_RECORD_DEPTH, MAX_RECORD_FIELDS,
 };
+use crate::stop::Clock;
 use crate::{Error, select::Selector};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value as Json};
@@ -79,7 +80,7 @@ pub(crate) struct Check {
 
 impl Contract {
     /// Reads one bounded JSON contract, rejecting duplicates and compiling its grammar.
-    pub fn from_json(text: &str, context: &crate::ExecutionContext) -> Result<Self, Error> {
+    pub fn from_json(text: &str, context: &crate::Stop) -> Result<Self, Error> {
         context.check()?;
         if text.len() > MAX_CONTRACT_BYTES {
             return Err(invalid(
@@ -98,7 +99,7 @@ impl Contract {
     /// Maximum admitted contract-file bytes.
     pub const MAX_BYTES: usize = MAX_CONTRACT_BYTES;
     /// Compiles a typed quick query through the same semantic admission as JSON.
-    pub fn quick(query: &QuickQuery, context: &crate::ExecutionContext) -> Result<Self, Error> {
+    pub fn quick(query: &QuickQuery, context: &crate::Stop) -> Result<Self, Error> {
         context.check()?;
         if query.select.len().saturating_add(query.read.len()) > MAX_CONTRACT_BYTES {
             return Err(invalid(
@@ -110,21 +111,22 @@ impl Contract {
             "match": match query.cardinality { QueryCardinality::One => "one", QueryCardinality::Optional => "optional", QueryCardinality::All => "all" }});
         // Count escaped input as well as source strings before compiler admission.
         let mut size = crate::value::OutputSize::new(MAX_CONTRACT_BYTES);
-        size.value(&value, &(context).clone()).map_err(|error| {
-            if serde_json::to_value(&error).unwrap()["limit"].as_str() == Some("output_bytes") {
-                invalid(None, "The quick query exceeds the contract byte bound.")
-            } else {
-                error
-            }
-        })?;
+        size.value(&value, &Clock::for_stop(context))
+            .map_err(|error| {
+                if serde_json::to_value(&error).unwrap()["limit"].as_str() == Some("output_bytes") {
+                    invalid(None, "The quick query exceeds the contract byte bound.")
+                } else {
+                    error
+                }
+            })?;
         Self::compile(&value, context)
     }
-    fn compile(value: &Json, context: &crate::ExecutionContext) -> Result<Self, Error> {
+    fn compile(value: &Json, context: &crate::Stop) -> Result<Self, Error> {
         context.check()?;
         let patterns = pattern_count(value);
         let mut compiler = Compiler {
             nodes: 0,
-            regex_bytes: crate::limits::MAX_REGEX_BYTES / (2 * patterns.max(1)),
+            regex_bytes: crate::bounds::MAX_REGEX_BYTES / (2 * patterns.max(1)),
             context,
         };
         let node = compiler.node(value, "$", 0)?;
@@ -135,17 +137,9 @@ impl Contract {
     pub fn schema() -> Json {
         schema()
     }
-    /// Encodes the complete schema under the operation's output and stop policy.
-    pub fn export_schema(
-        maximum: usize,
-        context: &crate::ExecutionContext,
-    ) -> Result<Vec<u8>, Error> {
-        context.check()?;
-        crate::value::encode_json(&Self::schema(), maximum, context)
-    }
     /// Admits export shape before acquiring any document bytes.
-    pub fn admit_export(&self, format: crate::ExportFormat) -> Result<(), Error> {
-        if format == crate::ExportFormat::Raw && self.produces_records() {
+    pub fn supports(&self, format: crate::ExportFormat) -> Result<(), Error> {
+        if format == crate::ExportFormat::Raw && matches!(self.node.body, Body::Record(_)) {
             return Err(Error::UnrepresentableOutput {
                 path: "$".into(),
                 row: None,
@@ -153,10 +147,6 @@ impl Contract {
             });
         }
         Ok(())
-    }
-    /// Whether the root produces records, which cannot be emitted as raw strings.
-    pub fn produces_records(&self) -> bool {
-        matches!(self.node.body, Body::Record(_))
     }
 }
 
@@ -287,7 +277,7 @@ fn reading(map: &Map<String, Json>, path: &str, predicate: bool) -> Result<Readi
 }
 
 struct Compiler<'a> {
-    context: &'a crate::ExecutionContext,
+    context: &'a crate::Stop,
     nodes: usize,
     regex_bytes: usize,
 }
@@ -549,7 +539,7 @@ mod tests {
         };
         let checks = Arc::new(AtomicUsize::new(0));
         let observed = checks.clone();
-        let context = crate::ExecutionContext::with_checkpoint(move || {
+        let context = crate::stop::Clock::testing(move || {
             observed.fetch_add(1, Ordering::Relaxed);
             Ok(())
         });
@@ -569,10 +559,15 @@ mod tests {
     }
     use super::*;
     use crate::ErrorCode;
+    #[allow(unused_imports)]
+    use crate::{
+        stop::Clock,
+        test_support::{DocumentFixture, TestOptions, parse_fixture},
+    };
     fn compile(value: Json) -> Result<Contract, Error> {
         Contract::from_json(
             &serde_json::to_string(&value).unwrap(),
-            &crate::ExecutionContext::new(None).unwrap(),
+            &crate::stop::Clock::new(None).unwrap(),
         )
     }
     fn refused(value: Json, message: &str) {
@@ -587,10 +582,10 @@ mod tests {
     fn contract_text_bound_is_checked_before_json_reading() {
         let mut text = String::from("{}");
         text.push_str(&" ".repeat(256 * 1024 - 2));
-        assert!(Contract::from_json(&text, &crate::ExecutionContext::new(None).unwrap()).is_ok());
+        assert!(Contract::from_json(&text, &crate::stop::Clock::new(None).unwrap()).is_ok());
         text.push(' ');
         assert!(
-            Contract::from_json(&text, &crate::ExecutionContext::new(None).unwrap())
+            Contract::from_json(&text, &crate::stop::Clock::new(None).unwrap())
                 .err()
                 .unwrap()
                 .to_string()
@@ -667,7 +662,7 @@ mod tests {
     }
     #[test]
     fn unsigned_limits_preserve_raw_numeric_token_spelling_at_every_position() {
-        let context = crate::ExecutionContext::new(None).unwrap();
+        let context = crate::stop::Clock::new(None).unwrap();
         for (prefix, suffix, path) in [
             (r#"{"select":"p","match":"all","min":"#, "}", "$.min"),
             (r#"{"select":"p","match":"all","max":"#, "}", "$.max"),

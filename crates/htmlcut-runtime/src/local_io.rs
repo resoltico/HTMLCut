@@ -17,7 +17,7 @@ fn invalid_request(message: &str) -> Error {
 pub(crate) fn input(
     allow_terminal: bool,
     maximum: usize,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> Result<Vec<u8>, Error> {
     if !allow_terminal && io::stdin().is_terminal() {
         return Err(invalid_request(
@@ -36,7 +36,7 @@ pub(crate) fn read_file(
     path: &Path,
     maximum: usize,
     contract: bool,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> Result<Vec<u8>, Error> {
     context.check()?;
     let mut file =
@@ -48,7 +48,7 @@ pub(crate) fn read(
     maximum: usize,
     path: &Path,
     contract: bool,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> Result<Vec<u8>, Error> {
     let mut bytes = Vec::new();
     let mut buffer = [0; 8192];
@@ -249,7 +249,7 @@ pub(crate) fn with_link_lookup_probe<T>(
 
 fn resolve_output_links(
     path: &Path,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> io::Result<std::path::PathBuf> {
     let mut current = path.to_path_buf();
     let mut visited = std::collections::HashSet::new();
@@ -328,7 +328,7 @@ pub(crate) fn publish_timed(
     };
     let context = job
         .map(crate::Job::context)
-        .unwrap_or_else(|| htmlcut_core::ExecutionContext::new(None).unwrap());
+        .unwrap_or_else(htmlcut_core::Stop::none);
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let resolved = resolve_output_links(path, &context)
         .map_err(|e| io_error(ErrorCode::OutputUnwritable, path, e))?;
@@ -914,10 +914,7 @@ pub(crate) fn obvious_stdin_alias(path: &Path) -> bool {
         false
     }
 }
-pub(crate) fn stdin_alias(
-    path: &Path,
-    context: &htmlcut_core::ExecutionContext,
-) -> Result<bool, Error> {
+pub(crate) fn stdin_alias(path: &Path, context: &htmlcut_core::Stop) -> Result<bool, Error> {
     context.check()?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {

@@ -7,12 +7,14 @@ compile_error!("htmlcut-runtime supports macOS, Linux and Windows native hosts")
 mod authorization;
 mod job;
 mod local_io;
-use htmlcut_core::{Contract, Document, Source};
+use htmlcut_core::{Contract, Document};
+mod settings;
 pub use htmlcut_core::{
-    DEFAULT_READING, Error, ErrorClass, ErrorCode, ExportFormat, Limit, Limits, OutlineAttribute,
+    DEFAULT_READING, Error, ErrorClass, ErrorCode, ExportFormat, Limit, OutlineAttribute,
     OutlineOptions, OutlineReport, OutlineRow, QueryCardinality, QuickQuery, Value,
 };
 pub use job::{CancelOutcome, Completion, Job, JobControl, Supervision};
+pub use settings::Settings as Limits;
 use std::{path::PathBuf, sync::Arc};
 
 /// Caller-owned bytes or a concrete local source.
@@ -136,11 +138,7 @@ impl Computed {
             ResultData::Extraction(_, _) | ResultData::Outline(_) => None,
         }
     }
-    fn encode(
-        &self,
-        maximum: usize,
-        context: &htmlcut_core::ExecutionContext,
-    ) -> Result<Vec<u8>, Error> {
+    fn encode(&self, maximum: usize, context: &htmlcut_core::Stop) -> Result<Vec<u8>, Error> {
         context.check()?;
         match self.data.as_ref() {
             ResultData::Extraction(value, format) => value.export(*format, maximum, context),
@@ -255,7 +253,7 @@ impl Job {
         result: Computed,
         destination: &Destination,
         limits: &Limits,
-        context: &htmlcut_core::ExecutionContext,
+        context: &htmlcut_core::Stop,
     ) -> Result<Outcome, Error> {
         let bytes = result.encode(limits.max_output_bytes, context)?;
         match destination {
@@ -281,10 +279,7 @@ enum Compiled {
     Outline(OutlineOptions),
     Schema,
 }
-fn compile(
-    operation: &Operation,
-    context: &htmlcut_core::ExecutionContext,
-) -> Result<Compiled, Error> {
+fn compile(operation: &Operation, context: &htmlcut_core::Stop) -> Result<Compiled, Error> {
     context.check()?;
     Ok(match operation {
         Operation::Extract { contract, format } => {
@@ -325,7 +320,7 @@ fn compile(
                     Contract::from_json(text, context)?
                 }
             };
-            contract.admit_export(*format)?;
+            contract.supports(*format)?;
             Compiled::Extraction(Box::new(contract), *format)
         }
         Operation::Outline(options) => {
@@ -340,7 +335,7 @@ fn prepare(
     encoding: &Option<String>,
     base_url: &Option<String>,
     limits: &Limits,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> Result<Document, Error> {
     context.check()?;
     let acquired;
@@ -356,22 +351,24 @@ fn prepare(
         }
     };
     context.check()?;
-    let mut source = Source::new(bytes);
-    source.encoding = encoding.as_deref();
-    source.base_url = base_url.as_deref();
-    Document::parse(source, &(limits).preparation(), context)
+    let options = htmlcut_core::ParseOptions {
+        encoding: encoding.clone(),
+        base_url: base_url.clone(),
+        ..limits.preparation()
+    };
+    Document::parse(bytes, &options, context)
 }
 fn compute(
     document: Option<&Document>,
     operation: Compiled,
     limits: &Limits,
-    context: &htmlcut_core::ExecutionContext,
+    context: &htmlcut_core::Stop,
 ) -> Result<Computed, Error> {
     let data = match operation {
         Compiled::Extraction(contract, format) => ResultData::Extraction(
             document
                 .unwrap()
-                .extract(&contract, &(limits).execution(), context)?,
+                .extract(&contract, format, &(limits).execution(), context)?,
             format,
         ),
         Compiled::Outline(options) => ResultData::Outline(document.unwrap().outline(
@@ -379,9 +376,11 @@ fn compute(
             &(limits).execution(),
             context,
         )?),
-        Compiled::Schema => {
-            ResultData::Schema(Contract::export_schema(limits.max_output_bytes, context)?)
-        }
+        Compiled::Schema => ResultData::Schema({
+            let mut bytes = serde_json::to_vec(&Contract::schema()).expect("schema serializes");
+            bytes.push(b'\n');
+            admit_bytes(&bytes, limits.max_output_bytes)?
+        }),
     };
     Ok(Computed {
         data: Arc::new(data),

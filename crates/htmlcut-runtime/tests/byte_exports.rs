@@ -110,9 +110,9 @@ fn representations_re_admit_exports_and_new_or_existing_files_before_publication
     for (operation, expected, allowance) in [
         (extract("\"p\"", ExportFormat::Json), "\"A \\\"雪\\\"\"\n".as_bytes().to_vec(), 12),
         (extract(nested, ExportFormat::Json), "{\"items\":[\"A \\\"雪\\\"\"],\"missing\":null}\n".as_bytes().to_vec(), 39),
-        (extract("\"p\"", ExportFormat::Raw), "A \"雪\"\n".as_bytes().to_vec(), 12),
-        (extract(r#"{"select":"p","match":"all"}"#, ExportFormat::Raw), "A \"雪\"\n".as_bytes().to_vec(), 14),
-        (extract(r#"{"select":"aside","match":"optional"}"#, ExportFormat::Raw), Vec::new(), 5),
+        (extract("\"p\"", ExportFormat::Raw), "A \"雪\"\n".as_bytes().to_vec(), 8),
+        (extract(r#"{"select":"p","match":"all"}"#, ExportFormat::Raw), "A \"雪\"\n".as_bytes().to_vec(), 8),
+        (extract(r#"{"select":"aside","match":"optional"}"#, ExportFormat::Raw), Vec::new(), 0),
         (Operation::Outline(outline), "1 match for main\n… 2 more lines; narrow the selection, reduce depth or increase the line allowance\n".as_bytes().to_vec(), 101),
         (Operation::Schema, schema_bytes.clone(), schema_bytes.len()),
     ] {
@@ -120,17 +120,21 @@ fn representations_re_admit_exports_and_new_or_existing_files_before_publication
         let Outcome::Returned(computed) = finished(Job::new(None).unwrap().execute(request)).unwrap() else { panic!() };
         let mut limits = Limits::default(); limits.max_output_bytes = allowance;
         assert_eq!(finished(Job::new(None).unwrap().export(&computed, limits.clone())).unwrap(), expected);
-        let mut below = limits.clone(); below.max_output_bytes -= 1;
+        let mut below = limits.clone(); below.max_output_bytes = allowance.saturating_sub(1);
+        if allowance > 0 {
         assert_eq!(serde_json::to_value(finished(Job::new(None).unwrap().export(&computed, below.clone())).unwrap_err()).unwrap()["limit"].as_str(), Some("output_bytes"));
+        }
         for existing in [false, true] {
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path().join("result");
             if existing { std::fs::write(&path, b"old").unwrap(); }
             let before:Vec<_> = std::fs::read_dir(directory.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+            if allowance > 0 {
             assert_eq!(serde_json::to_value(finished(Job::new(None).unwrap().save(&computed, Destination::File(path.clone()), below.clone())).unwrap_err()).unwrap()["limit"].as_str(), Some("output_bytes"));
             let after:Vec<_> = std::fs::read_dir(directory.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
             assert_eq!(after, before);
             if existing { assert_eq!(std::fs::read(&path).unwrap(), b"old"); }
+            }
             finished(Job::new(None).unwrap().save(&computed, Destination::File(path.clone()), limits.clone())).unwrap();
             assert_eq!(std::fs::read(path).unwrap(), expected);
         }

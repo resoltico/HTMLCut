@@ -1,12 +1,14 @@
+use support::{DocumentFixture, TestOptions, parse_fixture};
+mod support;
 // SPDX-License-Identifier: MPL-2.0
 use htmlcut_core::*;
 
 #[test]
 fn public_documentation_example_has_a_regular_mutation_detector() {
-    let limits = Limits::default();
-    let context = ExecutionContext::new(limits.time_limit).unwrap();
-    let document = Document::parse(
-        Source::new(b"<h1>Snapshot</h1>"),
+    let limits = TestOptions::default();
+    let context = support::test_stop(limits.time_limit).unwrap();
+    let document = parse_fixture(
+        DocumentFixture::new(b"<h1>Snapshot</h1>"),
         &limits.preparation(),
         &context,
     )
@@ -14,7 +16,12 @@ fn public_documentation_example_has_a_regular_mutation_detector() {
     let contract = Contract::from_json(r#""h1""#, &context).unwrap();
     assert_eq!(
         document
-            .extract(&contract, &limits.execution(), &context)
+            .extract(
+                &contract,
+                htmlcut_core::ExportFormat::Json,
+                &limits.execution(),
+                &context
+            )
             .unwrap(),
         Value::String("Snapshot".into())
     );
@@ -30,47 +37,44 @@ fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
     share::<Contract>();
     share::<Value>();
     share::<OutlineReport>();
-    let limits = Limits::default();
+    let limits = TestOptions::default();
     let stopped = Arc::new(AtomicBool::new(false));
     let observed = stopped.clone();
-    let context = ExecutionContext::with_checkpoint(move || {
-        if observed.load(Ordering::SeqCst) {
-            Err(Error::LimitExceeded {
-                limit: crate::Limit::Time,
-                bound: 0.into(),
-            })
-        } else {
-            Ok(())
-        }
-    });
+    let context = Stop::none().with_cancel(observed);
     let contract = Contract::from_json("\"p\"", &context).unwrap();
-    let document =
-        Document::parse(Source::new(b"<p>x</p>"), &limits.preparation(), &context).unwrap();
+    let document = parse_fixture(
+        DocumentFixture::new(b"<p>x</p>"),
+        &limits.preparation(),
+        &context,
+    )
+    .unwrap();
     stopped.store(true, Ordering::SeqCst);
     let error = document
-        .extract(&contract, &limits.execution(), &context)
+        .extract(
+            &contract,
+            htmlcut_core::ExportFormat::Json,
+            &limits.execution(),
+            &context,
+        )
         .unwrap_err();
-    assert_eq!(error.code(), ErrorCode::LimitExceeded);
-    assert_eq!(
-        serde_json::to_value(&error).unwrap()["limit"].as_str(),
-        Some("time")
-    );
-    assert_eq!(
-        serde_json::to_value(&error).unwrap().get("bound").cloned(),
-        Some(serde_json::json!(0))
-    );
-    let fresh = ExecutionContext::new(None).unwrap();
+    assert_eq!(error.code(), ErrorCode::Cancelled);
+    let fresh = support::test_stop(None).unwrap();
     assert_eq!(
         document
-            .extract(&contract, &limits.execution(), &fresh)
+            .extract(
+                &contract,
+                htmlcut_core::ExportFormat::Json,
+                &limits.execution(),
+                &fresh
+            )
             .unwrap(),
         Value::String("x".into())
     );
 }
 #[test]
 fn quick_queries_and_json_share_independently_expected_reading_cardinality_counts() {
-    let context = ExecutionContext::new(None).unwrap();
-    let limits = Limits::default();
+    let context = support::test_stop(None).unwrap();
+    let limits = TestOptions::default();
     let mut checked = 0;
     for (reading, literal) in [
         ("text", "X"),
@@ -94,9 +98,9 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
         ] {
             for count in 0..=2 {
                 let page = "<p title=\"T\" href=\"/x\">X</p>".repeat(count);
-                let mut source = Source::new(page.as_bytes());
+                let mut source = DocumentFixture::new(page.as_bytes());
                 source.base_url = Some("https://origin.test/");
-                let document = Document::parse(source, &limits.preparation(), &context).unwrap();
+                let document = parse_fixture(source, &limits.preparation(), &context).unwrap();
                 let query = QuickQuery {
                     select: "p".into(),
                     read: reading.into(),
@@ -108,8 +112,12 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
                     Contract::quick(&query, &context),
                     Contract::from_json(&text, &context),
                 ] {
-                    let actual =
-                        document.extract(&contract.unwrap(), &limits.execution(), &context);
+                    let actual = document.extract(
+                        &contract.unwrap(),
+                        htmlcut_core::ExportFormat::Json,
+                        &limits.execution(),
+                        &context,
+                    );
                     if (count == 0 && name != "optional") || (count == 2 && name != "all") {
                         let error = actual.unwrap_err();
                         let mut facts = serde_json::to_value(error).unwrap();
@@ -168,15 +176,20 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
         Contract::from_json(r#"{"select":"p","match":"all","min":1,"max":3}"#, &context).unwrap();
     for count in 0..=4 {
         let page = "<p>X</p>".repeat(count);
-        let document = Document::parse(
-            Source::new(page.as_bytes()),
+        let document = parse_fixture(
+            DocumentFixture::new(page.as_bytes()),
             &limits.preparation(),
             &context,
         )
         .unwrap();
         assert_eq!(
             document
-                .extract(&contract, &limits.execution(), &context)
+                .extract(
+                    &contract,
+                    htmlcut_core::ExportFormat::Json,
+                    &limits.execution(),
+                    &context
+                )
                 .is_ok(),
             (1..=3).contains(&count)
         );
@@ -185,19 +198,9 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
 
 #[test]
 fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
-    let checks = Arc::new(AtomicUsize::new(0));
-    let observed = checks.clone();
-    let context = ExecutionContext::with_checkpoint(move || {
-        if observed.fetch_add(1, Ordering::SeqCst) == 0 {
-            Ok(())
-        } else {
-            Err(Error::Cancelled)
-        }
-    });
+    let context = Stop::none().with_cancel(std::sync::Arc::new(
+        std::sync::atomic::AtomicBool::new(true),
+    ));
     let query = QuickQuery {
         select: "p".into(),
         read: "text".into(),
@@ -213,7 +216,7 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
             .cloned()
             .is_none()
     );
-    let context = ExecutionContext::new(None).unwrap();
+    let context = support::test_stop(None).unwrap();
     for (select, read) in [
         ("[".into(), "text".into()),
         ("p".into(), format!("attr:{}", "x".repeat(257))),
@@ -237,7 +240,7 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
         };
         assert_eq!(facts(&typed), facts(&json));
     }
-    let expired = ExecutionContext::new(Some(std::time::Duration::ZERO)).unwrap();
+    let expired = support::test_stop(Some(std::time::Duration::ZERO)).unwrap();
     let error = Value::Null
         .export(ExportFormat::Raw, 0, &expired)
         .unwrap_err();

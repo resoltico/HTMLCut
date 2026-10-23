@@ -28,6 +28,8 @@ struct Shared {
     deadline: Option<Instant>,
     duration: Option<Duration>,
     staging: Mutex<Vec<Arc<StageOwnership>>>,
+    core_stop: htmlcut_core::Stop,
+    cancel_flag: Arc<std::sync::atomic::AtomicBool>,
     #[cfg(test)]
     cleanup_gate: Mutex<Option<(Arc<std::sync::Barrier>, Arc<std::sync::Barrier>)>>,
 }
@@ -109,6 +111,9 @@ impl JobControl {
             Phase::Active => {
                 if self.0.stop(&mut state).is_none() {
                     state.stop = Some(Stop::Cancelled);
+                    self.0
+                        .cancel_flag
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                 }
                 CancelOutcome::Accepted
             }
@@ -171,6 +176,12 @@ impl Job {
                     })
             })
             .transpose()?;
+        let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let core_stop = duration
+            .map(htmlcut_core::Stop::after)
+            .transpose()?
+            .unwrap_or_else(htmlcut_core::Stop::none)
+            .with_cancel(cancel_flag.clone());
         Ok(Self {
             control: JobControl(Arc::new(Shared {
                 state: Mutex::new(State {
@@ -180,6 +191,8 @@ impl Job {
                 deadline,
                 duration,
                 staging: Mutex::new(Vec::new()),
+                core_stop,
+                cancel_flag,
                 #[cfg(test)]
                 cleanup_gate: Mutex::new(None),
             })),
@@ -189,9 +202,8 @@ impl Job {
     pub fn control(&self) -> JobControl {
         self.control.clone()
     }
-    pub(crate) fn context(&self) -> htmlcut_core::ExecutionContext {
-        let control = self.control.clone();
-        htmlcut_core::ExecutionContext::with_checkpoint(move || control.0.check())
+    pub(crate) fn context(&self) -> htmlcut_core::Stop {
+        self.control.0.core_stop.clone()
     }
     pub(crate) fn check(&self) -> Result<(), Error> {
         self.control.0.check()
