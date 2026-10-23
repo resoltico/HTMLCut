@@ -1,0 +1,1 @@
+{"fields":{"other":{"pattern":"(?<count>[0-9]+)","select":"p"},"plain":{"pattern":"[0-9]+","select":"p"},"unnamed":{"pattern":"([0-9]+)","select":"p"},"value":{"pattern":"(?<value>[0-9]+)","select":"p"}}}

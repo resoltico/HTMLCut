@@ -1,0 +1,10 @@
+{
+  "select": "p",
+  "expect": [
+    {
+      "select": "aside",
+      "min": 0,
+      "max": 0
+    }
+  ]
+}

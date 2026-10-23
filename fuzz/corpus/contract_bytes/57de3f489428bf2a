@@ -1,0 +1,4 @@
+{
+  "select": "#rel",
+  "read": "url:href"
+}

@@ -1,0 +1,10 @@
+{
+  "select": "article.product",
+  "match": "all",
+  "fields": {
+    "title": {
+      "select": "h3 a",
+      "read": "attr:title"
+    }
+  }
+}

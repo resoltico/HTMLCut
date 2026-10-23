@@ -1,0 +1,54 @@
+{
+  "fields": {
+    "ascii-class": {
+      "select": "#a",
+      "pattern": "(?<value>[0-9]+)"
+    },
+    "p-spelling": {
+      "select": "#a",
+      "pattern": "(?P<value>[0-9]+) items"
+    },
+    "unicode-digits-and-flag": {
+      "select": "#b",
+      "pattern": "(?i)^total: (?<value>\\d+) items$"
+    },
+    "lazy": {
+      "select": "#d",
+      "pattern": "=(?<value>.+?);"
+    },
+    "alternation": {
+      "select": "#a",
+      "pattern": "^(?:Sum|Total): (?<value>\\d+)"
+    },
+    "multi-line-flag": {
+      "select": "#c",
+      "pattern": "(?m)^(?<value>line t.*)$"
+    },
+    "dot-all-flag": {
+      "select": "#c",
+      "pattern": "(?s)one.(?<value>line)"
+    },
+    "whole-value-anchors": {
+      "select": "li",
+      "match": "all",
+      "min": 0,
+      "where": [
+        {
+          "pattern": "^line one$"
+        }
+      ],
+      "read": "attr:id"
+    },
+    "per-line-anchors": {
+      "select": "li",
+      "match": "all",
+      "min": 0,
+      "where": [
+        {
+          "pattern": "(?m)^line one$"
+        }
+      ],
+      "read": "attr:id"
+    }
+  }
+}

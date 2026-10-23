@@ -1,0 +1,5 @@
+{
+  "select": ".review",
+  "match": "all",
+  "min": 0
+}

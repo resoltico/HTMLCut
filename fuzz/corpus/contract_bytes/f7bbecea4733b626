@@ -1,0 +1,16 @@
+{
+  "fields": {
+    "rel": {
+      "select": "#rel",
+      "read": "url:href"
+    },
+    "abs": {
+      "select": "#abs",
+      "read": "url:href"
+    },
+    "image": {
+      "select": "meta[property=\"og:image\"]",
+      "read": "url:content"
+    }
+  }
+}

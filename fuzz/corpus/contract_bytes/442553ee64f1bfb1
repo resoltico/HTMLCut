@@ -1,0 +1,9 @@
+{
+  "select": "article",
+  "fields": {
+    "url": {
+      "select": "a",
+      "read": "attr:href"
+    }
+  }
+}

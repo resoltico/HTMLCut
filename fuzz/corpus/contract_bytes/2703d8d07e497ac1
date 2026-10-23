@@ -1,0 +1,4 @@
+{
+  "select": "main",
+  "read": "text-content"
+}

@@ -1,0 +1,23 @@
+{
+  "expect": [
+    {
+      "select": "li.row",
+      "min": 2,
+      "max": 2
+    },
+    {
+      "select": "template li, template a",
+      "min": 0,
+      "max": 0
+    }
+  ],
+  "select": "li.row",
+  "match": "all",
+  "fields": {
+    "title": "a",
+    "href": {
+      "select": "a",
+      "read": "attr:href"
+    }
+  }
+}

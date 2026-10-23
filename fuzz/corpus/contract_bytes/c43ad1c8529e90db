@@ -1,0 +1,58 @@
+{
+  "fields": {
+    "present": {
+      "select": "[disabled]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "equals": {
+      "select": "[lang=\"fr\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "word": {
+      "select": "[data-kind~=\"two\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "dash": {
+      "select": "section[lang|=\"en\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "prefix": {
+      "select": "a[href^=\"https:\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "suffix": {
+      "select": "a[href$=\".pdf\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "substring": {
+      "select": "[data-kind*=\"a-o\"]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "insensitive-flag": {
+      "select": "[data-kind=\"ALPHA-ONE\" i]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "unquoted": {
+      "select": "[name=agree]",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "fields": {
+    "descendant": {
+      "select": "main p",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "child": {
+      "select": "main > section > p",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "next-sibling": {
+      "select": "h2 + p",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "later-sibling": {
+      "select": "h2 ~ a",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "list": {
+      "select": "h2, aside p",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "universal": {
+      "select": "#u1 > *",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    },
+    "compound": {
+      "select": "section.card.featured#s1",
+      "match": "all",
+      "min": 0,
+      "read": "attr:id"
+    }
+  }
+}

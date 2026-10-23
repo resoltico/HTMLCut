@@ -1,0 +1,44 @@
+{
+  "fields": {
+    "upc": {
+      "select": "table.facts tr",
+      "where": [
+        {
+          "select": "th",
+          "equals": "UPC"
+        }
+      ],
+      "fields": {
+        "value": "td"
+      }
+    },
+    "available": {
+      "select": "table.facts tr",
+      "where": [
+        {
+          "select": "th",
+          "equals": "Availability"
+        }
+      ],
+      "fields": {
+        "count": {
+          "select": "td",
+          "pattern": "\\((?<value>[0-9]+) available\\)"
+        }
+      }
+    },
+    "isbn": {
+      "select": "table.facts tr",
+      "where": [
+        {
+          "select": "th",
+          "equals": "ISBN"
+        }
+      ],
+      "match": "optional",
+      "fields": {
+        "value": "td"
+      }
+    }
+  }
+}

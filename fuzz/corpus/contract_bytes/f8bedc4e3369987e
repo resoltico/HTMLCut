@@ -1,0 +1,1 @@
+{"fields":{"empty":{"read":"url:href","select":"#empty"},"network":{"read":"url:href","select":"#network"}}}

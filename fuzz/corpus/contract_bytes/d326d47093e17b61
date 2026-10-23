@@ -1,0 +1,13 @@
+{
+  "fields": {
+    "cell": {
+      "select": "td",
+      "nth": 1
+    },
+    "heading": "h2",
+    "item": {
+      "select": "li",
+      "nth": 2
+    }
+  }
+}

@@ -1,11 +1,10 @@
 * text=auto eol=lf
 
-# Fuzz seeds are exact byte inputs, including malformed encodings.
-fuzz/seeds/** -text -diff
+# Fuzz corpora are exact byte inputs, including malformed encodings.
+fuzz/corpus/** -text -diff
 
 # Conformance pages and expectations are byte-exact.
 conformance/** -text -diff
 
 # Corpus documentation remains ordinary reviewable text.
 conformance/README.md text eol=lf diff
-conformance/fixture.rs text eol=lf diff

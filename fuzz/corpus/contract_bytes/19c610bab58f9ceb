@@ -1,0 +1,7 @@
+{
+  "select": "article",
+  "read": "outer-html",
+  "exclude": [
+    ".ad"
+  ]
+}

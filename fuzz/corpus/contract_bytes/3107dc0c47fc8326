@@ -1,0 +1,9 @@
+{
+  "expect": [
+    {
+      "select": "h1",
+      "read": "attr:lang"
+    }
+  ],
+  "select": "h1"
+}

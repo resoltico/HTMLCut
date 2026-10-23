@@ -1,0 +1,1 @@
+{"match":"all","read":"text-content","select":"p","where":[{"pattern":"(?<value>x)|sold"}]}

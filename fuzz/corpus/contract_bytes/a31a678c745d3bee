@@ -1,0 +1,14 @@
+{
+  "select": "ol.row > li",
+  "match": "all",
+  "fields": {
+    "self_tag_id": {
+      "select": "article",
+      "read": "attr:id"
+    },
+    "context": {
+      "select": "ol.row > li h3 a",
+      "read": "attr:title"
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"fields":{"items":{"equals":"ok","match":"all","select":"b","where":[{"max":0,"min":0,"select":":scope.skip"}]}},"match":"all","select":"section","where":[{"max":0,"min":0,"select":":scope[data-skip]"}]}

@@ -1,0 +1,11 @@
+{
+  "select": "section",
+  "match": "all",
+  "fields": {
+    "items": {
+      "select": "b",
+      "match": "all",
+      "equals": "ok"
+    }
+  }
+}

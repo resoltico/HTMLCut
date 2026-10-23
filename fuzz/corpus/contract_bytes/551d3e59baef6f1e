@@ -1,0 +1,8 @@
+{
+  "select": "li",
+  "nth": 1,
+  "read": "attr:id",
+  "exclude": [
+    "b"
+  ]
+}

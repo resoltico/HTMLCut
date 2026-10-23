@@ -1,0 +1,11 @@
+{
+  "select": "h2",
+  "match": "all",
+  "until": "h2",
+  "fields": {
+    "body": {
+      "select": ":scope",
+      "until": "footer"
+    }
+  }
+}

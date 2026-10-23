@@ -1,0 +1,12 @@
+{
+  "select": "dt",
+  "match": "all",
+  "until": "dt",
+  "fields": {
+    "term": {"select": ":scope"},
+    "definitions": {
+      "select": "dd",
+      "match": "all"
+    }
+  }
+}

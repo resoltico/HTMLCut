@@ -49,16 +49,15 @@ fuzz_target!(|bytes: &[u8]| {
         return;
     };
     if let Some(document) = admitted(Document::parse(document, &limits, &context)) {
-        if let Some(value) =
-            admitted(document.extract(&contract, ExportFormat::Json, &results, &context))
-        {
-            let json = value
-                .export(ExportFormat::Json, results.max_output_bytes, &context)
-                .expect("an admitted extraction must export within its canonical allowance");
-            assert!(json.len() <= results.max_output_bytes);
-            match value.export(ExportFormat::Raw, results.max_output_bytes, &context) {
-                Ok(raw) => assert!(raw.len() <= json.len()),
-                Err(error) => assert_eq!(error.code(), ErrorCode::UnrepresentableOutput),
+        for format in [ExportFormat::Json, ExportFormat::Raw] {
+            if let Some(value) = admitted(document.extract(&contract, format, &results, &context)) {
+                match value.export(format, results.max_output_bytes, &context) {
+                    Ok(bytes) => assert!(bytes.len() <= results.max_output_bytes),
+                    Err(error) if format == ExportFormat::Raw => {
+                        assert_eq!(error.code(), ErrorCode::UnrepresentableOutput)
+                    }
+                    Err(error) => panic!("admitted JSON extraction failed export: {error}"),
+                }
             }
         }
         if let Some(report) =
@@ -66,7 +65,7 @@ fuzz_target!(|bytes: &[u8]| {
         {
             let text = report
                 .render(results.max_output_bytes, &context)
-                .expect("an admitted outline must render within its canonical allowance");
+                .expect("an admitted outline must render within its output allowance");
             assert!(text.len() <= results.max_output_bytes);
         }
     }

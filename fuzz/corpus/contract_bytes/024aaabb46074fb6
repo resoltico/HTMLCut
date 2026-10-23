@@ -1,0 +1,12 @@
+{
+  "select": "section",
+  "where": [
+    {
+      "select": "i",
+      "min": 2,
+      "max": 2,
+      "equals": "OK"
+    }
+  ],
+  "read": "text-content"
+}
