@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 [package]
 exclude = ["tests/**"]
-name = "htmlcut-cli"
+name = "htmlcut"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,22 +18,13 @@ name = "htmlcut"
 path = "src/main.rs"
 
 [dependencies]
+htmlcut-core.workspace = true
 clap.workspace = true
-htmlcut-runtime.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
-htmlcut-runtime = { workspace = true, features = ["instrumented-tests"] }
 serde_json.workspace = true
-tempfile.workspace = true
-
-[target.'cfg(unix)'.dev-dependencies]
-libc.workspace = true
-filedescriptor.workspace = true
-
-[target.'cfg(windows)'.dev-dependencies]
-windows-sys = { workspace = true, features = ["Win32_System_Pipes"] }
-winapi-util.workspace = true
 
 [lints]
 workspace = true

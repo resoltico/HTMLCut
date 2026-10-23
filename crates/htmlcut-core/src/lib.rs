@@ -9,7 +9,6 @@
 //! assert_eq!(document.extract(&contract, ExportFormat::Json, &ResultLimits::default(), &stop)?, Value::String("Snapshot".into()));
 //! # Ok::<(), htmlcut_core::Error>(())
 //! ```
-#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 mod bounds;
 mod compile;
