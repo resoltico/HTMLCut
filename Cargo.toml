@@ -14,7 +14,7 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-version = "23.0.0"
+version = "24.0.0"
 edition = "2024"
 rust-version = "1.88.0"
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots, with complete compact results."
@@ -23,7 +23,7 @@ authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 
 [workspace.dependencies]
-htmlcut-conformance = { path = "crates/htmlcut-conformance" }
+htmlcut-conformance = { path = "crates/htmlcut-conformance", version = "24.0.0" }
 schemars = "1.2.2"
 serde_path_to_error = "0.1.20"
 clap = { version = "4.6.7", features = ["derive"] }
@@ -34,7 +34,7 @@ cssparser = "0.37.0"
 selectors = "0.38.0"
 html5ever = "0.40.1"
 tempfile = "3.27.0"
-htmlcut-core = { path = "crates/htmlcut-core", version = "23.0.0" }
+htmlcut-core = { path = "crates/htmlcut-core", version = "24.0.0" }
 libfuzzer-sys = "0.4.13"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -53,10 +53,3 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
-
-[profile.dev]
-incremental = false
-debug = "line-tables-only"
-
-[profile.dev.package."*"]
-debug = false

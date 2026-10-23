@@ -19,6 +19,3 @@
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-
-# Python maintenance-test bytecode is rebuildable, not source.
-__pycache__/
